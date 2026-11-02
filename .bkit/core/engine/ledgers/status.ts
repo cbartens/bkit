@@ -113,7 +113,72 @@ export type Step = {
   failures?: number;
   strategy?: "STANDARD" | "PIVOT" | "FINAL";
   scope?: string;
+  ciGeneration?: number;
+  reproduced?: string;
 };
+
+/** Validate the bounded CI evidence variant without relaxing local exit codes. */
+export function testRunProblem(value: unknown): string | null {
+  if (!value || typeof value !== "object") return "test-run must be an object";
+  const r = value as Record<string, unknown>;
+  const positive = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0;
+  if (r.source === "ci") {
+    if (
+      r.workflow !== "debug" ||
+      r.step !== "debug-run-tests" ||
+      r.verdict !== "FAIL" ||
+      r.exitCode !== null ||
+      r.failures !== null ||
+      r.gate !== null ||
+      !positive(r.ciGeneration) ||
+      !positive(r.runAttempt) ||
+      typeof r.ciRun !== "string" ||
+      !/^[1-9][0-9]*$/.test(r.ciRun) ||
+      r.scope !== `ci:${r.ciRun}` ||
+      typeof r.artifact !== "string" ||
+      !r.artifact ||
+      typeof r.repo !== "string" ||
+      !/^[\w.-]+\/[\w.-]+$/.test(r.repo) ||
+      r.ciUrl !== `https://github.com/${r.repo}/actions/runs/${r.ciRun}/attempts/${r.runAttempt}` ||
+      typeof r.workflowId !== "string" ||
+      !/^[1-9][0-9]*$/.test(r.workflowId) ||
+      typeof r.workflowPath !== "string" ||
+      !/^\.github\/workflows\/[^/]+\.ya?ml$/.test(r.workflowPath) ||
+      typeof r.headSha !== "string" ||
+      !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(r.headSha)
+    )
+      return "invalid CI evidence round";
+    return null;
+  }
+  if (r.source !== undefined && r.source !== "local") return "invalid test source";
+  if (!Number.isSafeInteger(r.exitCode) || Number(r.exitCode) < 0)
+    return "local exitCode must be a non-negative integer";
+  if (r.failures !== null && (!Number.isSafeInteger(r.failures) || Number(r.failures) < 0))
+    return "invalid failure count";
+  return null;
+}
+
+/** A round belongs to exactly one saved evidence generation. */
+export function ciRoundMatches(
+  row: Record<string, unknown>,
+  selection: unknown,
+  generation: unknown,
+): boolean {
+  return (
+    validateCiSelection(selection) &&
+    selection.mode === "ci" &&
+    testRunProblem(row) === null &&
+    row.source === "ci" &&
+    row.ciGeneration === generation &&
+    row.ciRun === selection.runId &&
+    row.runAttempt === selection.runAttempt &&
+    row.ciUrl === selection.runUrl &&
+    row.repo === selection.repo &&
+    row.workflowId === selection.workflowId &&
+    row.workflowPath === selection.workflowPath &&
+    row.headSha === selection.headSha
+  );
+}
 
 export type WorkflowRun = {
   workflow: string;
@@ -146,7 +211,9 @@ export type StatusEvent =
 // (workflow, step, parentSha, at); workflow-level events per (type, workflow, at).
 function identity(e: StatusEvent): string {
   if (e.type === "step-done")
-    return `S\u0000${e.workflow}\u0000${e.step}\u0000${e.parentSha}\u0000${e.at}`;
+    return `S\u0000${e.workflow}\u0000${e.step}\u0000${e.parentSha}\u0000${e.at}${e.ciGeneration === undefined ? "" : `\u0000${e.status}\u0000${e.ciGeneration}`}`;
+  if (e.type === "workflow-meta" && e.ciSelection !== undefined)
+    return `M\u0000${e.workflow}\u0000${e.at}\u0000${e.ciGeneration}\u0000${JSON.stringify(e.ciSelection)}`;
   return `W\u0000${e.type}\u0000${e.workflow}\u0000${e.at}`;
 }
 

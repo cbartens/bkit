@@ -18,6 +18,7 @@ import {
   activeDoneSteps,
   allRunsDoneSteps,
   appendLine,
+  ciRoundMatches,
   runNumber,
   runOrStepField,
   statusTimestamp,
@@ -62,6 +63,7 @@ import {
   nonNegativeInt,
   positiveInt,
   readRuns,
+  readStatusRows,
   readRunsAt,
   statusFile,
   str,
@@ -1025,6 +1027,63 @@ async function finish(ctx: RunContext): Promise<number> {
       clampLogPath(ctx.cwd, fid, clampStep!, positiveInt(clampAttempt, "clamp-log attempt")),
       (l) => ctx.log(`skipping a malformed clamp record: ${l}`),
     );
+  }
+
+  if (workflow === "debug" && step === "debug-run-tests") {
+    const active = readRuns(file).at(-1);
+    const rows = readStatusRows(file);
+    const start =
+      rows
+        .map((r, i) => (r.type === "workflow-started" && r.workflow === "debug" ? i : -1))
+        .filter((i) => i >= 0)
+        .at(-1) ?? -1;
+    const round = rows
+      .slice(start + 1)
+      .reverse()
+      .find(
+        (r) =>
+          r.type === "test-run" &&
+          r.workflow === workflow &&
+          r.step === step &&
+          r.attempt === attempt,
+      );
+    if (extras.source === "ci" || round?.source === "ci") {
+      const matching =
+        active?.workflow === "debug" &&
+        active.status === "IN_PROGRESS" &&
+        round &&
+        ciRoundMatches(round, active.ciSelection, active.ciGeneration) &&
+        extras.source === "ci" &&
+        extras.ciGeneration === active.ciGeneration &&
+        verdict === "FAIL" &&
+        failures === undefined &&
+        extras.scope === round.scope &&
+        artifacts.includes(String(round.artifact));
+      if (!matching)
+        throw new CommandError(EXIT.USAGE, "CI evidence does not match the active selection");
+      const text = fs.readFileSync(path.resolve(ctx.cwd, String(round.artifact)), "utf-8");
+      const required = [
+        "Verdict: FAIL",
+        "Source: ci",
+        `Scope: ${round.scope}`,
+        `Repository: ${round.repo}`,
+        `Workflow: ${round.workflowPath} (${round.workflowId})`,
+        `Run: ${round.ciRun}`,
+        `Run attempt: ${round.runAttempt}`,
+        `CI generation: ${round.ciGeneration}`,
+        `Commit: ${round.headSha}`,
+        `URL: ${round.ciUrl}`,
+        "The local gate was not run.",
+      ];
+      if (!required.every((line) => text.split(/\r?\n/).includes(line)))
+        throw new CommandError(EXIT.USAGE, "CI evidence artifact identity mismatch");
+      delete extras.clamped;
+    } else if (
+      (clampLog !== undefined || round !== undefined) &&
+      (!Array.isArray(extras.clamped) || extras.clamped.length === 0)
+    ) {
+      throw new CommandError(EXIT.USAGE, "local test completion needs clamp evidence");
+    }
   }
 
   // What the gate would refuse, refused before anything is written.

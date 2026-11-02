@@ -22,13 +22,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
-import { appendLine, statusTimestamp } from "../../ledgers/status.js";
+import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
-import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, statusFile, str, } from "./status.js";
+import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { appendRecord, clampFile } from "./context.js";
@@ -137,7 +137,12 @@ function appendTestRun(file, r) {
         scope: r.scope,
         log: r.log,
         ...(r.artifact === undefined ? {} : { artifact: r.artifact }),
+        ...(r.source === undefined ? {} : { source: r.source }),
+        ...r.evidence,
     };
+    const problem = testRunProblem(row);
+    if (problem !== null)
+        throw new CommandError(EXIT.USAGE, problem);
     fs.appendFileSync(file, appendLine(row));
     return row;
 }
@@ -1229,8 +1234,19 @@ export const testsCommand = {
                     help: "status.jsonl: append one test-run row for this run, pass or fail; needs --workflow and --step",
                 },
                 { name: "workflow", type: "string", help: "--file: workflow name, for the test-run row" },
+                { name: "ci-run", type: "string", help: "selected GitHub evidence run ID" },
+                { name: "ci-url", type: "string", help: "selected GitHub evidence attempt URL" },
             ],
             output: {
+                source: "ci for pinned red evidence; local after its current-generation fix",
+                runAttempt: "selected CI attempt for a CI evidence round",
+                ciGeneration: "active selection generation for a CI evidence round",
+                ciRun: "selected CI run ID for a CI evidence round",
+                ciUrl: "selected CI attempt URL for a CI evidence round",
+                repo: "selected repository for a CI evidence round",
+                workflowId: "selected workflow ID for a CI evidence round",
+                workflowPath: "selected workflow path for a CI evidence round",
+                headSha: "selected commit for a CI evidence round",
                 verdict: "PASS | FAIL (null when the gate could not run)",
                 exitCode: "the gate's exit code",
                 gate: "the script that ran",
@@ -1267,6 +1283,91 @@ export const testsCommand = {
                 const status = statusArg === undefined ? undefined : path.resolve(ctx.cwd, statusArg);
                 if (status !== undefined && !fs.existsSync(status))
                     throw new CommandError(EXIT.USAGE, `--file ${statusArg} does not exist (a test-run row never starts a log)`);
+                if (ctx.flags.ciRun !== undefined || ctx.flags.ciUrl !== undefined) {
+                    const active = status === undefined ? undefined : readRuns(status).at(-1);
+                    const selection = active?.ciSelection;
+                    if (!status ||
+                        workflow !== "debug" ||
+                        active?.workflow !== "debug" ||
+                        active.status !== "IN_PROGRESS" ||
+                        !validateCiSelection(selection) ||
+                        selection.mode !== "ci" ||
+                        ctx.flags.ciRun !== selection.runId ||
+                        ctx.flags.ciUrl !== selection.runUrl ||
+                        !Number.isSafeInteger(active.ciGeneration) ||
+                        Number(active.ciGeneration) < 1 ||
+                        !artifact)
+                        throw new CommandError(EXIT.USAGE, "CI round needs an active matching debug selection and artifact");
+                    const fixed = active.steps.some((s) => s.status === "DONE" &&
+                        s.ciGeneration === active.ciGeneration &&
+                        ["debug-failure-remediate", "debug-failure-soak"].includes(s.step));
+                    if (!fixed) {
+                        const scope = `ci:${selection.runId}`;
+                        const text = [
+                            "Verdict: FAIL",
+                            "Source: ci",
+                            `Scope: ${scope}`,
+                            `Repository: ${selection.repo}`,
+                            `Workflow: ${selection.workflowPath} (${selection.workflowId})`,
+                            `Run: ${selection.runId}`,
+                            `Run attempt: ${selection.runAttempt}`,
+                            `CI generation: ${active.ciGeneration}`,
+                            `Commit: ${selection.headSha}`,
+                            `URL: ${selection.runUrl}`,
+                            "",
+                            "<!-- verdict:end -->",
+                            "",
+                            "# CI evidence",
+                            "",
+                            "The local gate was not run.",
+                            "",
+                        ].join("\n");
+                        for (const dest of new Set([artifact, logArg])) {
+                            const out = path.resolve(ctx.cwd, dest);
+                            fs.mkdirSync(path.dirname(out), { recursive: true });
+                            fs.writeFileSync(out, text);
+                        }
+                        const evidence = {
+                            gate: null,
+                            ciRun: selection.runId,
+                            ciUrl: selection.runUrl,
+                            runAttempt: selection.runAttempt,
+                            ciGeneration: active.ciGeneration,
+                            repo: selection.repo,
+                            workflowId: selection.workflowId,
+                            workflowPath: selection.workflowPath,
+                            headSha: selection.headSha,
+                        };
+                        const row = appendTestRun(status, {
+                            workflow,
+                            step: step,
+                            attempt,
+                            source: "ci",
+                            verdict: "FAIL",
+                            exitCode: null,
+                            failures: null,
+                            scope,
+                            log: logArg,
+                            artifact,
+                            evidence,
+                        });
+                        ctx.emit({
+                            source: "ci",
+                            verdict: "FAIL",
+                            scope,
+                            exitCode: null,
+                            failures: null,
+                            ...evidence,
+                            artifact,
+                            log: logArg,
+                            logBytes: Buffer.byteLength(text),
+                            reports: null,
+                            clamp: null,
+                            row,
+                        });
+                        return EXIT.NO;
+                    }
+                }
                 const tailRaw = str(ctx.flags.tail) ?? String(DEFAULT_TAIL);
                 if (!/^[0-9]+$/.test(tailRaw)) {
                     throw new CommandError(EXIT.USAGE, `--tail must be a non-negative integer, got "${tailRaw}"`);
@@ -1334,8 +1435,10 @@ export const testsCommand = {
                         scope,
                         log: logArg,
                         artifact,
+                        ...(ctx.flags.ciRun === undefined ? {} : { source: "local" }),
                     });
                 ctx.emit({
+                    ...(ctx.flags.ciRun === undefined ? {} : { source: "local" }),
                     verdict,
                     exitCode,
                     gate,
