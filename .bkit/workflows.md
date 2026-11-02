@@ -33,7 +33,7 @@ The source files live in `.bkit/core/workflows/`. `bkit install` regenerates `.c
 | --- | --- | --- | --- |
 | `/bkit-design` | yes | yes | `docs/plans/{YYYYMM}/{FID}-design.md` |
 | `/bkit-plan` | yes | yes | `docs/plans/{YYYYMM}/{FID}-plan.md` |
-| `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL; with `publish=false` (local only), no push or PR: the build is held on `feat/{FID}` for `/bkit-ship` |
+| `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL; restored tests post under Plan Execute (step 7). With `publish=false` (local only), no push or PR: the build is held on `feat/{FID}` for `/bkit-ship` |
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship / debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |

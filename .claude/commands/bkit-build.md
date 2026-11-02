@@ -711,7 +711,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    Update: the tests named, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
    Record the restore. The command reads the group's `TEST FIRST` files from the plan and commits the diff:
    ```bash
-   "{BKIT}" steps finish --workflow=build --step=build-plan-tests --file="{STATUS}" --attempt-of=build-plan-tests:next --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --agent=bkit-build-plan-tests --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md --number=9 --post --title="Plan Gaps Remediate — tests restored" --message="chore({FID}): plan-tests group {GROUP} attempt <attempt>"
+   "{BKIT}" steps finish --workflow=build --step=build-plan-tests --file="{STATUS}" --attempt-of=build-plan-tests:next --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --agent=bkit-build-plan-tests --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md --number=7 --post --title="Plan Execute — tests restored" --message="chore({FID}): plan-tests group {GROUP} attempt <attempt>"
    ```
    **If** exit 15 → the diff changes a file no `TEST FIRST` line of the group names (`source`): invoke `@bkit-build-plan-tests` again with `"<problem> Undo your edits to each file in <source>: restore it to its committed content, or delete it when you created it. Write no source code."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
    Record the group's red again:
