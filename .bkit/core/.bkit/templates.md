@@ -105,6 +105,8 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 
 The block rules (markers, contexts, self-skip, output bounds) are in the managed block of `.agents/context.md`. Each fetch block bounds its own output at the source, with a window, a severity / level filter, a row / line cap, a page cap or a per-lane tail, because everything it prints is written into an artifact that an agent then reads. A block that bounds nothing downloads a whole-run dump, and only the post-hoc clamp catches it (`bkit check` advises, `context-fetch-unbounded`).
 
+For selected CI, `context fetch --ci-selection-file` supplies the four `BKIT_CI_*` identity inputs listed below and validates the `bkit-ci-evidence` receipt defined in `.agents/context.md`. The receipt follows complete metadata, job and log reads; empty, partial or mismatched evidence stays unchecked. An unpinned block discovers its own source. Consumer-owned blocks remain unchanged on upgrade; Debug adapts a temporary script for the selected identity.
+
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |

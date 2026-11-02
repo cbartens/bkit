@@ -818,6 +818,8 @@ async function finish(ctx) {
     if (strategy !== undefined && !STRATEGIES.includes(strategy))
         throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
     delete fields.Strategy;
+    if (workflow === "debug" && step === "debug-failure-reproduce" && fields.Reproduced !== undefined)
+        extras.reproduced = fields.Reproduced;
     const clampLog = str(f.clampLog);
     if (clampLog !== undefined) {
         const [clampStep, clampAttempt] = fill(clampLog, attempt).split(":");
