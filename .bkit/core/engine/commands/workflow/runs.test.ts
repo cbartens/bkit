@@ -85,6 +85,88 @@ async function cli(cwd: string, argv: string[]) {
 // The fixture gh stub (tests/gh-stub-smoke.bats) — the gate tests rest on it
 // ---------------------------------------------------------------------------
 
+it("requires selected other-workflow success at the exact pushed head", async () => {
+  const f = locateFixture();
+  const state = { selected: "success", configured: "success", sha: f.head, absent: false };
+  const stateFile = path.join(f.cwd, "gate-state.json");
+  const callsFile = path.join(f.cwd, "gate-calls.jsonl");
+  const bin = path.join(f.cwd, "gate-bin");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(callsFile, "");
+  fs.writeFileSync(
+    path.join(bin, "gh"),
+    `#!${process.execPath}
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify(args) + "\\n");
+const state = JSON.parse(fs.readFileSync(${JSON.stringify(stateFile)}, "utf8"));
+const endpoint = args.find(value => value.startsWith("/repos/")) || "";
+const selected = endpoint.includes("workflows/777/") || endpoint.includes("workflows/special-ci.yml/");
+const conclusion = selected ? state.selected : state.configured;
+const emit = value => process.stdout.write(JSON.stringify(value));
+if (endpoint.includes("/jobs")) {
+  emit({total_count: 1, jobs: [{id: 1, name: "bkit-tests-check", status: "completed", conclusion: endpoint.includes("301") ? state.selected : state.configured}]});
+} else if (endpoint.includes("/actions/workflows/")) {
+  const sha = selected ? state.sha : ${JSON.stringify(f.head)};
+  const runs = selected && state.absent ? [] : [{id: selected ? 301 : 201, run_attempt: 1, workflow_id: selected ? 777 : 456, head_sha: sha, head_branch: "fix/ci", event: "push", status: "completed", conclusion, html_url: "https://github.com/example/example/actions/runs/" + (selected ? 301 : 201)}];
+  emit({total_count: runs.length, workflow_runs: runs});
+} else { process.stderr.write("unhandled gate fixture " + endpoint); process.exit(1); }
+`,
+    { mode: 0o755 },
+  );
+  env({ PATH: `${bin}${path.delimiter}${process.env.PATH}` });
+  fs.writeFileSync(
+    f.selection,
+    JSON.stringify({
+      mode: "ci",
+      provider: "github",
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "777",
+      workflowPath: ".github/workflows/special-ci.yml",
+      headBranch: "fix/ci",
+      headSha: f.ancestor,
+      conclusion: "failure",
+      redTiers: ["integration"],
+      via: "prompt-run",
+    }),
+  );
+  const gate = async () => {
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+    return cli(f.cwd, [
+      "gate",
+      "--repo=example/example",
+      `--head=${f.head}`,
+      "--branch=fix/ci",
+      `--ci-selection-file=${f.selection}`,
+    ]);
+  };
+  expect((await gate()).code).toBe(0);
+  const calls: string[][] = fs
+    .readFileSync(callsFile, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(calls.flat().join("\n")).toContain(`head_sha=${f.head}`);
+  expect(calls.flat().join("\n")).toMatch(/workflows\/(?:777|special-ci.yml)/);
+  expect(calls.flat().join("\n")).toContain("consumer-ci.yml");
+  for (const conclusion of ["failure", "cancelled", "skipped"]) {
+    state.selected = conclusion;
+    expect((await gate()).code).not.toBe(0);
+  }
+  state.selected = "success";
+  state.absent = true;
+  expect((await gate()).code).not.toBe(0);
+  state.absent = false;
+  state.sha = f.ancestor;
+  expect((await gate()).code).not.toBe(0);
+  state.sha = f.head;
+  state.configured = "failure";
+  expect((await gate()).code).not.toBe(0);
+});
+
 const stub = (args: string[], vars: Record<string, string> = {}) => {
   const res = spawnSync(FIXTURE_GH, args, { encoding: "utf-8", env: { ...process.env, ...vars } });
   return { status: res.status, stdout: res.stdout, output: res.stdout + res.stderr };

@@ -43,6 +43,57 @@ const allDispatchFences = (md: string) =>
 const dispatchFences = (md: string) => allDispatchFences(md).filter((f) => !/--sha[= ]/.test(f));
 const devDispatchFences = (md: string) => allDispatchFences(md).filter((f) => /--sha[= ]/.test(f));
 
+function debugStep(number: number): string {
+  const headings = [...debugMd.matchAll(/^## .*Step (\d+) —[^\n]*$/gm)];
+  const index = headings.findIndex((match) => Number(match[1]) === number);
+  const start = headings[index]?.index;
+  if (start === undefined) throw new Error(`Missing debug step ${number}`);
+  return debugMd.slice(start, headings[index + 1]?.index ?? debugMd.length);
+}
+
+describe("selected CI evidence routing", () => {
+  it("routes selected evidence through context diagnosis and generation-scoped fixes", () => {
+    const setup = debugStep(1) + debugStep(2);
+    expect(setup).toMatch(/branches parse[^\n]*--workflow=debug/);
+    expect(setup).toMatch(/runs locate\b/);
+    expect(setup).toMatch(/status meta[^\n]*--ci-selection-file=/);
+    expect(debugMd.slice(0, debugMd.indexOf("## "))).toMatch(/(?:selection|evidence)[\s\S]*resum/i);
+    expect(debugStep(4)).toMatch(/context fetch[^\n]*--ci-selection-file=/);
+    expect(debugStep(3)).toContain("--ci-run");
+    expect(debugStep(3)).toContain("--ci-url");
+    expect(debugStep(3)).toMatch(/source[\s\S]*local[\s\S]*clamp|clamp[\s\S]*source[\s\S]*local/i);
+    for (const step of [6, 7, 8]) {
+      expect(debugStep(step)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
+    }
+    const gate3 = debugStep(3).split("### 🔒 Gate 3")[1];
+    expect(gate3).not.toMatch(/fail-then-pass/i);
+    expect(debugStep(11)).toMatch(/fail-then-pass/i);
+  });
+
+  it("honors CI reproduction before remediation and blocks unreproduced failures", () => {
+    expect(debugStep(4)).toMatch(/ciReproduced|CI_REPRODUCED/);
+    expect(debugStep(4)).toMatch(/REPRO[\s\S]*Step 5/);
+    expect(debugStep(5)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
+    expect(debugStep(5)).toMatch(/YES[^\n]*(?:CI|ci)[^\n]*Step (?:6|8)/);
+    expect(debugStep(5)).toMatch(/NO[^\n]*(?:CI|ci)[^\n]*(?:Failure Path|STOP|blocker)/);
+    expect(debugStep(5)).toMatch(/(?:local|LOCAL)[^\n]*Step 3/);
+    expect(debugStep(4)).not.toMatch(/(?:CI|ci)[^\n]*REPRO[^\n]*(?:false|FALSE)/);
+  });
+
+  it("retains original and verifying run identities through close and auto handoff", () => {
+    const auto = readWorkflow("bkit-auto.md");
+    const invocation = auto.split("\n").find((line) => /\/bkit-debug\s/.test(line));
+    expect(invocation).toMatch(/\{RUN_URL\}|actions\/runs\/\{RUN_ID\}/);
+    const close = debugStep(11);
+    expect(close).toContain("VERIFY_RUN_ID");
+    expect(close).toContain("VERIFY_RUN_URL");
+    expect(close).toMatch(/CI_RUN_ID|CI_RUN_URL|ciRun/);
+    expect(close).toMatch(/runs gate[^\n]*--ci-selection-file=/);
+    expect(close).toMatch(/runs gate[^\n]*--head=/);
+    expect(debugMd.slice(debugMd.indexOf("## 🤖 Step 11"))).toMatch(/original[\s\S]*verif/i);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 1. Build and debug run the gate, once each, and record its verdict locally
 // ---------------------------------------------------------------------------
