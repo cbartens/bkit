@@ -332,3 +332,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T05:32:03Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/5/2/comment","hash":"f41fdfe06628e17dbe27229d93959678fad8023d35961e6822054420248afc41","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6569879998","at":"2026-11-02T05:32:04Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T05:32:04Z","parentSha":"fe0cea9af901b21a95e77aaa340737f598344f30","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-5-2.md"],"verdict":"PASS","attempt":2,"group":5,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:32:05Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:32:06Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:32:12Z","noun":"status","verb":"route","flags":["step","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:32:13Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:33:08Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T05:43:33Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/1/comment","hash":"4d6f6782ba83459597418ec2fd2e57dfe721268d4bfb732a4a93dc62e71a353a","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570033409","at":"2026-11-02T05:43:34Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-02T05:43:34Z","parentSha":"a1444a2bc431199b283425a04ea546a162ad28b8","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-holistic.md"],"verdict":"CONCERNS","attempt":1,"failures":1}

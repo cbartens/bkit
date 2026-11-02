@@ -853,7 +853,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Write the rule; sweep the shared instruction and remaining shipped docs
+- [x] **TASK 11:** Write the rule; sweep the shared instruction and remaining shipped docs
   - **READ:** `.bkit/authoring.md`: prose rules for the rule bullet and clause edits
   - **READ:** `.bkit/instructions.md`: current clause text via `pnpm instructions:show --file instructions.md`
   - **UPDATE:** `.agents/rules.md`: § Naming Conventions (below `bkit:end`) branding bullet — consumer-facing file, script, check and style names carry `bkit-` / `bkit:`; engine and hook internals never; tool-fixed names exempt
@@ -874,7 +874,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Repo docs, mirror regeneration, build and old-shape dogfood
+- [x] **TASK 12:** Repo docs, mirror regeneration, build and old-shape dogfood
   - **UPDATE:** `docs/testing.md`: project part line ~763 and lines 640-641; § Key test files row for `.bkit/core/engine/audits/templates/branding.test.ts`
   - **UPDATE:** `docs/deployments.md`: project part (lines ~485-499)
   - **UPDATE:** `docs/security.md`: `bkit:slop:delta` (line 143)
