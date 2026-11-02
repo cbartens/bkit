@@ -178,3 +178,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T10:40:34Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-verify/2/1/comment","hash":"35a66cd2684c5af374724003420b9788a0671d112f51d5e57131afefd75e5fd8","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6575093137","at":"2026-11-02T10:40:35Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T10:40:35Z","parentSha":"70cf5801328222c2bf7bb4acf8b37bbdec2acfa2","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-verify-2-1.md"],"verdict":"CONCERNS","attempt":1,"group":2,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:40:39Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:40:41Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:40:46Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:43:46Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:43:53Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:49:04Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T10:50:07Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-gaps-remediate/2/1/comment","hash":"ab0609cc00c58147f8b6f57f89225cc7651965a90f83b5d5635ffff8a5612dee","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6575274988","at":"2026-11-02T10:50:08Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T10:50:08Z","parentSha":"c0a0b0a820b684039bd1611cdfc7f94d7005e2f2","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-gaps-remediate-2-1-log.md"],"verdict":"FAIL","attempt":1,"group":2,"strategy":"STANDARD"}

@@ -798,7 +798,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 2 end -->
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Point every template doc, rule and prompt at § Machine lock, with the consumer wiring step
+- [x] **TASK 3:** Point every template doc, rule and prompt at § Machine lock, with the consumer wiring step
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Local stack lock → § Machine lock (stack lock, named locks, `tests` lock, slots, `BKIT_TEST_WORKERS` passed to the runner, lock order, `run` exits 73 / 75, optional `<who>`, 60 s no-TTY wait, a consumer's adopted copy keeps working); consumer wiring like the stack lock's: `cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/`, then a `Wire into` row wrapping each test-running `bkit:gate:*` script as `"bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>"` (a chained command in one `sh -c '…'` string); an unwired repo takes no lock
   - **UPDATE:** `.bkit/core/.agents/rules.md`: § Shared local stack names `.bkit/templates.md` § Machine lock
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-tasks.md`: Shared local stack line (line 74) names § Machine lock

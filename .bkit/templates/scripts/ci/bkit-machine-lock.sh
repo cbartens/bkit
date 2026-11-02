@@ -69,7 +69,9 @@ local_stack_lock_file() {
 local_stack_lock_holder() {
   local _lsl_held _lsl_slot
   _lsl_held="$(local_stack_lock_file "${1:-}")" || return 0
-  cat "${_lsl_held}.holder" 2>/dev/null
+  if [ -f "${_lsl_held}.holder" ]; then
+    cat "${_lsl_held}.holder"
+  fi
   if [ "${1:-}" = tests ]; then
     for _lsl_slot in "${_lsl_held%.lock}".[0-9]*.lock.holder; do
       [ -f "$_lsl_slot" ] && cat "$_lsl_slot"

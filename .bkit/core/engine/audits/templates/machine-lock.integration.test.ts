@@ -191,6 +191,30 @@ function slotHolder(who: string, env: NodeJS.ProcessEnv) {
 }
 
 describe("machine lock slots, order and wait budgets", () => {
+  it("reports a remaining numbered slot under bash -e after the primary slot is released", async () => {
+    const env = envFor({ BKIT_TEST_SLOTS: "2" });
+    const release = path.join(tmp, "release-primary");
+    const first = running(
+      `take_local_stack_lock "primary slot" tests || exit 1; echo acquired; while [ ! -f "${release}" ]; do sleep 0.05; done; release_local_stack_lock tests`,
+      env,
+    );
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("remaining numbered slot", env);
+    await waitForOutput(second, "acquired");
+    fs.writeFileSync(release, "release");
+    expect((await first.done).status).toBe(0);
+    const primary = path.join(cache, "bkit", "machine-lock", "tests.lock.holder");
+    await expect
+      .poll(() => fs.existsSync(primary), { timeout: BUDGET.hookTimeout, interval: 20 })
+      .toBe(false);
+    const reported = run("set -e; local_stack_lock_holder tests; echo reported", env);
+    expect(reported.status, reported.stderr).toBe(0);
+    expect(reported.stdout).toContain("remaining numbered slot");
+    expect(reported.stdout).not.toContain("primary slot");
+    expect(reported.stdout).toContain("reported");
+    expect(reported.stderr).toBe("");
+  });
+
   it("with N slots, N runs hold a named lock at once and run N+1 waits naming every holder", async () => {
     const env = envFor({ BKIT_TEST_SLOTS: "2", LOCAL_STACK_LOCK_WAIT_S: "2" });
     const first = slotHolder("first slot", env);
