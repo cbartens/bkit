@@ -69,7 +69,7 @@ describe("bkit worktrees setup — usage", () => {
     [["--workflow=build", "--fid=../x", `--month=${MONTH}`], "is not a feature id"],
     [["--workflow=build", "--fid=a/b", `--month=${MONTH}`], "is not a feature id"],
     [["--workflow=build", `--fid=${FID}`, "--month=2026-10"], "YYYYMM"],
-    [["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--branch=x"], "ship only"],
+    [["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--branch=x"], "ship or debug only"],
     [
       ["--workflow=ship", `--fid=${FID}`, `--month=${MONTH}`, "--branch=a..b"],
       "not a valid branch",

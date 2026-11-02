@@ -2234,6 +2234,52 @@ export const branchesCommand = {
     noun: "branches",
     summary: "Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.",
     verbs: {
+        parse: {
+            summary: "Read an explicitly named or existing branch from the session prompt.",
+            use: "workflow",
+            flags: [{ name: "prompt-file", type: "string", required: true, help: "session prompt" }],
+            output: {
+                branch: "one existing branch, or null",
+                via: "explicit | token | null",
+                where: "local | remote | both | null",
+            },
+            exitCodes: {
+                3: "an explicit branch is invalid or absent",
+                8: "multiple branches were named",
+            },
+            run: (ctx) => {
+                const prompt = fs.readFileSync(path.resolve(ctx.cwd, String(ctx.flags.promptFile)), "utf8");
+                const candidates = new Map();
+                for (const token of prompt.split(/\s+/)) {
+                    const explicit = token.startsWith("branch=");
+                    const branch = explicit ? token.slice("branch=".length) : token;
+                    if (!explicit && (!branch.includes("/") || /^[a-z][a-z0-9+.-]*:\/\//i.test(branch)))
+                        continue;
+                    const valid = runGit(ctx.cwd, ["check-ref-format", "--branch", branch]).ok;
+                    const local = valid &&
+                        runGit(ctx.cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).ok;
+                    const remote = valid &&
+                        runGit(ctx.cwd, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`])
+                            .ok;
+                    if (!local && !remote) {
+                        if (explicit)
+                            throw new CommandError(3, `branch ${branch} is invalid or does not exist`);
+                        continue;
+                    }
+                    candidates.set(branch, {
+                        via: explicit ? "explicit" : "token",
+                        where: local && remote ? "both" : local ? "local" : "remote",
+                    });
+                }
+                if (candidates.size > 1)
+                    throw new CommandError(8, `multiple branch selections: ${[...candidates.keys()].join(", ")}`);
+                const selected = [...candidates.entries()][0];
+                ctx.emit(selected
+                    ? { branch: selected[0], ...selected[1] }
+                    : { branch: null, via: null, where: null });
+                return EXIT.OK;
+            },
+        },
         sync: {
             summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in.`,
             use: "workflow",

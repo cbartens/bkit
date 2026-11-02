@@ -18,6 +18,60 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../shared/json.js";
+export const CI_TIERS = ["static", "unit", "integration", "e2e", "live", "migration"];
+/** Validate the whole saved selection before any reader treats it as evidence. */
+export function validateCiSelection(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+        return false;
+    const v = value;
+    if (v.mode === "local")
+        return typeof v.reason === "string" && v.reason.trim().length > 0;
+    const stringField = (key) => (typeof v[key] === "string" ? v[key] : "");
+    const repo = stringField("repo");
+    const runId = stringField("runId");
+    const branch = stringField("headBranch");
+    return (v.mode === "ci" &&
+        v.provider === "github" &&
+        /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repo) &&
+        /^[1-9][0-9]*$/.test(runId) &&
+        Number.isSafeInteger(v.runAttempt) &&
+        Number(v.runAttempt) > 0 &&
+        stringField("runUrl") ===
+            `https://github.com/${repo}/actions/runs/${runId}/attempts/${v.runAttempt}` &&
+        /^[1-9][0-9]*$/.test(stringField("workflowId")) &&
+        /^\.github\/workflows\/[^/]+\.ya?ml$/.test(stringField("workflowPath")) &&
+        !stringField("workflowPath").includes("..") &&
+        branch.length > 0 &&
+        !branch.startsWith("-") &&
+        !branch.startsWith("/") &&
+        !branch.endsWith("/") &&
+        !/[\s~^:?*\[\\\u0000-\u001f\u007f]/.test(branch) &&
+        !branch.includes("..") &&
+        !branch.includes("//") &&
+        !branch.includes("@{") &&
+        !branch.endsWith(".") &&
+        branch.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock")) &&
+        /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(stringField("headSha")) &&
+        ["failure", "timed_out", "startup_failure"].includes(stringField("conclusion")) &&
+        Array.isArray(v.redTiers) &&
+        v.redTiers.every((tier) => CI_TIERS.some((known) => known === tier)) &&
+        typeof v.via === "string" &&
+        v.via.trim().length > 0);
+}
+/** Transport and wording changes preserve the identity of the evidence. */
+export function ciSelectionIdentity(selection) {
+    return JSON.stringify(selection.mode === "local"
+        ? ["local"]
+        : [
+            selection.provider,
+            selection.repo.toLowerCase(),
+            selection.workflowId,
+            selection.workflowPath,
+            selection.runId,
+            selection.runAttempt,
+            selection.headSha,
+        ]);
+}
 // Identity for de-dup under union merge. `step-done` is unique per
 // (workflow, step, parentSha, at); workflow-level events per (type, workflow, at).
 function identity(e) {

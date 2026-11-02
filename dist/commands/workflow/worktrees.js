@@ -645,7 +645,7 @@ export const worktreesCommand = {
                 {
                     name: "branch",
                     type: "string",
-                    help: "ship only: the branch the session prompt names (default: feat/{fid} when it exists, else the session branch)",
+                    help: "ship or debug: an existing branch the session prompt names; debug refuses a conflicting checkout",
                 },
                 {
                     name: "issue",
@@ -698,8 +698,8 @@ export const worktreesCommand = {
                 if (!/^[0-9]{6}$/.test(month))
                     throw new CommandError(EXIT.USAGE, "--month must be YYYYMM");
                 const named = f.branch === undefined ? undefined : String(f.branch);
-                if (named !== undefined && workflow !== "ship") {
-                    throw new CommandError(EXIT.USAGE, "--branch is ship only");
+                if (named !== undefined && workflow !== "ship" && workflow !== "debug") {
+                    throw new CommandError(EXIT.USAGE, "--branch is ship or debug only");
                 }
                 if (f.issue !== undefined && workflow !== "ship") {
                     throw new CommandError(EXIT.USAGE, "--issue is ship only");
@@ -713,11 +713,21 @@ export const worktreesCommand = {
                 if (workflow === "debug" && session === "") {
                     throw new CommandError(EXIT_REFUSED, "detached HEAD — check out a branch before debugging");
                 }
-                const target = workflow === "ship" ? shipBranch(root, fid, named, session) : `feat/${fid}`;
-                if (isSharedBranch(target)) {
+                const target = workflow === "ship"
+                    ? shipBranch(root, fid, named, session)
+                    : workflow === "debug" && named
+                        ? named
+                        : `feat/${fid}`;
+                if (isSharedBranch(target) && !(workflow === "debug" && target === DEV)) {
                     throw new CommandError(EXIT_REFUSED, workflow === "ship"
                         ? `refusing to ship ${target}: /bkit-ship ships a feature branch into ${DEV} only; it never opens a PR from ${DEV} into ${MAIN} or merges into ${MAIN}, releases stay manual. Name the feature branch to ship.`
                         : `refusing to ship ${target} as a feature branch`);
+                }
+                if (workflow === "debug" &&
+                    named &&
+                    !hasLocal(root, target) &&
+                    !runGit(root, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${target}`]).ok) {
+                    throw new CommandError(EXIT_REFUSED, `${target} does not exist — debug adopts an existing branch`);
                 }
                 // Ship mints only when the session is not already on the branch it ships:
                 // that branch cannot be checked out in two places.
@@ -744,6 +754,11 @@ export const worktreesCommand = {
                         if (real(git(wtDir, ["rev-parse", "--show-toplevel"]) ?? "") !== real(wtDir)) {
                             throw new CommandError(EXIT_NOT_A_WORKTREE, `${wtDir} is not a registered git worktree`);
                         }
+                        if (workflow === "debug" &&
+                            named &&
+                            git(wtDir, ["branch", "--show-current"]) !== target) {
+                            throw new CommandError(EXIT_REFUSED, `${wtDir} is on another branch; requested ${target} — leave its work intact and use the matching checkout`);
+                        }
                         mode = "resumed";
                     }
                     else if (workflow !== "debug" || session !== target) {
@@ -756,6 +771,9 @@ export const worktreesCommand = {
                 const logDir = logDirOf(wt, month, fid);
                 const marker = ownershipMarker(root, fid);
                 if (mode === "adopted") {
+                    if (workflow === "debug" && named && git(root, ["branch", "--show-current"]) !== target) {
+                        throw new CommandError(EXIT_REFUSED, `adopt mode: checkout does not hold requested ${target}; use its existing checkout or enable worktrees`);
+                    }
                     if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
                         const sw = runGit(root, ["switch", target]);
                         if (!sw.ok) {
@@ -855,7 +873,7 @@ export const worktreesCommand = {
                     : { copied: [], copyMissing: [] };
                 const bkitEnv = done ? linkBkitEnv(root, wt, fid, ctx.log) : null;
                 const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
-                const wantInstall = done && config.worktreeInstall;
+                const wantInstall = done && config.worktreeInstall && fs.existsSync(path.join(wt, "package.json"));
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;
                 const baseRef = worktreeBase(wt, workflow);
                 const branch = git(wt, ["branch", "--show-current"]) ?? "";
