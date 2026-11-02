@@ -42,7 +42,7 @@ Lane map, tagging, cache rules: `testing.md` § "Design assertions are a dimensi
 bkit has no UI. Its visuals are the README images and the Mermaid diagrams, and both draw from one palette. Its values follow GitHub's Primer colours, so the images sit naturally on a GitHub page in either theme.
 
 - `THEMES` in `scripts/readme/readme-art.mjs` defines the tokens. That object and this table must agree; change both in the same commit.
-- Each workflow phase owns one hue (design, plan, build, debug, ship). Use that hue wherever the visual stands for that phase.
+- Each workflow phase owns one colour (design, plan, build, debug, ship). Use that colour wherever the visual stands for that phase.
 - Debug red means failure, and gate amber means a check that stops the run or a warning. Do not use either as a plain decoration colour.
 - The values are transcribed from `readme-art.mjs` and have not yet been confirmed as intended.
 
@@ -69,20 +69,20 @@ bkit has no UI. Its visuals are the README images and the Mermaid diagrams, and 
 
 A Mermaid diagram on GitHub takes one hex per colour for both themes, so `scripts/graphify/bkit-graphify-rollup.py` uses only light values, each at least 3:1 against both `bg` values. A box fill is its outline colour at low alpha, so it tints whichever background the theme draws and the theme's own text stays readable on it.
 
-- Colour belongs to the top-level groups. A group's outline and every box inside it share one hue, so the colour shows where a box lives. A box in no group is grey.
-- A chart with only one top-level group draws that group grey and gives each box its own hue, because one colour across the whole chart tells the reader nothing.
-- A group keeps its hue from run to run, because the hue is picked from the group's key.
+- Colour belongs to the top-level groups. A group's outline and every box inside it share one colour, so the colour shows where a box lives. A box in no group is grey.
+- A chart with only one top-level group draws that group grey and gives each box its own colour, because one colour across the whole chart tells the reader nothing.
+- A group keeps its colour from run to run, because the colour is picked from the group's key.
 - Arrows are grey, and their width carries the weight.
 - The four phase colours mark groups. `debug` red and `gate` amber mark findings, so neither is ever a group colour.
-- Red means an open problem, and only that. A red box is always dashed, so the meaning survives without colour.
-- Amber means a problem somebody has accepted, held to a fixed count. Its box is solid, never dashed.
+- Red means an open finding, and only that. A red box is always dashed, so the meaning survives without colour.
+- Amber means a finding somebody has accepted, held to a fixed count. Its box is solid, never dashed.
 
 <!-- prettier-ignore -->
 | Diagram element | Token (light value) | Drawing |
 | --- | --- | --- |
 | Top-level group | `design`, `plan`, `build`, `ship` | 2px outline, 4% fill |
-| Nested group | Its top-level group's hue | 1px outline, transparent fill |
-| Part box | Its top-level group's hue, or `muted` when in no group; its own hue when the chart has one top-level group | 2px outline, 8% fill |
+| Nested group | Its top-level group's colour | 1px outline, transparent fill |
+| Part box | Its top-level group's colour, or `muted` when in no group; its own colour when the chart has one top-level group | 2px outline, 8% fill |
 | Drift box (`split`, `bypassed`, `gap`, `dead`) | `debug` | 4px dashed outline, one dash pattern per status, 15% fill |
 | Budgeted box | `gate` | 3px solid outline, 15% fill: accepted, and held to a count by the gate |
 | Arrow | `muted` | Grey. Width 2, 3 or 6px for the light, middle and heavy third of the chart's weights; the lighter two are also fainter |

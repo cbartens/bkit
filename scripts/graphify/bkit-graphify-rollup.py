@@ -860,7 +860,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.",
         "> - Arrows are grey; a thicker arrow carries more links.",
         "> - A flagged box counts its open and budgeted findings; the Register table names them.",
-        "> - A part that calls nothing in the chart and that a quarter of the other boxes call (`base_parts`) has its arrows left out and counts its callers.",
+        "> - A part that calls nothing in the chart and that at least a quarter of the other boxes call (four at least) has its arrows left out and counts its callers.",
         "> - Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.",
         "> - `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
         "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
