@@ -1,6 +1,6 @@
 > Example output. Copy it to `docs/capabilities.md` and own it. `bkit install` does not write this file and does not overwrite a copy.
 >
-> `pnpm graph:rollup` rewrites everything outside the Overrides block, so do not edit the generated body. To add a capability, add it in `scripts/graphify/bkit-graph-drift-rules.json`. How to run the tools is in `.bkit/templates.md`.
+> `pnpm bkit:graph:rollup` rewrites everything outside the Overrides block, so do not edit the generated body. To add a capability, add it in `scripts/graphify/bkit-graph-drift-rules.json`. How to run the tools is in `.bkit/templates.md`.
 
 # Capabilities
 
@@ -9,7 +9,7 @@
 >
 > **Rules:**
 >
-> - This file is generated. `pnpm graph:refresh` rewrites it.
+> - This file is generated. `pnpm bkit:graph:refresh` rewrites it.
 > - The source of truth is `scripts/graphify/bkit-graph-drift-rules.json`. Each status is derived from the tree, never typed in.
 > - Markers are literal, never regex. A regex metacharacter in a marker matches nothing, and the row then reads as a clean result.
 > - Optional `scope`: path prefixes.
@@ -31,7 +31,7 @@
 
 ## Register
 
-Not built. Run `pnpm graph:rollup`.
+Not built. Run `pnpm bkit:graph:rollup`.
 
 ## Unreachable API calls
 
@@ -62,12 +62,12 @@ This is the only hand-maintained region. Use it to rename a node, hide a node or
 
 ## User-facing routes → backend capabilities
 
-No route layer yet. Run `pnpm graph:rollup`.
+No route layer yet. Run `pnpm bkit:graph:rollup`.
 
 ## Architecture — packages
 
-Filled by `pnpm graph:rollup`.
+Filled by `pnpm bkit:graph:rollup`.
 
 ## Architecture — modules
 
-Filled by `pnpm graph:rollup`.
+Filled by `pnpm bkit:graph:rollup`.

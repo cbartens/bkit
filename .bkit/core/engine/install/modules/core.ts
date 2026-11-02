@@ -1293,7 +1293,7 @@ export function runCoreModule(ctx: ModuleContext): void {
         "2. See `.bkit/install.md` for consumer setup and `.bkit/README.md` for ongoing ops.\n\n" +
         "Note: bkit seeded the bkit:gate:* / bkit:deps:* package.json scripts every workflow\n" +
         "runs (existing values are never touched). The tool scripts they chain (typecheck,\n" +
-        "lint, format:check, lint:prose, slop:delta) and the devDeps those need are yours to\n" +
+        "lint, format:check, bkit:lint:prose, bkit:slop:delta) and the devDeps those need are yours to\n" +
         "add: see .bkit/templates.md.",
     });
   }

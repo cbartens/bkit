@@ -15,7 +15,7 @@ function toolVersionRuns(cmd) {
     return res.status === 0;
 }
 /**
- * Detect a prose gate that cannot run here: package.json `lint:prose` calls `bkit ci prose`,
+ * Detect a prose gate that cannot run here: package.json `bkit:lint:prose` calls `bkit ci prose`,
  * which fails without vale, and vale is not on PATH. Null when the gate is not adopted.
  */
 export function detectValeMissing(cwd) {
@@ -24,7 +24,7 @@ export function detectValeMissing(cwd) {
         return null;
     const scripts = read.pkg["scripts"];
     const lintProse = typeof scripts === "object" && scripts !== null
-        ? scripts["lint:prose"]
+        ? scripts["bkit:lint:prose"]
         : undefined;
     if (typeof lintProse !== "string" || !lintProse.includes("bkit ci prose"))
         return null;
@@ -33,7 +33,7 @@ export function detectValeMissing(cwd) {
     return {
         id: "vale-not-installed",
         severity: "advisory",
-        detect: "package.json `lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `lint:prose` fails on this machine.",
+        detect: "package.json `bkit:lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `bkit:lint:prose` fails on this machine.",
         action: "Install vale, then download its styles:\n\n    brew install vale    # macOS; other platforms: https://vale.sh/docs/install\n    vale sync\n\nCI and the cloud templates install vale already; this is for local machines.",
     };
 }
@@ -59,7 +59,7 @@ export function detectValePackageNotSynced(cwd) {
         id: "vale-package-not-synced",
         severity: "advisory",
         detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
+        action: "Run `vale sync` (one-time per repo) to download the write-good package. bkit:lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
     };
 }
 /**

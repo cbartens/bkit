@@ -237,7 +237,7 @@ fi
 # the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
 # hook. Fast repo extras go ABOVE, with `bkit check`; slow ones BELOW.
 # Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
-# and slop:delta still run. Otherwise the deepest push gate package.json declares.
+# and bkit:slop:delta still run. Otherwise the deepest push gate package.json declares.
 if [ "$MIN_PUSH" = "1" ]; then
   echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
   pnpm bkit:gate:min < /dev/null

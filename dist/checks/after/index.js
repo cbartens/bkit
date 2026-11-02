@@ -109,7 +109,7 @@ export function renderAdvisoriesMarkdown(findings, opts, suppressed = [], tips =
     // This is a generated, gitignored artifact — not authored prose. Advisory
     // strings (and reproduced config snippets like `.vale.ini`'s `write-good.So =
     // NO`) legitimately contain sentence-initial "So" and slop tokens. The shipped
-    // `lint:prose` globs on-disk `.agents/*.md`, so without this whole-file Vale
+    // `bkit:lint:prose` globs on-disk `.agents/*.md`, so without this whole-file Vale
     // skip the husky hooks fail on a file the consumer cannot edit.
     lines.push("<!-- vale off -->");
     lines.push("");
@@ -379,7 +379,7 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     const runLevels = detectRunLevelsNotComposed(cwd);
     if (runLevels)
         phase3.push(runLevels);
-    // vale missing while lint:prose runs the prose gate
+    // vale missing while bkit:lint:prose runs the prose gate
     const valeMissing = detectValeMissing(cwd);
     if (valeMissing)
         phase3.push(valeMissing);

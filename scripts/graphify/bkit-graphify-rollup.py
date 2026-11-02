@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Collapse the whole-symbol code graph into two readable views.
 
-Called by `pnpm graph:rollup` and `pnpm graph:graphml` (scripts/graphify/
+Called by `pnpm bkit:graph:rollup` and `pnpm bkit:graph:graphml` (scripts/graphify/
 bkit-graphify.sh) through GRAPHIFY'S OWN interpreter, not the system python — it
 imports networkx, which is a graphify dependency and is not installed repo-wide.
 
@@ -16,9 +16,9 @@ Both outputs are opt-in, and the two commands ask for different ones:
 
   --build-dir       a graphify-format graph.json per level, which the caller
                     renders to interactive HTML via `graphify cluster-only`,
-                    then moves and deletes. This is `pnpm graph:rollup`.
+                    then moves and deletes. This is `pnpm bkit:graph:rollup`.
   --*-graphml       the same two views as GraphML for Gephi. Only `pnpm
-                    graph:graphml` asks for these — GraphML is not produced by
+                    bkit:graph:graphml` asks for these — GraphML is not produced by
                     default.
 
 Node attrs: symbols, files, internal_edges. Edge attrs: weight (number of
@@ -59,7 +59,7 @@ SRC = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".sql")
 # graphify misses two whole classes of import: a `.js` specifier is never
 # resolved to a `.tsx` file, and workspace subpaths through an `exports` map are
 # not resolved at all. bkit-graph-repair.py writes them into graph.json during
-# `pnpm graph`, so this reads them like any other edge and does NOT add them on
+# `pnpm bkit:graph`, so this reads them like any other edge and does NOT add them on
 # read. A graph lacking any of them gets a warning, and the numbers below are
 # understated.
 # bkit-graph-imports.py is hyphenated, which `import` cannot spell, so it is loaded
@@ -732,7 +732,7 @@ def eager_block(eager):
     if eager.get("not_in_graph"):
         L += ["", f"> [!WARNING]", f"> {eager['not_in_graph']} scanned files are absent from "
               "`graph.json`, so only the column-0 filter applied to them and their downstream "
-              "counts are 0. Run `pnpm graph:update` and re-run the rollup."]
+              "counts are 0. Run `pnpm bkit:graph:update` and re-run the rollup."]
     return L
 
 
@@ -749,7 +749,7 @@ def reachability_block(reach):
     L = [
         "A request URL is a string inside a template literal, so nothing that reads types can",
         "see that it has no server-side counterpart, because `lint`, `check:type`, `knip` and",
-        "`slop:delta` all pass on a path that 404s. This is the one drift class no graph query",
+        "`bkit:slop:delta` all pass on a path that 404s. This is the one drift class no graph query",
         "finds either: a string is not an edge. Scanned every run by",
         "`scripts/ci/guards/assert-routes-reachable.mjs`; run it alone for the full served-route inventory.",
         "",
@@ -799,7 +799,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
     Source of truth is bkit-graph-drift-rules.json (which capability, which owner,
     which literal marker); every status in the table is derived from live source
     by bkit-graph-drift.py, never typed in. Editing this file by hand loses the edit
-    on the next `pnpm graph:rollup`.
+    on the next `pnpm bkit:graph:rollup`.
     """
     GRAPH_COMMIT = str(raw.get("built_at_commit") or "unknown")
     ROUTES_MMD, n_routes = chain_block(surface, overlay, reach)
@@ -841,7 +841,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         ">",
         "> **Rules:**",
         ">",
-        "> - Generated — do not edit. `pnpm graph:refresh` rewrites this file.",
+        "> - Generated — do not edit. `pnpm bkit:graph:refresh` rewrites this file.",
         f"> - Source of truth: `{rules_path}`. Every status derived from live source, never typed.",
         "> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.",
         "> - Markers literal, never regex, because `new Client(` as a regex is an unclosed group matching nothing.",
@@ -865,8 +865,8 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "> - `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
         "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
         "> - A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.",
-        f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}`; when that differs from HEAD ⇒ run `pnpm graph:update` first.",
-        "> - Detail-level module graph → `pnpm graph`. This doc is the altitude above that: capabilities, not files.",
+        f"> - Table rescanned every run, never stale. Diagrams from `graph.json` @ `{GRAPH_COMMIT[:9]}`; when that differs from HEAD ⇒ run `pnpm bkit:graph:update` first.",
+        "> - Detail-level module graph → `pnpm bkit:graph`. This doc is the altitude above that: capabilities, not files.",
         "",
         "## Status Vocabulary",
         "",
@@ -877,7 +877,7 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "the exact number of non-owner sites allowed per scope prefix, and its `note` says why that",
         "number is not zero. The moment the count moves in either direction — too many (a copy",
         "appeared) or too few (the budget is stale) — the row leaves `budgeted`, its Budget cell",
-        "reads `over` or `stale`, and `pnpm graph:check` fails until the register is refreshed.",
+        "reads `over` or `stale`, and `pnpm bkit:graph:check` fails until the register is refreshed.",
         "That is why the status can be quieter without being a place to hide work.",
         "",
         "It still gets a box in the diagrams, drawn solid and amber rather than dashed and red. A",

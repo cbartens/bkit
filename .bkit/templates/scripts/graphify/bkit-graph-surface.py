@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Link user-facing routes to the backend capabilities they reach.
 
-Called by `pnpm graph:rollup` (scripts/graphify/bkit-graphify.sh). Writes a JSON the
+Called by `pnpm bkit:graph:rollup` (scripts/graphify/bkit-graphify.sh). Writes a JSON the
 capabilities doc renders as its route layer.
 
     bkit-graph-surface.py <graph.json> <surface-out.json> [--quiet]

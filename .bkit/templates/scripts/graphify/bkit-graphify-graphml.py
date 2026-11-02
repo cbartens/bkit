@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Export the full symbol graph to GraphML for Gephi / yEd.
 
-Called by `pnpm graph:graphml` (scripts/graphify/bkit-graphify.sh) through GRAPHIFY'S
+Called by `pnpm bkit:graph:graphml` (scripts/graphify/bkit-graphify.sh) through GRAPHIFY'S
 OWN interpreter — it imports graphify itself.
 
     bkit-graphify-graphml.py <graph.json> <out.graphml>

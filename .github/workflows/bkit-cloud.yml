@@ -495,7 +495,7 @@ jobs:
           token: ${{ github.token }}
 
       # Installs the vale binary for bkit-cloud-bootstrap.sh's `vale sync` and the dispatched
-      # phase's lint:prose (as the cloud.md web env's setup script does). Pinned tarball +
+      # phase's bkit:lint:prose (as the cloud.md web env's setup script does). Pinned tarball +
       # SHA mirror bkit-ci.yml.
       - name: Install vale
         env:

@@ -177,7 +177,7 @@ const ADOPTED: Record<string, Entry> = {
           "        if: github.event_name == 'pull_request'\n" +
           "        env:\n" +
           "          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n" +
-          '        run: pnpm slop:delta "$BASE_SHA"\n',
+          '        run: pnpm bkit:slop:delta "$BASE_SHA"\n',
         with:
           "      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).\n" +
           "      # Runs on every event against the planner's base — a PR's base branch, or a push's last\n" +
@@ -191,7 +191,7 @@ const ADOPTED: Record<string, Entry> = {
           '            echo "::notice::no diff base resolved — skipping slop delta"\n' +
           "            exit 0\n" +
           "          fi\n" +
-          '          pnpm slop:delta "$BASE_SHA"\n',
+          '          pnpm bkit:slop:delta "$BASE_SHA"\n',
       },
       {
         kind: "bkit-only",

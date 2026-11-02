@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Inject the import edges graphify could not resolve back into graph.json.
 
-Called by `pnpm graph`, `:clean` and `:update` (scripts/graphify/bkit-graphify.sh),
+Called by `pnpm bkit:graph`, `:clean` and `:update` (scripts/graphify/bkit-graphify.sh),
 between `extract` and `cluster-only`.
 
     bkit-graph-repair.py <graph.json> [--rules R] [--quiet]
@@ -16,9 +16,9 @@ checks, the generated doc, and `graphify affected`, `god-nodes`, `explain`,
 this step says so.
 
 `graphify update` rewrites graph.json without the injected edges, so every
-wrapper command that writes the file (`pnpm graph`, `:clean`, `:update`) runs
+wrapper command that writes the file (`pnpm bkit:graph`, `:clean`, `:update`) runs
 this step at the end. The step is idempotent: after a raw `graphify update .`,
-run `pnpm graph:update`.
+run `pnpm bkit:graph:update`.
 
 ORDER MATTERS: this runs BEFORE clustering, so communities, the god-node
 ranking and the cycle list in graph-report.md are computed from the repaired graph.

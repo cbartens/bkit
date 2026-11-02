@@ -55,7 +55,7 @@ RUN cd /tmp \
     && tar -xzf "gh_${GH_VERSION}_linux_amd64.tar.gz" -C /usr/local/bin --strip-components=2 "gh_${GH_VERSION}_linux_amd64/bin/gh" \
     && rm -f "gh_${GH_VERSION}_linux_amd64.tar.gz"
 
-# vale — `pnpm lint:prose`. Version pinned for snapshot reproducibility; tarball checked before extract.
+# vale — `pnpm bkit:lint:prose`. Version pinned for snapshot reproducibility; tarball checked before extract.
 # renovate: datasource=github-releases depName=errata-ai/vale
 ARG VALE_VERSION=3.24.0
 ARG VALE_SHA256=867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214
