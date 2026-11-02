@@ -7,86 +7,47 @@ Failures: 0
 
 Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integrity.
 
-Diff coverage: partial diff coverage. The run diff `tmp/bkit-diff-748-brand-every-consumer.md` omits the focus files, so `.bkit/core/engine/install/modules/core.ts`, `.bkit/core/engine/install/write.ts`, `.bkit/core/engine/commands/install/upgrade.ts` and `.bkit/core/engine/checks/after/ci-yml.ts` were read whole from `git diff origin/dev...HEAD`. Findings stay within those four files and the behaviour they drive.
+Diff coverage: partial diff coverage. The run diff `tmp/bkit-diff-748-brand-every-consumer.md` shows 500 lines of `.bkit/core/engine/install/modules/core.ts`; the group 6 changes were read whole from `git diff 25c06ea5d HEAD -- .bkit/core/engine/install/modules/core.ts` and the current file. Findings stay within the group 6 fixes (tasks 15-19) and the code they touch.
 
 ## Findings Log
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `migrateBrandedTemplateFiles` deletes `scripts/ci/check-dependency-audit.mjs` even when a workflow the path pass does not reach still guards its step with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`. That workflow might be a renamed CI file with no `bkit.testing.ciWorkflow`, or a separate nightly security workflow. The step then skips silently, and the dependency-audit gate is off with no log line
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1024`
-  - **DONE WHEN:** before moving a unit, `migrateBrandedTemplateFiles` searches every `.github/workflows/*.yml` / `*.yaml` file outside the path pass (`ciWorkflowPath(".")`, `bkit-trivy.yml`) for each old path in the unit. A hit leaves the unit in place and logs one `console.warn` naming the file, the line and the manual move, so an irreversible delete never runs while an unreached reference remains
+- [ ] **TASK 1:** A consumer's `trivy:` / `renovate:` job that holds a comment at job-key indent (`  # owner: security team`) above its own `name:` still gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1177`
+  - **DONE WHEN:** the job-block scan in `migrateBrandedCheckNames` ends only at the next 2-space job key or a column-0 key, skipping blank and comment lines (`rest.search(/^(?: {2}[^\s#]|[^\s#])/m)` today stops at `  #` and `#`), and the rewritten workflow is checked with `parseYaml` before `finish` writes it; a result that does not parse is not written and logs one `console.warn` naming the file and the manual rename. Probed with `tsx` on the shipped v6.0.0 `bkit-trivy.yml` seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`: the output holds `    name: bkit-trivy` and `    name: our trivy` under `  trivy:`, and `parseYaml` throws "Map keys must be unique at line 39". Task 16's DONE WHEN ("the result parses with `parseYaml`") is met only by the test, not by the code, and the `docs/migrations.md` "Branded check names" row ("when the job has none") does not hold for this shape
   - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a workflow outside the path pass still names` fails on shipped v6.0.0 `scripts/ci/check-dependency-audit.mjs` being removed while `.github/workflows/security.yml` holds `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name` fails on the shipped v6.0.0 `bkit-trivy.yml`, seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`, coming out with two `    name:` lines under `  trivy:` and `parseYaml` throwing
 
 <!-- bkit:task 1 end -->
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** A consumer whose `trivy:` / `renovate:` job sets `name:` below another key (for example after `runs-on:`) gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1109`
-  - **DONE WHEN:** `migrateBrandedCheckNames` inserts the job `name:` only when no 4-space `name:` key exists anywhere in that job's block (up to the next 2-space job key or the end of `jobs:`), and the result parses with `parseYaml`. The `docs/migrations.md` "Branded check names" row ("when the job has none") then holds
+- [ ] **TASK 2:** `pnpm -r lint:prose` (also `pnpm --recursive slop:delta`, `pnpm -r run graph:update`) in a hook or CI step is rewritten to `pnpm -r bkit:lint:prose`. A recursive run skips the workspace root by default and runs the script in the sub-packages, whose `lint:prose` keys the migration never renames, so after upgrade pnpm fails with "None of the selected packages has a "bkit:lint:prose" script"
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:810`
+  - **DONE WHEN:** the package-selector lookahead in `renameScriptTokens` also leaves calls with `-r` / `--recursive` alone (as it does for `-F`, `-C`, `--filter`, `--dir` and `--prefix`), so `findOldScriptNames` reports them for the manual-rename warning; `-w` / `--workspace-root` (which selects the root) keeps being rewritten. Probed with `tsx`: `renameScriptTokens("pnpm -r lint:prose", BKIT_SCRIPT_RENAMES)` returns `pnpm -r bkit:lint:prose`, and `pnpm --recursive slop:delta` returns `pnpm --recursive bkit:slop:delta`. Same failure as Task 17, through a selector the fix did not list
   - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when the job sets name below another key` fails on the shipped v6.0.0 `bkit-trivy.yml`, with `    name: our trivy` placed after `    runs-on:`, coming out with two `name:` keys under `  trivy:` (`parseYaml` throws "Map keys must be unique", reproduced in `node` with the same two regexes)
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens leaves recursive flag forms alone` fails on `pnpm -r lint:prose`, `pnpm --recursive slop:delta` or `pnpm -r run graph:update` coming back with a `bkit:` name
 
 <!-- bkit:task 2 end -->
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** `pnpm --filter=web lint:prose` (also `--dir=pkg` and `--prefix=pkg`) is rewritten to `pnpm --filter=web bkit:lint:prose`. Only the root `package.json` keys are renamed, so the sub-package has no `bkit:lint:prose`, and the hook or CI step fails with a missing script after upgrade
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:784`
-  - **DONE WHEN:** `renameScriptTokens` leaves a call unchanged when its flags select another package or directory (`--filter=…`, `-F…`, `--dir=…`, `-C…`, `--prefix=…`), as it already does for the space-separated `--filter web` form. `findOldScriptNames` then reports the call for the manual-rename warning that the `docs/migrations.md` "Branded script tokens in hooks and CI" row promises
+- [ ] **TASK 3:** `migrateBrandedTemplateFiles` deletes a shipped `scripts/ci/` unit while a reference the path pass never rewrites still names it: a composite action (`.github/actions/audit/action.yml` with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`) or a symlinked `.husky/pre-push` (the shipped hook guards `[ -f scripts/ci/lanes/resolve-push-base.mjs ]`). The guarded step or hook branch then skips silently, so the dependency audit or the push-base resolution is off with no log line
+      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1047`
+  - **DONE WHEN:** the Task 15 reference scan also reads every `.github/actions/**/action.yml` / `action.yaml` file, and treats any path-pass file (`.husky/pre-commit`, `.husky/pre-push`, `ciWorkflowPath(".")`, `bkit-trivy.yml`) that exists but is not a regular file as an unreached reference: the unit stays and one `console.warn` names the file and the manual move. Today `otherWorkflows` reads only `.github/workflows/*.yml` / `*.yaml`, the scan skips the path-pass files on the assumption that `migrateBrandedFileTokens` rewrites them, and `migrateBrandedFileTokens` (`core.ts:941`) skips a symlinked one with no warning, so Task 15's invariant ("an irreversible delete never runs while an unreached reference remains") does not hold for these files
   - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens leaves package-selecting flag forms alone` fails on `pnpm --filter=web lint:prose` coming back as `pnpm --filter=web bkit:lint:prose` (current output, probed with `tsx`)
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names` fails on shipped v6.0.0 `scripts/ci/check-dependency-audit.mjs` being removed while `.github/actions/audit/action.yml` holds `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit a symlinked hook still names` fails on shipped v6.0.0 `scripts/ci/lanes/resolve-push-base.mjs` being removed while `.husky/pre-push` is a symlink to `hooks/pre-push` holding `[ -f scripts/ci/lanes/resolve-push-base.mjs ]`
 
 <!-- bkit:task 3 end -->
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** A consumer who adopted the v3 / v4 CI template as `.github/workflows/ci.yml` and never set `bkit.testing.ciWorkflow` gets `lint:prose` / `slop:delta` renamed in `package.json`. `ciWorkflowPath(".")` looks only for `bkit-ci.yml`, so their CI keeps `run: pnpm lint:prose` and fails with a missing script, and the upgrade log says nothing about that file
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:908`
-  - **DONE WHEN:** after the rewrite pass, `migrateBrandedFileTokens` runs `findOldScriptNames` over every other `.github/workflows/*.yml` / `*.yaml` file for the active pairs, as a warning with no write. Each surviving `pnpm <old>` call outside the migrated files then logs one warning with file and line
+- [ ] **TASK 4:** With `.vale.ini` committed as a symlink, `migrateValeHouseStyle` moves the four shipped rules to `Bkit/` and removes `House/`, then returns at the `.vale.ini` check with no warning. The config still says `BasedOnStyles = House` and `House.<rule>` toggles, so Vale reports the `House` style as missing and `pnpm bkit:lint:prose` fails on every run, or (with own rules left in `House/`) loads none of the moved rules
+      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1301`
+  - **DONE WHEN:** `migrateValeHouseStyle` checks `.vale.ini` with `fs.lstatSync` before moving any rule; a `.vale.ini` that exists but is not a regular file leaves every rule in `House/` and logs one `console.warn` naming `.vale.ini` and the manual move, matching the Task 19 refusal for symlinked `.vale`, `.vale/styles`, `House` and `Bkit`. An absent `.vale.ini` keeps its planned behaviour (rules move, no write)
   - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedFileTokens (via runBkitDocs) > warns on an old script name in a workflow it does not rewrite` fails on a run over `package.json` `{ "scripts": { "lint:prose": "bkit ci prose" } }` plus `.github/workflows/ci.yml` holding `run: pnpm lint:prose` that prints no warning naming `.github/workflows/ci.yml` and `lint:prose`
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateValeHouseStyle (via runBkitDocs) > leaves the House rules when .vale.ini is a symlink` fails on the shipped `House/Filler.yml` being moved (or `House/` removed) while `.vale.ini` is a symlink to `config/vale.ini` holding `BasedOnStyles = House`, or on no warning naming `.vale.ini`
 
 <!-- bkit:task 4 end -->
-
-<!-- bkit:task 5 start -->
-
-- [ ] **TASK 5:** With a `package.json` that does not parse (a merge-conflict marker, say), `migrateBrandedScriptNames` keeps the old keys, but `migrateBrandedFileTokens` treats every pair as active and rewrites `.husky/pre-push` to `pnpm bkit:slop:delta`. Once the JSON is fixed, the hook calls a script that does not exist, and a foreign `graph` script's `pnpm graph` call is rebranded for good
-      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:896`
-  - **DONE WHEN:** `migrateBrandedFileTokens` skips the script-token pass when `package.json` exists but `parseJson` fails or `scripts` is not an object, and logs a warning naming the skip. The path-rename pass may still run. The hooks and the CI file keep names that match the unrenamed keys
-  - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedFileTokens (via runBkitDocs) > leaves hook tokens alone when package.json is not valid JSON` fails on `.husky/pre-push` holding `pnpm bkit:slop:delta` after a run over `{ "name": "x", "scripts": { "slop:delta": "x", ` and a hook running `pnpm slop:delta`
-
-<!-- bkit:task 5 end -->
-
-<!-- bkit:task 6 start -->
-
-- [ ] **TASK 6:** A consumer entry in `.vale/styles/House/` named like a moved rule without `.yml` (a `Filler/` folder, a `Verbose` file) is filtered out of `remaining`. `House/` then counts as empty, and `fs.rmSync(houseDir, { recursive: true })` deletes that consumer content
-      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1201`
-  - **DONE WHEN:** `remaining` excludes only the exact `${rule}.yml` names in `moved`, so any other entry keeps `House/` and its `BasedOnStyles` entry in place
-  - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateValeHouseStyle (via runBkitDocs) > keeps House when it holds an entry named like a moved rule` fails on `.vale/styles/House/Filler/notes.txt` being deleted after the four shipped v6.0.0 rules move
-
-<!-- bkit:task 6 end -->
-
-<!-- bkit:task 7 start -->
-
-- [ ] **TASK 7:** When the `  trivy:` / `  renovate:` line carries a trailing comment or a CRLF ending, the workflow `name:` is rebranded but no job `name:` is inserted. The log still says the check is now `bkit-trivy / bkit-trivy`, so a maintainer who follows it sets a required check that never reports, and PRs wait forever
-      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1112`
-  - **DONE WHEN:** `migrateBrandedCheckNames` builds the logged new check name from what it wrote (job `name:` inserted, already present, or not inserted), so the log names the job's real display name. The insert tolerates `\r\n` and a trailing `# comment` on the job line
-  - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > logs the check name the file really carries` fails on the shipped v6.0.0 `bkit-trivy.yml`, saved with CRLF endings, getting no job `name:` while the log says `-> bkit-trivy / bkit-trivy` (reproduced in `node` with the same two regexes)
-
-<!-- bkit:task 7 end -->
-
-<!-- bkit:task 8 start -->
-
-- [ ] **TASK 8:** A line ending in `pnpm`, followed by a line that starts with an old script name (`command -v pnpm`, then `graph --help`), is rewritten across the newline to `bkit:graph --help`, because the flag and gap groups use `\s+`
-      **Severity:** LOW · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:784`
-  - **DONE WHEN:** the `renameScriptTokens` pattern separates `pnpm`, its flags and the script name with horizontal whitespace only (`[ \t]+`), so no match spans a line break
-  - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens never matches across a line break` fails on `"command -v pnpm\ngraph --help"` coming back as `"command -v pnpm\nbkit:graph --help"` (current output, probed with `tsx`)
-
-<!-- bkit:task 8 end -->
