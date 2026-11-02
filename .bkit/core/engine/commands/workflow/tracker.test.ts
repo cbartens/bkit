@@ -313,6 +313,18 @@ describe("github client", () => {
     });
     expect(issue.comments.map((c) => c.body)).toEqual(["second", "first"]);
   });
+
+  it("github fetch marks a closed issue terminal and an open one not", async () => {
+    const reply = (state: string) =>
+      JSON.stringify({ title: "T", html_url: "u", state, labels: [], body: "" });
+    gh.resp("repos/o/r/issues/12", reply("closed"));
+    gh.resp("repos/o/r/issues/12/comments?per_page=100", "");
+    const closed = await fetchIssue(trackerTarget(github(), { fid: "12-x" }));
+    expect((closed as { terminal?: boolean }).terminal).toBe(true);
+    gh.resp("repos/o/r/issues/12", reply("open"));
+    const open = await fetchIssue(trackerTarget(github(), { fid: "12-x" }));
+    expect((open as { terminal?: boolean }).terminal).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -320,6 +332,37 @@ describe("github client", () => {
 // ---------------------------------------------------------------------------
 
 describe("linear client", () => {
+  const linearReply = (name: string, type: string) =>
+    json({
+      data: {
+        issue: {
+          identifier: "ENG-4",
+          title: "T",
+          url: "https://linear.app/x/ENG-4",
+          description: "",
+          state: { name, type },
+          labels: { nodes: [] },
+          comments: { nodes: [], pageInfo: { hasNextPage: false } },
+        },
+      },
+    });
+
+  it("linear fetch marks a completed state renamed Shipped terminal", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    stubFetch(linearReply("Shipped", "completed"));
+    const issue = await fetchIssue(trackerTarget(linear(), { fid: "eng-4-x" }));
+    expect(issue.state).toBe("Shipped");
+    expect((issue as { terminal?: boolean }).terminal).toBe(true);
+  });
+
+  it("linear fetch marks a canceled state terminal and a started state not", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const calls = stubFetch(linearReply("Dropped", "canceled"), linearReply("Doing", "started"));
+    const t = trackerTarget(linear(), { fid: "eng-4-x" });
+    expect(((await fetchIssue(t)) as { terminal?: boolean }).terminal).toBe(true);
+    expect(((await fetchIssue(t)) as { terminal?: boolean }).terminal).toBe(false);
+    expect(String(bodyOf(calls[0]!.init).query)).toMatch(/state \{[^}]*\btype\b/);
+  });
   it("posts through GraphQL commentCreate with the API key as Authorization", async () => {
     process.env.BKIT_LINEAR_API_KEY = "lin_api_secret";
     const calls = stubFetch(
@@ -488,6 +531,25 @@ describe("jira client (MCP over HTTP)", () => {
       arguments: { name: "listJiraIssueComments", inputs: { startAt: 0 } },
     });
     expect(tools[2].arguments.inputs.startAt).toBe(1);
+  });
+
+  it("jira fetch marks a done-category status renamed Shipped terminal and an indeterminate one not", async () => {
+    process.env.BKIT_JIRA_API_KEY = "k";
+    const issueOf = (name: string, key: string) => ({
+      key: "PROJ-9",
+      fields: {
+        summary: "S",
+        status: { name, statusCategory: { key } },
+        labels: [],
+        description: "",
+      },
+    });
+    const empty = { comments: [], isLast: true };
+    jiraMcp(issueOf("Shipped", "done"), empty);
+    const t = trackerTarget(jira(), { fid: "proj-9-x" });
+    expect(((await fetchIssue(t)) as { terminal?: boolean }).terminal).toBe(true);
+    jiraMcp(issueOf("Done", "indeterminate"), empty);
+    expect(((await fetchIssue(t)) as { terminal?: boolean }).terminal).toBe(false);
   });
 
   it("pins the Rovo tool names .bkit/trackers.md lists", () => {
