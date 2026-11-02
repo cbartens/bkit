@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T10:34:25Z)_
+_(refreshed 2026-11-02T11:15:38Z)_
 
 ### Design
 
@@ -33,7 +33,6 @@ _(refreshed 2026-11-02T10:34:25Z)_
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793515836097 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793609906429 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
-| 826-append-routine-workflow | 826-append-routine-workflow | 1793610124288 |
 
 ### Plan
 
@@ -45,6 +44,7 @@ _(refreshed 2026-11-02T10:34:25Z)_
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793615665496 |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 
 ### Build
 
