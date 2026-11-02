@@ -761,7 +761,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Correct the copied-repository test process working directories
+- [x] **TASK 12:** Correct the copied-repository test process working directories
   - **UPDATE:** `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`: through the tests step, give the lock helpers an explicit caller working directory and run each copied-repository process in its respective checkout. Preserve the existing machine-wide exclusion and caller-checkout assertions. Add a regression that observes the subprocess working directory, first failing against the existing helper setup; do not undo production code to obtain a red result.
   - **DONE WHEN:** `pnpm vitest run .bkit/core/engine/audits/templates/machine-lock.integration.test.ts` passes, including the machine-wide cross-repository test and the helper working-directory regression; holder messages still identify the caller checkout.
   - **TEST FIRST:**
