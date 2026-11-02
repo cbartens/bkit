@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T11:15:38Z)_
+_(refreshed 2026-11-02T16:26:54Z)_
 
 ### Design
 
@@ -53,6 +53,7 @@ _(refreshed 2026-11-02T11:15:38Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793603451032 |
+| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793636814106 |
 
 ### Debug
 
