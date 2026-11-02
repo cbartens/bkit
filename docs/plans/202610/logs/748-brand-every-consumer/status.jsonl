@@ -75,3 +75,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T02:03:07Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/1/comment","hash":"373e48e2dbe1a4fc59de9f437e731c1d99cf601c69a28d17aa357d2a3803afb0","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6567309688","at":"2026-11-02T02:03:09Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T02:03:09Z","parentSha":"3d66f9543af073c9044515bb58de8df5d91143b8","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:03:23Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:03:23Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:03:28Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:06:44Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:06:48Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:07:49Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T02:14:20Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/1/comment","hash":"97ea09fce7a08cf549ebdd2eb704ca6913582360f2d933df70f086314f4bdb15","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6567444462","at":"2026-11-02T02:14:22Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T02:14:22Z","parentSha":"0fb462b53807bf12005a1ad027a3ac9045527540","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-gaps-remediate-1-1-log.md"],"verdict":"FAIL","attempt":1,"group":1,"strategy":"STANDARD"}

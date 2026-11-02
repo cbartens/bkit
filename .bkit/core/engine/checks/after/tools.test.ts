@@ -69,6 +69,7 @@ describe("detectValeMissing", () => {
     spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
     const result = detectValeMissing(tmpDir);
     expect(result!.id).toBe("vale-not-installed");
+    expect(result!.detect).toContain("bkit:lint:prose");
     expect(result!.action).toContain("vale sync");
   });
 
