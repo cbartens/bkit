@@ -273,3 +273,32 @@ PENDING
 <!-- bkit:end -->
 
 ## Project Instructions
+
+### Permissions
+
+- No tool needs an extra allow rule: `gh run list`, `gh run view`, `gh issue view`, `gh repo view`, `mcp__github__search_issues`, Serena reads, `WebFetch` / `WebSearch` and `bkit branches anchor-stamp` all ran without a prompt.
+
+### Pre-Flight / Dependencies
+
+- Error Tracker: not applicable in this repo. `.agents/context.md` below `bkit:end` has only `github context=ci`, `github context=diff` and `tavily context=web` blocks (and `context-fetch:none e2e`); bkit ships a CLI with no production or preview event stream.
+- Tracker: issue state by number → `gh issue view {N} --repo cbartens/bkit --json state,title`. `mcp__github__search_issues` is semantic: use it to find an issue by topic (and the audit parent), never to read a known number's state.
+- CI Config: there is no gate on open `CRITICAL` failures. `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` is the live-ledger gate (parse, envelope, kind, shell substitution, future `ts`, whole-second `ts` after its cutoff).
+
+### Step 3 — Fold
+
+- Fold at `HEAD`: `git show HEAD:docs/failures.jsonl | jq -s -c --argjson now "$(($(date +%s)*1000))" 'to_entries | map(.value + {line: (.key+1)}) | group_by(.key) | map(sort_by(.ts, .line)) | map({key: .[-1].key, status: (.[-1].status // "none"), sev: (.[-1].severity // "none"), cat: (.[-1].category // "none"), firstTs: (map(.firstTs // .ts) | min), line: .[-1].line}) | map(select(.status != "CLOSED"))'`. Then read each open row in full with `sed -n '{line}p'` on the same `git show` output.
+- Compaction (`bkit ledgers compact`) drops superseded lines, so an entry's append history (re-observations against status-only appends) is only in `git log -p --format='COMMIT %h' -- docs/failures.jsonl`, filtered with `grep -E '^\+\{.*"key":"{key}"'`.
+
+### Step 4 — Source
+
+- Capability-register rows: read the step result on the latest dev run with `gh run list --workflow bkit-ci.yml --branch dev --limit 5` and `gh run view {id} --json jobs`, rather than running graphify locally.
+- Flaky-test rows: confirm the cited title still exists with `git grep -c -F "{title}" HEAD -- {spec}`, and check `vitest.timeout-budget.ts` (`loadFactor`, `tierTimeouts`) before calling a timeout row fixed.
+- Engine symbols (`.bkit/core/engine/**/*.ts`): Serena `find_symbol` with `include_body`; workflow and prompt text (`.bkit/core/workflows/*.md`, `.bkit/core/prompts/*.md`), hooks (`.husky/*`) and templates (`.bkit/templates/**`): `git grep -n ... HEAD --`.
+
+### Step 6 — Classes
+
+- Knowledge workarounds: `git show HEAD:docs/knowledge.jsonl | jq -s -c 'group_by(.key) | map(sort_by(.ts)[-1]) | map(select((.status // "ACTIVE") == "ACTIVE")) | .[] | select(tostring | test("{pattern}"; "i")) | {key, summary}'`.
+
+### Step 8 — Standards
+
+- Pages that return quotable content: `https://sre.google/workbook/postmortem-culture/`, `https://wiki.mozilla.org/BMO/UserGuide/BugStatuses` (resolution definitions and last-edited date), `https://www.peoplecert.org/browse-certifications/it-governance-and-service-management/ITIL-1` (current ITIL version name). `https://www.axelos.com/...` and `https://wiki.mozilla.org/BMO/UserGuide/BugFields` return no edition or resolution text.
