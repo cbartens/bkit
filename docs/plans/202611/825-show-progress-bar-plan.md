@@ -347,7 +347,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Print the line from every call that writes a numbered step-done row and support gate-only completions
+- [x] **TASK 2:** Print the line from every call that writes a numbered step-done row and support gate-only completions
   - **UPDATE:** `writeStepRow` in `.bkit/core/engine/commands/workflow/steps.ts`: resolve and validate fallible progress inputs before completion append/commit, prepare the line from the prospective row, and expose it only after the existing write/commit succeeds, without persisting it in the row.
   - **UPDATE:** `finish` in `.bkit/core/engine/commands/workflow/steps.ts`: emit `progressLine` alongside existing output keys.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: make `steps done` emit `progressLine`; add explicit validated `--progress-number` to `steps gate` and declare the output metadata.
