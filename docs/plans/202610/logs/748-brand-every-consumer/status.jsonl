@@ -392,3 +392,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T06:09:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/6/1/comment","hash":"1ff686c8bb5bb94df838fa155db9d2dfd991e954034aa2f111c82d94111157b9","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570384007","at":"2026-11-02T06:09:05Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-02T06:09:05Z","parentSha":"b0b1a23433aec8151161c9286f8ca403e31e6bf3","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-gaps-remediate-6-1-log.md"],"verdict":"PASS","attempt":1,"group":6,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:09:07Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:09:07Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:09:10Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:10:40Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:10:42Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:14:52Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/2/comment","hash":"d2f3bd44def82b658bd4b9353178c2d907f635473f997c66581c0251e12d6b64","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570467667","at":"2026-11-02T06:14:53Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T06:14:53Z","parentSha":"678c3619b3d31dffcd8c6f63b1299b97874b978c","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-6-2.md"],"verdict":"CONCERNS","attempt":2,"group":6,"failures":1}
