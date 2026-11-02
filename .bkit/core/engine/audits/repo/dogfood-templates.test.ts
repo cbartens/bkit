@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 
@@ -765,6 +766,27 @@ describe("this repo adopts its own templates", () => {
   ];
   const UNPREFIXED_GRAPH = /pnpm graph(?!ify)/;
 
+  /** Adopted workflows whose copy is also pinned to carry `bkit-` workflow and job display names (#748). */
+  const BRANDED_WORKFLOWS = [
+    ".github/workflows/bkit-cloud.yml",
+    ".github/workflows/bkit-renovate.yml",
+    ".github/workflows/bkit-trivy.yml",
+  ];
+
+  /** Workflow and job display names (`name`, else the job id) in a workflow text that lack `bkit-`. */
+  function unprefixedDisplayNames(text: string): string[] {
+    const doc = parseYamlText(text) as { name?: unknown; jobs?: Record<string, unknown> };
+    const bad: string[] = [];
+    if (typeof doc.name !== "string" || !doc.name.startsWith("bkit-"))
+      bad.push(`name: ${doc.name}`);
+    for (const [id, job] of Object.entries(doc.jobs ?? {})) {
+      const named = (job as { name?: unknown }).name;
+      const display = typeof named === "string" ? named : id;
+      if (!display.startsWith("bkit-")) bad.push(`job ${id}: ${display}`);
+    }
+    return bad;
+  }
+
   function expectCopyMatchesTemplate(rel: string, entry: Extract<Entry, { status: "adopted" }>) {
     const copyPath = copyPathOf(rel);
     expect(fs.existsSync(copyPath), rel).toBe(true);
@@ -776,13 +798,11 @@ describe("this repo adopts its own templates", () => {
     return { template, copy };
   }
 
-  it.each(entriesWith("adopted").filter(([rel]) => !GRAPHIFY_BRANDED.includes(rel)))(
-    "%s",
-    (rel, entry) => {
-      const { copy } = expectCopyMatchesTemplate(rel, entry);
-      expect(copy.length).toBeGreaterThan(0);
-    },
-  );
+  const OWN_TESTS = new Set([...GRAPHIFY_BRANDED, ...BRANDED_WORKFLOWS]);
+  it.each(entriesWith("adopted").filter(([rel]) => !OWN_TESTS.has(rel)))("%s", (rel, entry) => {
+    const { copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+  });
 
   it("scripts/graphify/bkit-graphify.sh", () => {
     const entry = ADOPTED["scripts/graphify/bkit-graphify.sh"] as Extract<
@@ -810,5 +830,32 @@ describe("this repo adopts its own templates", () => {
     expect(template).not.toMatch(UNPREFIXED_GRAPH);
     expect(copy).not.toMatch(UNPREFIXED_GRAPH);
     expect(copy).toContain("pnpm bkit:graph:refresh");
+  });
+
+  it(".github/workflows/bkit-cloud.yml", () => {
+    const rel = ".github/workflows/bkit-cloud.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-renovate.yml", () => {
+    const rel = ".github/workflows/bkit-renovate.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-trivy.yml", () => {
+    const rel = ".github/workflows/bkit-trivy.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
   });
 });

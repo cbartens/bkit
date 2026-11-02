@@ -21,6 +21,7 @@ import {
   migrateLinearTeamKey,
   migrateGithubProjectKey,
   migrateBkitLayout,
+  migrateBrandedScriptNames,
   pruneMinPushPaths,
   seedBkitDefaults,
   SEEDED_BKIT_DEFAULTS,
@@ -246,16 +247,128 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     expect(ws.writes.some((w) => w.path === "package.json")).toBe(true);
     expect(readPkg().scripts).toBeUndefined();
   });
+});
 
-  it("leaves a superseded bkit slop:delta value in place (add-if-missing; no migration code)", () => {
-    // bkit seeds a gate name only when it is missing (#489 removed migration code),
-    // so a declared value — even a retired one — is the consumer's and is never rewritten.
-    writePkg({ scripts: { "slop:delta": "bash scripts/slop/bkit-slop-delta.sh" } });
+describe("migrateBrandedScriptNames (via seedCorePackageJsonScripts)", () => {
+  const OLD_STATIC =
+    "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta";
+  const seed = (scripts: Record<string, string>): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", version: "1.0.0", scripts }, null, 2) + "\n",
+      "utf-8",
+    );
+  const readScripts = (): Record<string, string> =>
+    JSON.parse(fs.readFileSync("package.json", "utf-8")).scripts;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateBrandedScriptNames(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+
+  it("renames old bkit script keys and keeps custom values", () => {
+    seed({
+      "lint:prose": "custom-prose-linter",
+      "slop:delta": "bash scripts/slop/bkit-slop-delta.sh",
+      graph: "bash scripts/graphify/bkit-graphify.sh",
+      "graph:check": "bash scripts/graphify/bkit-graphify.sh --check",
+      "graph:rollup": "python3 scripts/graphify/bkit-graphify-rollup.py",
+      typecheck: "tsc --noEmit",
+    });
     dispatchModules(new Set(["core"]), makeCtx({}));
     const scripts = readScripts();
-    expect(scripts["slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
-    expect(scripts.typecheck).toBeUndefined();
+    expect(scripts["bkit:lint:prose"]).toBe("custom-prose-linter");
+    expect(scripts["bkit:slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
+    expect(scripts["bkit:graph"]).toBe("bash scripts/graphify/bkit-graphify.sh");
+    expect(scripts["bkit:graph:check"]).toBe("bash scripts/graphify/bkit-graphify.sh --check");
+    expect(scripts["bkit:graph:rollup"]).toBe("python3 scripts/graphify/bkit-graphify-rollup.py");
     expect(scripts["lint:prose"]).toBeUndefined();
+    expect(scripts["slop:delta"]).toBeUndefined();
+    expect(scripts.graph).toBeUndefined();
+    expect(scripts["graph:check"]).toBeUndefined();
+    expect(scripts["graph:rollup"]).toBeUndefined();
+    expect(scripts.typecheck).toBe("tsc --noEmit");
+  });
+
+  it("rewrites old script tokens in values and default gate chains", () => {
+    seed({
+      "bkit:gate:static": OLD_STATIC,
+      "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+      ci: "pnpm -s lint:prose && pnpm run slop:delta",
+      wrapped: "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- pnpm lint:prose",
+    });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readScripts();
+    expect(scripts["bkit:gate:static"]).toBe(BKIT_GATE_SCRIPTS["bkit:gate:static"]);
+    expect(scripts["bkit:gate:static"]).not.toMatch(/pnpm (lint:prose|slop:delta)/);
+    expect(scripts["bkit:gate:min"]).toBe(BKIT_GATE_SCRIPTS["bkit:gate:min"]);
+    expect(scripts.ci).toBe("pnpm -s bkit:lint:prose && pnpm run bkit:slop:delta");
+    expect(scripts.wrapped).toBe(
+      "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- pnpm bkit:lint:prose",
+    );
+  });
+
+  it("leaves the old key when the new key exists", () => {
+    seed({ "lint:prose": "old-linter", "bkit:lint:prose": "new-linter" });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ctx = run();
+      const scripts = readScripts();
+      expect(scripts["lint:prose"]).toBe("old-linter");
+      expect(scripts["bkit:lint:prose"]).toBe("new-linter");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const lines = logSpy.mock.calls.map((c) => String(c[0]));
+      expect(lines.filter((l) => l.includes("lint:prose")).length).toBeLessThanOrEqual(1);
+      expect(ctx.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("leaves a foreign graph script under its own name", () => {
+    seed({ graph: "nx graph", dev: "pnpm graph && pnpm lint:prose" });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readScripts();
+    expect(scripts.graph).toBe("nx graph");
+    expect(scripts["bkit:graph"]).toBeUndefined();
+    expect(scripts.dev).toBe("pnpm graph && pnpm bkit:lint:prose");
+  });
+
+  it("warns on an old script name the rewrite cannot reach", () => {
+    seed({ "lint:prose": "x", docs: "pnpm --filter web lint:prose" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      run();
+      const out = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("package.json");
+      expect(out).toContain("docs");
+      expect(out).toContain("lint:prose");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("leaves package.json untouched when it is not valid JSON", () => {
+    const broken = '{ "name": "x", "scripts": { "lint:prose": "x", ';
+    fs.writeFileSync("package.json", broken, "utf-8");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ctx = run();
+      expect(fs.readFileSync("package.json", "utf-8")).toBe(broken);
+      expect(ctx.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+      const out = [errSpy, logSpy, warnSpy]
+        .flatMap((s) => s.mock.calls.map((c) => String(c[0])))
+        .join("\n");
+      expect(out).toMatch(/package\.json/);
+    } finally {
+      errSpy.mockRestore();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });
 

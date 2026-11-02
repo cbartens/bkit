@@ -5,6 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive } from "../../install/template-copies";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 
@@ -46,6 +47,23 @@ function unprefixedFileNames(relPaths: string[]): string[] {
   return relPaths.filter((rel) => !path.basename(rel).startsWith(PREFIX));
 }
 
+/**
+ * Workflow and job display names (a job's display name is its `name`, else its id) in a workflow
+ * file's text that lack `bkit-`. Each is `<workflow>:<name>` or `<workflow>:<job id>:<name>`.
+ */
+function unprefixedWorkflowNames(file: string, text: string): string[] {
+  const doc = parseYamlText(text) as { name?: unknown; jobs?: Record<string, unknown> } | null;
+  const bad: string[] = [];
+  const workflowName = typeof doc?.name === "string" ? doc.name : "";
+  if (!workflowName.startsWith(PREFIX)) bad.push(`${file}:${workflowName}`);
+  for (const [id, job] of Object.entries(doc?.jobs ?? {})) {
+    const named = (job as { name?: unknown } | null)?.name;
+    const display = typeof named === "string" ? named : id;
+    if (!display.startsWith(PREFIX)) bad.push(`${file}:${id}:${display}`);
+  }
+  return bad;
+}
+
 describe("consumer-facing names carry the bkit prefix", () => {
   const doc = fs.readFileSync(path.join(getBkitDocsRoot(), "templates.md"), "utf-8");
   const templatesRoot = path.resolve(".bkit/templates");
@@ -75,5 +93,25 @@ describe("consumer-facing names carry the bkit prefix", () => {
     expect(rels.length).toBeGreaterThan(0);
     expect(unprefixedFileNames(rels)).toEqual([]);
     expect(unprefixedFileNames([...rels, "scripts/foo.sh"])).toEqual(["scripts/foo.sh"]);
+  });
+
+  it("workflow and job display names", () => {
+    const dir = path.join(templatesRoot, ".github/workflows");
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".yml"));
+    expect(files.length).toBeGreaterThan(0);
+    const bad = files.flatMap((f) =>
+      unprefixedWorkflowNames(f, fs.readFileSync(path.join(dir, f), "utf-8")),
+    );
+    expect(bad).toEqual([]);
+  });
+
+  it("flags a seeded job whose display name lacks bkit-", () => {
+    const named = "name: bkit-x\njobs:\n  lint:\n    name: lint\n    runs-on: ubuntu-latest\n";
+    expect(unprefixedWorkflowNames("x.yml", named)).toEqual(["x.yml:lint:lint"]);
+    const idOnly = "name: bkit-x\njobs:\n  lint:\n    runs-on: ubuntu-latest\n";
+    expect(unprefixedWorkflowNames("x.yml", idOnly)).toEqual(["x.yml:lint:lint"]);
+    const fine =
+      "name: bkit-x\njobs:\n  lint:\n    name: bkit-lint\n  bkit-b:\n    runs-on: ubuntu-latest\n";
+    expect(unprefixedWorkflowNames("x.yml", fine)).toEqual([]);
   });
 });

@@ -958,10 +958,49 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(scripts["bkit:gate:static-unit"]).toBe("pnpm bkit:gate:static && pnpm test");
     expect(scripts["bkit:deps:audit"]).toBe("pnpm audit");
     expect(scripts["slop:delta"]).toBeUndefined();
+    expect(scripts["bkit:slop:delta"]).toBeUndefined();
     expect(scripts.typecheck).toBeUndefined();
 
     const check = runCli(["check"]);
     expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("branded script migration is idempotent and dry-run writes nothing", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const pkgPath = path.join(tmpDir, "package.json");
+    const write = (scripts: Record<string, string>): void =>
+      fs.writeFileSync(
+        pkgPath,
+        JSON.stringify({ name: "consumer", version: "0.0.0", scripts }, null, 2) + "\n",
+        "utf-8",
+      );
+    write({});
+    expect(runCli(["install", "--claude"]).status).toBe(0);
+    write({
+      "lint:prose": "custom-prose-linter",
+      "slop:delta": "bash scripts/slop/bkit-slop-delta.sh",
+      "graph:check": "bash scripts/graphify/bkit-graphify.sh --check",
+    });
+    const oldShape = fs.readFileSync(pkgPath, "utf-8");
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, `${dry.stdout}\n${dry.stderr}`).toBe(0);
+    expect(fs.readFileSync(pkgPath, "utf-8")).toBe(oldShape);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+    const after = fs.readFileSync(pkgPath, "utf-8");
+    const scripts = (JSON.parse(after) as { scripts: Record<string, string> }).scripts;
+    expect(scripts["bkit:lint:prose"]).toBe("custom-prose-linter");
+    expect(scripts["bkit:slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
+    expect(scripts["bkit:graph:check"]).toBe("bash scripts/graphify/bkit-graphify.sh --check");
+    expect(scripts["lint:prose"]).toBeUndefined();
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, `${second.stdout}\n${second.stderr}`).toBe(0);
+    expect(fs.readFileSync(pkgPath, "utf-8")).toBe(after);
+    const check = runCli(["check"]);
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 });
