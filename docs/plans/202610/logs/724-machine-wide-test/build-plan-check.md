@@ -1,4 +1,4 @@
-Problems: 4
+Problems: 0
 Existence: 0
 
 <!-- verdict:end -->
@@ -15,7 +15,7 @@ Plan: `docs/plans/202610/724-machine-wide-test-plan.md`. Caps: 5 tasks and 25 TE
 | 1 | Machine lock script — named locks | 1 | 10 | 6.2 |
 | 2 | Slots, lock order, no-TTY wait and template docs | 2 | 10 | 6.9 |
 | 3 | `bkit tests run` and `bkit tests changed` read the tests-lock outcome of a wrapped gate | 3 | 21 | 16.0 |
-| 4 | bkit's gates take the tests lock; workflows route exit 81 | 3 | 7 | 11.0 |
+| 4 | bkit's gates take the tests lock; workflows route exit 81 | 3 | 7 | 11.8 |
 | 5 | bkit's own raw vitest runs queue too | 2 | 10 | 4.8 |
 
 ## Tasks
@@ -37,10 +37,7 @@ Plan: `docs/plans/202610/724-machine-wide-test-plan.md`. Caps: 5 tasks and 25 TE
 
 ## Problems
 
-- `docs/plans/202610/724-machine-wide-test-plan.md:931` `format` — TASK 11: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202610/724-machine-wide-test-plan.md:932` `format` — TASK 11: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202610/724-machine-wide-test-plan.md:934` `inventory` — TASK 11: CREATE in `.bkit/core/engine/commands/workflow/branches-lock.integration.test.ts` has no NEW row naming it in the Reuse Inventory's File column
-- `docs/plans/202610/724-machine-wide-test-plan.md:939` `format` — TASK 11: UPDATE is neither `symbol` in `file`: what nor `file`: what
+None.
 
 ## Existence (reported only)
 
