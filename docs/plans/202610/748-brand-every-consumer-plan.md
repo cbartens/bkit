@@ -175,6 +175,7 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | migrateValeHouseStyle (via runBkitDocs) > does not move rules into a symlinked Bkit directory | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
 | migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 20 |
 | renameScriptTokens leaves recursive flag forms alone | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 21 |
+| renameScriptTokens returns a many-flag line in bounded time | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 23 |
 | migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 22 |
 
 ### 👤 ✅ Human Confirmation
@@ -765,6 +766,8 @@ Build order: script names, template file names and the branding guard (Group 1) 
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedFileTokens (via runBkitDocs) > rewrites old script tokens in husky hooks and the CI workflow` fails on old tokens left in `.husky/pre-push` or a custom `bkit.testing.ciWorkflow` file, or a surviving `pnpm --filter web lint:prose` with no warning naming the file and line
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` fails on a `canonicalHashes` entry for `.husky/pre-push` or the CI workflow, or a second-run write
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a dry-run hook and CI token migration writes nothing` fails on `.husky/pre-push` or the CI workflow changing under `--dry-run`, or the dry-run writeset missing them
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` — replaced by Task 13 at the owner's decision (`build-decision-1-1.md`): the original could never pass, because every upgrade of the bare test project prints advisories naming `.husky/pre-push`; the Task 13 test runs and passes (owner, 2026-11-02)
 
 <!-- bkit:task 7 end -->
 
@@ -785,6 +788,8 @@ Build order: script names, template file names and the branding guard (Group 1) 
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > moves shipped CI script units to bkit- names and rewrites their paths` fails on `scripts/ci/check-capstone.mjs` left in place, a moved `.test.mjs` importing the old name, `accepted-advisories.json` not moved byte-identical with its reader, or the CI workflow still running `node scripts/ci/check-capstone.mjs`
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves an edited or already-renamed unit and logs the manual move` fails on an edited `check-capstone.mjs` moved, a `bkit-check-capstone.mjs` target overwritten, or no warning
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run write and move nothing` fails on a second-run write or a dry-run move or write
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run write and move nothing` — replaced by Task 14 at the owner's decision (`build-decision-1-1.md`): the original compared the whole tree, and `.claude/bkit-cloud.md` changes on every upgrade by design; the Task 14 test skips only that file and passes (owner, 2026-11-02)
 
 <!-- bkit:task 8 end -->
 
@@ -989,6 +994,21 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 22 end -->
 <!-- bkit:group 7 end -->
+
+### TASK GROUP 8: Challenge round 2 finding left without a task
+
+<!-- bkit:group 8 start -->
+
+<!-- bkit:task 23 start -->
+
+- [ ] **TASK 23:** The pattern in `renameScriptTokens` that skips package-selecting flags backtracks exponentially, so a short committed line can hang `bkit check`, `bkit install` and `bkit upgrade`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts` (`renameScriptTokens`, the flag part `-{1,2}[\w-]+`) · **Round:** 2
+  - **DONE WHEN:** no pattern in `core.ts` (and so none in the built `dist/install/modules/core.js`) can match the same flag text in two ways: `--a` currently matches as `-` + `-a` or as `--` + `a`, so when the overall match fails the engine tries every combination and the time doubles with each extra flag. Measured on the old pattern: 24 flags take 59 ms, 28 flags 968 ms, 30 flags 3933 ms, and 40 flags (about 160 bytes) would take over an hour. The input can be any `package.json` script value, `.husky/pre-commit`, `.husky/pre-push` or the CI workflow file, and it runs on every check and upgrade. Every existing `renameScriptTokens` and `findOldScriptNames` test keeps passing with the same output
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens returns a many-flag line in bounded time` fails on a `pnpm` line with 30 flags (`--a --b ...`) and no script name taking longer than 500 ms, measured with `performance.now()` around the call because a vitest timeout cannot stop a synchronous regex
+
+<!-- bkit:task 23 end -->
+<!-- bkit:group 8 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
