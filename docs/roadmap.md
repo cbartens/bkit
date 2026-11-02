@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-01T23:27:25Z)_
+_(refreshed 2026-11-02T07:10:51Z)_
 
 ### Design
 
@@ -42,7 +42,6 @@ _(refreshed 2026-11-01T23:27:25Z)_
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793324492581 |
 
 ### Build
 
@@ -50,6 +49,7 @@ _(refreshed 2026-11-01T23:27:25Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793603451032 |
 
 ### Debug
 
