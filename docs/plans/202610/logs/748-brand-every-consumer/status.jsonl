@@ -550,3 +550,10 @@
 {"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:05Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","field","message","number","post","title","tree"]}
 {"type":"engine-action","action":"comment","key":"debug/1/debug-worktree-setup/-/-/comment","hash":"54686478fdbbb08eda59726d9b0306d5106fec02df1f1a33a1e8ba2245c96b87","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6571475801","at":"2026-11-02T07:22:06Z"}
 {"type":"step-done","workflow":"debug","step":"debug-worktree-setup","status":"DONE","at":"2026-11-02T07:22:06Z","parentSha":"22852498e0f9d871a42cf3c04a1b0ac3aaa9a32b","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/debug-input-1.md"],"debugMode":"NORMAL","pushMode":"LOCAL"}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:14Z","noun":"tests","verb":"run","flags":["gate","log","artifact","fid","file","workflow","step","attempt"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:28Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T07:22:30Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"test-run","workflow":"debug","at":"2026-11-02T07:26:12Z","step":"debug-run-tests","attempt":1,"run":1,"verdict":"PASS","exitCode":0,"failures":0,"scope":"pnpm bkit:gate:static-unit-integration","log":"/Users/christian/Documents/GitHub/bkit/.git/bkit-outbox/748-brand-every-consumer/context-tests-local-1.log","artifact":"docs/plans/202610/logs/748-brand-every-consumer/context-tests-local-1.md"}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:22Z","noun":"status","verb":"route","flags":["workflow","fid","month","prompt-file"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:34Z","noun":"steps","verb":"gate","flags":["workflow","step","fid","month","token","issue","placeholder"]}
+{"type":"engine-call","workflow":"debug","at":"2026-11-02T22:36:37Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
