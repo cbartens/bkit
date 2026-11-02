@@ -445,3 +445,13 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:45Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/7/1/comment","hash":"fda90ed4310a203ea642f70abf8b3f75b137c23dcbe677e1eab80d053949b2d8","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570789552","at":"2026-11-02T06:36:46Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-02T06:36:46Z","parentSha":"532734c002651634cd75c4225ac65718cc25068c","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-tasks-7-log.md"],"verdict":"PASS","attempt":1,"group":7}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:48Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:48Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:48Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:52Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:36:52Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:37:40Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:37:42Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:41:16Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/7/1/comment","hash":"d666f4f3b32e0cc062231b6b63e197d3625330a1d648ca4374d9691e45714c7b","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570857285","at":"2026-11-02T06:41:17Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-02T06:41:17Z","parentSha":"da0a3162420825261dbdf299479783ed2b5c5338","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-plan-verify-7-1.md"],"verdict":"PASS","attempt":1,"group":7,"failures":0}
