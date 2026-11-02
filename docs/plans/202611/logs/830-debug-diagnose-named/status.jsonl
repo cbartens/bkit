@@ -9,3 +9,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T09:51:59Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"a80c6302ead4e588fe1636679091756625087854c97f1dc0702acab9c848ecda","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6574119911","at":"2026-11-02T09:52:01Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-02T09:52:01Z","parentSha":"e5ba78d2d8d3a5f4b0844549bf0be5fe03a80025","artifacts":["docs/plans/202611/logs/830-debug-diagnose-named/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:52:08Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:52:18Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T09:52:26Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"cfecbc319b1751e7224121aa54cc638c31a6430a0e564448e14630c8b5fbec4b","ref":"https://github.com/cbartens/bkit/issues/830#issuecomment-6574127970","at":"2026-11-02T09:52:27Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-02T09:52:27Z","parentSha":"d37806f87138bb1d65c02883fb8b35f149cc0644","artifacts":[]}
