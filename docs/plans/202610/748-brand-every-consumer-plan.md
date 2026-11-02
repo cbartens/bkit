@@ -567,7 +567,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Rename the two unprefixed launchd template files to `bkit-*`
+- [x] **TASK 2:** Rename the two unprefixed launchd template files to `bkit-*`
   - **CREATE:** `.bkit/templates/scripts/launchd/bkit-launchd.plist`: moved byte-identical (Label `ai.bkit.launchd` kept)
   - **CREATE:** `.bkit/templates/scripts/launchd/bkit-launchd.env.example`: moved byte-identical
   - **DELETE:** `.bkit/templates/scripts/launchd/ai.bkit.launchd.plist`: replaced by `bkit-launchd.plist`
@@ -586,7 +586,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Rename `graph*` → `bkit:graph*` in every template and doc; branding guard for script and file names
+- [x] **TASK 3:** Rename `graph*` → `bkit:graph*` in every template and doc; branding guard for script and file names
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: graphify script block and table (lines ~485-555)
   - **UPDATE:** `.bkit/templates/scripts/graphify/bkit-graphify.sh`: usage and hint strings name `pnpm bkit:graph*`
   - **UPDATE:** `.bkit/templates/scripts/graphify/bkit-graphify-rollup.py`: `docs/capabilities.md` header lines (~763-785) name `pnpm bkit:graph:refresh`, `pnpm bkit:graph:update`, `pnpm bkit:graph`; `slop:delta` hint (line 672) reads `bkit:slop:delta`
