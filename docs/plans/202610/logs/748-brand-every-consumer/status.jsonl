@@ -467,3 +467,19 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T06:46:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","failures","scope","attempt","artifact","clamp-log","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-run-tests/-/1/comment","hash":"63583c3f788049e78e338989e2090bebde76e07f14a0be8c075349c4e3e4a7e0","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570933997","at":"2026-11-02T06:46:20Z"}
 {"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE","at":"2026-11-02T06:46:20Z","parentSha":"b3ceebd274b1dbcf61537f5d70eae67b3e7bc274","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/run-tests-1.md"],"verdict":"PASS","attempt":1,"failures":0,"scope":"pnpm bkit:gate:static-unit-integration","clamped":[{"artifact":"docs/plans/202610/logs/748-brand-every-consumer/run-tests-1.md","clamped":true,"origLines":19201,"keptLines":3020,"origBytes":1370765,"keptBytes":220040,"lineCapped":0,"ceilingHit":false,"raw":".git/bkit-outbox/748-brand-every-consumer/run-tests-1.log","source":"pnpm bkit:gate:static-unit-integration","fetchedAt":"2026-11-02T06:41:23Z"}]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:46:29Z","noun":"tests","verb":"green","flags":["file","workflow","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:47:35Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:47:36Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:47:36Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:47:40Z","noun":"status","verb":"row","flags":["file","workflow","type","field"]}
+{"type":"owner-pause","workflow":"build","at":"2026-11-02T06:47:40Z","reason":"decision"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:48:48Z","noun":"status","verb":"row","flags":["file","workflow","type"]}
+{"type":"owner-answer","workflow":"build","at":"2026-11-02T06:48:48Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:27Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:27Z","noun":"ledgers","verb":"commit","flags":["root","month","fid","mode","path","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:34Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:52Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:52Z","noun":"ledgers","verb":"commit","flags":["root","month","fid","mode","path","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T06:49:53Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/2/comment","hash":"765a38b86e129592afaae2205cd403b157d28d6099f3e2e20dc077232fbbf614","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6570985527","at":"2026-11-02T06:49:54Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-02T06:49:54Z","parentSha":"49544005db9dcfda552ea96b06327506470ba3ba","artifacts":["docs/plans/202610/logs/748-brand-every-consumer/build-decision-1-2.md"],"attempt":2,"route":"fix"}
