@@ -22,6 +22,8 @@
 
 ## CI test tiers (the bkit scaffold)
 
+Manual host-hook compatibility experiments live in [`tests/hooks/`](../tests/hooks/bkit-hook-probe.md), alongside the compression experiments in `tests/compression/`. The [2026-11-03 report](../tests/hooks/bkit-hook-probe-report-2026-11-03.md) links the preserved results. Run the collector's local integration checks with `node --test tests/hooks/bkit-hook-probe.test.mjs`. Live host runs require normal project trust and authenticated sessions, so they remain outside normal CI.
+
 CI runs the tiers through the bkit scaffold as one parallel lane (job) per tier, not as steps in one job. The step-by-step shape is in `.github/workflows/bkit-ci.yml` § "full CI scaffold reference", and the run-level shape is in `deployments.md` § Run-level decision matrix.
 
 The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e:

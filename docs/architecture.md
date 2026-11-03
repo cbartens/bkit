@@ -100,6 +100,8 @@ cbartens/bkit (this repo)
 │                           # public repo. Holds every distinct row ever harvested; readers fold it by
 │                           # identity. Accumulates across runs and is never cleared — once harvest
 │                           # prunes a repo's friction or chat/run row, this local store is the only copy.
+├── tests/compression/      # Manual compression experiments: scripts and reports
+├── tests/hooks/            # Manual host-hook experiments: collector, checks, guides and dated evidence
 └── package.json            # bin: bkit → dist/cli.js
 ```
 

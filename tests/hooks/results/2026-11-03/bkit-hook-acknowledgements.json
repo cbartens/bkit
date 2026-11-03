@@ -1,0 +1,252 @@
+{
+  "codex": [
+    {
+      "case": "edit-1200",
+      "at": "2026-11-03T06:28:07.258Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-8000",
+      "at": "2026-11-03T06:28:19.393Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-12000",
+      "at": "2026-11-03T06:28:31.519Z",
+      "matches": [true, false, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-32000",
+      "at": "2026-11-03T06:28:43.082Z",
+      "matches": [true, false, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-1200",
+      "at": "2026-11-03T06:28:53.001Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-8000",
+      "at": "2026-11-03T06:29:06.379Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-12000",
+      "at": "2026-11-03T06:29:16.438Z",
+      "matches": [true, false, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-32000",
+      "at": "2026-11-03T06:29:29.302Z",
+      "matches": [true, false, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    }
+  ],
+  "claude": [
+    {
+      "case": "edit-1200",
+      "at": "2026-11-03T06:27:18.941Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-8000",
+      "at": "2026-11-03T06:27:30.882Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-12000",
+      "at": "2026-11-03T06:27:51.698Z",
+      "matches": [true, false, false],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-32000",
+      "at": "2026-11-03T06:28:06.644Z",
+      "matches": [true, false, false],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-1200",
+      "at": "2026-11-03T06:28:12.813Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-8000",
+      "at": "2026-11-03T06:28:24.092Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-12000",
+      "at": "2026-11-03T06:28:32.666Z",
+      "matches": [true, false, false],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "shell-32000",
+      "at": "2026-11-03T06:28:43.091Z",
+      "matches": [true, false, false],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    }
+  ],
+  "cursor": [
+    {
+      "case": "edit-legacy-1200",
+      "at": "2026-11-03T06:27:02.723Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    },
+    {
+      "case": "edit-legacy-8000",
+      "at": "2026-11-03T06:27:11.292Z",
+      "matches": [true, true, true],
+      "targetState": "AFTER",
+      "targetCharacters": 5,
+      "targetSha256": "94c3f1415d2061d05e4cce4d33e43e26a5ad7ebcf6e89acace6e8b84240a629c"
+    }
+  ],
+  "antigravity": [
+    {
+      "case": "shell-1200",
+      "at": "2026-11-03T06:25:49.545Z",
+      "matches": [true, true, true],
+      "targetState": "BEFORE",
+      "targetCharacters": 6,
+      "targetSha256": "c341c7fe1027f9487e8019198223ad7af0b9cfe1564d41c7e7c4d139cd0226f3"
+    },
+    {
+      "case": "shell-8000",
+      "at": "2026-11-03T06:26:10.336Z",
+      "matches": [true, true, true],
+      "targetState": "BEFORE",
+      "targetCharacters": 6,
+      "targetSha256": "c341c7fe1027f9487e8019198223ad7af0b9cfe1564d41c7e7c4d139cd0226f3"
+    },
+    {
+      "case": "shell-12000",
+      "at": "2026-11-03T06:26:35.398Z",
+      "matches": [true, true, true],
+      "targetState": "BEFORE",
+      "targetCharacters": 6,
+      "targetSha256": "c341c7fe1027f9487e8019198223ad7af0b9cfe1564d41c7e7c4d139cd0226f3"
+    },
+    {
+      "case": "shell-32000",
+      "at": "2026-11-03T06:26:54.170Z",
+      "matches": [true, true, true],
+      "targetState": "BEFORE",
+      "targetCharacters": 6,
+      "targetSha256": "c341c7fe1027f9487e8019198223ad7af0b9cfe1564d41c7e7c4d139cd0226f3"
+    }
+  ],
+  "opencode": [
+    {
+      "case": "edit-1200",
+      "at": "2026-11-03T06:25:54.096Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 1199,
+      "targetSha256": "97eeea8d92381c545d57c0fcd0fe00843c09aa066f4df385c04a9eb18a7dc604"
+    },
+    {
+      "case": "edit-8000",
+      "at": "2026-11-03T06:26:16.763Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 7999,
+      "targetSha256": "c0a60bfe12714290a3611c2a3eb205285ed2a93dc74690b4c880e7a56b9993ed"
+    },
+    {
+      "case": "edit-12000",
+      "at": "2026-11-03T06:26:31.143Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 11999,
+      "targetSha256": "aee91990d76b8b6fbfcbf328f298982f1339ef38d77a752ac9dabf79fbeb19ce"
+    },
+    {
+      "case": "edit-32000",
+      "at": "2026-11-03T06:26:58.019Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 31999,
+      "targetSha256": "89ee6ee7f552abe89b663d44f559be97fa6277479746e59a6530b412e4545e23"
+    },
+    {
+      "case": "shell-1200",
+      "at": "2026-11-03T06:27:09.829Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 1199,
+      "targetSha256": "97eeea8d92381c545d57c0fcd0fe00843c09aa066f4df385c04a9eb18a7dc604"
+    },
+    {
+      "case": "shell-8000",
+      "at": "2026-11-03T06:27:22.292Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 7999,
+      "targetSha256": "c0a60bfe12714290a3611c2a3eb205285ed2a93dc74690b4c880e7a56b9993ed"
+    },
+    {
+      "case": "shell-12000",
+      "at": "2026-11-03T06:27:51.995Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 11999,
+      "targetSha256": "aee91990d76b8b6fbfcbf328f298982f1339ef38d77a752ac9dabf79fbeb19ce"
+    },
+    {
+      "case": "shell-32000",
+      "at": "2026-11-03T06:28:22.403Z",
+      "matches": [true, true, true],
+      "targetState": "NONSTANDARD_AFTER_PREFIX",
+      "targetCharacters": 31999,
+      "targetSha256": "89ee6ee7f552abe89b663d44f559be97fa6277479746e59a6530b412e4545e23"
+    }
+  ]
+}
