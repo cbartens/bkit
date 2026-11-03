@@ -635,3 +635,5 @@
 {"type":"workflow-done","workflow":"debug","at":"2026-11-02T23:33:14Z","parentSha":"a475e9bbf2b701b47761203b828f3b6c71e54aa7","ending":"done"}
 {"type":"workflow-failed","workflow":"debug","at":"2026-11-02T23:33:56Z"}
 {"type":"engine-action","action":"comment","key":"debug/1/failure/11/2/comment","hash":"519e44f66006c818b8a40cf094120d64a916a76c3c49c337a5034b603cee5c14","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6591218080","at":"2026-11-02T23:33:57Z"}
+{"type":"workflow-failed","workflow":"debug","at":"2026-11-03T00:48:41Z"}
+{"type":"engine-action","action":"comment","key":"debug/1/failure/2/1/comment","hash":"ea4aae6c9c50831ce7c80e9c99bfb979c55043ed0c29573c0326ac615f6d56f7","ref":"https://github.com/cbartens/bkit/issues/748#issuecomment-6592385267","at":"2026-11-03T00:48:42Z"}
