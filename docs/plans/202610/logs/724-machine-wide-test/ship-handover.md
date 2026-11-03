@@ -18,7 +18,6 @@ None. The four existing declared deferrals passed triage as Exempt; no new defer
 
 ## Attempt History
 
-<!-- prettier-ignore -->
 | Strategy | Action and outcome |
 | --- | --- |
 | STANDARD | Integrated `dev` and pushed `8543394a21a5e65de7f97c8fcc1d737e1562a3e6`; local push checks passed. |

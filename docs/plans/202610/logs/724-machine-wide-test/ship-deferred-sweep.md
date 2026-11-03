@@ -10,7 +10,6 @@ Lazy: 0
 
 The plan is `docs/plans/202610/724-machine-wide-test-plan.md`. Its Acceptance Scenario sections (from line 67), task DONE WHEN criteria (lines 749–1032), and newer owner answers in `ship-input-1.md` define the intended outcomes. The newer owner answers govern worker arithmetic, cancellation, adoption, and push retry behavior. Review date: 2026-11-03. No design file was present.
 
-<!-- prettier-ignore -->
 | Intended deliverable and plan source | Status | Source evidence and assessment |
 | --- | --- | --- |
 | Task 1: general named machine lock, rename, preserved unnamed stack compatibility; DONE WHEN line 749 | Delivered | `.bkit/templates/scripts/ci/bkit-machine-lock.sh`, functions `bkit_lock_file`, holder reporting and unnamed compatibility branch; adopted `scripts/ci/bkit-machine-lock.sh`. Fresh `/bin/bash -n` and template/adopted `cmp` both exited 0. The legacy compatibility scenarios survive in `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`; Group 1 verification attempt 3 passed. The scanner separately treats the old test path deletion as blocking below. |
@@ -40,7 +39,6 @@ It exited 1 and returned 107 disabled-test hits in 12 files. The first attempt c
 
 These are scanner findings, not 107 independently established runtime regressions. The scanner also detects assertion deletion during a file rename and can associate a removed assertion with an adjacent test name. In particular, the legacy stack-lock test file was renamed and its compatibility scenarios are present in the machine-lock suite. Representative diffs also show deletion of the resolve-push-base test file, removal of accepted-divergence tests from ci-scripts, and removal of workflow-shape checks. The prescribed rule does not authorize waiving these returned entries based on relocation or attribution concerns.
 
-<!-- prettier-ignore -->
 | ID | Source evidence reported by scan | Test name or assertion reported by scan |
 | --- | --- | --- |
 | B001 | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts:450` | ${host}: an edit payload with no file path is ignored |
@@ -155,7 +153,6 @@ These are scanner findings, not 107 independently established runtime regression
 
 The plan declares the following scope exclusions at lines 397–400. The first three also trace to the issue input; later plan/owner updates govern the final scope. `bkit ledgers triage --fid=724-machine-wide-test --plan=docs/plans/202610/724-machine-wide-test-plan.md` exited 0, classified all four rows Exempt, and wrote zero rows.
 
-<!-- prettier-ignore -->
 | Key | Status; declared where and when | Uncovered work and verified reason |
 | --- | --- | --- |
 | `724-upstream-consumer-load-gate` | Exempt; `docs/deferrals.jsonl:99`, 2026-10-29; plan Out of Scope | Upstreaming a consumer's projected-load/memory overlap gate remains separate. Reason `scope-declared`. Triage: bounded-remediation=true, in-scope-surface=false, no-external-blocker=true, own-declaration=false. |
