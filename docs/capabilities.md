@@ -165,7 +165,7 @@ flowchart LR
     n_bkit_core_engine_checks["checks<br/>251 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1673 symbols · 49 files"]
-    n_bkit_core_engine_install["install<br/>307 symbols · 20 files"]
+    n_bkit_core_engine_install["install<br/>308 symbols · 20 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>184 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>62 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>149 symbols · 13 files<br/>1 open finding"]
@@ -174,7 +174,7 @@ flowchart LR
   n_bkit_core_engine_commands -->|356| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|356| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|204| n_bkit_core_engine_install
-  n_bkit_core_engine_install -->|169| n_bkit_core_engine_shared
+  n_bkit_core_engine_install -->|170| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|131| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|83| n_bkit_core_engine_checks
   n_bkit_core_engine_install -->|61| n_bkit_core_engine_render
@@ -343,7 +343,7 @@ flowchart LR
         n_bkit_core_engine_install_modules_antigravity["antigravity<br/>7 symbols · 1 files"]
         n_bkit_core_engine_install_modules_claude["claude<br/>6 symbols · 1 files"]
         n_bkit_core_engine_install_modules_codex["codex<br/>5 symbols · 1 files"]
-        n_bkit_core_engine_install_modules_core["core<br/>76 symbols · 1 files"]
+        n_bkit_core_engine_install_modules_core["core<br/>77 symbols · 1 files"]
         n_bkit_core_engine_install_modules_cursor["cursor<br/>3 symbols · 1 files"]
         n_bkit_core_engine_install_modules_opencode["opencode<br/>10 symbols · 1 files"]
       end
@@ -433,6 +433,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_runs -->|13| n_bkit_core_engine_commands_workflow_prs
   n_bkit_core_engine_commands_workflow_tests -->|13| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_worktrees -->|13| n_bkit_core_engine_commands_workflow_ledgers
+  n_bkit_core_engine_install_modules_core -->|13| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_render_hosts -->|13| n_bkit_core_engine_render_models
   n_bkit_core_engine_checks_tips_catalogue -->|13| n_bkit_core_engine_checks_tips_detect
   n_bkit_core_engine_commands_install_upgrade -->|12| n_bkit_core_engine_render_models
@@ -444,7 +445,6 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_runs -->|12| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_runtime -->|12| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_install_modules_core -->|12| n_bkit_core_engine_shared_json
-  n_bkit_core_engine_install_modules_core -->|12| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_checks_after_index -->|11| n_bkit_core_engine_checks_after_tools
   n_bkit_core_engine_commands_analysis -->|11| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_install_uninstall -->|11| n_bkit_core_engine_shared_package_roots
@@ -452,6 +452,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_branches -->|11| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_steps -->|11| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_tracker -->|11| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_install_modules_core -->|11| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_render_models
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_shared_settings -->|11| n_bkit_core_engine_install_manifest
@@ -469,7 +470,6 @@ flowchart LR
   n_bkit_core_engine_install_modules_antigravity -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_claude -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_codex -->|10| n_bkit_core_engine_install_modules_core
-  n_bkit_core_engine_install_modules_core -->|10| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_install_modules_core -->|10| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_cursor -->|10| n_bkit_core_engine_install_modules_core
   n_bkit_core_engine_install_modules_index -->|10| n_bkit_core_engine_install_modules_core
