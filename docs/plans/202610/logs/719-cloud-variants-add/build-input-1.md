@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-/bkit-build #719
+[$bkit-build](/Users/christian/Documents/GitHub/bkit/.agents/skills/bkit-build/SKILL.md) #719 continue build, was interrupted, rebase to dev first
 
 ## Issue description — oldest
 
@@ -135,7 +135,7 @@ The other tasks were flagged and checked, and they still hold. Tasks 1 and 6 mat
 
 **Commit:** 48f18a38a on local `dev` (not pushed yet).
 
-## Plan — docs/plans/202610/719-cloud-variants-add-plan.md — last committed 2026-11-01T12:16:54.000Z
+## Plan — docs/plans/202610/719-cloud-variants-add-plan.md — last committed 2026-11-02T01:56:37.000Z
 
 <!-- bkit:anchor
 baseSha: 0f039fde31249ef249c00a2fb9814c5c68d2abed
@@ -766,7 +766,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
+- [x] **TASK 1:** `terminal` fact on `bkit issues fetch` (`719-issues-fetch-terminal-fact`)
   - **UPDATE:** `fetchIssue` in `.bkit/core/engine/commands/workflow/tracker.ts`: every tracker's result carries `terminal` from one helper; Linear fetch query asks `state { name type }`; Jira fetch (`JIRA_TOOLS.getIssue`, `view: "evidence"`) reads `fields.status.statusCategory.key`, requesting that field explicitly if the evidence view omits it (record which in the code comment beside the call)
   - **UPDATE:** `readBlockers` in `.bkit/core/engine/commands/workflow/tracker.ts`: `open` = not the shared helper's `terminal`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.test.ts`: `fetch` facts case for `terminal` on stdout and in `issue-facts.json`
