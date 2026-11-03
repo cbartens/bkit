@@ -33,7 +33,8 @@ Install the latest `@cbartens/bkit` in this repo and finish setup.
    Writes `.agents/`, `.claude/`, `.cursor/` and the `bkit:gate:*` `package.json` scripts, and copies the templates (CI workflow, hooks, tool configs) into `.bkit/templates/` without applying them. `.bkit/templates.md` lists each template plus the tool scripts and devDeps the gates chain.
 3. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why. Then § Setup tips: follow each tip's **Agent steps** unless the person declines it.
 4. Read `.bkit/templates.md`, then compare each template in `.bkit/templates/` (CI workflows, git hooks, lint and Vale configs, Cursor config, dependency updaters, etc.) with this repo. bkit never applies templates, so adoption is your job: adopt unless adoption would break existing functionality. For any template not adopted, state which and why.
-5. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
+5. Reconcile every permanent skill through `.agents/skills.md` § Install / Update, including the project's own rows. Verify each skill file and installer-generated lock entry, and review its activation boundaries.
+6. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons), skills reconciled or incomplete (with errors).
 ````
 
 ### Upgrade — already installed
@@ -49,7 +50,8 @@ Upgrade `@cbartens/bkit` to the latest version in this repo and finish the resyn
    Do **not** only `pnpm add @cbartens/bkit@latest` — that refreshes the package without resyncing managed files.
 2. Read `.bkit/advisories.md` end-to-end. For every `[advisory]`/`[blocker]`: apply its **Action** unless truly N/A. If you skip, state advisory id and why. Then § Setup tips: follow each tip's **Agent steps** unless the person declines it.
 3. Read the template changes `bkit upgrade` printed (or `git diff .bkit/templates`), then `.bkit/templates.md`. bkit never applies templates, so adoption is your job: adopt each change unless it would break existing functionality. For any change not adopted, state which and why.
-4. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons).
+4. Reconcile every permanent skill through `.agents/skills.md` § Install / Update, including the project's own rows. Verify each skill file and installer-generated lock entry, and review its activation boundaries.
+5. Re-run `bkit check` (or `pnpm bkit check`). Fix remaining drift/advisories you can. End with: resolved version, advisories applied, advisories skipped (with reasons), templates adopted/skipped (with reasons), skills reconciled or incomplete (with errors).
 ````
 
 ## Install
@@ -70,7 +72,8 @@ Run these in order on a brand-new consumer repo.
 | 1 | `pnpm add -D @cbartens/bkit` — no token, no registry mapping | this section |
 | 2 | Run `bkit install --claude --cursor` to seed both hosts (writes `.bkit/.env.example`; `.envrc` is a template in `.bkit/templates/`) | this section |
 | 3 | Set up direnv + `.bkit/.env` for `BKIT_GH_TOKEN` (GitHub MCP), `BKIT_LINEAR_API_KEY` or `BKIT_JIRA_API_KEY` — no registry token | [§ Local env setup](#local-env-setup) |
-| 4 | Push to a feature branch and verify CI runs green | — |
+| 4 | Reconcile permanent third-party skills and their lock entries | `.agents/skills.md` § Install / Update |
+| 5 | Push to a feature branch and verify CI runs green | — |
 
 No CI step, secret, `.npmrc` mapping or Vercel env is needed, because CI reaches npmjs anonymously.
 

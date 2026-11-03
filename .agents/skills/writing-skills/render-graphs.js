@@ -13,9 +13,9 @@
  * Requires: graphviz (dot) installed on system
  */
 
-const fs = require("fs");
-const path = require("path");
-const { execSync } = require("child_process");
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
 
 function extractDotBlocks(markdown) {
   const blocks = [];
@@ -38,12 +38,12 @@ function extractDotBlocks(markdown) {
 function extractGraphBody(dotContent) {
   // Extract just the body (nodes and edges) from a digraph
   const match = dotContent.match(/digraph\s+\w+\s*\{([\s\S]*)\}/);
-  if (!match) return "";
+  if (!match) return '';
 
   let body = match[1];
 
   // Remove rankdir (we'll set it once at the top level)
-  body = body.replace(/^\s*rankdir\s*=\s*\w+\s*;?\s*$/gm, "");
+  body = body.replace(/^\s*rankdir\s*=\s*\w+\s*;?\s*$/gm, '');
 
   return body.trim();
 }
@@ -54,10 +54,7 @@ function combineGraphs(blocks, skillName) {
     // Wrap each subgraph in a cluster for visual grouping
     return `  subgraph cluster_${i} {
     label="${block.name}";
-    ${body
-      .split("\n")
-      .map((line) => "  " + line)
-      .join("\n")}
+    ${body.split('\n').map(line => '  ' + line).join('\n')}
   }`;
   });
 
@@ -66,19 +63,19 @@ function combineGraphs(blocks, skillName) {
   compound=true;
   newrank=true;
 
-${bodies.join("\n\n")}
+${bodies.join('\n\n')}
 }`;
 }
 
 function renderToSvg(dotContent) {
   try {
-    return execSync("dot -Tsvg", {
+    return execSync('dot -Tsvg', {
       input: dotContent,
-      encoding: "utf-8",
-      maxBuffer: 10 * 1024 * 1024,
+      encoding: 'utf-8',
+      maxBuffer: 10 * 1024 * 1024
     });
   } catch (err) {
-    console.error("Error running dot:", err.message);
+    console.error('Error running dot:', err.message);
     if (err.stderr) console.error(err.stderr.toString());
     return null;
   }
@@ -86,24 +83,24 @@ function renderToSvg(dotContent) {
 
 function main() {
   const args = process.argv.slice(2);
-  const combine = args.includes("--combine");
-  const skillDirArg = args.find((a) => !a.startsWith("--"));
+  const combine = args.includes('--combine');
+  const skillDirArg = args.find(a => !a.startsWith('--'));
 
   if (!skillDirArg) {
-    console.error("Usage: render-graphs.js <skill-directory> [--combine]");
-    console.error("");
-    console.error("Options:");
-    console.error("  --combine    Combine all diagrams into one SVG");
-    console.error("");
-    console.error("Example:");
-    console.error("  ./render-graphs.js ../subagent-driven-development");
-    console.error("  ./render-graphs.js ../subagent-driven-development --combine");
+    console.error('Usage: render-graphs.js <skill-directory> [--combine]');
+    console.error('');
+    console.error('Options:');
+    console.error('  --combine    Combine all diagrams into one SVG');
+    console.error('');
+    console.error('Example:');
+    console.error('  ./render-graphs.js ../subagent-driven-development');
+    console.error('  ./render-graphs.js ../subagent-driven-development --combine');
     process.exit(1);
   }
 
   const skillDir = path.resolve(skillDirArg);
-  const skillFile = path.join(skillDir, "SKILL.md");
-  const skillName = path.basename(skillDir).replace(/-/g, "_");
+  const skillFile = path.join(skillDir, 'SKILL.md');
+  const skillName = path.basename(skillDir).replace(/-/g, '_');
 
   if (!fs.existsSync(skillFile)) {
     console.error(`Error: ${skillFile} not found`);
@@ -112,25 +109,25 @@ function main() {
 
   // Check if dot is available
   try {
-    execSync("which dot", { encoding: "utf-8" });
+    execSync('which dot', { encoding: 'utf-8' });
   } catch {
-    console.error("Error: graphviz (dot) not found. Install with:");
-    console.error("  brew install graphviz    # macOS");
-    console.error("  apt install graphviz     # Linux");
+    console.error('Error: graphviz (dot) not found. Install with:');
+    console.error('  brew install graphviz    # macOS');
+    console.error('  apt install graphviz     # Linux');
     process.exit(1);
   }
 
-  const markdown = fs.readFileSync(skillFile, "utf-8");
+  const markdown = fs.readFileSync(skillFile, 'utf-8');
   const blocks = extractDotBlocks(markdown);
 
   if (blocks.length === 0) {
-    console.log("No ```dot blocks found in", skillFile);
+    console.log('No ```dot blocks found in', skillFile);
     process.exit(0);
   }
 
   console.log(`Found ${blocks.length} diagram(s) in ${path.basename(skillDir)}/SKILL.md`);
 
-  const outputDir = path.join(skillDir, "diagrams");
+  const outputDir = path.join(skillDir, 'diagrams');
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir);
   }
@@ -149,7 +146,7 @@ function main() {
       fs.writeFileSync(dotPath, combined);
       console.log(`  Source: ${skillName}_combined.dot`);
     } else {
-      console.error("  Failed to render combined diagram");
+      console.error('  Failed to render combined diagram');
     }
   } else {
     // Render each separately

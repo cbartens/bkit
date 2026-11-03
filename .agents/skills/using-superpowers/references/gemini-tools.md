@@ -2,9 +2,8 @@
 
 Skills use Claude Code tool names. When you encounter these in a skill, use your platform equivalent:
 
-<!-- prettier-ignore -->
 | Skill references | Gemini CLI equivalent |
-| --- | --- |
+|-----------------|----------------------|
 | `Read` (file reading) | `read_file` |
 | `Write` (file creation) | `write_file` |
 | `Edit` (file editing) | `replace` |
@@ -25,9 +24,8 @@ Gemini CLI has no equivalent to Claude Code's `Task` tool. Skills that rely on s
 
 These tools are available in Gemini CLI but have no Claude Code equivalent:
 
-<!-- prettier-ignore -->
 | Tool | Purpose |
-| --- | --- |
+|------|---------|
 | `list_directory` | List files and subdirectories |
 | `save_memory` | Persist facts to GEMINI.md across sessions |
 | `ask_user` | Request structured input from the user |

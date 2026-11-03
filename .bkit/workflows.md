@@ -237,7 +237,8 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **No issue** | Contract | design, plan, build, debug, ship | `ISSUE_ID` empty → run issue-less: no issue-tied tracker read, label, comment or board call; emit the no-issue warning once `FID` is held (§ Best-effort runs (no issue, no plan)). |
 | **Limits** | Contract | build, debug, ship | Each ask point's `ask` and limit from `package.json` `bkit.workflows.<workflow>.<point>`, frozen in the run's `workflow-started` row and read by `bkit counters route --point=` / `bkit counters max --point=` with `--file` and `--workflow` (§ Ask points). |
 | **Modes** | Contract | debug | `PUSH_MODE` (`PR\|LOCAL`) and `DEBUG_MODE` (`NORMAL\|SOAK`), both set at Step 1. |
-| **External input** | Rules | all 6 | The `external-input` clause shared with every prompt and `.agents/rules.md`; sole bullet of the Rules block. |
+| **External input** | Rules | all 6 | The `external-input` clause shared with every prompt and `.agents/rules.md`. |
+| **External skills** | Rules | all 6 | The `external-skills` clause shared with every prompt and `.agents/rules.md`. |
 
 ### Cross-step invariants
 

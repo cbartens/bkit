@@ -396,17 +396,9 @@ The orchestrator reads the workflow in `.cursor/commands/`. It runs subagents th
 
 ## Adding or updating skills
 
-> Skills must be installed before their first use. The initial setup is in `docs/setup.md`, and the inventory and registry rules are in `.agents/skills.md`.
+> Permanent skills, installation checks and activation boundaries live in `.agents/skills.md`. Follow its § Install / Update before first use and after a bkit upgrade.
 
-Skills are third-party instruction sets, loaded when invoked.
-
-```bash
-npx skills find [query]                  # search the registry (check publisher / installs / stars)
-npx skills add <owner/repo>@<skill> -y   # install one named skill, project-locally into .agents/skills/
-npx skills update                 # update all installed
-```
-
-The installed list is `.agents/skills.md`. Ship Step 7 (Prune Skills) prunes each skill in `.agents/skills/` that the list does not name.
+Skills are third-party instruction sets, loaded for a matching task. The registry declares which skills survive Ship Step 7 (Prune Skills); the skill files and `skills-lock.json` record their installation. Adding a registry row alone does not install a skill.
 
 ---
 

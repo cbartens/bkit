@@ -24,7 +24,6 @@ If you haven't completed Phase 1, you cannot propose fixes.
 ## When to Use
 
 Use for ANY technical issue:
-
 - Test failures
 - Bugs in production
 - Unexpected behavior
@@ -33,7 +32,6 @@ Use for ANY technical issue:
 - Integration issues
 
 **Use this ESPECIALLY when:**
-
 - Under time pressure (emergencies make guessing tempting)
 - "Just one quick fix" seems obvious
 - You've already tried multiple fixes
@@ -41,7 +39,6 @@ Use for ANY technical issue:
 - You don't fully understand the issue
 
 **Don't skip when:**
-
 - Issue seems simple (simple bugs have root causes too)
 - You're in a hurry (rushing guarantees rework)
 - Manager wants it fixed NOW (systematic is faster than thrashing)
@@ -77,7 +74,6 @@ You MUST complete each phase before proceeding to the next.
    **WHEN system has multiple components (CI → build → signing, API → service → database):**
 
    **BEFORE proposing fixes, add diagnostic instrumentation:**
-
    ```
    For EACH component boundary:
      - Log what data enters component
@@ -91,7 +87,6 @@ You MUST complete each phase before proceeding to the next.
    ```
 
    **Example (multi-layer system):**
-
    ```bash
    # Layer 1: Workflow
    echo "=== Secrets available in workflow: ==="
@@ -220,7 +215,6 @@ You MUST complete each phase before proceeding to the next.
 ## Red Flags - STOP and Follow Process
 
 If you catch yourself thinking:
-
 - "Quick fix for now, investigate later"
 - "Just try changing X and see if it works"
 - "Add multiple changes, run tests"
@@ -240,7 +234,6 @@ If you catch yourself thinking:
 ## your human partner's Signals You're Doing It Wrong
 
 **Watch for these redirections:**
-
 - "Is that not happening?" - You assumed without verifying
 - "Will it show us...?" - You should have added evidence gathering
 - "Stop guessing" - You're proposing fixes without understanding
@@ -251,9 +244,8 @@ If you catch yourself thinking:
 
 ## Common Rationalizations
 
-<!-- prettier-ignore -->
 | Excuse | Reality |
-| --- | --- |
+|--------|---------|
 | "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
 | "Emergency, no time for process" | Systematic debugging is FASTER than guess-and-check thrashing. |
 | "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
@@ -265,9 +257,8 @@ If you catch yourself thinking:
 
 ## Quick Reference
 
-<!-- prettier-ignore -->
 | Phase | Key Activities | Success Criteria |
-| --- | --- | --- |
+|-------|---------------|------------------|
 | **1. Root Cause** | Read errors, reproduce, check changes, gather evidence | Understand WHAT and WHY |
 | **2. Pattern** | Find working examples, compare | Identify differences |
 | **3. Hypothesis** | Form theory, test minimally | Confirmed or new hypothesis |
@@ -293,14 +284,12 @@ These techniques are part of systematic debugging and available in this director
 - **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
 
 **Related skills:**
-
 - **superpowers:test-driven-development** - For creating failing test case (Phase 4, Step 1)
 - **superpowers:verification-before-completion** - Verify fix worked before claiming success
 
 ## Real-World Impact
 
 From debugging sessions:
-
 - Systematic approach: 15-30 minutes to fix
 - Random fixes approach: 2-3 hours of thrashing
 - First-time fix rate: 95% vs 40%
