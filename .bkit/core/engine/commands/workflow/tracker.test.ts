@@ -278,6 +278,14 @@ describe("trackerTarget", () => {
 // ---------------------------------------------------------------------------
 
 describe("splitAt", () => {
+  it("refuses aggregation with an unverified provider budget", () => {
+    const render: (body: string, limit: number, options: { verifiedBudget: boolean }) => string[] =
+      splitAt;
+    const body = stampMarker(`###### bkit:generated\n${"😀".repeat(100)}`);
+    expect(render(body, 101, { verifiedBudget: false })).toEqual([body]);
+    expect(render(body, 101, { verifiedBudget: true }).length).toBeGreaterThan(1);
+  });
+
   it("budgets the entire encoded body at limit and overflow", () => {
     const limit = JIRA_COMMENT_LIMIT;
     const marker = stampMarker("###### bkit:generated\nreport").split("\n")[0]!;
@@ -333,6 +341,149 @@ describe("splitAt", () => {
 });
 
 describe("progress inspection", () => {
+  it("edits by verified comment id through each existing transport", async () => {
+    const edit: (
+      target: Parameters<typeof postComment>[0],
+      body: string,
+      options: { commentId: string },
+    ) => ReturnType<typeof postComment> = postComment;
+    const body = stampMarker("###### bkit:generated\nupdated section 😀");
+    gh.resp(
+      "repos/o/r/issues/comments/101",
+      JSON.stringify({
+        id: 101,
+        body,
+        html_url: "https://github.com/o/r/issues/12#issuecomment-101",
+        user: { id: 7 },
+        created_at: "2026-11-01T01:01:00Z",
+        updated_at: "2026-11-01T01:02:00Z",
+      }),
+    );
+    const edited = await edit(trackerTarget(github(), { issue: "12" }), body, {
+      commentId: "101",
+    });
+    expect(gh.calls()).toEqual(["api repos/o/r/issues/comments/101 --method PATCH --input -"]);
+    expect(JSON.parse(gh.stdin(1))).toEqual({ body });
+    expect(edited.evidence).toMatchObject({ id: "101", fingerprint: actionHash(body) });
+
+    process.env.BKIT_LINEAR_API_KEY = "linear-test-key";
+    const calls = stubFetch(
+      json({
+        data: {
+          commentUpdate: {
+            success: true,
+            comment: {
+              id: "comment-101",
+              body,
+              url: "https://linear.app/issue/comment-101",
+              user: { id: "author-7" },
+              createdAt: "2026-11-01T01:01:00Z",
+              updatedAt: "2026-11-01T01:02:00Z",
+            },
+          },
+        },
+      }),
+    );
+    const linearEdited = await edit(trackerTarget(linear(), { issue: "ENG-12" }), body, {
+      commentId: "comment-101",
+    });
+    const request = bodyOf(calls[0]!.init);
+    expect(request.query).toContain("commentUpdate");
+    expect(request.query).not.toContain("commentCreate");
+    expect(request.variables).toEqual({ id: "comment-101", input: { body } });
+    expect(linearEdited.evidence).toMatchObject({
+      id: "comment-101",
+      fingerprint: actionHash(body),
+    });
+
+    process.env.BKIT_JIRA_API_KEY = "jira-test-key";
+    const unsupportedCalls = stubFetch();
+    await expect(
+      edit(trackerTarget(jira(), { issue: "PROJ-12" }), body, { commentId: "101" }),
+    ).rejects.toBeInstanceOf(TrackerError);
+    expect(unsupportedCalls).toHaveLength(0);
+  });
+
+  it("seals unavailable or unstable representation evidence", async () => {
+    const f = progressFixture();
+    const stable = {
+      id: "IC_101",
+      databaseId: 101,
+      body: f.body,
+      url: f.url,
+      author: { __typename: "Bot", id: "U_7", databaseId: 7 },
+      createdAt: "2026-11-01T01:01:00Z",
+      updatedAt: "2026-11-01T01:01:00Z",
+    };
+    const unavailable = [
+      { ...stable, createdAt: null },
+      { ...stable, updatedAt: null },
+      { ...stable, updatedAt: "not-a-timestamp" },
+      { ...stable, body: null },
+    ];
+    for (const node of unavailable) {
+      gh.resp(
+        "graphql",
+        JSON.stringify({
+          data: {
+            repository: {
+              issue: {
+                comments: {
+                  nodes: [node],
+                  pageInfo: { hasPreviousPage: false },
+                },
+              },
+            },
+          },
+        }),
+      );
+      const inspected = await recentComments(f.target, 1);
+      expect(inspected).toHaveLength(1);
+      expect(inspected[0]?.evidence).toBeUndefined();
+    }
+    expect(gh.calls().every((call) => !call.includes("--method PATCH"))).toBe(true);
+  });
+
+  it("uses accepted final preflight eligibility without provider atomicity", async () => {
+    const f = progressFixture();
+    const node = {
+      id: "IC_101",
+      databaseId: 101,
+      body: f.body,
+      url: f.url,
+      author: { __typename: "Bot", id: "U_7", databaseId: 7 },
+      createdAt: "2026-11-01T01:01:00Z",
+      updatedAt: "2026-11-01T01:01:00Z",
+    };
+    const page = (author: unknown) =>
+      JSON.stringify({
+        data: {
+          repository: {
+            issue: {
+              comments: {
+                nodes: [{ ...node, author }],
+                pageInfo: { hasPreviousPage: false },
+              },
+            },
+          },
+        },
+      });
+    gh.resp("graphql", page(node.author));
+    const inspected = await recentComments(f.target, 1);
+    expect(inspected[0]?.evidence).toMatchObject({
+      id: "101",
+      authorId: "7",
+      createdAt: node.createdAt,
+      updatedAt: node.updatedAt,
+      fingerprint: actionHash(f.body),
+      representation: "markdown",
+    });
+    gh.resp("graphql", page({ login: "engine" }));
+    const unknownOwner = await recentComments(f.target, 1);
+    expect(unknownOwner[0]?.evidence?.authorId).toBeNull();
+    expect(gh.calls().every((call) => !call.includes("--method PATCH"))).toBe(true);
+  });
+
   it("rejects marker preserving external edits", async () => {
     const f = progressFixture();
     const original = await recentComments(f.target, 1);

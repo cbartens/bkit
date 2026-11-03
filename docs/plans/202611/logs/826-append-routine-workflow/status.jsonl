@@ -227,3 +227,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T01:33:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6593058362","at":"2026-11-03T01:33:05Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-03T01:33:05Z","parentSha":"0ba7e190b700ae82f1208e8e268f2ab30aee11e5","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:33:08Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:33:09Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:33:25Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-03T01:33:25Z","parentSha":"6bd8532360ee2c9beb3b982605b0238f70e62c84","artifacts":[],"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:33:25Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:37:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-tests/1/1/comment","hash":"9310cfa62083d556caa88849341d51b7dd83a489769ffbcb0c95a8b69b85e947","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6593124702","at":"2026-11-03T01:37:20Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-03T01:37:20Z","parentSha":"6bd8532360ee2c9beb3b982605b0238f70e62c84","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-tests-1-log.md"],"verdict":"PASS","attempt":1,"group":1}
