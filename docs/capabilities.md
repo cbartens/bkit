@@ -154,7 +154,7 @@ To view online, paste only the lines inside the block below — not the fence li
 ```mermaid
 ---
 config:
-  layout: elk
+  layout: dagre
   themeCSS: "marker { overflow: visible; } marker path { transform: scale(1.8); transform-origin: 5px 5px; }"
   flowchart:
     useMaxWidth: false
@@ -243,7 +243,7 @@ To view online, paste only the lines inside the block below — not the fence li
 ```mermaid
 ---
 config:
-  layout: elk
+  layout: dagre
   themeCSS: "marker { overflow: visible; } marker path { transform: scale(1.8); transform-origin: 5px 5px; }"
   flowchart:
     useMaxWidth: false

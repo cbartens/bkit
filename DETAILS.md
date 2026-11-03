@@ -335,7 +335,7 @@ The ones that matter most, in the order to adopt them:
 ```mermaid
 ---
 config:
-  layout: elk
+  layout: dagre
   themeCSS: "marker { overflow: visible; } marker path { transform: scale(1.8); transform-origin: 5px 5px; }"
   flowchart:
     useMaxWidth: false
