@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFERRAL_WRITERS, KIND_WRITERS } from "../../ledgers/telemetry";
 import { parseText } from "../../shared/text";
@@ -1316,6 +1316,9 @@ describe("bkit steps finish", () => {
 describe("bkit steps finish --post", () => {
   const LOG = "docs/plans/202610/logs/eng-4-x";
   const saved = process.env.BKIT_LINEAR_API_KEY;
+  beforeEach(() => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;

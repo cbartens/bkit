@@ -72,7 +72,7 @@ autoCompactWindow: 300000
 - **Fix code not gates:** Make gates (anything a `bkit:gate:*` script runs) pass by fixing root causes, not by weakening them: no type-system escapes (e.g. TS `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`; Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, error-swallowing, empty catches, or mocking away the units under test. A config change that is genuinely warranted is ONLY a targeted per-file / per-rule opt-out, made after explicit human confirmation. Inside `/bkit-*` workflows, where confirmation is unavailable, record the block per your own blocker contract and continue, without authorising the opt-out yourself.
 - **Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent.
 - **Local tests first:** Exhaust the local test suite and a targeted repro before remote CI. **If** a deployed-boundary / `@live` failure cannot be reproduced locally → review existing evidence first.
-- **Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
+- **Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
 - **Tests discriminate:** Assert on the surface the behaviour changes, so the test fails when the behaviour breaks. Do not assert only a transport status (e.g. HTTP 200) or a proxy surface, and do not mock away the boundary under test.
 - **Test-only files:** Keep mocks and test configs out of the production build (e.g. a `tsconfig.json` `exclude`).
 - **Explicit logging:** Automatic capture (e.g. log drains, change-data capture) does not replace explicit logs. Log each edge case it misses with the project's structured logger, per `docs/observability.md`.
@@ -119,6 +119,9 @@ autoCompactWindow: 300000
 9. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
    - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
 10. Run `bkit tests changed --fallback=bkit:gate:static`. Every local lint and typecheck must pass.
+
+- **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
+
 11. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 12. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.

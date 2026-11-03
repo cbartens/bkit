@@ -95,6 +95,93 @@ afterEach(() => {
 // Canonical .bkit/*.md docs mirrored into the consumer's .bkit/
 // ---------------------------------------------------------------------------
 
+describe("slop plugin migration", () => {
+  const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
+  const oldPlugin = fs.readFileSync(
+    path.join(getPkgRoot(), "tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt"),
+  );
+  const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
+
+  function seed(content: string | Buffer = oldPlugin): void {
+    fs.mkdirSync(path.dirname(plugin), { recursive: true });
+    fs.writeFileSync(plugin, content);
+  }
+
+  function migrate(dryRun = false): WriteSet {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return { writes: ctx.ws.writes.filter((w) => w.path === plugin) };
+  }
+
+  it("replaces the exact shipped copy and records the same unhashed write in dry run", () => {
+    seed();
+    const dry = migrate(true);
+    expect(fs.readFileSync(plugin)).toEqual(oldPlugin);
+    expect(dry.writes).toEqual([{ path: plugin, action: "update", unhashed: true }]);
+    expect(migrate()).toEqual(dry);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(migrate().writes).toEqual([]);
+  });
+
+  it("preserves an edited copy and reports the template to merge by hand", () => {
+    const custom = Buffer.concat([oldPlugin, Buffer.from("\n// consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(plugin)).toEqual(custom);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(plugin));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(`.bkit/templates/${plugin}`));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves an already corrected copy untouched without a manual-update warning", () => {
+    seed(currentPlugin);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("does not adopt a plugin the consumer never copied", () => {
+    expect(migrate().writes).toEqual([]);
+    expect(fs.existsSync(plugin)).toBe(false);
+  });
+
+  function seedSymlink(kind: string): string {
+    fs.mkdirSync("owned", { recursive: true });
+    const target = path.resolve("owned/bkit-slop-type-suppression.mjs");
+    fs.writeFileSync(target, oldPlugin);
+    fs.mkdirSync("scripts", { recursive: true });
+    if (kind === "file") {
+      fs.mkdirSync("scripts/slop");
+      fs.symlinkSync(target, plugin);
+    } else {
+      fs.symlinkSync(path.resolve("owned"), "scripts/slop");
+    }
+    return target;
+  }
+
+  it.each(["file", "directory"])("preserves a symlinked %s and its target", (kind) => {
+    const target = seedSymlink(kind);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(target)).toEqual(oldPlugin);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   // The package's canonical docs source (getBkitDocsRoot) — what runBkitDocs copies from.
   const PKG_DOCS_ROOT = getBkitDocsRoot();

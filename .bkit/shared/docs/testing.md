@@ -313,6 +313,18 @@ A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubr
 - **Test name:** use the name as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
 - **The red test stays:** after the red, the test may gain tests or formatting. A weakened, removed or rewritten assertion fails the build's verify.
 
+## Tests lock
+
+Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bkit/templates.md` § Machine lock). The wrapped script holds the `tests` lock for the whole gate, across repositories. An unwired repository takes no lock.
+
+- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` as `LOCAL_STACK_LOCK_WAIT_S` and their run name as `LOCAL_STACK_LOCK_WHO`; they run the declared gate without executing the lock script itself.
+- `bkit branches push` passes the same wait budget and its run name to Git. When its pre-push hook's gate gives up on the tests lock, it exits 81 with `lockHolder` and reports nothing pushed; the workflow ends the turn and re-runs the block.
+- A tests-lock give-up of this run becomes exit 81 with `lockHolder`, and a tests-lock refusal becomes exit 4. A lock wait writes no `test-run` status row. A gate's own failure or a nested lock's give-up remains a test failure. A raw gate caller sees exit 75 and the holder line.
+- Light runs (`bkit tests red`, `green` and `bkit:test:file`) take no tests lock. Nested wraps reuse the live parent's tests lock. `CI=true` / `CI=1` bypasses locking.
+- `BKIT_TEST_SLOTS` sets the number of tests slots (default 1). The lock exports `BKIT_TEST_WORKERS` for the consumer to pass to its runner.
+- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands).
+- The script defaults to 60 seconds without a TTY when no wait is set. Waiting notes name the holders and their checkouts' earlier run times.
+
 ## JUnit reports for bkit
 
 `bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.

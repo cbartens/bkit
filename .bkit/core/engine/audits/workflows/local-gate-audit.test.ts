@@ -69,6 +69,29 @@ function isExempt(rel: string, pattern: string): boolean {
   return EXEMPT.some((e) => e.rel === rel && e.pattern === pattern);
 }
 
+/** Keep each command fence together with its own following decision list. */
+function commandRoutes(body: string, call: RegExp): Array<{ block: string; route: string }> {
+  return [...body.matchAll(/^[ \t]*```bash\n([\s\S]*?)^[ \t]*```/gm)]
+    .filter((match) => call.test(match[1]!))
+    .map((match) => ({
+      block: match[1]!,
+      route: body.slice(match.index + match[0].length).split(/^[ \t]*```|^#{1,6} /m)[0]!,
+    }));
+}
+
+function expectWaitRoute(route: string, site: string): void {
+  expect(route, site).toMatch(/(?:Route|Decide)[^\n]*:/);
+  const wait = route.split("\n").find((line) => /exit\s+`?81\b/i.test(line));
+  expect(wait, site).toBeDefined();
+  expect(wait, site).toMatch(/end (?:the )?turn/i);
+  expect(wait, site).toMatch(/re-run (?:this |the )?block/i);
+  const otherwise = route.indexOf("**Else**");
+  expect(
+    otherwise < 0 || route.indexOf(wait ?? "") < otherwise,
+    `${site}: wait precedes Else`,
+  ).toBe(true);
+}
+
 /** Canonical files that contain a banned pattern without an exemption for it. */
 function unexemptedHits(pattern: string): string[] {
   return canonicalFiles()
@@ -123,6 +146,49 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 describe("bkit-local-gate-audit (#437)", () => {
+  it("a build close push retry does not repeat workflow close or lose its outputs", () => {
+    const body = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+    const closeBlocks = commandRoutes(body, /\bworkflows close\b/).filter(
+      ({ block }) => !block.includes("--ending=held"),
+    );
+    expect(closeBlocks).toHaveLength(1);
+    const close = closeBlocks[0]!;
+    expect(close.block).toContain("--final-return");
+    expect(close.block).not.toMatch(/\bbranches push\b|\blocks release\b/);
+    const closeAt = body.indexOf(close.block);
+    const pushBlocks = commandRoutes(body.slice(closeAt), /\bbranches push\b/);
+    expect(pushBlocks).toHaveLength(1);
+    const push = pushBlocks[0]!;
+    expect(push.block).not.toMatch(/\broadmap mirror\b|\bworkflows close\b|\blocks release\b/);
+    expectWaitRoute(push.route, "build close push-only retry");
+    const pushAt = body.indexOf(push.block, closeAt);
+    expect(body.lastIndexOf("roadmap mirror", pushAt)).toBeGreaterThanOrEqual(0);
+    const retained = body.slice(closeAt + close.block.length, pushAt);
+    expect(retained).toMatch(/`commentFile`[^\n]*`CLOSE_COMMENT_FILE`/);
+    expect(retained).toMatch(/`tracker`[^\n]*`CLOSE_TRACKER`/);
+    expect(retained).toMatch(/`finalReturn`[^\n]*`FINAL_RETURN`/);
+    const release = commandRoutes(body.slice(pushAt), /\blocks release\b/);
+    expect(release).toHaveLength(1);
+    expect(body.indexOf(release[0]!.block, pushAt)).toBeGreaterThan(
+      pushAt + push.block.length + push.route.length,
+    );
+    expect(push.route).toMatch(/exit 0[^\n]*(?:continue|next|release)/i);
+  });
+
+  it("every prompt that runs bkit tests changed routes exit 81 to a re-run of the command", () => {
+    const callers = GATE_CALLERS.filter(([, call]) => call.startsWith("--fallback=bkit:gate:"));
+    expect(callers).toHaveLength(4);
+    for (const [rel, call] of callers) {
+      const body = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+      const steps = body.split(/\n(?=\d+\. )/);
+      const step = steps.find((part) => part.includes(call));
+      expect(step, rel).toBeDefined();
+      expect(step, rel).toMatch(/\btests changed\b/);
+      expect(step, rel).toMatch(/(?:exit(?:s)?|exit code)\s+`?81\b/i);
+      expect(step, rel).toMatch(/(?:re-run|rerun|run (?:it|the command|that command) again)/i);
+    }
+  });
+
   describe("no toolchain command is inlined at a call site", () => {
     for (const { pattern, why } of BANNED) {
       it(`\`${pattern}\` appears nowhere unexempted — ${why}`, () => {
@@ -182,6 +248,83 @@ describe("bkit-local-gate-audit (#437)", () => {
     },
     { workflow: "bkit-debug.md", step: "", gates: BKIT_DEBUG_GATES, stopsAt: "live", sites: 1 },
   ] as const;
+
+  it("every tests run call site routes exit 81 to a re-run of its block", () => {
+    for (const { workflow, step, sites } of PROBES) {
+      const body = fs.readFileSync(path.join(WORKFLOWS_DIR, workflow), "utf-8");
+      const routes = commandRoutes(body, /\btests run\b/).filter(({ block }) =>
+        block.includes(`--step=${step}`),
+      );
+      expect(routes, `${workflow} ${step}`).toHaveLength(sites);
+      for (const { route } of routes) expectWaitRoute(route, `${workflow} ${step}`);
+    }
+    const all = canonicalFiles().filter(({ rel }) => rel.startsWith(".bkit/core/workflows/"));
+    expect(all.flatMap(({ body }) => commandRoutes(body, /\btests run\b/))).toHaveLength(
+      PROBES.reduce((total, probe) => total + probe.sites, 0),
+    );
+  });
+
+  it("every branches push call site routes exit 81 to a re-run of its block", () => {
+    const pushProbes = [
+      { workflow: "bkit-design.md", sites: 1 },
+      { workflow: "bkit-plan.md", sites: 1 },
+      { workflow: "bkit-build.md", sites: 2 },
+      { workflow: "bkit-debug.md", sites: 5 },
+      { workflow: "bkit-ship.md", sites: 5 },
+    ];
+    for (const { workflow, sites } of pushProbes) {
+      const body = fs.readFileSync(path.join(WORKFLOWS_DIR, workflow), "utf-8");
+      const routes = commandRoutes(body, /\bbranches push\b/);
+      expect(routes, workflow).toHaveLength(sites);
+      for (const { block, route } of routes) {
+        expectWaitRoute(
+          route,
+          `${workflow}: ${block
+            .trim()
+            .split("\n")
+            .find((line) => line.includes("branches push"))}`,
+        );
+        expect(block, `${workflow}: chained push preserves exit 81`).not.toMatch(
+          /branches push[^\n]*\|\|\s*exit\s+1\b/,
+        );
+      }
+    }
+    const all = canonicalFiles().filter(({ rel }) => rel.startsWith(".bkit/core/workflows/"));
+    expect(all.flatMap(({ body }) => commandRoutes(body, /\bbranches push\b/))).toHaveLength(
+      pushProbes.reduce((total, probe) => total + probe.sites, 0),
+    );
+  });
+
+  it("a tests run command a workflow hands a subagent in Context is re-run on exit 81 by that subagent's prompt", () => {
+    const contexts = canonicalFiles()
+      .filter(({ rel }) => rel.startsWith(".bkit/core/workflows/"))
+      .flatMap(({ rel, body }) =>
+        [...body.matchAll(/^\s*Context:.*\btests run\b.*$/gm)].map((match) => ({
+          rel,
+          body,
+          match,
+        })),
+      );
+    expect(contexts.length).toBeGreaterThan(0);
+    for (const { rel, body, match } of contexts) {
+      const step = body
+        .slice(0, match.index)
+        .split(/\n(?=\d+\. )/)
+        .at(-1)!;
+      const agent = [...step.matchAll(/Invoke `@([^`]+)`/g)].at(-1)?.[1];
+      expect(agent, rel).toBeDefined();
+      const prompt = fs.readFileSync(path.join(PROMPTS_DIR, `${agent}.md`), "utf-8");
+      const gateStep = prompt
+        .split(/\n(?=\d+\. )/)
+        .find((part) => part.includes("Context names a group gate"));
+      expect(gateStep, `${agent}: group gate step`).toBeDefined();
+      const retry = gateStep
+        ?.split("\n")
+        .find((line) => /group gate.*exit(?:s)?\s+`?81\b/i.test(line));
+      expect(retry, `${agent}: group gate's own retry`).toBeDefined();
+      expect(retry).toMatch(/run (?:the same |that |the )?command again|re-run/i);
+    }
+  });
 
   /** The ```bash blocks of a workflow that call `bkit tests run`. */
   const testBlocks = (body: string) =>

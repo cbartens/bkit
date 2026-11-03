@@ -21,6 +21,41 @@ function readShip(): string {
   return fs.readFileSync(SHIP_MD, "utf-8");
 }
 
+describe("deferred sweep — disabled-test evidence", () => {
+  const sweep = fs.readFileSync(
+    path.join(REPO_ROOT, ".bkit/core/prompts/bkit-ship-deferred-sweep.md"),
+    "utf-8",
+  );
+  const scan = sweep.slice(sweep.indexOf("8. Scan"), sweep.indexOf("9. Bucket"));
+
+  it("adjudicates every scanner hit against the diff and current coverage", () => {
+    expect(scan).toMatch(/each hit[\s\S]*base revision[\s\S]*current source/i);
+    expect(scan).toMatch(/same behaviour[\s\S]*inputs[\s\S]*failure condition/i);
+    expect(scan).toMatch(/file:line[\s\S]*test name[\s\S]*runner/i);
+    expect(scan).not.toContain("Record every entry under `Blocking Deferrals`");
+  });
+
+  it("requires scoped owner approval and current-contract evidence for retirement", () => {
+    expect(scan).toMatch(/owner-approved retirement/);
+    expect(scan).toMatch(/approval[\s\S]*source[\s\S]*date[\s\S]*retired requirement/i);
+    expect(scan).toMatch(/no current requirement[\s\S]*uncovered/i);
+  });
+
+  it("blocks scan errors, real disabling markers and unproven deletions", () => {
+    expect(scan).toMatch(/scan fails[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/disabling marker[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/neither[\s\S]*proven[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/Verdict.*FAIL/);
+    expect(scan).toMatch(/never[\s\S]*Exempt[\s\S]*Lazy/);
+  });
+
+  it("records each disposition and requires complete adjudication before PASS", () => {
+    expect(sweep).toContain("## Test Coverage Review");
+    expect(sweep).toMatch(/PASS.*every scanner hit is adjudicated/);
+    expect(sweep).toMatch(/FAIL.*scan error.*unresolved scanner hit/);
+  });
+});
+
 /** Inclusive range: first line matching `start`, through the next line matching `end`. */
 function section(content: string, start: RegExp, end: RegExp): string {
   const lines = content.split("\n");

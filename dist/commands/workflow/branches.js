@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
-import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, classifyLockExit, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, testsLockHolder, wholeNumber, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
@@ -30,7 +30,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
-import { declaredName } from "./test-blocks.js";
+import { declaredName, testSource } from "./test-blocks.js";
 import { addAllButCopied, copyExcludes, hasLeftovers, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, scriptCommand, } from "../../shared/package-manager.js";
 import { readPackageJson } from "../../shared/package-json.js";
@@ -674,6 +674,25 @@ function rebaseOrigHead(top) {
     }
     return null;
 }
+/** Git collapses a failing pre-push hook's status; classify its exact tests-lock markers. */
+function runPush(cwd, args, branch) {
+    const who = `bkit branches push ${branch}`;
+    const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
+    const res = runGit(cwd, args, {
+        LOCAL_STACK_LOCK_WAIT_S: String(wait),
+        LOCAL_STACK_LOCK_WHO: who,
+    });
+    const log = [res.stdout, res.stderr].filter(Boolean).join("\n");
+    const lockHolder = res.ok ? null : testsLockHolder(log, who);
+    const outcome = res.ok
+        ? "gate"
+        : classifyLockExit({ exitCode: lockHolder === null ? 73 : 75, log, who });
+    return {
+        ...res,
+        lockHolder,
+        lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
+    };
+}
 /**
  * Push the current branch with exactly one `git push`: plain for dev / main,
  * `--force-with-lease` otherwise. `abort` never pushes into an open PR (`openPr`:
@@ -767,10 +786,10 @@ export async function pushBranch(cwd, o, log) {
         REMOTE,
         branch,
     ];
-    const res = runGit(cwd, args);
+    const res = runPush(cwd, args, branch);
     if (!res.ok) {
         log(`git ${args.join(" ")} failed: ${res.stderr}`);
-        return notPushed(EXIT_PUSH_FAILED);
+        return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
     }
     log(`pushed ${branch}${shared ? "" : " (--force-with-lease)"}`);
     return {
@@ -826,10 +845,10 @@ function pushPlain(cwd, branch, o, log, notPushed) {
         return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
     }
     const args = ["push", ...(o.setUpstream === true ? ["-u"] : []), REMOTE, branch];
-    const res = runGit(cwd, args);
+    const res = runPush(cwd, args, branch);
     if (!res.ok) {
         log(`git ${args.join(" ")} failed: ${res.stderr}`);
-        return notPushed(EXIT_PUSH_FAILED);
+        return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
     }
     log(`pushed ${branch}`);
     return {
@@ -952,7 +971,7 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
             REMOTE,
             `${last}:refs/heads/${rec.branch}`,
         ];
-        const res = runGit(cwd, args);
+        const res = runPush(cwd, args, rec.branch);
         if (res.ok) {
             log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
             return {
@@ -968,6 +987,10 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
                     mergedDev: false,
                 },
             };
+        }
+        if (res.lockExit !== null) {
+            log(`git ${args.join(" ")} failed: ${res.stderr}`);
+            return notPushed(res.lockExit, { lockHolder: res.lockHolder });
         }
         log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
     }
@@ -1081,7 +1104,9 @@ async function pushVerb(ctx) {
     }, ctx.log);
     // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
     if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV) {
-        ctx.emit(marker === undefined ? r.out : { ...r.out, commit: marker.sha, deduped: marker.deduped });
+        ctx.emit(marker === undefined
+            ? { lockHolder: null, ...r.out }
+            : { lockHolder: null, ...r.out, commit: marker.sha, deduped: marker.deduped });
     }
     return r.code;
 }
@@ -1173,18 +1198,7 @@ function testAt(body, line, at) {
     }
     return line.trim();
 }
-/** The test a removed line sits in when its file is gone: the nearest removed declaration above it. */
-function goneTestAt(lines, at, line) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].at > at)
-            continue;
-        const name = declaredName(lines[i].text);
-        if (name !== null)
-            return name;
-    }
-    return line.trim();
-}
-const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 /**
  * The text of the regular file `rel` names under `root`, or null when it is missing, a
  * symlink, or resolves outside `root` — so a diff path never opens a file the repo does not hold.
@@ -1206,10 +1220,10 @@ function inRepoFile(root, rel) {
     return fs.readFileSync(abs, "utf-8");
 }
 /**
- * The added lines of a `--no-renames` unified diff that disable a test, and the removed
- * assertion lines of a test file whose added assertion lines no longer outnumber them: each
- * with its line and the test it sits in. A deleted test file reports its removed assertions
- * by their old line, since it has no new file left.
+ * Unmatched disabled markers and removed assertion occurrences in a unified diff.
+ * Exact moves consume one added occurrence; cross-file moves require unchanged test context.
+ * Rewritten assertions pair only inside the same file and test. Removed lines retain their
+ * original test name; a deleted file uses old line numbers, otherwise the new hunk position.
  */
 export function disabledTestsIn(diff, root) {
     const out = [];
@@ -1219,18 +1233,23 @@ export function disabledTestsIn(diff, root) {
             bodies.set(rel, inRepoFile(root, rel));
         return bodies.get(rel);
     };
-    /** Added assertion lines per test file, so a rewritten or moved assertion is not a drop. */
-    const added = new Map();
+    const added = [];
     const removed = [];
-    /** Removed lines per file, by their old line — the only body a deleted file has left. */
-    const erased = new Map();
-    /** Files the diff deletes: their `+++` is `/dev/null`, so the `---` path names them. */
-    const deleted = new Set();
+    const addedMarkers = [];
+    const removedMarkers = [];
+    const patches = new Map();
     let file = "";
     let from = "";
+    let deleted = false;
+    let current;
     let next = 0;
     let old = 0;
     for (const raw of diff.split("\n")) {
+        if (raw.startsWith("diff --git ")) {
+            current = undefined;
+            file = "";
+            continue;
+        }
         if (raw.startsWith("--- ")) {
             from = raw.replace(/^--- (a\/)?/, "");
             continue;
@@ -1238,62 +1257,97 @@ export function disabledTestsIn(diff, root) {
         if (raw.startsWith("+++ ")) {
             const plus = raw.replace(/^\+\+\+ (b\/)?/, "");
             file = plus === "/dev/null" ? from : plus;
-            if (plus === "/dev/null")
-                deleted.add(file);
+            deleted = plus === "/dev/null";
             continue;
         }
         const hunk = HUNK.exec(raw);
         if (hunk !== null) {
             old = Number(hunk[1]);
-            next = Number(hunk[2]);
+            next = Number(hunk[3]);
+            current = { start: next, count: Number(hunk[4] ?? 1), lines: [] };
+            const hunks = patches.get(file) ?? [];
+            hunks.push(current);
+            patches.set(file, hunks);
             continue;
         }
+        if (current === undefined)
+            continue;
         if (raw.startsWith("+")) {
             const text = raw.slice(1);
             if (TEST_FILE.test(file)) {
+                const occurrence = { file, line: next, text, test: testAt(body(file), text, next) };
                 if (markersFor(file).some((m) => m.test(stripProse(text))))
-                    out.push({ file, line: next, test: testAt(body(file), text, next) });
+                    addedMarkers.push(occurrence);
                 if (isAssertion(text))
-                    added.set(file, (added.get(file) ?? 0) + 1);
+                    added.push(occurrence);
             }
             next++;
         }
         else if (raw.startsWith("-")) {
             const text = raw.slice(1);
+            current.lines.push(text);
             if (TEST_FILE.test(file)) {
-                const lines = erased.get(file) ?? [];
-                lines.push({ at: old, text });
-                erased.set(file, lines);
+                const occurrence = { file, line: deleted ? old : next, old, text };
                 if (isAssertion(text))
-                    removed.push({ file, line: deleted.has(file) ? old : next, text });
+                    removed.push(occurrence);
+                if (markersFor(file).some((m) => m.test(stripProse(text))))
+                    removedMarkers.push(occurrence);
             }
             old++;
         }
         else if (raw.startsWith(" ")) {
+            current.lines.push(raw.slice(1));
             next++;
             old++;
         }
     }
-    /** Removed assertions per file, in diff order: a file reports only its net drop. */
-    const drops = new Map();
-    for (const r of removed) {
-        const list = drops.get(r.file) ?? [];
-        list.push(r);
-        drops.set(r.file, list);
-    }
-    for (const [rel, list] of drops) {
-        const excess = list.length - (added.get(rel) ?? 0);
-        if (excess <= 0)
-            continue;
-        for (const r of list.slice(list.length - excess))
-            out.push({
-                file: r.file,
-                line: r.line,
-                test: deleted.has(rel)
-                    ? goneTestAt(erased.get(rel) ?? [], r.line, r.text)
-                    : testAt(body(rel), r.text, r.line),
-            });
-    }
+    const oldBodies = new Map();
+    const original = (r) => {
+        if (!oldBodies.has(r.file)) {
+            const lines = body(r.file)?.split(/\r?\n/) ?? [];
+            for (const hunk of [...(patches.get(r.file) ?? [])].reverse())
+                lines.splice(Math.max(0, hunk.start - 1), hunk.count, ...hunk.lines);
+            oldBodies.set(r.file, lines.join("\n"));
+        }
+        return { ...r, test: testAt(oldBodies.get(r.file), r.text, r.old) };
+    };
+    const contexts = new Map();
+    const context = (occurrence, before) => {
+        const key = JSON.stringify([before, occurrence.file, occurrence.test]);
+        if (!contexts.has(key)) {
+            const source = before ? oldBodies.get(occurrence.file) : body(occurrence.file);
+            const lines = source == null ? null : testSource(source, occurrence.test);
+            contexts.set(key, lines === null
+                ? null
+                : lines
+                    .filter((line) => stripProse(line).trim() !== "" && !isAssertion(stripProse(line)))
+                    .map((line) => line
+                    .trim()
+                    .replace(/\b(it|test|suite|describe|context|bench)\.(?:skip|todo|fixme)\b/g, "$1"))
+                    .join("\n"));
+        }
+        return contexts.get(key);
+    };
+    const exact = (a, b) => a.text.trim() === b.text.trim() &&
+        (a.file === b.file ||
+            (a.test === b.test && context(a, true) !== null && context(a, true) === context(b, false)));
+    const consume = (available, occurrence, match = exact) => {
+        const index = available.findIndex((candidate) => match(occurrence, candidate));
+        if (index === -1)
+            return false;
+        available.splice(index, 1);
+        return true;
+    };
+    for (const r of removedMarkers)
+        consume(addedMarkers, original(r), (a, b) => exact(a, b) &&
+            a.test === b.test &&
+            context(a, true) !== null &&
+            context(a, true) === context(b, false));
+    const drops = removed.map(original).filter((r) => !consume(added, r));
+    for (const r of drops)
+        if (!consume(added, r, (a, b) => a.file === b.file && a.test === b.test))
+            out.push({ file: r.file, line: r.line, test: r.test });
+    out.unshift(...addedMarkers.map(({ file, line, test }) => ({ file, line, test })));
     return out;
 }
 function scanDiffVerb(ctx) {
@@ -1337,7 +1391,7 @@ function scanDiffVerb(ctx) {
         const files = [...new Set(hits.map((h) => h.file))];
         ctx.emit({ found: hits.length > 0, paths: files, disabled: hits });
         if (hits.length > 0)
-            ctx.log(`added lines disable tests:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`);
+            ctx.log(`disabled tests or removed assertions:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`);
         return hits.length > 0 ? EXIT.NO : EXIT.OK;
     }
     let paths;
@@ -2679,7 +2733,7 @@ export const branchesCommand = {
             run: regenerateVerb,
         },
         push: {
-            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise.",
+            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held.",
             use: "workflow",
             flags: [
                 {
@@ -2725,6 +2779,7 @@ export const branchesCommand = {
             ],
             output: {
                 pushed: "true when the push ran and succeeded",
+                lockHolder: "the tests-lock holder on exit 81 (null otherwise)",
                 replayed: "true when the run's commits went out as copies cherry-picked onto a fresh origin/dev (an in-place run on dev whose local dev holds other commits); sha is then the landed origin/dev commit",
                 ref: "the branch pushed — link handover artifacts to this ref; null when nothing was pushed",
                 sha: "HEAD commit pushed (null when not pushed)",
@@ -2736,6 +2791,7 @@ export const branchesCommand = {
                 deduped: "--commit: the marker commit was already made this run (not made again)",
             },
             exitCodes: {
+                4: "the pre-push hook could not acquire the tests lock",
                 [EXIT_DETACHED]: "no branch checked out",
                 [EXIT_NOTHING_TO_PUSH]: "--mode=plain or --commit on dev / main, or --ahead-of and HEAD has no commits beyond it",
                 [EXIT_SKIP_CI]: "--require-ci and the HEAD message carries a skip-CI token",
@@ -2795,7 +2851,7 @@ export const branchesCommand = {
                 {
                     name: "disabled-tests",
                     type: "boolean",
-                    help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones that same file adds — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+                    help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside comments or quotes, or an assertion is removed; matches exact moved occurrences once (unchanged test name, scope and setup across files), and rewritten assertions within the same file and test; unchanged duplicates do not cancel removals; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
                 },
                 {
                     name: "expect-none",
@@ -2806,7 +2862,7 @@ export const branchesCommand = {
             output: {
                 found: "something matched",
                 paths: "the matching paths",
-                disabled: "[{file, line, test}]: added lines that disable a test, and removed assertion lines of a test file that no added line re-adds (only with --disabled-tests)",
+                disabled: "[{file, line, test}]: unmatched added disabling markers and removed assertion occurrences, attributed to their original test (only with --disabled-tests)",
             },
             exitCodes: {
                 [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",

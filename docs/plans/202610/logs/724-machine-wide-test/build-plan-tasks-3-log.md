@@ -1,0 +1,18 @@
+Verdict: FAIL
+
+<!-- verdict:end -->
+
+# Build Plan
+
+## Execution Log
+DONE — TASK 4: tests run lock wait flag and classification — focused five-file suite passed; build, CLI help/wholeNumber move checks, generated CLI reference and fresh consumer install/check passed (tmp/724-group3-task4-tests.log).
+DONE — TASK 5: tests run passes wait/name and maps wrapped-gate lock exits — final union suite passed 467 tests (2 existing skips), Claude settings suites passed 43, CLI help/source grep, generated testing block and fresh all-host install/check passed; built CLI real lock confirmed 81 plus holder, no artifact, inherited workers/name/wait, and gate-owned 75 stays FAIL (tmp/724-group3-final-contract-tests.log, tmp/724-group3-built-cli-dogfood.log).
+DONE — TASK 10: tests changed maps lock waits and wait runs append no row — final seven-file union passed; shared classifier lives in existing commands/lib.ts and is re-exported by tests.ts, removing the command import cycle; four caller guards, help, mirrors and built CLI no-row/81 checks passed (tmp/724-group3-final-contract-tests.log, tmp/724-group3-built-cli-dogfood.log).
+DONE — TASK 10: existing conditional skips accounted for — local-gate-audit has two pre-existing it.runIf(dynamicBlocks.length > 0) cases titled routes the engine gate list where a block passes {GATE_FLAGS}, under build-run-tests and build-group-gate-. Those build blocks use explicit flags, so only the debug variant runs; no skip was introduced (local-gate-audit.test.ts).
+DONE — TASK 10: skip-condition locator correction — the exact existing condition is it.runIf(blocks.some((b) => b.includes("{GATE_FLAGS}"))); the prior line paraphrased it as dynamicBlocks.length > 0. The same two build cases are skipped, and the debug case runs (.bkit/core/engine/audits/workflows/local-gate-audit.test.ts:236).
+BLOCKED — TASK 10: required changed gate — first run failed: related 3596 pass/2 fail/2 skip; named 6972 pass/3 fail/2 skip. Missing Tests lock audit reference and two credential-dependent unplanned post tests; lint, format and typechecks passed (tmp/724-group3-changed.log).
+BLOCKED — bkit:generate: sandbox tsx IPC listen EPERM; escalated retry then found missing updated audit instruction entry (tmp/724-group3-generate-gate-fix.log, tmp/724-group3-generate-gate-fix-retry.log).
+DONE — TASK 10: changed-gate assertion regressions repaired — canonical testing audit names Tests lock; two existing post suites clear ambient Linear credentials before each case and retain restoration; assertions and frozen tests unchanged. Issues/steps passed in focused and final named stages; audit suite 253 passed after regeneration (tmp/724-group3-gate-repro.log, tmp/724-group3-audit-fix-tests.log).
+DONE — TASK 10: canonical generation recovered — registry entry synchronized; final bkit:generate and generated installation check passed with zero pending writes. Earlier generation failures remain recorded and require FAIL under the role contract (tmp/724-group3-generate-gate-fix-final.log, tmp/724-group3-repo-check-final.log).
+DONE — TASK 10: timeout evidence recorded — isolated runs.test.ts passed 171 tests in 60.32s with load-scaled 10560ms budget; four existing failure keys updated through bkit ledgers append. The focused pass does not replace the failed broad gate (tmp/724-group3-runs-timeout-retry.log, docs/failures.jsonl).
+BLOCKED — TASK 10: required changed gate — final run exits 1: related 3594 passed/4 runs.test.ts 5000ms timeouts/2 existing skips; named 7109 passed/2 existing skips. Node tests, Bats, lint, format and both typechecks passed; lockHolder null. Broad failure preserved for downstream verification (tmp/724-group3-changed-final.log).

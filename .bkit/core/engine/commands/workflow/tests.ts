@@ -30,7 +30,16 @@ import {
   validateCiSelection,
   testRunProblem,
 } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
+import {
+  classifyLockExit,
+  CommandError,
+  EXIT,
+  git,
+  runGit,
+  testsLockHolder,
+  wholeNumber,
+  type CommandSpec,
+} from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import {
@@ -74,6 +83,8 @@ export const TEST_RUN_ROW = "test-run";
 
 /** The env var naming the folder every runner a gate calls writes its JUnit XML into. */
 export const REPORT_DIR_ENV = "BKIT_TEST_REPORT_DIR";
+
+export { classifyLockExit } from "../lib.js";
 
 const NO_REPORT_HINT =
   `no JUnit report in $${REPORT_DIR_ENV} — failures unknown; turn on each test runner's JUnit ` +
@@ -1616,7 +1627,7 @@ export const testsCommand: CommandSpec = {
     changed: testsChangedVerb,
     run: {
       summary:
-        "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run.",
+        "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run, 81 tests lock held.",
       use: "by-hand",
       flags: [
         {
@@ -1636,6 +1647,11 @@ export const testsCommand: CommandSpec = {
           name: "tail",
           type: "string",
           help: `lines of the log echoed to stderr afterwards (default ${DEFAULT_TAIL}; 0 for none)`,
+        },
+        {
+          name: "lock-wait-s",
+          type: "string",
+          help: "whole-number lock wait >= 0, passed as LOCAL_STACK_LOCK_WAIT_S (default BKIT_LOCK_WAIT_S, else 60)",
         },
         {
           name: "artifact",
@@ -1682,7 +1698,8 @@ export const testsCommand: CommandSpec = {
         logBytes: "size of the saved output",
         artifact: "--artifact as given, else null",
         clamp: "the artifact's clamp record (raw = the log, source = scope), else null",
-        row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?}; run = this step's test-run rows in the workflow's active run, this one included), else null`,
+        row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?}; run = this step's test-run rows in the workflow's active run, this one included), else null; a tests-lock wait writes no row`,
+        lockHolder: "tests-lock holder when the wait gave up, else null",
       },
       textOmit: ["clamp", "row"],
       exitCodes: {
@@ -1691,6 +1708,14 @@ export const testsCommand: CommandSpec = {
         [EXIT_ARTIFACT_STEP]: "--artifact could not be written, trimmed or recorded",
       },
       run: (ctx) => {
+        const waitSource = ctx.flags.lockWaitS ?? process.env.BKIT_LOCK_WAIT_S;
+        const waitS = wholeNumber(
+          waitSource,
+          ctx.flags.lockWaitS === undefined && process.env.BKIT_LOCK_WAIT_S !== undefined
+            ? "lock-wait-s (BKIT_LOCK_WAIT_S)"
+            : "lock-wait-s",
+          60,
+        );
         const candidates = ctx.flags.gate as string[];
         const logArg = String(ctx.flags.log);
         if (logArg === "") throw new CommandError(EXIT.USAGE, "--log must be non-empty");
@@ -1827,13 +1852,27 @@ export const testsCommand: CommandSpec = {
         const reports = freshReportDir(log);
         ctx.log(`running ${scope} — full output in ${logArg}`);
         const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-        const exitCode = runToLog(scriptCommand(gate), top, log, { [REPORT_DIR_ENV]: reports });
-        for (const line of Number(tailRaw) > 0 ? tailLines(log, Number(tailRaw)) : [])
-          ctx.log(line);
-        const couldNotRun = COULD_NOT_RUN_EXIT_CODES.has(exitCode);
-        const verdict = couldNotRun ? null : exitCode === 0 ? "PASS" : "FAIL";
-        const counted = countReportFailures(reports);
-        if (counted === null) ctx.log(NO_REPORT_HINT);
+        const who = ["bkit tests run", gate, fid, step].filter(Boolean).join(" ");
+        const exitCode = runToLog(scriptCommand(gate), top, log, {
+          [REPORT_DIR_ENV]: reports,
+          LOCAL_STACK_LOCK_WAIT_S: String(waitS),
+          LOCAL_STACK_LOCK_WHO: who,
+        });
+        const logText = fs.readFileSync(log, "utf-8");
+        const lockExit = classifyLockExit({ exitCode, log: logText, who });
+        const lockWait = lockExit === "lock-wait";
+        const lockHolder = lockWait ? testsLockHolder(logText, who) : null;
+        const lines =
+          lockExit === "gate"
+            ? Number(tailRaw) > 0
+              ? tailLines(log, Number(tailRaw))
+              : []
+            : logText.split(/\r?\n/).filter((line) => line.startsWith("[machine-lock]"));
+        for (const line of lines) ctx.log(line);
+        const couldNotRun = lockExit === "could-not-run" || COULD_NOT_RUN_EXIT_CODES.has(exitCode);
+        const verdict = couldNotRun || lockWait ? null : exitCode === 0 ? "PASS" : "FAIL";
+        const counted = lockExit === "gate" ? countReportFailures(reports) : null;
+        if (counted === null && lockExit === "gate") ctx.log(NO_REPORT_HINT);
         else if (verdict === "FAIL" && counted === 0)
           ctx.log(
             `the JUnit reports in $${REPORT_DIR_ENV} hold no failing case — the gate failed outside its reported tests; failures unknown`,
@@ -1841,7 +1880,7 @@ export const testsCommand: CommandSpec = {
         const failures = verdict === "PASS" ? 0 : counted !== null && counted > 0 ? counted : null;
         let clamp: ClampRecord | null = null;
         let artifactFailed: string | null = null;
-        if (artifact !== undefined) {
+        if (artifact !== undefined && !lockWait) {
           try {
             const out = path.resolve(ctx.cwd, artifact);
             fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -1863,7 +1902,7 @@ export const testsCommand: CommandSpec = {
           }
         }
         const row =
-          status === undefined
+          status === undefined || lockWait
             ? null
             : appendTestRun(status, {
                 workflow: workflow!,
@@ -1887,17 +1926,19 @@ export const testsCommand: CommandSpec = {
           reports: `${logArg}.reports`,
           log: logArg,
           logBytes: fs.statSync(log).size,
-          artifact: artifact ?? null,
+          artifact: lockWait ? null : (artifact ?? null),
           clamp,
           row,
+          lockHolder,
         });
         if (artifactFailed !== null) {
           ctx.log(`--artifact ${artifact}: ${artifactFailed}`);
           return EXIT_ARTIFACT_STEP;
         }
+        if (lockWait) return EXIT.AGENT_WAIT;
         if (couldNotRun) {
           ctx.log(
-            `${scope} could not run (exit ${exitCode}: ${exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`,
+            `${scope} could not run (exit ${exitCode}: ${lockExit === "could-not-run" ? "tests lock refused" : exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`,
           );
           return EXIT_COULD_NOT_RUN;
         }

@@ -1739,8 +1739,9 @@ function sequenceGh(replies: GhResult[], others: Record<string, GhResult> = {}) 
 function fakeGhBin(replies: Record<string, string>) {
   const dir = tmp("bkit-fake-gh-");
   for (const [name, body] of Object.entries(replies)) fs.writeFileSync(path.join(dir, name), body);
+  const script = path.join(dir, "response.sh");
   fs.writeFileSync(
-    path.join(dir, "gh"),
+    script,
     [
       "#!/bin/sh",
       `d="${dir}"; key="$1-$2"`,
@@ -1751,9 +1752,9 @@ function fakeGhBin(replies: Record<string, string>) {
       `case "$(head -n 1 "$f")" in EXIT:*) exit "$(head -n 1 "$f" | cut -d: -f2)" ;; esac`,
       `cat "$f"`,
     ].join("\n"),
-    { mode: 0o755 },
   );
-  env({ PATH: `${dir}:${process.env.PATH}` });
+  fs.symlinkSync(FIXTURE_GH, path.join(dir, "gh"));
+  env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: script });
   return { calls: () => fs.readFileSync(path.join(dir, "calls"), "utf-8") };
 }
 
@@ -2457,8 +2458,9 @@ describe("scanBody", () => {
 function prThenFixtureGh(pr: Record<string, unknown> | null) {
   const dir = tmp("bkit-pr-gh-");
   if (pr) fs.writeFileSync(path.join(dir, "pr.json"), JSON.stringify(pr));
+  const script = path.join(dir, "response.sh");
   fs.writeFileSync(
-    path.join(dir, "gh"),
+    script,
     [
       "#!/bin/sh",
       'if [ "$1 $2" = "pr view" ]; then',
@@ -2467,9 +2469,9 @@ function prThenFixtureGh(pr: Record<string, unknown> | null) {
       "fi",
       `exec "${FIXTURE_GH}" "$@"`,
     ].join("\n"),
-    { mode: 0o755 },
   );
-  env({ PATH: `${dir}:${process.env.PATH}` });
+  fs.symlinkSync(FIXTURE_GH, path.join(dir, "gh"));
+  env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: script });
 }
 
 const openPr = (extra: Record<string, unknown> = {}) => ({

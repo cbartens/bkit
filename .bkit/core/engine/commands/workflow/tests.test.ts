@@ -21,6 +21,7 @@ import { taskCapDefaultsNamed } from "../../checks/before/repo";
 import {
   blockHash,
   checkPlanText,
+  classifyLockExit,
   gateScope,
   judgeGreen,
   judgeRed,
@@ -66,6 +67,7 @@ beforeEach(() => {
   fs.writeFileSync(
     path.join(bin, PACKAGE_RUNNER),
     '#!/bin/sh\necho "out: $1 in $(pwd)"\necho "err: $1" >&2\necho "arg: $2"\n' +
+      'printf "wait=%s who=%s\\n" "$LOCAL_STACK_LOCK_WAIT_S" "$LOCAL_STACK_LOCK_WHO"\n' +
       'if [ "$1" = "bkit:lint:file" ]; then exit "${FAKE_LINT_EXIT:-0}"; fi\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
       'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
@@ -289,6 +291,79 @@ describe("resolveGate", () => {
 });
 
 describe("bkit tests run", () => {
+  it("a 75 exit is a lock wait only when the log's give-up line names the tests lock and this run", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for tests, in use by another agent — /tmp/checkout (pid 123, since 12:00:00), no earlier run\n`;
+    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("lock-wait");
+    expect(classifyLockExit({ exitCode: 75, log, who: who + " other" })).toBe("gate");
+    expect(classifyLockExit({ exitCode: 1, log, who })).toBe("gate");
+    expect(classifyLockExit({ exitCode: 75, log: "tests failed", who })).toBe("gate");
+  });
+
+  it("a gate whose nested lock gives up (exit 75, give-up line for another lock) is never exit 81", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for database, in use by another agent — /tmp/tests (pid 123, since 12:00:00), no earlier run\n`;
+    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("gate");
+  });
+
+  it("a 73 exit with a machine-lock refusal line (lock dir or perl) is could-not-run, exit 4", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ could not take the lock for tests: cannot create /tmp/cache/bkit/machine-lock\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ could not take the lock for tests: /usr/bin/perl not found\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ cannot take tests while holding database: lock order is tests, other named locks, then the unnamed stack lock\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+  });
+
+  it("tests run with a --lock-wait-s that is not a whole number exits 2 and runs no gate", async () => {
+    const results = await Promise.all(
+      ["-1", "1.5", "bad"].map((value) => run([...BUILD, `--lock-wait-s=${value}`])),
+    );
+    expect(results.map((result) => result.code)).toEqual([2, 2, 2]);
+    expect(results.map((result) => result.err)).toEqual([
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+    ]);
+    expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+  });
+
+  it("tests run defaults --lock-wait-s from BKIT_LOCK_WAIT_S and rejects a bad value with exit 2", async () => {
+    vi.stubEnv("BKIT_LOCK_WAIT_S", "1200");
+    const valid = await run(BUILD);
+    expect(valid.code).toBe(0);
+    expect(readLog()).toContain("wait=1200");
+    fs.rmSync(path.join(cwd, "logs/test.md"));
+    vi.stubEnv("BKIT_LOCK_WAIT_S", "bad");
+    const invalid = await run(BUILD);
+    expect(invalid.code).toBe(2);
+    expect(invalid.err).toContain("BKIT_LOCK_WAIT_S");
+    expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+  });
+
+  it("a 73 exit with a refusal line for another lock is the gate's own FAIL, never exit 4", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log =
+      "[machine-lock] ❌ could not take the lock for database: cannot create /tmp/tests/cache\n";
+    expect(classifyLockExit({ exitCode: 73, log, who })).toBe("gate");
+  });
+
   it("PASS: runs the gate through the package runner, saves stdout and stderr to the log", async () => {
     const r = await run(BUILD);
     expect(r.code).toBe(0);
@@ -305,6 +380,7 @@ describe("bkit tests run", () => {
       artifact: null,
       clamp: null,
       row: null,
+      lockHolder: null,
     });
     expect(r.json.scope).toBe(`${PACKAGE_RUNNER} ${DEEP}`);
     expect(readLog()).toContain(`out: ${DEEP}`);

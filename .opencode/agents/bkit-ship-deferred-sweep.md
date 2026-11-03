@@ -83,10 +83,16 @@ tools:
        - **If** one exists → append nothing. The triage below tests that row and writes its `unjustified` / `TRIAGED` row, so a row of your own would record the item twice.
        - **Else** → append one deferral row, with `reason` `unjustified`, `status` `TRIAGED` and `references` naming the FID, to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item. The FID reference lets the triage read the row as already settled, so it writes no second one.
 
-8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds each hit's `file:line` and test name.
-   - **If** it exits 1:
-     - Record every entry under `Blocking Deferrals` with its source evidence (`file:line`, test name).
-     - In **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
+8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds candidates, including removed assertions, with each hit's `file:line` and test name.
+   - **If** the scan fails to return a complete result (including an error, missing base or unreadable output) → record the failure under `Blocking Deferrals`.
+   - For each hit, read the diff, its base revision and the current source to identify the affected test and assertion. The reported test name is a locator, not proof of lost coverage.
+   - Record each hit under `Test Coverage Review`, applying the first matching case:
+     - An added disabling marker that skips a test → `Blocked`, and record it under `Blocking Deferrals`.
+     - A removed assertion with surviving coverage → `Preserved` only when an enabled test covers the same behaviour, inputs and failure condition. Cite its current `file:line`, test name, assertion and runner entry point, including any caller of a standalone suite.
+     - A removed assertion covered by an owner-approved retirement → `Retired` only when the approval's source and date identify the retired requirement, and current source proves no current requirement is left uncovered.
+     - A hit for which neither preserved coverage nor approved retirement is proven → `Blocked`, and record the missing or inconclusive evidence under `Blocking Deferrals`.
+   - Keep scan errors and `Blocked` hits blocking, never `Exempt` or `Lazy`; a general cleanup plan, a renamed file or a green suite alone proves neither preservation nor retirement.
+   - **If** the scan added any `Blocking Deferrals` → in **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 9. Bucket the plan-related deferral rows of the FID in your Context:
    - **If** the plan file is absent → there is nothing to test against, so do not run triage, and record each plan-related row under `Exempt Deferrals`, naming the missing plan.
    - **Else** → run `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes the `unjustified` / `TRIAGED` row for each row they find lazy, so append none of your own here. Each of its `rows` carries the row's `key`, its `bucket` and the test result. Bucket the rows:
@@ -96,8 +102,8 @@ tools:
     - `Failures` = the number of `Blocking Deferrals` entries.
     - `Lazy` = the number of `Lazy Deferrals` entries.
 11. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, and there are no `Blocking Deferrals`.
-    - `FAIL` = any intended deliverable is `Blocked`, **or** the run's diff disabled any test, **or** there are any `Blocking Deferrals`.
+    - `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, every scanner hit is adjudicated, and there are no `Blocking Deferrals`.
+    - `FAIL` = any intended deliverable is `Blocked`, **or** there is a scan error or unresolved scanner hit, **or** there are any `Blocking Deferrals`.
 
 **Output format:**
 
@@ -116,7 +122,11 @@ Lazy: <integer >= 0>
 
 ## Blocking Deferrals
 
-[Each unmet deliverable that passed a blocking test, and each test the run's diff disabled, with the test details and source evidence (`file:line`, test or grep). These block the merge. **If** none → `None`. Initially set to `PENDING`.]
+[Each unmet deliverable that passed a blocking test, scan error and blocked scanner hit, with the test details and source evidence (`file:line`, test or grep). These block the merge. **If** none → `None`. Initially set to `PENDING`.]
+
+## Test Coverage Review
+
+[Each scanner hit, its original coordinates and assertion, its disposition (`Preserved`, `Retired` or `Blocked`), and the precise coverage or approval evidence supporting it. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Exempt Deferrals
 
@@ -128,7 +138,7 @@ Lazy: <integer >= 0>
 
 ## Handover Notes
 
-[**If** `Verdict` = `FAIL` → for each blocking deferral, what to resolve, or move to declared out of scope, before the next ship. **Else** → `None`. Initially set to `PENDING`.]
+[**If** `Verdict` = `FAIL` → for each blocking deferral, what to resolve before the next ship, including the missing coverage or evidence for each blocked scanner hit. **Else** → `None`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP** once every section is filled, `Failures` and `Lazy` are counted, and the final pass has set `Verdict`. Do not apply fixes.

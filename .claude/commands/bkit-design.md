@@ -457,7 +457,8 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
-4. Route:
+4. Route — first match wins:
+   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
    - **Else** → **Failure Path**.
 

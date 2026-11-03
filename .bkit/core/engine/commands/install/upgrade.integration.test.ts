@@ -942,6 +942,47 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 
+  it("slop plugin migration upgrades old bytes, stays idempotent, and preserves customization", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync("package.json", JSON.stringify({ name: "consumer", version: "0.0.0" }));
+    const install = runCli(["install", "--claude"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
+    const fixture = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../../../tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt",
+    );
+    const oldPlugin = fs.readFileSync(fixture);
+    const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
+    expect(fs.existsSync(plugin)).toBe(false);
+    fs.mkdirSync(path.dirname(plugin), { recursive: true });
+    fs.writeFileSync(plugin, oldPlugin);
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(oldPlugin);
+    expect(combinedOutput(dry)).toContain(`core: ${plugin} — slop plugin updated`);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(combinedOutput(second)).not.toContain(`core: ${plugin}`);
+
+    const custom = Buffer.concat([oldPlugin, Buffer.from("\n// consumer customization\n")]);
+    fs.writeFileSync(plugin, custom);
+    const customized = runCli(["upgrade", "--auto-apply"]);
+    expect(customized.status, combinedOutput(customized)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(custom);
+    expect(combinedOutput(customized)).toContain(`.bkit/templates/${plugin}`);
+    expect(combinedOutput(customized)).toContain("by hand");
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
+  });
+
   it("branded script migration is idempotent and dry-run writes nothing", () => {
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const pkgPath = path.join(tmpDir, "package.json");

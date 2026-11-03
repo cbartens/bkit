@@ -258,6 +258,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
     migrateTemplateNotes(dryRun, ws, logPrefix);
     migrateContextCiWorkflow(dryRun, ws, logPrefix);
+    migrateSlopTypeSuppression(dryRun, ws, logPrefix);
     const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
     migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
     migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
@@ -660,6 +661,36 @@ function linkedPath(p) {
             return true;
     }
     return false;
+}
+// Exact v6.0.0 template bytes, also present immediately before 22d6b75f3.
+const RETIRED_SLOP_PLUGIN_HASH = "3748c27577fb384118c4754378038e3d68d087c28fb314a85b7d427f6093292d";
+// Migration (up to 6.0.x installs, docs/migrations.md): replace the shipped slop plugin
+// that reports inert skip text. The copy stays consumer-owned; edited copies need a merge.
+function migrateSlopTypeSuppression(dryRun, ws, logPrefix) {
+    const file = path.join("scripts", "slop", "bkit-slop-type-suppression.mjs");
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    const manual = (reason) => {
+        console.warn(`${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge the corrected .bkit/templates/${file} by hand to avoid false skip/focus findings in inert text`);
+    };
+    if (linkedPath(file) || !stat.isFile()) {
+        manual("the path is not a regular file or sits under a symlink");
+        return;
+    }
+    const current = fs.readFileSync(file);
+    const template = fs.readFileSync(path.join(getTemplatesRoot(), file));
+    if (current.equals(template))
+        return;
+    if (sha256(current) !== RETIRED_SLOP_PLUGIN_HASH) {
+        manual("the copy differs from the shipped version");
+        return;
+    }
+    if (!dryRun)
+        fs.writeFileSync(file, template);
+    ws.writes.push({ path: file, action: "update", unhashed: true });
+    console.log(`${logPrefix} ${tag}core: ${file} — slop plugin updated`);
 }
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
 function otherWorkflows(skip) {

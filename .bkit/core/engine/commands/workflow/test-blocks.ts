@@ -178,6 +178,19 @@ function sideOf(text: string, want: string): Side | null {
   return { lines, start, end, scopes, around };
 }
 
+/** A uniquely named test's source, enclosing declarations and reachable setup, or null if ambiguous. */
+export function testSource(text: string, want: string): string[] | null {
+  const side = sideOf(text, want);
+  if (side === null) return null;
+  return [
+    ...side.scopes.map((at) => side.lines[at]!),
+    ...[...side.around]
+      .filter(([, item]) => item.runs)
+      .flatMap(([at, item]) => side.lines.slice(at, item.end + 1)),
+    ...side.lines.slice(side.start, side.end + 1),
+  ];
+}
+
 /** The 1-based lines a `git diff -U0` removes from its old file and adds to its new one. */
 export function diffLines(diff: string): { removed: number[]; added: number[] } {
   const removed: number[] = [];
