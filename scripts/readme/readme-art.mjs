@@ -1,4 +1,4 @@
-// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, re-reading, engine and agents, models and effort), light + dark,
+// Renders the root README images (hero, features grid, pipeline, fences, context map, CI, fence details, audit map, token use, measurements, re-reading, engine and agents, models and effort), light + dark,
 // plus the repo's social preview card, into .github/assets/ as both .svg and .png. Edit the copy
 // below, then: node scripts/readme/readme-art.mjs
 // Text is not auto-wrapped: keep tile lines short and eyeball the output at ~880px.
@@ -1774,6 +1774,99 @@ function tokens(t) {
   );
 }
 
+// ---------- Workflow measurements ----------
+// Preserved 2026-11-03 harvest: github.com/cbartens/bkit/issues/845#issuecomment-6602753865.
+function stats(t) {
+  const W = 1200,
+    H = 704;
+  let b = `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>`;
+  b += text(60, 68, "v6/6.1 vs v5.x", { size: 38, weight: 800, fill: t.text });
+  b += text(60, 103, "Measured workflow improvements · 3 November 2026", {
+    size: 19,
+    fill: t.muted,
+  });
+  const phases = [
+    {
+      title: "Planning chats",
+      before: 128.7,
+      after: 62.1,
+      oldN: 2,
+      newN: 7,
+      band: "50–55% fewer tokens",
+      color: t.plan,
+    },
+    {
+      title: "Build chats",
+      before: 201.5,
+      after: 104.1,
+      oldN: 3,
+      newN: 14,
+      band: "45–50% fewer tokens",
+      color: t.build,
+    },
+  ];
+  phases.forEach((p, i) => {
+    const x = 60 + i * 552;
+    b += `<rect x="${x}" y="135" width="528" height="295" rx="12" fill="${t.surface}"/>`;
+    b += text(x + 24, 173, p.title, { size: 21, weight: 700, fill: t.text });
+    b += text(x + 24, 214, p.band, { size: 29, weight: 800, fill: p.color });
+    [
+      ["v5.x", p.before, p.oldN, t.muted],
+      ["v6/6.1", p.after, p.newN, p.color],
+    ].forEach(([label, value, n, color], j) => {
+      const y = 252 + j * 66;
+      b += text(x + 24, y, `${label} · ${n} chats`, { size: 17, fill: t.text });
+      b += text(x + 504, y, `${value}M`, { size: 18, weight: 700, fill: t.text, anchor: "end" });
+      b += `<rect x="${x + 24}" y="${y + 10}" width="${value * 2}" height="18" rx="4" fill="${color}"/>`;
+    });
+    b += text(x + 24, 376, "0", { size: 13, fill: t.muted });
+    b += text(x + 224, 376, "100M", { size: 13, fill: t.muted, anchor: "middle" });
+    b += text(x + 424, 376, "200M", { size: 13, fill: t.muted, anchor: "middle" });
+    b += text(x + 24, 407, "Median tokens read · same scale · lower is better", {
+      size: 15,
+      fill: t.muted,
+    });
+  });
+  const outcomes = [
+    ["Builds completed", "20% → 60%", "1/5 → 6/10 settled attempts", t.build],
+    [
+      "Verification rounds ending FAIL",
+      "50% → 27%",
+      "7/14 → 28/105 rounds · lower is better",
+      t.plan,
+    ],
+  ];
+  outcomes.forEach(([title, value, counts, color], i) => {
+    const x = 60 + i * 552;
+    b += `<rect x="${x}" y="454" width="528" height="144" rx="12" fill="${t.surface}"/>`;
+    b += text(x + 24, 488, title, { size: 20, weight: 700, fill: t.text });
+    b += text(x + 24, 535, value, { size: 36, weight: 800, fill: color });
+    b += text(x + 24, 571, counts, { size: 17, fill: t.muted });
+  });
+  b += text(
+    60,
+    637,
+    "Small historical samples, different tasks and hosts. Bands are rounded changes, not confidence intervals.",
+    { size: 16, fill: t.muted },
+  );
+  b += text(
+    60,
+    665,
+    "Trade-offs: successful builds used 10–15% more tokens; planning completion fell from 2/2 to 5/7.",
+    { size: 16, fill: t.muted },
+  );
+  b += text(60, 693, "Source: Stats review #845 · full counts and method linked in the README", {
+    size: 15,
+    fill: t.muted,
+  });
+  return svg(
+    W,
+    footH(H),
+    b + footer(t, W, H),
+    "v6/6.1 versus v5.x: planning-chat median tokens 128.7M to 62.1M; build-chat median tokens 201.5M to 104.1M; builds completed 1/5 to 6/10; verification rounds ending FAIL 7/14 to 28/105. Small historical samples, not a controlled benchmark.",
+  );
+}
+
 // ---------- Token use (what bkit does instead: stop the re-reading) ----------
 // Every printed figure is published third-party work; bkit's own numbers join once measured.
 // Bar: shares of input tokens across 13.5M GitHub Copilot agent sessions, June 2026 (Liu et al., "Agentic
@@ -2007,7 +2100,7 @@ function reread(t) {
   b += text(
     X0,
     SY + 180,
-    "Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report to .bkit/stats.md.",
+    "Measure your own runs: bkit stats writes your repo's run report to .bkit/stats.md. Token analysis uses a separate local transcript scan.",
     { size: 14, fill: t.muted },
   );
 
@@ -2019,7 +2112,7 @@ function reread(t) {
     `<rect x="0.5" y="0.5" width="${W - 1}" height="${footH(H) - 1}" rx="18" fill="${t.bg}" stroke="${t.border}"/>` +
       b +
       footer(t, W, H),
-    `Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the ${REREAD_BAND[0]} to ${REREAD_BAND[1]} thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit records the tokens each agent read in .bkit/stats.jsonl, and bkit stats writes a report of your runs to .bkit/stats.md.`,
+    `Compression shrinks the output; bkit stops the re-reading. What a coding agent reads on each request, across 13.5 million GitHub Copilot sessions: 72 percent is re-reading on every request, the conversation so far at 48 percent, the system prompt at 14 percent and instructions and other context at 10 percent, which is what bkit cuts; 28 percent is tool output, all a compressor can touch. The best published compression result on Claude Code took 2.7 percent off the whole bill, and another tool added 48 percent. The model's own writing is about 1 token for every 100 to 275 it reads. Sources: Liu et al., GitHub Copilot at production scale, 2026; Weinberger and Hozez, 2,848 Claude Code runs, 2026; Manus, 2025. An agent's cost is the area under its context line: each request re-sends the whole conversation, and a token costs the same at 900 thousand as at 9 thousand, but a turn at 900 thousand sends 100 times as many. In an illustration of the same work drawn both ways, today one agent runs until about 967 thousand tokens, where Claude Code summarises it and drops detail; bkit hands over to a fresh agent with a short brief in the ${REREAD_BAND[0]} to ${REREAD_BAND[1]} thousand band, where practitioners say to start fresh. What published work finds: 11 of 13 models score under half their short-context result by 32 thousand tokens (NoLiMa, ICML 2025); a context should get no more than 40 to 60 percent full before you start a fresh one (HumanLayer, 2025); a sub-agent hands back 1 to 2 thousand tokens from tens of thousands it read (Anthropic, 2025); all 18 models Chroma tested got worse as their context grew. Measure your own runs: bkit stats writes your repo's run report to .bkit/stats.md. Token analysis uses a separate local transcript scan.`,
   );
 }
 
@@ -2601,6 +2694,7 @@ for (const [name, t] of Object.entries(THEMES)) {
   images.push([`bkit-fences-details-${name}`, fenceDetails(t)]);
   images.push([`bkit-audits-${name}`, audits(t)]);
   images.push([`bkit-tokens-${name}`, tokens(t)]);
+  images.push([`bkit-stats-${name}`, stats(t)]);
   images.push([`bkit-reread-${name}`, reread(t)]);
   images.push([`bkit-engine-${name}`, engine(t)]);
   images.push([`bkit-models-${name}`, models(t)]);

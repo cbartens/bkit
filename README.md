@@ -23,6 +23,7 @@
   <a href="#audits">Audits</a> ·
   <a href="#templates">Templates</a> ·
   <a href="#token-costs">Token costs</a> ·
+  <a href="#measurements">Measurements</a> ·
   <a href="#faq">FAQ</a>
 </p>
 
@@ -477,7 +478,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 **That makes an agent's cost grow with how long it runs.** Each request re-sends everything so far. A token costs the same at 900k as at 9k ([Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing#long-context-pricing)), but a turn at 900k sends 100 times as many, so every turn costs more than the last. Left alone, an agent keeps going until about 967k, where Claude Code summarises it and drops detail ([model configuration](https://code.claude.com/docs/en/model-config)). Quality slips long before that: every model in [Chroma's context-rot study](https://www.trychroma.com/research/context-rot) got worse as its input grew, and in [NoLiMa](https://arxiv.org/abs/2502.05167) most models fell below half their short-input score by 32k. Practitioners advise starting fresh at around 40–60% of a 200k window ([HumanLayer](https://humanlayer.dev/blog/advanced-context-engineering)), and Anthropic's own sub-agents hand back 1–2k tokens from tens of thousands they read ([Anthropic](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)). bkit does that: a fresh agent with a short brief takes over by about 160k, so no agent carries a long history. Most of what an agent reads is cheap cache reads, so the dollar saving is smaller than the token saving.
 
-**Measure it on your own work.** Every bkit run records the tokens each agent read in `.bkit/stats.jsonl`, and `bkit stats` writes a report of your runs to `.bkit/stats.md`. Compare them with your own runs without bkit.
+**Measure it on your own work.** Workflow closes record run statistics in your repo. `bkit stats` turns those records into `.bkit/stats.md`, covering durations, change sizes, recorded failures, agent context peaks where available and rule compliance. Our deeper token analysis uses a separate local transcript scan. [What we measure and how to share your results](#measurements).
 
 **Why bkit doesn't use compression tools.** They shorten the output of commands and file reads before the model sees it. That's only part of what an agent reads, and most of it is code the agent needs word for word, so there's little a tool can safely cut. The re-reading of everything else stays. An independent test of 2,848 Claude Code runs found the same: RTK cut the whole bill by 2.7%, and Headroom raised it by 48% ([Weinberger & Hozez](https://arxiv.org/abs/2607.12161)). In our tests, the tools that saved most did it by changing what the agent reads: one made an agent answer a question wrongly; another rewrote code.
 
@@ -522,6 +523,53 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 - **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude Code for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Otherwise their tool lists are re-sent with every request, used or not.
 - **Lock MCP servers to this project.** A server that can see your whole account makes agents look up account and project IDs before every task; locked, those extra calls disappear.
 - **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so for your main session bkit suggests this rather than setting it. bkit's own Claude Code subagents already summarise at 300,000 tokens at the latest.
+
+<a id="measurements"></a>
+
+### Measurements: v6/6.1 versus v5.x
+
+**Planning and build chats used roughly half as many tokens in our latest samples. Builds also completed more often, and a smaller share of verification rounds failed.** These measurements cover v6 and the development towards v6.1, compared with the last measured v5.x workflows.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-stats-dark.svg">
+    <img alt="v6/6.1 versus v5.x: median planning-chat tokens fell from 128.7M (2 chats) to 62.1M (7), and build-chat tokens from 201.5M (3 chats) to 104.1M (14). Builds completed rose from 1 of 5 to 6 of 10 attempts. Verification rounds ending FAIL fell from 7 of 14 to 28 of 105. Small historical samples with different tasks and hosts." src=".github/assets/bkit-stats-light.svg" width="100%">
+  </picture>
+</p>
+
+<!-- prettier-ignore -->
+| Measure | Last measured v5.x | v6/6.1 | Observed improvement |
+| --- | --- | --- | --- |
+| Median planning-chat tokens | 128.7 million, 2 chats | 62.1 million, 7 chats | **50–55% fewer** |
+| Median build-chat tokens | 201.5 million, 3 chats | 104.1 million, 14 chats | **45–50% fewer** |
+| Builds completed | 1 of 5 attempts (20%) | 6 of 10 attempts (60%) | **40 percentage points higher** |
+| Verification rounds ending in failure | 7 of 14 (50%) | 28 of 105 (27%) | **About 23 percentage points lower** |
+
+**What those numbers mean.** A workflow chat includes the main agent and its subagents; one chat can contain several workflow runs. Tokens read include cached input re-sent on each model call. The comparison uses settled records, excludes chats reused for unrelated work, and treats missing tokens as unavailable. The bands round the observed changes; they are not confidence intervals or promised savings. Planning and build tokens use v5.5.0, the last v5 release with measured chats for those phases; completion and verification use v5.5.0/v5.5.1. The later records cover the v6/6.1 development period, even where their stored version remains `6.0.0`.
+
+These are small historical samples with different tasks, hosts and models. **Successful builds individually used 10–15% more tokens**, alongside better completion; planning completion fell from 2/2 to 5/7 attempts. Lower token use alone does not prove better delivered software. [The full comparison, sample counts and trade-offs](https://github.com/cbartens/bkit/issues/845#issuecomment-6602753865) preserve the 3 November 2026 snapshot and explain the limits.
+
+**What we measure now.** We review token use together with completion and repeated work, so cheaper failed attempts cannot masquerade as an improvement.
+
+<!-- prettier-ignore -->
+| Where | Measurements |
+| --- | --- |
+| **Your repository: `bkit stats`** | Run durations, change size versus recorded failures, agent context peaks where available, rule compliance, workflow friction and deferred work. Direct chats are reported separately from workflows. |
+| **Our local workflow analysis** | Tokens by chat and timed workflow run, main-agent versus subagent usage, context size, whole/partial plan reads, completion, verification/fix rounds, active time and recorded owner waits. Results are compared by workflow, version and host, with sample counts and missing data stated. |
+
+The deeper analysis uses [a maintainer-only harvest tool](docs/observability.md#harvest--every-repo-every-chat-bkit-repo-only) over local development histories. It is not installed in your project, and `bkit stats` does not scan your chats. Available measurements depend on the host and recorded history; for example, Cursor's missing token counts are not counted as zero.
+
+**Try it in your project.** Run this from a repository with bkit installed:
+
+```bash
+pnpm exec bkit stats
+```
+
+Open `.bkit/stats.md` to review your runs. Save a copy before upgrading or changing how you work, then compare similar workflows and change sizes afterwards. The report reads local records in `.bkit/stats.jsonl`, `.bkit/friction.jsonl` and `docs/deferrals.jsonl`; it does not call a model. `bkit stats` also works directly when the command is on your PATH.
+
+**Your stats stay under your control.** bkit does not automatically upload your stats or chat transcripts to us, and we do not remotely monitor your usage. Reports live in your repository and follow its access settings: committing them to a public repo makes them public. Your chosen AI and hosting providers retain their own data policies.
+
+**Help us improve bkit: share a summary if you want to.** We welcome good results and problems through [a GitHub issue](https://github.com/cbartens/bkit/issues/new). Include your bkit version, host/model, workflow types, sample counts and relevant figures. Remove project and people names, identifying paths and URLs, and secrets; share a cleaned summary rather than raw transcripts. You can ask your agent to prepare it and show you the exact text before you choose to post. If you also have workflow problems to report, the [guided friction-and-stats sharing prompt](.bkit/README.md#share-friction-with-bkit) includes that review step. Nothing is sent to bkit's maintainers just by running the stats command.
 
 ## FAQ
 
