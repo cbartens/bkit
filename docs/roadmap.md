@@ -23,8 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T06:04:07Z)_
-_(refreshed 2026-11-03T06:35:51Z)_
+_(refreshed 2026-11-03T10:23:54Z)_
 
 ### Design
 
@@ -44,7 +43,6 @@ _(refreshed 2026-11-03T06:35:51Z)_
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
-| 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
@@ -55,6 +53,7 @@ _(refreshed 2026-11-03T06:35:51Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 724-machine-wide-test | 724-machine-wide-test | 1793701434305 |
 
 ### Debug
 
