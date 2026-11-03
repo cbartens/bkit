@@ -45,6 +45,7 @@ _(refreshed 2026-11-03T02:18:04Z)_
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
+| 836-record-host-model | 836-record-host-model | 1793671481372 |
 
 ### Build
 
