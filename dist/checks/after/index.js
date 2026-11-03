@@ -10,7 +10,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.js";
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
-import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
+import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, buildTrivyProtectionAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValeMissing, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiScriptsOldNames, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
@@ -269,6 +269,9 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
     // protection on main restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
+    const trivyProtection = buildTrivyProtectionAdvisory(cwd);
+    if (trivyProtection)
+        phase3.push(trivyProtection);
     const scriptHint = "\n\nQuick path: run `bkit setup protect-main --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the CI capstone job named by `package.json` `bkit.testing.ciCapstone` (default `bkit-tests-check`, so the required check means 'validated', not just 'tests job did not fail') and pre-flights that the job exists in the `bkit.testing.ciWorkflow` file before requiring it.";
     if (protectionStatus === "missing") {
         phase3.push({

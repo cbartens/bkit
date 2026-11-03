@@ -4,7 +4,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as os from "node:os";
-import { guardCoreRoot, listMdFiles, removeOrphans, renameScriptTokens } from "./core";
+import {
+  findOldScriptNames,
+  guardCoreRoot,
+  listMdFiles,
+  removeOrphans,
+  renameScriptTokens,
+} from "./core";
 import { CODEX_SKILLS_DIR } from "./codex";
 import { ANTIGRAVITY_AGENTS_DIR, ANTIGRAVITY_SKILLS_DIR } from "./antigravity";
 
@@ -20,6 +26,53 @@ function readSources(dir: string): string {
 }
 
 const MODULES_SRC = readSources(path.resolve(".bkit/core/engine/install/modules"));
+
+describe("findOldScriptNames invocation diagnostics", () => {
+  const renames = { graph: "bkit:graph", "lint:prose": "bkit:lint:prose" };
+
+  it.each([
+    "# This package is outside the pnpm/turbo graph by design.",
+    "# npm run graph",
+    "echo ready # pnpm graph",
+    "The pnpm/turbo graph is optional.",
+    "echo 'pnpm graph'",
+    "# pnpm lint:prose",
+    "pnpm test --label graph",
+    "pnpm --filter # comment graph",
+    "pnpm --filter #web graph",
+    "echo -- pnpm graph",
+  ])("ignores prose, comments and non-script arguments: %s", (text) => {
+    expect(findOldScriptNames(text, renames)).toEqual([]);
+  });
+
+  it.each([
+    "pnpm graph",
+    "npm run graph",
+    "npm run-script graph",
+    "yarn graph",
+    "bun run graph",
+    "pnpm --filter web graph",
+    'pnpm --filter "#web" run graph',
+    "pnpm --filter '#web' graph",
+    "pnpm --filter \\#web graph",
+    "- run: npm run graph # update",
+    "echo ready && pnpm graph",
+    '- run: "pnpm graph"',
+    "- run: 'npm run graph'",
+    '- run: "npm run graph" # run the graph',
+    "exec -- pnpm graph",
+    'bash -c "pnpm graph"',
+    "if true; then pnpm graph; fi",
+  ])("retains genuine invocations: %s", (text) => {
+    expect(findOldScriptNames(text, renames)).toEqual([{ line: 1, name: "graph" }]);
+  });
+
+  it("preserves source line numbers and namespaced invocations", () => {
+    expect(findOldScriptNames("# pnpm graph\n\nnpm run-script lint:prose", renames)).toEqual([
+      { line: 3, name: "lint:prose" },
+    ]);
+  });
+});
 
 describe("runCoreModule first-install advisory (BAR-141: structured finding)", () => {
   // The first-install message is emitted as a structured PreflightFinding advisory.

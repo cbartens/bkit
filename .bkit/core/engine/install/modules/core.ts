@@ -865,24 +865,66 @@ export function renameScriptTokens(
 }
 
 /**
- * Each old script name still in `text`, with its 1-based line. A name without `:` (`graph`) is
- * a plain word, so it counts only after `pnpm` / `npm` / `yarn` / `bun` on the same line and
- * before any `#`.
+ * Old script invocations in shell commands or YAML run steps, with their 1-based lines.
+ * Quoted arguments and escaped hashes stay intact; shell comments end the command.
  */
 export function findOldScriptNames(
   text: string,
   renames: Readonly<Record<string, string>>,
 ): { line: number; name: string }[] {
   const found: { line: number; name: string }[] = [];
-  const lines = text.split("\n");
-  for (const name of Object.keys(renames)) {
-    const re = name.includes(":")
-      ? new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`)
-      : new RegExp(`\\b(?:pnpm|npm|yarn|bun)\\b[^#\\n]*\\s${escapeRegExp(name)}(?![\\w:./-])`);
-    lines.forEach((l, i) => {
-      if (re.test(l)) found.push({ line: i + 1, name });
-    });
-  }
+  text.split("\n").forEach((line, index) => {
+    const runStep = /^\s*(?:-\s*)?run:\s*/;
+    const command = runStep.test(line)
+      ? line
+          .replace(runStep, "")
+          .trim()
+          .replace(/^(['"])(.*)\1(?:\s+#.*)?$/, "$2")
+      : line;
+    const words =
+      command.match(/(?:[^\s"'\\;&|()]+|\\.|"(?:\\.|[^"\\])*"|'[^']*')+|[;&|()]/g) ?? [];
+    const comment = words.findIndex((word) => word.startsWith("#"));
+    const tokens = comment < 0 ? words : words.slice(0, comment);
+    const names = new Set<string>();
+    let commandStart = true;
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i]!;
+      if (/^[;&|()]$/.test(token)) {
+        commandStart = true;
+        continue;
+      }
+      if (!commandStart) continue;
+      if (
+        /^(?:[A-Za-z_][A-Za-z_0-9]*=|env$|exec$|command$|corepack$|if$|then$|elif$|else$|do$|!$|--$)/.test(
+          token,
+        )
+      )
+        continue;
+      commandStart = false;
+      if (/^(?:sh|bash|zsh)$/.test(token) && /^-[a-z]*c[a-z]*$/.test(tokens[i + 1] ?? "")) {
+        const body = tokens[i + 2]?.match(/^(['"])(.*)\1$/)?.[2];
+        if (body) for (const { name } of findOldScriptNames(body, renames)) names.add(name);
+      }
+      if (!/^(pnpm|npm|yarn|bun)$/.test(token)) continue;
+      let script = i + 1;
+      let ran = false;
+      while (script < tokens.length) {
+        const arg = tokens[script]!;
+        if ((arg === "run" || (token === "npm" && arg === "run-script")) && !ran) {
+          ran = true;
+          script++;
+        } else if (arg.startsWith("-")) {
+          const takesValue =
+            /^(--filter|-F|--dir|-C|--prefix|--cwd|--workspace|--reporter)$/.test(arg) ||
+            (token === "npm" && arg === "-w");
+          script += takesValue ? 2 : 1;
+        } else break;
+      }
+      const name = tokens[script]?.replace(/^(['"])(.*)\1$/, "$2");
+      if (name && Object.hasOwn(renames, name)) names.add(name);
+    }
+    for (const name of names) found.push({ line: index + 1, name });
+  });
   return found;
 }
 

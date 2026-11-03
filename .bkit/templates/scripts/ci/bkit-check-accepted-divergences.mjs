@@ -29,11 +29,6 @@ import { fileURLToPath } from "node:url";
 const FIELD_RE =
   /github\.(?:event_name|ref_name|base_ref|head_ref|ref)\b|github\.event\.head_commit\.message|github\.event\.pull_request\.title/g;
 
-/** Split a registry row's `field` back out of a possibly longer match. */
-function normalizedField(match) {
-  return match.replace(/\s+/g, " ").trim();
-}
-
 /** The `job` of a site read outside `jobs:` (workflow-level keys such as `concurrency:`); its `step` is the top-level key. */
 export const WORKFLOW_LEVEL = "(workflow)";
 
@@ -116,7 +111,7 @@ export function collectSites(workflowsDir, fileFilter = /\.(ya?ml)$/) {
         }
       }
       for (const m of code.matchAll(FIELD_RE)) {
-        const field = normalizedField(m[0]);
+        const field = m[0];
         const key = `${file}#${job}#${step}#${field}`;
         if (seen.has(key)) continue;
         seen.add(key);

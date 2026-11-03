@@ -9,8 +9,8 @@
 // zero. The pre-existing baseline is never the change's to fix. On failure it names each
 // net-new or worsened finding (`path:line`, rule, message), with line shifts dropped.
 //
-// `prose` — the prose gate (`bkit:lint:prose`): Vale over the markdown files the globs
-// select. Restores the gitignored write-good package from the main worktree (else
+// `prose` — the prose gate (`bkit:lint:prose`): Vale over tracked and unignored markdown,
+// or explicit globs. Restores the gitignored write-good package from the main worktree (else
 // `vale sync`) when it is missing, and fails when vale or write-good is unavailable.
 //
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
@@ -33,8 +33,9 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { gitEnv } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { CommandError, commitMessage, EXIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { CommandError, commitMessage, EXIT, OUTPUT_LIMIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { bookPathspecs, changedOutside, checkOnlyBookkeeping, globPathspecs, } from "../workflow/ledgers.js";
 import { pins } from "./pins.js";
 import { hasVerifiedIncrement, runPushGate } from "./push-gate.js";
@@ -371,11 +372,15 @@ function globWalk(glob) {
  * Every file under `root` down to `depth` levels (relative to `cwd`, `/`-separated).
  * Skips WALK_SKIP folders and never follows a symlinked folder.
  */
-function walkFiles(cwd, root, depth) {
+function walkFiles(cwd, root, depth, skipCheckouts = false) {
     const out = [];
     const visit = (rel, level) => {
         const abs = path.join(cwd, rel);
-        if (!fs.existsSync(abs))
+        if (!fs.lstatSync(abs, { throwIfNoEntry: false }))
+            return;
+        if (skipCheckouts &&
+            rel !== "." &&
+            fs.lstatSync(path.join(abs, ".git"), { throwIfNoEntry: false }))
             return;
         for (const ent of fs.readdirSync(abs, { withFileTypes: true })) {
             const child = rel === "." ? ent.name : `${rel}/${ent.name}`;
@@ -391,8 +396,44 @@ function walkFiles(cwd, root, depth) {
     visit(root, 1);
     return out;
 }
-/** The files the globs select under `cwd`, `/`-separated, sorted, each once. */
+/** Default prose uses tracked and unignored files; explicit globs select directly from disk. */
 export function proseFiles(cwd, globs) {
+    if (!globs) {
+        let ancestor = path.resolve(cwd);
+        while (!fs.lstatSync(path.join(ancestor, ".git"), { throwIfNoEntry: false })) {
+            const parent = path.dirname(ancestor);
+            if (parent === ancestor) {
+                return walkFiles(cwd, ".", Infinity, true)
+                    .filter((rel) => rel.endsWith(".md"))
+                    .sort();
+            }
+            ancestor = parent;
+        }
+        const listed = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+            cwd,
+            encoding: "utf-8",
+            env: gitEnv(),
+            maxBuffer: OUTPUT_LIMIT,
+        });
+        if (listed.error || listed.status !== 0) {
+            throw new Error(`cannot list prose sources: ${listed.error?.message ?? listed.stderr}`);
+        }
+        return [...new Set(listed.stdout.split("\0"))]
+            .filter((rel) => {
+            if (!rel.endsWith(".md") || rel.split("/").some((part) => WALK_SKIP.has(part)))
+                return false;
+            for (let parent = path.dirname(rel); parent !== "."; parent = path.dirname(parent)) {
+                const dir = fs.lstatSync(path.join(cwd, parent), { throwIfNoEntry: false });
+                if (!dir?.isDirectory())
+                    return false;
+                if (fs.lstatSync(path.join(cwd, parent, ".git"), { throwIfNoEntry: false }))
+                    return false;
+            }
+            const stat = fs.lstatSync(path.join(cwd, rel), { throwIfNoEntry: false });
+            return stat?.isFile() === true || stat?.isSymbolicLink() === true;
+        })
+            .sort();
+    }
     const files = new Set();
     for (const given of globs) {
         const glob = given.replace(/^\.\//, "");
@@ -444,7 +485,15 @@ function prose(ctx) {
     if (!restoreWriteGood(ctx)) {
         return unavailable("write-good-missing", "PROSE LINT UNAVAILABLE: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). Run: vale sync");
     }
-    const files = proseFiles(ctx.cwd, globs);
+    let files;
+    try {
+        files = proseFiles(ctx.cwd, globs === DEFAULT_PROSE_GLOBS ? undefined : globs);
+        for (const rel of files)
+            fs.accessSync(path.join(ctx.cwd, rel), fs.constants.R_OK);
+    }
+    catch (error) {
+        return unavailable("source-unavailable", `PROSE LINT UNAVAILABLE: ${String(error)}`);
+    }
     if (files.length === 0) {
         return skip("no-files", `no files match ${globs.join(" ")} - nothing to lint`);
     }
@@ -684,7 +733,7 @@ export const ciCommand = {
             run: slop,
         },
         prose: {
-            summary: "Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable.",
+            summary: "Run Vale over tracked and unignored Markdown, or explicit globs; fail when sources, Vale or required styles are unavailable.",
             use: "by-hand",
             flags: [
                 {

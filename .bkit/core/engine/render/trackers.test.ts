@@ -22,6 +22,29 @@ function group(gh: string, ln: string, ji: string): string {
 // ---------------------------------------------------------------------------
 
 describe("substituteWorkflow — tracker groups", () => {
+  it("removes spaces exposed by an empty inline group without stripping Markdown breaks", () => {
+    const empty =
+      group("", "", "") + "<!-- bkit:tracker false start --><!-- bkit:tracker false end -->";
+    const source = `Keep this break.  \nRead titles only. ${empty}\nNext.\n`;
+    for (const tracker of ["github", "linear", "jira", "none"] as const) {
+      expect(substituteWorkflow(source, tracker).output).toBe(
+        "Keep this break.  \nRead titles only.\nNext.\n",
+      );
+    }
+  });
+
+  it("removes orphan indentation before a kept block's blank first line", () => {
+    const source =
+      "Step.\n   <!-- bkit:tracker true start -->\n\n   Kept.\n   <!-- bkit:tracker true end -->\n";
+    expect(substituteWorkflow(source, "github").output).toBe("Step.\n\n   Kept.\n");
+  });
+
+  it("preserves an inline Markdown hard break before an empty marker", () => {
+    const source =
+      "First.  <!-- bkit:tracker true start --><!-- bkit:tracker true end -->\nSecond.\n";
+    expect(substituteWorkflow(source, "github").output).toBe("First.  \nSecond.\n");
+  });
+
   it("keeps the chosen tracker's block; none collapses to the generic skip message", () => {
     const wf = `Step.\n${pair("GH BODY", "LN BODY")}\nTail.\n`;
 

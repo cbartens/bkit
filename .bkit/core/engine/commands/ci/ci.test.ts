@@ -628,6 +628,48 @@ function proseRepo(writeGood = true) {
 }
 
 describe("bkit ci prose — file selection", () => {
+  it("keeps tracked ignored prose and unusual filenames, skipping deleted tracked files", () => {
+    const cwd = proseRepo();
+    write(cwd, ".gitignore", "docs/\n");
+    write(cwd, " leading space.md", "new\n");
+    write(cwd, "line\nbreak.md", "new\n");
+    write(cwd, "docs/ignored-new.md", "ignored\n");
+    fs.unlinkSync(path.join(cwd, "README.md"));
+    expect(proseFiles(cwd)).toEqual([
+      " leading space.md",
+      ".agents/rules.md",
+      "docs/a.md",
+      "docs/plans/p.md",
+      "line\nbreak.md",
+    ]);
+  });
+
+  it("walks standalone consumers without entering nested repositories", () => {
+    const cwd = mkdir("bkit-prose-standalone-");
+    write(cwd, "README.md", "text\n");
+    write(cwd, "docs/guide.md", "text\n");
+    write(cwd, "node_modules/pkg/README.md", "dependency\n");
+    write(cwd, "nested/.git", "gitdir: elsewhere\n");
+    write(cwd, "nested/README.md", "nested\n");
+    expect(proseFiles(cwd)).toEqual(["README.md", "docs/guide.md"]);
+  });
+
+  it("walks standalone consumers even when git is unavailable", () => {
+    const cwd = mkdir("bkit-prose-nogit-");
+    write(cwd, "README.md", "text\n");
+    process.env.PATH = mkdir("bkit-no-git-bin-");
+    expect(proseFiles(cwd)).toEqual(["README.md"]);
+  });
+
+  it("does not follow a directory symlink replacing tracked prose", () => {
+    const cwd = proseRepo();
+    const external = mkdir("bkit-prose-external-");
+    write(external, "a.md", "external\n");
+    fs.rmSync(path.join(cwd, "docs"), { recursive: true });
+    fs.symlinkSync(external, path.join(cwd, "docs"));
+    expect(proseFiles(cwd)).toEqual([".agents/rules.md", "README.md"]);
+  });
+
   it("defaults to every markdown file outside node_modules", () => {
     expect(proseFiles(proseRepo(), ["**/*.md"])).toEqual([
       ".agents/rules.md",
@@ -658,6 +700,56 @@ describe("bkit ci prose — file selection", () => {
 });
 
 describe("bkit ci prose — gate", () => {
+  it("defaults to tracked and unignored new prose, excluding nested checkouts", async () => {
+    const cwd = proseRepo();
+    write(cwd, ".gitignore", "tmp/\nignored.md\n");
+    write(cwd, "tmp/generated.md", "ignored\n");
+    write(cwd, "ignored.md", "ignored\n");
+    write(cwd, "new.md", "new\n");
+    write(cwd, ".worktrees/nested/README.md", "nested\n");
+    git(path.join(cwd, ".worktrees/nested"), "init", "-q");
+    git(cwd, "worktree", "add", "-q", "--detach", ".worktrees/linked");
+    const vale = fakeVale();
+    const result = await run(cwd, [], "prose");
+    expect(result.code).toBe(0);
+    expect(vale.calls()).toBe(".agents/rules.md README.md docs/a.md docs/plans/p.md new.md");
+  });
+
+  it("explicit globs can select ignored prose and nested checkout files", async () => {
+    const cwd = proseRepo();
+    write(cwd, ".gitignore", "tmp/\n");
+    write(cwd, "tmp/generated.md", "ignored\n");
+    git(cwd, "worktree", "add", "-q", "--detach", ".worktrees/linked");
+    const vale = fakeVale();
+    const result = await run(
+      cwd,
+      ["--glob=tmp/*.md", "--glob=.worktrees/linked/README.md"],
+      "prose",
+    );
+    expect(result.code).toBe(0);
+    expect(vale.calls()).toBe(".worktrees/linked/README.md tmp/generated.md");
+  });
+
+  it("fails closed when the git index cannot be read", async () => {
+    const cwd = proseRepo();
+    fs.writeFileSync(path.join(cwd, ".git/index"), "broken index");
+    const vale = fakeVale();
+    const result = await run(cwd, [], "prose");
+    expect(result.code).toBe(EXIT_VALE_FAILED);
+    expect(result.json).toMatchObject({ passed: false, skipped: "source-unavailable" });
+    expect(vale.calls()).toBe("");
+  });
+
+  it("fails closed when a selected prose source cannot be read", async () => {
+    const cwd = proseRepo();
+    fs.symlinkSync("missing.md", path.join(cwd, "broken.md"));
+    const vale = fakeVale();
+    const result = await run(cwd, [], "prose");
+    expect(result.code).toBe(EXIT_VALE_FAILED);
+    expect(result.json).toMatchObject({ passed: false, skipped: "source-unavailable" });
+    expect(vale.calls()).toBe("");
+  });
+
   it("fails when vale is not installed", async () => {
     const cwd = proseRepo();
     process.env.PATH = `${mkdir("bkit-ci-novale-")}${path.delimiter}/usr/bin${path.delimiter}/bin`;

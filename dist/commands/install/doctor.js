@@ -75,7 +75,7 @@ export function runStatus(cwd, logPrefix) {
     console.log(`${logPrefix} cursor:  ${cursorPresent ? "INSTALLED" : "absent"}`);
     // --- opencode host ---
     const opencodeDir = path.join(cwd, ".opencode");
-    const opencodePresent = fs.existsSync(opencodeDir);
+    const opencodePresent = detectInstalledHostModules(cwd).has("opencode");
     // Resolve active provider (manifest-first; covers managed-auth gateways like opencode).
     const activeOpencodeProvider = detectOpencodeProvider(cwd);
     // All installed providers.
@@ -142,12 +142,13 @@ export async function runDoctor(modules, opencodeProvider) {
     // Broken install: the opencode host is on disk but neither provider signal survives.
     // `bkit check` and `bkit upgrade` exit 1 with the fix; doctor reports it here and does
     // not enforce.
-    if (fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+    const opencodePresent = detectInstalledHostModules(process.cwd()).has("opencode");
+    if (opencodePresent) {
         if (detectOpencodeProvider(process.cwd()) === null) {
             allFindings.push({
                 id: "opencode-provider-missing",
                 severity: "blocker",
-                detect: "`.opencode/` is present but no provider is recorded — neither package.json `bkit.providers.opencode.default` nor an `opencode.json` provider block.",
+                detect: "`.opencode/agents/` is present but no provider is recorded — neither package.json `bkit.providers.opencode.default` nor an `opencode.json` provider block.",
                 action: `Re-run \`bkit install --opencode=<provider>\` (${OPENCODE_PROVIDERS.join(", ")}). Until then \`bkit check\` and \`bkit upgrade\` exit 1 rather than render every agent pin against a substitute provider.`,
             });
         }
@@ -171,8 +172,7 @@ export async function runDoctor(modules, opencodeProvider) {
     });
     // opencode host diagnostics: report required tools and cred presence per provider.
     // Never echoes key values — only reports present/absent.
-    const opencodeDir = path.join(process.cwd(), ".opencode");
-    if (fs.existsSync(opencodeDir) || modules.has("opencode")) {
+    if (opencodePresent || modules.has("opencode")) {
         console.log(`${LOG_PREFIX} --- opencode host diagnostics ---`);
         // Check opencode binary
         const { spawnSync: spawnSyncLocal } = await import("node:child_process");

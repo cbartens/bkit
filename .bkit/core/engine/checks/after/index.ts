@@ -21,6 +21,7 @@ import {
   buildGithubProjectAdvisory,
   buildGithubProjectTokenScopeAdvisory,
   buildTrackerSetupAdvisory,
+  buildTrivyProtectionAdvisory,
   detectActionsWritePermissions,
   detectMainBranchProtection,
 } from "./github.js";
@@ -368,6 +369,8 @@ export function runPostInstallCheck(
   // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
   // protection on main restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
+  const trivyProtection = buildTrivyProtectionAdvisory(cwd);
+  if (trivyProtection) phase3.push(trivyProtection);
   const scriptHint =
     "\n\nQuick path: run `bkit setup protect-main --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the CI capstone job named by `package.json` `bkit.testing.ciCapstone` (default `bkit-tests-check`, so the required check means 'validated', not just 'tests job did not fail') and pre-flights that the job exists in the `bkit.testing.ciWorkflow` file before requiring it.";
   if (protectionStatus === "missing") {
