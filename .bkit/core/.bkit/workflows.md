@@ -273,7 +273,7 @@ Rationale: keeping per-run state on `feat/{FID}` removes the divergence between 
 | Event | Shape | Meaning |
 | --- | --- | --- |
 | `workflow-started` | `{type, workflow, at, parentSha, limits?}` | Opens a new run of a phase workflow. `limits` holds the workflow's ask point settings as `package.json` gave them when the run started; `counters route` reads them for the whole run (§ Ask points). |
-| `step-done` | `{type, workflow, step, status, at, parentSha, artifacts, verdict?, attempt?, group?, failures?, strategy?, scope?, round?, clamped?}` | One completed step (the bulk). |
+| `step-done` | `{type, workflow, step, status, at, parentSha, artifacts, verdict?, attempt?, group?, failures?, strategy?, scope?, round?, clamped?, challengeFindings?}` | One completed step (the bulk). Challenge snapshots are described under § Summary / handover step. |
 | `allowance-granted` | `{type, workflow, at, point, group?, value}` | The owner chose to go on at a used-up limit: one more full allowance of `maxAttempts` for that ask point (and group). Written by `bkit counters grant`; counted by `counters route` / `counters max` and `challenge merge --round` (§ Ask points). Not folded. |
 | `workflow-meta` | `{type, workflow, at, …fields}` | Workflow-level metadata merged onto the run (e.g. `debugAttempt`). |
 | `workflow-done` | `{type, workflow, at}` | Terminal — sets the run's `status` to `DONE`. |
@@ -494,7 +494,21 @@ Each step posts its own fenced section as a fresh comment.
 ### Step {N} — {Step Name} - Verdict: {VERDICT} - Group: {GROUP} - Attempt: {VERIFY_ATTEMPT}
 ```
 
-**Summary / handover step (artifact blob link + verbatim body):** `bkit workflows summary` writes `{phase}-summary.md` from the run's status rows, plan files and ledgers — no subagent. Verdict: FAIL when a build plan task in `{FID}-plan.md` is unticked or a build has no plan file, the last test run FAILed, or a step's last row is FAIL and no later step answers it; CONCERNS when a step's last row is CONCERNS, an item was accepted at a Decision Pause, or the run wrote a deferral; else PASS. `Recommended Next Step` comes from a fixed table per workflow and verdict.
+**Summary / handover step (artifact blob link + verbatim body):** `bkit workflows summary` writes `{phase}-summary.md` from the run's status rows, plan files and ledgers. Its verdict reflects unresolved findings: FAIL for unfinished required work or checks, CONCERNS for remaining concerns or accepted limitations, else PASS. Earlier summary rows do not affect a recomputed verdict. `Recommended Next Step` comes from a fixed table per workflow and verdict.
+
+**Resolution evidence:** A later result covers only the findings its contract assesses. Missing or ambiguous evidence leaves the finding unresolved.
+
+<!-- prettier-ignore -->
+| Finding | Evidence that changes its current assessment |
+| --- | --- |
+| Design or plan review | The corresponding update in the same review round. PASS resolves its findings; CONCERNS replaces the review's findings with the update's remaining optional findings. |
+| Disproven design spike claim | A passing design update addresses its design impact. Claims recorded under `Unsettled` remain concerns. |
+| Failed group execution or gap remediation | The latest passing verification of the same group, after the failure. Separate remediation warnings and flakes remain concerns. |
+| Build challenge finding | A completed plan task with matching location, severity and challenge round, covered by a later passing verification's `Tasks` list for that group. An accepted finding remains a concern; a LOW finding's closed deferral resolves it. |
+| Plan currency | Later passing verification covers every task in the plan. A passing unrelated group does not resolve it. |
+| Deferral | The latest ledger row for that key determines whether it remains open, including a closure written by another workflow. |
+
+**History:** Original step verdicts stay in `status.jsonl` and the summary's `Assessment History`. `Resolved Findings` records the evidence that cleared them; `Reassessed Findings` records partial resolutions. A challenge's `steps finish` row stores `challengeFindings` as `{severity, location, title}` entries, deduplicated by location, before another round can overwrite its report. A malformed report stores `null` and reports the missing evidence; the challenge merge retains its existing correction path. For older rows without that snapshot, a reused report can clear an earlier round only when a later passing challenge covers the same reports and every retained task from the earlier round has passing verification. Current action items use the latest `DONE` or `BLOCKED` entry for each numbered task or remediation step; the original log stays intact.
 
 ```comment
 ###### bkit:generated

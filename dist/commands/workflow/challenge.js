@@ -331,13 +331,15 @@ function planProblems(text, written, added, caps) {
     }
     return problems;
 }
+/** Stable identity shared by the challenge writer and its resolution reader. */
+export const lowDeferralKey = (fid, location) => `${fid}-challenge-low-${location.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.toLowerCase();
 /** LOW findings as `docs/deferrals.jsonl` rows, keyed by FID and location. */
 export function lowDeferrals(fid, findings) {
     return findings
         .filter((f) => f.severity === "LOW")
         .map((f) => ({
         kind: "deferral",
-        key: `${fid}-challenge-low-${f.location.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.toLowerCase(),
+        key: lowDeferralKey(fid, f.location),
         type: "issue",
         category: "correctness",
         severity: "LOW",

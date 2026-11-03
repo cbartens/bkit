@@ -35,6 +35,7 @@ import {
   type StatusRow,
 } from "../../ledgers/status.js";
 import {
+  compareTs,
   foldFrom,
   normalize,
   resolveRepoSlug,
@@ -1719,9 +1720,18 @@ function summaryVerb(ctx: RunContext): number {
     const abs = path.resolve(tree, r);
     return fs.existsSync(abs) && fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf-8") : null;
   };
-  const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"))
-    .map((r) => normalize(r))
-    .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs);
+  const deferralHistory = ledgerRows(path.join(tree, "docs", "deferrals.jsonl")).map((r) =>
+    normalize(r),
+  );
+  const runDeferralKeys = new Set(
+    deferralHistory
+      .filter((r) => isRunsOwnRow(r, { fid, workflow, startMs }, new Set()))
+      .map((r) => r.key),
+  );
+  const currentDeferrals = new Map(
+    deferralHistory.sort((a, b) => compareTs({ ts: a.ts }, { ts: b.ts })).map((r) => [r.key, r]),
+  );
+  const deferrals = [...currentDeferrals.values()].filter((r) => runDeferralKeys.has(r.key));
   const organisedPath = path.join(logDir, "design-v3-organised.md");
   const organised =
     workflow === "design" && fs.existsSync(organisedPath)
@@ -1733,6 +1743,7 @@ function summaryVerb(ctx: RunContext): number {
     throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publishFlag}`);
 
   const summary = buildSummary({
+    root: tree,
     publish: publishFlag === undefined ? undefined : publishFlag === "true",
     workflow: workflow as SummaryWorkflow,
     fid,
@@ -1740,7 +1751,7 @@ function summaryVerb(ctx: RunContext): number {
     rows,
     plans: plans.map((p) => ({ path: rel(p), text: fs.readFileSync(p, "utf-8") })),
     deferrals,
-    deferralsAdded: ledgerCounts(tree, workflow, startMs).deferrals.added ?? 0,
+    deferralsAdded: deferrals.filter((r) => r.status !== "CLOSED").length,
     decisionFiles:
       (workflow === "build" || workflow === "ship") && fs.existsSync(logDir)
         ? fs

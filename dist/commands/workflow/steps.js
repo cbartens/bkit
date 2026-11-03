@@ -21,6 +21,7 @@ import { CommandError, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, }
 import { activeRunStart, savedPointLimit } from "./counters.js";
 import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
 import { planFiles } from "./run-facts.js";
+import { mergeFindings, parseFindings } from "./challenge.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
@@ -912,6 +913,17 @@ async function finish(ctx) {
     if (strategy !== undefined && !STRATEGIES.includes(strategy))
         throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
     delete fields.Strategy;
+    if (workflow === "build" && step === "build-challenge") {
+        try {
+            extras.challengeFindings = mergeFindings(artifacts
+                .filter((a) => !isUrl(a))
+                .map((a) => parseFindings(fs.readFileSync(path.resolve(ctx.cwd, a), "utf-8"), a, ctx.cwd)), new Set()).findings.map(({ severity, location, title }) => ({ severity, location, title }));
+        }
+        catch (error) {
+            extras.challengeFindings = null;
+            ctx.log(`challenge findings unavailable: ${String(error)}; the original verdict remains unresolved until the report is corrected`);
+        }
+    }
     if (workflow === "debug" && step === "debug-failure-reproduce" && fields.Reproduced !== undefined)
         extras.reproduced = fields.Reproduced;
     const clampLog = str(f.clampLog);

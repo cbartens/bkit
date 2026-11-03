@@ -3007,6 +3007,48 @@ describe("bkit workflows summary", () => {
     expect(r.json.failures).toBe(0);
   });
 
+  it("a deferral closed later no longer lowers the verdict, while its history stays on disk", async () => {
+    const cwd = tree([], planOf(task(1, true)));
+    const ledger = jsonl([
+      {
+        kind: "deferral",
+        key: "fixed",
+        by: { workflow: "build" },
+        ts: START_MS + 5,
+        status: "OPEN",
+      },
+      {
+        kind: "deferral",
+        key: "fixed",
+        by: { workflow: "utility" },
+        ts: START_MS + 10,
+        status: "CLOSED",
+      },
+    ]);
+    write(cwd, "docs/deferrals.jsonl", ledger);
+    const r = await summarize(cwd);
+    expect(r.json.verdict).toBe("PASS");
+    expect(fs.readFileSync(path.join(cwd, "docs/deferrals.jsonl"), "utf-8")).toBe(ledger);
+  });
+
+  it("recomputes the verdict from resolved work without rewriting the earlier summary event", async () => {
+    const cwd = tree(
+      [
+        done("build-plan-tasks", "2020-01-01T00:01:00Z", { verdict: "FAIL", group: 1 }),
+        done("build-summary", "2020-01-01T00:02:00Z", { verdict: "FAIL" }),
+        done("build-plan-verify", "2020-01-01T00:03:00Z", { verdict: "PASS", group: 1 }),
+      ],
+      planOf(task(1, true)),
+    );
+    const before = fs.readFileSync(path.join(cwd, SREL, "status.jsonl"), "utf-8");
+    const r = await summarize(cwd);
+    expect(r.json.verdict).toBe("PASS");
+    expect(fs.readFileSync(path.join(cwd, SREL, "status.jsonl"), "utf-8")).toBe(before);
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    expect(md).toContain("build-plan-tasks (group 1) FAIL, resolved by build-plan-verify");
+    expect(md).toContain("build-summary | FAIL");
+  });
+
   it("summary recommends /bkit-debug on FAIL", async () => {
     const failed = tree(
       [done("build-run-tests", "2020-01-01T00:10:00Z", { verdict: "FAIL", failures: 2 })],
