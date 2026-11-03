@@ -5549,6 +5549,15 @@ A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that l
 Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
 ```
 
+### workflow-tests-lock-wait
+
+- workflow: repeatable
+- carriers: workflow `bkit-build`, `bkit-debug`, `bkit-ship`
+
+```text
+**If** exit 81 → end turn, re-run this block.
+```
+
 ### workflow-fid-named-held
 
 - workflow: where-used
@@ -10160,7 +10169,6 @@ Find the branch's PR — open first, then merged:
 [prs] **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
 **If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
 **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
-**If** any other non-zero exit → **Failure Path**.
 Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
 **If** `state` = MERGED → record the resume marker → Step 13:
 **Else** → next sub-step.
@@ -10573,6 +10581,7 @@ Apply a targeted fix by editing or creating source.
 **If** the gap suggests missing tests → implement them.
 Check that the gap's acceptance criteria hold.
 Append the gap's `DONE` or `BLOCKED` line before you take the next gap.
+**If** the group gate exits 81 → another run holds the machine-wide tests lock: run the same command again. Count the wait as no gap and no reason to edit code.
 The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
 Before you fix a failure, search for every other test and source file built on the same failing assumption.
 Fix those files in the same pass as the failure.

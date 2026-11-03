@@ -18,7 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
-import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, classifyLockExit, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, testsLockHolder, wholeNumber, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
@@ -674,6 +674,25 @@ function rebaseOrigHead(top) {
     }
     return null;
 }
+/** Git collapses a failing pre-push hook's status; classify its exact tests-lock markers. */
+function runPush(cwd, args, branch) {
+    const who = `bkit branches push ${branch}`;
+    const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
+    const res = runGit(cwd, args, {
+        LOCAL_STACK_LOCK_WAIT_S: String(wait),
+        LOCAL_STACK_LOCK_WHO: who,
+    });
+    const log = [res.stdout, res.stderr].filter(Boolean).join("\n");
+    const lockHolder = res.ok ? null : testsLockHolder(log, who);
+    const outcome = res.ok
+        ? "gate"
+        : classifyLockExit({ exitCode: lockHolder === null ? 73 : 75, log, who });
+    return {
+        ...res,
+        lockHolder,
+        lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
+    };
+}
 /**
  * Push the current branch with exactly one `git push`: plain for dev / main,
  * `--force-with-lease` otherwise. `abort` never pushes into an open PR (`openPr`:
@@ -767,10 +786,10 @@ export async function pushBranch(cwd, o, log) {
         REMOTE,
         branch,
     ];
-    const res = runGit(cwd, args);
+    const res = runPush(cwd, args, branch);
     if (!res.ok) {
         log(`git ${args.join(" ")} failed: ${res.stderr}`);
-        return notPushed(EXIT_PUSH_FAILED);
+        return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
     }
     log(`pushed ${branch}${shared ? "" : " (--force-with-lease)"}`);
     return {
@@ -826,10 +845,10 @@ function pushPlain(cwd, branch, o, log, notPushed) {
         return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
     }
     const args = ["push", ...(o.setUpstream === true ? ["-u"] : []), REMOTE, branch];
-    const res = runGit(cwd, args);
+    const res = runPush(cwd, args, branch);
     if (!res.ok) {
         log(`git ${args.join(" ")} failed: ${res.stderr}`);
-        return notPushed(EXIT_PUSH_FAILED);
+        return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
     }
     log(`pushed ${branch}`);
     return {
@@ -952,7 +971,7 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
             REMOTE,
             `${last}:refs/heads/${rec.branch}`,
         ];
-        const res = runGit(cwd, args);
+        const res = runPush(cwd, args, rec.branch);
         if (res.ok) {
             log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
             return {
@@ -968,6 +987,10 @@ async function pushOwnCommits(cwd, rec, o, log, notPushed) {
                     mergedDev: false,
                 },
             };
+        }
+        if (res.lockExit !== null) {
+            log(`git ${args.join(" ")} failed: ${res.stderr}`);
+            return notPushed(res.lockExit, { lockHolder: res.lockHolder });
         }
         log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
     }
@@ -1081,7 +1104,9 @@ async function pushVerb(ctx) {
     }, ctx.log);
     // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
     if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV) {
-        ctx.emit(marker === undefined ? r.out : { ...r.out, commit: marker.sha, deduped: marker.deduped });
+        ctx.emit(marker === undefined
+            ? { lockHolder: null, ...r.out }
+            : { lockHolder: null, ...r.out, commit: marker.sha, deduped: marker.deduped });
     }
     return r.code;
 }
@@ -2679,7 +2704,7 @@ export const branchesCommand = {
             run: regenerateVerb,
         },
         push: {
-            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise.",
+            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held.",
             use: "workflow",
             flags: [
                 {
@@ -2725,6 +2750,7 @@ export const branchesCommand = {
             ],
             output: {
                 pushed: "true when the push ran and succeeded",
+                lockHolder: "the tests-lock holder on exit 81 (null otherwise)",
                 replayed: "true when the run's commits went out as copies cherry-picked onto a fresh origin/dev (an in-place run on dev whose local dev holds other commits); sha is then the landed origin/dev commit",
                 ref: "the branch pushed — link handover artifacts to this ref; null when nothing was pushed",
                 sha: "HEAD commit pushed (null when not pushed)",
@@ -2736,6 +2762,7 @@ export const branchesCommand = {
                 deduped: "--commit: the marker commit was already made this run (not made again)",
             },
             exitCodes: {
+                4: "the pre-push hook could not acquire the tests lock",
                 [EXIT_DETACHED]: "no branch checked out",
                 [EXIT_NOTHING_TO_PUSH]: "--mode=plain or --commit on dev / main, or --ahead-of and HEAD has no commits beyond it",
                 [EXIT_SKIP_CI]: "--require-ci and the HEAD message carries a skip-CI token",

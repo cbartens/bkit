@@ -1,0 +1,15 @@
+Verdict: FAIL
+
+<!-- verdict:end -->
+
+# Build Plan
+
+## Execution Log
+DONE — TASK 6: root test gates wrapped — focused 88 passed; held-lock proof exits75 naming holder. Initial full gate had 6971 pass/3 expected future Task7/11 route reds/2 existing skips; full completion checked after dependent group routes per orchestrator instruction (tmp/724-group4-task6-focused.log, tmp/724-group4-task6-held-gate.log, tmp/724-group4-task6-full-gate.log).
+DONE — TASK 7: test gate wait routes — two planned guards pass; workflow-shape, trackers and instructions pass (485 passed/2 existing skips). Only remaining Task11 branches-route guard is red. Shared route and prompt wording synchronized; two reviewed snapshots refreshed and mirrors upgraded (tmp/724-group4-task7-tests.log).
+BLOCKED — TASK 11: test `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `every branches push call site routes exit 81 to a re-run of its block` — its scoped 13 routes pass, but its final global count expects 13 although existing design and plan workflows add two fences (actual 15); frozen body left unchanged.
+DONE — TASK 7: current workflow payload verified — final six-file targeted suite passed 689 tests, including workflow shapes, rendered snapshots and instruction coverage; generation passed and fresh all-host install/check reports zero pending writes (tmp/724-group4-current-targeted.log, tmp/724-group4-generate-final.log, tmp/724-group4-built-cli-dogfood-final.log).
+BLOCKED — TASK 11: push lock propagation and retry routes — implemented all three hook-running direct push sites and 13 assigned workflow fences; real-Git planned integration cases pass. Final targeted suite passes 689 tests, help lists lockHolder and81, and fresh built CLI proves wait81/no push, refusal4, own gate75 remains8, explicit/default budgets and invalid-env usage. Frozen guard remains impossible until its global15-versus13 scope is corrected (tmp/724-group4-current-targeted.log, tmp/724-group4-task11-focused.log, tmp/724-group4-built-cli-dogfood-final.log).
+DONE — TASK 11: local static checks recovered — initial static run found only ship formatting after its final indentation edit; formatted that source, regenerated canonically, and final static gate passed typecheck, lint, format, prose and slop with zero new findings (tmp/724-group4-static.log, tmp/724-group4-static-final.log).
+BLOCKED — TASK 6: final no-holder full and package-file gate checks — initial runs received package.json and had no lock wait, but failed only the five future route/push reds (full unit6971 pass/3fail/2skip; package changed8711 pass/5fail/2skip). Final combined reruns remain unrun while the frozen Task11 guard expects13 despite15 canonical push sites; orchestrator will correct plan/tests before rerunning (tmp/724-group4-task6-full-gate.log, tmp/724-group4-task6-changed-package.log).
+BLOCKED — TASK 11: required changed-file gate — not rerun after final code because the known frozen global push-site count cannot pass; preserved as blocked rather than claiming a pass, per orchestrator instruction. Current static checks pass; broad gate must run after plan/test correction.
