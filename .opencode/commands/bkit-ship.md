@@ -364,7 +364,7 @@ $ARGUMENTS
 
 **Run only if** `BASE_PATH` = B.
 
-1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    ```
@@ -376,7 +376,7 @@ $ARGUMENTS
    - **Else** → **Failure Path**. The block aborted the merge and wrote the sentinel.
 2. Resolve the conflicts the block left:
    1. **Subagent:** Invoke `/bkit-ship-conflict-resolve` using `subagent` tool:
-      Context: You are a subagent in the Ship phase. A merge of `origin/dev` is in progress with conflicts outside the ledgers and the lockfile: `{PENDING}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+      Context: You are a subagent in the Ship phase. A merge of `origin/dev` is in progress with conflicts outside the ledgers, the lockfile and the generated register: `{PENDING}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
       Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.

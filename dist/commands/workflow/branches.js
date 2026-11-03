@@ -124,8 +124,24 @@ const globToRegExp = (glob) => new RegExp(`^${glob
     .replace(/\*/g, "[^/]*")
     .replace(/\0/g, ".*")}$`);
 const LEDGER_PATTERNS = LEDGERS.map(globToRegExp);
+/**
+ * Generated registers a conflict is settled in by taking dev's copy. Each side rebuilt
+ * the whole file, so neither side's text is worth a hand merge, and running `script`
+ * with `args` after the rebase or merge makes dev's copy current. `keep` brackets the
+ * one hand-written region, which the rebuild reads back and re-emits, so a branch's
+ * edit to it is carried onto dev's copy.
+ */
+export const REGISTERS = {
+    "docs/capabilities.md": {
+        script: "scripts/graphify/bkit-graphify.sh",
+        args: ["refresh"],
+        keep: ["<!-- overrides:start -->", "<!-- overrides:end -->"],
+    },
+};
 /** How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate runs there. */
 export function classifyConflict(file) {
+    if (Object.hasOwn(REGISTERS, file))
+        return "register";
     if (Object.hasOwn(LOCKFILE_REGENERATE, file))
         return "lockfile";
     if (LEDGER_PATTERNS.some((re) => re.test(file)))
@@ -203,6 +219,45 @@ function lockfileResolve(top, file, dev = "ours") {
     const res = spawnSync(regenerate[0], regenerate.slice(1), { cwd: top, stdio: "ignore" });
     return res.status === 0;
 }
+/** The text from `keep`'s open marker through its close marker; null when either is missing. */
+function keptRegion(text, [open, close]) {
+    const start = text.indexOf(open);
+    if (start === -1)
+        return null;
+    const end = text.indexOf(close, start + open.length);
+    return end === -1 ? null : text.slice(start, end + close.length);
+}
+/**
+ * Settle a conflicted register on dev's copy, carrying the branch's edit to the
+ * hand-written region when dev left that region as the merge base had it. Refuses when
+ * a side deleted the file, or both sides changed the region: that needs a hand merge.
+ * During a rebase dev is `ours`; in a merge of origin/dev it is `theirs`.
+ */
+export function registerResolve(top, file, dev) {
+    const entry = REGISTERS[file];
+    if (entry === undefined)
+        return { ok: false, problem: "not a generated register" };
+    const base = stageBytes(top, 1, file);
+    const devSide = stageBytes(top, dev === "ours" ? 2 : 3, file);
+    const branchSide = stageBytes(top, dev === "ours" ? 3 : 2, file);
+    if (base === null || devSide === null || branchSide === null)
+        return { ok: false, problem: "git show of a conflict stage failed" };
+    if (devSide.length === 0 || branchSide.length === 0)
+        return { ok: false, problem: "one side deleted the register" };
+    let text = devSide.toString("utf-8");
+    const baseKept = keptRegion(base.toString("utf-8"), entry.keep);
+    const devKept = keptRegion(text, entry.keep);
+    const branchKept = keptRegion(branchSide.toString("utf-8"), entry.keep);
+    if (branchKept !== baseKept && branchKept !== devKept) {
+        if (devKept !== baseKept)
+            return { ok: false, problem: "both sides changed the hand-written region" };
+        if (devKept === null || branchKept === null)
+            return { ok: false, problem: "one side added or removed the hand-written region" };
+        text = text.replace(devKept, () => branchKept);
+    }
+    fs.writeFileSync(path.join(top, file), text);
+    return { ok: true };
+}
 /**
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
@@ -237,18 +292,27 @@ export function resolveRebase(top, onLog = () => undefined) {
             // never leaves half the set rewritten.
             const refused = conflicts.find((f) => classifyConflict(f) === "refuse");
             if (refused !== undefined) {
-                return refuse(`REFUSE ${refused} — not an append-only ledger or a recognised lockfile; routing to Failure Path`, refused, "not an append-only ledger or a recognised lockfile");
+                return refuse(`REFUSE ${refused} — not an append-only ledger, a recognised lockfile or a generated register; routing to Failure Path`, refused, "not an append-only ledger, a recognised lockfile or a generated register");
             }
             for (const f of conflicts) {
                 const kind = classifyConflict(f);
-                const ok = kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f);
+                if (kind === "register") {
+                    const settled = registerResolve(top, f, "ours");
+                    if (!settled.ok)
+                        return refuse(`REFUSE ${f} — ${settled.problem}`, f, settled.problem);
+                }
+                const ok = kind === "register" ||
+                    (kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f));
                 if (!ok || !runGit(top, ["add", "--", f]).ok) {
                     return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
                 }
-                result.resolved.push({ path: f, how: kind === "ledger" ? "union" : "lockfile" });
-                log(kind === "ledger"
+                const how = kind === "ledger" ? "union" : kind === "register" ? "register" : "lockfile";
+                result.resolved.push({ path: f, how });
+                log(how === "union"
                     ? `RESOLVED ${f} — union (append-only ledger)`
-                    : `RESOLVED ${f} — took rebase target + regenerated`);
+                    : how === "register"
+                        ? `RESOLVED ${f} — took rebase target's copy of a generated register`
+                        : `RESOLVED ${f} — took rebase target + regenerated`);
             }
         }
         // A resolution can empty the commit (both sides appended the same rows);
@@ -425,6 +489,14 @@ function rebaseVerb(ctx) {
         result.log.push(line);
         ctx.log(line);
     }
+    let rebuilt = null;
+    if (result.ok) {
+        const fid = currentBranch(top).replace(/^feat\//, "") || "rebase";
+        rebuilt = rebuildRegisters(top, result.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after the rebase`, (line) => {
+            result.log.push(line);
+            ctx.log(line);
+        });
+    }
     appendLog(ctx, str(ctx.flags.logFile), result.log);
     if (!result.ok && sentinelPath) {
         fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
@@ -439,6 +511,7 @@ function rebaseVerb(ctx) {
         reason: result.reason,
         aborted,
         sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
+        rebuilt,
     });
     const statusFile = str(ctx.flags.file);
     if (result.ok && statusFile !== undefined)
@@ -1296,7 +1369,10 @@ function generateDeclared(top) {
 }
 /** Run `bkit:generate` in `top`; false when it failed, logged with its output's last lines. */
 function runGenerate(top, log, when) {
-    const argv = scriptCommand("bkit:generate");
+    return runLogged(top, scriptCommand("bkit:generate"), log, when);
+}
+/** Run `argv` in `top`; false when it failed, logged with its output's last lines. */
+function runLogged(top, argv, log, when) {
     const res = spawnSync(argv[0], argv.slice(1), {
         cwd: top,
         encoding: "utf-8",
@@ -1339,6 +1415,72 @@ function changedPaths(top) {
     return out;
 }
 /**
+ * What a generator changed between two `changedPaths` reads: `rewritten` were already
+ * changed and changed again, so they cannot be told apart from work that is not
+ * generated; `added` are the paths only the generator changed, sorted.
+ */
+function changedSince(dirty, after) {
+    return {
+        rewritten: [...after].filter(([f, h]) => dirty.has(f) && dirty.get(f) !== h).map(([f]) => f),
+        added: [...after.keys()].filter((f) => !dirty.has(f)).sort(),
+    };
+}
+/** Commit exactly `paths`, deletions included; false when the add or the commit failed. */
+function commitPaths(top, paths, message) {
+    return (runGit(top, ["add", "-A", "--", ...paths]).ok &&
+        quietGit(top, ["commit", "-q", "-m", message, "--", ...paths]).ok);
+}
+/**
+ * Rebuild each register a conflict settled on dev's copy (`REGISTERS`) and commit only
+ * the paths the rebuild changed. null when none was settled, or no settled register's
+ * script exists in the repo; false when a rebuild failed, or changed a path that already
+ * held uncommitted changes. A register not rebuilt keeps dev's copy: the pre-push gate,
+ * CI and ship's `bkit:generate` still judge it.
+ */
+function rebuildRegisters(top, resolved, commitMessage, log) {
+    const settled = resolved.filter((r) => r.how === "register").map((r) => r.path);
+    const due = settled.filter((f) => fs.existsSync(path.join(top, REGISTERS[f].script)));
+    for (const f of settled)
+        if (!due.includes(f))
+            log(`NOT REBUILT ${f} — ${REGISTERS[f].script} is absent`);
+    if (due.length === 0)
+        return null;
+    const dirty = changedPaths(top);
+    if (dirty === null) {
+        log(`git status failed — ${due.join(", ")} not rebuilt`);
+        return false;
+    }
+    for (const f of due) {
+        const { script, args } = REGISTERS[f];
+        if (!runLogged(top, ["bash", script, ...args], log, `rebuilding ${f}`)) {
+            log(`NOT REBUILT ${f} — it keeps ${DEV}'s copy`);
+            return false;
+        }
+    }
+    const after = changedPaths(top);
+    if (after === null) {
+        log(`git status failed after rebuilding ${due.join(", ")}`);
+        return false;
+    }
+    const { rewritten, added } = changedSince(dirty, after);
+    if (rewritten.length > 0) {
+        for (const f of rewritten)
+            log(`  ${f}`);
+        log("the rebuild changed paths that already held uncommitted changes — nothing committed");
+        return false;
+    }
+    if (added.length === 0) {
+        log(`REBUILT ${due.join(", ")} — ${DEV}'s copy was already current`);
+        return true;
+    }
+    if (!commitPaths(top, added, commitMessage(due))) {
+        log(`committing the rebuilt ${due.join(", ")} failed`);
+        return false;
+    }
+    log(`REBUILT ${due.join(", ")} — committed as ${git(top, ["rev-parse", "HEAD"])}`);
+    return true;
+}
+/**
  * Ship's regenerate (`.bkit/workflows.md` § `/bkit-ship`): run a declared `bkit:generate`
  * on the checked-out feature branch and commit only the paths it changed, so the run's
  * own uncommitted bookkeeping (status.jsonl) stays out of the commit. Step 3 runs it when
@@ -1378,16 +1520,14 @@ function regenerateVerb(ctx) {
         ctx.log("git status failed after bkit:generate");
         return EXIT_GENERATE_FAILED;
     }
-    const rewritten = [...after]
-        .filter(([f, h]) => dirty.has(f) && dirty.get(f) !== h)
-        .map(([f]) => f);
+    const { rewritten, added } = changedSince(dirty, after);
     if (rewritten.length > 0) {
         for (const f of rewritten)
             ctx.log(`  ${f}`);
         ctx.log("bkit:generate changed paths that already held uncommitted changes — nothing committed");
         return EXIT_GENERATE_FAILED;
     }
-    out.paths = [...after.keys()].filter((f) => !dirty.has(f)).sort();
+    out.paths = added;
     if (out.paths.length === 0) {
         out.outcome = "unchanged";
         ctx.log("bkit:generate changed nothing");
@@ -1397,8 +1537,7 @@ function regenerateVerb(ctx) {
     const message = attempt === undefined
         ? `chore(${fid}): regenerate before re-validating`
         : `fix(${fid}): regenerate attempt ${attempt}`;
-    if (!runGit(top, ["add", "-A", "--", ...out.paths]).ok ||
-        !quietGit(top, ["commit", "-q", "-m", message, "--", ...out.paths]).ok) {
+    if (!commitPaths(top, out.paths, message)) {
         ctx.log("committing bkit:generate's output failed");
         return EXIT_GENERATE_FAILED;
     }
@@ -1433,6 +1572,12 @@ function resolvePath(top, file, policy) {
             return { refused: union.problem };
         return runGit(top, ["add", "--", file]).ok ? "union" : { refused: "git add failed" };
     }
+    if (kind === "register") {
+        const settled = registerResolve(top, file, "theirs");
+        if (!settled.ok)
+            return { refused: settled.problem };
+        return runGit(top, ["add", "--", file]).ok ? "register" : { refused: "git add failed" };
+    }
     if (policy === "docs") {
         if (!file.startsWith("docs/"))
             return { refused: "outside docs/ and the ledgers" };
@@ -1455,6 +1600,7 @@ const RESOLVED_HOW = {
     union: "union (append-only ledger)",
     dev: `took ${DEV}`,
     lockfile: `lockfile regenerated from ${DEV}'s copy`,
+    register: `took ${DEV}'s copy of a generated register`,
 };
 /**
  * Merge origin/dev (already fetched) into the checked-out feature branch under
@@ -1477,6 +1623,7 @@ function mergeDev(top, o, log) {
         pending: [],
         aborted: false,
         generated: null,
+        rebuilt: null,
         before: null,
     };
     const full = o.policy === "full";
@@ -1536,6 +1683,7 @@ function mergeDev(top, o, log) {
     out.merged = true;
     log(`merged ${UPSTREAM} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
     if (o.generate) {
+        out.rebuilt = rebuildRegisters(top, out.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${DEV}${tag}`, log);
         out.generated = regenerate(top, o.branch, log, { fid, skipCi: full });
         if (out.generated === false)
             out.code = EXIT_GENERATE_FAILED;
@@ -1599,6 +1747,7 @@ function syncVerb(ctx) {
         merged: false,
         resolved: [],
         generated: null,
+        rebuilt: null,
     };
     if (mergeDocs) {
         if (branch === "") {
@@ -1611,6 +1760,7 @@ function syncVerb(ctx) {
         out.merged = m.merged;
         out.resolved = m.resolved;
         out.generated = m.generated;
+        out.rebuilt = m.rebuilt;
         if (m.merged)
             out.head = git(top, ["rev-parse", "HEAD"]) ?? head;
         ctx.emit(out);
@@ -1638,6 +1788,7 @@ function syncVerb(ctx) {
             merged: m.merged,
             resolved: m.resolved,
             generated: m.generated,
+            rebuilt: m.rebuilt,
             outcome: m.outcome,
             carried: m.carried,
             pending: m.pending,
@@ -2246,12 +2397,12 @@ export const branchesCommand = {
                 {
                     name: "merge",
                     type: "boolean",
-                    help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
+                    help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
                 },
                 {
                     name: "merge-docs",
                     type: "boolean",
-                    help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
+                    help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
                 },
                 {
                     name: "fid",
@@ -2276,7 +2427,8 @@ export const branchesCommand = {
                 behind: `commits on ${UPSTREAM} not in head`,
                 docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,
                 merged: `true when --merge or --merge-docs merged ${UPSTREAM}`,
-                resolved: "conflicts the merge resolved: [{path, how: union|lockfile|dev}]",
+                resolved: "conflicts the merge resolved: [{path, how: union|lockfile|register|dev}]",
+                rebuilt: "a generated register the merge settled on dev's copy, rebuilt after the merge: true (rebuilt; output committed), false (failed: it keeps dev's copy), null (not run: none settled, its script absent, or no merge)",
                 generated: "bkit:generate after the merge: true (ran; output committed), false (failed, exit 25), null (not run: no merge, undeclared, or the tree was dirty)",
                 outcome: `--merge: merged | current (${UPSTREAM} already an ancestor; nothing done) | pending (conflicts left for a hand resolution, merge in progress) | refused (merge aborted)`,
                 carried: "--merge: the commit that carried the uncommitted work before the merge (null when the tree was clean)",
@@ -2288,8 +2440,8 @@ export const branchesCommand = {
                 [EXIT_REFUSED]: "--merge: the uncommitted work could not be committed before the merge",
                 [EXIT_DETACHED]: "--merge / --merge-docs with no branch checked out",
                 [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
-                [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union or lockfile regenerate failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
-                [EXIT_HAND_RESOLVE]: "--merge: conflicts outside the ledgers and lockfiles are left in the tree with the merge in progress; resolve them, git add, run again",
+                [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union, lockfile regenerate or register resolution failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
+                [EXIT_HAND_RESOLVE]: "--merge: conflicts outside the ledgers, lockfiles and generated registers are left in the tree with the merge in progress; resolve them, git add, run again",
                 [EXIT_GENERATE_FAILED]: "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
             },
             run: syncVerb,
@@ -2511,7 +2663,7 @@ export const branchesCommand = {
             run: forceBuildVerb,
         },
         rebase: {
-            summary: "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
+            summary: "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate) and generated-register (take the target's copy, rebuild after) conflicts; refuse and abort on anything else.",
             use: "workflow",
             flags: [
                 {
@@ -2532,7 +2684,8 @@ export const branchesCommand = {
             ],
             output: {
                 outcome: "resolved | refused (a refused rebase is aborted)",
-                resolved: "conflicts resolved: [{path, how: union|lockfile}]",
+                resolved: "conflicts resolved: [{path, how: union|lockfile|register}]",
+                rebuilt: "a generated register settled on the rebase target's copy, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
                 skippedCommits: "commits skipped because resolution emptied them",
                 rounds: "resolve rounds run",
                 refused: "the path that stopped resolution (null when none, or not path-specific)",

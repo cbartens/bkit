@@ -10,6 +10,7 @@ import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
 import {
   LEDGERS,
+  REGISTERS,
   branchesCommand,
   classifyConflict,
   disabledTestsIn,
@@ -254,7 +255,54 @@ describe("branches rebase: classification", () => {
   ])("classifies %s (every manager bkit recognises) as the lockfile shape", (p) => {
     expect(classifyConflict(p)).toBe("lockfile");
   });
+
+  it("classifies every generated register as the register shape, and only at its exact path", () => {
+    for (const p of Object.keys(REGISTERS)) expect(classifyConflict(p), p).toBe("register");
+    expect(classifyConflict("docs/capabilities.md")).toBe("register");
+    expect(classifyConflict("apps/web/docs/capabilities.md")).toBe("refuse");
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Generated-register fixtures
+// ---------------------------------------------------------------------------
+
+const REGISTER = "docs/capabilities.md";
+const REGISTER_SCRIPT = REGISTERS[REGISTER]!.script;
+const [OV_OPEN, OV_CLOSE] = REGISTERS[REGISTER]!.keep;
+/** A register body: a generated line, the hand-written overrides region, a generated tail. */
+const registerBody = (generated: string, overrides = "{}") =>
+  `# Capabilities\n\n${generated}\n\n${OV_OPEN}\n${overrides}\n${OV_CLOSE}\n\ntail ${generated}\n`;
+/** The stand-in rebuild: stamps the register so a test sees that it ran, or fails. */
+const REBUILD_OK = `echo "rebuilt" >> ${REGISTER}\n`;
+const REBUILD_FAILS = `echo "graphify: command not found" >&2\nexit 1\n`;
+
+/**
+ * A repo on `main` with a register (and, unless `script` is null, its rebuild script),
+ * then feat and main each rewriting it; feat checked out and rebased onto main, stopped
+ * on the register conflict.
+ */
+function divergeRegister(
+  name: string,
+  feat: string,
+  main: string,
+  script: string | null = REBUILD_OK,
+): string {
+  const dir = makeRepo(name);
+  write(dir, REGISTER, registerBody("v0"));
+  if (script !== null) write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "register");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, REGISTER, feat);
+  git(dir, "commit", "-q", "-am", "feat register");
+  git(dir, "checkout", "-q", "main");
+  write(dir, REGISTER, main);
+  git(dir, "commit", "-q", "-am", "main register");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
 
 // ---------------------------------------------------------------------------
 // rebase — behaviour against real git
@@ -491,6 +539,98 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(dir, ["rebase"], { PATH: withBin(bin) });
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ refused: lockfile, reason: "resolution failed" });
+  });
+
+  it("settles a generated register on the rebase target's copy, then rebuilds and commits it", async () => {
+    const dir = divergeRegister("register", registerBody("feat"), registerBody("main"));
+    const featTip = sha(dir, "feat@{1}");
+    const r = await run(dir, ["rebase", "--log-file=logs/rebase-resolve-log.md"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: true,
+    });
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(sha(dir)).not.toBe(featTip);
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain(`[bkit-rebase] REBUILT ${REGISTER}`);
+  });
+
+  it("carries the branch's edit to the hand-written region onto the target's copy", async () => {
+    const dir = divergeRegister(
+      "register-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["x"]}')}rebuilt\n`);
+  });
+
+  it("keeps the target's edit to the hand-written region when the branch left it alone", async () => {
+    const dir = divergeRegister(
+      "register-dev-overrides",
+      registerBody("feat"),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    expect((await run(dir, ["rebase"])).code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["y"]}')}rebuilt\n`);
+  });
+
+  it("refuses and aborts when both sides changed the hand-written region", async () => {
+    const dir = divergeRegister(
+      "register-both-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: REGISTER,
+      reason: "both sides changed the hand-written region",
+      aborted: true,
+      rebuilt: null,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("keeps the target's copy unrebuilt when the repo has no rebuild script", async () => {
+    const dir = divergeRegister(
+      "register-noscript",
+      registerBody("feat"),
+      registerBody("main"),
+      null,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: null,
+    });
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — ${REGISTER_SCRIPT} is absent`);
+  });
+
+  it("completes the rebase when the rebuild fails, keeping the target's copy and logging why", async () => {
+    const dir = divergeRegister(
+      "register-rebuild-fails",
+      registerBody("feat"),
+      registerBody("main"),
+      REBUILD_FAILS,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "resolved", rebuilt: false });
+    expect(inRebase(dir)).toBe(false);
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(r.err).toContain("graphify: command not found");
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — it keeps dev's copy`);
   });
 
   it("--sentinel and --log-file record a refusal and survive the abort", async () => {
@@ -2457,6 +2597,27 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ outcome: "merged", generated: true, head: sha(clone) });
     expect(read(clone, "docs/gen.md")).toBe("gen\n");
     expect(subject(clone)).toBe("chore(1-x): regenerate after merging dev bkit [skip ci]");
+    expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge settles a conflicted register on dev's copy and rebuilds it, leaving nothing for a hand resolution", async () => {
+    const { origin, clone } = withOrigin("merge-register");
+    landOnDev(origin, { [REGISTER]: registerBody("v0"), [REGISTER_SCRIPT]: REBUILD_OK });
+    git(clone, "pull", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { [REGISTER]: "feat line\n" }, "feat: register");
+    landOnDev(origin, { [REGISTER]: "dev line\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: REGISTER, how: "register" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
     expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
