@@ -1501,7 +1501,7 @@ Dependency inspection: `bkit:deps:outdated` / `bkit:deps:audit` exist so prompts
 `bkit:generate` is not a gate either: it rewrites every generated file and saved baseline (snapshots, coverage lists, generated docs) from the current working tree, in place, so a commit never carries code whose generated output is stale.
 
 - **Contract:** no arguments; idempotent, so a second run changes nothing; exit 0 on success, non-zero on failure.
-- **Callers:** `@bkit-build-plan-tasks` and `@bkit-build-plan-gaps-remediate` run it once after their last change, before the step's commit; `bkit branches sync --merge-docs` (build Step 3), `bkit branches sync --merge` (ship Step 4) and `bkit branches push` run it after they merge `origin/dev` and commit its output; `bkit branches regenerate` runs it in ship Step 10's regenerate round, commits only the paths it changed, and puts back a register or embedding doc whose only change is its build-commit stamp.
+- **Callers:** `@bkit-build-plan-tasks` and `@bkit-build-plan-gaps-remediate` run it once after their last change, before the step's commit; `bkit branches sync --merge-docs` (build Step 3), `bkit branches sync --merge` (ship Step 4) and `bkit branches push` run it after they merge `origin/dev`; `bkit branches regenerate` runs it in ship Step 10's regenerate round. Each commits only the paths `bkit:generate` changed, so uncommitted work already in the tree stays out, and refuses when it changed a path that already held uncommitted changes.
 - **Undeclared:** every caller skips it.
 
 Not seeded, because which files a stack generates is the stack's business. A regenerated baseline is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.

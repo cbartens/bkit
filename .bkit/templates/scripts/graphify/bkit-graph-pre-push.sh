@@ -78,13 +78,14 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       exit 1
     fi
   else
-    # Warn-only. A fresh register is stamped at the parent of its commit → staleness =
-    # source files changed since that stamp.
-    CAP_SHA=$(sed -n 's/.*Diagrams from `graph\.json` @ `\([0-9a-f]\{7,\}\)`.*/\1/p' "$CAP_DOC" | head -1)
-    if [ -n "$CAP_SHA" ] && git cat-file -e "$CAP_SHA^{commit}" 2>/dev/null; then
+    # Warn-only. Staleness = source files changed since the last commit that changed the
+    # register. A rebuild that changes nothing commits nothing, so the count can include
+    # files that left the register as it was.
+    CAP_SHA=$(git log -1 --format=%h -- "$CAP_DOC" 2>/dev/null || true)
+    if [ -n "$CAP_SHA" ]; then
       CAP_CHANGED=$(git diff --name-only "$CAP_SHA..HEAD" -- '*.ts' '*.tsx' 2>/dev/null | wc -l | tr -d ' ')
       if [ "${CAP_CHANGED:-0}" -gt 0 ]; then
-        echo "[pre-push] NOTE: $CAP_DOC diagrams were built at $CAP_SHA; $CAP_CHANGED source files changed since." >&2
+        echo "[pre-push] NOTE: $CAP_DOC last changed in $CAP_SHA; $CAP_CHANGED source files changed since." >&2
         echo "[pre-push]       Refresh when convenient:  pnpm bkit:graph:refresh" >&2
         echo "[pre-push]       Not a gate on this branch until it has an open PR into dev; a push to dev is blocked until it is current." >&2
       fi
