@@ -330,6 +330,7 @@ $ARGUMENTS
    Decide `TEST_VERDICT`:
    - **If** exit 0 → `TEST_VERDICT` = PASS.
    - **If** exit 1 → `TEST_VERDICT` = FAIL.
+   - **If** exit 81 → end turn, re-run this block.
    - **Else** → **Failure Path**.
 2. Finish, with no commit. `{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null (count unknown): `{CLAMP_FLAG}` = `--clamp-log=debug-run-tests:{NORMAL_ATTEMPT}` only when `source` = `local`; otherwise empty:
    ```bash
@@ -573,6 +574,10 @@ $ARGUMENTS
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
+   Route:
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 9 — Push Remediation
 
@@ -600,6 +605,7 @@ $ARGUMENTS
    "{BKIT}" branches push --mode=feature
    ```
 3. Route:
+   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
    - **Else** → **Failure Path**.
 
@@ -663,11 +669,13 @@ $ARGUMENTS
 
    Release and push:
    - **If** `BRANCH` != `dev`:
+
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
      "{BKIT}" branches push --mode=feature --require-ci
      ```
      Route:
+     - **If** exit 81 → end turn, re-run this block.
      - **If** exit 0 **and** `pushed` = true **and** `sha` non-empty → hold `sha` as `VERIFY_HEAD`.
      - **Else** → **Failure Path** with the missing pushed verification head.
    - **If** `BRANCH` = `dev`:
@@ -676,6 +684,7 @@ $ARGUMENTS
      "{BKIT}" branches push --mode=dev --require-ci --fid={FID}
      ```
      Route:
+     - **If** exit 81 → end turn, re-run this block.
      - **If** exit 0 **and** `skipped` null → hold `sha` as `DEV_SHA` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
      - **If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false. With a saved CI selection and no held pushed SHA, take **Failure Path** with the missing verification reference.
      - **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
@@ -699,9 +708,16 @@ $ARGUMENTS
    - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
    - **Else** → **Failure Path**.
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when `ISSUE_ID` is empty:
+
    ```bash
    "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
    ```
+
+   Route:
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
+
 7. **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
    **If** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 → run the CI-Dispatch Gate on the pushed head. It records `{DISPATCH_ROW}`, cross-checks the transport and records the close transport. `{DISPATCH_ROW}` = `--step=debug-close-workflow {LIVE_SKIPPED}` when `{PR_OPEN}` = 1, `--step=debug-create-pr --artifact={PR_URL}` after a created PR. `{LABEL_FLAGS}` as in sub-step 6:
 

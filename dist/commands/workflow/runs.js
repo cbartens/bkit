@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { readJsonFile } from "../../shared/json.js";
 import { CI_TIERS, lastRun, statusTimestamp, validateCiSelection, } from "../../ledgers/status.js";
-import { bodySkipToken, commitMessage, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, runGh, runGit, runTool, SKIP_CI_TOKEN, } from "../lib.js";
+import { bodySkipToken, commitMessage, CommandError, DEV, EXIT, git, isSharedBranch, parseJson, runGh, runGit, runTool, SKIP_CI_TOKEN, wholeNumber, } from "../lib.js";
 import { ciGeneratedSteps, readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
@@ -1131,15 +1131,6 @@ export const EXIT_TRIGGER_FAILED = 5;
 export const EXIT_SKIP_TOKEN = 4;
 /** Exit code: the pushed head's commit message could not be read for the body scan. */
 export const EXIT_SCAN_ERROR = 5;
-const wholeNumber = (v, flag, fallback, min = 0) => {
-    if (v === undefined)
-        return fallback;
-    const s = String(v);
-    if (!/^[0-9]+$/.test(s) || Number(s) < min) {
-        throw new CommandError(EXIT.USAGE, `--${flag} takes a whole number >= ${min} (got "${s}")`);
-    }
-    return Number(s);
-};
 const HEAD_FLAG = { name: "head", type: "string", help: "commit SHA" };
 const REPO_FLAG = {
     name: "repo",
