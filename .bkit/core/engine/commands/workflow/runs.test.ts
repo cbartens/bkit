@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
 import {
@@ -32,6 +33,8 @@ import {
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const FIXTURES = path.join(REPO_ROOT, "tests", "fixtures", "gh");
 const FIXTURE_GH = path.join(FIXTURES, "bin", "gh");
+
+useGateRunner();
 
 const dirs: string[] = [];
 const restoreEnv: Array<() => void> = [];
@@ -2237,7 +2240,10 @@ describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }
       path.join(cwd, "package.json"),
       JSON.stringify({
         private: true,
-        scripts: { "bkit:gate:min": 'node -e "process.exit(0)"' },
+        scripts: {
+          "bkit:gate:min":
+            "node -e \"process.exit(process.env.BKIT_TEST_GATE_RUNNER === '1' ? 0 : 9)\"",
+        },
         bkit: { workflows: { worktree: { install: false } } },
       }),
     );

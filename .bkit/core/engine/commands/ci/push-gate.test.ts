@@ -1,7 +1,8 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { useGateRunner } from "../../../../../vitest.gate-fixture";
 import { runCommand } from "../lib";
 import { ciCommand } from "./ci";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
@@ -11,20 +12,7 @@ const dirs: string[] = [];
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
 const ZERO = "0".repeat(40);
-const savedPath = process.env.PATH;
-beforeEach(() => {
-  fs.mkdirSync(path.join(ROOT, "tmp"), { recursive: true });
-  const bin = fs.mkdtempSync(path.join(ROOT, "tmp", "push-gate-runner-"));
-  dirs.push(bin);
-  fs.writeFileSync(path.join(bin, "package.json"), '{"type":"commonjs"}');
-  // The package runner boundary executes the fixture's real script without Corepack downloads.
-  fs.writeFileSync(
-    path.join(bin, "pnpm"),
-    `#!${process.execPath}\nconst fs = require('node:fs');\nconst {spawnSync} = require('node:child_process');\nfs.writeFileSync('.gate-runner-invoked', 'yes');\nconst script = JSON.parse(fs.readFileSync('package.json', 'utf8')).scripts[process.argv[2]];\nconst result = spawnSync('/bin/sh', ['-c', script], {stdio: 'inherit'});\nprocess.exit(result.status ?? 1);\n`,
-    { mode: 0o755 },
-  );
-  process.env.PATH = `${bin}${path.delimiter}${savedPath ?? ""}`;
-});
+useGateRunner(".gate-runner-invoked");
 
 function git(cwd: string, ...args: string[]): string {
   const result = spawnSync("git", ["-c", "user.name=Test", "-c", "user.email=t@t", ...args], {
@@ -96,7 +84,6 @@ async function waitForFile(file: string) {
   expect(fs.existsSync(file)).toBe(true);
 }
 afterEach(() => {
-  process.env.PATH = savedPath;
   for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
