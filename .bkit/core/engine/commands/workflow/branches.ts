@@ -38,6 +38,11 @@ import {
   type RunContext,
 } from "../lib.js";
 import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-latest.js";
+import {
+  parseBkitVersion,
+  serializeBkitVersion,
+  type BkitVersion,
+} from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import {
@@ -182,6 +187,9 @@ const globToRegExp = (glob: string) =>
   );
 const LEDGER_PATTERNS = LEDGERS.map(globToRegExp);
 
+/** bkit's install record: merged entry by entry (`recordResolve`), never line by line. */
+export const INSTALL_RECORD = ".bkit/version";
+
 /**
  * Generated registers a conflict is settled in by taking dev's copy. Each side rebuilt
  * the whole file, so neither side's text is worth a hand merge, and running `script`
@@ -231,7 +239,7 @@ export function embedDocs(top: string): Map<string, string> {
   return out;
 }
 
-export type ConflictKind = "ledger" | "lockfile" | "register" | "embed" | "refuse";
+export type ConflictKind = "ledger" | "lockfile" | "register" | "embed" | "record" | "refuse";
 
 /**
  * How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate
@@ -243,6 +251,7 @@ export function classifyConflict(
 ): ConflictKind {
   if (Object.hasOwn(REGISTERS, file)) return "register";
   if (embeds.has(file)) return "embed";
+  if (file === INSTALL_RECORD) return "record";
   if (Object.hasOwn(LOCKFILE_REGENERATE, file)) return "lockfile";
   if (LEDGER_PATTERNS.some((re) => re.test(file))) return "ledger";
   return "refuse";
@@ -421,9 +430,68 @@ export function embedResolve(
   }
 }
 
+/** The value one entry takes: the side that changed it, or dev's when both did. */
+function pickEntry<T>(base: T, dev: T, branch: T): T {
+  const same = (a: T, b: T) => JSON.stringify(a) === JSON.stringify(b);
+  return same(dev, base) ? branch : dev;
+}
+
+/**
+ * Merge a conflicted install record entry by entry: `pinnedVersion`,
+ * `claudeAllowDerived` and each `canonicalHashes` path take the side that changed
+ * them, and dev's value when both did. A fingerprint left at dev's value makes
+ * `bkit upgrade` treat that file as edited by hand until it refreshes the entry, so
+ * the record needs no rebuild. Refuses when a side deleted the record or a copy is
+ * not a record. During a rebase dev is `ours`; in a merge of origin/dev it is `theirs`.
+ */
+export function recordResolve(
+  top: string,
+  dev: "ours" | "theirs",
+): { ok: true } | { ok: false; problem: string } {
+  const copies: BkitVersion[] = [];
+  for (const stage of [1, dev === "ours" ? 2 : 3, dev === "ours" ? 3 : 2] as const) {
+    const bytes = stageBytes(top, stage, INSTALL_RECORD);
+    if (bytes === null)
+      return { ok: false, problem: `git show :${stage}:${INSTALL_RECORD} failed` };
+    if (bytes.length === 0 && stage !== 1)
+      return { ok: false, problem: "one side deleted the install record" };
+    // Both sides adding the record leaves no base: merge against an empty one.
+    const parsed =
+      bytes.length === 0
+        ? { pinnedVersion: "", canonicalHashes: {}, claudeAllowDerived: [] }
+        : parseBkitVersion(bytes.toString("utf-8"));
+    if (parsed === null) return { ok: false, problem: "a copy of the install record is not valid" };
+    copies.push(parsed);
+  }
+  const [base, devSide, branch] = copies as [BkitVersion, BkitVersion, BkitVersion];
+  const canonicalHashes: Record<string, string> = {};
+  for (const p of new Set([
+    ...Object.keys(devSide.canonicalHashes),
+    ...Object.keys(branch.canonicalHashes),
+  ])) {
+    const hash = pickEntry(
+      base.canonicalHashes[p],
+      devSide.canonicalHashes[p],
+      branch.canonicalHashes[p],
+    );
+    if (hash !== undefined) canonicalHashes[p] = hash;
+  }
+  const merged: BkitVersion = {
+    pinnedVersion: pickEntry(base.pinnedVersion, devSide.pinnedVersion, branch.pinnedVersion),
+    canonicalHashes,
+    claudeAllowDerived: pickEntry(
+      base.claudeAllowDerived,
+      devSide.claudeAllowDerived,
+      branch.claudeAllowDerived,
+    ),
+  };
+  fs.writeFileSync(path.join(top, INSTALL_RECORD), serializeBkitVersion(merged));
+  return { ok: true };
+}
+
 export interface Resolution {
   path: string;
-  how: "union" | "lockfile" | "register" | "embed" | "dev";
+  how: "union" | "lockfile" | "register" | "embed" | "record" | "dev";
 }
 
 export interface RebaseResult {
@@ -437,7 +505,7 @@ export interface RebaseResult {
 }
 
 const NOT_RESOLVABLE =
-  "not an append-only ledger, a recognised lockfile, a generated register or a doc embedding one";
+  "not an append-only ledger, a recognised lockfile, a generated register, a doc embedding one or the install record";
 
 /** How a rebase settled each kind of conflict, for its log. */
 const REBASE_HOW: Record<Exclude<Resolution["how"], "dev">, string> = {
@@ -445,6 +513,7 @@ const REBASE_HOW: Record<Exclude<Resolution["how"], "dev">, string> = {
   lockfile: "took rebase target + regenerated",
   register: "took rebase target's copy of a generated register",
   embed: "took rebase target's copy of the generated block, merged the rest",
+  record: "merged the install record entry by entry, rebase target's value where both changed",
 };
 
 /**
@@ -499,7 +568,9 @@ export function resolveRebase(
             ? registerResolve(top, f, "ours")
             : kind === "embed"
               ? embedResolve(top, f, embeds.get(f)!, "ours")
-              : null;
+              : kind === "record"
+                ? recordResolve(top, "ours")
+                : null;
         if (settled !== null && !settled.ok)
           return refuse(`REFUSE ${f} — ${settled.problem}`, f, settled.problem);
         const ok =
@@ -509,7 +580,11 @@ export function resolveRebase(
           return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
         }
         const how: Exclude<Resolution["how"], "dev"> =
-          kind === "ledger" ? "union" : kind === "register" || kind === "embed" ? kind : "lockfile";
+          kind === "ledger"
+            ? "union"
+            : kind === "register" || kind === "embed" || kind === "record"
+              ? kind
+              : "lockfile";
         result.resolved.push({ path: f, how });
         log(`RESOLVED ${f} — ${REBASE_HOW[how]}`);
       }
@@ -2006,6 +2081,11 @@ function resolvePath(
     if (!settled.ok) return { refused: settled.problem };
     return runGit(top, ["add", "--", file]).ok ? "embed" : { refused: "git add failed" };
   }
+  if (kind === "record") {
+    const settled = recordResolve(top, "theirs");
+    if (!settled.ok) return { refused: settled.problem };
+    return runGit(top, ["add", "--", file]).ok ? "record" : { refused: "git add failed" };
+  }
   if (policy === "docs") {
     if (!file.startsWith("docs/")) return { refused: "outside docs/ and the ledgers" };
     // In a merge `--theirs` is the branch merged in: dev. Dev deleting the file
@@ -2029,6 +2109,7 @@ const RESOLVED_HOW: Record<Resolution["how"], string> = {
   lockfile: `lockfile regenerated from ${DEV}'s copy`,
   register: `took ${DEV}'s copy of a generated register`,
   embed: `took ${DEV}'s copy of the generated block, merged the rest`,
+  record: `merged the install record entry by entry, ${DEV}'s value where both changed`,
 };
 
 export interface DevMerge {
@@ -3016,12 +3097,12 @@ export const branchesCommand: CommandSpec = {
         {
           name: "merge",
           type: "boolean",
-          help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, a doc embedding the register's generated block takes ${DEV}'s block and merges the rest, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
+          help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, a doc embedding the register's generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry with ${DEV}'s value where both changed, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
         },
         {
           name: "merge-docs",
           type: "boolean",
-          help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, a doc embedding its generated block takes ${DEV}'s block and merges the rest, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
+          help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, a doc embedding its generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
         },
         {
           name: "fid",
@@ -3046,7 +3127,8 @@ export const branchesCommand: CommandSpec = {
         behind: `commits on ${UPSTREAM} not in head`,
         docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,
         merged: `true when --merge or --merge-docs merged ${UPSTREAM}`,
-        resolved: "conflicts the merge resolved: [{path, how: union|lockfile|register|embed|dev}]",
+        resolved:
+          "conflicts the merge resolved: [{path, how: union|lockfile|register|embed|record|dev}]",
         rebuilt:
           "a generated register the merge settled on dev's copy, or whose generated block a doc took from dev, rebuilt after the merge: true (rebuilt; output committed), false (failed: it keeps dev's copy), null (not run: none settled, its script absent, or no merge)",
         generated:
@@ -3064,7 +3146,7 @@ export const branchesCommand: CommandSpec = {
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
         [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union, lockfile regenerate or register resolution failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
         [EXIT_HAND_RESOLVE]:
-          "--merge: conflicts outside the ledgers, lockfiles, generated registers and their generated blocks are left in the tree with the merge in progress; resolve them, git add, run again",
+          "--merge: conflicts outside the ledgers, lockfiles, generated registers, their generated blocks and the install record are left in the tree with the merge in progress; resolve them, git add, run again",
         [EXIT_GENERATE_FAILED]:
           "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
       },
@@ -3303,7 +3385,7 @@ export const branchesCommand: CommandSpec = {
     },
     rebase: {
       summary:
-        "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after) and embedded generated-block (take the target's block, merge the rest, rebuild after) conflicts; refuse and abort on anything else.",
+        "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after), embedded generated-block (take the target's block, merge the rest, rebuild after) and install-record (merge entry by entry, the target's value where both changed) conflicts; refuse and abort on anything else.",
       use: "workflow",
       flags: [
         {
@@ -3324,7 +3406,7 @@ export const branchesCommand: CommandSpec = {
       ],
       output: {
         outcome: "resolved | refused (a refused rebase is aborted)",
-        resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed}]",
+        resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed|record}]",
         rebuilt:
           "a generated register settled on the rebase target's copy, or whose generated block a doc took from the target, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
         skippedCommits: "commits skipped because resolution emptied them",

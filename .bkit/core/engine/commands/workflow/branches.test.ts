@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
+import { serializeBkitVersion } from "../../install/version-file";
 import {
+  INSTALL_RECORD,
   LEDGERS,
   REGISTERS,
   branchesCommand,
@@ -270,6 +272,11 @@ describe("branches rebase: classification", () => {
     expect(classifyConflict("docs/README.md", embeds)).toBe("refuse");
   });
 
+  it("classifies the install record, and only at its exact path", () => {
+    expect(classifyConflict(INSTALL_RECORD)).toBe("record");
+    expect(classifyConflict("apps/web/.bkit/version")).toBe("refuse");
+  });
+
   it("reads the embedded docs from the script's assignment, and none when it is empty or absent", () => {
     const dir = makeRepo("embed-docs");
     expect(embedDocs(dir)).toEqual(new Map());
@@ -351,6 +358,32 @@ function divergeEmbed(name: string, feat: string, main: string, script = EMBED_R
   git(dir, "checkout", "-q", "main");
   write(dir, EMBED_DOC, main);
   git(dir, "commit", "-q", "-am", "main readme");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+/** An install record with these fingerprints, as bkit's own writer lays it out. */
+const record = (hashes: Record<string, string>, pinnedVersion = "6.0.0") =>
+  serializeBkitVersion({ pinnedVersion, canonicalHashes: hashes, claudeAllowDerived: [] });
+const BASE_HASHES = { "docs/deployments.md": "d0", "docs/testing.md": "t0", "docs/setup.md": "s0" };
+
+/**
+ * A repo on `main` with an install record, then feat and main each rewriting it
+ * (null deletes it); feat checked out and rebased onto main, stopped on the conflict.
+ */
+function divergeRecord(name: string, feat: string | null, main: string): string {
+  const dir = makeRepo(name);
+  write(dir, INSTALL_RECORD, record(BASE_HASHES));
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "record");
+  git(dir, "checkout", "-q", "-b", "feat");
+  if (feat === null) git(dir, "rm", "-q", INSTALL_RECORD);
+  else write(dir, INSTALL_RECORD, feat);
+  git(dir, "commit", "-q", "-am", "feat record");
+  git(dir, "checkout", "-q", "main");
+  write(dir, INSTALL_RECORD, main);
+  git(dir, "commit", "-q", "-am", "main record");
   git(dir, "checkout", "-q", "feat");
   git(dir, "rebase", "main");
   return dir;
@@ -717,6 +750,52 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
       outcome: "refused",
       refused: EMBED_DOC,
       reason: "it conflicts outside the generated block",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("merges the install record entry by entry, taking the target's value where both sides changed one", async () => {
+    const dir = divergeRecord(
+      "record",
+      record({
+        "docs/deployments.md": "d-feat",
+        "docs/testing.md": "t-feat",
+        "docs/setup.md": "s0",
+        "docs/new.md": "n",
+      }),
+      record({ "docs/deployments.md": "d0", "docs/testing.md": "t-main" }, "6.0.1"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      rebuilt: null,
+    });
+    // deployments: feat only. testing: both, so main's. setup: main removed it. new: feat added it.
+    expect(read(dir, INSTALL_RECORD)).toBe(
+      record(
+        { "docs/deployments.md": "d-feat", "docs/testing.md": "t-main", "docs/new.md": "n" },
+        "6.0.1",
+      ),
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses and aborts when a side deleted the install record", async () => {
+    const dir = divergeRecord(
+      "record-deleted",
+      null,
+      record({ ...BASE_HASHES, "docs/testing.md": "t-main" }),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: INSTALL_RECORD,
+      reason: "one side deleted the install record",
       aborted: true,
     });
     expect(inRebase(dir)).toBe(false);
@@ -2721,6 +2800,38 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
     expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
     expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge merges the install record entry by entry, taking dev's value where both sides changed one", async () => {
+    const { origin, clone } = withOrigin("merge-record-file");
+    write(clone, INSTALL_RECORD, record(BASE_HASHES));
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "record");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-record-file-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, INSTALL_RECORD, record({ ...BASE_HASHES, "docs/testing.md": "t-dev" }));
+    git(other, "commit", "-q", "-am", "dev record");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(
+      clone,
+      INSTALL_RECORD,
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-feat" }),
+    );
+    git(clone, "commit", "-q", "-am", "feat record");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      pending: [],
+    });
+    expect(read(clone, INSTALL_RECORD)).toBe(
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-dev" }),
+    );
+    expect(subject(clone)).toBe(MERGE_MSG);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
 
