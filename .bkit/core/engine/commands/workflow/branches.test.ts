@@ -863,7 +863,7 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(dir, ["rebase"]);
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ outcome: "refused", refused: EMBED_DOC, aborted: true });
-    expect(r.json.reason).toMatch(/^not an append-only ledger/);
+    expect(r.json?.reason).toMatch(/^not an append-only ledger/);
   });
 
   it("--sentinel and --log-file record a refusal and survive the abort", async () => {
