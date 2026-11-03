@@ -9,7 +9,7 @@ the sibling `graph-*.py` scripts, which are standalone and cannot be imported
 themselves.
 
 ONE WRITER. `bkit-graph-repair.py` is the only script that writes
-`resolved_import_edges()` into graph.json, during `pnpm graph`, so `graphify affected` /
+`resolved_import_edges()` into graph.json, during `pnpm bkit:graph`, so `graphify affected` /
 `explain` / `path` / `query` see the same edges these scripts do. bkit-graph-eager.py
 and bkit-graphify-rollup.py call `warn_if_unrepaired()`, which compares the same set
 against graph.json, and otherwise just read the graph.
@@ -147,7 +147,7 @@ def warn_if_unrepaired(graph, who, stream=None):
     if missing:
         print(f"[{who}] WARNING: graph.json lacks {len(missing)} imports that "
               f"bkit-graph-repair.py adds, so reachability and blast-radius numbers "
-              f"below are UNDERSTATED. Run 'pnpm graph:update'.",
+              f"below are UNDERSTATED. Run 'pnpm bkit:graph:update'.",
               file=stream or _sys.stderr)
     return repair_state(graph)
 

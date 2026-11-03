@@ -13,7 +13,7 @@
 #
 # SHA-pin the action. This file is yours, so Renovate may bump the pin. Do NOT add
 # this path to renovate.json5 `ignorePaths`.
-name: Renovate
+name: bkit-renovate
 
 on:
   workflow_dispatch:
@@ -49,6 +49,7 @@ concurrency:
 
 jobs:
   renovate:
+    name: bkit-renovate
     runs-on: ubuntu-latest # ~16 GB. Edit this label in your copy.
     timeout-minutes: 30
     steps:

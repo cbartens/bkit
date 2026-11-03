@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 
@@ -177,7 +178,7 @@ const ADOPTED: Record<string, Entry> = {
           "        if: github.event_name == 'pull_request'\n" +
           "        env:\n" +
           "          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n" +
-          '        run: pnpm slop:delta "$BASE_SHA"\n',
+          '        run: pnpm bkit:slop:delta "$BASE_SHA"\n',
         with:
           "      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).\n" +
           "      # Runs on every event against the planner's base — a PR's base branch, or a push's last\n" +
@@ -191,7 +192,7 @@ const ADOPTED: Record<string, Entry> = {
           '            echo "::notice::no diff base resolved — skipping slop delta"\n' +
           "            exit 0\n" +
           "          fi\n" +
-          '          pnpm slop:delta "$BASE_SHA"\n',
+          '          pnpm bkit:slop:delta "$BASE_SHA"\n',
       },
       {
         kind: "bkit-only",
@@ -371,10 +372,10 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".vale/styles/House/Filler.yml": identical,
-  ".vale/styles/House/Hedging.yml": identical,
-  ".vale/styles/House/LLMSlop.yml": identical,
-  ".vale/styles/House/Verbose.yml": identical,
+  ".vale/styles/Bkit/Filler.yml": identical,
+  ".vale/styles/Bkit/Hedging.yml": identical,
+  ".vale/styles/Bkit/LLMSlop.yml": identical,
+  ".vale/styles/Bkit/Verbose.yml": identical,
   "slop-scan.config.json": {
     status: "adopted",
     edits: [
@@ -460,7 +461,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  "docs/capabilities.md": { status: "generated", what: "pnpm graph:rollup writes it" },
+  "docs/capabilities.md": { status: "generated", what: "pnpm bkit:graph:rollup writes it" },
   "scripts/graphify/bkit-graph-drift-rules.json": {
     status: "adopted",
     edits: [
@@ -651,11 +652,11 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/serena/bkit-serena-mcp.sh": identical,
   "scripts/serena/bkit-serena.mcp.json": identical,
   "scripts/launchd/bkit-launchd-env.sh": identical,
-  "scripts/launchd/ai.bkit.launchd.plist": {
+  "scripts/launchd/bkit-launchd.plist": {
     status: "not-adopted",
     what: "machine-local LaunchAgent plist lives in ~/Library/LaunchAgents/",
   },
-  "scripts/launchd/launchd.env.example": {
+  "scripts/launchd/bkit-launchd.env.example": {
     status: "not-adopted",
     what: "machine-local secrets env file lives in ~/.config/bkit/launchd.env",
   },
@@ -758,7 +759,35 @@ describe("this repo adopts its own templates", () => {
     expect(fs.existsSync(copyPathOf(rel)), rel).toBe(true);
   });
 
-  it.each(entriesWith("adopted"))("%s", (rel, entry) => {
+  /** Adopted files whose copy is also pinned to carry no unprefixed `pnpm graph` hint (#748). */
+  const GRAPHIFY_BRANDED = [
+    "scripts/graphify/bkit-graphify.sh",
+    "scripts/graphify/bkit-graphify-rollup.py",
+  ];
+  const UNPREFIXED_GRAPH = /pnpm graph(?!ify)/;
+
+  /** Adopted workflows whose copy is also pinned to carry `bkit-` workflow and job display names (#748). */
+  const BRANDED_WORKFLOWS = [
+    ".github/workflows/bkit-cloud.yml",
+    ".github/workflows/bkit-renovate.yml",
+    ".github/workflows/bkit-trivy.yml",
+  ];
+
+  /** Workflow and job display names (`name`, else the job id) in a workflow text that lack `bkit-`. */
+  function unprefixedDisplayNames(text: string): string[] {
+    const doc = parseYamlText(text) as { name?: unknown; jobs?: Record<string, unknown> };
+    const bad: string[] = [];
+    if (typeof doc.name !== "string" || !doc.name.startsWith("bkit-"))
+      bad.push(`name: ${doc.name}`);
+    for (const [id, job] of Object.entries(doc.jobs ?? {})) {
+      const named = (job as { name?: unknown }).name;
+      const display = typeof named === "string" ? named : id;
+      if (!display.startsWith("bkit-")) bad.push(`job ${id}: ${display}`);
+    }
+    return bad;
+  }
+
+  function expectCopyMatchesTemplate(rel: string, entry: Extract<Entry, { status: "adopted" }>) {
     const copyPath = copyPathOf(rel);
     expect(fs.existsSync(copyPath), rel).toBe(true);
     const template = fs.readFileSync(path.join(templatesRoot, rel), "utf-8");
@@ -766,5 +795,67 @@ describe("this repo adopts its own templates", () => {
     const applied = apply(template, copy, entry.edits, rel);
     expect(applied.problems).toEqual([]);
     expect(copy).toBe(applied.text);
+    return { template, copy };
+  }
+
+  const OWN_TESTS = new Set([...GRAPHIFY_BRANDED, ...BRANDED_WORKFLOWS]);
+  it.each(entriesWith("adopted").filter(([rel]) => !OWN_TESTS.has(rel)))("%s", (rel, entry) => {
+    const { copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+  });
+
+  it("scripts/graphify/bkit-graphify.sh", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify.sh"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify.sh",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph");
+  });
+
+  it("scripts/graphify/bkit-graphify-rollup.py", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify-rollup.py"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify-rollup.py",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph:refresh");
+  });
+
+  it(".github/workflows/bkit-cloud.yml", () => {
+    const rel = ".github/workflows/bkit-cloud.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-renovate.yml", () => {
+    const rel = ".github/workflows/bkit-renovate.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-trivy.yml", () => {
+    const rel = ".github/workflows/bkit-trivy.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
   });
 });

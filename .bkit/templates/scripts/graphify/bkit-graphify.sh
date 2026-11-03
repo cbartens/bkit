@@ -35,7 +35,7 @@ REPORTS="$OUT/reports"
 # Report filenames — RENAME HERE AND NOWHERE ELSE. Each is referenced once
 # below, so a new name takes effect on the next run with no other edit. These
 # are all derived artifacts: renaming one never invalidates the graph, and the
-# old file is not cleaned up automatically — delete it or run `pnpm graph:clean`.
+# old file is not cleaned up automatically — delete it or run `pnpm bkit:graph:clean`.
 R_REPORT="graph-report.md"                # cluster-only's own report, moved here
 R_TREE="graph-tree.html"                  # collapsible folder tree
 R_FULL_GRAPHML="graph.graphml"            # whole graph for Gephi
@@ -90,40 +90,40 @@ GRAPH_EMBED_DOCS=""
 
 usage() {
   cat <<'EOF'
-Usage: pnpm graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
+Usage: pnpm bkit:graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
 
-  graph           Full repo: extract + cluster. ~2 min, 0 tokens.
-  graph:clean     Same, but deletes the output dir first. REQUIRED after any
+  bkit:graph      Full repo: extract + cluster. ~2 min, 0 tokens.
+  bkit:graph:clean Same, but deletes the output dir first. REQUIRED after any
                   tsconfig `paths` change — `--force` re-reads source files but
                   NOT the module-resolution cache, so a graph built after an
                   alias edit will silently keep the old, unresolved edges.
-  graph:update    Re-extract changed files only, then recluster.
-  graph:check     Rebuild from THIS tree; fail if the tracked register
+  bkit:graph:update Re-extract changed files only, then recluster.
+  bkit:graph:check Rebuild from THIS tree; fail if the tracked register
                   docs/capabilities.md differs from the rebuild, or a
                   GRAPH_EMBED_DOCS copy of its packages diagram differs from
                   the register. Writes nothing tracked. Reads uncommitted
                   edits — `check-at` does not.
-  graph:refresh   Rebuild the register in a clean checkout of the STAGED
+  bkit:graph:refresh Rebuild the register in a clean checkout of the STAGED
                   files (the index), copy it over docs/capabilities.md, and
                   rewrite the GRAPH_EMBED_DOCS copies. Stage your change
                   first. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
                   for every push to dev; CI runs it for every push and pull request.
   spec            Print the pinned graphify release (pip spec).
-  graph:rollup    Collapse the symbol graph into a package view (~24 nodes, the
+  bkit:graph:rollup Collapse the symbol graph into a package view (~24 nodes, the
                   architecture) and a module view (~133 nodes, the subsystems),
                   as interactive HTML. Edge weight is the number of underlying
                   symbol edges. Open these INSTEAD of the full graph; 9.8K nodes
                   is a database, not a picture.
-  graph:graphml   OPT-IN, for Gephi / yEd only — nothing else produces GraphML.
+  bkit:graph:graphml OPT-IN, for Gephi / yEd only — nothing else produces GraphML.
                   Writes all three views: the whole graph plus the two rollups.
                   The CLI has no --graphml flag (it exists only on the /graphify
                   skill, which this repo does not install), so the whole-graph
                   export calls graphify's own to_graphml() through its bundled
                   interpreter.
-  graph:tree      Collapsible folder tree with search and an outbound-edge
+  bkit:graph:tree Collapsible folder tree with search and an outbound-edge
                   inspector.
-  graph:scoped    One subtree with a browsable graph.html.
+  bkit:graph:scoped One subtree with a browsable graph.html.
                   Path defaults to apps/web/src; pass another as $2.
 
 Two directories, both gitignored and both rebuilt from source:
@@ -131,7 +131,7 @@ Two directories, both gitignored and both rebuilt from source:
   <out>/          RAW graph data — graph.json, manifest.json, cache/. graphify
                   owns this layout; the read commands (affected, god-nodes,
                   explain, path, query) all resolve <out>/graph.json.
-  <out>/reports/  Every DERIVED view. Safe to delete wholesale; `pnpm graph`
+  <out>/reports/  Every DERIVED view. Safe to delete wholesale; `pnpm bkit:graph`
                   plus the view command that made it rebuilds any of it.
 
 A whole-repo graph.html is never kept — 8.3 MB rendering ~9.8k nodes as a
@@ -173,7 +173,7 @@ graphify_python() {
 }
 
 require_graph() {
-  [ -f "$OUT/graph.json" ] || { echo "[graph] no $OUT/graph.json — run 'pnpm graph' first" >&2; exit 1; }
+  [ -f "$OUT/graph.json" ] || { echo "[graph] no $OUT/graph.json — run 'pnpm bkit:graph' first" >&2; exit 1; }
 }
 
 # The ONE graphify release that builds and judges the register — here, in the pre-push gate
@@ -208,7 +208,7 @@ esac
 # The whole-repo graph.html is DELETED, never kept. --no-viz below stops
 # cluster-only writing one, but `graphify update` regenerates it on its own
 # ("regenerated missing or stale graph.html") before this function reclusters, so
-# the rm removes it. Use graph:rollup for something clickable, or Gephi on the
+# the rm removes it. Use bkit:graph:rollup for something clickable, or Gephi on the
 # GraphML for metrics.
 cluster() {
   run_local cluster-only . --no-label --no-viz
@@ -341,7 +341,7 @@ case "${1:-build}" in
     echo "[graph] mermaid (paste into mermaid.live, or render per docs/setup.md):"
     echo "         $REPORTS/$R_PACKAGES_MMD"
     echo "         $REPORTS/$R_MODULES_MMD"
-    echo "[graph] GraphML for Gephi is opt-in: pnpm graph:graphml"
+    echo "[graph] GraphML for Gephi is opt-in: pnpm bkit:graph:graphml"
     ;;
   tree)
     require_graph
@@ -368,11 +368,11 @@ case "${1:-build}" in
     # into its base (pull_request), the tree a squash merge lands.
     # Rebuild graph from this tree → regenerate register into a throwaway copy
     # → fail if it differs from the tracked file. Writes nothing tracked; fix a
-    # red with `pnpm graph:refresh` plus a commit.
+    # red with `pnpm bkit:graph:refresh` plus a commit.
     #
     # By hand it reads the working tree, not the commit: uncommitted edits show
     # as drift nobody else can reproduce. After a tsconfig `paths` change run
-    # `pnpm graph:clean` first: `update` keeps the stale module-resolution
+    # `pnpm bkit:graph:clean` first: `update` keeps the stale module-resolution
     # cache, and the drift reported would be the cache, not the register.
     if [ -n "$(git status --porcelain -- '*.ts' '*.tsx' 2>/dev/null)" ]; then
       echo "[graph] WARNING: uncommitted .ts/.tsx edits — graphify reads the WORKING TREE," >&2
@@ -392,11 +392,11 @@ case "${1:-build}" in
       echo "[graph] $CAPABILITIES_DOC matches a rebuild at $(git rev-parse --short HEAD)."
     else
       echo "[graph] DRIFT: $CAPABILITIES_DOC is not what this tree produces (diff above)." >&2
-      echo "[graph] Fix:   pnpm graph:refresh && git add $CAPABILITIES_DOC $GRAPH_EMBED_DOCS && git commit" >&2
+      echo "[graph] Fix:   pnpm bkit:graph:refresh && git add $CAPABILITIES_DOC $GRAPH_EMBED_DOCS && git commit" >&2
       exit 1
     fi
     if ! embed --check; then
-      echo "[graph] Fix:   pnpm graph:refresh && git add $GRAPH_EMBED_DOCS && git commit" >&2
+      echo "[graph] Fix:   pnpm bkit:graph:refresh && git add $GRAPH_EMBED_DOCS && git commit" >&2
       exit 1
     fi
     ;;
@@ -414,7 +414,7 @@ case "${1:-build}" in
   refresh)
     # Rebuild the register in a clean checkout of the staged files → copy over the tracked
     # file here. Staged = the commit about to be made, so running it before that commit
-    # rebuilds the new state; unstaged edits stay out, as `graph:update && graph:rollup`
+    # rebuilds the new state; unstaged edits stay out, as `bkit:graph:update && bkit:graph:rollup`
     # would not. The checkout's HEAD stays HEAD, so the stamp names the parent of the commit
     # carrying the register. Fixes a `check` / `check-at` red. Commit the result.
     staged=$(git write-tree) || { echo "[graph] the index has unmerged paths — resolve them first" >&2; exit 1; }

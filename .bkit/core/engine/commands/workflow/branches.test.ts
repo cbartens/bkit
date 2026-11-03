@@ -8,11 +8,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
+import { serializeBkitVersion } from "../../install/version-file";
 import {
+  INSTALL_RECORD,
   LEDGERS,
+  REGISTERS,
   branchesCommand,
   classifyConflict,
   disabledTestsIn,
+  embedDocs,
   readAnchor,
   replayBuild,
   stampAnchor,
@@ -306,7 +310,136 @@ describe("branches rebase: classification", () => {
   ])("classifies %s (every manager bkit recognises) as the lockfile shape", (p) => {
     expect(classifyConflict(p)).toBe("lockfile");
   });
+
+  it("classifies every generated register as the register shape, and only at its exact path", () => {
+    for (const p of Object.keys(REGISTERS)) expect(classifyConflict(p), p).toBe("register");
+    expect(classifyConflict("docs/capabilities.md")).toBe("register");
+    expect(classifyConflict("apps/web/docs/capabilities.md")).toBe("refuse");
+  });
+
+  it("classifies a doc as embedding a register only when the repo's script lists it", () => {
+    const embeds = new Map([["README.md", "docs/capabilities.md"]]);
+    expect(classifyConflict("README.md", embeds)).toBe("embed");
+    expect(classifyConflict("README.md")).toBe("refuse");
+    expect(classifyConflict("docs/README.md", embeds)).toBe("refuse");
+  });
+
+  it("classifies the install record, and only at its exact path", () => {
+    expect(classifyConflict(INSTALL_RECORD)).toBe("record");
+    expect(classifyConflict("apps/web/.bkit/version")).toBe("refuse");
+  });
+
+  it("reads the embedded docs from the script's assignment, and none when it is empty or absent", () => {
+    const dir = makeRepo("embed-docs");
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS=""\n`);
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS="README.md docs/intro.md"\n`);
+    expect(embedDocs(dir)).toEqual(
+      new Map([
+        ["README.md", REGISTER],
+        ["docs/intro.md", REGISTER],
+      ]),
+    );
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Generated-register fixtures
+// ---------------------------------------------------------------------------
+
+const REGISTER = "docs/capabilities.md";
+const REGISTER_SCRIPT = REGISTERS[REGISTER]!.script;
+const [OV_OPEN, OV_CLOSE] = REGISTERS[REGISTER]!.keep;
+/** A register body: a generated line, the hand-written overrides region, a generated tail. */
+const registerBody = (generated: string, overrides = "{}") =>
+  `# Capabilities\n\n${generated}\n\n${OV_OPEN}\n${overrides}\n${OV_CLOSE}\n\ntail ${generated}\n`;
+/** The stand-in rebuild: stamps the register so a test sees that it ran, or fails. */
+const REBUILD_OK = `echo "rebuilt" >> ${REGISTER}\n`;
+const REBUILD_FAILS = `echo "graphify: command not found" >&2\nexit 1\n`;
+
+/**
+ * A repo on `main` with a register (and, unless `script` is null, its rebuild script),
+ * then feat and main each rewriting it; feat checked out and rebased onto main, stopped
+ * on the register conflict.
+ */
+function divergeRegister(
+  name: string,
+  feat: string,
+  main: string,
+  script: string | null = REBUILD_OK,
+): string {
+  const dir = makeRepo(name);
+  write(dir, REGISTER, registerBody("v0"));
+  if (script !== null) write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "register");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, REGISTER, feat);
+  git(dir, "commit", "-q", "-am", "feat register");
+  git(dir, "checkout", "-q", "main");
+  write(dir, REGISTER, main);
+  git(dir, "commit", "-q", "-am", "main register");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+const EMBED_DOC = "README.md";
+const [BLOCK_OPEN, BLOCK_CLOSE] = REGISTERS[REGISTER]!.embed.block;
+/** A doc embedding the register's generated block between two hand-written paragraphs. */
+const embedBody = (block: string, intro = "intro", outro = "outro") =>
+  `# Title\n\n${intro}\n\n${BLOCK_OPEN}\n${block}\n${BLOCK_CLOSE}\n\n${outro}\n`;
+/** A rebuild script that embeds the register into README.md and stamps that doc. */
+const EMBED_REBUILD = `GRAPH_EMBED_DOCS="${EMBED_DOC}"\necho "rebuilt" >> ${EMBED_DOC}\n`;
+
+/**
+ * A repo on `main` with README.md embedding the register's block and `script` as the
+ * register's rebuild script, then feat and main each rewriting README.md; feat checked
+ * out and rebased onto main, stopped on the README.md conflict.
+ */
+function divergeEmbed(name: string, feat: string, main: string, script = EMBED_REBUILD): string {
+  const dir = makeRepo(name);
+  write(dir, EMBED_DOC, embedBody("v0"));
+  write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "readme");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, EMBED_DOC, feat);
+  git(dir, "commit", "-q", "-am", "feat readme");
+  git(dir, "checkout", "-q", "main");
+  write(dir, EMBED_DOC, main);
+  git(dir, "commit", "-q", "-am", "main readme");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+/** An install record with these fingerprints, as bkit's own writer lays it out. */
+const record = (hashes: Record<string, string>, pinnedVersion = "6.0.0") =>
+  serializeBkitVersion({ pinnedVersion, canonicalHashes: hashes, claudeAllowDerived: [] });
+const BASE_HASHES = { "docs/deployments.md": "d0", "docs/testing.md": "t0", "docs/setup.md": "s0" };
+
+/**
+ * A repo on `main` with an install record, then feat and main each rewriting it
+ * (null deletes it); feat checked out and rebased onto main, stopped on the conflict.
+ */
+function divergeRecord(name: string, feat: string | null, main: string): string {
+  const dir = makeRepo(name);
+  write(dir, INSTALL_RECORD, record(BASE_HASHES));
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "record");
+  git(dir, "checkout", "-q", "-b", "feat");
+  if (feat === null) git(dir, "rm", "-q", INSTALL_RECORD);
+  else write(dir, INSTALL_RECORD, feat);
+  git(dir, "commit", "-q", "-am", "feat record");
+  git(dir, "checkout", "-q", "main");
+  write(dir, INSTALL_RECORD, main);
+  git(dir, "commit", "-q", "-am", "main record");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
 
 // ---------------------------------------------------------------------------
 // rebase — behaviour against real git
@@ -543,6 +676,194 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(dir, ["rebase"], { PATH: withBin(bin) });
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ refused: lockfile, reason: "resolution failed" });
+  });
+
+  it("settles a generated register on the rebase target's copy, then rebuilds and commits it", async () => {
+    const dir = divergeRegister("register", registerBody("feat"), registerBody("main"));
+    const featTip = sha(dir, "feat@{1}");
+    const r = await run(dir, ["rebase", "--log-file=logs/rebase-resolve-log.md"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: true,
+    });
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(sha(dir)).not.toBe(featTip);
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain(`[bkit-rebase] REBUILT ${REGISTER}`);
+  });
+
+  it("carries the branch's edit to the hand-written region onto the target's copy", async () => {
+    const dir = divergeRegister(
+      "register-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["x"]}')}rebuilt\n`);
+  });
+
+  it("keeps the target's edit to the hand-written region when the branch left it alone", async () => {
+    const dir = divergeRegister(
+      "register-dev-overrides",
+      registerBody("feat"),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    expect((await run(dir, ["rebase"])).code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["y"]}')}rebuilt\n`);
+  });
+
+  it("refuses and aborts when both sides changed the hand-written region", async () => {
+    const dir = divergeRegister(
+      "register-both-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: REGISTER,
+      reason: "both sides changed the hand-written region",
+      aborted: true,
+      rebuilt: null,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("keeps the target's copy unrebuilt when the repo has no rebuild script", async () => {
+    const dir = divergeRegister(
+      "register-noscript",
+      registerBody("feat"),
+      registerBody("main"),
+      null,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: null,
+    });
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — ${REGISTER_SCRIPT} is absent`);
+  });
+
+  it("completes the rebase when the rebuild fails, keeping the target's copy and logging why", async () => {
+    const dir = divergeRegister(
+      "register-rebuild-fails",
+      registerBody("feat"),
+      registerBody("main"),
+      REBUILD_FAILS,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "resolved", rebuilt: false });
+    expect(inRebase(dir)).toBe(false);
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(r.err).toContain("graphify: command not found");
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — it keeps dev's copy`);
+  });
+
+  it("settles a doc's generated block on the target's copy, keeps the branch's other edits, then rebuilds", async () => {
+    const dir = divergeEmbed(
+      "embed",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "intro", "main outro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      rebuilt: true,
+    });
+    expect(read(dir, EMBED_DOC)).toBe(`${embedBody("main", "feat intro", "main outro")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+  });
+
+  it("refuses and aborts when the doc also conflicts outside the generated block", async () => {
+    const dir = divergeEmbed(
+      "embed-outside",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "main intro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: EMBED_DOC,
+      reason: "it conflicts outside the generated block",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("merges the install record entry by entry, taking the target's value where both sides changed one", async () => {
+    const dir = divergeRecord(
+      "record",
+      record({
+        "docs/deployments.md": "d-feat",
+        "docs/testing.md": "t-feat",
+        "docs/setup.md": "s0",
+        "docs/new.md": "n",
+      }),
+      record({ "docs/deployments.md": "d0", "docs/testing.md": "t-main" }, "6.0.1"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      rebuilt: null,
+    });
+    // deployments: feat only. testing: both, so main's. setup: main removed it. new: feat added it.
+    expect(read(dir, INSTALL_RECORD)).toBe(
+      record(
+        { "docs/deployments.md": "d-feat", "docs/testing.md": "t-main", "docs/new.md": "n" },
+        "6.0.1",
+      ),
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses and aborts when a side deleted the install record", async () => {
+    const dir = divergeRecord(
+      "record-deleted",
+      null,
+      record({ ...BASE_HASHES, "docs/testing.md": "t-main" }),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: INSTALL_RECORD,
+      reason: "one side deleted the install record",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses a conflicted doc the repo's script does not list", async () => {
+    const dir = divergeEmbed(
+      "embed-unlisted",
+      embedBody("feat"),
+      embedBody("main"),
+      `GRAPH_EMBED_DOCS=""\n`,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ outcome: "refused", refused: EMBED_DOC, aborted: true });
+    expect(r.json?.reason).toMatch(/^not an append-only ledger/);
   });
 
   it("--sentinel and --log-file record a refusal and survive the abort", async () => {
@@ -2513,6 +2834,87 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
 
+  it("--merge settles a conflicted register on dev's copy and rebuilds it, leaving nothing for a hand resolution", async () => {
+    const { origin, clone } = withOrigin("merge-register");
+    landOnDev(origin, { [REGISTER]: registerBody("v0"), [REGISTER_SCRIPT]: REBUILD_OK });
+    git(clone, "pull", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { [REGISTER]: "feat line\n" }, "feat: register");
+    landOnDev(origin, { [REGISTER]: "dev line\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: REGISTER, how: "register" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
+    expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge merges the install record entry by entry, taking dev's value where both sides changed one", async () => {
+    const { origin, clone } = withOrigin("merge-record-file");
+    write(clone, INSTALL_RECORD, record(BASE_HASHES));
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "record");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-record-file-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, INSTALL_RECORD, record({ ...BASE_HASHES, "docs/testing.md": "t-dev" }));
+    git(other, "commit", "-q", "-am", "dev record");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(
+      clone,
+      INSTALL_RECORD,
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-feat" }),
+    );
+    git(clone, "commit", "-q", "-am", "feat record");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      pending: [],
+    });
+    expect(read(clone, INSTALL_RECORD)).toBe(
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-dev" }),
+    );
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge settles a doc's generated block on dev's copy and rebuilds its register", async () => {
+    const { origin, clone } = withOrigin("merge-embed");
+    write(clone, EMBED_DOC, embedBody("v0"));
+    write(clone, REGISTER_SCRIPT, EMBED_REBUILD);
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "readme");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-embed-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, EMBED_DOC, embedBody("dev", "intro", "dev outro"));
+    git(other, "commit", "-q", "-am", "dev readme");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(clone, EMBED_DOC, embedBody("feat", "feat intro"));
+    git(clone, "commit", "-q", "-am", "feat readme");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, EMBED_DOC)).toBe(`${embedBody("dev", "feat intro", "dev outro")}rebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
   it("--merge --file records an engine-action row keyed on the tip it merged from", async () => {
     const { origin, clone } = feature("merge-record");
     const before = sha(clone);
@@ -3256,6 +3658,65 @@ describe("branches regenerate", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json?.paths).toEqual(["dist/a.js", "dist/old.js"]);
     expect(committedFiles(clone)).toEqual(["dist/a.js", "dist/old.js"]);
     expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+  });
+
+  describe("a register or embedding doc whose only change is its build-commit stamp", () => {
+    const stamped = (sha: string, body: string) =>
+      `> Diagrams from \`graph.json\` @ \`${sha.slice(0, 9)}\`.\n` +
+      `  %% Generated by bkit-graphify-rollup.py from ${sha} — do not edit\n${body}\n`;
+    const OLD = "6d3e976d65d068eac7848a19a33a5f845405d535";
+    const NEW = "37792f032f4ea51e7619984348849f4e779cd727";
+    /** bkit:generate runs gen.js, which writes each of `writes` (path → body) restamped at NEW. */
+    function withStamps(name: string, writes: Record<string, string>) {
+      const gen = Object.entries(writes)
+        .map(
+          ([f, b]) => `fs.writeFileSync(${JSON.stringify(f)}, ${JSON.stringify(stamped(NEW, b))});`,
+        )
+        .join("\n");
+      return withGenerate(name, "node gen.js", {
+        "gen.js": `const fs = require("fs");\n${gen}\n`,
+        "scripts/graphify/bkit-graphify.sh": 'GRAPH_EMBED_DOCS="README.md"\n',
+        "docs/capabilities.md": stamped(OLD, "register"),
+        "README.md": stamped(OLD, "readme"),
+        "docs/other.md": stamped(OLD, "other"),
+      });
+    }
+
+    it("reports unchanged, commits nothing and leaves both files at HEAD", async () => {
+      const clone = withStamps("regen-stamps", {
+        "docs/capabilities.md": "register",
+        "README.md": "readme",
+      });
+      const before = sha(clone);
+      const r = await run(clone, ["regenerate", "--fid=1-x", `--file=${STATUS}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toEqual({ outcome: "unchanged", head: before, paths: [] });
+      expect(sha(clone)).toBe(before);
+      expect(read(clone, "docs/capabilities.md")).toBe(stamped(OLD, "register"));
+      expect(read(clone, "README.md")).toBe(stamped(OLD, "readme"));
+      expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+    });
+
+    it("commits a real change beside a stamp-only one, and only the real one", async () => {
+      const clone = withStamps("regen-stamps-mixed", {
+        "docs/capabilities.md": "register",
+        "README.md": "readme, rebuilt",
+      });
+      const r = await run(clone, ["regenerate"]);
+      expect(r.code).toBe(0);
+      expect(r.json?.outcome).toBe("committed");
+      expect(r.json?.paths).toEqual(["README.md"]);
+      expect(committedFiles(clone)).toEqual(["README.md"]);
+      expect(read(clone, "docs/capabilities.md")).toBe(stamped(OLD, "register"));
+      expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+    });
+
+    it("commits a stamp change in a doc that is neither a register nor an embedding doc", async () => {
+      const clone = withStamps("regen-stamps-other", { "docs/other.md": "other" });
+      const r = await run(clone, ["regenerate"]);
+      expect(r.code).toBe(0);
+      expect(r.json?.paths).toEqual(["docs/other.md"]);
+    });
   });
 
   it("reports unchanged and commits nothing when bkit:generate changed nothing", async () => {

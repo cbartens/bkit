@@ -13,8 +13,9 @@ import * as path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { scopeCiRunLookups } from "../../install/context-ci-workflow";
 import { syncTemplateCopies } from "../../install/template-copies";
-import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
+import { getCoreRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { blockBoundsOutput } from "../../checks/before/context-fetch";
 import type { WriteSet } from "../../install/write";
 
@@ -188,6 +189,41 @@ describe(".bkit/templates/context/", () => {
     const fetchBlocksInFixture = parseBlocks(text).blocks.filter((b) => b.kind === "start");
     expect(fetchBlocksInFixture).toHaveLength(1);
     expect(fetchBlocksInFixture.every((b) => blockBoundsOutput(b.body.split("\n")))).toBe(false);
+  });
+
+  // Other workflows on the branch (a security scan, a cloud agent) can finish after the CI
+  // workflow and pass, so an unscoped `--limit 1` reads their run and reports nothing failing.
+  const runLookups = (text: string): string[] =>
+    text
+      .split("\n")
+      .filter((l) => /gh run list --branch "\$\(git branch --show-current\)"/.test(l));
+
+  it.each([
+    ...files.map((f) => path.join(CONTEXT_DIR, f)),
+    path.join(getPkgRoot(), ".agents", "context.md"),
+  ])("%s: every lookup of the current branch's runs reads only the CI workflow", (abs) => {
+    for (const line of runLookups(fs.readFileSync(abs, "utf-8"))) {
+      expect(line, abs).toContain('--workflow "$CI_WORKFLOW"');
+    }
+  });
+
+  // bkit-github.md's `context=ci` block names its workflow before `--branch`, so the migration
+  // scopes an older copy's `RUN_JSON` lookup in place but cannot produce the current block.
+  it("the upgrade migration turns each shipped unscoped lookup into the template's lines", () => {
+    const scopedFiles = files.filter(
+      (f) => runLookups(fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8")).length > 0,
+    );
+    expect(scopedFiles).toEqual(["bkit-maestro.md", "bkit-playwright.md"]);
+    for (const f of scopedFiles) {
+      const current = fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8");
+      const old = current
+        .replace(/^CI_WORKFLOW="\$\{CI_WORKFLOW:-bkit-ci\.yml\}"\n/gm, "")
+        .replace(/ --workflow "\$CI_WORKFLOW"/g, "");
+      const managed = "<!-- bkit:start -->\n<!-- bkit:end -->\n";
+      const migrated = scopeCiRunLookups(managed + old, "bkit-ci.yml").content;
+      for (const line of runLookups(current)) expect(migrated, f).toContain(line);
+      expect(migrated.match(/^CI_WORKFLOW=/gm)?.length, f).toBe(runLookups(current).length);
+    }
   });
 
   it("names no maintainer: no bartens string in the context templates", () => {

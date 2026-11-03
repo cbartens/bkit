@@ -291,12 +291,27 @@ describe("Group B templates — bkit-ci.yml", () => {
 });
 
 describe("Group B templates — .vale.ini", () => {
-  it(".vale.ini sets StylesPath, Packages and MinAlertLevel and enables House on .agents/**", () => {
+  it(".vale.ini sets StylesPath, Packages and MinAlertLevel and enables Bkit on .agents/**", () => {
     const content = readTemplate(".vale.ini");
     expect(content).toContain("StylesPath");
     expect(content).toContain("Packages");
     expect(content).toContain("MinAlertLevel");
-    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = House/);
+    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = Bkit/);
+  });
+
+  it("Vale template ships the Bkit style and .vale.ini names it", () => {
+    const content = readTemplate(".vale.ini");
+    expect(content).not.toMatch(/\bHouse\b/);
+    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = Bkit/);
+    expect(content).toMatch(/BasedOnStyles = .*\bBkit\b/);
+    const styles = path.resolve(".bkit/templates/.vale/styles");
+    expect(fs.readdirSync(styles)).toEqual(["Bkit"]);
+    expect(fs.readdirSync(path.join(styles, "Bkit")).sort()).toEqual([
+      "Filler.yml",
+      "Hedging.yml",
+      "LLMSlop.yml",
+      "Verbose.yml",
+    ]);
   });
 });
 

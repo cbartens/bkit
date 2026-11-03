@@ -2,7 +2,8 @@
 //
 // `commands/lib.ts` `runCommand` writes two kinds of row while a workflow run is
 // active: an `engine-call` row in the run's `status.jsonl` (one per bkit command
-// dispatched, except one git launched) and a `friction` row in the run's own `.bkit/friction.jsonl` (one per
+// dispatched, except one git launched or one made while the run's repo has a rebase
+// paused) and a `friction` row in the run's own `.bkit/friction.jsonl` (one per
 // unexpected non-zero exit). `status row --type=owner-pause` writes a `human-confirm`
 // friction row through the same append. This module builds and appends them. It is a leaf:
 // it imports only `node:*`, `../shared/json.js`, `./status.js` and `./telemetry.js`, never a `commands/**`
@@ -42,6 +43,28 @@ export function journalEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
 export function launchedByGit(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env["GIT_EXEC_PATH"];
   return value !== undefined && value !== "";
+}
+
+/**
+ * True while the repo holding `dir` has a rebase paused: its git dir holds `rebase-merge`
+ * or `rebase-apply`. A worktree's `.git` file names its own git dir. A row appended then
+ * leaves a tracked `status.jsonl` with an unstaged change, and `git rebase --continue`
+ * refuses to go on.
+ */
+export function rebasePaused(dir: string): boolean {
+  for (let at = path.resolve(dir); ; at = path.dirname(at)) {
+    const dotGit = path.join(at, ".git");
+    if (fs.existsSync(dotGit)) {
+      let gitDir = dotGit;
+      if (fs.statSync(dotGit).isFile()) {
+        const named = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dotGit, "utf-8"))?.[1]?.trim();
+        if (named === undefined) return false;
+        gitDir = path.resolve(at, named);
+      }
+      return ["rebase-merge", "rebase-apply"].some((d) => fs.existsSync(path.join(gitDir, d)));
+    }
+    if (path.dirname(at) === at) return false;
+  }
 }
 
 /** Flag names in `argv` (`--name=value` and `--name value` both give `name`); values are never kept. */

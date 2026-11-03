@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Compute per-capability drift status by literal-pattern scan, for the generated diagram.
 
-Called by `pnpm graph:rollup` (scripts/graphify/bkit-graphify.sh). Reads
+Called by `pnpm bkit:graph:rollup` (scripts/graphify/bkit-graphify.sh). Reads
 bkit-graph-drift-rules.json, walks the source tree once, and writes an overlay JSON
 that bkit-graphify-rollup.py paints onto the Mermaid nodes.
 

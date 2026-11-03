@@ -14,9 +14,19 @@ description: "Ship Feature — Autonomous merge and archive"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+- **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
+  - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
+- **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
+  - Retry the same operation once through the host's approval mechanism only when permitted.
+  - **If** approval is pending → pause the operation.
+  - **If** approval is denied or unavailable → **Failure Path**.
+  - Verify the retry's exit status and required outputs.
+  - **If** the retry succeeds:
+    - Continue from the interrupted sub-step.
+    - Do not enter **Failure Path** for the recovered denial.
+- **Recovery scope:** This exception does not cover command logic, test or gate failures.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
-- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -319,21 +329,8 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    Hold `basePath` as `BASE_PATH`.
 2. Route:
-   - **If** `BASE_PATH` = A → sub-step 3 (skip integration — dev has not moved).
+   - **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
    - **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
-   - **Else** → **Failure Path**.
-3. Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `dev` brings `dev`'s generated files, which may not match this branch's code. The block commits only the paths `bkit:generate` changed:
-   ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches regenerate --fid="{FID}" --file="{STATUS}"
-   ```
-   Hold `outcome` as `REGEN_OUTCOME`.
-   Route:
-   - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push it, so CI starts at the regenerated head; NEVER force:
-     ```bash
-     "{BKIT}" branches push --mode=plain >/dev/null
-     ```
-     Then Step 5.
-   - **If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Base Check
@@ -343,7 +340,6 @@ description: "Ship Feature — Autonomous merge and archive"
 ```
 
 - [ ] Ancestor verdict determined
-- [ ] Path A regenerated (`branches regenerate`), a commit pushed plain
 
 ---
 
@@ -351,7 +347,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 **Run only if** `BASE_PATH` = B.
 
-1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    ```
@@ -363,7 +359,7 @@ description: "Ship Feature — Autonomous merge and archive"
    - **Else** → **Failure Path**. The block aborted the merge and wrote the sentinel.
 2. Resolve the conflicts the block left:
    1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Agent` tool:
-      Context: You are a subagent in the Ship phase. A merge of `origin/dev` is in progress with conflicts outside the ledgers and the lockfile: `{PENDING}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+      Context: You are a subagent in the Ship phase. A merge of `origin/dev` is in progress with conflicts outside the ledgers, the lockfile, the generated register, the embedding docs and the install record: `{PENDING}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
       Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
       Update: Conflicted source files.
       Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-conflict-resolve.md`.

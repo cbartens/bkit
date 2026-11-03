@@ -178,8 +178,8 @@ describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
 
 describe("bkit-ship.md — push-timing invariant (feature-branch pushes before merge)", () => {
   // Ship pushes the feature branch before the merge in exactly these places:
-  // opening a PR that does not exist yet (Step 2), the Path A regenerate commit
-  // (Step 3), the Path B integration (Step 4, after merging origin/dev locally),
+  // opening a PR that does not exist yet (Step 2), the Path B integration (Step 4,
+  // after merging origin/dev locally),
   // the one pre-merge bookkeeping commit (Commit + Push Bookkeeping) that carries
   // docs, summaries, ledgers and skill removals onto the PR so the merge lands
   // them on `dev`, the regenerate round after a red CI run (Step 10), and a
@@ -208,10 +208,9 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       ),
     ].sort();
 
-  it("pushes the feature branch only to open a missing PR, after a regenerate (Base Check, Merge Gate), in Integrate (Path B), in Commit + Push Bookkeeping and after a Failure Remediate fix", () => {
+  it("pushes the feature branch only to open a missing PR, in Integrate (Path B), in Commit + Push Bookkeeping, after a Merge Gate regenerate and after a Failure Remediate fix", () => {
     expect(stepsWhere(isFeaturePush)).toEqual(
       [
-        "Base Check",
         "Commit + Push Bookkeeping",
         "Failure Remediate",
         "Integrate (Path B only)",
@@ -219,6 +218,13 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
         "Verify PR (Worktree Setup + Regression Guard)",
       ].sort(),
     );
+  });
+
+  it("regenerates only in the Merge Gate, after a red CI run, never up front in Base Check", () => {
+    const regenerates = fencedLinesByStep(readShip())
+      .filter((l) => /"\{BKIT\}" branches regenerate\b/.test(l.line))
+      .map((l) => l.step);
+    expect([...new Set(regenerates)]).toEqual(["Merge Gate + Merge PR"]);
   });
 
   it("never force-pushes, with or without lease", () => {

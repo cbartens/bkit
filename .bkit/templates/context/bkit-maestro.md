@@ -10,7 +10,8 @@ Fits: native e2e lanes (iOS, Android, or both) whose GitHub Actions jobs run Mae
 - Non-secret: `MAESTRO_JOB_RE`, an anchored regex matching your Maestro lanes' job names (e.g. `^e2e-(ios|android)$`).
 - Non-secret: `MAESTRO_STEPS`, the `|`-separated names of the steps that print the result.
 - Non-secret: `MAESTRO_LOG_TAIL`.
-- Edit the defaults of these three in the block.
+- Non-secret: `CI_WORKFLOW`, the workflow file that runs these lanes (default `bkit-ci.yml`). The block reads only that workflow's newest run on the current branch.
+- Edit the defaults of these four in the block.
 - CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
 - Lanes on EAS keep their screenshots, JUnit and view-hierarchy dumps on EAS, not in this log. The `expo-workflows` block in `bkit-expo.md` fetches them.
@@ -27,16 +28,17 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # iOS: Maestro's driver is an XCUITest case that hosts the HTTP server Maestro talks to, so one
 # failure inside it ends the suite and turns every later flow into DeviceUnreachableException.
 # Read the per-flow table before the traces.
-# Customise: MAESTRO_JOB_RE; MAESTRO_STEPS (the steps that print per-flow results); MAESTRO_LOG_TAIL (lines kept per step slice, and of the fallback tail).
+# Customise: CI_WORKFLOW (the workflow file that runs these lanes); MAESTRO_JOB_RE; MAESTRO_STEPS (the steps that print per-flow results); MAESTRO_LOG_TAIL (lines kept per step slice, and of the fallback tail).
 MAESTRO_JOB_RE="${MAESTRO_JOB_RE:-^your-maestro-e2e-job-name$}"
 MAESTRO_STEPS="${MAESTRO_STEPS:-Your per-flow results step|Your failure classification step}"
 MAESTRO_LOG_TAIL="${MAESTRO_LOG_TAIL:-800}"
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:maestro] skipped — gh CLI not installed" >&2; exit 0; }
-RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 \
+CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"
+RUN_ID=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \
   --json databaseId,conclusion --jq 'if (.[0].conclusion // "") == "success" then "" else (.[0].databaseId // "" | tostring) end' 2>/dev/null)
 [ -n "$RUN_ID" ] \
-  || { echo "[context-fetch:maestro] skipped — no failing CI run found for this branch" >&2; exit 0; }
+  || { echo "[context-fetch:maestro] skipped — no failing $CI_WORKFLOW run found for this branch" >&2; exit 0; }
 # `gh --jq` takes no `--arg`, so the regex goes through real jq.
 JOBS=$(gh run view "$RUN_ID" --json jobs 2>/dev/null \
   | jq -r --arg re "$MAESTRO_JOB_RE" '.jobs[] | select(.name | test($re)) | select(.conclusion=="failure") | "\(.databaseId)\t\(.name)"' 2>/dev/null)

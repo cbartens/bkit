@@ -63,7 +63,7 @@ Set it up as follows:
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
-| `vale` | `3.24.0` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
+| `vale` | `3.24.0` | Prose lint (`pnpm bkit:lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
 
@@ -90,7 +90,7 @@ echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh
 pnpm install --frozen-lockfile                                          # workspace deps + husky git hooks
 pnpm tsx .bkit/core/engine/cli.ts install --claude --cursor  # dogfood install (this repo only)
 pnpm tsx .bkit/core/engine/cli.ts check                                # drift gate
-vale sync                                                               # one-off; pulls lint:prose styles
+vale sync                                                               # one-off; pulls bkit:lint:prose styles
 ```
 
 `install` requires >=1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.

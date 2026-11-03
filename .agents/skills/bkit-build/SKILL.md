@@ -15,9 +15,19 @@ description: "Build Feature — Autonomous implementation"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
+- **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
+  - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
+- **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
+  - Retry the same operation once through the host's approval mechanism only when permitted.
+  - **If** approval is pending → pause the operation.
+  - **If** approval is denied or unavailable → **Failure Path**.
+  - Verify the retry's exit status and required outputs.
+  - **If** the retry succeeds:
+    - Continue from the interrupted sub-step.
+    - Do not enter **Failure Path** for the recovered denial.
+- **Recovery scope:** This exception does not cover command logic, test or gate failures.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
-- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` for it → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 - **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop: each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead) — check present → `found`; 6th unresolved turn → `none`, or `err` when every turn errored; **Else** → end turn and repeat. Re-run the block with `{CI_REENTRY}` = `--poll-result=<found|none|err> --attempts=<total>`, plus `--all-errored` when every turn errored and `--retriggered` when the printed `phase` = repoll. `{CI_REENTRY}` is empty on a block's first run.
 
 **Contract:** The terms between this agent and whoever runs it.
@@ -689,21 +699,22 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-gaps-remediate --group={GROUP} --require=strategy
    ```
-   Hold `nextStrategy` as `STRATEGY`. **If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
-   ```bash
-   "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=current
-   ```
-   Hold `value` as `VERIFY_ATTEMPT`.
-   ```bash
-   "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --require=verdict
-   ```
-   Hold `verdict` as `VERIFY_VERDICT`. Read the `Loosened:` line of `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`'s header and hold its value as `VERIFY_LOOSENED`.
-   **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
-   **Else** → read the group gate's verdict:
-   ```bash
-   "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-group-gate --group={GROUP} --require=verdict
-   ```
-   Hold `verdict` as `GATE_VERDICT`.
+   Hold `nextStrategy` as `STRATEGY`.
+   - **If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
+     ```bash
+     "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --position=current
+     ```
+     Hold `value` as `VERIFY_ATTEMPT`.
+     ```bash
+     "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify --group={GROUP} --require=verdict
+     ```
+     Hold `verdict` as `VERIFY_VERDICT`. Read the `Loosened:` line of `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`'s header and hold its value as `VERIFY_LOOSENED`.
+     - **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
+     - **Else** → read the group gate's verdict:
+       ```bash
+       "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-group-gate --group={GROUP} --require=verdict
+       ```
+       Hold `verdict` as `GATE_VERDICT`.
 2. **If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
    **Subagent:** Invoke `@bkit-build-plan-tests` using `Agent` tool:
    Context: You are a subagent in the Build phase. Restore these tests of group `{GROUP}`, which verify logged `test-loosened`: `{VERIFY_LOOSENED}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.

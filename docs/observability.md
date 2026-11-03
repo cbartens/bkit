@@ -60,7 +60,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted` — `bkit workflows close` found no `engine-call` row for the run; one line per close on stderr, stdout and the exit code unchanged.
 - `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged.
 
-The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. A command git launched (a hook, seen by `GIT_EXEC_PATH` in its environment) writes no `engine-call` row; its friction row is still written. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
+The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. A command git launched (a hook, seen by `GIT_EXEC_PATH` in its environment) writes no `engine-call` row; its friction row is still written. A command run while the run's repo has a rebase paused (its git dir holds `rebase-merge` or `rebase-apply`) writes no `engine-call` row either, so `git rebase --continue` finds no unstaged change in the tracked `status.jsonl`. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
 
 ### `[bkit-status-holes]` prefix
 

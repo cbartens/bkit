@@ -64,24 +64,25 @@ describe("detectValeMissing", () => {
   const writeScripts = (scripts: Record<string, string>) =>
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ scripts }));
 
-  it("returns a finding when lint:prose runs bkit ci prose and vale is not on PATH", () => {
-    writeScripts({ "lint:prose": "bkit ci prose --glob='docs/*.md'" });
+  it("returns a finding when bkit:lint:prose runs bkit ci prose and vale is not on PATH", () => {
+    writeScripts({ "bkit:lint:prose": "bkit ci prose --glob='docs/*.md'" });
     spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
     const result = detectValeMissing(tmpDir);
     expect(result!.id).toBe("vale-not-installed");
+    expect(result!.detect).toContain("bkit:lint:prose");
     expect(result!.action).toContain("vale sync");
   });
 
   it("returns null when vale is on PATH", () => {
-    writeScripts({ "lint:prose": "bkit ci prose" });
+    writeScripts({ "bkit:lint:prose": "bkit ci prose" });
     spawnSync.mockReturnValue({ status: 0, stdout: "" } as ReturnType<typeof spawnSync>);
     expect(detectValeMissing(tmpDir)).toBeNull();
   });
 
-  it("returns null when lint:prose does not run bkit ci prose, or package.json is absent", () => {
+  it("returns null when bkit:lint:prose does not run bkit ci prose, or package.json is absent", () => {
     spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
     expect(detectValeMissing(tmpDir)).toBeNull();
-    writeScripts({ "lint:prose": "echo none" });
+    writeScripts({ "bkit:lint:prose": "echo none" });
     expect(detectValeMissing(tmpDir)).toBeNull();
   });
 });

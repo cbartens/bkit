@@ -163,7 +163,7 @@ execFileSync("vercel", ["env", "ls", env]); // correct
 execSync(`vercel env ls ${env}`); // PROHIBITED
 ```
 
-`execSync` permitted ONLY with constant, fully-literal command string. Prefer non-throwing `spawnSync` when non-zero exit is expected, because try/catch-default-return reads as error-obscuring catch to `slop:delta`.
+`execSync` permitted ONLY with constant, fully-literal command string. Prefer non-throwing `spawnSync` when non-zero exit is expected, because try/catch-default-return reads as error-obscuring catch to `bkit:slop:delta`.
 
 Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at runtime). See `docs/knowledge.jsonl`.
 

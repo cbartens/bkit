@@ -155,6 +155,8 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | Shipped-content CI script units move to `bkit-` names with their data files, and their `scripts/ci/` paths are rewritten | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
 | An edited CI script unit, or one whose `bkit-` target exists, stays and is logged | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 8 |
 | A second template-file migration and a dry run write and move nothing | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 8 |
+| Second upgrade logs no branded line for the hook and CI file, and records no hash for them | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 13 |
+| A second template-file migration and a dry run leave `scripts/ci/`, the hooks and the CI workflow unchanged | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 14 |
 | The upgrade log names each renamed check with the branch-protection fix | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
 | A `renovate:` / `trivy:` job that already carries a `name:` gets none inserted | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
 | A custom `bkit.testing.ciWorkflow` file gets the health-stub rewrite; `bkit-ci.yml` is not looked for | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
@@ -164,6 +166,17 @@ Observable outcome: after step 2 `package.json` holds `bkit:lint:prose`, `bkit:s
 | A second Vale migration and a dry run write nothing | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 10 |
 | Every `House` rule moved → `House/` removed, `BasedOnStyles` names `Bkit` alone, toggles read `Bkit.<rule>` | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 10 |
 | `.vale/` present, `.vale.ini` absent → rules move, no `.vale.ini` write | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 10 |
+| migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a workflow outside the path pass still names | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 15 |
+| migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when the job sets name below another key | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 16 |
+| renameScriptTokens leaves package-selecting flag forms alone | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 17 |
+| migrateBrandedFileTokens (via runBkitDocs) > warns on an old script name in a workflow it does not rewrite | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 18 |
+| migrateBrandedTemplateFiles (via runBkitDocs) > does not write through a dangling bkit- target symlink | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
+| migrateBrandedTemplateFiles (via runBkitDocs) > leaves a symlinked old data file in place | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
+| migrateValeHouseStyle (via runBkitDocs) > does not move rules into a symlinked Bkit directory | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 19 |
+| migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 20 |
+| renameScriptTokens leaves recursive flag forms alone | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 21 |
+| renameScriptTokens returns a many-flag line in bounded time | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 23 |
+| migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 22 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -522,7 +535,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Rename `lint:prose` → `bkit:lint:prose`, `slop:delta` → `bkit:slop:delta` everywhere they are wired
+- [x] **TASK 1:** Rename `lint:prose` → `bkit:lint:prose`, `slop:delta` → `bkit:slop:delta` everywhere they are wired
   - **UPDATE:** `BKIT_GATE_SCRIPTS` in `.bkit/core/engine/install/manifest.ts`: gate chains call `pnpm bkit:lint:prose` / `pnpm bkit:slop:delta`; comments
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: gate advisory text (line ~1098)
   - **UPDATE:** `.bkit/core/engine/cli.ts`: help text (line ~814)
@@ -565,7 +578,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Rename the two unprefixed launchd template files to `bkit-*`
+- [x] **TASK 2:** Rename the two unprefixed launchd template files to `bkit-*`
   - **CREATE:** `.bkit/templates/scripts/launchd/bkit-launchd.plist`: moved byte-identical (Label `ai.bkit.launchd` kept)
   - **CREATE:** `.bkit/templates/scripts/launchd/bkit-launchd.env.example`: moved byte-identical
   - **DELETE:** `.bkit/templates/scripts/launchd/ai.bkit.launchd.plist`: replaced by `bkit-launchd.plist`
@@ -584,7 +597,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Rename `graph*` → `bkit:graph*` in every template and doc; branding guard for script and file names
+- [x] **TASK 3:** Rename `graph*` → `bkit:graph*` in every template and doc; branding guard for script and file names
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: graphify script block and table (lines ~485-555)
   - **UPDATE:** `.bkit/templates/scripts/graphify/bkit-graphify.sh`: usage and hint strings name `pnpm bkit:graph*`
   - **UPDATE:** `.bkit/templates/scripts/graphify/bkit-graphify-rollup.py`: `docs/capabilities.md` header lines (~763-785) name `pnpm bkit:graph:refresh`, `pnpm bkit:graph:update`, `pnpm bkit:graph`; `slop:delta` hint (line 672) reads `bkit:slop:delta`
@@ -636,7 +649,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Upgrade migration for package.json script names
+- [x] **TASK 4:** Upgrade migration for package.json script names
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `BKIT_SCRIPT_RENAMES` — old → new table (`lint:prose`, `slop:delta`, `graph`, `graph:<verb>` for `check`, `clean`, `graphml`, `refresh`, `rollup`, `scoped`, `tree`, `update`); `graph*` entries carry the value guard (value runs `scripts/graphify/bkit-`)
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add the one **active pair** definition every token rewrite uses — `package.json` does not hold both keys, and the old key, when present, is not a foreign `graph*` value; a pair with neither key is active
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `renameScriptTokens(text, renames)` — exported, pure; rewrites `pnpm [flags] [run] [flags] <old>` where each flag is a value-less `-x` / `--x[=v]` token and `<old>` is followed by a character outside `[\w:-]` or end of text; flags and `run` kept
@@ -665,7 +678,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Brand workflow and job display names
+- [x] **TASK 5:** Brand workflow and job display names
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: job names `bkit-cloud-context (${{ github.event_name }})`, `bkit-cloud-claude (…)`, `bkit-cloud-opencode (…)`; job ids unchanged; comments naming the checks (lines 96, 472, 498, 547)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-renovate.yml`: workflow `name: bkit-renovate`; job `renovate` gets `name: bkit-renovate`
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-trivy.yml`: workflow `name: bkit-trivy`; job `trivy` gets `name: bkit-trivy`
@@ -692,7 +705,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Rename Vale style `House` → `Bkit`
+- [x] **TASK 6:** Rename Vale style `House` → `Bkit`
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/Filler.yml`: byte-identical move of the `House/` rule
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/Hedging.yml`: byte-identical move
   - **CREATE:** `.bkit/templates/.vale/styles/Bkit/LLMSlop.yml`: byte-identical move
@@ -733,7 +746,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Unhashed write class and the husky / CI token migration
+- [x] **TASK 7:** Unhashed write class and the husky / CI token migration
   - **UPDATE:** `WriteEntry` in `.bkit/core/engine/install/write.ts`: optional `unhashed?: true`
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: install postDispatch canonical-hash loop (~1027-1060) skips `unhashed` entries
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.ts`: the `renderWs.writes` → `updateCanonicalHashesAfterUpgrade` path (~1025-1045) skips `unhashed` entries
@@ -753,12 +766,14 @@ Build order: script names, template file names and the branding guard (Group 1) 
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedFileTokens (via runBkitDocs) > rewrites old script tokens in husky hooks and the CI workflow` fails on old tokens left in `.husky/pre-push` or a custom `bkit.testing.ciWorkflow` file, or a surviving `pnpm --filter web lint:prose` with no warning naming the file and line
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` fails on a `canonicalHashes` entry for `.husky/pre-push` or the CI workflow, or a second-run write
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a dry-run hook and CI token migration writes nothing` fails on `.husky/pre-push` or the CI workflow changing under `--dry-run`, or the dry-run writeset missing them
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` — replaced by Task 13 at the owner's decision (`build-decision-1-1.md`): the original could never pass, because every upgrade of the bare test project prints advisories naming `.husky/pre-push`; the Task 13 test runs and passes (owner, 2026-11-02)
 
 <!-- bkit:task 7 end -->
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Upgrade migration for the renamed CI script files
+- [x] **TASK 8:** Upgrade migration for the renamed CI script files
   - **UPDATE:** `.bkit/core/engine/checks/after/ci-yml.ts`: export `CI_SCRIPT_RENAMES` (old → new path per file, already listing all ten) and group it into units: `check-capstone.mjs` + `.test.mjs`; `check-dependency-audit.mjs` + `.test.mjs` + `accepted-advisories.json`; `check-accepted-divergences.mjs` + `.test.mjs` + `accepted-divergences.json`; `lanes/resolve-push-base.mjs` + `.test.mjs`; `detectCiScriptsOldNames` doc comment states that `bkit upgrade` moves unedited copies and the advisory names the ones it leaves
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `SHIPPED_CI_SCRIPT_HASHES` — sha256 of every distinct release content of the eight `.mjs` files, from `git tag -l 'v*'` × every path each file has had (`git log --all --follow --name-only -- .bkit/templates/scripts/ci/<file>`), committed as constants in the `RETIRED_DRIVER_HASHES` shape
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateBrandedTemplateFiles(dryRun, ws, logPrefix): PathRename[]` — a unit whose present `.mjs` files all match `SHIPPED_CI_SCRIPT_HASHES` and whose `bkit-` targets are absent → old files removed (`{ action: "write", unhashed: true }`), `.mjs` targets written from `getTemplatesRoot()` and the data file moved byte-identical (`{ action: "write", unhashed: true }`); an edited file or an existing target → unit left, one `console.warn` naming the manual move; no `scripts/ci/` → silent; returns the renames applied plus those already applied (old absent, new present)
@@ -773,8 +788,32 @@ Build order: script names, template file names and the branding guard (Group 1) 
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > moves shipped CI script units to bkit- names and rewrites their paths` fails on `scripts/ci/check-capstone.mjs` left in place, a moved `.test.mjs` importing the old name, `accepted-advisories.json` not moved byte-identical with its reader, or the CI workflow still running `node scripts/ci/check-capstone.mjs`
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves an edited or already-renamed unit and logs the manual move` fails on an edited `check-capstone.mjs` moved, a `bkit-check-capstone.mjs` target overwritten, or no warning
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run write and move nothing` fails on a second-run write or a dry-run move or write
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run write and move nothing` — replaced by Task 14 at the owner's decision (`build-decision-1-1.md`): the original compared the whole tree, and `.claude/bkit-cloud.md` changes on every upgrade by design; the Task 14 test skips only that file and passes (owner, 2026-11-02)
 
 <!-- bkit:task 8 end -->
+
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** Scope the second-upgrade check of the hook and CI token migration to its own log line
+  - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `copy-and-own migration writes record no canonical hash and a second upgrade writes nothing` (Task 7, line ~1059) with a test that checks the second upgrade's output for the migration's own line (`core: .husky/pre-push — branded`) and not for the bare path `.husky/pre-push`, which every upgrade of the bare scratch consumer names in advisories
+  - **DEPENDS ON:** 7
+  - **DONE WHEN:** the replaced test passes; it still asserts the hook and CI file are rewritten, `.bkit/version` `canonicalHashes` has no entry for them, and a second upgrade logs no migration line for them; the Task 7 test it replaces is gone from the file
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `copy-and-own migration second upgrade logs no branded line for the hook and CI file` fails on a second-run `core: .husky/pre-push — branded` line, a `canonicalHashes` entry for `.husky/pre-push` or the CI workflow, or an old token left in either file
+
+<!-- bkit:task 13 end -->
+
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** Leave the per-upgrade cache-bust file out of the second-run snapshot of the CI script move
+  - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: replace `a second template-file migration and a dry run write and move nothing` (Task 8, line ~1147) with a test whose before-and-after tree snapshot leaves out `.claude/bkit-cloud.md`, which `renderCloudCacheBust` (`.bkit/core/engine/install/cloud-env.ts:335`) rewrites with a new `# cache-bust` counter on every upgrade
+  - **DEPENDS ON:** 8
+  - **DONE WHEN:** the replaced test passes; `scripts/ci/`, the hooks and the CI workflow are equal before and after a second upgrade and after a dry run; the Task 8 test it replaces is gone from the file
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `a second template-file migration and a dry run leave scripts/ci and the hooks unchanged` fails on a second-run write or a dry-run move or write in `scripts/ci/`, `.husky/` or the CI workflow
+
+<!-- bkit:task 14 end -->
 
 <!-- bkit:group 3 end -->
 
@@ -784,7 +823,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Upgrade migration for workflow check names and the old health stub
+- [x] **TASK 9:** Upgrade migration for workflow check names and the old health stub
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateBrandedCheckNames(dryRun, ws, logPrefix)` — exact shipped old `name:` lines in `.github/workflows/bkit-cloud.yml`, `bkit-renovate.yml`, `bkit-trivy.yml` → branded; job `name:` inserted after the exact `  renovate:` / `  trivy:` line when the job has none; in `ciWorkflowPath(".")`, the old shipped `bkit-stub:health` block → the current block naming `.bkit/templates/.github/workflows/bkit-health.yml` (`{{DEFAULT_BRANCH}}` matched as any branch); one log line per renamed check naming old → new and the branch-protection fix; writes `unhashed: true`
   - **UPDATE:** `runBkitDocs` in `.bkit/core/engine/install/modules/core.ts`: calls `migrateBrandedCheckNames`
   - **UPDATE:** `.bkit/core/engine/install/modules/cloud.ts`: advisory strings (lines 57, 113, 166) state the copy-and-own contract with the exact-shipped-text brand-migration exception; tests pinning them updated
@@ -804,7 +843,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Upgrade migration for the Vale style
+- [x] **TASK 10:** Upgrade migration for the Vale style
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `SHIPPED_HOUSE_RULE_HASHES` — sha256 of every distinct release content of `Filler`, `Hedging`, `LLMSlop`, `Verbose`, from `git tag -l 'v*'` × every path each rule has had (`git log --all --follow --name-only -- .bkit/templates/.vale/styles/House/<rule>.yml`), committed as constants in the `RETIRED_DRIVER_HASHES` shape
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `migrateValeHouseStyle(dryRun, ws, logPrefix)` — matching `House/<rule>.yml` moved byte-identical to `Bkit/<rule>.yml` when absent; edited rule or existing target → left, one `console.warn` naming the rule and the manual move (`mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/` plus the `.vale.ini` toggle); `.vale.ini` `House.<moved>` → `Bkit.<moved>`; `BasedOnStyles` `House` → `Bkit` once `House/` is empty (directory removed), else `Bkit` appended; no `.vale.ini` → rules move, no `.vale.ini` write; no `.vale/` → silent; moved-away and removed paths pushed `{ action: "write", unhashed: true }`; other writes `unhashed: true`
   - **READ:** `RETIRED_DRIVER_HASHES` in `.bkit/core/engine/install/write.ts`: table shape and `sha256` use
@@ -829,7 +868,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Write the rule; sweep the shared instruction and remaining shipped docs
+- [x] **TASK 11:** Write the rule; sweep the shared instruction and remaining shipped docs
   - **READ:** `.bkit/authoring.md`: prose rules for the rule bullet and clause edits
   - **READ:** `.bkit/instructions.md`: current clause text via `pnpm instructions:show --file instructions.md`
   - **UPDATE:** `.agents/rules.md`: § Naming Conventions (below `bkit:end`) branding bullet — consumer-facing file, script, check and style names carry `bkit-` / `bkit:`; engine and hook internals never; tool-fixed names exempt
@@ -850,7 +889,7 @@ Build order: script names, template file names and the branding guard (Group 1) 
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Repo docs, mirror regeneration, build and old-shape dogfood
+- [x] **TASK 12:** Repo docs, mirror regeneration, build and old-shape dogfood
   - **UPDATE:** `docs/testing.md`: project part line ~763 and lines 640-641; § Key test files row for `.bkit/core/engine/audits/templates/branding.test.ts`
   - **UPDATE:** `docs/deployments.md`: project part (lines ~485-499)
   - **UPDATE:** `docs/security.md`: `bkit:slop:delta` (line 143)
@@ -869,6 +908,107 @@ Build order: script names, template file names and the branding guard (Group 1) 
 <!-- bkit:task 12 end -->
 
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** `migrateBrandedTemplateFiles` deletes `scripts/ci/check-dependency-audit.mjs` even when a workflow the path pass does not reach still guards its step with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`. That workflow might be a renamed CI file with no `bkit.testing.ciWorkflow`, or a separate nightly security workflow. The step then skips silently, and the dependency-audit gate is off with no log line
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1024` · **Round:** 1
+  - **DONE WHEN:** before moving a unit, `migrateBrandedTemplateFiles` searches every `.github/workflows/*.yml` / `*.yaml` file outside the path pass (`ciWorkflowPath(".")`, `bkit-trivy.yml`) for each old path in the unit. A hit leaves the unit in place and logs one `console.warn` naming the file, the line and the manual move, so an irreversible delete never runs while an unreached reference remains
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a workflow outside the path pass still names` fails on shipped v6.0.0 `scripts/ci/check-dependency-audit.mjs` being removed while `.github/workflows/security.yml` holds `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** A consumer whose `trivy:` / `renovate:` job sets `name:` below another key (for example after `runs-on:`) gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1109` · **Round:** 1
+  - **DONE WHEN:** `migrateBrandedCheckNames` inserts the job `name:` only when no 4-space `name:` key exists anywhere in that job's block (up to the next 2-space job key or the end of `jobs:`), and the result parses with `parseYaml`. The `docs/migrations.md` "Branded check names" row ("when the job has none") then holds
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when the job sets name below another key` fails on the shipped v6.0.0 `bkit-trivy.yml`, with `    name: our trivy` placed after `    runs-on:`, coming out with two `name:` keys under `  trivy:` (`parseYaml` throws "Map keys must be unique", reproduced in `node` with the same two regexes)
+
+<!-- bkit:task 16 end -->
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** `pnpm --filter=web lint:prose` (also `--dir=pkg` and `--prefix=pkg`) is rewritten to `pnpm --filter=web bkit:lint:prose`. Only the root `package.json` keys are renamed, so the sub-package has no `bkit:lint:prose`, and the hook or CI step fails with a missing script after upgrade
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:784` · **Round:** 1
+  - **DONE WHEN:** `renameScriptTokens` leaves a call unchanged when its flags select another package or directory (`--filter=…`, `-F…`, `--dir=…`, `-C…`, `--prefix=…`), as it already does for the space-separated `--filter web` form. `findOldScriptNames` then reports the call for the manual-rename warning that the `docs/migrations.md` "Branded script tokens in hooks and CI" row promises
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens leaves package-selecting flag forms alone` fails on `pnpm --filter=web lint:prose` coming back as `pnpm --filter=web bkit:lint:prose` (current output, probed with `tsx`)
+
+<!-- bkit:task 17 end -->
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** A consumer who adopted the v3 / v4 CI template as `.github/workflows/ci.yml` and never set `bkit.testing.ciWorkflow` gets `lint:prose` / `slop:delta` renamed in `package.json`. `ciWorkflowPath(".")` looks only for `bkit-ci.yml`, so their CI keeps `run: pnpm lint:prose` and fails with a missing script, and the upgrade log says nothing about that file
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:908` · **Round:** 1
+  - **DONE WHEN:** after the rewrite pass, `migrateBrandedFileTokens` runs `findOldScriptNames` over every other `.github/workflows/*.yml` / `*.yaml` file for the active pairs, as a warning with no write. Each surviving `pnpm <old>` call outside the migrated files then logs one warning with file and line
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedFileTokens (via runBkitDocs) > warns on an old script name in a workflow it does not rewrite` fails on a run over `package.json` `{ "scripts": { "lint:prose": "bkit ci prose" } }` plus `.github/workflows/ci.yml` holding `run: pnpm lint:prose` that prints no warning naming `.github/workflows/ci.yml` and `lint:prose`
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** A symlink committed under `scripts/ci/` or `.vale/styles/` makes `bkit upgrade` write outside the repo or copy an out-of-repo file into it
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1028` · **Round:** 1
+  - **DONE WHEN:** `migrateBrandedTemplateFiles` and `migrateValeHouseStyle` check every source, target and target directory with `fs.lstatSync` (as `migrateBrandedFileTokens` and `migrateBrandedCheckNames` already do) and treat a symlink as "not moved" with one `console.warn` naming the path. Today `fs.existsSync(to)` follows links, so a dangling `scripts/ci/bkit-accepted-advisories.json` link counts as absent, and `fs.copyFileSync(from, to)` (`core.ts:1028`) writes the data file's committed bytes to wherever the link points. A symlinked `scripts/ci/accepted-advisories.json` is read through the link and lands in the tree as a regular file holding the target's bytes, for example `~/.npmrc`. A data file needs no shipped hash, and a unit holding only the data file still moves. The same follow-through applies to `.vale/styles/Bkit` (or `Bkit/<rule>.yml`) at `core.ts:1193`, which writes shipped-rule bytes into a linked-to directory. Cross-ref `docs/security.md` § Untrusted Content & Prompt Injection (repo content is untrusted data) and § PII ("NEVER log consumer repo content verbatim"); no symlink rule exists there yet.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > does not write through a dangling bkit- target symlink` fails on the planted file: seed `scripts/ci/accepted-advisories.json` and a dangling `scripts/ci/bkit-accepted-advisories.json` link pointing into a sibling tmp dir; after `runBkitDocs` the linked-to path exists with the payload
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a symlinked old data file in place` fails on `scripts/ci/bkit-accepted-advisories.json` becoming a regular file that holds the out-of-repo target's bytes
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateValeHouseStyle (via runBkitDocs) > does not move rules into a symlinked Bkit directory` fails on the shipped `Filler.yml` being written into the linked-to directory
+
+<!-- bkit:task 19 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** A consumer's `trivy:` / `renovate:` job that holds a comment at job-key indent (`  # owner: security team`) above its own `name:` still gets a second `name:` inserted, so GitHub rejects the workflow file and the scan stops running
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1177` · **Round:** 2
+  - **DONE WHEN:** the job-block scan in `migrateBrandedCheckNames` ends only at the next 2-space job key or a column-0 key, skipping blank and comment lines (`rest.search(/^(?: {2}[^\s#]|[^\s#])/m)` today stops at `  #` and `#`), and the rewritten workflow is checked with `parseYaml` before `finish` writes it; a result that does not parse is not written and logs one `console.warn` naming the file and the manual rename. Probed with `tsx` on the shipped v6.0.0 `bkit-trivy.yml` seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`: the output holds `    name: bkit-trivy` and `    name: our trivy` under `  trivy:`, and `parseYaml` throws "Map keys must be unique at line 39". Task 16's DONE WHEN ("the result parses with `parseYaml`") is met only by the test, not by the code, and the `docs/migrations.md` "Branded check names" row ("when the job has none") does not hold for this shape
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedCheckNames (via runBkitDocs) > inserts no job name when a job-indent comment sits above the job's own name` fails on the shipped v6.0.0 `bkit-trivy.yml`, seeded with `  # owner: security team` after `  trivy:` and `    name: our trivy` after `    runs-on:`, coming out with two `    name:` lines under `  trivy:` and `parseYaml` throwing
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [x] **TASK 21:** `pnpm -r lint:prose` (also `pnpm --recursive slop:delta`, `pnpm -r run graph:update`) in a hook or CI step is rewritten to `pnpm -r bkit:lint:prose`. A recursive run skips the workspace root by default and runs the script in the sub-packages, whose `lint:prose` keys the migration never renames, so after upgrade pnpm fails with "None of the selected packages has a "bkit:lint:prose" script"
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:810` · **Round:** 2
+  - **DONE WHEN:** the package-selector lookahead in `renameScriptTokens` also leaves calls with `-r` / `--recursive` alone (as it does for `-F`, `-C`, `--filter`, `--dir` and `--prefix`), so `findOldScriptNames` reports them for the manual-rename warning; `-w` / `--workspace-root` (which selects the root) keeps being rewritten. Probed with `tsx`: `renameScriptTokens("pnpm -r lint:prose", BKIT_SCRIPT_RENAMES)` returns `pnpm -r bkit:lint:prose`, and `pnpm --recursive slop:delta` returns `pnpm --recursive bkit:slop:delta`. Same failure as Task 17, through a selector the fix did not list
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens leaves recursive flag forms alone` fails on `pnpm -r lint:prose`, `pnpm --recursive slop:delta` or `pnpm -r run graph:update` coming back with a `bkit:` name
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** A consumer whose dependency-audit step lives in a local composite action (`.github/actions/audit/action.yml` with `if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''`) gets the shipped audit unit moved to `scripts/ci/bkit-*`, because the Task 15 reference scan reads only `.github/workflows/*.yml` / `*.yaml`. The composite step then skips on every run, the dependency-audit gate is off and CI stays green with no log line
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1047` · **Round:** 2
+  - **DONE WHEN:** the reference scan in `migrateBrandedTemplateFiles` also reads every regular `action.yml` / `action.yaml` file under `.github/actions/` (the files a `uses: ./.github/actions/<name>` step runs, whose `runs.steps[*].if` accepts `hashFiles`). A hit leaves the unit in place and logs one `console.warn` naming the file, the line and the manual move, as a workflow hit does today, so the irreversible delete never runs while a composite action still names the old path. The `docs/migrations.md` "Branded CI script files" row, which today says "a workflow outside the path pass", then names composite actions too
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `migrateBrandedTemplateFiles (via runBkitDocs) > leaves a unit whose old path a composite action still names` fails on shipped v6.0.0 `scripts/ci/check-dependency-audit.mjs` and `.test.mjs` being removed (and `scripts/ci/bkit-check-dependency-audit.mjs` written) while `.github/actions/audit/action.yml` holds `runs:\n  using: composite\n  steps:\n    - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n      run: node scripts/ci/check-dependency-audit.mjs\n      shell: bash\n`, with no warning naming `.github/actions/audit/action.yml`
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 7 end -->
+
+<!-- bkit:group 8 start -->
+
+### TASK GROUP 8: Challenge round 2 finding left without a task
+
+<!-- bkit:task 23 start -->
+
+- [x] **TASK 23:** The pattern in `renameScriptTokens` that skips package-selecting flags backtracks exponentially, so a short committed line can hang `bkit check`, `bkit install` and `bkit upgrade`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts` (`renameScriptTokens`, the flag part `-{1,2}[\w-]+`) · **Round:** 2
+  - **DONE WHEN:** no pattern in `core.ts` (and so none in the built `dist/install/modules/core.js`) can match the same flag text in two ways: `--a` currently matches as `-` + `-a` or as `--` + `a`, so when the overall match fails the engine tries every combination and the time doubles with each extra flag. Measured on the old pattern: 24 flags take 59 ms, 28 flags 968 ms, 30 flags 3933 ms, and 40 flags (about 160 bytes) would take over an hour. The input can be any `package.json` script value, `.husky/pre-commit`, `.husky/pre-push` or the CI workflow file, and it runs on every check and upgrade. Every existing `renameScriptTokens` and `findOldScriptNames` test keeps passing with the same output
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.test.ts` `renameScriptTokens returns a many-flag line in bounded time` fails on a `pnpm` line with 30 flags (`--a --b ...`) and no script name taking longer than 500 ms, measured with `performance.now()` around the call because a vitest timeout cannot stop a synchronous regex
+
+<!-- bkit:task 23 end -->
+<!-- bkit:group 8 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

@@ -4,18 +4,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
-import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
+import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
 import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
 import { migrateTemplateNotes } from "../template-notes.js";
 import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
-import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
-import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { ASK_POINTS, CONFIG_DEFAULTS, ciWorkflowPath, limitKey } from "../../shared/settings.js";
+import { CI_SCRIPT_UNITS } from "../../checks/after/ci-yml.js";
+import { getCoreRoot, getSharedRoot, getBkitDocsRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
 import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
@@ -255,6 +257,11 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateJiraKeyName(dryRun, logPrefix);
     migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
     migrateTemplateNotes(dryRun, ws, logPrefix);
+    migrateContextCiWorkflow(dryRun, ws, logPrefix);
+    const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
+    migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
+    migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
+    migrateValeHouseStyle(dryRun, ws, logPrefix);
 }
 // Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
 // consumer's `## Model Overrides` row below `bkit:end` in `.bkit/prompts.md` naming an
@@ -449,9 +456,12 @@ export function seedCorePackageJsonScripts(ctx) {
     const { dryRun, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const written = [];
+    if (migrateBrandedScriptNames(dryRun, ws, logPrefix))
+        written.push("package.json");
     const gates = ensurePackageJsonScripts({ ...BKIT_GATE_SCRIPTS }, dryRun, ws);
     if (gates.added.length > 0) {
-        written.push("package.json");
+        if (!written.includes("package.json"))
+            written.push("package.json");
         console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}] — what a gate may run: .bkit/workflows.md § Local gate scripts`);
     }
     if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
@@ -603,6 +613,548 @@ function writePackageJsonLike(raw, pkg) {
     const indent = indentMatch ? indentMatch[1] : "  ";
     const trailingNewline = raw.endsWith("\n") ? "\n" : "";
     fs.writeFileSync("package.json", JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+}
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the package.json scripts bkit runs
+// carry the `bkit:` prefix. Old name -> new name. A `graph*` key moves only when its value
+// runs bkit's graph scripts; any other `graph*` script is the consumer's own.
+export const BKIT_SCRIPT_RENAMES = {
+    "lint:prose": "bkit:lint:prose",
+    "slop:delta": "bkit:slop:delta",
+    graph: "bkit:graph",
+    ...Object.fromEntries(["check", "clean", "graphml", "refresh", "rollup", "scoped", "tree", "update"].map((verb) => [
+        `graph:${verb}`,
+        `bkit:graph:${verb}`,
+    ])),
+};
+const GRAPH_VALUE_GUARD = "scripts/graphify/bkit-";
+// The pairs a migration acts on. A pair is inactive when `package.json` holds both keys, or
+// when the old key is a `graph*` script whose value is not bkit's; a pair with neither key
+// is active, so its tokens in other values and in default gate chains are rewritten.
+function activeScriptRenames(scripts, renames) {
+    const has = (k) => Object.prototype.hasOwnProperty.call(scripts, k);
+    const active = {};
+    const bothPresent = [];
+    for (const [oldName, newName] of Object.entries(renames)) {
+        if (has(oldName) && has(newName)) {
+            bothPresent.push(oldName);
+            continue;
+        }
+        const value = scripts[oldName];
+        if (has(oldName) &&
+            oldName.startsWith("graph") &&
+            !(typeof value === "string" && value.includes(GRAPH_VALUE_GUARD))) {
+            continue;
+        }
+        active[oldName] = newName;
+    }
+    return { active, bothPresent };
+}
+function isLink(p) {
+    return fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink() === true;
+}
+// True when `p` or any directory above it (within the relative path) is a symlink.
+function linkedPath(p) {
+    const parts = path.normalize(p).split(path.sep);
+    for (let i = 1; i <= parts.length; i++) {
+        if (isLink(parts.slice(0, i).join(path.sep)))
+            return true;
+    }
+    return false;
+}
+// Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
+function otherWorkflows(skip) {
+    const dir = path.join(".github", "workflows");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const skipped = new Set(skip.map((f) => path.normalize(f)));
+    return fs
+        .readdirSync(dir)
+        .filter((f) => /\.ya?ml$/.test(f))
+        .map((f) => path.join(dir, f))
+        .filter((f) => !skipped.has(f) && fs.lstatSync(f).isFile());
+}
+// Every regular `action.yml` / `action.yaml` file under `.github/actions/`, at any depth.
+function compositeActions() {
+    const dir = path.join(".github", "actions");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const walk = (d) => fs.readdirSync(d).flatMap((f) => {
+        const p = path.join(d, f);
+        const st = fs.lstatSync(p);
+        if (st.isDirectory())
+            return walk(p);
+        return st.isFile() && /^action\.ya?ml$/.test(f) ? [p] : [];
+    });
+    return walk(dir);
+}
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+/**
+ * Rewrites `pnpm [flags] [run] [flags] <old>` to the new name, keeping the flags and `run`.
+ * Each flag is a value-less `-x` / `--x[=v]` token, except the package selectors (`-F`, `-C`,
+ * `-r`, `--recursive`, `--filter`, `--dir`, `--prefix`), which leave the call alone; `<old>` ends at a character outside
+ * `[\w:-]` or at the end of the text. Anything else (`npm run`, `echo`, `--filter web`) stays.
+ */
+export function renameScriptTokens(text, renames) {
+    const names = Object.keys(renames).sort((a, b) => b.length - a.length);
+    if (names.length === 0)
+        return text;
+    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))--?\\w[\\w-]*(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
+    return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
+}
+/** Each old script name still in `text`, with its 1-based line. */
+export function findOldScriptNames(text, renames) {
+    const found = [];
+    const lines = text.split("\n");
+    for (const name of Object.keys(renames)) {
+        const re = new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`);
+        lines.forEach((l, i) => {
+            if (re.test(l))
+                found.push({ line: i + 1, name });
+        });
+    }
+    return found;
+}
+// Renames the old script keys in place (values kept), rewrites old `pnpm` tokens in every
+// script value, and warns on an old name it cannot reach. Returns true when package.json
+// changed.
+export function migrateBrandedScriptNames(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok) {
+        console.warn(`${logPrefix} core: package.json is not valid JSON; script names not migrated`);
+        return false;
+    }
+    const pkg = parsed.value;
+    if (!plainObject(pkg.scripts))
+        return false;
+    const scripts = pkg.scripts;
+    const { active, bothPresent } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+    const tag = dryRun ? "[dry-run] " : "";
+    for (const oldName of bothPresent) {
+        console.warn(`${logPrefix} ${tag}core: package.json scripts hold both "${oldName}" and "${BKIT_SCRIPT_RENAMES[oldName]}"; left "${oldName}" in place — remove it once nothing uses it`);
+    }
+    const next = {};
+    const renamed = [];
+    let changed = false;
+    for (const [key, value] of Object.entries(scripts)) {
+        const newKey = active[key];
+        if (newKey !== undefined) {
+            renamed.push(key);
+            changed = true;
+        }
+        let newValue = value;
+        if (typeof value === "string") {
+            newValue = renameScriptTokens(value, active);
+            if (newValue !== value)
+                changed = true;
+        }
+        next[newKey ?? key] = newValue;
+    }
+    if (!changed)
+        return false;
+    for (const [key, value] of Object.entries(next)) {
+        if (typeof value !== "string")
+            continue;
+        for (const { name } of findOldScriptNames(value, active)) {
+            console.warn(`${logPrefix} ${tag}core: package.json script "${key}" still runs the old name "${name}"; rename it to "${active[name]}" by hand`);
+        }
+    }
+    pkg.scripts = next;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${tag}core: package.json script names branded${renamed.length > 0 ? ` [${renamed.join(", ")}]` : ""}`);
+    return true;
+}
+function renamePathTokens(text, pathRenames) {
+    let out = text;
+    for (const { from, to } of pathRenames) {
+        out = out.replace(new RegExp(`${escapeRegExp(from)}(?![\\w.-])`, "g"), to);
+    }
+    return out;
+}
+export function migrateBrandedFileTokens(dryRun, ws, logPrefix, pathRenames = []) {
+    const tag = dryRun ? "[dry-run] " : "";
+    let scripts = {};
+    let pkgRaw;
+    let pkg;
+    if (fs.existsSync("package.json")) {
+        pkgRaw = fs.readFileSync("package.json", "utf-8");
+        const parsed = parseJson(pkgRaw);
+        if (parsed.ok && plainObject(parsed.value)) {
+            pkg = parsed.value;
+            if (plainObject(pkg.scripts))
+                scripts = pkg.scripts;
+        }
+    }
+    const { active } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+    const tokenFiles = [
+        path.join(".husky", "pre-commit"),
+        path.join(".husky", "pre-push"),
+        ciWorkflowPath("."),
+    ];
+    const files = [...new Set([...tokenFiles, path.join(".github", "workflows", "bkit-trivy.yml")])];
+    for (const file of files) {
+        if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile())
+            continue;
+        const text = fs.readFileSync(file, "utf-8");
+        let next = tokenFiles.includes(file) ? renameScriptTokens(text, active) : text;
+        next = renamePathTokens(next, pathRenames);
+        if (tokenFiles.includes(file)) {
+            for (const { name, line } of findOldScriptNames(next, active)) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+            }
+        }
+        if (next === text)
+            continue;
+        if (!dryRun)
+            fs.writeFileSync(file, next, "utf-8");
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — branded script and path names rewritten`);
+    }
+    for (const file of otherWorkflows(files)) {
+        for (const { name, line } of findOldScriptNames(fs.readFileSync(file, "utf-8"), active)) {
+            console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+        }
+    }
+    if (pkg === undefined || pkgRaw === undefined || pathRenames.length === 0)
+        return;
+    let changed = false;
+    const nextScripts = {};
+    for (const [key, value] of Object.entries(scripts)) {
+        const nextValue = typeof value === "string" ? renamePathTokens(value, pathRenames) : value;
+        if (nextValue !== value)
+            changed = true;
+        nextScripts[key] = nextValue;
+    }
+    if (!changed)
+        return;
+    pkg.scripts = nextScripts;
+    ws.writes.push({ path: "package.json", action: "update", unhashed: true });
+    if (!dryRun)
+        writePackageJsonLike(pkgRaw, pkg);
+    console.log(`${logPrefix} ${tag}core: package.json — branded CI script paths rewritten`);
+}
+// sha256 of every distinct release content of the CI script `.mjs` files, per old path, from
+// each `v*` tag. An unedited copy matches one of them.
+export const SHIPPED_CI_SCRIPT_HASHES = {
+    "scripts/ci/check-capstone.mjs": [
+        "3813d9fe3cfae79788990b0a7a4914d18350dde165a3c2fe5940e8348362cea6",
+        "45078e630f5ec9ff4e7704c99ac5f56fd37b9c2e94c052f084c03feddc86ef71",
+    ],
+    "scripts/ci/check-capstone.test.mjs": [
+        "0554d64652dcc32ea368a4791372e860a5e3314ecfb7084256627015333c7afb",
+        "ad58a0095528fdb3fe7310586b4091824f29fda261542df73c324c8dd574a0d6",
+    ],
+    "scripts/ci/check-dependency-audit.mjs": [
+        "b410ab27cdbeed8d659fdf523d1af9b519beb874901186bb59e2889646cdaa19",
+    ],
+    "scripts/ci/check-dependency-audit.test.mjs": [
+        "db3643ae6ef7ad01d628e6110aa2f7b47cdf2423ca07efc1a8bc6176eb98b6a2",
+    ],
+    "scripts/ci/check-accepted-divergences.mjs": [
+        "3b410c53535e66b7a65b54d574ba7f7e47139bfba58a883a60697b8ab44deef4",
+        "66e6f1f9ce22b52afe93454c268613b8f5b03c1c58b5817cac958435fefbe5b1",
+    ],
+    "scripts/ci/check-accepted-divergences.test.mjs": [
+        "743e623f0dcb118a96744d31611fb599e9041a8007a3202fb46c30d72a3e183e",
+        "f130f5784349c21c5ae4f02626243362d9c29f783b9ad4b9c158beeca9bf4107",
+    ],
+    "scripts/ci/lanes/resolve-push-base.mjs": [
+        "016c4dacf34ce6edffcc7c7f666027a0a34669ce299d755679c877540fc751e7",
+        "11930bf63081ca2b5201799e0262acfcfc148e15bce41e17ebead688a94fe8ce",
+        "84acc7ff1596234af0c614236608e2009e794da9549bf77a4cc9560c2784a8f8",
+    ],
+    "scripts/ci/lanes/resolve-push-base.test.mjs": [
+        "1ce7b5fdf1de756f56e6b9710952c1e272c633107b06c0d47780fce36b90d1ad",
+        "32e17be38751f2744d660acdd99c6a08e7f437cdeaeb7075bc876b1cd31f0237",
+        "6883deb2b20f99af68721b085fbf3e2ab14e4b58d17dd676afaf734c75195e96",
+    ],
+};
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the CI script files carry the
+// `bkit-` prefix. A unit (script, test and data file, `CI_SCRIPT_UNITS`) moves whole when each
+// present `.mjs` matches a shipped release and no `bkit-` target exists: the old files go, the
+// `.mjs` targets come from the shipped templates, the data file moves byte for byte. Any
+// other unit stays, with a warning naming the manual move (the `ci-scripts-old-names`
+// advisory lists it too). Returns the renames applied plus those already applied (old absent,
+// new present), for the path-token rewrite.
+export function migrateBrandedTemplateFiles(dryRun, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const renames = [];
+    const templates = getTemplatesRoot();
+    for (const unit of CI_SCRIPT_UNITS) {
+        const exists = (p) => fs.lstatSync(p, { throwIfNoEntry: false }) !== undefined;
+        const present = unit.filter(([from]) => exists(from));
+        const done = unit.filter(([from, to]) => !exists(from) && exists(to));
+        for (const [from, to] of done)
+            renames.push({ from, to });
+        if (present.length === 0)
+            continue;
+        const linkedTargets = present.map(([, to]) => to).filter((to) => linkedPath(to));
+        const linkedAll = [
+            ...new Set([...present.map(([from]) => from).filter((f) => linkedPath(f)), ...linkedTargets]),
+        ];
+        if (linkedAll.length > 0) {
+            console.warn(`${logPrefix} ${tag}core: ${linkedAll.join(", ")} is a symlink (or sits under one); ${present.map(([from]) => from).join(", ")} not moved to the bkit- names; move them by hand and update every reference`);
+            continue;
+        }
+        const referenced = [
+            ...otherWorkflows([ciWorkflowPath("."), path.join(".github", "workflows", "bkit-trivy.yml")]),
+            ...compositeActions(),
+        ].flatMap((file) => {
+            const lines = fs.readFileSync(file, "utf-8").split("\n");
+            return present.flatMap(([from]) => lines.flatMap((l, i) => new RegExp(`${escapeRegExp(from)}(?![\\w.-])`).test(l)
+                ? [{ file, line: i + 1, from }]
+                : []));
+        });
+        if (referenced.length > 0) {
+            for (const { file, line, from } of referenced) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still names ${from}; the unit was not moved to the bkit- names — move the files by hand and update that reference`);
+            }
+            continue;
+        }
+        const edited = present.filter(([from]) => from.endsWith(".mjs") &&
+            !SHIPPED_CI_SCRIPT_HASHES[from]?.includes(sha256(fs.readFileSync(from))));
+        const taken = present.filter(([, to]) => exists(to));
+        const noTemplate = present.filter(([, to]) => to.endsWith(".mjs") && !fs.existsSync(path.join(templates, to)));
+        if (edited.length > 0 || taken.length > 0 || noTemplate.length > 0) {
+            const why = edited.length > 0
+                ? `${edited.map(([from]) => from).join(", ")} differs from every shipped release`
+                : taken.length > 0
+                    ? `${taken.map(([, to]) => to).join(", ")} already exists`
+                    : "the shipped template is missing";
+            console.warn(`${logPrefix} ${tag}core: ${present.map(([from]) => from).join(", ")} not moved to the bkit- names (${why}); move them by hand and update every reference`);
+            continue;
+        }
+        for (const [from, to] of present) {
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(to), { recursive: true });
+                if (to.endsWith(".mjs"))
+                    fs.copyFileSync(path.join(templates, to), to);
+                else
+                    fs.copyFileSync(from, to);
+                fs.rmSync(from);
+            }
+            ws.writes.push({ path: from, action: "write", unhashed: true });
+            ws.writes.push({ path: to, action: "write", unhashed: true });
+            renames.push({ from, to });
+            console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+        }
+    }
+    return renames;
+}
+// The old `bkit-stub:health` block, as shipped by every release up to 6.0.x.
+const OLD_HEALTH_STUB = [
+    "# bkit-stub:health — copy into .github/workflows/health.yml. workflow_run cannot share a file with",
+    "# push / pull_request. WHEN: you have a live URL to smoke after CI. Trigger on CI completed, default",
+    "# branch only, if the CI run succeeded. Then hit the health URL of the deployment this SHA promoted.",
+    "# e.g. poll the host until that deployment is ready, then GET /health. Not a required check.",
+    "# DROP if you have no deployed health URL.",
+].join("\n");
+// Exact old workflow `name:` lines the three shipped example workflows carried, with the
+// branded line and the check each one renames. `job` names the job whose display name the
+// workflow name branded (the job has no `name:` of its own, so its check showed the bare id).
+const BRANDED_WORKFLOWS = [
+    { file: "bkit-renovate.yml", oldName: "Renovate", newName: "bkit-renovate", job: "renovate" },
+    { file: "bkit-trivy.yml", oldName: "Trivy", newName: "bkit-trivy", job: "trivy" },
+];
+const CHECK_RENAME_FIX = "update the branch-protection required checks (and any ruleset) to the new name";
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped example workflows and
+// the health stub in the CI workflow carry bkit- check names. Only the exact shipped old
+// lines are rewritten, so a customised `name:` stays; the job `name:` is inserted only when
+// the workflow name was rewritten and the job has none. The health stub block is replaced
+// by the current one when it is byte-identical to the shipped old one. Writes are `unhashed`:
+// the files stay the consumer's. One log line per renamed check names old -> new, because
+// branch protection matches the check name.
+export function migrateBrandedCheckNames(dryRun, ws, logPrefix, defaultBranch = "main") {
+    const tag = dryRun ? "[dry-run] " : "";
+    const wfDir = path.join(".github", "workflows");
+    const finish = (file, text, next, renamed) => {
+        if (next === text)
+            return;
+        if (!dryRun)
+            fs.writeFileSync(file, next, "utf-8");
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        for (const line of renamed) {
+            console.log(`${logPrefix} ${tag}core: ${file} — check renamed ${line}; ${CHECK_RENAME_FIX}`);
+        }
+    };
+    const readFile = (file) => fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()
+        ? fs.readFileSync(file, "utf-8")
+        : undefined;
+    const cloud = path.join(wfDir, "bkit-cloud.yml");
+    const cloudText = readFile(cloud);
+    if (cloudText !== undefined) {
+        const renamed = [];
+        const next = cloudText.replace(/^( {4}name: )(context|claude|opencode)( \(\$\{\{ github\.event_name \}\}\))$/gm, (_m, pre, job, post) => {
+            renamed.push(`bkit-cloud / ${job}${post} -> bkit-cloud / bkit-cloud-${job}${post}`);
+            return `${pre}bkit-cloud-${job}${post}`;
+        });
+        finish(cloud, cloudText, next, renamed);
+    }
+    for (const { file, oldName, newName, job } of BRANDED_WORKFLOWS) {
+        const target = path.join(wfDir, file);
+        const text = readFile(target);
+        if (text === undefined)
+            continue;
+        const nameLine = new RegExp(`^name: ${escapeRegExp(oldName)}$`, "m");
+        if (!nameLine.test(text))
+            continue;
+        let next = text.replace(nameLine, `name: ${newName}`);
+        const jobStart = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+        if (jobStart !== null) {
+            const bodyStart = jobStart.index + jobStart[0].length;
+            const rest = next.slice(bodyStart);
+            const end = rest.search(/^(?: {2}[^\s#]|[^\s#])/m);
+            const body = end === -1 ? rest : rest.slice(0, end);
+            if (!/^ {4}name:/m.test(body)) {
+                next = `${next.slice(0, bodyStart)}    name: ${newName}\n${next.slice(bodyStart)}`;
+            }
+            const after = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+            const afterRest = after === null ? "" : next.slice(after.index + after[0].length);
+            const afterEnd = afterRest.search(/^(?: {2}[^\s#]|[^\s#])/m);
+            const afterBody = afterEnd === -1 ? afterRest : afterRest.slice(0, afterEnd);
+            if ((afterBody.match(/^ {4}name:/gm) ?? []).length > 1) {
+                console.warn(`${logPrefix} ${tag}core: ${target} not renamed (a second job name: would make the workflow invalid YAML); rename by hand: name: ${oldName} -> name: ${newName} and set the ${job} job name: to ${newName}`);
+                continue;
+            }
+        }
+        finish(target, text, next, [`${oldName} / ${job} -> ${newName} / ${newName}`]);
+    }
+    const ci = ciWorkflowPath(".");
+    const ciText = readFile(ci);
+    if (ciText !== undefined && ciText.includes(OLD_HEALTH_STUB)) {
+        const template = readFile(path.join(getTemplatesRoot(), ".github", "workflows", "bkit-ci.yml"));
+        const current = template?.match(/^# bkit-stub:health[^\n]*\n(?:#[^\n]*\n)*?#[^\n]*DROP if you have no deployed health URL\./m)?.[0];
+        if (current !== undefined) {
+            const next = ciText.replace(OLD_HEALTH_STUB, () => current.replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch));
+            if (next !== ciText) {
+                if (!dryRun)
+                    fs.writeFileSync(ci, next, "utf-8");
+                ws.writes.push({ path: ci, action: "update", unhashed: true });
+                console.log(`${logPrefix} ${tag}core: ${ci} — old bkit-stub:health text replaced by the current block`);
+            }
+        }
+    }
+}
+// sha256 of every distinct release content of the four shipped `House` Vale rules, from each
+// `v*` tag, across `.agents/templates/.vale/styles/House/` and `.bkit/templates/.vale/styles/House/`.
+// An unedited copy matches one of them. Same shape as `RETIRED_DRIVER_HASHES` (write.ts).
+export const SHIPPED_HOUSE_RULE_HASHES = {
+    Filler: [
+        "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
+        "9b10438de3158a1923c51375fcba56de7a8dd2f17de97d62385407eee2a6e377",
+        "e04e9e76a4857de0d13ff106343e25000418c535a983317f5a2e1710fa68cbc7",
+    ],
+    Hedging: [
+        "7289b6bfe98f48803734c016c6ba49661071b5d8ded0f4678509b37c6ab8aff9",
+        "b7425861cb3085cc798379d8e92f01a0420aa2c40f7be1ba1bbfabd908767a37",
+        "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
+    ],
+    LLMSlop: [
+        "17a22ab44f0bd37de4d4c972fbb39a71dc256712ba0cfc39320043381f180a8e",
+        "c39313e229249786ba189bb1abe55728f83e325a54777b41b54e0a1dec47b4f7",
+        "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",
+    ],
+    Verbose: [
+        "8278791997cca85a2df63b2c93decac480e685215e0569e8472aa433e7a27ac8",
+        "bcb18beb903e7bd57780905778ea4d1a4f294589cf191375db144ecb11f4c619",
+        "f7939a5be92562803183108581538a1b4ca73c3b8a1b68ceeb2b2149ba1a4357",
+    ],
+};
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped Vale style is `Bkit`,
+// it was `House`. A `House/<rule>.yml` byte-identical to a shipped release moves to
+// `Bkit/<rule>.yml` when that is absent; an edited rule or a taken target stays with one
+// warning naming the manual move. In `.vale.ini`, `House.<moved>` becomes `Bkit.<moved>`;
+// `BasedOnStyles` swaps `House` for `Bkit` once `House/` is empty (the directory goes), else
+// appends `Bkit`. Own rules in `House/` stay. Writes are `unhashed`.
+export function migrateValeHouseStyle(dryRun, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const stylesDir = path.join(".vale", "styles");
+    const houseDir = path.join(stylesDir, "House");
+    const bkitDir = path.join(stylesDir, "Bkit");
+    const linkedVale = [".vale", stylesDir, houseDir, bkitDir].find((p) => isLink(p));
+    if (linkedVale === houseDir || linkedVale === ".vale" || linkedVale === stylesDir) {
+        console.warn(`${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`);
+        return;
+    }
+    if (!fs.lstatSync(houseDir, { throwIfNoEntry: false })?.isDirectory())
+        return;
+    if (linkedVale !== undefined) {
+        console.warn(`${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`);
+        return;
+    }
+    const moved = [];
+    for (const [rule, hashes] of Object.entries(SHIPPED_HOUSE_RULE_HASHES)) {
+        const from = path.join(houseDir, `${rule}.yml`);
+        if (isLink(from)) {
+            console.warn(`${logPrefix} ${tag}core: ${from} is a symlink and was not moved to the Bkit style; move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`);
+            continue;
+        }
+        if (!fs.lstatSync(from, { throwIfNoEntry: false })?.isFile())
+            continue;
+        const to = path.join(bkitDir, `${rule}.yml`);
+        const stays = !hashes.includes(sha256(fs.readFileSync(from)))
+            ? "differs from every shipped release"
+            : fs.lstatSync(to, { throwIfNoEntry: false }) !== undefined
+                ? `${to} already exists`
+                : undefined;
+        if (stays !== undefined) {
+            console.warn(`${logPrefix} ${tag}core: ${from} not moved to the Bkit style (${stays}); move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`);
+            continue;
+        }
+        if (!dryRun) {
+            fs.mkdirSync(bkitDir, { recursive: true });
+            fs.copyFileSync(from, to);
+            fs.rmSync(from);
+        }
+        ws.writes.push({ path: from, action: "write", unhashed: true });
+        ws.writes.push({ path: to, action: "write", unhashed: true });
+        moved.push(rule);
+        console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+    }
+    const remaining = fs
+        .readdirSync(houseDir)
+        .filter((f) => !moved.includes(f.replace(/\.yml$/, "")));
+    const houseGone = remaining.length === 0;
+    if (houseGone) {
+        if (!dryRun)
+            fs.rmSync(houseDir, { recursive: true });
+        ws.writes.push({ path: houseDir, action: "write", unhashed: true });
+    }
+    if (moved.length === 0 && !houseGone)
+        return;
+    const ini = ".vale.ini";
+    if (!fs.lstatSync(ini, { throwIfNoEntry: false })?.isFile())
+        return;
+    const text = fs.readFileSync(ini, "utf-8");
+    let next = text;
+    if (moved.length > 0) {
+        next = next.replace(new RegExp(`^(\\s*)House\\.(${moved.join("|")})\\b`, "gm"), (_m, lead, rule) => `${lead}Bkit.${rule}`);
+    }
+    if (houseGone)
+        next = next.replace(/^(#.*)\bHouse rules\b/gm, "$1Bkit rules");
+    next = next.replace(/^(BasedOnStyles\s*=\s*)(.*)$/gm, (line, pre, list) => {
+        const styles = list.split(",").map((s) => s.trim());
+        if (!styles.includes("House"))
+            return line;
+        if (houseGone) {
+            const swapped = styles.map((s) => (s === "House" ? "Bkit" : s));
+            return pre + [...new Set(swapped)].join(", ");
+        }
+        return styles.includes("Bkit") ? line : `${line}, Bkit`;
+    });
+    if (next === text)
+        return;
+    if (!dryRun)
+        fs.writeFileSync(ini, next, "utf-8");
+    ws.writes.push({ path: ini, action: "update", unhashed: true });
+    console.log(`${logPrefix} ${tag}core: ${ini} — House style names rewritten to Bkit`);
 }
 // Status option ids of GitHub's Kanban and Team planning board templates; every board
 // made from one carries the same ids.
@@ -1121,6 +1673,9 @@ export function runCoreModule(ctx) {
         // Exclude .bkit/version itself and .agents/ internal files (not consumer-facing).
         const newCanonicalEntries = {};
         for (const entry of ws.writes) {
+            // Brand-migrated copy-and-own files carry no hash.
+            if (entry.unhashed)
+                continue;
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
             if (relPath === path.join(".bkit", "version"))
@@ -1173,7 +1728,7 @@ export function runCoreModule(ctx) {
                 "2. See `.bkit/install.md` for consumer setup and `.bkit/README.md` for ongoing ops.\n\n" +
                 "Note: bkit seeded the bkit:gate:* / bkit:deps:* package.json scripts every workflow\n" +
                 "runs (existing values are never touched). The tool scripts they chain (typecheck,\n" +
-                "lint, format:check, lint:prose, slop:delta) and the devDeps those need are yours to\n" +
+                "lint, format:check, bkit:lint:prose, bkit:slop:delta) and the devDeps those need are yours to\n" +
                 "add: see .bkit/templates.md.",
         });
     }

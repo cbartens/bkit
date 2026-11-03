@@ -15,7 +15,7 @@
 >   - **If** `pnpm bkit:gate:static-unit-integration` is declared → pre-push runs it.
 >   - **Else** → pre-push runs `pnpm bkit:gate:static-unit`.
 > - On revert branches and revert commits, the `.husky/pre-push` template runs `bkit:gate:static`, which runs no tests.
-> - Gate scripts are consumer-owned. bkit's default is typecheck + lint + format:check + prose + slop:delta + `pnpm test` (unit tier only).
+> - Gate scripts are consumer-owned. bkit's default is typecheck + lint + format:check + bkit:lint:prose + bkit:slop:delta + `pnpm test` (unit tier only).
 > - Integration runs at pre-push once its gate is declared. Local services, such as a Docker database, are fine there.
 > - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).
 > - Never bypass the hooks with `--no-verify`.

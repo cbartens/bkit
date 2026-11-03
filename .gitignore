@@ -76,7 +76,7 @@ docs/plans/*/logs/**/.rebase-failed
 .codex/bkit-cloud.md
 
 # Claude native worktrees (isolation:worktree / EnterWorktree) — transient full-tree
-# copies; ignore or slop:delta double-counts the checkout
+# copies; ignore or bkit:slop:delta double-counts the checkout
 .claude/worktrees/
 
 # cursor / opencode — no project-local worktree or runtime dir to ignore.

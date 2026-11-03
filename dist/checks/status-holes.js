@@ -161,6 +161,7 @@ function requiredCalls(text) {
 function branchLines(lines) {
     const branch = lines.map(() => false);
     const targets = new Set();
+    const blocks = new Set();
     let ifIndent = null;
     lines.forEach((l, i) => {
         if (l.trim() === "") {
@@ -170,14 +171,18 @@ function branchLines(lines) {
         const indent = l.length - l.trimStart().length;
         if (ifIndent !== null && indent <= ifIndent)
             ifIndent = null;
-        if (/^\s*- \*\*(If|Else)\*\*/.test(l))
+        if (/^\s*(?:- |\d+\. )\*\*(If|Else)\*\*/.test(l))
             ifIndent = indent;
         branch[i] = ifIndent !== null;
-        if (/\*\*(If|Else)\*\*/.test(l))
+        if (/\*\*(If|Else)\*\*/.test(l)) {
             for (const m of l.matchAll(/sub-step (\d+)/g))
                 targets.add(Number(m[1]));
+            for (const m of l.matchAll(/→ \*\*([^*]+)\*\*/g))
+                blocks.add(m[1]);
+        }
     });
     let sub = null;
+    let block = false;
     lines.forEach((l, i) => {
         const m = /^(\d+)\. /.exec(l);
         if (m)
@@ -186,8 +191,32 @@ function branchLines(lines) {
             sub = null;
         if (sub !== null && targets.has(sub))
             branch[i] = true;
+        // A `**Name:**` block an `**If**` line routes to runs to the next such block or heading.
+        const label = /^\*\*([^*]+):\*\*/.exec(l)?.[1];
+        if (label !== undefined && blocks.has(label))
+            block = true;
+        else if (/^#{2,} /.test(l))
+            block = false;
+        if (block)
+            branch[i] = true;
     });
     return branch;
+}
+/**
+ * Per `"{BKIT}"` call in `text`, true when it sits after an inline `**If** … →` / `**Else** →`
+ * in the same sentence (`→ add `Group gate`: `"{BKIT}" tests run …``). A call in the fence
+ * below such a line stays required: there the condition may only change the call.
+ */
+function inlineArms(text) {
+    const parts = text.split('"{BKIT}"');
+    return parts.slice(1).map((_, i) => {
+        const before = parts.slice(0, i + 1).join('"{BKIT}"');
+        const lead = [...before.matchAll(/\*\*(?:If|Else)\*\*/g)].at(-1);
+        if (lead?.index === undefined)
+            return false;
+        const clause = before.slice(lead.index).replace(/`[^`]*`/g, "");
+        return clause.includes("→") && !/\.\s/.test(clause);
+    });
 }
 /** The `"{BKIT}"` calls of one step section, each tagged with its position (R3) and branch flag (R1). */
 function sectionCalls(body) {
@@ -205,13 +234,19 @@ function sectionCalls(body) {
     }
     const perLine = logical.map((l) => requiredCalls(l.text));
     const isFinish = (c) => c.noun === "steps" && (c.verb === "finish" || (c.verb === "done" && c.flags.includes("step")));
-    const lastFinish = perLine.reduce((last, calls, i) => (calls.some(isFinish) ? i : last), -1);
-    return perLine.flatMap((calls, i) => calls.map((c) => ({
-        ...c,
-        position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
-        branch: logical[i].branch,
-        line: i,
-    })));
+    // An optional finish below the step's own (a route arm's row) does not move the line.
+    const finishes = perLine.flatMap((calls, i) => (calls.some(isFinish) ? [i] : []));
+    const plain = finishes.filter((i) => !logical[i].branch);
+    const lastFinish = (plain.length > 0 ? plain : finishes).at(-1) ?? -1;
+    return perLine.flatMap((calls, i) => {
+        const inline = inlineArms(logical[i].text);
+        return calls.map((c, j) => ({
+            ...c,
+            position: i > lastFinish && lastFinish !== -1 ? "post" : "pre",
+            branch: logical[i].branch || inline[j],
+            line: i,
+        }));
+    });
 }
 /** Row keys a section writes (not merely names in a `steps gate --step=` read). */
 function stepWrites(text) {
@@ -322,9 +357,9 @@ export function contractUnits(contract) {
     for (const k of contract.universe) {
         const writers = contract.steps.filter((s) => s.writes.includes(k));
         const namers = contract.steps.filter((s) => s.keys.includes(k));
-        const last = (writers.length > 0 ? writers : namers).at(-1);
-        if (last)
-            owner.set(k, last);
+        const first = writers.length > 0 ? writers[0] : namers.at(-1);
+        if (first)
+            owner.set(k, first);
     }
     const owners = contract.steps.filter((s) => [...owner.values()].includes(s));
     return owners.map((s) => {
@@ -337,7 +372,8 @@ export function contractUnits(contract) {
                 .filter((f) => f.number > s.number)
                 .flatMap((f) => f.calls.map((c) => ({ ...c, position: "post" }))),
         ];
-        return { number: s.number, keys, calls, conditional: s.conditional };
+        const shared = s.writes.filter((k) => owner.has(k) && owner.get(k) !== s);
+        return { number: s.number, keys, shared, calls, conditional: s.conditional };
     });
 }
 /**
@@ -359,6 +395,10 @@ export function check(rows, contract, options = {}) {
     for (const u of units)
         for (const k of u.keys)
             unitOf.set(k, u);
+    const writersOf = new Map();
+    for (const u of units)
+        for (const k of [...u.keys, ...u.shared])
+            writersOf.set(k, [...(writersOf.get(k) ?? []), u]);
     const workflowCalls = contract.workflowCalls.filter((c) => c.noun !== SELF_NOUN);
     const workflowKeys = new Set([...workflowCalls, ...contract.anywhereCalls].map(callKey));
     const subRows = new Set(contract.subRows);
@@ -385,6 +425,18 @@ export function check(rows, contract, options = {}) {
     const visitOfRow = new Map();
     let current;
     const keysInCurrent = new Set();
+    // A row two units write joins the open visit of one of them, else the unit that also
+    // writes the next row, else its owner.
+    const unitOfRow = (key, owner, i) => {
+        const writers = writersOf.get(key) ?? [owner];
+        if (writers.length === 1)
+            return owner;
+        if (current && writers.includes(current.unit) && !keysInCurrent.has(key))
+            return current.unit;
+        const next = items.slice(i + 1).find((x) => x.kind === "step" && x.unit !== undefined);
+        const nextWriters = next?.kind === "step" ? (writersOf.get(next.key) ?? []) : [];
+        return writers.find((w) => nextWriters.includes(w)) ?? owner;
+    };
     items.forEach((item, i) => {
         if (item.kind !== "step")
             return;
@@ -392,9 +444,10 @@ export function check(rows, contract, options = {}) {
             current = undefined;
             return;
         }
-        const sameUnit = current?.unit === item.unit && !keysInCurrent.has(item.key);
+        const unit = unitOfRow(item.key, item.unit, i);
+        const sameUnit = current?.unit === unit && !keysInCurrent.has(item.key);
         if (!sameUnit) {
-            current = { unit: item.unit, rows: [] };
+            current = { unit, rows: [] };
             keysInCurrent.clear();
             visits.push(current);
         }
@@ -445,6 +498,11 @@ export function check(rows, contract, options = {}) {
                     !nextNames(false) &&
                     (take(slots.arm, key) || !nextNames(true))));
         const insideVisit = prevVisit !== undefined && prevVisit === nextVisit ? prevVisit : undefined;
+        // A post call journaled between its visit's own rows (above an arm's row) uses its slot.
+        if (insideVisit !== undefined && slots !== undefined) {
+            if (!take(slots.plain, key))
+                take(slots.arm, key);
+        }
         const owner = insideVisit ?? (claimsPost ? prevVisit : nextVisit);
         const required = owner?.unit.calls.some((c) => callKey(c) === key) === true;
         if (owner && required) {

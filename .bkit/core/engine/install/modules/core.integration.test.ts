@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parse as parseYaml } from "yaml";
 import type { WriteSet } from "../write";
 import { extractManagedBlock } from "../managed-block";
 import type { PreflightFinding } from "../../checks/before/index";
@@ -21,13 +22,14 @@ import {
   migrateLinearTeamKey,
   migrateGithubProjectKey,
   migrateBkitLayout,
+  migrateBrandedScriptNames,
   pruneMinPushPaths,
   seedBkitDefaults,
   SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
 import { readInstallingVersion } from "../../shared/package-json";
-import { getBkitDocsRoot, getPkgRoot } from "../../shared/package-roots";
+import { getBkitDocsRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
@@ -246,16 +248,128 @@ describe("core package.json scripts — bkit:gate:* names, add-if-missing", () =
     expect(ws.writes.some((w) => w.path === "package.json")).toBe(true);
     expect(readPkg().scripts).toBeUndefined();
   });
+});
 
-  it("leaves a superseded bkit slop:delta value in place (add-if-missing; no migration code)", () => {
-    // bkit seeds a gate name only when it is missing (#489 removed migration code),
-    // so a declared value — even a retired one — is the consumer's and is never rewritten.
-    writePkg({ scripts: { "slop:delta": "bash scripts/slop/bkit-slop-delta.sh" } });
+describe("migrateBrandedScriptNames (via seedCorePackageJsonScripts)", () => {
+  const OLD_STATIC =
+    "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta";
+  const seed = (scripts: Record<string, string>): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", version: "1.0.0", scripts }, null, 2) + "\n",
+      "utf-8",
+    );
+  const readScripts = (): Record<string, string> =>
+    JSON.parse(fs.readFileSync("package.json", "utf-8")).scripts;
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    migrateBrandedScriptNames(ctx.dryRun, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+
+  it("renames old bkit script keys and keeps custom values", () => {
+    seed({
+      "lint:prose": "custom-prose-linter",
+      "slop:delta": "bash scripts/slop/bkit-slop-delta.sh",
+      graph: "bash scripts/graphify/bkit-graphify.sh",
+      "graph:check": "bash scripts/graphify/bkit-graphify.sh --check",
+      "graph:rollup": "python3 scripts/graphify/bkit-graphify-rollup.py",
+      typecheck: "tsc --noEmit",
+    });
     dispatchModules(new Set(["core"]), makeCtx({}));
     const scripts = readScripts();
-    expect(scripts["slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
-    expect(scripts.typecheck).toBeUndefined();
+    expect(scripts["bkit:lint:prose"]).toBe("custom-prose-linter");
+    expect(scripts["bkit:slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
+    expect(scripts["bkit:graph"]).toBe("bash scripts/graphify/bkit-graphify.sh");
+    expect(scripts["bkit:graph:check"]).toBe("bash scripts/graphify/bkit-graphify.sh --check");
+    expect(scripts["bkit:graph:rollup"]).toBe("python3 scripts/graphify/bkit-graphify-rollup.py");
     expect(scripts["lint:prose"]).toBeUndefined();
+    expect(scripts["slop:delta"]).toBeUndefined();
+    expect(scripts.graph).toBeUndefined();
+    expect(scripts["graph:check"]).toBeUndefined();
+    expect(scripts["graph:rollup"]).toBeUndefined();
+    expect(scripts.typecheck).toBe("tsc --noEmit");
+  });
+
+  it("rewrites old script tokens in values and default gate chains", () => {
+    seed({
+      "bkit:gate:static": OLD_STATIC,
+      "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+      ci: "pnpm -s lint:prose && pnpm run slop:delta",
+      wrapped: "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- pnpm lint:prose",
+    });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readScripts();
+    expect(scripts["bkit:gate:static"]).toBe(BKIT_GATE_SCRIPTS["bkit:gate:static"]);
+    expect(scripts["bkit:gate:static"]).not.toMatch(/pnpm (lint:prose|slop:delta)/);
+    expect(scripts["bkit:gate:min"]).toBe(BKIT_GATE_SCRIPTS["bkit:gate:min"]);
+    expect(scripts.ci).toBe("pnpm -s bkit:lint:prose && pnpm run bkit:slop:delta");
+    expect(scripts.wrapped).toBe(
+      "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- pnpm bkit:lint:prose",
+    );
+  });
+
+  it("leaves the old key when the new key exists", () => {
+    seed({ "lint:prose": "old-linter", "bkit:lint:prose": "new-linter" });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ctx = run();
+      const scripts = readScripts();
+      expect(scripts["lint:prose"]).toBe("old-linter");
+      expect(scripts["bkit:lint:prose"]).toBe("new-linter");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const lines = logSpy.mock.calls.map((c) => String(c[0]));
+      expect(lines.filter((l) => l.includes("lint:prose")).length).toBeLessThanOrEqual(1);
+      expect(ctx.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("leaves a foreign graph script under its own name", () => {
+    seed({ graph: "nx graph", dev: "pnpm graph && pnpm lint:prose" });
+    dispatchModules(new Set(["core"]), makeCtx({}));
+    const scripts = readScripts();
+    expect(scripts.graph).toBe("nx graph");
+    expect(scripts["bkit:graph"]).toBeUndefined();
+    expect(scripts.dev).toBe("pnpm graph && pnpm bkit:lint:prose");
+  });
+
+  it("warns on an old script name the rewrite cannot reach", () => {
+    seed({ "lint:prose": "x", docs: "pnpm --filter web lint:prose" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      run();
+      const out = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("package.json");
+      expect(out).toContain("docs");
+      expect(out).toContain("lint:prose");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("leaves package.json untouched when it is not valid JSON", () => {
+    const broken = '{ "name": "x", "scripts": { "lint:prose": "x", ';
+    fs.writeFileSync("package.json", broken, "utf-8");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ctx = run();
+      expect(fs.readFileSync("package.json", "utf-8")).toBe(broken);
+      expect(ctx.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+      const out = [errSpy, logSpy, warnSpy]
+        .flatMap((s) => s.mock.calls.map((c) => String(c[0])))
+        .join("\n");
+      expect(out).toMatch(/package\.json/);
+    } finally {
+      errSpy.mockRestore();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
   });
 });
 
@@ -274,7 +388,14 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
       (f) => f.id === "gate-missing-called-scripts",
     );
     expect(finding).toBeDefined();
-    for (const name of ["lint", "format:check", "lint:prose", "slop:delta", "test", "build"]) {
+    for (const name of [
+      "lint",
+      "format:check",
+      "bkit:lint:prose",
+      "bkit:slop:delta",
+      "test",
+      "build",
+    ]) {
       expect(finding!.detect).toContain(`\`${name}\``);
     }
     expect(finding!.detect).not.toContain("`typecheck`");
@@ -303,11 +424,11 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
   it("names a script the commit gate runs that the push gate runs again", () => {
     writeScripts({
       ...BKIT_GATE_SCRIPTS,
-      "bkit:gate:format": "pnpm lint-staged && pnpm run test:placeholders && pnpm lint:prose",
+      "bkit:gate:format": "pnpm lint-staged && pnpm run test:placeholders && pnpm bkit:lint:prose",
       "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
     });
     const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "gate-commit-repeats-push");
-    expect(finding?.detect).toContain("`lint:prose`");
+    expect(finding?.detect).toContain("`bkit:lint:prose`");
     expect(finding?.detect).toContain("`bkit:gate:static-unit-integration`");
     expect(finding?.detect).not.toContain("`test:placeholders`");
     expect(finding?.detect).not.toContain("`lint-staged`");
@@ -360,7 +481,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
   it("every gate advisory restates what a gate may run, which bkit cannot check", () => {
     writeScripts({
       ...BKIT_GATE_SCRIPTS,
-      "bkit:gate:format": "pnpm lint-staged && pnpm lint:prose",
+      "bkit:gate:format": "pnpm lint-staged && pnpm bkit:lint:prose",
       "bkit:gate:min": "true",
       "test:integration": "vitest run -c int",
     });
@@ -1378,6 +1499,80 @@ describe("migrateModelOverrideAgentNames (via runBkitDocs)", () => {
   });
 });
 
+describe("migrateContextCiWorkflow (via runBkitDocs)", () => {
+  const CONTEXT = path.join(".agents", "context.md");
+  const OLD_LOOKUP =
+    'RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 \\\n' +
+    "  --json databaseId,conclusion,headSha 2>/dev/null || echo '[]')";
+  const seeded =
+    "<!-- bkit:start -->\n\n# Context\n\n<!-- bkit:end -->\n\n" +
+    "<!-- context-fetch:start github context=ci -->\n\n```bash\n" +
+    OLD_LOOKUP +
+    "\n```\n\n<!-- context-fetch:end -->\n";
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  const seed = (): void => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(CONTEXT, seeded, "utf-8");
+  };
+  const updates = (ctx: ModuleContext): number =>
+    ctx.ws.writes.filter((w) => path.normalize(w.path) === CONTEXT).length;
+
+  it("scopes an old CI run lookup to the configured CI workflow and records the update", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "test-project", bkit: { testing: { ciWorkflow: "ci.yml" } } }),
+      "utf-8",
+    );
+    seed();
+    const { ctx, logs } = run();
+    const text = fs.readFileSync(CONTEXT, "utf-8");
+    expect(text).toContain(
+      'CI_WORKFLOW="${CI_WORKFLOW:-ci.yml}"\nRUN_JSON=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \\\n',
+    );
+    expect(updates(ctx)).toBe(1);
+    expect(logs.join("\n")).toContain(`${CONTEXT} — CI run lookups now read only ci.yml runs (1)`);
+  });
+
+  it("dry-run computes the same write but leaves the file; a second run changes nothing", () => {
+    seed();
+    const dry = run(true);
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toBe(seeded);
+    expect(updates(dry.ctx)).toBe(1);
+    run();
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toContain(
+      'CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"',
+    );
+    const again = run();
+    expect(updates(again.ctx)).toBe(0);
+    expect(again.logs.join("\n")).not.toContain("CI run lookups");
+  });
+
+  it("names a lookup it cannot rewrite, once per process, and leaves it alone", () => {
+    fs.mkdirSync(".agents", { recursive: true });
+    const edited = seeded.replace("--limit 1", "--limit 3");
+    fs.writeFileSync(CONTEXT, edited, "utf-8");
+    const warns: string[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...a: unknown[]) => {
+      warns.push(a.join(" "));
+    });
+    const first = run();
+    run();
+    spy.mockRestore();
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toBe(edited);
+    expect(updates(first.ctx)).toBe(0);
+    expect(warns.filter((w) => w.includes("--workflow"))).toHaveLength(1);
+  });
+});
+
 describe("migrateLedgerSchema (via runBkitDocs)", () => {
   const LEDGER = path.join("docs", "deferrals.jsonl");
   const OLD =
@@ -1564,6 +1759,542 @@ describe("migrateRetiredLite (via runBkitDocs)", () => {
     expect(fs.existsSync(LITE)).toBe(false);
     for (const name of ["workflows.md", "prompts.md", "templates.md", "README.md"]) {
       expect(fs.existsSync(path.join(".bkit", name)), name).toBe(true);
+    }
+  });
+});
+
+describe("migrateBrandedFileTokens (via runBkitDocs)", () => {
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+
+  it("rewrites old script tokens in husky hooks and the CI workflow", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          scripts: { "lint:prose": "custom", "slop:delta": "custom" },
+          bkit: { testing: { ciWorkflow: "ci.yml" } },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    put(
+      ".husky/pre-push",
+      "#!/bin/sh\npnpm lint:prose\npnpm slop:delta\npnpm --filter web lint:prose\n",
+    );
+    put(
+      ".github/workflows/ci.yml",
+      "name: CI\njobs:\n  a:\n    steps:\n      - run: pnpm lint:prose\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run();
+      const hook = fs.readFileSync(".husky/pre-push", "utf-8");
+      expect(hook).toContain("pnpm bkit:lint:prose\n");
+      expect(hook).toContain("pnpm bkit:slop:delta\n");
+      expect(fs.readFileSync(".github/workflows/ci.yml", "utf-8")).toContain(
+        "pnpm bkit:lint:prose",
+      );
+      expect(fs.existsSync(".husky/pre-commit")).toBe(false);
+      expect(fs.existsSync(".github/workflows/bkit-ci.yml")).toBe(false);
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain(".husky/pre-push");
+      expect(out).toMatch(/pre-push:?\s*(line\s*)?4|pre-push.*:4/);
+      expect(out).toContain("lint:prose");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("warns on an old script name in a workflow it does not rewrite", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", scripts: { "lint:prose": "bkit ci prose" } }, null, 2) + "\n",
+      "utf-8",
+    );
+    put(
+      ".github/workflows/ci.yml",
+      "name: CI\njobs:\n  a:\n    steps:\n      - run: pnpm lint:prose\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run();
+      const out = warn.mock.calls.map((c) => String(c[0]));
+      const lines = out.filter((l) => l.includes(".github/workflows/ci.yml")).join("\n");
+      expect(lines).toContain("lint:prose");
+      expect(fs.readFileSync(".github/workflows/ci.yml", "utf-8")).toContain("pnpm lint:prose");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
+describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
+  const CI_DIR = path.join("scripts", "ci");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  /** The shipped pre-#748 content of a CI script, read from the committed v6.0.0 fixtures. */
+  const shippedOld = (file: string): string => {
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0/scripts/ci",
+        `${file}.fixture`,
+      ),
+      "utf-8",
+    );
+  };
+  const templateFile = (file: string): string =>
+    fs.readFileSync(path.join(getTemplatesRoot(), "scripts", "ci", file), "utf-8");
+  const ADVISORIES = '{"advisories":[{"id":"GHSA-x"}]}\n';
+
+  beforeEach(() => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("moves shipped CI script units to bkit- names and rewrites their paths", () => {
+    for (const f of [
+      "check-capstone.mjs",
+      "check-capstone.test.mjs",
+      "check-dependency-audit.mjs",
+      "check-dependency-audit.test.mjs",
+    ]) {
+      put(path.join(CI_DIR, f), shippedOld(f));
+    }
+    put(path.join(CI_DIR, "accepted-advisories.json"), ADVISORIES);
+    put(
+      ".github/workflows/bkit-ci.yml",
+      "name: bkit-ci\njobs:\n  a:\n    steps:\n      - run: node scripts/ci/check-capstone.mjs\n",
+    );
+    put(".husky/pre-push", "#!/bin/sh\nnode scripts/ci/check-dependency-audit.mjs < /dev/null\n");
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.test.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "accepted-advisories.json"))).toBe(false);
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-capstone.mjs"), "utf-8")).toBe(
+      templateFile("bkit-check-capstone.mjs"),
+    );
+    const movedTest = fs.readFileSync(path.join(CI_DIR, "bkit-check-capstone.test.mjs"), "utf-8");
+    expect(movedTest).toContain('./bkit-check-capstone.mjs"');
+    expect(movedTest).not.toContain('"./check-capstone.mjs"');
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-accepted-advisories.json"), "utf-8")).toBe(
+      ADVISORIES,
+    );
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), "utf-8")).toBe(
+      templateFile("bkit-check-dependency-audit.mjs"),
+    );
+    const ci = fs.readFileSync(".github/workflows/bkit-ci.yml", "utf-8");
+    expect(ci).toContain("node scripts/ci/bkit-check-capstone.mjs");
+    expect(ci).not.toContain("node scripts/ci/check-capstone.mjs");
+    expect(fs.readFileSync(".husky/pre-push", "utf-8")).toContain(
+      "node scripts/ci/bkit-check-dependency-audit.mjs",
+    );
+  });
+
+  it("leaves an edited or already-renamed unit and logs the manual move", () => {
+    const edited = shippedOld("check-capstone.mjs") + "\n// consumer edit\n";
+    put(path.join(CI_DIR, "check-capstone.mjs"), edited);
+    put(path.join(CI_DIR, "check-capstone.test.mjs"), shippedOld("check-capstone.test.mjs"));
+    const existing = "// consumer's own bkit-check-dependency-audit\n";
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), existing);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.readFileSync(path.join(CI_DIR, "check-capstone.mjs"), "utf-8")).toBe(edited);
+    expect(fs.existsSync(path.join(CI_DIR, "check-capstone.test.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-capstone.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.readFileSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"), "utf-8")).toBe(
+      existing,
+    );
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain("check-capstone");
+    expect(out).toContain("check-dependency-audit");
+  });
+
+  it("leaves a unit whose old path a workflow outside the path pass still names", () => {
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(
+      path.join(CI_DIR, "check-dependency-audit.test.mjs"),
+      shippedOld("check-dependency-audit.test.mjs"),
+    );
+    put(
+      ".github/workflows/security.yml",
+      "name: security\njobs:\n  audit:\n    steps:\n      - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n        run: node scripts/ci/check-dependency-audit.mjs\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"))).toBe(false);
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain(".github/workflows/security.yml");
+    expect(out).toContain("check-dependency-audit");
+  });
+
+  it("leaves a unit whose old path a composite action still names", () => {
+    put(path.join(CI_DIR, "check-dependency-audit.mjs"), shippedOld("check-dependency-audit.mjs"));
+    put(
+      path.join(CI_DIR, "check-dependency-audit.test.mjs"),
+      shippedOld("check-dependency-audit.test.mjs"),
+    );
+    put(
+      ".github/actions/audit/action.yml",
+      "runs:\n  using: composite\n  steps:\n    - if: hashFiles('scripts/ci/check-dependency-audit.mjs') != ''\n      run: node scripts/ci/check-dependency-audit.mjs\n      shell: bash\n",
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    run();
+
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "check-dependency-audit.test.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(CI_DIR, "bkit-check-dependency-audit.mjs"))).toBe(false);
+    const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(out).toContain(".github/actions/audit/action.yml");
+    expect(out).toContain("check-dependency-audit");
+  });
+
+  it("does not write through a dangling bkit- target symlink", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      const payloadTarget = path.join(outside, "planted.json");
+      put(path.join(CI_DIR, "accepted-advisories.json"), ADVISORIES);
+      fs.symlinkSync(payloadTarget, path.join(CI_DIR, "bkit-accepted-advisories.json"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      run();
+
+      expect(fs.existsSync(payloadTarget)).toBe(false);
+      expect(
+        fs.lstatSync(path.join(CI_DIR, "bkit-accepted-advisories.json")).isSymbolicLink(),
+      ).toBe(true);
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("bkit-accepted-advisories.json");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves a symlinked old data file in place", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      const secret = path.join(outside, "secret.txt");
+      fs.writeFileSync(secret, "TOP-SECRET-BYTES\n", "utf-8");
+      fs.mkdirSync(CI_DIR, { recursive: true });
+      fs.symlinkSync(secret, path.join(CI_DIR, "accepted-advisories.json"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      run();
+
+      expect(fs.readdirSync(CI_DIR)).not.toContain("bkit-accepted-advisories.json");
+      expect(fs.lstatSync(path.join(CI_DIR, "accepted-advisories.json")).isSymbolicLink()).toBe(
+        true,
+      );
+      const out = warn.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(out).toContain("accepted-advisories.json");
+      expect(out).not.toContain("TOP-SECRET-BYTES");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+/** The shipped pre-#748 content of a template file, read from the committed v6.0.0 fixtures. */
+function shippedAtV6(templateRel: string): string {
+  return fs.readFileSync(
+    path.join(
+      originalCwd,
+      ".bkit/core/engine/install/modules/__fixtures__/v6.0.0",
+      `${templateRel}.fixture`,
+    ),
+    "utf-8",
+  );
+}
+
+describe("migrateBrandedCheckNames (via runBkitDocs)", () => {
+  const WF = path.join(".github", "workflows");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const captured: string[] = [];
+  const out = (): string => captured.join("\n");
+
+  beforeEach(() => {
+    captured.length = 0;
+    vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+    vi.spyOn(console, "warn").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rewrites shipped old workflow names and leaves customised ones", () => {
+    put(path.join(WF, "bkit-cloud.yml"), shippedAtV6(".github/workflows/bkit-cloud.yml"));
+    put(path.join(WF, "bkit-trivy.yml"), shippedAtV6(".github/workflows/bkit-trivy.yml"));
+    const custom = shippedAtV6(".github/workflows/bkit-renovate.yml").replace(
+      "name: Renovate\n",
+      "name: Renovate (ours)\n",
+    );
+    expect(custom).toContain("name: Renovate (ours)\n");
+    put(path.join(WF, "bkit-renovate.yml"), custom);
+    run();
+
+    const cloud = fs.readFileSync(path.join(WF, "bkit-cloud.yml"), "utf-8");
+    expect(cloud).toContain("name: bkit-cloud-context (${{ github.event_name }})");
+    expect(cloud).toContain("name: bkit-cloud-claude (${{ github.event_name }})");
+    expect(cloud).toContain("name: bkit-cloud-opencode (${{ github.event_name }})");
+    expect(cloud).not.toMatch(/^ {4}name: (context|claude|opencode) \(/m);
+    const trivy = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    expect(trivy).toMatch(/^name: bkit-trivy$/m);
+    expect(trivy).toMatch(/^ {2}trivy:\n {4}name: bkit-trivy\n/m);
+    expect(trivy).not.toMatch(/^name: Trivy$/m);
+    const renovate = fs.readFileSync(path.join(WF, "bkit-renovate.yml"), "utf-8");
+    expect(renovate).toContain("name: Renovate (ours)\n");
+    expect(renovate).not.toMatch(/^name: bkit-renovate$/m);
+  });
+
+  it("logs each renamed check name with the branch-protection fix", () => {
+    put(path.join(WF, "bkit-trivy.yml"), shippedAtV6(".github/workflows/bkit-trivy.yml"));
+    put(path.join(WF, "bkit-renovate.yml"), shippedAtV6(".github/workflows/bkit-renovate.yml"));
+    run();
+    const text = out();
+    expect(text).toContain("Trivy / trivy");
+    expect(text).toContain("bkit-trivy / bkit-trivy");
+    expect(text).toContain("Renovate / renovate");
+    expect(text).toContain("bkit-renovate / bkit-renovate");
+    expect(text).toMatch(/branch[- ]protection/i);
+  });
+
+  it("inserts no job name when the renovate or trivy job already has one", () => {
+    const named = (file: string, job: string): string =>
+      shippedAtV6(`.github/workflows/${file}`).replace(
+        `\n  ${job}:\n`,
+        `\n  ${job}:\n    name: our ${job}\n`,
+      );
+    put(path.join(WF, "bkit-renovate.yml"), named("bkit-renovate.yml", "renovate"));
+    put(path.join(WF, "bkit-trivy.yml"), named("bkit-trivy.yml", "trivy"));
+    put(path.join(WF, "bkit-cloud.yml"), shippedAtV6(".github/workflows/bkit-cloud.yml"));
+    run();
+    expect(fs.readFileSync(path.join(WF, "bkit-cloud.yml"), "utf-8")).toContain(
+      "name: bkit-cloud-context (",
+    );
+    const renovate = fs.readFileSync(path.join(WF, "bkit-renovate.yml"), "utf-8");
+    const trivy = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    expect(renovate).toContain("  renovate:\n    name: our renovate\n");
+    expect(trivy).toContain("  trivy:\n    name: our trivy\n");
+    expect(renovate.match(/^ {4}name:/gm)).toHaveLength(1);
+    expect(trivy.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
+
+  it("rewrites the old health stub in a custom bkit.testing.ciWorkflow file", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", bkit: { testing: { ciWorkflow: "ci.yml" } } }, null, 2) + "\n",
+      "utf-8",
+    );
+    const ciOld = shippedAtV6(".github/workflows/bkit-ci.yml");
+    const start = ciOld.indexOf("# bkit-stub:health");
+    const endMarker = "# DROP if you have no deployed health URL.";
+    const end = ciOld.indexOf(endMarker) + endMarker.length;
+    expect(start).toBeGreaterThan(-1);
+    const oldBlock = ciOld.slice(start, end);
+    const wrap = (block: string): string =>
+      `name: CI\njobs:\n  a:\n    steps:\n      - run: true\n# === JOB 6 ===\n${block}\n# tail\n`;
+
+    const edited = oldBlock.replace("Not a required check.", "Not a required check (ours).");
+    expect(edited).not.toBe(oldBlock);
+    put(path.join(WF, "ci.yml"), wrap(edited));
+    run();
+    expect(fs.readFileSync(path.join(WF, "ci.yml"), "utf-8")).toBe(wrap(edited));
+
+    put(path.join(WF, "ci.yml"), wrap(oldBlock));
+    run();
+    const after = fs.readFileSync(path.join(WF, "ci.yml"), "utf-8");
+    expect(after).toContain(".bkit/templates/.github/workflows/bkit-health.yml");
+    expect(after).not.toContain("copy into .github/workflows/health.yml");
+    expect(after).toContain("# tail\n");
+    expect(fs.existsSync(path.join(WF, "bkit-ci.yml"))).toBe(false);
+  });
+  it("inserts no job name when the job sets name below another key", () => {
+    const old = shippedAtV6(".github/workflows/bkit-trivy.yml");
+    const custom = old.replace(
+      "    runs-on: ubuntu-latest # Edit this label in your copy.\n",
+      "    runs-on: ubuntu-latest # Edit this label in your copy.\n    name: our trivy\n",
+    );
+    expect(custom).toContain("    name: our trivy\n");
+    put(path.join(WF, "bkit-trivy.yml"), custom);
+    run();
+
+    const after = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    const parsed = parseYaml(after) as { jobs: { trivy: { name?: string } } };
+    expect(parsed.jobs.trivy.name).toBe("our trivy");
+    expect(after.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
+  it("inserts no job name when a job-indent comment sits above the job's own name", () => {
+    const old = shippedAtV6(".github/workflows/bkit-trivy.yml");
+    const custom = old
+      .replace("\n  trivy:\n", "\n  trivy:\n  # owner: security team\n")
+      .replace(
+        "    runs-on: ubuntu-latest # Edit this label in your copy.\n",
+        "    runs-on: ubuntu-latest # Edit this label in your copy.\n    name: our trivy\n",
+      );
+    expect(custom).toContain("  # owner: security team\n");
+    expect(custom).toContain("    name: our trivy\n");
+    put(path.join(WF, "bkit-trivy.yml"), custom);
+    run();
+
+    const after = fs.readFileSync(path.join(WF, "bkit-trivy.yml"), "utf-8");
+    const parsed = parseYaml(after) as { jobs: { trivy: { name?: string } } };
+    expect(parsed.jobs.trivy.name).toBe("our trivy");
+    expect(after.match(/^ {4}name:/gm)).toHaveLength(1);
+  });
+});
+
+describe("migrateValeHouseStyle (via runBkitDocs)", () => {
+  const RULES = ["Filler", "Hedging", "LLMSlop", "Verbose"] as const;
+  const HOUSE = path.join(".vale", "styles", "House");
+  const BKIT = path.join(".vale", "styles", "Bkit");
+  const put = (file: string, text: string): void => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text, "utf-8");
+  };
+  const oldRule = (r: string): string => shippedAtV6(`.vale/styles/House/${r}.yml`);
+  const run = (dryRun = false): ModuleContext => {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return ctx;
+  };
+  const seed = (rules: readonly string[], withIni = true): void => {
+    for (const r of rules) put(path.join(HOUSE, `${r}.yml`), oldRule(r));
+    if (withIni) put(".vale.ini", shippedAtV6(".vale.ini"));
+  };
+  const captured: string[] = [];
+
+  beforeEach(() => {
+    captured.length = 0;
+    vi.spyOn(console, "log").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+    vi.spyOn(console, "warn").mockImplementation((m: unknown) => {
+      captured.push(String(m));
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("moves shipped Vale rules to Bkit and keeps own and edited rules in House", () => {
+    seed(RULES);
+    const edited = oldRule("Hedging") + "\n# consumer edit\n";
+    put(path.join(HOUSE, "Hedging.yml"), edited);
+    put(path.join(HOUSE, "Mine.yml"), "extends: existence\nmessage: own\ntokens: [x]\n");
+    run();
+
+    for (const r of ["Filler", "LLMSlop", "Verbose"]) {
+      expect(fs.existsSync(path.join(HOUSE, `${r}.yml`))).toBe(false);
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.readFileSync(path.join(HOUSE, "Hedging.yml"), "utf-8")).toBe(edited);
+    expect(fs.existsSync(path.join(BKIT, "Hedging.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(HOUSE, "Mine.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(BKIT, "Mine.yml"))).toBe(false);
+    const text = captured.join("\n");
+    expect(text).toContain("Hedging");
+    expect(text).toContain("mv .vale/styles/House/Hedging.yml .vale/styles/Bkit/");
+  });
+
+  it("names Bkit rules in .vale.ini and lists both styles while House keeps files", () => {
+    seed(RULES);
+    put(path.join(HOUSE, "Hedging.yml"), oldRule("Hedging") + "\n# consumer edit\n");
+    run();
+    const ini = fs.readFileSync(".vale.ini", "utf-8");
+    expect(ini).toContain("Bkit.Filler = NO");
+    expect(ini).toContain("Bkit.LLMSlop = NO");
+    expect(ini).toContain("Bkit.Verbose = NO");
+    expect(ini).not.toContain("House.Filler");
+    expect(ini).not.toContain("House.LLMSlop");
+    expect(ini).not.toContain("House.Verbose");
+    expect(ini).toContain("House.Hedging = NO");
+    const based = ini.split("\n").filter((l) => l.startsWith("BasedOnStyles"));
+    expect(based.length).toBeGreaterThan(0);
+    for (const l of based) {
+      expect(l).toMatch(/\bHouse\b/);
+      expect(l).toMatch(/\bBkit\b/);
+    }
+  });
+
+  it("moves every House rule and removes House", () => {
+    seed(RULES);
+    run();
+    for (const r of RULES) {
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.existsSync(HOUSE)).toBe(false);
+    const ini = fs.readFileSync(".vale.ini", "utf-8");
+    expect(ini).not.toMatch(/\bHouse\b/);
+    expect(ini).toContain("BasedOnStyles = Bkit\n");
+    expect(ini).toContain("BasedOnStyles = write-good, Bkit\n");
+    for (const r of RULES) expect(ini).toContain(`Bkit.${r} = NO`);
+  });
+
+  it("moves rules without a .vale.ini", () => {
+    seed(RULES, false);
+    const ctx = run();
+    for (const r of RULES) {
+      expect(fs.existsSync(path.join(HOUSE, `${r}.yml`))).toBe(false);
+      expect(fs.readFileSync(path.join(BKIT, `${r}.yml`), "utf-8")).toBe(oldRule(r));
+    }
+    expect(fs.existsSync(".vale.ini")).toBe(false);
+    expect(ctx.ws.writes.map((w) => w.path)).not.toContain(".vale.ini");
+    expect(ctx.ws.writes.some((w) => w.path.endsWith(".vale.ini"))).toBe(false);
+  });
+
+  it("does not move rules into a symlinked Bkit directory", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      seed(RULES);
+      fs.mkdirSync(path.dirname(BKIT), { recursive: true });
+      fs.symlinkSync(outside, BKIT);
+      run();
+
+      expect(fs.readdirSync(outside)).toEqual([]);
+      expect(fs.lstatSync(BKIT).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(path.join(HOUSE, "Filler.yml"))).toBe(true);
+      expect(captured.join("\n")).toContain("Bkit");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
     }
   });
 });

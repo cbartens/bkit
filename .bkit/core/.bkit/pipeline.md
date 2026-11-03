@@ -96,7 +96,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
                          a repeated finding reopens its open task; LOW → deferred;
                          fixable → back to the group loop, a last-round fix not
                          challenged again; unfixable → Decision Pause; two rounds at most)
-  11. run tests          (local tier: lint + typecheck + unit + slop:delta + bkit check;
+  11. run tests          (local tier: lint + typecheck + unit + bkit:slop:delta + bkit check;
                          no integration / e2e / @live — those run in CI)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
   12. summary            (engine-written from status rows + plan tasks, tracker-facing;

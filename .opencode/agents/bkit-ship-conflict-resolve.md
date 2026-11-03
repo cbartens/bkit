@@ -60,7 +60,7 @@ tools:
      - Set `Verdict` = `FAIL` with `Edit`.
      - Go straight to setting `Verdict`.
    - Append a log entry.
-6. Run the auto-resolver before any hand-classification. It resolves every append-only ledger and the dependency lockfile, commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
+6. Run the auto-resolver before any hand-classification. It resolves every append-only ledger, the dependency lockfile, a generated register, the generated block of an embedding doc (a doc the register's script copies that block into) and the install record (`.bkit/version`), commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    [ -x "$BKIT" ] || BKIT="$(command -v bkit || echo "$BKIT")"
@@ -74,7 +74,7 @@ tools:
    - Append a log entry with what it printed and its `resolved` and `pending` paths.
    - **If** it printed `MERGE_COMPLETE` → the merge is committed. Skip to the verify gate.
    - **If** it printed `HAND_RESOLVE` → the merge is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
-   - **Else** → the resolver could not go on. Either it aborted the merge, because a ledger or lockfile resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
+   - **Else** → the resolver could not go on. Either it aborted the merge, because a ledger, lockfile, register, embedding-doc or install-record resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
      - Set `Verdict` = `FAIL` with `Edit`.
      - Go straight to setting `Verdict`.
 7. Classify the conflicts:
@@ -87,7 +87,7 @@ tools:
        - A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
        - Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
      - `Refused resolutions`:
-       - An append-only ledger or the dependency lockfile that is still conflicted. The auto-resolver resolves those, so one left conflicted is a resolution that failed.
+       - An append-only ledger, the dependency lockfile, a generated register, an embedding doc or the install record that is still conflicted. The auto-resolver resolves those, so one left conflicted is a resolution that failed.
        - The same function or method body edited on both sides.
        - The same JSON key with different values, except the one-sided bumps above.
        - The same line edited on both sides with different content.
