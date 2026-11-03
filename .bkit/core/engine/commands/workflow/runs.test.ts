@@ -2233,6 +2233,15 @@ describe("bkit runs dispatch on dev (a debug run in place)", { timeout: 30_000 }
     gitIn(root, "init", "-q", "-b", "dev", cwd);
     gitIn(cwd, "config", "user.email", "t@t");
     gitIn(cwd, "config", "user.name", "t");
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({
+        private: true,
+        scripts: { "bkit:gate:min": 'node -e "process.exit(0)"' },
+        bkit: { workflows: { worktree: { install: false } } },
+      }),
+    );
+    gitIn(cwd, "add", "package.json");
     gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "base");
     gitIn(cwd, "remote", "add", "origin", remote);
     gitIn(cwd, "push", "-q", "-u", "origin", "dev");
