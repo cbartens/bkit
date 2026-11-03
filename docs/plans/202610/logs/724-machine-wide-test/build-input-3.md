@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-Ship is done. Rebase to local dev and resume bkit-build #724 from where we paused, finish the remaining verification and challenge round, then open the PR.
+Try again with caffeinate to keep the Mac awake, keep the current timeout budgets, then finish bkit-build #724 and open the PR.
 
 ## Issue description — oldest
 
@@ -361,7 +361,7 @@ The script defaults the wait when stdin is not a TTY and no wait is passed. The 
 
 **Correction to point 2 above (the holder line's "last run took").** Keying the record by lock name would show repo A's gate time to a waiter queued behind repo B's gate, and the two can differ by a lot. The script now keeps one line per checkout in `<lock dir>/tests.last` (`<checkout path><TAB><seconds>`, replaced in place on every release), and the waiting note and the give-up line print the current holder's own last run, or `no earlier run` when that checkout has none. Open Question 14, TASK 2 and the matrix row are updated in the plan in place.
 
-## Plan — docs/plans/202610/724-machine-wide-test-plan.md — last committed 2026-11-03T03:21:05.000Z
+## Plan — docs/plans/202610/724-machine-wide-test-plan.md — last committed 2026-11-03T08:32:10.000Z
 
 <!-- bkit:anchor
 baseSha: 5bb26e7c6ae15bc6bb8ae02054846025d5a45882
@@ -1313,7 +1313,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: every fenced block that runs `"{BKIT}" branches push` gains `**If** exit 81 → end turn, re-run this block.` in its `Route:` / `Decide` list before `**Else**` (the TASK 7 clause; a block that chains the push with `|| exit 1` routes the block's exit 81 the same way; `pnpm instructions:show --file <workflow>` before editing sentences)
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: every fenced block that runs `"{BKIT}" branches push` gains `**If** exit 81 → end turn, re-run this block.` in its `Route:` / `Decide` list before `**Else**` (the TASK 7 clause; a block that chains the push with `|| exit 1` routes the block's exit 81 the same way; `pnpm instructions:show --file <workflow>` before editing sentences)
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: every fenced block that runs `"{BKIT}" branches push` gains `**If** exit 81 → end turn, re-run this block.` in its `Route:` / `Decide` list before `**Else**` (the TASK 7 clause; a block that chains the push with `|| exit 1` routes the block's exit 81 the same way; `pnpm instructions:show --file <workflow>` before editing sentences)
-  - **UPDATE:** `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: push probes cover all five canonical workflows (design 1, plan 1, build 2, debug 5, ship 6; 15 blocks total); the guard below reuses TASK 7's route-capture helper and checks every block's retry route and exit preservation
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: push probes cover all five canonical workflows (design 1, plan 1, build 2, debug 5, ship 5; 14 blocks total); the guard below reuses TASK 7's route-capture helper and checks every block's retry route and exit preservation
   - **CREATE:** `.bkit/core/engine/commands/workflow/branches-lock.integration.test.ts`: a temp repo with a bare remote and a pre-push hook that runs a wrapped stub gate through a copy of `scripts/ci/bkit-machine-lock.sh`; the tests below
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: `branches` `push` row regenerated with `pnpm cli:sync`; `.bkit/cli.md` mirrored by `bkit install`
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: the **CI-Dispatch poll** rationale bullet (TASK 7) names `bkit branches push` beside `bkit tests run`
@@ -1383,7 +1383,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Cancelling a gate wrapper releases its lock while the gate keeps running
+- [x] **TASK 13:** Cancelling a gate wrapper releases its lock while the gate keeps running
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:370` · **Round:** 1
   - **DONE WHEN:** Sending SIGTERM to a running wrapper cannot leave its gate command alive after another run acquires the same tests lock; ordinary command status propagation and inherited-owner behavior still pass.
   - **TEST FIRST:**
@@ -1392,7 +1392,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 13 end -->
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** A tests-lock retry closes and publishes the same build repeatedly
+- [x] **TASK 14:** A tests-lock retry closes and publishes the same build repeatedly
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:1156` · **Round:** 1
   - **DONE WHEN:** An exit-81 push followed by a successful retry executes workflow close once, preserves its original final-return data, and releases the workflow lock only after the successful push.
   - **TEST FIRST:**
