@@ -12,9 +12,9 @@
 
 ## Already Installed
 
-`bkit-auto`, `bkit-build`, `bkit-debug`, `bkit-design`, `bkit-plan`, `bkit-ship`, `brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `find-skills`, `finishing-a-development-branch`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `writing-plans`, `writing-skills`.
+`bkit-auto`, `bkit-build`, `bkit-debug`, `bkit-design`, `bkit-plan`, `bkit-ship`, `brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `find-skills`, `finishing-a-development-branch`, `graphql-operations`, `nodejs-core`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `typescript-pro`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `vitest`, `writing-plans`, `writing-skills`.
 
-## Newly Installed
+The four technology skills installed in the preceding run are present and reused. Their recorded provenance is retained below; install and star counts are the preceding run's observations, not fresh measurements.
 
 <!-- prettier-ignore -->
 | Folder | Exact package | Source | Qualification |
@@ -24,7 +24,11 @@
 | `.agents/skills/nodejs-core` | `mcollina/skills@nodejs-core` | [mcollina/skills](https://github.com/mcollina/skills) | Catalog: 2K installs. GitHub API: 1,961 repository stars. |
 | `.agents/skills/typescript-pro` | `jeffallan/claude-skills@typescript-pro` | [jeffallan/claude-skills](https://github.com/jeffallan/claude-skills) | Catalog: 14.4K installs. GitHub API: 12,182 repository stars. |
 
-Each named `npx skills add` command exited 0. Each folder exists, and `skills-lock.json` contains all four entries. No bundled skill script or instruction was executed. The installer reported a `Critical Risk` Gen assessment for `typescript-pro`, with `0 alerts` from Socket and `Low Risk` from Snyk; the installed content remains untrusted and this advisory is not a verified exploit finding.
+The preceding run recorded each named `npx skills add` command exiting 0 and all four lock entries. This run verified the folders without reading their contents or executing bundled scripts. The preceding installer reported a `Critical Risk` Gen assessment for `typescript-pro`, with `0 alerts` from Socket and `Low Risk` from Snyk; the installed content remains untrusted and this advisory is not a verified exploit finding.
+
+## Newly Installed
+
+None. Existing TypeScript, Node.js, Vitest and GraphQL skills cover the shared technologies.
 
 ## Not Found
 
@@ -37,3 +41,5 @@ Each named `npx skills add` command exited 0. Each folder exists, and `skills-lo
 | Jira Rovo narrowed search | `onnokh/atlassian-cli@atlassian-cli` (218 installs), `peetzweg/acli-skill@acli` (203), `thatjuan/agent-skills@atlassian-cli` (39), `jaltez/acli-skill@acli` (18), `skills.volces.com@acli` (11) | These command-line candidates do not establish the Rovo adapter contract and each is below 1,000 installs. None was accepted. |
 
 The initial sandboxed catalog commands failed with `ENOTFOUND registry.npmjs.org` and could not write npm logs. The authorized network retry returned results. Searches were bounded to the leading candidates; the remaining catalog results were not evaluated. Missing specialist matches do not block this skills step.
+
+This run refreshed `npx skills find` searches for `github comments`, `linear graphql` and `jira rovo`; all three exited 0. GitHub's leading official candidates concern code comments or responding to review comments rather than implementing verified issue-comment transports. Linear's leading exact GraphQL candidates (`holon-run/uxc@linear-graphql-skill`, 27 installs, and `thelobbi/claude@Linear GraphQL Patterns`, 11 installs) fail the installation threshold; the installed Apollo skill already covers GraphQL operations. Rovo's leading command-line candidates remain below the installation threshold and do not establish the MCP comment schema. Search output was capped, so this is a review of leading candidates only, not a claim that the catalog has no other matches.
