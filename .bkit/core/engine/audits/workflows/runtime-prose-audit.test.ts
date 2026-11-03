@@ -73,10 +73,30 @@ describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
       expect(recovery).toMatch(
         /^  - \*\*If\*\* the retry succeeds:\n    - Continue from the interrupted sub-step\.\n    - Do not enter \*\*Failure Path\*\* for the recovered denial\.$/m,
       );
-      expect(text).toMatch(
-        /^- \*\*Recovery scope:\*\*.*does not cover.*command.*test.*gate failures\.$/m,
-      );
+      expect(text).toMatch(/^- \*\*Recovery scope:\*\*.*test.*gate failures.*explicit.*routes\.$/m);
       expect(commands).toMatch(/no.*Route:.*or recovery.*\*\*Failure Path\*\*/);
+    });
+  });
+
+  describe("read-only helper recovery before the Failure Path", () => {
+    it.each(WORKFLOW_FILES)("%s bounds correction to a verified read-only helper retry", (file) => {
+      const text = readWorkflow(file);
+      const recovery = text.match(/^- \*\*Read-only helper recovery:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+
+      expect(text).toMatch(/Failures:.*\*\*Read-only helper recovery\*\*.*before.*Failure Path/);
+      expect(recovery).toMatch(/agent-authored.*read-only.*helper.*logic error/);
+      expect(recovery).toMatch(/Confirm.*failed.*corrected.*operations.*only read.*stdout/);
+      expect(recovery).toMatch(/writes.*side effects.*uncertain.*Failure Path/);
+      expect(recovery).toMatch(/Correct.*helper.*retry once.*same inputs.*intended read/);
+      expect(recovery).toMatch(/Keep.*retry limit.*helper rewrites.*tool switches/);
+      expect(recovery).toMatch(/Verify.*exit status.*required output.*correctness.*completeness/);
+      expect(recovery).toMatch(/retry fails.*output.*unverified.*Failure Path/);
+      expect(recovery).toMatch(
+        /Resume.*interrupted sub-step.*after verification.*without.*Failure Path/,
+      );
+      expect(text).toMatch(
+        /Recovery scope:.*Repository.*bkit.*test.*gate failures.*explicit.*routes/,
+      );
     });
   });
 

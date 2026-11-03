@@ -15,6 +15,48 @@
 > - Before you append, read the file. Skip the append only if a row with the same identity exists and nothing has changed. A changed field makes the new row an update, not a duplicate.
 > - Appends are best-effort: always exit 0. Never gate a workflow on telemetry success.
 
+## Read Idiom
+
+**Engine readers:** `normalize()` and `fold()` in `.bkit/core/engine/ledgers/telemetry.ts` handle older schemas and current-state reads across all telemetry kinds.
+
+- **Identity:** Group by § Identity / Dedup. A bare `key` suffices only within one keyed kind and one repo.
+- **Winner:** Keep the highest numeric `ts` per identity; the later line wins a tie.
+- **Filters:** Apply status and query filters after folding, so superseded rows stay superseded. Decisions / knowledge default to `ACTIVE`; open failures / deferrals include `TRIAGED` and exclude `CLOSED` (§ Updating a Row).
+- **History:** Retain the rows needed for the requested time range instead of reducing them to current state.
+- **Workflow logs:** Read `status.jsonl` through the workflow's status commands. These are event histories with their own replay rules, outside this fold.
+
+**Humans and scripts:** This Python example folds decisions and knowledge separately, each containing one keyed kind from one repo, then prints active rows. Run from the repo root; output is stdout only.
+
+```python
+import json
+import math
+from pathlib import Path
+
+
+def latest_rows(records):
+    latest = {}
+    for row in records:
+        key, timestamp = row["key"], row["ts"]
+        if not isinstance(key, str) or not key:
+            raise ValueError("Ledger key must be a nonempty string")
+        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or not math.isfinite(timestamp):
+            raise ValueError("Ledger ts must be a finite number")
+        previous = latest.get(key)
+        if previous is None or timestamp >= previous["ts"]:
+            latest[key] = row
+    return latest
+
+
+for name in ["decisions", "knowledge"]:
+    records = [json.loads(line) for line in Path(f"docs/{name}.jsonl").read_text().splitlines() if line.strip()]
+    for row in latest_rows(records).values():
+        if row.get("status", "ACTIVE") == "ACTIVE":
+            print(json.dumps(row))
+```
+
+- **First row:** Handle a new identity separately; never compare its numeric `ts` with a string default.
+- **Failures:** Report missing files, invalid JSON and invalid `key` / `ts` fields as read failures, not empty results.
+
 ## Write Idiom
 
 **Engine and workflow writers:** `bkit ledgers append --ledger=<decisions|deferrals|failures|knowledge|friction|stats> --rows=<file|->`. The rows are a JSON array without `schema` / `ts` / `bkit`.

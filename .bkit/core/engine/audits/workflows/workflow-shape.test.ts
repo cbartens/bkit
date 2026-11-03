@@ -1196,6 +1196,51 @@ describe("plan", () => {
     expect(plan).not.toContain("--children");
     expect(plan).not.toContain("--brief");
   });
+
+  it("carries draft formatting findings through review and update, with a strict final check", () => {
+    const generate = section(plan, /Step 3 — Generate Plan/);
+    const review = section(plan, /Step 5 — Review Plan/);
+    const update = section(plan, /Step 6 — Apply Review/);
+    const close = section(plan, /Step 8 — Close Workflow/);
+    const formatRoute = generate.split("\n").find((line) => line.includes("every `kind`"));
+    expect(formatRoute).toContain("**If** exit 1");
+    expect(formatRoute).toContain("`problems` is nonempty");
+    expect(formatRoute).toContain("every `kind` is `format|stray`");
+    expect(formatRoute).toContain("`existence` is empty");
+    expect(formatRoute).toContain("→ sub-step 3");
+    expect(generate.indexOf(formatRoute!)).toBeLessThan(generate.indexOf("second exit 1"));
+    expect(review).toContain("`REVIEW_CHECK` = `plan-generate-check.md`");
+    expect(review).toContain("`REVIEW_CHECK` = `plan-update-check.md`");
+    const scopeCall = review.split("Invoke `@bkit-plan-scope-check`")[1];
+    expect(scopeCall).toContain("/{REVIEW_CHECK}`");
+    const scopePrompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-plan-scope-check.md"),
+      "utf8",
+    );
+    const updatePrompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-plan-update.md"),
+      "utf8",
+    );
+    expect(scopePrompt).toContain("`CRITICAL` plan-edit finding");
+    expect(updatePrompt).toContain(
+      "Apply the supplied plan-check findings with the review critiques",
+    );
+    expect(update).toContain(
+      "plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md`",
+    );
+    expect(updatePrompt).toContain(
+      "Preserve every task, requirement, dependency, acceptance criterion and planned test",
+    );
+    for (const step of [update, close]) {
+      expect(step).toContain("--existence=refuse");
+      expect(step).toContain("second exit 1");
+      expect(step).not.toContain("every `kind`");
+    }
+    expect(update).toContain("**If** exit 0 → sub-step 5.");
+    expect(close).toContain("**If** exit 0 → the commit below.");
+    expect(plan).not.toContain("PLAN_CHECK_REPAIRS");
+    expect(plan).not.toContain("PLAN_CHECK_LIMIT");
+  });
 });
 
 describe("design and plan close", () => {

@@ -1137,11 +1137,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:397`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:405`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:192`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:200`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:206`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:214`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
@@ -1234,11 +1234,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:397`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:405`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:192`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:200`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:206`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:214`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1368,7 +1368,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:567`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1667,7 +1667,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:567`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -2608,10 +2608,12 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all
 
 ```text
-**Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
+**Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
 ```
 
 ```retired
+**Failures:** Follow explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before entering **Failure Path**.
+**Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
 **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**. **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 **`Failures`:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
@@ -2711,6 +2713,117 @@ Continue from the interrupted sub-step.
 Do not enter **Failure Path** for the recovered denial.
 ```
 
+### workflow-helper-recovery
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Read-only helper recovery:** **If** an agent-authored, read-only helper has a logic error:
+```
+
+```retired
+**Read-only helper recovery:** **If** an agent-authored, read-only inspection helper has a logic error:
+```
+
+### workflow-helper-confirm
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+Confirm the failed and corrected operations only read existing inputs and print to stdout.
+```
+
+### workflow-helper-effects
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**If** either operation writes, has other side effects **or** uncertain effects → its explicit failure route or **Failure Path**.
+```
+
+```retired
+**If** either operation writes, has other side effects or uncertain effects → its explicit failure route or **Failure Path**.
+**If** either operation performs writes, has other side effects, or its effects are uncertain → follow its explicit failure route or **Failure Path**.
+```
+
+### workflow-helper-retry
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+Correct the helper and retry once with the same inputs and intended read.
+```
+
+```retired
+Correct the helper and retry once with the same inputs and the same intended read.
+```
+
+### workflow-helper-limit
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+Keep the retry limit across helper rewrites and tool switches.
+```
+
+```retired
+Do not reset this retry limit by rewriting the helper or switching tools.
+```
+
+### workflow-helper-verify
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+Verify the retry's exit status and required output for correctness and completeness.
+```
+
+```retired
+Verify the retry's exit status and complete required output.
+Verify the retry's exit status and required outputs, including completeness against the intended read.
+```
+
+### workflow-helper-failed
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**If** the retry fails **or** its output is unverified → **Failure Path**.
+```
+
+```retired
+**If** the retry fails or its output is unverified → **Failure Path**.
+**If** the retry fails or its outputs remain unverified → **Failure Path**.
+```
+
+### workflow-helper-continue
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+Resume the interrupted sub-step after verification, without **Failure Path**.
+```
+
+```retired
+Continue from the interrupted sub-step only after the retry is verified.
+```
+
 ### workflow-recovery-scope
 
 - workflow: required
@@ -2718,6 +2831,10 @@ Do not enter **Failure Path** for the recovered denial.
 - carriers: workflow all
 
 ```text
+**Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
+```
+
+```retired
 **Recovery scope:** This exception does not cover command logic, test or gate failures.
 ```
 
@@ -9280,7 +9397,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
 | **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
 | **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot and blocker; after each numbered completion, show the engine's `progressLine` word for word as plain text outside code blocks. Delayed bookkeeping and repeated validation gates add no duplicate. Auto forwards its delegated workflow's lines; headless runs show them without acknowledgement. |
-| **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
+| **Failures** | Protocol | all 6 | Apply explicit recovery routes first, including sandbox and read-only helper recovery; unresolved failures → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |
 | **Commands** | Protocol | all 6 | Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info` (before it, the lookup expression); stdout is `key: value` text (see `.bkit/cli.md`); exit non-zero with no `Route:` → **Failure Path**; exit 80 → mapped MCP tool (auto: **Failure Path**); exit 81 → end turn, re-run block; a flag still holding a literal `{PLACEHOLDER}` exits 2. |
 | **CI wait turn-loop** | Protocol | build, debug | CI-wait block exits 81 (or 80) → resolve the poll in the agent turn loop, then re-run the block with the result. |
@@ -10081,6 +10198,7 @@ No tracker connected → Step 12.
 - source: `.bkit/core/workflows/bkit-plan.md`
 
 ```text
+**If** exit 1 **and** `problems` is nonempty **and** every `kind` is `format|stray` **and** `existence` is empty → sub-step 3; the check findings go to Step 5 for review and Step 6 for correction.
 [scope-discipline] **Scope:** Create the plan in `docs/plans/{YYYYMM}/`, the canonical month bucket found or set at the start. Write no code, and do not carry out the plan.
 Read repo facts, fetching `origin/dev` first:
 Find the parent design, the workstreams this plan covers and the audit reports: a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; and every `docs/audits/{YYYYMM}/*.md` path the prompt or the issue description names.
@@ -10099,7 +10217,7 @@ Parent design and audit reports appended
 Check the draft's groups and task blocks, and that every symbol it names exists:
 **If** this is the second exit 1 → **Failure Path**.
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
-Draft checked (`tests plan-check`)
+Draft check passed or only formatting findings carried to review (`tests plan-check`)
 `QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
 [deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
 Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
@@ -10117,8 +10235,12 @@ Final plan resolved
 Ledger rows checked (`ledgers check`)
 Count this review round. The plan gets one review and, after a `FAIL` that plan edits fix, exactly one re-review:
 **If** exit 1 → **Failure Path** — the one re-review already ran.
-**If** `REVIEW_ROUND` = 1 → `REVIEW_PLAN` = `plan-v1-draft.md`.
-**Else** → `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+**If** `REVIEW_ROUND` = 1:
+`REVIEW_PLAN` = `plan-v1-draft.md`.
+`REVIEW_CHECK` = `plan-generate-check.md`.
+**Else**:
+`REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+`REVIEW_CHECK` = `plan-update-check.md`.
 **If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_REDESIGN` = true → **Failure Path** — a finding needs the design to change, which no plan edit does.
 **If** `REVIEW_VERDICT` = FAIL **and** `REVIEW_ROUND` = 2 → **Failure Path** — the one re-review failed.
 Review round counted (`counters route`)
@@ -11120,6 +11242,7 @@ Baseline tests: a `TEST FIRST` test that only compares output against a regenera
 - source: `.bkit/core/prompts/bkit-plan-scope-check.md`
 
 ```text
+**Plan-check findings:** Report every supplied plan-check finding as a `CRITICAL` plan-edit finding, retaining its location and message.
 **Role:** Senior auditor verifying every plan task has scope, criteria, and verification.
 [plans] Check that every section `docs/templates/bkit-plan.md` mandates is present and filled in. A missing or broken section → `CRITICAL`.
 Check the scenario sections and the open questions:
@@ -11142,6 +11265,8 @@ Check that no task scopes edits inside a `bkit:start` / `bkit:end` block. A task
 - source: `.bkit/core/prompts/bkit-plan-update.md`
 
 ```text
+**Plan-check findings:** Apply the supplied plan-check findings with the review critiques.
+Preserve every task, requirement, dependency, acceptance criterion and planned test when correcting formatting.
 **Role:** Senior editor merging review and scope critiques into the plan, no scope expansion.
 [completeness-over-shortcuts] Keep every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` intact through the merge:
 A critique may edit the task text around them.

@@ -13,7 +13,7 @@ description: "Plan Feature — Autonomous plan generation"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -23,7 +23,15 @@ description: "Plan Feature — Autonomous plan generation"
   - **If** the retry succeeds:
     - Continue from the interrupted sub-step.
     - Do not enter **Failure Path** for the recovered denial.
-- **Recovery scope:** This exception does not cover command logic, test or gate failures.
+- **Read-only helper recovery:** **If** an agent-authored, read-only helper has a logic error:
+  - Confirm the failed and corrected operations only read existing inputs and print to stdout.
+  - **If** either operation writes, has other side effects **or** uncertain effects → its explicit failure route or **Failure Path**.
+  - Correct the helper and retry once with the same inputs and intended read.
+  - Keep the retry limit across helper rewrites and tool switches.
+  - Verify the retry's exit status and required output for correctness and completeness.
+  - **If** the retry fails **or** its output is unverified → **Failure Path**.
+  - Resume the interrupted sub-step after verification, without **Failure Path**.
+- **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls<!-- bkit:tracker true start --> (`{ISSUE_ID}` may be empty)<!-- bkit:tracker true end -->. **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 
@@ -262,6 +270,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
    Route — first match wins:
    - **If** exit 0 → sub-step 3.
+   - **If** exit 1 **and** `problems` is nonempty **and** every `kind` is `format|stray` **and** `existence` is empty → sub-step 3; the check findings go to Step 5 for review and Step 6 for correction.
    - **If** this is the second exit 1 → **Failure Path**.
    - **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
@@ -273,7 +282,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 3 — Generate Plan
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
-- [ ] Draft checked (`tests plan-check`)
+- [ ] Draft check passed or only formatting findings carried to review (`tests plan-check`)
 - [ ] Mechanical checks passed (`steps finish`)
 
 ---
@@ -328,8 +337,12 @@ description: "Plan Feature — Autonomous plan generation"
    Hold `value` as `REVIEW_ROUND`.
    Route — first match wins:
    - **If** exit 1 → **Failure Path** — the one re-review already ran.
-   - **If** `REVIEW_ROUND` = 1 → `REVIEW_PLAN` = `plan-v1-draft.md`.
-   - **Else** → `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+   - **If** `REVIEW_ROUND` = 1:
+     - `REVIEW_PLAN` = `plan-v1-draft.md`.
+     - `REVIEW_CHECK` = `plan-generate-check.md`.
+   - **Else**:
+     - `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
+     - `REVIEW_CHECK` = `plan-update-check.md`.
 2. Launch these subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-review-1` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
@@ -341,7 +354,7 @@ description: "Plan Feature — Autonomous plan generation"
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
    - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_CHECK}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
 3. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
    ```bash
@@ -373,7 +386,7 @@ description: "Plan Feature — Autonomous plan generation"
 3. Apply the critiques — first match wins:
    - **If** `APPLY_ROUND` = 1 → **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
      Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
    - **Else** → **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
      Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. The critiques re-review the plan you edit in place.

@@ -28,6 +28,7 @@ autoCompactWindow: 300000
 
 - **Read / Update / Create:** Use any appended Read / Update / Create as exact I/O paths.
 - **Mandate:** Review the plan. Do not build, install or write code.
+- **Plan-check findings:** Report every supplied plan-check finding as a `CRITICAL` plan-edit finding, retaining its location and message.
 - **Input dates:** Where two sections of the `*-input-*.md` file disagree, the newer one wins; older text still counts wherever nothing newer contradicts it.
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.

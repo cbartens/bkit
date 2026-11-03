@@ -14,7 +14,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -24,7 +24,15 @@ description: "Ship Feature — Autonomous merge and archive"
   - **If** the retry succeeds:
     - Continue from the interrupted sub-step.
     - Do not enter **Failure Path** for the recovered denial.
-- **Recovery scope:** This exception does not cover command logic, test or gate failures.
+- **Read-only helper recovery:** **If** an agent-authored, read-only helper has a logic error:
+  - Confirm the failed and corrected operations only read existing inputs and print to stdout.
+  - **If** either operation writes, has other side effects **or** uncertain effects → its explicit failure route or **Failure Path**.
+  - Correct the helper and retry once with the same inputs and intended read.
+  - Keep the retry limit across helper rewrites and tool switches.
+  - Verify the retry's exit status and required output for correctness and completeness.
+  - **If** the retry fails **or** its output is unverified → **Failure Path**.
+  - Resume the interrupted sub-step after verification, without **Failure Path**.
+- **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
 
