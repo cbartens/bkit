@@ -2653,7 +2653,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
 
   // --- --merge: ship Step 4 ---
 
-  const MERGE_MSG = "chore(1-x): merge dev bkit [skip ci]";
+  const MERGE_MSG = "chore(1-x): merge dev";
   const SENTINEL = "docs/plans/202610/logs/1-x/.rebase-failed";
   const subject = (cwd: string, rev = "HEAD") => git(cwd, "log", "-1", "--format=%s", rev).out;
   const inMerge = (cwd: string) => fs.existsSync(path.join(cwd, ".git/MERGE_HEAD"));
@@ -2664,7 +2664,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
       .map((l) => (JSON.parse(l) as { key: string }).key)
       .sort();
 
-  it("--merge merges dev into the feature branch with a skip-ci merge commit, never a rebase", async () => {
+  it("--merge merges dev into the feature branch with a merge commit, never a rebase", async () => {
     const { origin, clone } = feature("merge-clean");
     const own = sha(clone);
     landOnDev(origin, { "src.txt": "moved\n" });
@@ -2684,6 +2684,9 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
       head: sha(clone),
     });
     expect(subject(clone)).toBe(MERGE_MSG);
+    // The merge carries dev's code, and the pre-push hook refuses a skip-token head that
+    // carries code while the PR is open.
+    expect(git(clone, "log", "-1", "--format=%B").out).not.toMatch(/\[skip ci\]/i);
     // A merge keeps the branch's own commit as first parent; a rebase would rewrite it.
     expect(sha(clone, "HEAD^1")).toBe(own);
     expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
@@ -2729,9 +2732,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
       carried: sha(clone, "HEAD^1"),
     });
     expect(subject(clone)).toBe(MERGE_MSG);
-    expect(subject(clone, "HEAD^1")).toBe(
-      "chore(1-x): carry uncommitted work before merging dev bkit [skip ci]",
-    );
+    expect(subject(clone, "HEAD^1")).toBe("chore(1-x): carry uncommitted work before merging dev");
     expect(read(clone, status).split("\n").filter(Boolean)).toHaveLength(3);
     expect(read(clone, "docs/plans/202610/logs/1-x/ship-output.md")).toBe("log\n");
     expect(git(clone, "status", "--porcelain").out).toBe("");
@@ -2823,7 +2824,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(git(clone, "status", "--porcelain", "--", ".", ":(exclude)docs/plans").out).toBe("");
   });
 
-  it("--merge runs a declared bkit:generate after the merge and commits its output with skip ci", async () => {
+  it("--merge runs a declared bkit:generate after the merge and commits its output", async () => {
     const { origin, clone } = feature("merge-generate");
     commit(
       clone,
@@ -2842,7 +2843,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ outcome: "merged", generated: true, head: sha(clone) });
     expect(read(clone, "docs/gen.md")).toBe("gen\n");
-    expect(subject(clone)).toBe("chore(1-x): regenerate after merging dev bkit [skip ci]");
+    expect(subject(clone)).toBe("chore(1-x): regenerate after merging dev");
     expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
@@ -2863,7 +2864,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
       rebuilt: true,
     });
     expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
-    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev`);
     expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
@@ -2924,7 +2925,7 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
       rebuilt: true,
     });
     expect(read(clone, EMBED_DOC)).toBe(`${embedBody("dev", "feat intro", "dev outro")}rebuilt\n`);
-    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev`);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
 

@@ -1477,14 +1477,12 @@ function mergeDevDocs(top, o, log) {
 /**
  * Run the consumer's `bkit:generate` (`.bkit/workflows.md` § Local gate scripts)
  * and commit what it changed (`commitWhatChanged`). null when the script is undeclared.
- * `skipCi` marks the commit `bkit [skip ci]` for a caller whose workflow dispatches CI
- * itself.
  */
 function regenerate(top, branch, log, o = {}) {
     if (!generateDeclared(top))
         return null;
     const fid = o.fid ?? branch.replace(/^feat\//, "");
-    const message = `chore(${fid}): regenerate after merging ${DEV}${o.skipCi ? " bkit [skip ci]" : ""}`;
+    const message = `chore(${fid}): regenerate after merging ${DEV}`;
     const done = commitWhatChanged(top, "bkit:generate", () => runGenerate(top, log, "after the merge"), message, log);
     if (done.outcome === "committed")
         log(`committed bkit:generate's output after merging ${UPSTREAM}`);
@@ -1755,9 +1753,9 @@ const RESOLVED_HOW = {
  * `policy`. A merge in progress at the start is continued: its remaining conflicts
  * are settled and it is committed, which is how a `full` hand resolution finishes
  * (`git add`, then run again). `full` also commits the tree's uncommitted work first
- * (ship's open status.jsonl) and marks every commit `[skip ci]`, because ship Step 9
- * dispatches the re-validation itself; a `docs` merge may carry code, so its commits
- * run CI as any code commit does. Never a rebase: GitHub ignores `merge=union`, so a
+ * (ship's open status.jsonl). No commit carries a skip token: the merge brings dev's
+ * code, and the pre-push hook refuses a skip-token head that carries code while the
+ * PR is open. Never a rebase: GitHub ignores `merge=union`, so a
  * branch rebased onto dev still shows as conflicting on every ledger both sides
  * appended to, while the merge commit is what GitHub's own merge would compute.
  */
@@ -1776,7 +1774,6 @@ function mergeDev(top, o, log) {
     };
     const full = o.policy === "full";
     const fid = o.fid ?? o.branch.replace(/^feat\//, "");
-    const tag = full ? " bkit [skip ci]" : "";
     const refuse = (why) => {
         const abort = runGit(top, ["merge", "--abort"]);
         out.aborted = abort.ok;
@@ -1791,7 +1788,7 @@ function mergeDev(top, o, log) {
         if (o.current)
             return { ...out, outcome: "current" };
         if (full && hasLeftovers(top)) {
-            const message = `chore(${fid}): carry uncommitted work before merging ${DEV}${tag}`;
+            const message = `chore(${fid}): carry uncommitted work before merging ${DEV}`;
             if (!addAllButCopied(top).ok || !quietGit(top, ["commit", "-q", "-m", message]).ok) {
                 log("the uncommitted work could not be committed before the merge");
                 return { ...out, code: EXIT_REFUSED, outcome: "refused" };
@@ -1800,7 +1797,7 @@ function mergeDev(top, o, log) {
             log(`committed the uncommitted work as ${out.carried} before merging ${UPSTREAM}`);
         }
         out.before = git(top, ["rev-parse", "HEAD"]);
-        const message = `chore(${fid}): merge ${DEV}${tag}`;
+        const message = `chore(${fid}): merge ${DEV}`;
         const merge = quietGit(top, ["merge", "--no-edit", "-m", message, UPSTREAM]);
         if (!merge.ok && !mergeInProgress(top)) {
             // Not a conflict: git refused to start the merge at all.
@@ -1832,8 +1829,8 @@ function mergeDev(top, o, log) {
     out.merged = true;
     log(`merged ${UPSTREAM} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
     if (o.generate) {
-        out.rebuilt = rebuildRegisters(top, out.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${DEV}${tag}`, log);
-        out.generated = regenerate(top, o.branch, log, { fid, skipCi: full });
+        out.rebuilt = rebuildRegisters(top, out.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${DEV}`, log);
+        out.generated = regenerate(top, o.branch, log, { fid });
         if (out.generated === false)
             out.code = EXIT_GENERATE_FAILED;
     }
