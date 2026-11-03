@@ -42,7 +42,7 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.34.7",
+  "packageManager": "pnpm@10.34.9",
   "repository": {
     "type": "git",
     "url": "https://github.com/cbartens/bkit.git"
@@ -108,8 +108,8 @@
     "bkit": "link:.",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
-    "oxlint": "1.89.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
     "prettier": "3.9.10",
     "slop-scan": "0.3.0",
     "tsx": "4.23.15",
