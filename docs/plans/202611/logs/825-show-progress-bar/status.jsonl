@@ -304,3 +304,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T01:31:49Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6593039214","at":"2026-11-03T01:31:50Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-03T01:31:50Z","parentSha":"5118c714996c34468ceba9458571fd1f5c9d4bf1","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:31:53Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:31:56Z","noun":"status","verb":"route","flags":["step","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:31:57Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:34:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-verify-holistic/-/1/comment","hash":"6ecd20b0ead2e4189aa4dac1b782366754925fb21c428feec4e01a6dbc7918af","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6593072613","at":"2026-11-03T01:34:01Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-03T01:34:01Z","parentSha":"22421edb8dfc7a59e9f48ff87d8e4beede92509b","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-plan-verify-holistic.md"],"verdict":"PASS","attempt":1,"failures":0}

@@ -1,7 +1,7 @@
 Verdict: PASS
 Failures: 0
 Fixable: false
-Tasks: 1,2,3,4
+Tasks: 1,2,3,4,5
 Loosened: none
 
 <!-- verdict:end -->
@@ -10,11 +10,11 @@ Loosened: none
 
 ## Scope
 
-Holistic — all four runbook tasks in `docs/plans/202611/825-show-progress-bar-plan.md`, checked in the confirmed feature worktree.
+Holistic — all five runbook tasks in `docs/plans/202611/825-show-progress-bar-plan.md`, checked in the confirmed feature worktree after the rebase for build run 2.
 
 ## Groups Verified
 
-2 verified / 2 in the plan.
+3 verified / 3 in the plan.
 
 ## Integration Gaps
 
@@ -22,9 +22,17 @@ Holistic — all four runbook tasks in `docs/plans/202611/825-show-progress-bar-
 
 ## Previously Attempted
 
-Group 1: `build-plan-verify-1-1.md` through `build-plan-verify-1-4.md`; the final attempt passed Tasks 1 and 2. Group 2: `build-plan-verify-2-1.md` passed Tasks 3 and 4. This is the first holistic verification.
+Group 1: `build-plan-verify-1-1.md` through `build-plan-verify-1-4.md`; the final attempt passed Tasks 1 and 2. Group 2: `build-plan-verify-2-1.md` passed Tasks 3 and 4. Group 3: `build-plan-verify-3-1.md` passed Task 5. The earlier holistic verification covered Groups 1 and 2 before challenge added Task 5. This review checks all three groups together after the rebase.
 
 ## Notes
+
+- Current review: read the supplied plan, execution logs, all prior group verifications, remediation logs and owner decisions. The aggregate diff still has **partial diff coverage** (14,309 lines across 119 files). Read the complete scoped current diff for all six changed production engine modules, renderer assertions and canonical progress documentation; matched the current task contracts against those changes and the previous group evidence. The installed third-party skill payload and every generated mirror were not re-audited line by line in this continuation, so no uncapped whole-branch coverage is claimed.
+- TASK 5 satisfied. The current `stepProgress` counts normal debug remediation across all debug runs, converts saved soak counters to positive safe integers, and selects the saved challenge round before the report invocation attempt. `savedPointLimit` includes cross-run grants for both debug budgets. The three additive real-filesystem Integration tests and `build-tests-green-3-1.md` retain their recorded red/green evidence. The current documentation describes the same scopes. No existing domain-row attempt or round value is rewritten by progress calculation.
+- Rebase integration: the upstream CI-evidence completion validation and the feature's progress preparation coexist in `steps.ts`; the resolved `steps.test.ts` retains both independent suites. The caller reports all 115 Unit tests in that file passed after rebase. No completion, validation, or wrapper contract was removed. The current scoped engine diff is additive around the existing write/commit and error paths.
+- Fresh verification supplied by the caller during this review: `pnpm build` and the built-CLI scratch-consumer probe passed in `tmp/remediation-consumer-vy76SY`. It emitted the exact Step 8/11 73% soak line with `Attempt 4 of 6`, wrote exactly one completion with no persisted progress field, and rejected a contextless numeric gate with exit 2. This verifier independently ran `git diff --check` successfully.
+- Final gate status remains separate: the previous whole-workflow attempt had four timing failures, and the caller is responsible for resolving and running the final unchanged gate. No new full-suite pass is claimed here. Per the caller's explicit instruction, this continuation did not repeat the broad `tests changed` run or perform a build/install. The prior stopped run below remains non-passing evidence. The task implementations have their focused passing evidence; this report does not waive the workflow's final test gate.
+
+### Earlier verification evidence retained
 
 - Coverage: `tmp/bkit-diff-825-show-progress-bar.md` has **partial diff coverage**. Its capped contents alone do not establish completeness. This review reused the complete `build-diff-1-4.md` and `build-diff-2-1.md` inspections and read scoped `git diff origin/dev...HEAD -- <paths>` output for all six changed production engine modules, canonical documentation and workflow sources. An independent path comparison confirmed all 64 changed feature-source, generated-engine, host and documentation paths are represented in those complete group diffs. The large installed third-party skill payload is recorded in `build-install-skills.md`; it is not evidence of feature implementation and its instructions were not executed.
 - TASK 1 satisfied. `runProgress` extends the existing table with the planned distinct-position calculation, build group expansion and sparse-marker ordinal mapping. It preserves the ten-cell format, suffix order, nearest-integer rounding, loop backtracking and final-only 100%. The plan's calculation cases have passing evidence, including ship Step 10 at 71% and build group 2 Step 8 of three groups at 50%.
