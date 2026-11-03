@@ -360,35 +360,44 @@ export function splitAt(body, limit, opts = {}) {
         return [body];
     const lines = body.split("\n");
     const marker = lines[0]?.startsWith("###### ") ? lines.shift() : null;
-    const headerRoom = (marker ? marker.length + 1 : 0) + "_(part 99/99)_\n".length;
-    const room = limit - headerRoom;
-    const chunks = [];
-    let cur = "";
-    const flush = () => {
-        if (cur !== "")
-            chunks.push(cur);
-        cur = "";
-    };
-    for (const raw of lines) {
-        let line = raw;
-        while (line.length > room) {
-            flush();
-            const cut = room > 0 && /[\uD800-\uDBFF]/.test(line[room - 1] ?? "") ? room - 1 : room;
-            if (cut <= 0)
-                throw new TrackerError("http-400", "comment limit cannot fit one code point");
-            chunks.push(line.slice(0, cut));
-            line = line.slice(cut);
+    let digits = 2;
+    for (;;) {
+        const widestPart = "9".repeat(digits);
+        const headerRoom = (marker ? marker.length + 1 : 0) + `_(part ${widestPart}/${widestPart})_\n`.length;
+        const room = limit - headerRoom;
+        const chunks = [];
+        let cur = "";
+        const flush = () => {
+            if (cur !== "")
+                chunks.push(cur);
+            cur = "";
+        };
+        for (const raw of lines) {
+            let line = raw;
+            while (line.length > room) {
+                flush();
+                const cut = room > 0 && /[\uD800-\uDBFF]/.test(line[room - 1] ?? "") ? room - 1 : room;
+                if (cut <= 0)
+                    throw new TrackerError("http-400", "comment limit cannot fit one code point");
+                chunks.push(line.slice(0, cut));
+                line = line.slice(cut);
+            }
+            const next = cur === "" ? line : `${cur}\n${line}`;
+            if (next.length > room) {
+                flush();
+                cur = line;
+            }
+            else
+                cur = next;
         }
-        const next = cur === "" ? line : `${cur}\n${line}`;
-        if (next.length > room) {
-            flush();
-            cur = line;
+        flush();
+        const requiredDigits = String(chunks.length).length;
+        if (requiredDigits > digits) {
+            digits = requiredDigits;
+            continue;
         }
-        else
-            cur = next;
+        return chunks.map((c, i) => [...(marker ? [marker] : []), `_(part ${i + 1}/${chunks.length})_`, c].join("\n"));
     }
-    flush();
-    return chunks.map((c, i) => [...(marker ? [marker] : []), `_(part ${i + 1}/${chunks.length})_`, c].join("\n"));
 }
 function commentEvidence(raw) {
     const author = asRecord(raw.user ?? raw.author);
@@ -591,11 +600,17 @@ export async function recentComments(t, n) {
             cursors.add(cursor);
             after = cursor;
         }
-        return nodes
-            .map((raw) => asRecord(raw))
-            .sort((a, b) => str(a.createdAt).localeCompare(str(b.createdAt)))
+        const ordered = nodes.map((raw) => {
+            const comment = asRecord(raw);
+            const created = typeof comment.createdAt === "string" ? Date.parse(comment.createdAt) : NaN;
+            if (!Number.isFinite(created))
+                throw new TrackerError("http-200", "linear: comment creation ordering is incomplete");
+            return { comment, created };
+        });
+        return ordered
+            .sort((a, b) => a.created - b.created)
             .slice(-n)
-            .map((raw) => {
+            .map(({ comment: raw }) => {
             const evidence = commentEvidence(raw);
             return {
                 body: str(raw.body),

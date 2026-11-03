@@ -278,6 +278,17 @@ describe("trackerTarget", () => {
 // ---------------------------------------------------------------------------
 
 describe("splitAt", () => {
+  it("budgets continuation headers beyond ninety nine parts", () => {
+    const body = stampMarker(`###### bkit:generated\n${"x".repeat(10_000)}`);
+    const parts = splitAt(body, 100);
+    expect(parts.length).toBeGreaterThan(99);
+    expect(parts.every((part) => part.length <= 100)).toBe(true);
+    expect(parts.map((part) => part.split("\n").slice(2).join("\n")).join("")).toBe(
+      "x".repeat(10_000),
+    );
+    expect(splitAt(body, 100)).toEqual(parts);
+  });
+
   it("refuses aggregation with an unverified provider budget", () => {
     const render: (body: string, limit: number, options: { verifiedBudget: boolean }) => string[] =
       splitAt;
@@ -341,6 +352,86 @@ describe("splitAt", () => {
 });
 
 describe("progress inspection", () => {
+  it("rejects inconclusive Linear creation order before selecting recent comments", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "linear-test-key";
+    const target = trackerTarget(linear(), { issue: "ENG-4" });
+    for (const createdAt of [undefined, "invalid-date"]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              data: {
+                issue: {
+                  comments: {
+                    nodes: [
+                      {
+                        id: "own",
+                        body: "own",
+                        createdAt: "2026-11-01T00:00:00Z",
+                        updatedAt: "2026-11-01T00:00:00Z",
+                        user: { id: "owner" },
+                      },
+                      {
+                        id: "foreign",
+                        body: "foreign",
+                        createdAt,
+                        updatedAt: "2026-11-02T00:00:00Z",
+                        user: { id: "human" },
+                      },
+                    ],
+                    pageInfo: { hasNextPage: false },
+                  },
+                },
+              },
+            }),
+            { headers: { "content-type": "application/json" } },
+          ),
+        ),
+      );
+      await expect(recentComments(target, 1)).rejects.toBeInstanceOf(TrackerError);
+    }
+  });
+
+  it("orders Linear comments by creation instant across timestamp offsets", async () => {
+    process.env.BKIT_LINEAR_API_KEY = "linear-test-key";
+    const target = trackerTarget(linear(), { issue: "ENG-4" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            data: {
+              issue: {
+                comments: {
+                  nodes: [
+                    {
+                      id: "newer",
+                      body: "newer",
+                      createdAt: "2026-11-01T01:00:00Z",
+                      updatedAt: "2026-11-01T01:00:00Z",
+                      user: { id: "owner" },
+                    },
+                    {
+                      id: "older",
+                      body: "older",
+                      createdAt: "2026-11-01T02:00:00+02:00",
+                      updatedAt: "2026-11-01T02:00:00+02:00",
+                      user: { id: "human" },
+                    },
+                  ],
+                  pageInfo: { hasNextPage: false },
+                },
+              },
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    expect((await recentComments(target, 1)).map((comment) => comment.body)).toEqual(["newer"]);
+  });
+
   it("reads Jira ownership evidence and seals HTML or anonymous representations", async () => {
     process.env.BKIT_JIRA_API_KEY = "jira-test-key";
     const target = trackerTarget(jira(), { issue: "PROJ-12" });
@@ -1636,7 +1727,12 @@ describe("postCommentOnce: re-runs compare the marker hash, never the rewritten 
           issue: {
             title: "T",
             comments: {
-              nodes: [{ body: `###### bkit:generated ${h}\n\n* a\n* _b_`, createdAt: "x" }],
+              nodes: [
+                {
+                  body: `###### bkit:generated ${h}\n\n* a\n* _b_`,
+                  createdAt: "2026-11-01T00:00:00Z",
+                },
+              ],
               pageInfo: { hasNextPage: false, endCursor: null },
             },
           },
