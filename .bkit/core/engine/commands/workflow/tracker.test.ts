@@ -341,6 +341,124 @@ describe("splitAt", () => {
 });
 
 describe("progress inspection", () => {
+  it("reads Jira ownership evidence and seals HTML or anonymous representations", async () => {
+    process.env.BKIT_JIRA_API_KEY = "jira-test-key";
+    const target = trackerTarget(jira(), { issue: "PROJ-12" });
+    const body = "###### bkit:generated\n\nowned report\n\n";
+    const comment = {
+      id: "101",
+      author: { accountId: "account-7", displayName: "Test author" },
+      body,
+      created: "2026-11-03T11:43:17.402+1000",
+      updated: "2026-11-03T11:44:17.402+1000",
+      updateAuthor: { accountId: "account-7", displayName: "Test author" },
+      jsdPublic: true,
+    };
+    const page = (comments: unknown[], appliedContentFormat: string) => ({
+      startAt: 0,
+      maxResults: 1,
+      total: 1,
+      isLast: true,
+      appliedContentFormat,
+      comments,
+    });
+    const calls = jiraMcp({ data: page([comment], "markdown") });
+    const inspected = await recentComments(target, 1);
+    expect(bodyOf(calls[2]!.init).params).toMatchObject({
+      name: "listJiraIssueComments",
+      arguments: {
+        cloudId: "https://acme.atlassian.net",
+        issueIdOrKey: "PROJ-12",
+        view: "evidence",
+        responseContentFormat: "markdown",
+      },
+    });
+    expect(inspected[0]?.evidence).toMatchObject({
+      id: "101",
+      authorId: "account-7",
+      createdAt: comment.created,
+      updatedAt: comment.updated,
+      fingerprint: actionHash(body),
+      representation: "markdown",
+    });
+    jiraMcp({
+      data: page([{ ...comment, body: "<h6>bkit:generated</h6><p>owned report</p>" }], "html"),
+    });
+    expect((await recentComments(target, 1))[0]?.evidence).toBeUndefined();
+    jiraMcp({ data: page([{ ...comment, author: { displayName: "Test author" } }], "markdown") });
+    expect((await recentComments(target, 1))[0]?.evidence).toBeUndefined();
+  });
+
+  it("edits Jira comments with verified preflight evidence", async () => {
+    process.env.BKIT_JIRA_API_KEY = "jira-test-key";
+    const target = trackerTarget(jira(), { issue: "PROJ-12" });
+    const body = stampMarker("###### bkit:generated\nupdated section 😀");
+    const returnedBody = `${body.split("\n")[0]}\n\nupdated section 😀\n\n`;
+    const evidence = {
+      id: "101",
+      authorId: "account-7",
+      createdAt: "2026-11-03T11:43:17.402+1000",
+      updatedAt: "2026-11-03T11:43:17.402+1000",
+      fingerprint: actionHash("previous returned body"),
+      representation: "markdown" as const,
+      sectionIds: [],
+    };
+    const calls = jiraMcp(
+      {
+        data: {
+          commentId: "101",
+          body: returnedBody,
+          appliedContentFormat: "markdown",
+          jsmCommentType: "publicComment",
+        },
+      },
+      {
+        data: {
+          startAt: 0,
+          maxResults: 1,
+          total: 1,
+          isLast: true,
+          appliedContentFormat: "markdown",
+          comments: [
+            {
+              id: "101",
+              author: { accountId: "account-7", displayName: "Test author" },
+              body: returnedBody,
+              created: evidence.createdAt,
+              updated: "2026-11-03T11:44:17.402+1000",
+              updateAuthor: { accountId: "account-7", displayName: "Test author" },
+              jsdPublic: true,
+            },
+          ],
+        },
+      },
+    );
+    const edit: (
+      t: Parameters<typeof postComment>[0],
+      text: string,
+      options: { commentId: string; evidence: typeof evidence },
+    ) => ReturnType<typeof postComment> = postComment;
+    const result = await edit(target, body, { commentId: "101", evidence });
+    expect(bodyOf(calls[2]!.init).params).toMatchObject({
+      name: "addOrEditJiraIssueComment",
+      arguments: {
+        cloudId: "https://acme.atlassian.net",
+        issueIdOrKey: "PROJ-12",
+        commentId: "101",
+        commentBody: body,
+      },
+    });
+    expect(result.url).toBe("https://acme.atlassian.net/browse/PROJ-12?focusedCommentId=101");
+    expect(result.evidence).toMatchObject({
+      id: "101",
+      authorId: "account-7",
+      createdAt: evidence.createdAt,
+      updatedAt: "2026-11-03T11:44:17.402+1000",
+      fingerprint: actionHash(returnedBody),
+      representation: "markdown",
+    });
+  });
+
   it("edits by verified comment id through each existing transport", async () => {
     const edit: (
       target: Parameters<typeof postComment>[0],
@@ -1536,28 +1654,17 @@ describe("postCommentOnce: re-runs compare the marker hash, never the rewritten 
   it("jira: a split `_(part i/n)_` comment and an HTML page both dedup on the marker", async () => {
     process.env.BKIT_JIRA_API_KEY = "k";
     const t = trackerTarget(jira(), { fid: "proj-9-x" });
-    const calls = jiraMcp(
-      { key: "PROJ-9", fields: { summary: "S" } },
-      {
-        comments: [{ body: `###### bkit:generated ${h}\n_(part 1/2)_\n* a`, created: "x" }],
-        isLast: true,
-      },
-    );
+    const calls = jiraMcp({
+      comments: [{ body: `###### bkit:generated ${h}\n_(part 1/2)_\n* a`, created: "x" }],
+      isLast: true,
+    });
     expect(await postCommentOnce(t, body, { recent: 5, log })).toMatchObject({ deduped: true });
-    expect(calls).toHaveLength(4);
-    jiraMcp(
-      { key: "PROJ-9", fields: { summary: "S" } },
-      {
-        comments: [{ body: `<h6>bkit:generated ${h}</h6><ul><li>a</li></ul>`, created: "x" }],
-        appliedContentFormat: "html",
-        isLast: true,
-      },
-      {
-        comments: [{ body: `<h6>bkit:generated ${h}</h6><ul><li>a</li></ul>`, created: "x" }],
-        appliedContentFormat: "html",
-        isLast: true,
-      },
-    );
+    expect(calls).toHaveLength(3);
+    jiraMcp({
+      comments: [{ body: `<h6>bkit:generated ${h}</h6><ul><li>a</li></ul>`, created: "x" }],
+      appliedContentFormat: "html",
+      isLast: true,
+    });
     expect(await postCommentOnce(t, body, { recent: 5, log })).toMatchObject({ deduped: true });
   });
 

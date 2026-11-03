@@ -411,7 +411,12 @@ export function writeBodyFile(cwd: string, kind: "comment" | "pr-body", body: st
  * a split body opens with the body's first line when it is the generated marker,
  * then `_(part i/n)_`; a single line longer than a part is cut hard.
  */
-export function splitAt(body: string, limit: number): string[] {
+export function splitAt(
+  body: string,
+  limit: number,
+  opts: { verifiedBudget?: boolean } = {},
+): string[] {
+  if (opts.verifiedBudget === false) return [body];
   if (body.length <= limit) return [body];
   const lines = body.split("\n");
   const marker = lines[0]?.startsWith("###### ") ? lines.shift()! : null;
@@ -464,20 +469,26 @@ export interface CommentEvidence {
 function commentEvidence(raw: Record<string, unknown>): CommentEvidence | undefined {
   const author = asRecord(raw.user ?? raw.author);
   const id = raw.databaseId ?? raw.id;
-  const authorId = author.databaseId ?? author.id;
-  const createdAt = raw.created_at ?? raw.createdAt;
-  const updatedAt = raw.updated_at ?? raw.updatedAt;
+  const authorId = author.databaseId ?? author.accountId ?? author.id;
+  const createdAt = raw.created_at ?? raw.createdAt ?? raw.created;
+  const updatedAt = raw.updated_at ?? raw.updatedAt ?? raw.updated;
   if (
     (typeof id !== "string" && typeof id !== "number") ||
+    String(id).trim() === "" ||
     typeof createdAt !== "string" ||
     typeof updatedAt !== "string" ||
+    !Number.isFinite(Date.parse(createdAt)) ||
+    !Number.isFinite(Date.parse(updatedAt)) ||
     typeof raw.body !== "string"
   )
     return undefined;
   return {
     id: String(id),
     authorId:
-      typeof authorId === "string" || typeof authorId === "number" ? String(authorId) : null,
+      (typeof authorId === "string" || typeof authorId === "number") &&
+      String(authorId).trim() !== ""
+        ? String(authorId)
+        : null,
     createdAt,
     updatedAt,
     fingerprint: actionHash(raw.body),
@@ -488,17 +499,23 @@ function commentEvidence(raw: Record<string, unknown>): CommentEvidence | undefi
   };
 }
 
-/** Post `body` as a new comment on the target issue. Throws `TrackerError` on failure. */
-export async function postComment(t: TrackerTarget, body: string): Promise<PostedComment> {
+/** Create a comment, or edit the supplied verified ID. Throws `TrackerError` on failure. */
+export async function postComment(
+  t: TrackerTarget,
+  body: string,
+  opts: { commentId?: string; evidence?: CommentEvidence } = {},
+): Promise<PostedComment> {
   if (t.issue === null) throw new TrackerError("not-found", "no issue");
   if (t.tracker === "github") {
     const out = gh(
       t,
       [
         "api",
-        `repos/${t.ownerRepo}/issues/${t.issue}/comments`,
+        opts.commentId
+          ? `repos/${t.ownerRepo}/issues/comments/${encodeURIComponent(opts.commentId)}`
+          : `repos/${t.ownerRepo}/issues/${t.issue}/comments`,
         "--method",
-        "POST",
+        opts.commentId ? "PATCH" : "POST",
         "--input",
         "-",
       ],
@@ -516,12 +533,16 @@ export async function postComment(t: TrackerTarget, body: string): Promise<Poste
   }
   if (t.tracker === "linear") {
     const data = await linearGql(
-      "mutation($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { id body url createdAt updatedAt user { id } } } }",
-      { input: { issueId: t.issue, body } },
+      opts.commentId
+        ? "mutation($id: String!, $input: CommentUpdateInput!) { commentUpdate(id: $id, input: $input) { success comment { id body url createdAt updatedAt user { id } } } }"
+        : "mutation($input: CommentCreateInput!) { commentCreate(input: $input) { success comment { id body url createdAt updatedAt user { id } } } }",
+      opts.commentId
+        ? { id: opts.commentId, input: { body } }
+        : { input: { issueId: t.issue, body } },
     );
-    const created = asRecord(data.commentCreate);
+    const created = asRecord(opts.commentId ? data.commentUpdate : data.commentCreate);
     if (created.success !== true)
-      throw new TrackerError("http-400", "linear: commentCreate failed");
+      throw new TrackerError("http-400", "linear: comment mutation failed");
     const raw = asRecord(created.comment);
     const url = raw.url;
     const evidence = commentEvidence(raw);
@@ -532,23 +553,71 @@ export async function postComment(t: TrackerTarget, body: string): Promise<Poste
     };
   }
   if (t.tracker === "jira") {
+    if (
+      opts.commentId &&
+      (!opts.evidence ||
+        opts.evidence.id !== opts.commentId ||
+        !opts.evidence.authorId ||
+        opts.evidence.representation !== "markdown" ||
+        !/^[a-f0-9]{64}$/.test(opts.evidence.fingerprint) ||
+        !Number.isFinite(Date.parse(opts.evidence.createdAt)) ||
+        !Number.isFinite(Date.parse(opts.evidence.updatedAt)))
+    )
+      throw new TrackerError("unsupported", "jira: comment edit requires verified evidence");
     const site = jiraSite(t);
     const jira = JiraSession.open();
     const parts = splitAt(body, JIRA_COMMENT_LIMIT);
+    if (opts.commentId && parts.length !== 1)
+      throw new TrackerError("unsupported", "jira: split bodies require new comments");
     let id: unknown;
+    let observed = false;
+    let returnedBody: string | undefined;
     for (const part of parts) {
-      const res = await jira.call(JIRA_TOOLS.comment, {
-        cloudId: site,
-        issueIdOrKey: t.issue,
-        commentBody: part,
-      });
-      id = asRecord(res).id;
+      const res = asRecord(
+        await jira.call(JIRA_TOOLS.comment, {
+          cloudId: site,
+          issueIdOrKey: t.issue,
+          commentBody: part,
+          ...(opts.commentId
+            ? {
+                commentId: opts.commentId,
+                contentFormat: "markdown",
+                responseContentFormat: "markdown",
+              }
+            : {}),
+        }),
+      );
+      const raw = res.data === undefined ? res : asRecord(res.data);
+      id = raw.commentId ?? raw.id;
+      observed = typeof raw.commentId === "string";
+      returnedBody =
+        raw.appliedContentFormat === "markdown" && typeof raw.body === "string"
+          ? raw.body
+          : undefined;
     }
     const base = `${site}/browse/${t.issue}`;
-    return {
+    const posted = {
       url: id === undefined ? base : `${base}?focusedCommentId=${String(id)}`,
       parts: parts.length,
     };
+    if (observed && parts.length === 1) {
+      try {
+        const latest = await jiraComments(t, 1, jira);
+        const evidence = latest.find(
+          (comment) =>
+            comment.evidence !== undefined &&
+            comment.evidence.id === id &&
+            returnedBody !== undefined &&
+            comment.evidence.fingerprint === actionHash(returnedBody) &&
+            (!opts.evidence || comment.evidence.authorId === opts.evidence.authorId),
+        )?.evidence;
+        return { ...posted, ...(evidence ? { evidence } : {}) };
+      } catch {
+        // An acknowledged mutation stays successful when optional evidence is unavailable.
+        return posted;
+      }
+    }
+    return posted;
   }
   throw new TrackerError("not-found", "issue tracker none");
 }
@@ -558,7 +627,7 @@ export async function recentComments(
   t: TrackerTarget,
   n: number,
 ): Promise<Array<{ body: string; url: string | null; evidence?: CommentEvidence }>> {
-  if (t.issue === null) return [];
+  if (t.issue === null || !Number.isInteger(n) || n <= 0) return [];
   if (t.tracker === "github") {
     const [owner, name] = t.ownerRepo.split("/");
     const nodes: unknown[] = [];
@@ -639,8 +708,50 @@ export async function recentComments(
         };
       });
   }
-  const issue = await fetchIssue(t);
-  return issue.comments.slice(-n).map((c) => ({ body: c.body, url: null }));
+  if (t.tracker === "jira") return jiraComments(t, n, JiraSession.open());
+  return [];
+}
+
+async function jiraComments(
+  t: TrackerTarget,
+  n: number,
+  jira: JiraSession,
+): Promise<Array<{ body: string; url: string | null; evidence?: CommentEvidence }>> {
+  const site = jiraSite(t);
+  const comments: Array<{ body: string; url: string | null; evidence?: CommentEvidence }> = [];
+  for (let page = 0; page < 10; page++) {
+    const response = asRecord(
+      await jira.call(JIRA_TOOLS.comments, {
+        cloudId: site,
+        issueIdOrKey: t.issue,
+        startAt: comments.length,
+        maxResults: Math.min(n - comments.length, 100),
+        orderBy: "-created",
+        responseContentFormat: "markdown",
+        view: "evidence",
+      }),
+    );
+    const data = response.data === undefined ? response : asRecord(response.data);
+    if (!Array.isArray(data.comments))
+      throw new TrackerError("http-200", "jira: comment page returned no comments");
+    for (const item of data.comments) {
+      const raw = asRecord(item);
+      const candidate = data.appliedContentFormat === "markdown" ? commentEvidence(raw) : undefined;
+      const evidence = candidate?.authorId ? candidate : undefined;
+      comments.push({
+        body: textOf(raw.body),
+        url:
+          typeof raw.id === "string"
+            ? `${site}/browse/${t.issue}?focusedCommentId=${raw.id}`
+            : null,
+        ...(evidence ? { evidence } : {}),
+      });
+    }
+    if (data.isLast !== false || comments.length >= n) return comments.slice(0, n).reverse();
+    if (data.comments.length === 0)
+      throw new TrackerError("http-200", "jira: comment pagination is incomplete");
+  }
+  throw new TrackerError("http-200", "jira: comment pagination is incomplete");
 }
 
 export interface FetchedIssue {

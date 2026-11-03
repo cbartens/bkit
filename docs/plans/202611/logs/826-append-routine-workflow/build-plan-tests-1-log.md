@@ -74,3 +74,9 @@ SOURCE — TASK 2: splitAt's existing body/limit contract is in .bkit/core/engin
 WROTE — TASK 2: `.bkit/core/engine/commands/workflow/tracker.test.ts` `refuses aggregation with an unverified provider budget`
 
 SOURCE — TASK 1: pnpm bkit:lint:file .bkit/core/engine/commands/workflow/tracker.test.ts exited 0. The final unit file run exited 1 with 3 assertion failures and 70 passing tests, with no timeouts; it fails on unknown-budget splitting, POST instead of PATCH, and invalid timestamp evidence. This is writer verification only; the orchestrator records formal reds. Prettier and git diff whitespace checks passed. No existing planned case body was changed.
+
+SOURCE — TASK 1: Successful live Jira create/edit and evidence-list shapes are documented in build-provider-contracts.md. Two additional Jira adapter cases use those data-wrapped responses with synthetic site, issue and account values; no frozen planned test body changed. Both were observed failing before their supported source paths existed, and their logs remain in gitignored tmp. Final test-file lint and formatting passed.
+
+WROTE — TASK 1: `.bkit/core/engine/commands/workflow/tracker.test.ts` `edits Jira comments with verified preflight evidence`
+
+WROTE — TASK 1: `.bkit/core/engine/commands/workflow/tracker.test.ts` `reads Jira ownership evidence and seals HTML or anonymous representations`
