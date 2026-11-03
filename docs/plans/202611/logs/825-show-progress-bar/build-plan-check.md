@@ -14,6 +14,7 @@ Plan: `docs/plans/202611/825-show-progress-bar-plan.md`. Caps: 5 tasks and 25 TE
 | --- | --- | --- | --- | --- |
 | 1 | Engine works out and prints the line | 2 | 19 | 7.5 |
 | 2 | Workflows show the line | 2 | 0 | 3.8 |
+| 3 | Challenge round 1 findings | 1 | 3 | 1.8 |
 
 ## Tasks
 
@@ -24,6 +25,7 @@ Plan: `docs/plans/202611/825-show-progress-bar-plan.md`. Caps: 5 tasks and 25 TE
 | 2 | 1 | 10 | 2 |
 | 3 | 2 | 0 | 0 |
 | 4 | 2 | 0 | 0 |
+| 5 | 3 | 3 | 1 |
 
 ## Problems
 
