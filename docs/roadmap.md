@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T06:34:24Z)_
+_(refreshed 2026-11-03T06:35:51Z)_
 
 ### Design
 
@@ -46,6 +46,7 @@ _(refreshed 2026-11-03T06:34:24Z)_
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
+| 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
 
 ### Build
 
