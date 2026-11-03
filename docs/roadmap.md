@@ -31,7 +31,6 @@ _(refreshed 2026-11-03T10:23:54Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
-| 787-show-authoring-rules | 787-show-authoring-rules | 1793609906429 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
 ### Plan
@@ -43,6 +42,7 @@ _(refreshed 2026-11-03T10:23:54Z)_
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
+| 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
