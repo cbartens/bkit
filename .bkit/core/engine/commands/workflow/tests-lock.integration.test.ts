@@ -217,7 +217,60 @@ const events = (): GateEvent[] =>
         .map((line) => JSON.parse(line) as GateEvent)
     : [];
 
+/** Replace the gate's work with a fixture while retaining its actual lock prefix. */
+function gatePrefix(value: string): string {
+  return value.match(/^bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /)?.[0] ?? "";
+}
+
 describe("tests lock through a consumer's wrapped gate", () => {
+  it("a wrapped gate that runs another wrapped gate runs the inner one unlocked, never waiting on itself", async () => {
+    const own = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    const outer = "bkit:gate:static-unit-integration";
+    const ready = path.join(tmp, "outer-ready");
+    const release = path.join(tmp, "outer-release");
+    const manifest = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    manifest.scripts[outer] = gatePrefix(own.scripts[outer]!) + "node outer.mjs";
+    manifest.scripts[GATE] = gatePrefix(own.scripts[GATE]!) + "node gate.mjs";
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify(manifest));
+    fs.writeFileSync(
+      path.join(cwd, "outer.mjs"),
+      [
+        'import fs from "node:fs";',
+        'import { spawnSync } from "node:child_process";',
+        'import { setTimeout as delay } from "node:timers/promises";',
+        `const result = spawnSync("pnpm", ["${GATE}"], { stdio: "inherit", timeout: 5000 });`,
+        'fs.writeFileSync(process.env.OUTER_READY, JSON.stringify({owner: process.env.LOCAL_STACK_LOCK_OWNER_tests || "", nested: result.status}));',
+        'const until = Date.now() + 30000; while (!fs.existsSync(process.env.OUTER_RELEASE)) { if (Date.now() > until) throw new Error("release timed out"); await delay(20); }',
+        "process.exit(result.status ?? 1);",
+      ].join("\n"),
+    );
+    const first = start(["run", `--gate=${outer}`, "--log=logs/outer.md", "--lock-wait-s=2"], {
+      OUTER_READY: ready,
+      OUTER_RELEASE: release,
+    });
+    await waitForFile(ready, "nested", first.child);
+    const ownership = JSON.parse(fs.readFileSync(ready, "utf-8")) as {
+      owner: string;
+      nested: number;
+    };
+    const contrast = execute([...runArgs("logs/contrast.md"), "--lock-wait-s=0"]);
+    fs.writeFileSync(release, "release");
+    const result = await first.done;
+    expect(contrast.status, contrast.stderr).toBe(81);
+    expect(result.status, result.stderr).toBe(0);
+    expect(ownership.nested).toBe(0);
+    expect(ownership.owner).toMatch(/^[1-9][0-9]*$/);
+    expect(events().map((event) => event.event)).toEqual(["start", "end"]);
+    expect(events()[0]!.env.LOCAL_STACK_LOCK_OWNER_tests).toBe(ownership.owner);
+    expect(fs.readFileSync(path.join(cwd, "logs/outer.md"), "utf-8")).not.toContain(
+      "waiting for tests",
+    );
+  });
+
   it("tests run --file appends no test-run row when it exits 81 on a held tests lock", async () => {
     await hold();
     const result = execute([

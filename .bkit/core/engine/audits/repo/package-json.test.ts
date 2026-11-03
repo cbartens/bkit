@@ -10,6 +10,23 @@ import { describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 
 describe("package.json manifest invariants (BAR-138)", () => {
+  it("bkit's root package.json wraps every test-running bkit:gate script in the tests lock", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    const prefix = "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- ";
+    expect(manifest.scripts["bkit:gate:static-unit"]).toMatch(new RegExp(`^${prefix}sh -c '`));
+    expect(manifest.scripts["bkit:gate:static-unit-integration"]).toMatch(
+      new RegExp(`^${prefix}sh -c '`),
+    );
+    expect(manifest.scripts["bkit:gate:install-static-unit-build"]).toMatch(
+      new RegExp(`^${prefix}sh -c '`),
+    );
+    expect(manifest.scripts["bkit:gate:changed"]).toBe(
+      prefix + "node scripts/gate/bkit-gate-changed.mjs",
+    );
+  });
+
   const pkgPath = path.resolve("package.json");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pkg: Record<string, any>;
