@@ -11,9 +11,10 @@
 // Enforces docs/testing.md § "Validated means executed".
 //
 // Design notes:
-//   - Zero imports. The only coupling to slop-scan is the finding object shape and
-//     meta.apiVersion. apiVersion is hard-pinned (not imported); an engine API bump
-//     fails at load.
+//   - Zero imports. Uses slop-scan's file.text / file.ast facts and finding shape.
+//     meta.apiVersion is hard-pinned (not imported); an engine API bump fails at load.
+//   - Test markers must start on an AST identifier, so literal fixtures are inert.
+//     Missing or invalid ASTs retain the conservative text/comment scan.
 //   - `delta` is omitted: slop-scan then matches per location, so a pure line-shift
 //     of a pre-existing hit nets to zero and only new hits register as added.
 //   - Cast patterns use `\s+` (never a literal single space), and the directive
@@ -113,6 +114,18 @@ function collectMatches(text, regex, classify) {
   return out;
 }
 
+/** Identifier locations exclude literal text while retaining executable template interpolations. */
+function identifierStarts(sourceFile) {
+  if (!sourceFile || sourceFile.parseDiagnostics?.length) return null;
+  const starts = new Set();
+  const visit = (node) => {
+    if (typeof node.escapedText === "string") starts.add(node.getStart(sourceFile));
+    node.forEachChild(visit);
+  };
+  visit(sourceFile);
+  return starts;
+}
+
 export default {
   meta: {
     name: "slop-scan-plugin-boundary",
@@ -209,7 +222,7 @@ export default {
       family: "boundary",
       severity: "medium",
       scope: "file",
-      requires: ["file.text"],
+      requires: ["file.text", "file.ast"],
       supports(context) {
         return context.scope === "file" && Boolean(context.file);
       },
@@ -220,13 +233,16 @@ export default {
           return [];
         }
 
-        // Test skip/focus markers — comment-skipped (a `.skip` named in a comment is inert).
+        // Match executable identifiers; missing or invalid ASTs retain the conservative text scan.
+        const identifiers = identifierStarts(
+          context.runtime.store.getFileFact(file.path, "file.ast"),
+        );
         const testMatches = [
           ...collectMatches(text, TEST_SUFFIX, (_t, _end, m) => `test-${m[1]}`),
           ...collectMatches(text, TEST_GLOBAL, (_t, _end, m) =>
             m[1] === "f" ? "test-only" : "test-skip",
           ),
-        ];
+        ].filter((match) => identifiers === null || identifiers.has(match.index));
         // Blanket linter disables — NOT comment-skipped (they ARE comments).
         const lintMatches = collectMatches(text, BLANKET_LINT, () => "lint-blanket");
 
@@ -246,7 +262,7 @@ export default {
         };
 
         const hits = [
-          ...testMatches.map((m) => toHit(m, true)),
+          ...testMatches.map((m) => toHit(m, identifiers === null)),
           ...lintMatches.map((m) => toHit(m, false)),
         ].filter(Boolean);
         if (hits.length === 0) {

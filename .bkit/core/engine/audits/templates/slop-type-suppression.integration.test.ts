@@ -72,6 +72,15 @@ const GATE_FIXTURES: Record<string, string> = {
   "src/comment.ts": "// do not reach for it.skip here\nexport const d = 1;\n",
   // ordinary tests — must NOT flag
   "src/clean.ts": 'it("real", () => {});\ndescribe("real", () => {});\n',
+  "src/quoted.ts": `const single = 'it.skip("fixture", () => {})';\nconst double = "describe.only('fixture', () => {})";\n`,
+  "src/escaped.ts": 'const fixture = "escaped \\" quote: test.skip()";\n',
+  "src/template.ts": 'const fixture = `it.skip("fixture")\nfdescribe("fixture")`;\n',
+  "src/regex.ts": 'const pattern = /it.skip\\("fixture"\\)/;\n',
+  "src/interpolation.ts": 'const value = `fixture ${it.skip("real", () => {})}`;\n',
+  "src/invalid.ts": 'const broken = ; it.skip("real", () => {});\n',
+  "src/nested-template.ts": 'const value = `outer ${`inner ${test.only("real", () => {})}`}`;\n',
+  "src/mixed.ts": 'const fixture = "https://example.com/it.skip"; it.only("real", () => {});\n',
+  "src/regexp-before.ts": 'const quote = /"/; test.skip("real", () => {});\n',
 };
 
 /** Builds a temp corpus, runs the real slop-scan, returns flagged source paths. */
@@ -168,11 +177,16 @@ function scanGateFlagged(): string[] {
 }
 
 describe("boundary/gate-suppression slop rule (scripts/slop/bkit-slop-type-suppression.mjs)", () => {
-  it("flags skipped/focused tests and blanket lint disables; ignores targeted disables, .fit(), comments, and clean tests", () => {
+  it("flags executable skips/focus and blanket disables; ignores literal fixtures and keeps invalid-source detection", () => {
     expect(scanGateFlagged()).toEqual([
       "src/blanket.ts",
       "src/fdescribe.ts",
+      "src/interpolation.ts",
+      "src/invalid.ts",
+      "src/mixed.ts",
+      "src/nested-template.ts",
       "src/only.ts",
+      "src/regexp-before.ts",
       "src/skip.ts",
       "src/xit.ts",
     ]);
