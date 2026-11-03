@@ -18,3 +18,5 @@ SOURCE — TASK 11: existing canonical push fences counted in .bkit/core/workflo
 WROTE — TASK 11: `.bkit/core/engine/commands/workflow/branches-lock.integration.test.ts` `branches push exits 81 naming the holder when the pre-push hook's gate gave up on the tests lock`
 WROTE — TASK 11: `.bkit/core/engine/commands/workflow/branches-lock.integration.test.ts` `branches push passes LOCAL_STACK_LOCK_WAIT_S and LOCAL_STACK_LOCK_WHO to git push`
 WROTE — TASK 11: `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `every branches push call site routes exit 81 to a re-run of its block`
+SOURCE — TASK 11: corrected five-workflow push inventory from docs/plans/202610/724-machine-wide-test-plan.md:949; missing retry routes confirmed at .bkit/core/workflows/bkit-design.md:494 and .bkit/core/workflows/bkit-plan.md:427.
+WROTE — TASK 11: `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `every branches push call site routes exit 81 to a re-run of its block`
