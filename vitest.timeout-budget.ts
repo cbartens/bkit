@@ -41,6 +41,33 @@ export function loadFactor(
 }
 
 /**
+ * The load per core a run makes once its workers start: the load now plus one core per worker
+ * (the cost the copied model gives a test worker, an estimate), over the cores.
+ */
+export function plannedLoadPerCore(
+  workers: number,
+  loadAverage: number = os.loadavg()[0] ?? 0,
+  cores: number = os.availableParallelism(),
+): number {
+  return (loadAverage + workers) / cores;
+}
+
+/**
+ * Export UNIT_PLANNED_LOAD_PER_CORE for this run's workers, which inherit it, unless a caller
+ * already set it. `workers` defaults to vitest's own run default, a worker per core but one,
+ * which is also the worker count a single-slot tests lock hands out. Returns the value in force.
+ */
+export function planUnitLoad(
+  env: NodeJS.ProcessEnv = process.env,
+  loadAverage: number = os.loadavg()[0] ?? 0,
+  cores: number = os.availableParallelism(),
+  workers: number = Math.max(cores - 1, 1),
+): string {
+  env.UNIT_PLANNED_LOAD_PER_CORE ??= plannedLoadPerCore(workers, loadAverage, cores).toFixed(2);
+  return env.UNIT_PLANNED_LOAD_PER_CORE;
+}
+
+/**
  * `testTimeout` and `hookTimeout` for a test file, scaled by `factor`. `integration` picks the
  * 30s integration base over the 5s / 10s unit base.
  */

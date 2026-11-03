@@ -290,16 +290,21 @@ describe("bkit disk prune — lock", () => {
   });
 
   it("renews its lock while a long step runs, so a waiter never takes it over", async () => {
+    // The step runs until the test writes `go`, so the sweep holds its lock for every check.
     const cwd = repo(
-      `export default [{ name: "slow", mode: "min", run: "sleep 0.4; echo slow >> order" }];\n`,
+      `export default [{ name: "slow", mode: "min", run: "for i in $(seq 1 1000); do [ -f go ] && break; sleep 0.01; done; echo slow >> order" }];\n`,
     );
     const running = sweep({ cwd, mode: "min", dryRun: false, renewMs: 20, log: () => {} });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    const wait = { timeout: 10_000, interval: 10 };
+    await vi.waitFor(() => expect(fs.existsSync(lock())).toBe(true), wait);
     const stale = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
     fs.utimesSync(lock(), stale, stale);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(Date.now() - fs.statSync(lock()).mtimeMs).toBeLessThan(60 * 1000);
+    await vi.waitFor(
+      () => expect(Date.now() - fs.statSync(lock()).mtimeMs).toBeLessThan(60 * 1000),
+      wait,
+    );
     expect((await prune(cwd, "--mode=min")).json.reason).toBe("locked");
+    fs.writeFileSync(path.join(cwd, "go"), "");
     expect((await running).reason).toBeNull();
     expect(order(cwd)).toEqual(["slow"]);
     expect(fs.existsSync(lock())).toBe(false);
