@@ -84,11 +84,11 @@ Not scanned; run the rollup with `--reachability`.
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
 | --- | --- | --- | --- |
-| `.bkit/core/engine/shared/text.ts` | `Symbol` | 197 | 117 |
-| `.bkit/core/engine/checks/after/ci-yml.ts` | `CI_SCRIPT_UNITS.flat` | 185 | 110 |
-| `.bkit/core/engine/checks/tips/index.ts` | `STAR_TIP.replace` | 185 | 110 |
-| `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 185 | 110 |
-| `.bkit/core/engine/commands/workflow/workflows.ts` | `Error` | 185 | 110 |
+| `.bkit/core/engine/shared/text.ts` | `Symbol` | 198 | 118 |
+| `.bkit/core/engine/checks/after/ci-yml.ts` | `CI_SCRIPT_UNITS.flat` | 186 | 111 |
+| `.bkit/core/engine/checks/tips/index.ts` | `STAR_TIP.replace` | 186 | 111 |
+| `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 186 | 111 |
+| `.bkit/core/engine/commands/workflow/workflows.ts` | `Error` | 186 | 111 |
 
 1 further file nothing imports, though an entrypoint is supposed to do work when it loads. In the JSON report only.
 

@@ -345,6 +345,8 @@ const ADOPTED: Record<string, Entry> = {
     what: "ships with the opt-in guard",
   },
   "scripts/ci/bkit-machine-lock.sh": identical,
+  "scripts/ci/bkit-test-awake.mjs": identical,
+  "scripts/ci/bkit-test-awake.test.mjs": identical,
   "scripts/ci/bkit-check-capstone.mjs": identical,
   "scripts/ci/bkit-check-capstone.test.mjs": identical,
   "scripts/ci/bkit-check-dependency-audit.mjs": identical,

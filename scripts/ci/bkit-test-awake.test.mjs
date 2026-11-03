@@ -1,3 +1,4 @@
+// Example. Copy into scripts/ci/ and own it. bkit install does not write this file.
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
@@ -86,9 +87,13 @@ test(
         script,
         process.execPath,
         "-e",
-        'process.on("SIGTERM", () => {}); console.log(process.pid); setInterval(() => {}, 1000)',
+        'process.on("SIGTERM", () => {}); console.log(String(process.pid)); setInterval(() => {}, 1000)',
       ],
-      { detached: true, stdio: ["ignore", "pipe", "pipe"] },
+      {
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, FORCE_COLOR: "1" },
+      },
     );
     const exited = once(child, "exit");
     const [data] = await once(child.stdout, "data");
@@ -115,8 +120,13 @@ test(
   async () => {
     const child = spawn(
       process.execPath,
-      [script, process.execPath, "-e", "console.log(process.pid); setInterval(() => {}, 1000)"],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      [
+        script,
+        process.execPath,
+        "-e",
+        "console.log(String(process.pid)); setInterval(() => {}, 1000)",
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, FORCE_COLOR: "1" } },
     );
     const closed = once(child, "close");
     const [data] = await once(child.stdout, "data");

@@ -207,9 +207,9 @@ Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into
 
 ```json
 {
-  "test": "node scripts/ci/bkit-test-awake.mjs vitest run",
+  "bkit:test:unit": "node scripts/ci/bkit-test-awake.mjs vitest run",
   "bkit:test:file": "node scripts/ci/bkit-test-awake.mjs vitest run",
-  "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm bkit:gate:static && pnpm test\""
+  "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm bkit:gate:static && pnpm bkit:test:unit\""
 }
 ```
 

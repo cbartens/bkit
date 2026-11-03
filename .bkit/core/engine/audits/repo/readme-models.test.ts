@@ -8,9 +8,9 @@
  *   - `providers.md` § Per-tier lineup across providers: the Claude bar for each tier.
  *
  * The README has one row per § Models provider column and one column per Claude tier. A tier
- * is the set of agents pinned to one Claude model; the Claude Code row names that model. Each
+ * is the set of agents pinned to one Claude model; the Claude row names that model. Each
  * cell lists every model its provider pins for that tier, each with its board score, or
- * `not measured` when the board has no row for it. The Claude Code row carries the bars.
+ * `not measured` when the board has no row for it. The Claude row carries the bars.
  */
 
 import * as fs from "node:fs";
@@ -26,14 +26,14 @@ const PROVIDERS_MD = fs.readFileSync(path.join(getBkitDocsRoot(), "providers.md"
 
 /** README row label → § Models provider column. */
 const README_ROWS: Record<string, string> = {
-  "Claude Code": "Anthropic",
-  Cursor: "Cursor",
-  "opencode + OpenRouter": "OpenRouter",
-  "opencode + Ollama": "Ollama",
-  "opencode + OpenCode Zen": "OpenCode Zen",
-  "opencode + OpenCode Go": "OpenCode Go",
+  Claude: "Anthropic",
   Codex: "OpenAI",
-  "Google Antigravity": "Google",
+  Antigravity: "Google",
+  Cursor: "Cursor",
+  "OpenCode + OpenRouter": "OpenRouter",
+  "OpenCode + Ollama": "Ollama",
+  "OpenCode + OpenCode Zen": "OpenCode Zen",
+  "OpenCode + OpenCode Go": "OpenCode Go",
 };
 
 /**
@@ -89,8 +89,8 @@ function entries(cell: string): Entry[] {
 
 const readmeTable = tableAfter(README, "## Which model does each job");
 const readmeBody = readmeTable.slice(1);
-const claudeRow = readmeBody.find((r) => r[0] === "Claude Code");
-if (!claudeRow) throw new Error("README models table has no Claude Code row");
+const claudeRow = readmeBody.find((r) => r[0] === "Claude");
+if (!claudeRow) throw new Error("README models table has no Claude row");
 /** README column index → the Claude model that defines its tier. */
 const tierByColumn = claudeRow.slice(1).map((cell) => entries(cell)[0]?.model ?? "");
 
@@ -139,7 +139,7 @@ function tierCells(fromPins: boolean): Record<string, string[]> {
   return out;
 }
 
-/** README score as written: `bar N` on the Claude Code row, `N` or `not measured` elsewhere. */
+/** README score as written: `bar N` on the Claude row, `N` or `not measured` elsewhere. */
 const written = (e: Entry): string => (e.isBar ? `bar ${e.score}` : e.score);
 
 const claudeEntries = claudeRow.slice(1).map((cell) => entries(cell)[0]);
@@ -186,7 +186,7 @@ describe("README § Which model does each job", () => {
     expect(tierCells(false)).toEqual(tierCells(true));
   });
 
-  it("gives the Claude Code row the lineup's bar for each tier", () => {
+  it("gives the Claude row the lineup's bar for each tier", () => {
     expect(tierBars.size).toBeGreaterThan(0);
     expect(claudeBars(false)).toEqual(claudeBars(true));
   });

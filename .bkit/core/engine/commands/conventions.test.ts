@@ -160,6 +160,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "tracker.ts"),
   // The summary `workflows summary` writes: verdict rules, next step, markdown.
   path.join("commands", "workflow", "summary.ts"),
+  // Finding resolution evidence used by the workflow summary.
+  path.join("commands", "workflow", "summary-findings.ts"),
   // Each workflow's ordered steps and resume rule, read by `status resume`.
   path.join("commands", "workflow", "step-table.ts"),
   // The newest numbered draft in a run's log folder, read by `workflow promote` and run-facts.
@@ -172,6 +174,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "tests-changed.ts"),
   // The pinned-checksum check behind `ci pins`.
   path.join("commands", "ci", "pins.ts"),
+  // Committed-tree gate receipts used by `ci push-gate`.
+  path.join("commands", "ci", "push-gate.ts"),
 ]);
 
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */

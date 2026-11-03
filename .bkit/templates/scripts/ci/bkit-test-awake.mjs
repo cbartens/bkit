@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Example. Copy into scripts/ci/ and own it.
+// Example. Copy into scripts/ci/ and own it. bkit install does not write this file.
 // Usage: node scripts/ci/bkit-test-awake.mjs command [args...]
 // Chains: node scripts/ci/bkit-test-awake.mjs --shell 'first && second'
 
