@@ -733,7 +733,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Generalise the stack lock into `bkit-machine-lock.sh` with named, machine-wide locks and distinct `run` exits
+- [x] **TASK 1:** Generalise the stack lock into `bkit-machine-lock.sh` with named, machine-wide locks and distinct `run` exits
   - **CREATE:** `tests/fixtures/machine-lock/stack-lock-6.0.0.sh`: byte-for-byte `git show HEAD:.bkit/templates/scripts/ci/bkit-local-stack-lock.sh`, written before the delete below; the older copy every compat test runs
   - **CREATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: the current script (bash 3.2-compatible) plus optional `[name]` on `take_local_stack_lock` / `try_local_stack_lock` / `release_local_stack_lock` / `local_stack_lock_holder` / `local_stack_lock_file`; named lock at `${XDG_CACHE_HOME:-$HOME/.cache}/bkit/machine-lock/<name>.lock`, no repo prefix; `LOCAL_STACK_LOCK_PID_<key>` / `LOCAL_STACK_LOCK_OWNER_<key>` so children skip that named lock only (a named-lock holder never sets the unsuffixed `LOCAL_STACK_LOCK_OWNER`, so its children still wait on the stack lock); named-lock holder line names the caller's checkout; unnamed lock path, names and holder line unchanged; `run ["<who>"] [--lock <name>] -- <cmd>` exits with the command's status, 2 usage, 73 lock not takeable (unwritable lock dir, no `/usr/bin/perl`), 75 wait gave up; `<who>` omitted (first argument `--lock` or `--`) → `LOCAL_STACK_LOCK_WHO`, else `npm_lifecycle_event`, else `run`; refusal lines name the lock asked for; functions still return 1 on every refusal; prefix `[machine-lock]`; header documents API, `package.json` gate wiring and exits
   - **CREATE:** `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`: every test of `local-stack-lock.integration.test.ts` pointed at the new script, `envFor` also clearing `LOCAL_STACK_LOCK_OWNER_*` / `BKIT_TEST_SLOTS`, older-copy cases run the fixture above, missing-perl case runs a temp copy with every `/usr/bin/perl` replaced (`replaceAll`) by a missing path, `tierTimeouts(true)` budgets and holder-file polling, plus the tests below
@@ -776,7 +776,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Slots, `BKIT_TEST_WORKERS`, the enforced lock order on the `tests` lock and the no-TTY default wait
+- [x] **TASK 2:** Slots, `BKIT_TEST_WORKERS`, the enforced lock order on the `tests` lock and the no-TTY default wait
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: `BKIT_TEST_SLOTS` (whole number >= 1, else 1 + one stderr note) gives the `tests` lock slot files `tests.lock`, `tests.<k>.lock`; one perl holder entry point tries each slot per second; waiting note and `local_stack_lock_holder tests` name every holder; taking `tests` exports `BKIT_TEST_WORKERS` = max(1, floor(cores / slots) - 1) (Open Question 10 B) (cores: `getconf _NPROCESSORS_ONLN`, `nproc`, `sysctl -n hw.ncpu`, else 1); asking for `tests` while this shell or a live parent holds another lock, or for a named lock while holding the stack lock, is refused at once naming the order (`run` → 73); wait = `LOCAL_STACK_LOCK_WAIT_S` when set, else 60 s when stdin is not a TTY, else 3600 s, for every lock, and the waiting note names it (`up to <N>s`) (Open Question 7); header documents lock order, slots and wait
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: on release of a named lock, write the held seconds to the holder's checkout line in `<lock dir>/<name>.last` (one `<checkout path><TAB><seconds>` line per checkout, replaced in place; bash 3.2: `grep -v` into a temp file, append, `mv`); the waiting note and the give-up line end in `last run took <N>m<N>s` for the current holder's checkout, or `no earlier run` when it has no line (Open Question 14)
   - **UPDATE:** `scripts/ci/bkit-machine-lock.sh`: same bytes as the template
@@ -819,7 +819,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** `bkit tests run` gains `--lock-wait-s`, `lockHolder` and the lock-exit classification
+- [x] **TASK 4:** `bkit tests run` gains `--lock-wait-s`, `lockHolder` and the lock-exit classification
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: `run` verb gains `--lock-wait-s` (whole number >= 0, default `BKIT_LOCK_WAIT_S` else 60 (Open Question 14), a bad variable value → the same usage error naming the variable; bad value → `CommandError(EXIT.USAGE)` with `--lock-wait-s takes a whole number >= 0`); `lockHolder` output field (null until TASK 5 wires the lock); verb summary names `81 tests lock held`; 81 stays out of `exitCodes` (shared `EXIT.AGENT_WAIT`, outside the 3-79 own-code range `conventions.test.ts:74-79` enforces); `red` / `green` unchanged
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.ts`: adds exported pure `classifyLockExit` `({ exitCode, log, who })` → `gate` | `lock-wait` | `could-not-run` — `lock-wait` only for exit 75 with a `[machine-lock]` give-up line naming the `tests` lock and this run's `<who>`; `could-not-run` only for exit 73 with a `[machine-lock] ❌` refusal line naming the `tests` lock (lock dir, perl or lock order); else `gate`
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: exports `wholeNumber` (moved from `runs.ts`)
@@ -842,7 +842,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 4 end -->
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** `bkit tests run` passes the wait and its run name to a wrapped gate and maps its lock exits; single-file runs never wait
+- [x] **TASK 5:** `bkit tests run` passes the wait and its run name to a wrapped gate and maps its lock exits; single-file runs never wait
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: gate argv unchanged (the engine never executes the lock script); gate env gains `LOCAL_STACK_LOCK_WAIT_S` = `--lock-wait-s` and `LOCAL_STACK_LOCK_WHO` = `bkit tests run <gate>[ <fid>][ <step>]`; `classifyLockExit` → `lock-wait`: print the `[machine-lock]` lines, emit `lockHolder`, no artifact, return `EXIT.AGENT_WAIT`; → `could-not-run`: `EXIT_COULD_NOT_RUN` naming path + reason; `red` / `green` unchanged. The `--file` `test-run` row is written as today, so a lock-wait run still appends one until TASK 10 changes that with its own test (Open Question 12); `bkit tests changed` is TASK 10's too (Open Question 11)
   - **UPDATE:** `.bkit/shared/.claude/settings.json`: `env.BKIT_LOCK_WAIT_S` = `"1200"` (Open Question 14; `.bkit/providers.md` § Long-running shell commands gives the budget per host); `.claude/settings.json` mirrored by `bkit install`; the Claude install module's settings containment test covers the new key
   - **READ:** `runToLog` in `.bkit/core/engine/commands/workflow/tests.ts`: argv + env the gate runs with
