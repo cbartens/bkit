@@ -62,8 +62,8 @@ Read and execute `COMMAND`'s file for the current host, with the session prompt 
 <!-- prettier-ignore -->
 | Host | Command file |
 | --- | --- |
-| Claude Code | `.claude/commands/bkit-{command}.md` |
+| Claude | `.claude/commands/bkit-{command}.md` |
 | Codex | `.agents/skills/bkit-{command}/SKILL.md` |
 | Antigravity | `.agents/plugins/bkit/skills/bkit-{command}/SKILL.md` |
 | Cursor | `.cursor/commands/bkit-{command}.md` |
-| opencode | `.opencode/commands/bkit-{command}.md` |
+| OpenCode | `.opencode/commands/bkit-{command}.md` |

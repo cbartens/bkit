@@ -12,7 +12,7 @@
 > - Leave out internal labels, such as tracker issue numbers, ledger keys and review-finding ids, and leave out project history. Decisions go in `docs/decisions.jsonl`, and incidents go in `docs/knowledge.jsonl`.
 > - Give a topic that another `.bkit/*.md` doc owns a short summary here and a pointer to that doc. Keep the detail in that doc only.
 
-**bkit** wires Claude Code, Cursor, Codex, Google Antigravity and opencode into a five-phase cycle integrated with the issue tracker: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive, with one flag each: `--claude`, `--cursor`, `--codex`, `--antigravity` and `--opencode=<provider>`. The opencode providers are `openrouter`, `ollama`, and `opencode-zen` + `opencode-go` (opencode's own gateways, which authenticate with `BKIT_OPENCODE_API_KEY`). Every host runs the same harness. State lives in the repo, so a feature moves between hosts mid-run (see `.bkit/providers.md` § Supported hosts).
+**bkit** wires Claude, Codex, Antigravity, Cursor and OpenCode into a five-phase cycle integrated with the issue tracker: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive, with one flag each: `--claude`, `--codex`, `--antigravity`, `--cursor` and `--opencode=<provider>`. The OpenCode providers are `openrouter`, `ollama`, and `opencode-zen` + `opencode-go` (OpenCode's own gateways, which authenticate with `BKIT_OPENCODE_API_KEY`). Every host runs the same harness. State lives in the repo, so a feature moves between hosts mid-run (see `.bkit/providers.md` § Supported hosts).
 
 ---
 
@@ -100,7 +100,7 @@ Each template's `Purpose` is its scope. The main ones cover security, privacy, a
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | Reads the JSON that `bkit` commands print, in workflow Bash |
-| Claude Code CLI | latest | Local-IDE workflow execution |
+| Claude CLI | latest | Local-IDE workflow execution |
 | Cursor (optional) | 2.4+ | Cloud Agent execution; honours `tools:` frontmatter allowlist |
 
 ### Shell alias
@@ -158,7 +158,7 @@ BKIT_GH_TOKEN=""
 | `BKIT_GH_TOKEN` | all | GitHub MCP server (`Authorization: Bearer`) | Issue/label/PR writes via MCP. Fine-grained PAT when every target repo sits under one owner (Contents, PRs, Issues, Actions, Workflows, Metadata — R/W); classic PAT when one token must span owners (scopes `repo`, `workflow`, `read:org`, `project`, `security_events`). |
 | `GH_TOKEN` | all | `gh` CLI inside CI workflow Bash only (`GH_TOKEN: ${{ github.token }}`) | Not seeded in `.bkit/.env`. Local `gh` uses the `gh auth login` keyring. |
 | `GITHUB_ISSUE_ID` | github | Injected from PR body `<!-- bkit:issue=#NNN -->` | Linked GitHub issue. Injected automatically, so do not set it manually. |
-| `BKIT_ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (cloud automation, CI). |
+| `BKIT_ANTHROPIC_API_KEY` | all | Claude (headless / CI) | Required when Claude is invoked outside an interactive session (cloud automation, CI). |
 | `BKIT_CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
 | `BKIT_LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/bkit-preflight.sh`); workflow Linear MCP via OAuth fallback | Queries issue state and labels for the `Auto` gate. Fails fast if absent. |
 | `BKIT_JIRA_API_KEY` | jira | Jira MCP server (`Authorization: Bearer`) | An Atlassian MCP V2 scoped API token. A site admin first enables API-token sign-in for the Rovo MCP server. Setup: `.bkit/trackers.md` § jira. |
@@ -265,7 +265,7 @@ bkit owns some files outright, owns one part of others, and ships the rest as te
 | **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF, unless the markdown file already holds an older unmarked copy of the block (its `# ` title plus 10+ long lines verbatim) → warn + skip. A full uninstall strips the block and deletes a file left with nothing else; `docs/templates/bkit-*.md` are bkit's whole and are deleted. | `docs/*.md`, `docs/templates/bkit-*.md`, `.gitignore`, `.agents/rules.md`, `.agents/context.md`, `.agents/docs.md`, `.agents/skills.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/hooks/bkit-preflight.sh`, `.cursor/hooks/bkit-preflight.sh`, `.claude/hooks/bkit-gateguard.cjs`, `.cursor/hooks/bkit-gateguard.cjs`, `.opencode/plugin/bkit-gateguard.js`, `.cursor/hooks/bkit-guardrails.cjs`, `.codex/hooks/bkit-gateguard.cjs`, `.codex/hooks/bkit-guardrails.cjs` |
 | **Shared JSON** | bkit owns the keys its template sets; every other key is yours. `.mcp.json` / `.cursor/mcp.json`: bkit owns exactly one entry, `mcpServers.<tracker>`, and resets it to the template on every install and upgrade. | `.claude/settings.json`, `.cursor/hooks.json`, `.opencode/opencode.json`, `.mcp.json`, `.cursor/mcp.json` |
 | **Seeded package.json scripts** | Every install and upgrade adds a missing name with bkit's default; a name already present is never touched, whatever its value. `bkit check` reports a missing name. Uninstall leaves them. | `scripts.bkit:gate:format` / `bkit:gate:static` / `bkit:gate:static-unit` / `bkit:gate:install-static-unit-build` / `bkit:deps:outdated` / `bkit:deps:audit` |
-| **Seeded bkit settings** | Every install and upgrade writes every `bkit` setting, so each one is visible where you look for it. A missing key gets its default; a choice not made yet (tracker, cloud agents, board, opencode provider) gets `""` or `[]`, which reads the same as absent. A key already present is never touched, whatever its value; nested blocks get their missing keys. `bkit check` reports a missing key. | every key under `bkit`: `SEEDED_BKIT_DEFAULTS` in `.bkit/core/engine/install/modules/core.ts` |
+| **Seeded bkit settings** | Every install and upgrade writes every `bkit` setting, so each one is visible where you look for it. A missing key gets its default; a choice not made yet (tracker, cloud agents, board, OpenCode provider) gets `""` or `[]`, which reads the same as absent. A key already present is never touched, whatever its value; nested blocks get their missing keys. `bkit check` reports a missing key. | every key under `bkit`: `SEEDED_BKIT_DEFAULTS` in `.bkit/core/engine/install/modules/core.ts` |
 | **Templates** | Never written into your repo. Install and upgrade copy them, raw, into `.bkit/templates/`; you copy what you want and own it. Catalog: `.bkit/templates.md`. | `.github/workflows/bkit-ci.yml`, `.github/workflows/bkit-cloud.yml`, `.husky/*`, `.vale.ini`, `.vale/styles/Bkit/*`, `.lintstagedrc.json`, `slop-scan.config.json`, `.oxlintrc.json`, `.prettierignore`, `.envrc`, `.cursor/{settings.json,environment.json,Dockerfile}`, dependency-updater examples, `.github/workflows/bkit-trivy.yml`, the per-provider context-fetch blocks (`context/bkit-*.md`), `scripts/slop/bkit-slop-type-suppression.mjs`. Also the tool `package.json` scripts (`typecheck`, `lint`, `format:check`, `bkit:lint:prose`, `lint:slop`, `bkit:slop:delta`, `prepare`) and devDeps (prettier, slop-scan, lint-staged, husky): `.bkit/templates.md` lists them, install never adds them. |
 
 **Marker syntax** depends on the file format:
@@ -278,7 +278,7 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 
 **Managed-version marker.** Every non-JSON file bkit writes carries `bkit:managed vX.Y.Z` in its comment syntax, as the first line inside the `bkit:start` block or near the top of a whole file: `<!-- … -->` (markdown), `# <!-- … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, TOML), `// …` (JS). The full MIT text and copyright notice travel at `.bkit/LICENSE.md`. Install and upgrade restamp the marker. `bkit check` reports `bkit-managed-stale` for a marker that differs from the installed version: a blocker on `main` / `dev`, and an advisory on feature branches. Templates carry no marker and no block.
 
-**Hook scripts.** Install generates each host's `bkit-preflight.sh`, `gateguard`, `readguard`, `guardrails` and `rules` hook from its template plus the code the hosts share (`.bkit/core/hooks/`, `.bkit/providers.md` § Hooks). bkit's block in the `bkit-gateguard` / `bkit-readguard` / `bkit-rules` hooks and plugins and the `bkit-guardrails.cjs` hooks is a pure advisory engine. It reads no stdin, writes no stdout and makes no top-level call, so it cannot collide with a consumer's own emitter. Delivery differs by host. Claude / Cursor / Codex inject the checklist before the edit. opencode appends it to the tool result in `execute.after` (`BKIT_GATEGUARD=deny` is the only pre-edit block). The rules-read advisory rides the two `bkit-preflight.sh` hooks at session start and the `bkit-rules` hook at the first tool call. See `.bkit/providers.md` § Hooks. A consumer file with no markers gets the block appended. Wire its exported function into your driver.
+**Hook scripts.** Install generates each host's `bkit-preflight.sh`, `gateguard`, `readguard`, `guardrails` and `rules` hook from its template plus the code the hosts share (`.bkit/core/hooks/`, `.bkit/providers.md` § Hooks). bkit's block in the `bkit-gateguard` / `bkit-readguard` / `bkit-rules` hooks and plugins and the `bkit-guardrails.cjs` hooks is a pure advisory engine. It reads no stdin, writes no stdout and makes no top-level call, so it cannot collide with a consumer's own emitter. Delivery differs by host. Claude / Codex / Cursor inject the checklist before the edit. OpenCode appends it to the tool result in `execute.after` (`BKIT_GATEGUARD=deny` is the only pre-edit block). The rules-read advisory rides the two `bkit-preflight.sh` hooks at session start and the `bkit-rules` hook at the first tool call. See `.bkit/providers.md` § Hooks. A consumer file with no markers gets the block appended. Wire its exported function into your driver.
 
 ### What install writes
 
@@ -318,11 +318,11 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 | `.cursor/hooks/bkit-gateguard.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment |
 | `.cursor/hooks/bkit-readguard.cjs` | cursor | `.bkit/core/.cursor/hooks/` | Tier 2 slash-comment. Repeat-read advisory. |
 | `.cursor/cli.json` | cursor | derived from `.agents/context.md` mcp-servers | Tier 1 (canonical-overwrite). Cursor CLI / cloud-agent `Mcp(<server>:*)` allows. |
-| `.opencode/opencode.json` | opencode | `.bkit/shared/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. Opt-in via `bkit install --opencode=<provider>`. |
-| `.opencode/commands/bkit-*.md` | opencode | `.bkit/core/workflows/` | Host pass — always overwrite |
-| `.opencode/agents/bkit-*.md` | opencode | `.bkit/core/prompts/` | Host pass — always overwrite |
-| `.opencode/plugin/bkit-gateguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment |
-| `.opencode/plugin/bkit-readguard.js` | opencode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment. Repeat-read advisory. |
+| `.opencode/opencode.json` | OpenCode | `.bkit/shared/.opencode/opencode.json` | Tier 2 JSON deep-containment; `@@OPENCODE_*@@` sentinels rendered to the chosen tracker + provider. Opt-in via `bkit install --opencode=<provider>`. |
+| `.opencode/commands/bkit-*.md` | OpenCode | `.bkit/core/workflows/` | Host pass — always overwrite |
+| `.opencode/agents/bkit-*.md` | OpenCode | `.bkit/core/prompts/` | Host pass — always overwrite |
+| `.opencode/plugin/bkit-gateguard.js` | OpenCode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment |
+| `.opencode/plugin/bkit-readguard.js` | OpenCode | `.bkit/core/.opencode/plugin/` | Tier 2 slash-comment. Repeat-read advisory. |
 | `.claude/hooks/bkit-cloud-bootstrap.sh` | — | `.bkit/templates/.claude/hooks/` | Copy-and-own template: no module writes it; adopt it from `.bkit/templates/` (the SessionStart entry runs it only when present). |
 
 The cloud workflow and the Cursor Background Agent files are templates the `--auto` setup advisory points at.
@@ -339,7 +339,7 @@ Two capabilities are opt-in and left out of the default install: the **issue tra
 
 ## Triggering workflows
 
-There are three paths: a Linear comment (cloud), Claude Code (interactive, local) and Cursor (interactive, local). All three run the same workflow from `.bkit/core/workflows/`. The compute source and the orchestrator model differ.
+There are three paths: a Linear comment (cloud), Claude (interactive, local) and Cursor (interactive, local). All three run the same workflow from `.bkit/core/workflows/`. The compute source and the orchestrator model differ.
 
 ### From a tracker comment (cloud — Cursor Cloud Agent)
 
@@ -359,7 +359,7 @@ There are three paths: a Linear comment (cloud), Claude Code (interactive, local
 
 **Requirements (GitHub):** `BKIT_GH_TOKEN`, `BKIT_CURSOR_API_KEY` and `BKIT_ANTHROPIC_API_KEY` in the dashboard. The Cursor GitHub App on the repo/org. `GITHUB_ISSUE_ID` comes from the PR body's `<!-- bkit:issue=#NNN -->`, with no manual setup.
 
-### From Claude Code (interactive — local)
+### From Claude (interactive — local)
 
 Run the slash commands at the repo root:
 
@@ -378,7 +378,7 @@ Claude reads the issue, its comments and the plan files through the tracker MCP.
 
 **Manual batch of held builds:** merge the held `feat/{FID}` branches into one branch off `dev` yourself, push it and open one PR. You own the push, the PR, the CI gate, the sweep and the docs sync. One head commit means post-merge auto-debug sees only the last FID. Never batch migrations.
 
-**Requirements:** `BKIT_GH_TOKEN` and an active Claude Code session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` as well when `bkit.tracker.default = "linear"`, and `BKIT_JIRA_API_KEY` when it is `"jira"`. The session model is the orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column). Set it with `/model` before you invoke a command. This file does not repeat the pin.
+**Requirements:** `BKIT_GH_TOKEN` and an active Claude session (subscription or `BKIT_ANTHROPIC_API_KEY`). `BKIT_LINEAR_API_KEY` as well when `bkit.tracker.default = "linear"`, and `BKIT_JIRA_API_KEY` when it is `"jira"`. The session model is the orchestrator pin in `.bkit/prompts.md` § Orchestrators (`Claude` column). Set it with `/model` before you invoke a command. This file does not repeat the pin.
 
 ### From Cursor (interactive — local)
 

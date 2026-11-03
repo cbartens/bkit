@@ -10,7 +10,7 @@
   <a href="https://www.npmjs.com/package/@cbartens/bkit"><img alt="npm version" src="https://img.shields.io/npm/v/@cbartens/bkit"></a>
   <a href="#license"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue"></a>
   <img alt="Node 24+" src="https://img.shields.io/badge/node-%E2%89%A524-339933">
-  <img alt="Works with Claude Code, Cursor, Codex, Antigravity and opencode" src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Cursor%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20opencode-8250df">
+  <img alt="Works with Claude, Codex, Antigravity, Cursor and OpenCode" src="https://img.shields.io/badge/works%20with-Claude%20%C2%B7%20Codex%20%C2%B7%20Antigravity%20%C2%B7%20Cursor%20%C2%B7%20OpenCode-8250df">
 </p>
 
 <p align="center">
@@ -119,7 +119,7 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
 
 ## Which model does each job
 
-**Spend the subscriptions you already pay for first; when their weekly usage runs out, opencode on OpenRouter carries the work.** Inside a subscription — Claude Code, Codex, Antigravity, Cursor — each agent gets the model from that vendor that gets the most work out of the usage you have paid for. On opencode, which bills per token, Claude sets the bar: each agent gets the cheapest model that comes closest to it, under a weekly cap. You don't pick: install sets each agent's model.
+**Spend the subscriptions you already pay for first; when their weekly usage runs out, OpenCode on OpenRouter carries the work.** Inside a subscription — Claude, Codex, Antigravity, Cursor — each agent gets the model from that vendor that gets the most work out of the usage you have paid for. On OpenCode, which bills per token, Claude sets the bar: each agent gets the cheapest model that comes closest to it, under a weekly cap. You don't pick: install sets each agent's model.
 
 <p align="center">
   <picture>
@@ -128,31 +128,31 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
   </picture>
 </p>
 
-**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude Code, Codex, Antigravity, Cursor — are paid for up front, so each agent gets the best model that vendor's plan includes for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **opencode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — bill per token, so Claude is the yardstick there: each agent gets the cheapest model that comes closest to the Claude model it would run on, within budget. OpenRouter is the overflow for when the subscription's weekly usage is spent. Its default runs almost everything on DeepSeek and puts `gpt-6.1-sol` on the four checks where a miss would ship unnoticed. Covering a two-day gap that way costs about **US$52**, roughly a quarter of a US$200-a-month Claude Max plan, or about one week's share of it. Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles the weekly budget to about US$100 for work that matters more than the cost. Every score is from the public LiveBench 2.0 benchmark, **Long Agentic** category, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
+**How the picks are made.** Two different questions, one table. **Subscription tools** — Claude, Codex, Antigravity, Cursor — are paid for up front, so each agent gets the best model that vendor's plan includes for its job: depth where the reasoning is, cheaper rungs where the work is volume, spending the included usage where it buys most. They are never imitations of another vendor. **OpenCode gateways** — OpenRouter, Ollama, OpenCode Zen, OpenCode Go — bill per token, so Claude is the yardstick there: each agent gets the cheapest model that comes closest to the Claude model it would run on, within budget. OpenRouter is the overflow for when the subscription's weekly usage is spent. Its default runs almost everything on DeepSeek and puts `gpt-6.1-sol` on the four checks where a miss would ship unnoticed. Covering a two-day gap that way costs about **US$52**, roughly a quarter of a US$200-a-month Claude Max plan, or about one week's share of it. Option 2 in [Model Presets](.bkit/prompts.md#model-presets) doubles the weekly budget to about US$100 for work that matters more than the cost. Every score is from the public LiveBench 2.0 benchmark, **Long Agentic** category, release 2026-10-25, so rows stay comparable; v1's Agentic Coding category is retired and does not convert.
 
 <!-- prettier-ignore -->
 | Tool | Hardest jobs: design, plans, reviews, security, audits | Everyday jobs: writing code and docs, the second model in each review pair |
 | --- | --- | --- |
-| Claude Code | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
-| Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
-| opencode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `openai/gpt-6.1-sol` · 68.7 for the four key gates | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
-| opencode + Ollama | `deepseek-v4.1-flash:1017` · 40.9 | `deepseek-v4.1-flash:1017` · 40.9 |
-| opencode + OpenCode Zen | `deepseek-v4.1-flash` · not measured; `gpt-6.1-sol` · 68.7 for the four key gates | `deepseek-v4.1-flash` · not measured |
-| opencode + OpenCode Go | `deepseek-v4.1-flash` · not measured; `gemini-4-argon` · 61.2 for the four key gates | `deepseek-v4.1-flash` · not measured |
+| Claude | `claude-opus-5-5` · bar **72.8** | `claude-sonnet-5-5` · bar **63.4** |
 | Codex | `gpt-6-astra` · 77.5; `gpt-6.1-sol` · 68.7 for the builders | `gpt-6.1-sol` · 68.7 |
-| Google Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
+| Antigravity | `gemini-4-argon` · 61.2 | `gemini-4-argon` · 61.2 |
+| Cursor | `cursor-grok-4.5-high` · not measured | `composer-2.5` · not measured |
+| OpenCode + OpenRouter | `deepseek/deepseek-v4.1-flash-1017` · 40.9; `openai/gpt-6.1-sol` · 68.7 for the four key gates | `deepseek/deepseek-v4.1-flash-1017` · 40.9 |
+| OpenCode + Ollama | `deepseek-v4.1-flash:1017` · 40.9 | `deepseek-v4.1-flash:1017` · 40.9 |
+| OpenCode + OpenCode Zen | `deepseek-v4.1-flash` · not measured; `gpt-6.1-sol` · 68.7 for the four key gates | `deepseek-v4.1-flash` · not measured |
+| OpenCode + OpenCode Go | `deepseek-v4.1-flash` · not measured; `gemini-4-argon` · 61.2 for the four key gates | `deepseek-v4.1-flash` · not measured |
 
 **Reading the table:**
 
-- **Every score comes from the same benchmark.** `claude-opus-5-5` scores **72.8** and `claude-sonnet-5-5` **63.4** on Long Agentic: the bars every opencode pick is measured against.
-- **Four key gates get the strongest model the budget carries.** These are the checks where a miss reaches the merge unnoticed: `bkit-build-plan-verify` (decides a build is done), `bkit-ship-deferred-sweep` (last check before merge), `bkit-debug-failure-diagnose` (picks the root cause the fix chases) and `bkit-build-challenge-2` (the security review). On opencode that is `gpt-6.1-sol` on OpenRouter and Zen, `gemini-4-argon` on Go, which has no Sol, and DeepSeek on Ollama, which has nothing stronger.
-- **DeepSeek thinks at its maximum on every opencode agent**, because it sits under the Claude bar. `gpt-6.1-sol` already sits near the bar, so it keeps the agent's own Claude effort: effort only goes as high as it takes to get close to Claude, never past it.
+- **Every score comes from the same benchmark.** `claude-opus-5-5` scores **72.8** and `claude-sonnet-5-5` **63.4** on Long Agentic: the bars every OpenCode pick is measured against.
+- **Four key gates get the strongest model the budget carries.** These are the checks where a miss reaches the merge unnoticed: `bkit-build-plan-verify` (decides a build is done), `bkit-ship-deferred-sweep` (last check before merge), `bkit-debug-failure-diagnose` (picks the root cause the fix chases) and `bkit-build-challenge-2` (the security review). On OpenCode that is `gpt-6.1-sol` on OpenRouter and Zen, `gemini-4-argon` on Go, which has no Sol, and DeepSeek on Ollama, which has nothing stronger.
+- **DeepSeek thinks at its maximum on every OpenCode agent**, because it sits under the Claude bar. `gpt-6.1-sol` already sits near the bar, so it keeps the agent's own Claude effort: effort only goes as high as it takes to get close to Claude, never past it.
 - **On Cursor, bkit pins Cursor's own models**, the ones its plan includes: `cursor-grok-4.5-high` and `composer-2.5`. Neither is measured on LiveBench 2.0 — the catalogue offers no Grok 4.6/4.7 and no Opus 5.5 / Sonnet 5.5, re-probed 2026-10-28. Claude and GPT models in Cursor spend paid API credits, so they're opt-in through [Model Overrides](.bkit/prompts.md#model-overrides).
 - **"Not measured" means LiveBench 2.0 hasn't scored that model.** Those Cursor picks follow each vendor's own description of the model. Check them before you rely on them.
 - **Ollama needs a paid plan for every column.** The free models are not scored.
-- **Want a different model for one agent?** On Cursor and opencode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
+- **Want a different model for one agent?** On Cursor and OpenCode, add a row to [Model Overrides](.bkit/prompts.md#model-overrides) and run `bkit install` again. Every agent with its model and thinking depth: [`.bkit/prompts.md` § Models](.bkit/prompts.md#models).
 
-**On Claude Code, each agent also sets its own effort**, so the effort you leave your session on never changes theirs. Start each `/bkit-*` command on the model the picture above shows and leave effort at the default. Session setup in full: [`.bkit/prompts.md` § Orchestrators](.bkit/prompts.md#orchestrators-slash-commands).
+**On Claude, each agent also sets its own effort**, so the effort you leave your session on never changes theirs. Start each `/bkit-*` command on the model the picture above shows and leave effort at the default. Session setup in full: [`.bkit/prompts.md` § Orchestrators](.bkit/prompts.md#orchestrators-slash-commands).
 
 <a id="why-its-different"></a>
 
@@ -232,7 +232,7 @@ How the lanes join into the one final check, and what happens on green or red: [
 
 - **Steps that can't be faked.** A step can't finish until `bkit steps gate` finds its verdict and files, whatever the agent reports. A test counts as written first only once `bkit tests red` has seen it fail before its code existed.
 - **Limits no answer can raise.** `bkit counters route` counts fix rounds and stops at the limit set under `bkit.workflows` in `package.json` (2 attempts by default), however sure the agent is.
-- **The same answer on every tool.** Where a stopped run resumes, what goes in a ledger row and what each agent's brief holds are worked out by code, so Claude Code, Cursor, Codex, Antigravity and opencode run the same steps the same way.
+- **The same answer on every tool.** Where a stopped run resumes, what goes in a ledger row and what each agent's brief holds are worked out by code, so Claude, Codex, Antigravity, Cursor and OpenCode run the same steps the same way.
 - **Fewer tokens, as a bonus.** No model turn is spent on bookkeeping, and each build agent starts on a brief of a few KB instead of the whole plan ([spending fewer tokens](#token-costs)).
 
 <a id="knowledge"></a>
@@ -443,8 +443,8 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 
 ### It fits how you work
 
-- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Cursor, Codex or Antigravity, or point opencode at your own key: OpenRouter, Ollama or the opencode gateways. Same feature, same checks, nothing to set up again. [Tool differences](.bkit/providers.md).
-- **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude Code on the web or the Claude app, Cursor cloud agents, or opencode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt: [`.bkit/cloud.md`](.bkit/cloud.md).
+- **Never blocked by usage limits.** Out of Claude for the week? Carry on in Codex, Antigravity or Cursor, or point OpenCode at your own key: OpenRouter, Ollama or the OpenCode gateways. Same feature, same checks, nothing to set up again. [Tool differences](.bkit/providers.md).
+- **Start on your laptop, check in from your phone.** A feature started at your desk can continue in a cloud session (Claude on the web or the Claude app, Cursor cloud agents, or OpenCode on GitHub Actions), or start by itself when CI finishes: ship on green, debug on red. The cloud setup ships ready to adopt: [`.bkit/cloud.md`](.bkit/cloud.md).
 - **Run several features at once.** Each works in its own copy of the repo (a git worktree), so they never trip over each other.
 
 ### Your tracker is the control panel
@@ -474,13 +474,13 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
   </picture>
 </p>
 
-**Most of what a session costs is the model re-reading, not writing code.** On every request, Claude Code sends the system prompt, rules, tool list and the whole conversation so far, and the model reads all of it again. Across 13.5M GitHub Copilot agent sessions, the conversation so far was 48% of what the model read on each request, tool output 28%, the system prompt 14% and instructions and other context 10%. The model read more than 275 tokens for every 1 it wrote ([Liu et al.](https://arxiv.org/abs/2608.00101); [Manus](https://manus.im/en/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) reports about 100 to 1). Most of that reading comes from the cache, and cache reads are the largest part of an agent's bill ([Bai et al.](https://arxiv.org/abs/2604.22750)).
+**Most of what a session costs is the model re-reading, not writing code.** On every request, Claude sends the system prompt, rules, tool list and the whole conversation so far, and the model reads all of it again. Across 13.5M GitHub Copilot agent sessions, the conversation so far was 48% of what the model read on each request, tool output 28%, the system prompt 14% and instructions and other context 10%. The model read more than 275 tokens for every 1 it wrote ([Liu et al.](https://arxiv.org/abs/2608.00101); [Manus](https://manus.im/en/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus) reports about 100 to 1). Most of that reading comes from the cache, and cache reads are the largest part of an agent's bill ([Bai et al.](https://arxiv.org/abs/2604.22750)).
 
-**That makes an agent's cost grow with how long it runs.** Each request re-sends everything so far. A token costs the same at 900k as at 9k ([Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing#long-context-pricing)), but a turn at 900k sends 100 times as many, so every turn costs more than the last. Left alone, an agent keeps going until about 967k, where Claude Code summarises it and drops detail ([model configuration](https://code.claude.com/docs/en/model-config)). Quality slips long before that: every model in [Chroma's context-rot study](https://www.trychroma.com/research/context-rot) got worse as its input grew, and in [NoLiMa](https://arxiv.org/abs/2502.05167) most models fell below half their short-input score by 32k. Practitioners advise starting fresh at around 40–60% of a 200k window ([HumanLayer](https://humanlayer.dev/blog/advanced-context-engineering)), and Anthropic's own sub-agents hand back 1–2k tokens from tens of thousands they read ([Anthropic](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)). bkit does that: a fresh agent with a short brief takes over by about 160k, so no agent carries a long history. Most of what an agent reads is cheap cache reads, so the dollar saving is smaller than the token saving.
+**That makes an agent's cost grow with how long it runs.** Each request re-sends everything so far. A token costs the same at 900k as at 9k ([Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing#long-context-pricing)), but a turn at 900k sends 100 times as many, so every turn costs more than the last. Left alone, an agent keeps going until about 967k, where Claude summarises it and drops detail ([model configuration](https://code.claude.com/docs/en/model-config)). Quality slips long before that: every model in [Chroma's context-rot study](https://www.trychroma.com/research/context-rot) got worse as its input grew, and in [NoLiMa](https://arxiv.org/abs/2502.05167) most models fell below half their short-input score by 32k. Practitioners advise starting fresh at around 40–60% of a 200k window ([HumanLayer](https://humanlayer.dev/blog/advanced-context-engineering)), and Anthropic's own sub-agents hand back 1–2k tokens from tens of thousands they read ([Anthropic](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)). bkit does that: a fresh agent with a short brief takes over by about 160k, so no agent carries a long history. Most of what an agent reads is cheap cache reads, so the dollar saving is smaller than the token saving.
 
-**Measure it on your own work.** Workflow closes record run statistics in your repo. `bkit stats` turns those records into `.bkit/stats.md`, covering durations, change sizes, recorded failures, agent context peaks where available and rule compliance. Our deeper token analysis uses a separate local transcript scan. [What we measure and how to share your results](#measurements).
+**Measure it on your own work.** bkit keeps run statistics in your repo, ready to review and compare. [What we measure and how to share your results](#measurements).
 
-**Why bkit doesn't use compression tools.** They shorten the output of commands and file reads before the model sees it. That's only part of what an agent reads, and most of it is code the agent needs word for word, so there's little a tool can safely cut. The re-reading of everything else stays. An independent test of 2,848 Claude Code runs found the same: RTK cut the whole bill by 2.7%, and Headroom raised it by 48% ([Weinberger & Hozez](https://arxiv.org/abs/2607.12161)). In our tests, the tools that saved most did it by changing what the agent reads: one made an agent answer a question wrongly; another rewrote code.
+**Why bkit doesn't use compression tools.** They shorten the output of commands and file reads before the model sees it. That's only part of what an agent reads, and most of it is code the agent needs word for word, so there's little a tool can safely cut. The re-reading of everything else stays. An independent test of 2,848 Claude runs found the same: RTK cut the whole bill by 2.7%, and Headroom raised it by 48% ([Weinberger & Hozez](https://arxiv.org/abs/2607.12161)). In our tests, the tools that saved most did it by changing what the agent reads: one made an agent answer a question wrongly; another rewrote code.
 
 **The three tools, how we measured, and why the risks outweigh the saving.**
 
@@ -494,7 +494,7 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 <!-- prettier-ignore -->
 | Tool | How it works | Share of the bill saved | What went wrong |
 | --- | --- | --- | --- |
-| [caveman](https://www.npmjs.com/package/@caveman-ai/cli) | Sits between Claude Code and the model and shortens tool output | 1.3% | An agent answered a question wrongly from a compressed log |
+| [caveman](https://www.npmjs.com/package/@caveman-ai/cli) | Sits between Claude and the model and shortens tool output | 1.3% | An agent answered a question wrongly from a compressed log |
 | [Headroom](https://pypi.org/project/headroom-ai/) | Same idea, plus an optional text model that rewrites output | 2.8% with the text model, 0.8% without | The text model rewrote code: `(preset) => void` came back as `(preset) void` |
 | [RTK](https://github.com/rtk-ai/rtk) | A hook that swaps shell commands for versions that print less | 0.7–2.1% | Its `grep` strips indentation and cuts lines at 80 characters |
 
@@ -520,56 +520,30 @@ All templates, what each is for, and how to install them: [`.bkit/templates.md`]
 **What [`bkit tips`](.bkit/README.md#ongoing-cli) suggests for your repo:**
 
 - **Set up Serena,** so agents ask where code is defined and what uses it, like your editor does. That's cheaper than reading whole files, and it doesn't miss callers that text search would.
-- **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude Code for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Otherwise their tool lists are re-sent with every request, used or not.
+- **Switch off claude.ai connectors** (MCP servers from your claude.ai account) in Claude for this project: `"disableClaudeAiConnectors": true` in `.claude/settings.json`. Otherwise their tool lists are re-sent with every request, used or not.
 - **Lock MCP servers to this project.** A server that can see your whole account makes agents look up account and project IDs before every task; locked, those extra calls disappear.
-- **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so for your main session bkit suggests this rather than setting it. bkit's own Claude Code subagents already summarise at 300,000 tokens at the latest.
+- **Summarise long sessions earlier:** `"autoCompactWindow": 300000` in `.claude/settings.json`, or `model_auto_compact_token_limit` in `.codex/config.toml`. By default a session grows close to the model's full size before it summarises, and every request re-reads all of it. Summaries lose some detail, so for your main session bkit suggests this rather than setting it. bkit's own Claude subagents already summarise at 300,000 tokens at the latest.
 
 <a id="measurements"></a>
 
 ### Measurements: v6/6.1 versus v5.x
 
-**Planning and build chats used roughly half as many tokens in our latest samples. Builds also completed more often, and a smaller share of verification rounds failed.** These measurements cover v6 and the development towards v6.1, compared with the last measured v5.x workflows.
+**Median tokens for [/bkit-plan](.bkit/core/workflows/bkit-plan.md) and [/bkit-build](.bkit/core/workflows/bkit-build.md) workflow chats fell by roughly half in our latest measurements.** These measurements cover v6 and the development towards v6.1, compared with the last measured v5.x workflows.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/assets/bkit-stats-dark.svg">
-    <img alt="v6/6.1 versus v5.x: median planning-chat tokens fell from 128.7M (2 chats) to 62.1M (7), and build-chat tokens from 201.5M (3 chats) to 104.1M (14). Builds completed rose from 1 of 5 to 6 of 10 attempts. Verification rounds ending FAIL fell from 7 of 14 to 28 of 105. Small historical samples with different tasks and hosts." src=".github/assets/bkit-stats-light.svg" width="100%">
+    <img alt="v6/6.1 versus v5.x: approximate median tokens for /bkit-plan workflow chats fell from 129M to 62M, a 50–55% reduction; for /bkit-build, from 201M to 104M, a 45–50% reduction. Small sample size; see Stats review #845 for details." src=".github/assets/bkit-stats-light.svg" width="100%">
   </picture>
 </p>
 
-<!-- prettier-ignore -->
-| Measure | Last measured v5.x | v6/6.1 | Observed improvement |
-| --- | --- | --- | --- |
-| Median planning-chat tokens | 128.7 million, 2 chats | 62.1 million, 7 chats | **50–55% fewer** |
-| Median build-chat tokens | 201.5 million, 3 chats | 104.1 million, 14 chats | **45–50% fewer** |
-| Builds completed | 1 of 5 attempts (20%) | 6 of 10 attempts (60%) | **40 percentage points higher** |
-| Verification rounds ending in failure | 7 of 14 (50%) | 28 of 105 (27%) | **About 23 percentage points lower** |
+**Small sample size.** M means million tokens read per workflow chat, including subagents and incomplete attempts. Tasks, hosts and models differ. See [#845 — Stats review](https://github.com/cbartens/bkit/issues/845#issuecomment-6602753865) for the method, sample sizes and trade-offs.
 
-**What those numbers mean.** A workflow chat includes the main agent and its subagents; one chat can contain several workflow runs. Tokens read include cached input re-sent on each model call. The comparison uses settled records, excludes chats reused for unrelated work, and treats missing tokens as unavailable. The bands round the observed changes; they are not confidence intervals or promised savings. Planning and build tokens use v5.5.0, the last v5 release with measured chats for those phases; completion and verification use v5.5.0/v5.5.1. The later records cover the v6/6.1 development period, even where their stored version remains `6.0.0`.
+**See where your runs spend time and effort.** Your local report shows run durations, change sizes, agent context peaks where available, rule compliance and workflow problems. Our [deeper local analysis](docs/observability.md#harvest--every-repo-every-chat-bkit-repo-only) adds token use, completion, repeated work and owner waits. It is separate from the report installed in your project.
 
-These are small historical samples with different tasks, hosts and models. **Successful builds individually used 10–15% more tokens**, alongside better completion; planning completion fell from 2/2 to 5/7 attempts. Lower token use alone does not prove better delivered software. [The full comparison, sample counts and trade-offs](https://github.com/cbartens/bkit/issues/845#issuecomment-6602753865) preserve the 3 November 2026 snapshot and explain the limits.
+**Your stats stay under your control.** bkit does not automatically upload stats or transcripts to us, and we do not remotely monitor your usage. Reports stay in your repository and follow its access settings.
 
-**What we measure now.** We review token use together with completion and repeated work, so cheaper failed attempts cannot masquerade as an improvement.
-
-<!-- prettier-ignore -->
-| Where | Measurements |
-| --- | --- |
-| **Your repository: `bkit stats`** | Run durations, change size versus recorded failures, agent context peaks where available, rule compliance, workflow friction and deferred work. Direct chats are reported separately from workflows. |
-| **Our local workflow analysis** | Tokens by chat and timed workflow run, main-agent versus subagent usage, context size, whole/partial plan reads, completion, verification/fix rounds, active time and recorded owner waits. Results are compared by workflow, version and host, with sample counts and missing data stated. |
-
-The deeper analysis uses [a maintainer-only harvest tool](docs/observability.md#harvest--every-repo-every-chat-bkit-repo-only) over local development histories. It is not installed in your project, and `bkit stats` does not scan your chats. Available measurements depend on the host and recorded history; for example, Cursor's missing token counts are not counted as zero.
-
-**Try it in your project.** Run this from a repository with bkit installed:
-
-```bash
-pnpm exec bkit stats
-```
-
-Open `.bkit/stats.md` to review your runs. Save a copy before upgrading or changing how you work, then compare similar workflows and change sizes afterwards. The report reads local records in `.bkit/stats.jsonl`, `.bkit/friction.jsonl` and `docs/deferrals.jsonl`; it does not call a model. `bkit stats` also works directly when the command is on your PATH.
-
-**Your stats stay under your control.** bkit does not automatically upload your stats or chat transcripts to us, and we do not remotely monitor your usage. Reports live in your repository and follow its access settings: committing them to a public repo makes them public. Your chosen AI and hosting providers retain their own data policies.
-
-**Help us improve bkit: share a summary if you want to.** We welcome good results and problems through [a GitHub issue](https://github.com/cbartens/bkit/issues/new). Include your bkit version, host/model, workflow types, sample counts and relevant figures. Remove project and people names, identifying paths and URLs, and secrets; share a cleaned summary rather than raw transcripts. You can ask your agent to prepare it and show you the exact text before you choose to post. If you also have workflow problems to report, the [guided friction-and-stats sharing prompt](.bkit/README.md#share-friction-with-bkit) includes that review step. Nothing is sent to bkit's maintainers just by running the stats command.
+**Help us grow the sample.** Voluntarily [share a cleaned summary](https://github.com/cbartens/bkit/issues/new) so we can test these improvements across more projects, hosts and models. Good results and problems are equally useful. [Report and sharing instructions](.bkit/README.md#share-friction-with-bkit) explain how to review your stats and approve exactly what you share.
 
 ## FAQ
 
@@ -586,7 +560,7 @@ Yes, in any language. bkit installs as an npm package, so the repo gets a `packa
 Every file it writes is listed in [what install writes](.bkit/README.md#what-install-writes). `bkit uninstall` removes bkit's files and blocks, and keeps your own edits and every template you copied ([uninstall](.bkit/install.md#uninstall)).
 
 **What does it cost?**
-**bkit is free and open source** under the MIT licence, commercial use included ([License](#license)). It runs on AI subscriptions you already have (Claude, Cursor, ChatGPT for Codex, Google Antigravity), on Antigravity's free tier, or with your own key on pay-as-you-go providers through opencode (OpenRouter, Ollama or the opencode gateways). Several agents reviewing in parallel use more of your quota than a single chat; that's the price of the second opinions.
+**bkit is free and open source** under the MIT licence, commercial use included ([License](#license)). It runs on AI subscriptions you already have (Claude, Codex through ChatGPT, Antigravity, Cursor), on Antigravity's free tier, or with your own key on pay-as-you-go providers through OpenCode (OpenRouter, Ollama or the OpenCode gateways). Several agents reviewing in parallel use more of your quota than a single chat; that's the price of the second opinions.
 
 **How long does a feature take?**
 No full run, from design to merge, has taken longer than a day. Each run posts its own time to the issue, next to the median of your last five runs, so you can see how yours compare.
@@ -613,7 +587,7 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 - **Resume from state, not session.** Run state lives in `status.jsonl` and `docs/plans/`. A crashed or interrupted run resumes from its last completed step, on any host; `bkit` works out which step from `status.jsonl`, so no prompt describes the rule.
 - **Mechanical step gates.** `bkit steps finish` checks each step's verdict and artifacts before the workflow moves on; build ticks a task only on a confirmed artifact, and checks test-first order before the next task group starts; ship's deferred sweep fails the merge on an unplanned gap.
 - **Engine.** The `bkit` CLI is TypeScript in [`.bkit/core/engine/`](.bkit/core/engine/), built to `dist/`, covered by 5,800+ tests. `commands/` holds what you type; `install/`, `render/`, `checks/`, `ledgers/` and `shared/` hold the code underneath; `audits/` holds the tests that read shipped text. **Facts are code, judgement is the model:** anything with one right answer (ledger rows, briefs, summaries, resume points, fix-round limits, run stats) is a `bkit <noun> <verb>` command, so the workflow prompts hold only the decisions ([picture](#engine)).
-- **One source, every host.** `.bkit/` renders `.claude/`, `.cursor/`, `.codex/`, `.agents/` (Antigravity) and `.opencode/`. `bkit check` is the CI drift gate.
+- **One source, every host.** `.bkit/` renders `.claude/`, `.codex/`, `.agents/` (Antigravity), `.cursor/` and `.opencode/`. `bkit check` is the CI drift gate.
 - **Reviewer independence.** Parallel reviewers can't read sibling output. Design brainstorm and design review groups also cross models (Opus + Sonnet on Claude; Grok + Composer on Cursor); depth-sensitive lenses (plan review, build challenge) stay on the top tier.
 - **Per-agent pins.** Model and effort per agent, per provider ([`.bkit/prompts.md`](.bkit/prompts.md) § Models), immune to the session default.
 - **Against the literature.** bkit fully implements 13 of the 22 patterns in Antonio Gulli's _Agentic Design Patterns_, partly implements 7 (scoped to shipping code), leaves 2 out by design, and goes beyond the book in 8 places. Full mapping: [patterns comparison](.bkit/comparison.md#patterns), with [where bkit goes beyond the book](.bkit/comparison.md#beyond-the-book) and its [known gaps](.bkit/comparison.md#known-gaps). Every agent in execution order: [pipeline reference](.bkit/pipeline.md).
@@ -629,7 +603,7 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 | [`.bkit/README.md`](.bkit/README.md) | Day-to-day use: running workflows, environment, tracker setup, CLI |
 | [`.bkit/workflows.md`](.bkit/workflows.md) | Every workflow step, verdict and contract |
 | [`.bkit/providers.md`](.bkit/providers.md) | Tool and provider differences, guardrails, model pins |
-| [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude Code on the web, Cursor, opencode |
+| [`.bkit/cloud.md`](.bkit/cloud.md) | Cloud agents: Claude on the web, Cursor, OpenCode |
 | [`.bkit/templates.md`](.bkit/templates.md) | Templates ready to adopt |
 | [`.bkit/pipeline.md`](.bkit/pipeline.md) | Every agent in the order it runs, the CI scaffold, every audit template |
 | [`.bkit/authoring.md`](.bkit/authoring.md) | Rules for writing docs, prompts and workflows, matched against Anthropic's, OpenAI's and Google's prompting guides |
@@ -640,7 +614,7 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 
 ## Quick start
 
-**You need** a GitHub repo, Node 24+, pnpm, and at least one of Claude Code, Cursor, Codex, Google Antigravity or opencode.
+**You need** a GitHub repo, Node 24+, pnpm, and at least one of Claude, Codex, Antigravity, Cursor or OpenCode.
 
 **Not a JavaScript project?** bkit works with any stack. It installs as an npm package, so your repo gets a `package.json` (`pnpm add` creates one if there isn't one), but nothing else has to be JavaScript: point the `bkit:gate:*` scripts install adds at your own commands, such as `ruff check && pytest` or `go test ./...` ([required tools](.bkit/README.md#required-tools)).
 
@@ -650,8 +624,8 @@ On real bkit sessions they saved 1–3% of the bill, and each changes what the a
 
 ```bash
 pnpm add -D @cbartens/bkit
-pnpm bkit install --claude    # pick your tools: --claude --cursor --codex --antigravity --opencode=<provider>
-# opencode provider: openrouter | ollama | opencode-zen | opencode-go
+pnpm bkit install --claude    # pick your tools: --claude --codex --antigravity --cursor --opencode=<provider>
+# OpenCode provider: openrouter | ollama | opencode-zen | opencode-go
 ```
 
 **Check it worked:** `pnpm bkit check` confirms every installed file matches the version you pinned (CI runs the same check), and `pnpm bkit tips` lists what isn't set up yet, most useful first.

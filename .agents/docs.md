@@ -70,7 +70,7 @@
 | `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, local env setup, install lifecycle, uninstall. |
 | `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |
 | `.bkit/trackers.md` | ○ | ○ | ○ | ○ | ○ | Tracker marker contract — `github` / `linear` / `jira` / `none` blocks in workflow sources; issue shapes (idea / change / bug) + machine-read body lines. |
-| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Cursor Cloud, opencode. Setup and support matrix. |
+| `.bkit/cloud.md` | ○ | ○ | ○ | ○ | ○ | Cloud agents — Claude on the web, Codex Cloud, Cursor Cloud, OpenCode. Setup and support matrix. |
 | `.bkit/templates.md` | — | — | ○ | — | ○ | Copy-and-own templates — what each does, how to install; `bkit install` / `bkit upgrade` never write the templates themselves, except a brand migration that rewrites a copy still byte-equal to the exact text bkit shipped. |
 | `.bkit/instructions.md` | — | ○ | ○ | ○ | ○ | Every shipped agent instruction and the files carrying it — rules, shared clauses, hook text, permissions. |
 | `docs/migrations.md` | ○ | ○ | ○ | ○ | ○ | Register of every upgrade migration in the engine — what it rewrites, release range, where it runs. |

@@ -45,16 +45,16 @@
 
 ## Execution Hosts
 
-bkit renders agent payload for five IDE / agent-host runtimes. Hosts additive — `--claude` and `--cursor` always-on; Codex, Antigravity and opencode opt-in.
+bkit renders agent payload for five IDE / agent-host runtimes. Hosts additive — `--claude` and `--cursor` always-on; Codex, Antigravity and OpenCode opt-in.
 
 <!-- prettier-ignore -->
 | Host | Install flag | Notes |
 | --- | --- | --- |
-| Claude Code (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
-| Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
+| Claude (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
 | Codex CLI (`.codex/`) | `--codex` | OpenAI Codex CLI host; `.codex/agents/*.toml` + GateGuard / ReadGuard / guardrails / rules hooks; workflows ship as skills at `.agents/skills/bkit-*/SKILL.md`; project-local hooks load only once `.codex/` is trusted |
-| Google Antigravity (`.agents/plugins/bkit/`) | `--antigravity` | Google Antigravity IDE host, installed as a workspace plugin: `plugin.json` + `skills/bkit-*/SKILL.md` + `agents/*.md` + `hooks.json` + `hooks/` + root `GEMINI.md`; one gateway (`google`) |
-| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
+| Antigravity (`.agents/plugins/bkit/`) | `--antigravity` | Antigravity IDE host, installed as a workspace plugin: `plugin.json` + `skills/bkit-*/SKILL.md` + `agents/*.md` + `hooks.json` + `hooks/` + root `GEMINI.md`; one gateway (`google`) |
+| Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
+| OpenCode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; four allowlisted providers (`OPENCODE_PROVIDERS`, strict — no arbitrary-endpoint fallback): `openrouter`, `ollama`, `opencode-zen`, `opencode-go` |
 
 OpenAI-compatible providers: npm `@ai-sdk/openai-compatible`. `opencode-zen` / `opencode-go` = OpenCode built-in gateways (models.dev ids `opencode` / `opencode-go`), auth via `BKIT_OPENCODE_API_KEY` — minimal `provider.<id>` + `{env:BKIT_OPENCODE_API_KEY}` (no npm / `baseURL`; OpenCode routes per-model). `OPENCODE_PROVIDERS` (`.bkit/core/engine/shared/egress.ts`) is the single allowlist; `OPENCODE_PROVIDER_DEFAULTS` (same file) and `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) must cover every `OpencodeProvider` (typed `Record<OpencodeProvider, …>` / `satisfies`), so a provider missing from either fails `tsc`. Per-agent model pins: `.bkit/prompts.md` § Models, one column per provider.
 
@@ -97,7 +97,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | --- | --- | --- |
 | Self-gating CI | `.github/workflows/bkit-ci.yml` | Push to `dev` / `main`, PRs into them, `workflow_dispatch` (manual, feat branches) |
 | Release publish | `.github/workflows/release.yml` | Git tag push |
-| Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + opencode jobs, each secret-gated |
+| Cloud-agent lane | `.github/workflows/bkit-cloud.yml` | Opt-in (`bkit install --auto=…`); dual claude + OpenCode jobs, each secret-gated |
 | Security scan (Trivy) | `.github/workflows/bkit-trivy.yml` | Push to `dev` / `main`, PRs into them, daily cron, `workflow_dispatch`; acceptances in `.trivyignore.yaml` |
 | Dependency updates (Renovate) | `.github/workflows/bkit-renovate.yml` | Daily cron, `workflow_dispatch`; rules in `.github/renovate.json5` |
 

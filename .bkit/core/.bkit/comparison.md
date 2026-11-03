@@ -25,7 +25,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents and 35 audit templates, with the same pipeline on Claude Code, Cursor, Codex, Google Antigravity and opencode. Every subagent in execution order, and every audit template, is listed in [`.bkit/pipeline.md`](pipeline.md).
+bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents and 35 audit templates, with the same pipeline on Claude, Codex, Antigravity, Cursor and OpenCode. Every subagent in execution order, and every audit template, is listed in [`.bkit/pipeline.md`](pipeline.md).
 
 This doc compares bkit with 10 other AI development frameworks (one table, then agents and CI in detail), and then with Gulli's agentic patterns.
 
@@ -57,7 +57,7 @@ Kind: a **Framework** runs a fixed multi-phase process · a **Spec toolkit** wri
 | **Parallel**<br>several features at once, isolated | ✅ | ◐ | ◐ via Conductor | ◐ | ✅ | ◐ | ◐ via extensions | ◐ | ✅ 10 cloud sandboxes | ◐ | ✅ containers |
 | **Cloud**<br>runs unattended, triggered or hosted | ✅ ship on green, debug on red | ? | ◐ stops at gates | ◐ scheduler | ◐ local | ◐ local | ◐ | ◐ via Copilot agent | ✅ | ◐ | ✅ |
 | **Tokens**<br>cuts what each agent reads | ✅ fresh agent per few-KB brief; re-read hook; per-run stats | ✅ fresh subagent per task; skill size cap | ✅ per-run token cap; fresh-context handoffs | ✅ fresh worker per unit; 8 KB skill cap | ✅ fresh agent per task; context warnings | ◐ fresh chat per stage (✅ with loop: per-session cap) | ◐ sub-agents by hand; minimal loads | ◐ advice to start fresh | ✅ compaction; guidance and tools on demand | ✅ compaction hooks; cost tracking | ✅ condenser; output cap; cost metrics |
-| **Guards**<br>hooks that block dangerous actions | ✅ all hosts | ◐ prompt rules | ◐ opt-in, Claude Code only | ◐ prompt rules | ◐ blocks `.env` reads | — | — | ? | ✅ | ✅ GateGuard | ✅ sandbox + hooks |
+| **Guards**<br>hooks that block dangerous actions | ✅ all hosts | ◐ prompt rules | ◐ opt-in, Claude only | ◐ prompt rules | ◐ blocks `.env` reads | — | — | ? | ✅ | ✅ GateGuard | ✅ sandbox + hooks |
 | **Audits**<br>audit / checklist templates | ✅ 35 | — | ✅ ~10 + 8 checklists | ◐ reviewer personas | ◐ ~8 | ◐ 5 lenses | ◐ checklists | ? | ? | ✅ ~25 | ◐ |
 | **AI tools** | 5 | 16 | 1 certified, 7 experimental | ~14 | 15 | 10+ | 40+ | 30+ | own IDE, CLI, web, mobile | 1 stable, ~15 beta / experimental | own UI / CLI / cloud, ACP editors |
 
@@ -93,7 +93,7 @@ bkit's biggest difference from the field is how tightly its agents and its check
 |  | **bkit** | Superpowers | gstack | Compound Engineering | GSD Core | BMAD | Spec Kit | OpenSpec | Kiro | ECC | OpenHands |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Code search**<br>definitions and callers, not text matches | ✅ Serena template | — | ✅ opt-in; definitions, callers | — | ◐ opt-in graph, planners only | — | — | — | ✅ built in, 18 languages | — | — |
-| **Agent hooks**<br>steer the agent around each edit | ✅ read before editing, don't loosen checks; 4 hosts | — | ✅ opt-in verify gate, Claude Code only | — | ✅ read before editing | ◐ add-on test-quality hook | — | — | ◐ engine; you write the hooks | ✅ GateGuard, config lock, post-edit type check | — engine only |
+| **Agent hooks**<br>steer the agent around each edit | ✅ read before editing, don't loosen checks; 4 hosts | — | ✅ opt-in verify gate, Claude only | — | ✅ read before editing | ◐ add-on test-quality hook | — | — | ◐ engine; you write the hooks | ✅ GateGuard, config lock, post-edit type check | — engine only |
 | **Git hooks**<br>for your project, same checks as CI | ✅ pre-commit formats; pre-push runs the agents' gate scripts | — | ◐ opt-in pre-push, credentials only | — | ◐ opt-in pre-commit, planning files | — | — | — | — | ◐ Codex only; checks opt-in | ◐ pre-commit on request |
 | **Ships CI**<br>ending in one "every lane passed" check | ✅ fails on a failed or skipped lane, or zero tests | — | ◐ one `test.yml`, no final check | — | — | ◐ optional TEA module | — | — | ◐ AI-review example | — | ◐ AI review and QA bots |
 | **Waits for CI**<br>before merging or calling it done | ✅ green on the exact merge commit | — local suite only | ✅ exact head | ✅ `lfg` and PR babysitter | — left to you | — | — | — | ✅ opt-in workflows | ◐ | ✅ |
@@ -158,7 +158,7 @@ Of the 22 patterns assessed, 13 are fully implemented, 7 are partial (scoped to 
 - **Human-in-the-loop as non-negotiable.** bkit has hard stops after design / plan / ship. The book treats HITL as one option.
 - **Fail-soft external context in debug.** Provider-agnostic `context-fetch` blocks (CI logs, diff, e2e, runtime, web) feed `/bkit-debug`. Each one self-skips to a narrated `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` state, so a context with no block is never read as a clean result.
 - **Explicit per-agent model pins.** They are immune to session-default drift.
-- **Provider- and host-portable execution.** With per-agent pins, `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add the Codex, Google Antigravity and opencode hosts alongside Claude / Cursor. The harness is unchanged, and the inference backend moves. The same five-phase gated parallel pipeline runs on four BYO-key providers (OpenRouter, Ollama, opencode Zen + Go gateways), plus Google through Antigravity. The per-agent pins are curated. By default the models mirror the Claude tier, with CoT reasoners swapped for convergent-reasoning agents (debug / risk). See `.bkit/providers.md` § Supported hosts.
+- **Provider- and host-portable execution.** With per-agent pins, `bkit install --codex` / `--antigravity` / `--opencode=<provider>` add the Codex, Antigravity and OpenCode hosts alongside Claude / Cursor. The harness is unchanged, and the inference backend moves. The same five-phase gated parallel pipeline runs on four BYO-key providers (OpenRouter, Ollama, OpenCode Zen + Go gateways), plus Google through Antigravity. The per-agent pins are curated. By default the models mirror the Claude tier, with CoT reasoners swapped for convergent-reasoning agents (debug / risk). See `.bkit/providers.md` § Supported hosts.
 - **Cross-host / provider continuity.** State lives in `status.jsonl`, the plan / design docs under `docs/plans/` and the tracker issue, not in a vendor's session. Every host renders from the same `.bkit/` source, so a phase or a resumed run moves across IDE / provider mid-feature with identical gates, hooks and per-agent pins. When you exhaust the Claude weekly limit or a free-tier quota, you continue on another host, with no re-setup. Single-vendor frameworks tie a run to the session that started it.
 
 <a id="known-gaps"></a>

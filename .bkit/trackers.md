@@ -234,7 +234,7 @@ bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which g
 
 1. An org admin opens https://admin.atlassian.com → the org that owns `<site>.atlassian.net` → **Rovo** → **Rovo MCP server** (or searches the admin for `mcp`) → **Authentication**, and turns **Allow API token authentication** on. Under **Permissions**, allow **Read**, **Write** and **Search**. **Delete** and **Manage** are not needed. **Connectors** is the wrong page, and **Domains** applies to OAuth only.
 2. Each person opens https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → the Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`). Copy the token, which is shown once, into `BKIT_JIRA_API_KEY` in `.bkit/.env`, then run `direnv allow`. The token works on MCP only, and the Jira REST API answers 401.
-3. Run `bkit install --tracker=jira`, then set `bkit.tracker.jira.site` and `bkit.tracker.jira.project`. In Claude Code, approve the project `.mcp.json` once in an interactive `claude` session. Until then, `claude mcp list` shows "Pending approval".
+3. Run `bkit install --tracker=jira`, then set `bkit.tracker.jira.site` and `bkit.tracker.jira.project`. In Claude, approve the project `.mcp.json` once in an interactive `claude` session. Until then, `claude mcp list` shows "Pending approval".
 
 **Behaviour workflows rely on:**
 

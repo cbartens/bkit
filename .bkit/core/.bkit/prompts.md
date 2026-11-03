@@ -49,22 +49,22 @@ Pinning `model:` locks an agent's model, whatever model the orchestrator session
 
 **Effort → host thinking (canonical):** a prompt's `effort:` is the row key in the Default column.
 
-- The table is keyed on host, not provider. The field name and its ladder come from the host's config format, not from the model: `effort:` for claude / cursor, a `variant:` field for opencode, and `model_reasoning_effort` for codex, so every opencode provider shares the one OpenCode column.
+- The table is keyed on host, not provider. The field name and its ladder come from the host's config format, not from the model: `effort:` for claude / cursor, a `variant:` field for OpenCode, and `model_reasoning_effort` for codex, so every OpenCode provider shares the one OpenCode column.
 - A provider key in this table throws an error. It is an axis confusion, and nothing falls back.
 - Codex caps `max` at `xhigh`, because it has no higher rung.
 - Install parses this table, and no ladder is hardcoded in TS.
-- opencode effort targets the Claude bar, never past it. A model under the sonnet bar thinks as hard as it can to close the gap, so every rung from `medium` up runs at OpenCode `max`. A model at or above the sonnet bar (`OPENCODE_AT_BAR_MODELS` in `.bkit/core/engine/render/hosts.ts`: `gpt-6.1-sol`, `gpt-6-astra` and the Claude models) skips the OpenCode column and keeps the agent's own `Claude` effort. It matches the Claude agent it stands in for, instead of out-spending it.
+- OpenCode effort targets the Claude bar, never past it. A model under the sonnet bar thinks as hard as it can to close the gap, so every rung from `medium` up runs at OpenCode `max`. A model at or above the sonnet bar (`OPENCODE_AT_BAR_MODELS` in `.bkit/core/engine/render/hosts.ts`: `gpt-6.1-sol`, `gpt-6-astra` and the Claude models) skips the OpenCode column and keeps the agent's own `Claude` effort. It matches the Claude agent it stands in for, instead of out-spending it.
 - Effort and model are independent. Multi-doc writers run `claude-sonnet-5-5` at `high`, and the ledger agents run `claude-opus-5-5` at `medium`. The map above gives the default model per rung, not a constraint.
 - The Cursor column stays identical to Default, because Cursor's thinking lever is the model-ID suffix (`cursor-grok-4.5-high`), not `effort:`. The cap is applied at the pin.
 
 <!-- prettier-ignore -->
-| Default | Claude | Cursor | OpenCode | Codex | Antigravity |
+| Default | Claude | Codex | Antigravity | Cursor | OpenCode |
 | --- | --- | --- | --- | --- | --- |
-| `low` | `low` | `low` | `none` | `low` | `low` |
-| `medium` | `medium` | `medium` | `max` | `medium` | `medium` |
-| `high` | `high` | `high` | `max` | `high` | `high` |
+| `low` | `low` | `low` | `low` | `low` | `none` |
+| `medium` | `medium` | `medium` | `medium` | `medium` | `max` |
+| `high` | `high` | `high` | `high` | `high` | `max` |
 | `xhigh` | `xhigh` | `xhigh` | `max` | `xhigh` | `max` |
-| `max` | `max` | `max` | `max` | `xhigh` | `max` |
+| `max` | `max` | `xhigh` | `max` | `max` | `max` |
 
 **OpenCode `variant:` is per model per gateway, not per host.** The ladder above is what bkit asks for. The renderer (`clampOpencodeVariant`) clamps it to what the pinned model exposes on that gateway (`reasoning_options` in models.dev), because OpenCode 2.0 hard-errors on a variant the model does not carry there. On the current pins:
 
@@ -85,11 +85,11 @@ Subscription hosts keep the eager mapping, because on a plan you already paid fo
 | `name` | `@name` invocation in `commands/*.md` requires exact match | Never deviate. |
 | `description` | Surfaces in the picker and the `Agent` tool catalog. A one-sentence scope statement only: the H1 inside the markdown body carries the deliverable name (`# Build Skills Installed`, `# Plan Review`, etc.). | Keep it terse, and never duplicate the H1. |
 | `effort` | Maps to a Claude model via the table above, with two groups pinning opus at `medium` effort — a depth-sensitive lens (`bkit-plan-scope-check`) and the ledger / tracker agents that check entries against the codebase — and multi-doc writers pinning sonnet at `high`. Parallel fan-outs (triplet `-1`/`-2`/`-3` for ideate; pairs `-1`/`-2` for design review / plan review / challenge) mix `high`/`medium` effort to spread reasoning depth on Claude. On Cursor, the same fan-outs use different `model:` values for cross-family diversity. | `high` for adversarial / generative / diagnostic / cross-codebase work and multi-doc writers. `medium` for source modifiers with test loops and ledger upkeep. `xhigh` only on a measured quality gain. |
-| `model` | Explicit Claude model pin, per the effort mapping table above. It locks the model whatever the orchestrator's session default is. Without it, subagents inherit the user's Claude Code default, and Opus thinking depth and 1M context disappear if the user runs Sonnet. | Brittle by version, because it needs an update on every model revision, but explicit and discoverable. Never use a family alias (`opus` / `sonnet`), because an alias does not lock the context-window variant. |
+| `model` | Explicit Claude model pin, per the effort mapping table above. It locks the model whatever the orchestrator's session default is. Without it, subagents inherit the user's Claude default, and Opus thinking depth and 1M context disappear if the user runs Sonnet. | Brittle by version, because it needs an update on every model revision, but explicit and discoverable. Never use a family alias (`opus` / `sonnet`), because an alias does not lock the context-window variant. |
 | `tools` | Minimum capability sandbox. Enforced on Claude (native). Cursor: `bkit install` T3 transform passes the field through verbatim, but Cursor CLI 2026.10.01 does not enforce it (measured: a `tools: [Read]` subagent still has `Shell`, `Write`, `StrReplace`, and every MCP tool via `CallDynamicTool`). Removing `Edit`/`Bash` makes an agent provably non-mutating on Claude only. | Add `WebFetch`/`WebSearch` only for genuine ecosystem research (`bkit-design-review-1/2`) or to pin a probe against vendor docs before running it (`bkit-design-spike`). |
 | `permissionMode: acceptEdits` | End-to-end runs of `/design`/`/plan`/`/build`/`/debug`/`/ship` would break if a mid-workflow prompt blocked an agent. The Bash auto-approve surface lives in `.claude/settings.json` (`workflows.md` § Permissions). | Never deviate inside the pipeline. One-off ad-hoc invocations may use stricter modes. |
 | `maxTurns` | Pure runaway-loop safety cap, not a workload budget. 4 tiers (S=50 / M=100 / L=200 / XL=400). Hitting the cap means the agent is definitely stuck (tight retry loop, infinite re-read pattern, etc.), not "tight on a complex run." | Cap by tier (§ `maxTurns` calibration). The per-agent assignment is in § Models. |
-| `autoCompactWindow: 300000` | Safety net, not the cap: the agent summarises its context at 300k tokens at the latest. Claude Code only; precedence and other hosts: `providers.md` § Context compaction. | Never deviate; every `bkit-*` agent carries it (`hosts.test.ts`). |
+| `autoCompactWindow: 300000` | Safety net, not the cap: the agent summarises its context at 300k tokens at the latest. Claude only; precedence and other hosts: `providers.md` § Context compaction. | Never deviate; every `bkit-*` agent carries it (`hosts.test.ts`). |
 
 ### Effort tiers
 
@@ -123,7 +123,7 @@ Subscription hosts keep the eager mapping, because on a plan you already paid fo
 
 **Language-server lookups.** Every agent carrying `Grep` also lists `mcp__serena__*` directly after `Glob`, except `bkit-utility-compress-markdown` and `bkit-build-install-skills`, because neither reads source.
 
-- A Claude Code subagent with a `tools:` list reaches an MCP tool only when the list names it. An entry for an unwired server is dropped silently, and the agent still starts (probed Claude Code 2.1.295 + Serena 1.7.0: explicit names, `mcp__serena__*`, and bare `mcp__serena` all grant; omitted → none).
+- A Claude subagent with a `tools:` list reaches an MCP tool only when the list names it. An entry for an unwired server is dropped silently, and the agent still starts (probed Claude 2.1.295 + Serena 1.7.0: explicit names, `mcp__serena__*`, and bare `mcp__serena` all grant; omitted → none).
 - The wildcard grants every tool Serena advertises, so the template `.serena/project.yml` `excluded_tools` list is what keeps Serena lookup-only. That matters because Serena edits bypass GateGuard (`Edit|Write|MultiEdit` matcher). Measured with that template, the `claude-code` and `ide` contexts advertise lookups only, and `codex` advertises the excluded tools but refuses each call.
 - Serena is named by product only here, because the template ships with bkit (`.bkit/templates.md` § Serena). Prompt bodies and the `.agents/rules.md` `Language server first` / `Code reads` rules stay capability-worded.
 - Codex ignores `tools:`, so a wired server is reachable regardless.
@@ -150,9 +150,9 @@ Subscription hosts keep the eager mapping, because on a plan you already paid fo
 
 ## Models
 
-Canonical per-agent metadata, and the single source of truth for each agent's model. The table is keyed on provider, not host, because a model ID belongs to the gateway serving it, so a shared provider is one column, never two, and the table never grows as hosts x providers. The columns, subscription providers first: `Anthropic` (Claude Code's pinned provider, with a locked ID that does not depend on the session), `OpenAI` (Codex), `Google` (Antigravity), then `Cursor` (Cursor's pinned provider, for cross-family diversity), then one per opencode provider (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). `bkit install --opencode=<provider>` reads the matching column, and every allowlisted provider ships one.
+Canonical per-agent metadata, and the single source of truth for each agent's model. The table is keyed on provider, not host, because a model ID belongs to the gateway serving it, so a shared provider is one column, never two, and the table never grows as hosts x providers. The columns, subscription providers first: `Anthropic` (Claude's pinned provider, with a locked ID that does not depend on the session), `OpenAI` (Codex), `Google` (Antigravity), then `Cursor` (Cursor's pinned provider, for cross-family diversity), then one per OpenCode provider (`OpenRouter`, `Ollama`, `OpenCode Zen`, `OpenCode Go`). `bkit install --opencode=<provider>` reads the matching column, and every allowlisted provider ships one.
 
-**Cells = bare provider-scoped model ID** (`deepseek-v4.1-flash`, `moonshotai/kimi-k3`), never with a provider prefix. `formatModelPin` adds the host-format prefixes at render, and also maps the key `opencode-zen` → opencode's own id `opencode`. A prefixed cell (`opencode/deepseek-v4.1-flash`) gets a double prefix.
+**Cells = bare provider-scoped model ID** (`deepseek-v4.1-flash`, `moonshotai/kimi-k3`), never with a provider prefix. `formatModelPin` adds the host-format prefixes at render, and also maps the key `opencode-zen` → OpenCode's own id `opencode`. A prefixed cell (`opencode/deepseek-v4.1-flash`) gets a double prefix.
 
 > **`OpenAI` column — provisional, not parity-proven.** Every other gateway column = a live catalog probe plus a per-model tool-calling smoke test. The `OpenAI` cells follow value inside the plan: `gpt-6-astra` (77.5) only on the 12 judges (Judges note below), and `gpt-6.1-sol` (68.7) on the 27 builders. Sol scores 96.0 Coding against astra's 93.7, so on code-writing agents it is both the better model and 5.9x cheaper per LiveBench task ($116.78 against $690.82). `gpt-6-luna` (30.9, $17.42/task) is the catalog's best value, and stays unused until a haiku tier exists. `gpt-6-astra` is OpenAI's opus analogue, not its fable: it costs the same $691 per task as `claude-opus-5.5`'s $684, for 77.5 against 72.8, and both sit at ~0.11 points per dollar. The fable-shaped tier (`gpt-daybreak-red`, $12.5/$75) is unmeasured on 2.0 and unpinned, exactly as `claude-fable-5.1` is unpinned on the Claude side. Re-pin from a real probe before relying on them.
 
@@ -160,17 +160,17 @@ Canonical per-agent metadata, and the single source of truth for each agent's mo
 
 > **`Google` column — measured pin.** Every cell runs `gemini-4-argon`, which scores 61.2 Long Agentic on the 2.0 board and is served on the `google` provider (models.dev), so Antigravity's free tier and a Google subscription both reach it. `gemini-3.8-pro` is unmeasured on 2.0 and is not pinned, and `gemini-3.8-flash` 16.5 is not a candidate.
 
-`Effort` and `Max Turns` across hosts: `Effort` = the Claude `effort:`, which install maps to the opencode `variant:` field / Codex `model_reasoning_effort`. `Max Turns` = the runaway cap (Claude today). The `Anthropic` / `Effort` / `Max Turns` columns restate the prompt-file frontmatter, and `.bkit/core/engine/audits/workflows/models-table-parity.test.ts` enforces that parity. The workload rationale is in § `maxTurns` calibration.
+`Effort` and `Max Turns` across hosts: `Effort` = the Claude `effort:`, which install maps to the OpenCode `variant:` field / Codex `model_reasoning_effort`. `Max Turns` = the runaway cap (Claude today). The `Anthropic` / `Effort` / `Max Turns` columns restate the prompt-file frontmatter, and `.bkit/core/engine/audits/workflows/models-table-parity.test.ts` enforces that parity. The workload rationale is in § `maxTurns` calibration.
 
-> **Context-window note:** Claude Code `model:` is the API ID. `claude-opus-5-5` and `claude-sonnet-5-5` are 1M context. Haiku pins `claude-haiku-5-5` (1M context).
+> **Context-window note:** Claude `model:` is the API ID. `claude-opus-5-5` and `claude-sonnet-5-5` are 1M context. Haiku pins `claude-haiku-5-5` (1M context).
 >
-> **opencode model IDs:** one column per provider. Each cell holds the bare model ID that provider serves (e.g. `moonshotai/kimi-k3`, `deepseek-v4.1-flash:1017`). `bkit install --opencode=<provider>` reads the column and adds the opencode provider prefix (`formatModelPin`), so `moonshotai/kimi-k3` is written as `openrouter/moonshotai/kimi-k3`. Allowlisted: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (both `BKIT_OPENCODE_API_KEY`). All four ship curated columns below. Zen's models.dev id is `opencode/<id>`, and Go's is `opencode-go/<id>`. Both gateways are built-ins (apiKey only). The `/zen/v1/models` REST probe cannot see Go-only models, so models.dev is the source of truth. See `.bkit/providers.md` § Provider models.
+> **OpenCode model IDs:** one column per provider. Each cell holds the bare model ID that provider serves (e.g. `moonshotai/kimi-k3`, `deepseek-v4.1-flash:1017`). `bkit install --opencode=<provider>` reads the column and adds the OpenCode provider prefix (`formatModelPin`), so `moonshotai/kimi-k3` is written as `openrouter/moonshotai/kimi-k3`. Allowlisted: `openrouter`, `ollama`, `opencode-zen` + `opencode-go` (both `BKIT_OPENCODE_API_KEY`). All four ship curated columns below. Zen's models.dev id is `opencode/<id>`, and Go's is `opencode-go/<id>`. Both gateways are built-ins (apiKey only). The `/zen/v1/models` REST probe cannot see Go-only models, so models.dev is the source of truth. See `.bkit/providers.md` § Provider models.
 >
-> **Metered columns target the Claude bar; subscription columns spend the plan.** The opencode columns use Claude as the yardstick: each cell is the cheapest model closest to its tier's Claude bar (`providers.md` § Selecting pins). `Anthropic`, `OpenAI` and `Google` instead take each vendor's best value inside the plan. Any cell can be re-pinned.
+> **Metered columns target the Claude bar; subscription columns spend the plan.** The OpenCode columns use Claude as the yardstick: each cell is the cheapest model closest to its tier's Claude bar (`providers.md` § Selecting pins). `Anthropic`, `OpenAI` and `Google` instead take each vendor's best value inside the plan. Any cell can be re-pinned.
 >
 > **Judges — 12 agents:** `bkit-design-brainstorm-ideate-3`, `bkit-design-review-1`, `bkit-plan-review-1`, `bkit-plan-review-2`, `bkit-plan-scope-check`, `bkit-build-plan-current`, `bkit-build-plan-verify`, `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-soak`, `bkit-ship-deferred-sweep`. They review, challenge, verify or escalate, and the other 27 are builders. **Key gates — 4 of the 12**, where a miss passes downstream unchecked: `bkit-build-plan-verify` (decides a build is done), `bkit-ship-deferred-sweep` (last check before merge), `bkit-debug-failure-diagnose` (a wrong root cause sends the fix loop after the wrong bug), `bkit-build-challenge-2` (a missed security finding ships).
 >
-> **Per-tier quality targets; cheapest sufficient pin.** Each opencode cell is the cheapest model closest to its tier's Claude bar on LiveBench 2.0 Long Agentic: opus 72.8, sonnet 63.4 and haiku 40.0, the `claude-opus-5.5` / `claude-sonnet-5.5` / `claude-haiku-5.5` scores on the 2026-10-25 release (`providers.md` § LiveBench 2.0 board; process in § Selecting pins). A cell under its bar records the gap. **Any vendor may pin on an opencode column; cost is the limit** (`providers.md` § Budget band), and cost is what keeps Claude models off them.
+> **Per-tier quality targets; cheapest sufficient pin.** Each OpenCode cell is the cheapest model closest to its tier's Claude bar on LiveBench 2.0 Long Agentic: opus 72.8, sonnet 63.4 and haiku 40.0, the `claude-opus-5.5` / `claude-sonnet-5.5` / `claude-haiku-5.5` scores on the 2026-10-25 release (`providers.md` § LiveBench 2.0 board; process in § Selecting pins). A cell under its bar records the gap. **Any vendor may pin on an OpenCode column; cost is the limit** (`providers.md` § Budget band), and cost is what keeps Claude models off them.
 >
 > - **builders** → `openrouter` `deepseek-v4.1-flash-1017` + `ollama` `deepseek-v4.1-flash:1017` (40.9, which is 31.9 under opus and 22.5 under sonnet); `opencode-zen` + `opencode-go` `deepseek-v4.1-flash` (not measured, because the undated slug serves the 2026-09-10 snapshot, not the `1017` row; Zen bills it $0.30/$1.20). Opus and sonnet collapse onto it, because the only model over the sonnet bar that the budget carries is `gpt-6.1-sol`, and it carries four agents.
 > - **key gates** → `openrouter` `openai/gpt-6.1-sol` + `opencode-zen` `gpt-6.1-sol` (68.7, 4.1 under opus); `opencode-go` `gemini-4-argon` (61.2, because Go serves no sol); `ollama` `deepseek-v4.1-flash:1017` (nothing stronger in its catalog).
@@ -236,7 +236,7 @@ Canonical per-agent metadata, and the single source of truth for each agent's mo
 
 ### Live model-ID verification
 
-> **Verified against live provider APIs** (`providers.md` § Per-provider live model lookup). Last verification: 2026-10-28 (all four opencode columns — existence via OpenRouter `/api/v1/models`, Ollama `/v1/models` and models.dev; tool-call smoke refused: the OpenRouter key is past its monthly limit, no Ollama or OpenCode key); 2026-10-09 (Claude; haiku cells of every column — existence only, no tool-call smoke: Ollama needs a paid plan, Zen balance zero, no Go subscription, no OpenAI key); 2026-10-06 (Cursor); 2026-07-25 (remaining columns).
+> **Verified against live provider APIs** (`providers.md` § Per-provider live model lookup). Last verification: 2026-10-28 (all four OpenCode columns — existence via OpenRouter `/api/v1/models`, Ollama `/v1/models` and models.dev; tool-call smoke refused: the OpenRouter key is past its monthly limit, no Ollama or OpenCode key); 2026-10-09 (Claude; haiku cells of every column — existence only, no tool-call smoke: Ollama needs a paid plan, Zen balance zero, no Go subscription, no OpenAI key); 2026-10-06 (Cursor); 2026-07-25 (remaining columns).
 >
 > - **Claude** (`/v1/models`) — pins `claude-opus-5-5` / `claude-sonnet-5-5` / `claude-haiku-5-5`. Opus 5, Sonnet 5 and Haiku 4.5 remain listed; not pinned.
 > - **Cursor** (`/v0/models`) — the defaults come from the first-party pool only: `cursor-grok-4.5-high` (depth / synthesizers / parallel diversity) + `composer-2.5` (volume / build+ship orchestrators). The catalog has no `cursor-grok-4.7` and no Opus 5.5 / Sonnet 5.5 IDs. API-pool IDs that are present but not pinned: `claude-opus-5-thinking-high`, `claude-sonnet-5-thinking-high`/`-xhigh`, `gpt-5.6-*`, `claude-fable-5-thinking-high`/`-xhigh`. Opt in through § Model Overrides.
@@ -247,7 +247,7 @@ Canonical per-agent metadata, and the single source of truth for each agent's mo
 > - **OpenRouter** (`/api/v1/models`, public) — the overflow default in § Model Presets: `deepseek/deepseek-v4.1-flash-1017` (builders and eight judges, 40.9, 36 endpoints) and `openai/gpt-6.1-sol` (the four key gates, 68.7, 8 endpoints). Option 2 adds five more judges on `openai/gpt-6.1-sol` against the A$140 cap. DeepSeek auto-caches. (Existence via `/api/v1/models` 2026-10-28.)
 > - **Ollama** (`/v1/models`) — `deepseek-v4.1-flash:1017` on all 40 (40.9, because nothing stronger is in the catalog). Every tier needs a paid plan, and the A$ caps do not apply to a plan-billed gateway.
 >
-> **opencode gateways — two providers; catalogs from models.dev (not `/zen/v1/models`).** `/zen/v1/models` = Zen only, and it cannot see Go-only models, so models.dev is the source of truth (`opencode` = Zen, `opencode-go` = Go).
+> **OpenCode gateways — two providers; catalogs from models.dev (not `/zen/v1/models`).** `/zen/v1/models` = Zen only, and it cannot see Go-only models, so models.dev is the source of truth (`opencode` = Zen, `opencode-go` = Go).
 >
 > - **`opencode-zen`** (`https://opencode.ai/zen/v1`) — `deepseek-v4.1-flash` (builders; the 2026-09-10 snapshot, not measured on 2.0, because the 40.9 row is the `1017` refresh), `gpt-6.1-sol` (the four key gates, 68.7). Validated on models.dev.
 > - **`opencode-go`** (`https://opencode.ai/zen/**go**/v1`) — `deepseek-v4.1-flash` (builders; the same 2026-09-10 snapshot, not measured), `gemini-4-argon` (the four key gates, 61.2, because Go serves no sol). Prefer pins inside the Go 5h window. DeepSeek models need the workspace privacy setting on "Global regions".
@@ -257,13 +257,13 @@ Canonical per-agent metadata, and the single source of truth for each agent's mo
 The files in `.bkit/core/workflows/*.md` are the workflow orchestrators: they dispatch subagents and synthesize the results. They are not subagents (no `effort:` / `maxTurns:` frontmatter), and they run on the session model. Pin the session model to the table below when you invoke one.
 
 <!-- prettier-ignore -->
-| Orchestrator | Anthropic | Cursor | OpenRouter | Ollama | OpenCode Zen | OpenCode Go | OpenAI | Google | Role |
+| Orchestrator | Anthropic | OpenAI | Google | Cursor | OpenRouter | Ollama | OpenCode Zen | OpenCode Go | Role |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `/design` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
-| `/plan` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Merges review (pair) + scope-check critiques in one pass; fixes what `tests plan-check` refuses after each plan write. |
-| `/build` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6.1-sol` | `gemini-4-argon` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
-| `/debug` | `claude-opus-5-5` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6-astra` | `gemini-4-argon` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
-| `/ship` | `claude-sonnet-5-5` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | `gpt-6.1-sol` | `gemini-4-argon` | Mostly mechanical: merge + archive + parallel docs / summary. |
+| `/design` | `claude-opus-5-5` | `gpt-6-astra` | `gemini-4-argon` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
+| `/plan` | `claude-opus-5-5` | `gpt-6-astra` | `gemini-4-argon` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | Merges review (pair) + scope-check critiques in one pass; fixes what `tests plan-check` refuses after each plan write. |
+| `/build` | `claude-sonnet-5-5` | `gpt-6.1-sol` | `gemini-4-argon` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`, `bkit-build-plan-verify` are `high` effort). |
+| `/debug` | `claude-opus-5-5` | `gpt-6-astra` | `gemini-4-argon` | `cursor-grok-4.5-high` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
+| `/ship` | `claude-sonnet-5-5` | `gpt-6.1-sol` | `gemini-4-argon` | `composer-2.5` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-v4.1-flash:1017` | `deepseek-v4.1-flash` | `deepseek-v4.1-flash` | Mostly mechanical: merge + archive + parallel docs / summary. |
 
 **Rule:** Opus where the orchestrator resolves ambiguity, and Sonnet for a defined sequence.
 
@@ -277,14 +277,14 @@ The files in `.bkit/core/workflows/*.md` are the workflow orchestrators: they di
 
 Cursor Cloud automation uses `composer-2.5` for metadata / API plumbing, and the launched agent runs the orchestrator model from the table.
 
-**Claude Code session setup:** the orchestrator runs on the session model and effort. Subagents ignore both, because `model:` / `effort:` frontmatter wins over the session level.
+**Claude session setup:** the orchestrator runs on the session model and effort. Subagents ignore both, because `model:` / `effort:` frontmatter wins over the session level.
 
 <!-- prettier-ignore -->
 | Goal | How |
 | --- | --- |
 | Model per phase | Launch on the `Anthropic` cell above before the first prompt: `claude --model claude-opus-5-5` → `/bkit-design`, `/bkit-plan`, `/bkit-debug`; `claude --model claude-sonnet-5-5` → `/bkit-build`, `/bkit-ship`. Mid-session `/model` re-reads the whole conversation uncached (cache is per model). |
 | Fable, by hand | `claude --model claude-fable-5-1` (2.5x `claude-opus-5-5`), outside any `/bkit-*` run: (1) refine a fuzzy idea into a brief before `/bkit-design` → start `/bkit-design` in a fresh `claude-opus-5-5` session; (2) `/bkit-debug` stuck on a bug → work it from `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md`, `/effort xhigh`. No orchestrator or agent pins Fable. |
-| Effort `medium` | Claude Code default for `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` — set nothing. Top-level `effortLevel` in `~/.claude/settings.json` does not apply to these models; a level `/effort` saves lands in `~/.claude/settings.json` `modelSettings.<model>.effortLevel` and does. bkit ships no `effortLevel`. |
+| Effort `medium` | Claude default for `claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5` — set nothing. Top-level `effortLevel` in `~/.claude/settings.json` does not apply to these models; a level `/effort` saves lands in `~/.claude/settings.json` `modelSettings.<model>.effortLevel` and does. bkit ships no `effortLevel`. |
 | One session | `claude --effort <level>` at launch, or `/effort <level>` in-session. |
 | One repo | `"effortLevel": "<level>"` in `.claude/settings.local.json` (you only) or `.claude/settings.json` (whole team) — applies to every model, outranks `~/.claude/settings.json`. |
 
@@ -432,9 +432,9 @@ Hooks add text to an agent's context mid-run. The text reaches every agent and s
 | --- | --- | --- | --- | --- |
 | GateGuard | First edit per (session, agent, file) | First touch → investigation checklist (file read, callers, symbols, contracts, conventions, instructions quoted); new file → reuse-over-duplicate checklist; gate-config path → fix-code-not-gate advisory; `docs/**.md` (not `docs/plans/`) → density advisory appended | All five | `.bkit/core/hooks/gateguard-engine.js` |
 | ReadGuard | Repeat read of an unchanged line range, same agent | Use-earlier-output note; re-read only if the output left context | All five | `.bkit/core/hooks/readguard-engine.js` |
-| Guardrails | Shell edit (`sed -i`, redirect into a source file); unlisted `curl` / `wget` host on Claude, Codex; Codex ask tier | Advisory naming the bypassed gate; command still runs | Claude, Cursor, Codex, Antigravity | `.bkit/core/hooks/guardrails-shell.js`, `.bkit/core/hooks/guardrails-tiers.js` |
+| Guardrails | Shell edit (`sed -i`, redirect into a source file); unlisted `curl` / `wget` host on Claude, Codex; Codex ask tier | Advisory naming the bypassed gate; command still runs | Claude, Codex, Antigravity, Cursor | `.bkit/core/hooks/guardrails-shell.js`, `.bkit/core/hooks/guardrails-tiers.js` |
 
-- **Never a must-do:** hook text is advisory and fails open. It never fires on an untrusted Codex `.codex/` layer, and it arrives after the edit on opencode. A prompt instruction that must hold stays in the prompt.
+- **Never a must-do:** hook text is advisory and fails open. It never fires on an untrusted Codex `.codex/` layer, and it arrives after the edit on OpenCode. A prompt instruction that must hold stays in the prompt.
 
 ## Special Behaviors (frontmatter-adjacent contracts)
 
@@ -454,7 +454,7 @@ Hooks add text to an agent's context mid-run. The text reaches every agent and s
 
 ## Model Presets
 
-Two settings for OpenRouter, the overflow column, which covers the days after the week's OpenAI, Anthropic and Google credits run out. Costs are per **2-day gap**, the binding case against the weekly cap (`.bkit/providers.md` § Budget band), at the measured opencode profile with each agent carrying an equal 1/40 share. Judges and key gates: § Models Judges note.
+Two settings for OpenRouter, the overflow column, which covers the days after the week's OpenAI, Anthropic and Google credits run out. Costs are per **2-day gap**, the binding case against the weekly cap (`.bkit/providers.md` § Budget band), at the measured OpenCode profile with each agent carrying an equal 1/40 share. Judges and key gates: § Models Judges note.
 
 <!-- prettier-ignore -->
 | Preset | Judges (12) | Builders (27) | 2-day gap | Cap |
@@ -535,7 +535,7 @@ OpenRouter IDs: `gpt-6.1-sol` = `openai/gpt-6.1-sol`, `deepseek-v4.1-flash-1017`
 
 ## Model Overrides
 
-> Add rows below to override bkit's default models, one per agent — `| bkit-plan-review-2 | openrouter | openai/gpt-6.1-sol |`. Override wins; re-run `bkit install --opencode=<provider>` after editing. Preset blocks to copy live in § Model Presets above. Claude Code pins are prompt frontmatter and are not overridable here.
+> Add rows below to override bkit's default models, one per agent — `| bkit-plan-review-2 | openrouter | openai/gpt-6.1-sol |`. Override wins; re-run `bkit install --opencode=<provider>` after editing. Preset blocks to copy live in § Model Presets above. Claude pins are prompt frontmatter and are not overridable here.
 
 <!-- prettier-ignore -->
 | Prompt | Provider | Model |

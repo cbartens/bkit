@@ -278,7 +278,7 @@ A `context` job resolves the phase and argument once. Then two runner jobs follo
 - Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
 - Traps:
   - The file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade`. Diff it on every upgrade.
-  - The opencode install version is a plain argument. The `# renovate:` comment above it lets the example `renovate.json5` bump it.
+  - The OpenCode install version is a plain argument. The `# renovate:` comment above it lets the example `renovate.json5` bump it.
   - Keep the file out of the updater's `ignorePaths` so action pins refresh.
 
 ## Git hooks — Husky
@@ -423,7 +423,7 @@ Set `lint` to the value in § Gate tool scripts.
 
 ## direnv — `.envrc`
 
-It loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN` and the tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md` / `.codex/bkit-cloud.md`. Preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
+It loads `.bkit/.env` on `cd`, so local sessions see `BKIT_GH_TOKEN` and the tracker keys. bkit reads your `.envrc` (its `dotenv*` and `unset` lines, never executed) to fill the env blocks of `.claude/bkit-cloud.md` / `.codex/bkit-cloud.md` / `.cursor/bkit-cloud.md`. Preflight's direnv advisories key on it. Reference: https://direnv.net/docs/installation.html.
 
 ```bash
 brew install direnv     # then add the shell hook from the link
@@ -435,7 +435,7 @@ direnv allow
 
 ## Launchd GUI environment — tokens for Dock-launched apps
 
-Dock / Spotlight launches start under `launchd`, which never runs the login shell or direnv, so GUI apps (opencode desktop, Cursor) start without `BKIT_*`, and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file. The LaunchAgent runs the loader at login, and again on every write to that file.
+Dock / Spotlight launches start under `launchd`, which never runs the login shell or direnv, so GUI apps (OpenCode desktop, Cursor) start without `BKIT_*`, and provider calls fail on authentication. The template set pairs a loader script with a machine-local env file. The LaunchAgent runs the loader at login, and again on every write to that file.
 
 <!-- prettier-ignore -->
 | File | Copy from | To | Commit |
@@ -593,13 +593,13 @@ The PyPI name is `serena-agent`, and the CLI is `serena`. PyPI `serena` is an un
 - Trust the project: add its path to `trusted_project_path_patterns` in `~/.serena/serena_config.yml`.
   - **If** the project is untrusted → Serena ignores all of `ls_specific_settings` (`typescript_version`, indexing waits), with only a log `WARNING`. Lookups still answer on the bundled defaults.
 - Adapt `ignored_paths` to the repo. Index the code a change touches. Skip committed build output and byte-copied payloads, because each indexed copy answers every reference twice.
-- `.mcp.json` (Claude Code) calls `scripts/serena/bkit-serena-mcp.sh`, which finds the binary when a GUI app has no login-shell `PATH`.
-- Cursor's `.cursor/mcp.json` cannot use that wrapper. Point `command` at `${HOME}/.local/bin/serena`, and pass `--context ide`.
+- `.mcp.json` (Claude) calls `scripts/serena/bkit-serena-mcp.sh`, which finds the binary when a GUI app has no login-shell `PATH`.
 - Codex: in `.codex/config.toml`, add `[mcp_servers.serena]` with `command` set to the absolute path to `serena` and `args = ["start-mcp-server", "--context", "codex", "--project-from-cwd"]`. bkit writes no `.codex/config.toml`.
+- Cursor's `.cursor/mcp.json` cannot use that wrapper. Point `command` at `${HOME}/.local/bin/serena`, and pass `--context ide`.
 - OpenCode: in `.opencode/opencode.json`, set `mcp.serena` to `{ "type": "local", "command": ["<absolute path to serena>", "start-mcp-server", "--context", "ide", "--project-from-cwd"] }`. `bkit upgrade` keeps custom `mcp` entries.
 - List `serena` in the `.agents/context.md` `mcp-servers` block, so every host runs its tools without a prompt, because workflow subagents cannot answer one.
 - bkit code-reading subagents carry `mcp__serena__*` in `tools:`.
-  - **If** Serena is not wired → Claude Code drops the entry, and the agent runs on text search.
+  - **If** Serena is not wired → Claude drops the entry, and the agent runs on text search.
 
 `.gitignore`:
 

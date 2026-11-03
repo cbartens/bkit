@@ -420,9 +420,9 @@ export const CLASSIC_VERB_HELP = [
         summary: "Install or re-sync the named modules plus the core files.",
         flags: [
             "--claude",
-            "--cursor",
             "--codex",
             "--antigravity",
+            "--cursor",
             "--opencode=<provider>",
             "--auto=<claude|cursor|opencode>",
             "--tracker=<name>",
@@ -432,7 +432,7 @@ export const CLASSIC_VERB_HELP = [
             "Install (or re-sync) the named modules + the implicit",
             "core foundation. At least one module flag is REQUIRED —",
             "a bare `bkit install` errors (name the modules below).",
-            "Hosts compose: --claude --cursor --codex --antigravity",
+            "Hosts compose: --claude --codex --antigravity --cursor",
             "--opencode=<provider>.",
         ],
     },
@@ -476,9 +476,9 @@ export const CLASSIC_VERB_HELP = [
         summary: "Remove bkit-managed files and strip managed blocks; no flags = everything.",
         flags: [
             "--claude",
-            "--cursor",
             "--codex",
             "--antigravity",
+            "--cursor",
             "--opencode=<provider>",
             "--auto=<claude|cursor|opencode>",
             "--dry-run",
@@ -556,10 +556,10 @@ export const CLASSIC_VERB_HELP = [
     {
         verb: "opencode",
         args: "",
-        summary: "Launch the opencode desktop app with .bkit/.env loaded.",
+        summary: "Launch the OpenCode desktop app with .bkit/.env loaded.",
         flags: [],
         detail: [
-            "Same as `bkit cursor` but for the opencode desktop app.",
+            "Same as `bkit cursor` but for the OpenCode desktop app.",
             "Override binary path via BKIT_OPENCODE_BIN=<path>.",
         ],
     },
@@ -773,7 +773,7 @@ function commandsUsage() {
 export function validateModuleFlagsForVerb(verb, moduleFlags, tracker = null) {
     if (verb === "install" && moduleFlags.size === 0 && tracker === null) {
         return ("[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-            "--claude, --cursor, --codex, --antigravity, --opencode=<provider> (plus opt-in " +
+            "--claude, --codex, --antigravity, --cursor, --opencode=<provider> (plus opt-in " +
             `--auto=<${CLOUD_VARIANTS.join("|")}>), or --tracker=<name> alone to switch the ` +
             "tracker on what is installed. Run `bkit help` for usage.");
     }

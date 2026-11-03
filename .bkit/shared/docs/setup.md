@@ -18,7 +18,7 @@ Templates are optional. You copy and own them, and bkit never installs them. The
 
 ## Agent hosts
 
-Run each host (`claude`, `opencode`, `codex`) in its own terminal window, not inside an IDE or a desktop app.
+Run each host (`claude`, `codex`, `opencode`) in its own terminal window, not inside an IDE or a desktop app.
 
 - Separate processes let you restart one host without quitting the others.
 - Terminal sessions inherit the direnv-loaded `.bkit/.env`. GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
@@ -26,7 +26,7 @@ Run each host (`claude`, `opencode`, `codex`) in its own terminal window, not in
 
 ## Remote access
 
-This section matters mostly for the `opencode` host, because `claude` / `cursor` / `codex` ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services:
+This section matters mostly for OpenCode, because Claude / Codex / Cursor ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services:
 
 - [Tailscale](https://tailscale.com/), a mesh VPN. Its free Personal plan covers device-to-device access.
 - [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797), an OpenCode iOS client.

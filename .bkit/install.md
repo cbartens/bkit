@@ -20,12 +20,12 @@ There are two paste blocks below: install (first time) and upgrade (already on b
 
 ### Install — first time
 
-No token or registry setup is needed, because `@cbartens/bkit` is public on npmjs. Copy the block below into Claude Code / Cursor / Codex / Antigravity / opencode.
+No token or registry setup is needed, because `@cbartens/bkit` is public on npmjs. Copy the block below into Claude / Codex / Antigravity / Cursor / OpenCode.
 
 ````text
 Install the latest `@cbartens/bkit` in this repo and finish setup.
 1. `@cbartens/bkit` is public on npmjs — no registry mapping, no PAT, no env. Confirmed.
-2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --cursor --codex --antigravity --opencode=<provider>`, provider = `openrouter` | `ollama` | `opencode-zen` | `opencode-go`; if `bkit` not on PATH use `pnpm bkit`):
+2. Install and seed hosts in one Bash call (`bkit install` requires named modules — core implicit; pick the hosts this repo uses from `--claude --codex --antigravity --cursor --opencode=<provider>`, provider = `openrouter` | `ollama` | `opencode-zen` | `opencode-go`; if `bkit` not on PATH use `pnpm bkit`):
    ```bash
    pnpm add -D @cbartens/bkit@latest && \
      bkit install --claude --cursor
@@ -89,11 +89,11 @@ No CI step, secret, `.npmrc` mapping or Vercel env is needed, because CI reaches
 ```bash
 # Name the host(s) + stack you want — core is implicit. Hosts compose.
 bkit install --claude                    # .claude/** + CLAUDE.md + core
-bkit install --cursor                    # .cursor/** + core
 bkit install --codex                     # Codex CLI host + core
-bkit install --antigravity               # Google Antigravity host + core
-bkit install --opencode=opencode-go      # additive opencode host (opencode-native gateway) + core
-# opencode provider: openrouter | ollama | opencode-zen | opencode-go
+bkit install --antigravity               # Antigravity host + core
+bkit install --cursor                    # .cursor/** + core
+bkit install --opencode=opencode-go      # additive OpenCode host (OpenCode-native gateway) + core
+# OpenCode provider: openrouter | ollama | opencode-zen | opencode-go
 
 # A bare install errors — name at least one module, or a tracker:
 bkit install                             # ✗ error: requires >=1 module flag
@@ -109,12 +109,12 @@ bkit upgrade --latest                    # newest published; or --to=<version> t
 bkit check
 ```
 
-**Module flags** (composable; install and uninstall are symmetric): `--claude` `--cursor` `--codex` `--antigravity` `--opencode=<provider>`. Any other module flag is an unknown-flag error.
+**Module flags** (composable; install and uninstall are symmetric): `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>`. Any other module flag is an unknown-flag error.
 
 - The CI workflow, the Vale config, the tool configs, the git hooks, the slop-scan type-suppression plugin (`scripts/slop/bkit-slop-type-suppression.mjs`), and the tool `package.json` scripts and devDeps are templates you copy from `.bkit/templates/` (`.bkit/templates.md`).
 - Core, implicit on every install, seeds the `bkit:gate:*` / `bkit:deps:*` scripts every workflow runs. It adds them only if missing, and never touches a name that is already present. Point their values at your stack (see `.bkit/README.md` § Required tools).
 
-**Opt-in flags:** `--tracker=github|linear|jira`, `--auto=claude|cursor|opencode` (cloud agents), `--opencode=<provider>` (additive opencode execution host: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). For dependency updaters, copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
+**Opt-in flags:** `--tracker=github|linear|jira`, `--auto=claude|cursor|opencode` (cloud agents), `--opencode=<provider>` (additive OpenCode execution host: `openrouter`, `ollama`, `opencode-zen`, `opencode-go`). For dependency updaters, copy an example and own it. See [§ Optional post-install decisions](#optional-post-install-decisions).
 
 ### Payload view links — `.bkit/core` + `.bkit/shared`
 
@@ -169,11 +169,11 @@ echo "len=${#BKIT_GH_TOKEN}"                                            # non-ze
 gh auth status                                                       # gh CLI uses keyring, not BKIT_GH_TOKEN
 ```
 
-After step 4, restart any open Claude Code / Cursor sessions in this repo, so the new env reaches the MCP servers.
+After step 4, restart any open Claude / Cursor sessions in this repo, so the new env reaches the MCP servers.
 
-`.bkit/.env` is gitignored. NEVER commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents), set the same names in each host's online dashboard (see `.bkit/cloud.md` § Tokens by session type). `bkit install` / `bkit check` advisories detect a missing direnv, blank required keys and an un-allowed `.envrc`. Follow whichever fires.
+`.bkit/.env` is gitignored. NEVER commit it. For cloud sessions (Claude on the web, Cursor Background Agents), set the same names in each host's online dashboard (see `.bkit/cloud.md` § Tokens by session type). `bkit install` / `bkit check` advisories detect a missing direnv, blank required keys and an un-allowed `.envrc`. Follow whichever fires.
 
-## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
+## Cloud agent environments (Claude on the web + Cursor Background Agents)
 
 bkit ships repo-side scaffolding for both cloud agents:
 
@@ -187,7 +187,7 @@ You configure the online-dashboard half (the Claude env in `claude.ai/code`, the
 For post-CI auto-routing (ship-vs-debug after CI), bkit ships a single `.github/workflows/bkit-cloud.yml` template with two runtime-gated dispatch jobs, plus a `/bkit-auto` slash command that both clouds invoke from a single source:
 
 - The **claude** job (`claude-code-action`) runs when the `ANTHROPIC_API_KEY` repo secret is set, or keyless through the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables.
-- The **opencode** job (`opencode run` CLI) runs when `OPENCODE_PROVIDER_KEY` is set.
+- The **OpenCode** job (`opencode run` CLI) runs when `OPENCODE_PROVIDER_KEY` is set.
 - Cursor wires the slash command through a dashboard trigger, with no GHA on the Cursor side.
 
 `bkit install --auto=opencode` requires `tracker=github`.
@@ -258,7 +258,7 @@ After the writes, bkit re-runs the credential and environment checks, because so
 | `dep-updater-mismatch` | Blocker. `bkit.dependencies.updater` names one updater (or `none`) while the other's config is present, or names an updater with no config. Fix the value or the config. |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloud.agent`). `none` (undecided) nudges `bkit install --auto=<variant>`, except under the jira tracker (local runs only); `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
-| `opencode-setup` | opencode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
+| `opencode-setup` | OpenCode host installed (`--opencode=<provider>`) — names the provider key to set (e.g. `BKIT_OPENROUTER_API_KEY`; `BKIT_OPENCODE_API_KEY` for `opencode-zen` / `opencode-go`), confirms the pre-seeded base URL, and notes all four providers ship curated per-agent pins (re-pin via `.bkit/prompts.md` § Model Overrides). Verify with `bkit doctor` + `bkit status`. |
 | `vale-not-installed` | `bkit:lint:prose` runs `bkit ci prose` but vale is not on PATH, so the prose gate fails |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `gate-missing-called-scripts` | A `bkit:gate:*` script still at bkit's default chains a script `package.json` does not declare (e.g. `typecheck`, `format:check`, `test`). Add it (`.bkit/templates.md` lists the tool scripts and devDeps) or rewrite the gate. |
@@ -281,10 +281,10 @@ Phase 1 and Phase 3 findings are merged and deduplicated by `id`. Phase 3 wins o
 - Any file bkit writes (rendered agents / commands / skills, managed blocks, owned whole files) carrying a stale managed-version marker (`bkit-managed-stale`).
 - A missing `bkit:gate:*` name, which counts as a write.
 
-The gate covers the installed module set ({core, claude, cursor, codex, antigravity} plus opencode). Each module is detected by sentinel files: for a host, its `agents/` dir, and for antigravity, any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host. `bkit status` uses the same detection.
+The gate covers the installed module set ({core, claude, cursor, codex, antigravity} plus OpenCode). Each module is detected by sentinel files: for a host, its `agents/` dir, and for antigravity, any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host. `bkit status` uses the same detection.
 
 - **antigravity gated:** `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and the root `GEMINI.md`.
-- **opencode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
+- **OpenCode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
   - Another tracker's `mcp` entry that the consumer edited, kept by a tracker switch, is not drift. `mcp-extra-server-linear--opencode-opencode-json` advises removing it.
   - Render inputs fall back to the installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers are tracked in `bkit.providers.opencode.installed: string[]`) and the recorded tracker, so a clean install across providers checks green, with no false drift.
 - The remaining opt-in module (cloud) is not drift-gated.
@@ -334,7 +334,7 @@ Two capabilities are opt-in, and a plain host / tooling install never wires them
 | Decision | Default | Opt-in command | Advisory when unset |
 | --- | --- | --- | --- |
 | **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (`BKIT_GH_TOKEN`) `--tracker=linear` (`BKIT_LINEAR_API_KEY`) or `--tracker=jira` (`BKIT_JIRA_API_KEY` + `bkit.tracker.jira.site` / `bkit.tracker.jira.project`) | `tracker-setup-none` |
-| **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\|cursor\|opencode` — records the choice and points at the copy-and-own templates: `.claude/hooks/bkit-cloud-bootstrap.sh` (claude), the `bkit-cloud.yml` (claude + opencode jobs, secret-gated) and the Cursor Dockerfile/environment.json | `cloud-router-none` |
+| **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\|cursor\|opencode` — records the choice and points at the copy-and-own templates: `.claude/hooks/bkit-cloud-bootstrap.sh` (claude), the `bkit-cloud.yml` (claude + OpenCode jobs, secret-gated) and the Cursor Dockerfile/environment.json | `cloud-router-none` |
 
 **Dependency updater.** Copy one example and own it.
 
@@ -363,7 +363,7 @@ There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` �
 
 - **Tracker** wires real credentials and MCP servers into workflows, so the consumer must choose the provider. bkit can't guess.
 - **Cloud agents** run through the phase-routed `bkit-cloud.yml` template plus the cloud env scaffolding (`.claude/hooks/bkit-cloud-bootstrap.sh`, and the `.cursor/Dockerfile` + `.cursor/environment.json` templates). The template auto-dispatches bkit-ship on CI pass and bkit-debug on CI fail, and runs design / plan / build only through `workflow_dispatch`.
-  - The workflow carries a claude job and an opencode job, each runtime-gated on its provider secret, so each is inert without its key. claude needs the `ANTHROPIC_API_KEY` repo secret or the federation repo variables (+ the Claude GitHub App). opencode needs `OPENCODE_PROVIDER_KEY`.
+  - The workflow carries a claude job and an OpenCode job, each runtime-gated on its provider secret, so each is inert without its key. claude needs the `ANTHROPIC_API_KEY` repo secret or the federation repo variables (+ the Claude GitHub App). OpenCode needs `OPENCODE_PROVIDER_KEY`.
   - Both need GitHub Actions write permissions, the GitHub tracker, and (for the Cursor half) a dashboard trigger, and the tracker itself is opt-in.
   - The env scaffolding is inert until the Claude / Cursor cloud env is wired in the dashboard.
   - Autonomous routing by default, wired to an unconfigured tracker, is the wrong default, so an install without `--auto` ships zero cloud footprint.
@@ -373,7 +373,7 @@ There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` �
 1. Run `bkit install --claude --cursor` (or whichever modules you want). If you have not decided yet, the post-install banner lists `tracker-setup-none`, `dep-updater-absent` and `cloud-router-none`.
 2. Pick a tracker: `bkit install --tracker=github` (or `linear` / `jira`). It needs no host flag, and it re-renders every installed host. The choice is persisted to `bkit.tracker.default`, and future installs preserve it (switching is free).
 3. Copy one updater example (table above). Land the Renovate config on the default branch before installing the App. The next `bkit install` / `bkit upgrade` sets `bkit.dependencies.updater` to it.
-4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. The choice is persisted to `bkit.cloud.agent`, and install prints the secrets + permissions + dashboard checklist (`bkit-auto-setup`). The shipped `bkit-cloud.yml` carries a claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables, see `.bkit/cloud.md` § Claude — workload identity federation) and an opencode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
+4. Enable cloud agents: `bkit install --auto=claude|cursor|opencode`. The choice is persisted to `bkit.cloud.agent`, and install prints the secrets + permissions + dashboard checklist (`bkit-auto-setup`). The shipped `bkit-cloud.yml` carries a claude job (`ANTHROPIC_API_KEY` repo secret or federation repo variables, see `.bkit/cloud.md` § Claude — workload identity federation) and an OpenCode job (`OPENCODE_PROVIDER_KEY`), each runtime-gated.
 5. **To opt out and silence the nudge**, set the field to `"none"` in `package.json` (`bkit.tracker.default` / `bkit.dependencies.updater` / `bkit.cloud.agent`). The advisory then stays quiet. The `""` that install seeds means undecided, and keeps the nudge.
 
 To reverse the tracker or cloud-agent choice, re-run install with the other flag. Updater files stay until you delete them.

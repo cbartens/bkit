@@ -23,7 +23,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Each of its five commands, `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`, fans out to specialised single-purpose subagents: 39 in total, counting the phases, the audit and the utilities. Many run in parallel under different lenses, such as bug review and security review, so the output gets an independent review before a person sees it. The same pipeline runs on five hosts: Claude Code, Cursor, Codex, Google Antigravity and opencode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Each of its five commands, `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`, fans out to specialised single-purpose subagents: 39 in total, counting the phases, the audit and the utilities. Many run in parallel under different lenses, such as bug review and security review, so the output gets an independent review before a person sees it. The same pipeline runs on five hosts: Claude, Codex, Antigravity, Cursor and OpenCode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -38,7 +38,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
 │ workflow_run on feat/**  → ship (CI green) / debug (CI red)            │
 │ workflow_dispatch        → ship|debug|design|plan|build                │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
-│ (Claude Code on the web / Cursor cloud agents / opencode).               │
+│ (Claude on the web / Cursor cloud agents / OpenCode).                    │
 │ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
 └────────────────────────────────────────────────────────────────────────┘
                                   │
