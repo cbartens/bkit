@@ -219,8 +219,8 @@
       }
     },
     {
-      "files": [".bkit/templates/scripts/ci"],
-      "_reason": "Shipped CI scripts, each paired with its .test.mjs, plus their accepted-* data files. Consumers adopt each one at scripts/ci/<name>, and dogfood-templates.test.ts maps every file to that same path in this repo's own scripts/ci/. Splitting the folder into subfolders would change the adopted paths for every consumer. Scoped to this folder + rule.",
+      "files": [".bkit/templates/scripts/ci", "scripts/ci"],
+      "_reason": "Shipped CI scripts, each paired with its .test.mjs, plus their accepted-* data files. Consumers adopt each one at scripts/ci/<name>, and dogfood-templates.test.ts maps every file to that same path in this repo's own scripts/ci/. Splitting either folder into subfolders would change the adopted paths for every consumer. Scoped to these two folders + rule.",
       "rules": {
         "structure.directory-fanout-hotspot": {
           "enabled": false
