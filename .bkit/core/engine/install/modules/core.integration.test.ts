@@ -98,7 +98,7 @@ afterEach(() => {
 describe("slop plugin migration", () => {
   const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
   const oldPlugin = fs.readFileSync(
-    path.join(getPkgRoot(), "tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs"),
+    path.join(getPkgRoot(), "tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt"),
   );
   const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
 

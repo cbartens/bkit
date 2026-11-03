@@ -950,7 +950,7 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
     const fixture = path.resolve(
       path.dirname(new URL(import.meta.url).pathname),
-      "../../../../../tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs",
+      "../../../../../tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt",
     );
     const oldPlugin = fs.readFileSync(fixture);
     const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
