@@ -41,3 +41,19 @@ None.
 ## Existence (reported only)
 
 None.
+
+## Planned test names already in use (reported only)
+
+- `docs/plans/202611/826-append-routine-workflow-plan.md:370` TASK 1: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "returns owned comment identity and stable representation evidence" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:370` TASK 1: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "selects newest created comment across complete pages" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:370` TASK 1: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "rejects marker preserving external edits" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:388` TASK 2: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "budgets the entire encoded body at limit and overflow" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:388` TASK 2: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "keeps non BMP code points intact in deterministic parts" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:388` TASK 2: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "preserves generated first line and extracts versioned h6 section markers" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:388` TASK 2: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "reuses original section time without changing duplicate identity" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "caches exact engine source with available progress identity" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "keeps original body identity separate from time and changed output" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "reuses matching invocation state without adopting foreign ownership" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "invalidates missing corrupt and unsupported progress cache" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "contains cache read and write failures as standalone degradation" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/826-append-routine-workflow-plan.md:404` TASK 3: `.bkit/core/engine/commands/workflow/tracker.test.ts` already holds a test named "uses legacy receipts and contains receipt failures" — name the update to it in TEST FIRST, or give the new test a new name
