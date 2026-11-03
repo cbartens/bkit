@@ -1,4 +1,4 @@
-Status: OPEN
+Status: DECIDED
 Question: VERIFY_GAPS
 From: verify
 Pause step: 9
@@ -22,4 +22,4 @@ Recommended: A) Try again — the last round made progress
 
 Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.
 
-Decision: Stop — Stop
+Decision: Try again — #719 continue build, was interrupted, rebase to dev first
