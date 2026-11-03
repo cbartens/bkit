@@ -424,3 +424,5 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:36Z","noun":"issues","verb":"labels","flags":["write","phase","board","issue","owner-repo","label"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:40Z","noun":"issues","verb":"comment","flags":["post","issue","workflow","workflow-heading","step-number","step-title","owner-repo","tree"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:42Z","noun":"steps","verb":"gate","flags":["workflow","step","fid","month","token","issue","placeholder"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:57Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:54:01Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
