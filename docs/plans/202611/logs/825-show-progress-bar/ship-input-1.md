@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-/bkit-ship #825
+no just push that runs pre-push and finish the ship workflow
 
 ## Issue description — oldest
 
