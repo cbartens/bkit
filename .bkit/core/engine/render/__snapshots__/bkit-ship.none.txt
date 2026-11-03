@@ -294,21 +294,8 @@ _No tracker connected, skip step._
    ```
    Hold `basePath` as `BASE_PATH`.
 2. Route:
-   - **If** `BASE_PATH` = A → sub-step 3 (skip integration — dev has not moved).
+   - **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
    - **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
-   - **Else** → **Failure Path**.
-3. Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `dev` brings `dev`'s generated files, which may not match this branch's code. The block commits only the paths `bkit:generate` changed:
-   ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches regenerate --fid="{FID}" --file="{STATUS}"
-   ```
-   Hold `outcome` as `REGEN_OUTCOME`.
-   Route:
-   - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push it, so CI starts at the regenerated head; NEVER force:
-     ```bash
-     "{BKIT}" branches push --mode=plain >/dev/null
-     ```
-     Then Step 5.
-   - **If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
    - **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Base Check
@@ -318,7 +305,6 @@ _No tracker connected, skip step._
 ```
 
 - [ ] Ancestor verdict determined
-- [ ] Path A regenerated (`branches regenerate`), a commit pushed plain
 
 ---
 
