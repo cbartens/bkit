@@ -191,6 +191,446 @@ function stringsOf(value: unknown): string[] {
   return [];
 }
 
+interface PublicationComment {
+  id: string;
+  body: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string };
+}
+function publicationFixture() {
+  const cwd = linear();
+  process.env.BKIT_LINEAR_API_KEY = "linear-test-secret";
+  const file = path.join(cwd, "docs/plans/202611/logs/eng-12-progress/status.jsonl");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T01:00:00Z" })}\n`,
+  );
+  const state = {
+    comments: [] as PublicationComment[],
+    requests: [] as Array<{
+      operation: "create" | "edit" | "read";
+      body?: string;
+      id?: string;
+      signal?: AbortSignal | null;
+    }>,
+    failReads: 0,
+    failEdits: 0,
+    failCreates: 0,
+    loseEditResponse: false,
+    postflightHuman: false,
+    repeatedPages: false,
+  };
+  const make = (body: string, user = "engine-account"): PublicationComment => {
+    const id = `comment-${state.comments.length + 1}`;
+    return {
+      id,
+      body,
+      url: `https://linear.app/issue/ENG-12#${id}`,
+      user: { id: user },
+      createdAt: new Date(Date.UTC(2026, 10, 1, 1, 0, state.comments.length)).toISOString(),
+      updatedAt: "2026-11-01T01:01:00.000Z",
+    };
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string | URL, init: RequestInit = {}) => {
+      const request: {
+        query: string;
+        variables: { id?: string; after?: string; input?: { body?: string } };
+      } = JSON.parse(String(init.body));
+      const operation = request.query.includes("commentCreate")
+        ? "create"
+        : request.query.includes("commentUpdate")
+          ? "edit"
+          : "read";
+      state.requests.push({
+        operation,
+        body: request.variables.input?.body,
+        id: request.variables.id,
+        signal: init.signal,
+      });
+      const failure = () =>
+        new Response(JSON.stringify({ errors: [{ message: "test transport unavailable" }] }), {
+          status: 503,
+        });
+      if (operation === "read") {
+        if (state.failReads-- > 0) return failure();
+        return Response.json({
+          data: {
+            issue: {
+              comments: {
+                nodes: state.comments,
+                pageInfo: {
+                  hasNextPage: state.repeatedPages,
+                  endCursor: `page-${state.requests.length}`,
+                },
+              },
+            },
+          },
+        });
+      }
+      if (operation === "create") {
+        if (state.failCreates-- > 0) return failure();
+        const comment = make(request.variables.input?.body ?? "");
+        state.comments.push(comment);
+        return Response.json({ data: { commentCreate: { success: true, comment } } });
+      }
+      if (state.failEdits-- > 0) return failure();
+      const comment = state.comments.find((c) => c.id === request.variables.id);
+      if (!comment) return new Response("missing comment", { status: 404 });
+      comment.body = request.variables.input?.body ?? "";
+      comment.updatedAt = "2026-11-01T01:02:00.000Z";
+      if (state.postflightHuman) state.comments.push(make("intervening reply", "human-account"));
+      if (state.loseEditResponse) throw new Error("response lost after successful mutation");
+      return Response.json({ data: { commentUpdate: { success: true, comment } } });
+    }),
+  );
+  const report = (text: string) =>
+    stampMarker(`###### bkit:generated\n### ${text}\nexact current 😀 report\n`);
+  const options = (
+    key = "first",
+    purpose: "routine" | "attention" | "terminal" = "routine",
+    budgetMs = 1000,
+  ) => ({
+    file,
+    key: runActionKey(file, "build", key, 1, 1),
+    purpose,
+    budgetMs,
+    log: () => undefined,
+  });
+  const target = trackerTarget(cwd, { fid: "eng-12-progress" });
+  return {
+    cwd,
+    file,
+    state,
+    make,
+    report,
+    options,
+    target,
+    publish: (
+      text: string,
+      key = text,
+      purpose: "routine" | "attention" | "terminal" = "routine",
+    ) => postCommentOnce(target, report(text), options(key, purpose)),
+  };
+}
+
+function soleComment(f: ReturnType<typeof publicationFixture>): PublicationComment {
+  expect(f.state.comments).toHaveLength(1);
+  const comment = f.state.comments[0];
+  if (!comment) throw new Error("expected one delivered comment");
+  return comment;
+}
+function requireOutcomeUrl(result: Awaited<ReturnType<typeof postCommentOnce>>): string | null {
+  expect(result).toMatchObject({ done: true });
+  if (!("done" in result) || !result.done) throw new Error("expected acknowledged comment");
+  return result.url;
+}
+function breakReceiptAfterCreate(f: ReturnType<typeof publicationFixture>) {
+  const originalFetch = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const response = await originalFetch(input, init);
+      const request: { query: string } = JSON.parse(String(init?.body));
+      if (request.query.includes("commentCreate")) {
+        fs.unlinkSync(f.file);
+        fs.mkdirSync(f.file);
+        f.state.failReads = 10;
+      }
+      return response;
+    }),
+  );
+}
+
+describe("routine publication policy", () => {
+  it("creates then appends routine sections under explicit invocation ownership", async () => {
+    const f = publicationFixture();
+    const first = await f.publish("first");
+    const original = soleComment(f).body;
+    const second = await f.publish("second");
+    expect(requireOutcomeUrl(second)).toBe(requireOutcomeUrl(first));
+    expect(soleComment(f).body).toContain(original);
+    expect(soleComment(f).body).toContain("second");
+    expect(f.state.requests.filter((r) => r.operation === "create")).toHaveLength(1);
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(1);
+    expect(soleComment(f).body.split("\n")[0]).toMatch(/^###### bkit:generated/);
+  });
+
+  it("deduplicates known reports using available receipts and bounded markers", async () => {
+    const f = publicationFixture();
+    await f.publish("same", "same-key");
+    expect(await f.publish("same", "same-key")).toMatchObject({ done: true, deduped: true });
+    fs.writeFileSync(
+      f.file,
+      fs
+        .readFileSync(f.file, "utf8")
+        .split("\n")
+        .filter((line) => !line.includes('"engine-action"'))
+        .join("\n"),
+    );
+    expect(await f.publish("same", "same-key")).toMatchObject({ done: true, deduped: true });
+    expect(f.state.requests.filter((r) => r.operation !== "read")).toHaveLength(1);
+    expect(f.state.requests.filter((r) => r.operation === "read").length).toBeLessThanOrEqual(10);
+  });
+
+  it("appends changed report versions without replacing prior text", async () => {
+    const f = publicationFixture();
+    await f.publish("original version", "shared-key");
+    const original = soleComment(f).body;
+    await f.publish("changed version", "shared-key");
+    expect(soleComment(f).body).toContain(original);
+    expect(soleComment(f).body).toContain("changed version");
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(1);
+  });
+
+  it("classifies attention and terminal reports from structured purpose", async () => {
+    const f = publicationFixture();
+    await f.publish("failure misleading title", "routine-first");
+    await f.publish("Summary", "routine-summary");
+    expect(f.state.comments).toHaveLength(1);
+    const old = soleComment(f).body;
+    const attention = f.report("routine-looking title");
+    await postCommentOnce(f.target, attention, f.options("decision", "attention"));
+    const terminal = f.report("Step 3");
+    await postCommentOnce(f.target, terminal, f.options("close", "terminal"));
+    expect(f.state.comments.map((c) => c.body)).toEqual([old, attention, terminal]);
+    expect(await postCommentOnce(f.target, terminal, f.options("close", "terminal"))).toMatchObject(
+      { deduped: true },
+    );
+  });
+
+  it("rolls over after intervening comments external edits and deletion", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    const first = soleComment(f);
+    first.body += "\nexternal edit retains markers";
+    await f.publish("after external edit");
+    expect(f.state.comments).toHaveLength(2);
+    expect(f.state.comments[1]?.body).toBe(f.report("after external edit"));
+    f.state.comments.push(f.make("human reply", "human"));
+    await f.publish("after human");
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("after human"));
+    f.state.comments.pop();
+    await f.publish("after deletion");
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("after deletion"));
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(0);
+  });
+
+  it("starts only new source after overflow or missing source", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    const oversized = f.report("x".repeat(100_000));
+    await postCommentOnce(f.target, oversized, f.options("overflow"));
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(0);
+    expect(
+      f.state.comments
+        .slice(1)
+        .map((c) => c.body)
+        .join("\n"),
+    ).not.toContain("### first");
+    for (const file of progressFiles(f.cwd)) fs.unlinkSync(file);
+    await f.publish("missing cache");
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("missing cache"));
+  });
+
+  it("keeps standalone fallback exact and unassociated calls conservative", async () => {
+    const f = publicationFixture();
+    const logs: string[] = [];
+    const body = f.report("unassociated");
+    const options = { purpose: "routine", log: (line: string) => logs.push(line) };
+    await postCommentOnce(f.target, body, options);
+    expect(soleComment(f).body).toBe(body);
+    expect(logs.join("\n")).toMatch(/aggregation.unavailable|association.unavailable/i);
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(0);
+  });
+
+  it("uses exact new comment after a failed eligibility read", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.failReads = 1;
+    await f.publish("fallback");
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(0);
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("fallback"));
+    expect(f.state.requests.filter((r) => r.operation === "create")).toHaveLength(2);
+  });
+});
+
+describe("bounded nonfatal publication", () => {
+  it("falls back to a new comment after failed or uncertain append", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.failEdits = 1;
+    const before = f.state.requests.length;
+    expect(await f.publish("fallback")).toMatchObject({ done: true });
+    expect(f.state.requests.slice(before).filter((r) => r.operation === "edit")).toHaveLength(1);
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("fallback"));
+    expect(
+      f.state.requests.slice(before).filter((r) => r.operation !== "read").length,
+    ).toBeLessThanOrEqual(3);
+  });
+
+  it("recognizes append success within budget without unnecessary resend", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.loseEditResponse = true;
+    const result = await f.publish("ack lost");
+    expect(requireOutcomeUrl(result)).toBe(soleComment(f).url);
+    expect(soleComment(f).body).toContain("ack lost");
+    expect(f.state.requests.filter((r) => r.operation === "create")).toHaveLength(1);
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(1);
+  });
+
+  it("contains exhausted append and create failures without fabricated success", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.failEdits = 10;
+    f.state.failCreates = 10;
+    const before = f.state.requests.length;
+    await expect(f.publish("all failed")).resolves.toMatchObject({
+      done: false,
+      action: "comment",
+    });
+    const writes = f.state.requests.slice(before).filter((r) => r.operation !== "read");
+    expect(writes.some((r) => r.operation === "edit")).toBe(true);
+    expect(writes.some((r) => r.operation === "create")).toBe(true);
+    expect(writes.length).toBeLessThanOrEqual(3);
+    expect(soleComment(f).body).not.toContain("all failed");
+  });
+
+  it("keeps multipart loss and duplicate handling bounded and nonfatal", async () => {
+    const f = publicationFixture();
+    const body = f.report("😀".repeat(110_000));
+    f.state.failCreates = 10;
+    await expect(postCommentOnce(f.target, body, f.options("multipart"))).resolves.toMatchObject({
+      done: false,
+    });
+    expect(f.state.requests.filter((r) => r.operation !== "read").length).toBeLessThanOrEqual(3);
+    expect(alreadyDone(f.file, f.options("multipart").key!, actionHash(body))).toBeUndefined();
+    f.state.failCreates = 0;
+    const start = f.state.requests.length;
+    const recovered = await postCommentOnce(f.target, body, f.options("multipart"));
+    expect(recovered).toMatchObject({ done: true });
+    const delivered = f.state.requests.length;
+    expect(await postCommentOnce(f.target, body, f.options("multipart"))).toMatchObject({
+      deduped: true,
+    });
+    expect(f.state.requests.length).toBe(delivered);
+    expect(delivered - start).toBeLessThanOrEqual(13);
+  });
+
+  it("keeps positive acknowledgment after receipt cache or postflight failure", async () => {
+    const f = publicationFixture();
+    breakReceiptAfterCreate(f);
+    const result = await f.publish("acknowledged");
+    expect(requireOutcomeUrl(result)).toBe(soleComment(f).url);
+    expect(f.state.requests.filter((r) => r.operation === "create")).toHaveLength(1);
+  });
+
+  it("reserves new comment opportunity within total delivery budget", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.repeatedPages = true;
+    const start = f.state.requests.length;
+    const began = performance.now();
+    await postCommentOnce(
+      f.target,
+      f.report("bounded fallback"),
+      f.options("bounded", "routine", 100),
+    );
+    const calls = f.state.requests.slice(start);
+    expect(performance.now() - began).toBeLessThan(1500);
+    expect(calls.filter((r) => r.operation === "read").length).toBeLessThanOrEqual(10);
+    expect(calls.filter((r) => r.operation === "create")).toHaveLength(1);
+    expect(calls.filter((r) => r.operation !== "read").length).toBeLessThanOrEqual(3);
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("bounded fallback"));
+    expect(calls.every((r) => r.signal !== undefined)).toBe(true);
+    const g = progressFixture();
+    const firstOptions = { ...g.options, purpose: "routine", budgetMs: 200 };
+    await postCommentOnce(g.target, g.body, firstOptions);
+    fs.writeFileSync(
+      path.join(fake, "bin/gh"),
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> "$FAKE_GH_DIR/slow-calls"\nexec "${process.execPath}" -e 'setTimeout(()=>{},10000)'\n`,
+      { mode: 0o755 },
+    );
+    const childStart = performance.now();
+    const current = stampMarker("###### bkit:generated\nslow child current report\n");
+    const slowOptions = {
+      ...g.options,
+      key: runActionKey(g.file, "build", "slow-child", 1, 1),
+      purpose: "routine",
+      budgetMs: 200,
+    };
+    const result = await postCommentOnce(g.target, current, slowOptions);
+    expect(result).toMatchObject({ done: false });
+    expect(performance.now() - childStart).toBeLessThan(1500);
+    const slowCalls = fs.readFileSync(path.join(fake, "slow-calls"), "utf8").trim().split("\n");
+    expect(slowCalls.some((call) => call.includes("--method POST"))).toBe(true);
+    expect(slowCalls.length).toBeLessThanOrEqual(3);
+    const commonOutbox = path.join(g.cwd, ".git/bkit-outbox");
+    expect(
+      fs
+        .readdirSync(commonOutbox, { recursive: true, encoding: "utf8" })
+        .filter((file) => file.endsWith(".lock")),
+    ).toEqual([]);
+  });
+
+  it("contains preparation state lock and reconciliation exceptions", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    for (const file of progressFiles(f.cwd)) {
+      fs.unlinkSync(file);
+      fs.mkdirSync(file);
+    }
+    f.state.failReads = 10;
+    const body = f.report("fallback survives local faults");
+    const options = {
+      ...f.options("local-fault"),
+      log: () => {
+        throw new Error("diagnostic unavailable");
+      },
+    };
+    await expect(postCommentOnce(f.target, body, options)).resolves.toMatchObject({ done: true });
+    expect(f.state.comments.at(-1)?.body).toBe(body);
+    expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(0);
+  });
+
+  it("attempts independent attention after routine uncertainty", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.failEdits = 10;
+    f.state.failCreates = 10;
+    await f.publish("uncertain");
+    f.state.failCreates = 0;
+    const body = f.report("independent failure report");
+    await expect(
+      postCommentOnce(f.target, body, f.options("attention", "attention")),
+    ).resolves.toMatchObject({ done: true });
+    expect(f.state.comments.at(-1)?.body).toBe(body);
+    const before = f.state.requests.length;
+    await f.publish("after attention");
+    expect(f.state.requests.slice(before).filter((r) => r.operation === "edit")).toHaveLength(0);
+  });
+
+  it("seals an acknowledged segment after a postflight intervening comment", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    const firstUrl = soleComment(f).url;
+    f.state.postflightHuman = true;
+    expect(requireOutcomeUrl(await f.publish("accepted race"))).toBe(firstUrl);
+    expect(f.state.comments).toHaveLength(2);
+    expect(f.state.comments[0]?.body).toContain("accepted race");
+    f.state.postflightHuman = false;
+    const before = f.state.requests.length;
+    await f.publish("next segment");
+    expect(f.state.requests.slice(before).filter((r) => r.operation === "edit")).toHaveLength(0);
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("next segment"));
+  });
+});
+
 /** A fetch stub answering each call with the next queued response; records every request. */
 function stubFetch(...responses: Array<Response | Error>) {
   const calls: Array<{ url: string; init: RequestInit }> = [];
