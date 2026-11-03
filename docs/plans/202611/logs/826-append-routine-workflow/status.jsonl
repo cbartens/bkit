@@ -218,3 +218,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T01:29:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","number","post","title","comment-field","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-convert/-/1/comment","hash":"3cfb345e449cbbab37f8a013a0ea246125d422c30a7e8e8f8cf8edddf2a676ff","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6593001907","at":"2026-11-03T01:29:20Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-03T01:29:20Z","parentSha":"444a0f4815315194c2f3ff5171bd63d027a482ab","artifacts":[],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:29:22Z","noun":"branches","verb":"anchor-read","flags":["file","field","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:29:48Z","noun":"tasks","verb":"currency","flags":["plan","base","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:29:58Z","noun":"tasks","verb":"currency","flags":["plan","base","against","json"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:31:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-current/-/1/comment","hash":"65dbb426c6838467cf9cad7affa7a7ea88cb52d5df5ebe0fa7351f2d756e1277","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6593034621","at":"2026-11-03T01:31:32Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-current","status":"DONE","at":"2026-11-03T01:31:32Z","parentSha":"3592c918fe72ad2ae85ad5a7c562968e56aace3e","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-current.md"],"verdict":"PASS","attempt":1}
