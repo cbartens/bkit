@@ -362,7 +362,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Extend provider inspection and mutation contracts.
+- [x] **TASK 1:** Extend provider inspection and mutation contracts.
   - **UPDATE:** `postComment` in `.bkit/core/engine/commands/workflow/tracker.ts`: return stable comment identity and mutation evidence through existing transports.
   - **UPDATE:** `recentComments` in `.bkit/core/engine/commands/workflow/tracker.ts`: add complete bounded inspection with creation-order evidence and stable returned-body representation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: cover adapter contract interpretation and safe unavailable evidence.
@@ -379,7 +379,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Extend section rendering, budgets and deterministic splitting.
+- [x] **TASK 2:** Extend section rendering, budgets and deterministic splitting.
   - **UPDATE:** `splitAt` in `.bkit/core/engine/commands/workflow/tracker.ts`: account for complete encoded bodies and safe continuation parts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: retain first-line generated marker and add versioned run/segment/revision/section markers with original UTC times.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: add boundary, timestamp and marker interpretation cases.
@@ -396,7 +396,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Add a small exact-source cache and reuse available success receipts.
+- [x] **TASK 3:** Add a small exact-source cache and reuse available success receipts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: store versioned active-progress source, target/invocation, comment identity, section IDs and available revision evidence in the existing Git-common outbox.
   - **READ:** `.bkit/core/engine/ledgers/status.ts`: reuse existing action identity and success receipts without new delivery records.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: exercise real temporary cache files, source safety and nonfatal cache/receipt faults.
