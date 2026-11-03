@@ -37,6 +37,7 @@
     ".bkit/templates",
     "dist",
     "README.md",
+    "DETAILS.md",
     "CHANGELOG.md"
   ],
   "engines": {

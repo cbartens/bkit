@@ -30,6 +30,8 @@ No server, database, or network service. Build-time / DX tool only.
 
 ```
 cbartens/bkit (this repo)
+├── README.md               # Short package overview and quick start
+├── DETAILS.md              # Full product guide linked from README
 ├── .bkit/core/engine/       # TypeScript source for the bkit CLI
 │   ├── cli.ts                   # entry point (the `bkit` bin); CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | cursor | opencode | comply | harvest | analysis | telemetry | help)
 │   ├── commands/                # what you type: one file or folder per verb / noun

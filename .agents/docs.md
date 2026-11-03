@@ -83,6 +83,7 @@
 | `harvest/stats.jsonl` | — | — | — | — | — | Run telemetry harvested from every dogfood checkout, repos and issues stored as fingerprints. Written by `pnpm harvest`. Gitignored, not shipped. |
 | `harvest/stats.md` | — | — | — | — | — | Cross-repo stats report from every dogfood checkout, written by `pnpm harvest`; names repos and issues. Gitignored, not shipped. |
 | `README.md` | — | — | — | — | ○ | Package page — pitch, what ships, quick start. Humans only. |
+| `DETAILS.md` | — | — | — | — | ○ | Full product guide — capabilities, models, measurements and FAQ. Humans only. |
 | `CHANGELOG.md` | — | — | — | ○ | ○ | Release record — notable changes per version. |
 | `.bkit/pipeline.md` | — | — | — | — | — | Pipeline in execution order, every subagent, every audit template. Humans only. |
 | `.bkit/comparison.md` | — | — | — | — | — | Peer-framework + agentic-patterns comparison. Humans only. |
