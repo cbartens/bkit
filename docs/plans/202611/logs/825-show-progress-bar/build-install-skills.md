@@ -21,20 +21,26 @@
 - `executing-plans`
 - `find-skills`
 - `finishing-a-development-branch`
+- `nodejs-best-practices`
+- `pnpm`
 - `receiving-code-review`
 - `requesting-code-review`
 - `subagent-driven-development`
 - `systematic-debugging`
 - `test-driven-development`
+- `typescript-pro`
 - `using-git-worktrees`
 - `using-superpowers`
 - `verification-before-completion`
+- `vitest`
 - `writing-plans`
 - `writing-skills`
 
 ## Newly Installed
 
-Each named installation exited 0, and each folder was verified under `.agents/skills/`. The installer updated `skills-lock.json`. No installed skill instructions or bundled scripts were executed.
+None. The resumed build verified all four required technology skill folders under `.agents/skills/`; no technology gap remains. Existing writing and workflow skills cover the Markdown work. No discovery, installation or bundled script execution was needed in this continuation.
+
+The previous run's installation evidence is retained below. Each named installation exited 0, and each folder was verified under `.agents/skills/`. The installer updated `skills-lock.json`. No installed skill instructions or bundled scripts were executed.
 
 <!-- prettier-ignore -->
 | Folder | Exact package | Source | Quality evidence |
