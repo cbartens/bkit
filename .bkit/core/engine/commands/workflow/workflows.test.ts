@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { contractUnits, deriveContract } from "../../checks/status-holes";
 import { validate } from "../../ledgers/telemetry";
@@ -14,6 +15,8 @@ import { newRecord, writeRecord } from "./ledgers";
 import { locksCommand } from "./locks";
 import { chatFingerprint } from "./run-facts";
 import { workflowsCommand } from "./workflows";
+
+useGateRunner();
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
 vi.setConfig({ testTimeout: 30_000 });
@@ -84,6 +87,7 @@ function repo() {
   fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
   fs.writeFileSync(path.join(cwd, ".bkit/version"), JSON.stringify({ pinnedVersion: "4.6.3" }));
   fs.writeFileSync(path.join(cwd, "a.txt"), "base\n");
+  fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify(gatePackage));
   git(cwd, "add", "-A");
   git(cwd, "commit", "-qm", "base");
   return cwd;
@@ -106,7 +110,10 @@ const rebaseInProgress = (gitDir: string) =>
   fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
 /** A `package.json` whose worktree copy list also names a file outside the checkout. */
-const outsideCopy = { bkit: { workflows: { worktree: { copy: [".env", "../shared/.env"] } } } };
+const outsideCopy = {
+  ...gatePackage,
+  bkit: { workflows: { worktree: { copy: [".env", "../shared/.env"] } } },
+};
 
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];

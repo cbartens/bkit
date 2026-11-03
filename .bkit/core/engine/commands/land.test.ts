@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useGateRunner } from "../../../../vitest.gate-fixture";
 
 import { replayBuild } from "./workflow/branches";
 import {
@@ -15,6 +16,8 @@ import {
   pushToDev,
   withoutHooks,
 } from "./land";
+
+useGateRunner();
 
 vi.mock("../shared/timeouts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../shared/timeouts")>();
@@ -37,7 +40,7 @@ const git = (cwd: string, ...args: string[]) =>
   }).stdout.trim();
 
 /** A main checkout on dev pushed to a bare remote. */
-function fixture() {
+function fixture(options: { integration?: boolean; script?: string; missing?: boolean } = {}) {
   const remote = tmp("remote");
   const root = tmp("main");
   git(remote, "init", "-q", "--bare", "-b", "dev");
@@ -45,7 +48,29 @@ function fixture() {
   // The engine's own git calls (the replay's cherry-pick) carry no -c identity.
   git(root, "config", "user.email", "t@t");
   git(root, "config", "user.name", "t");
-  fs.writeFileSync(path.join(root, ".gitignore"), ".worktrees/\n");
+  fs.writeFileSync(path.join(root, ".gitignore"), ".worktrees/\n.env\nnode_modules/\n");
+  fs.writeFileSync(
+    path.join(root, "package.json"),
+    JSON.stringify({
+      scripts: options.missing
+        ? {}
+        : {
+            "bkit:gate:min": "node gate.cjs min",
+            "bkit:gate:static-unit": "node gate.cjs unit",
+            ...(options.integration
+              ? { "bkit:gate:static-unit-integration": "node gate.cjs integration" }
+              : {}),
+          },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(root, "gate.cjs"),
+    `
+const fs = require('node:fs');
+fs.appendFileSync(${JSON.stringify(path.join(root, ".git", "gate-runs"))}, process.argv[2] + '\\n');
+${options.script ?? ""}
+`,
+  );
   fs.writeFileSync(path.join(root, "notes.txt"), "base\n");
   git(root, "add", "-A");
   git(root, "commit", "-qm", "init");
@@ -175,6 +200,154 @@ describe("withoutHooks", () => {
 });
 
 describe("pushToDev", () => {
+  it.each([
+    ["docs/plans/notes.md", false, "min"],
+    ["code.ts", false, "unit"],
+    ["code.ts", true, "integration"],
+  ] as const)(
+    "runs %s through its declared gate in the built checkout",
+    async (file, integration, expected) => {
+      const { root, dir } = fixture({
+        integration,
+        script: `if (!fs.existsSync(${JSON.stringify(file)})) process.exit(9);`,
+      });
+      const res = await pushToDev({
+        root,
+        dir,
+        build: (d) => {
+          fs.mkdirSync(path.dirname(path.join(d, file)), { recursive: true });
+          commitIn(d, file, "changed\n");
+        },
+        log: () => {},
+      });
+      expect(res.kind).toBe("landed");
+      expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe(`${expected}\n`);
+    },
+  );
+
+  it.each([
+    { script: "process.exit(7);" },
+    { script: "fs.writeFileSync('notes.txt', 'gate mutation');" },
+    { script: "fs.writeFileSync('untracked.txt', 'gate output');" },
+    { missing: true },
+  ])("refuses a failed or unverifiable landing before updating the remote: %j", async (options) => {
+    const { root, remote, dir } = fixture(options);
+    const before = git(remote, "rev-parse", "dev");
+    await expect(
+      pushToDev({ root, dir, build: (d) => commitIn(d, "code.ts", "changed\n"), log: () => {} }),
+    ).rejects.toThrow();
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
+    expect(fs.existsSync(dir)).toBe(false);
+  });
+
+  it("runs the full gate for replayed debug code", async () => {
+    const { root, remote, dir } = fixture({ script: "process.exit(7);" });
+    commitIn(root, "code.ts", "debug fix\n");
+    const before = git(remote, "rev-parse", "dev");
+    await expect(
+      pushToDev({ root, dir, build: replayBuild([git(root, "rev-parse", "HEAD")]), log: () => {} }),
+    ).rejects.toThrow();
+    expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe("unit\n");
+    expect(git(remote, "rev-parse", "dev")).toBe(before);
+  });
+
+  it("copies ignored inputs while retaining the built checkout's tracked files", async () => {
+    const { root, dir } = fixture({
+      script:
+        "if (fs.readFileSync('.env', 'utf8') !== 'copied' || fs.readFileSync('notes.txt', 'utf8') !== 'target') process.exit(8); fs.writeFileSync('.env', 'writable');",
+    });
+    fs.writeFileSync(path.join(root, ".env"), "copied");
+    fs.writeFileSync(path.join(root, "notes.txt"), "root edit");
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => {
+        const pkg = JSON.parse(fs.readFileSync(path.join(d, "package.json"), "utf8"));
+        pkg.bkit = { workflows: { worktree: { copy: [".env", "notes.txt"] } } };
+        commitIn(d, "package.json", JSON.stringify(pkg));
+        commitIn(d, "notes.txt", "target");
+      },
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe("unit\n");
+    expect(fs.readFileSync(path.join(root, ".env"), "utf8")).toBe("copied");
+    expect(fs.readFileSync(path.join(root, "notes.txt"), "utf8")).toBe("root edit");
+  });
+
+  it("installs local dependencies against the built target tree", async () => {
+    const { root, dir } = fixture({
+      script: "if (require('local-input') !== 'target') process.exit(8);",
+    });
+    fs.mkdirSync(path.join(root, "support"));
+    fs.writeFileSync(
+      path.join(root, "support", "package.json"),
+      JSON.stringify({ name: "local-input", version: "1.0.0", main: "index.cjs" }),
+    );
+    fs.writeFileSync(path.join(root, "support", "index.cjs"), "module.exports = 'base';\n");
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    pkg.dependencies = { "local-input": "file:./support" };
+    fs.writeFileSync(path.join(root, "package.json"), JSON.stringify(pkg));
+    git(root, "add", "package.json", "support");
+    git(root, "commit", "-qm", "local dependency");
+    git(root, "push", "-q", "origin", "dev");
+    fs.writeFileSync(path.join(root, "support", "index.cjs"), "module.exports = 'dirty-root';\n");
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "support/index.cjs", "module.exports = 'target';\n"),
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(fs.readFileSync(path.join(root, ".git", "gate-runs"), "utf8")).toBe("unit\n");
+    expect(fs.readFileSync(path.join(root, "support", "index.cjs"), "utf8")).toContain(
+      "dirty-root",
+    );
+    expect(fs.existsSync(path.join(root, "node_modules"))).toBe(false);
+  });
+
+  it("runs the configured frozen install even without root dependencies", async () => {
+    const { root, dir } = fixture();
+    const res = await pushToDev({
+      root,
+      dir,
+      build: (d) => commitIn(d, "code.ts", "changed\n"),
+      log: () => {},
+    });
+    expect(res.kind).toBe("landed");
+    expect(fs.readFileSync(path.join(root, ".git", "fixture-install-runs"), "utf8")).toBe(
+      `${dir}\n`,
+    );
+  });
+
+  it.each([
+    { targetWorkspace: false, files: { "code.ts": "changed\n" } },
+    {
+      targetWorkspace: true,
+      files: { "code.ts": "changed\n", "pnpm-workspace.yaml": "packages: ['packages/*']\n" },
+    },
+  ])(
+    "isolates installation from the main checkout's workspace (target workspace: $targetWorkspace)",
+    async ({ targetWorkspace, files }) => {
+      const { root, dir } = fixture();
+      fs.writeFileSync(path.join(root, "pnpm-workspace.yaml"), "packages: ['other']\n");
+      const result = await pushToDev({
+        root,
+        dir,
+        build: (d) => Object.entries(files).forEach(([file, body]) => commitIn(d, file, body)),
+        log: () => {},
+      });
+      expect(result.kind).toBe("landed");
+      const args = JSON.parse(
+        fs.readFileSync(path.join(root, ".git", "fixture-install-args"), "utf8"),
+      );
+      expect(args.includes("--ignore-workspace")).toBe(!targetWorkspace);
+      expect(fs.readFileSync(path.join(root, "pnpm-workspace.yaml"), "utf8")).toBe(
+        "packages: ['other']\n",
+      );
+    },
+  );
+
   it("lands the commit on origin/dev and leaves the main checkout alone", async () => {
     const { root, remote, dir } = fixture();
     git(root, "checkout", "-q", "-b", "other");
@@ -318,7 +491,7 @@ describe("pushToDev", () => {
       log: (l) => log.push(l),
     });
     const line = log.find((l) => l.startsWith("git hooks skipped"));
-    expect(line).toContain("it lands bookkeeping, or the commits a debug run on dev made");
+    expect(line).toContain("its declared minimum or full gate runs explicitly");
     expect(log.join("\n")).not.toContain("bookkeeping only");
   });
 

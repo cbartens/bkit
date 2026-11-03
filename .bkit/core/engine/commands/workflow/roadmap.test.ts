@@ -4,10 +4,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { resolveRepoSlug } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
 import { MARKERS, project, RELATED_UTILITIES, roadmapCommand, SEEDED_HEAD } from "./roadmap";
+
+useGateRunner();
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -681,6 +684,7 @@ describe("bkit roadmap mirror", () => {
     git(main, "config", "user.name", "t");
     fs.writeFileSync(path.join(main, ".gitignore"), ".worktrees/\n");
     fs.writeFileSync(path.join(main, "docs/roadmap.md"), "# Roadmap\n");
+    fs.writeFileSync(path.join(main, "package.json"), JSON.stringify(gatePackage));
     git(main, "add", "-A");
     git(main, "commit", "-qm", "init");
     git(main, "remote", "add", "origin", remote);

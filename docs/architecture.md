@@ -84,6 +84,8 @@ cbartens/bkit (this repo)
 ├── scripts/gate/           # bkit-repo-only bkit-gate-changed.mjs (`bkit:gate:changed`: checks on
 │                           #   the changed files bkit passes it)
 ├── dist/                   # Compiled output (committed; published in tarball)
+├── vitest.*.ts             # Repo-only test configuration and shared fixture support;
+│                           # gate-fixture runs consumer scripts with local dependencies.
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,
 │                           #   the .bkit/ reference docs, hooks/ (install skips the package-only

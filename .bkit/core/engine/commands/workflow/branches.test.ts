@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import * as prettier from "prettier";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
@@ -22,6 +23,8 @@ import {
   stampAnchor,
 } from "./branches";
 import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
+
+useGateRunner();
 
 // `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
@@ -197,7 +200,7 @@ describe("bkit branches parse", () => {
 });
 
 /** A bare `origin` with `dev`, and a clone of it on `dev`. */
-function withOrigin(name: string): { origin: string; clone: string } {
+function withOrigin(name: string, gates = false): { origin: string; clone: string } {
   const origin = tmp(`${name}-origin`);
   git(origin, "init", "-q", "--bare", "-b", "dev");
   const seed = tmp(`${name}-seed`);
@@ -205,6 +208,7 @@ function withOrigin(name: string): { origin: string; clone: string } {
   write(seed, "docs/testing.md", "testing v0\n");
   write(seed, "docs/knowledge.jsonl", '{"key":"A","ts":1}\n');
   write(seed, "src.txt", "code v0\n");
+  if (gates) write(seed, "package.json", JSON.stringify(gatePackage));
   git(seed, "add", "-A");
   git(seed, "commit", "-q", "-m", "base");
   git(seed, "push", "-q", origin, "dev");
@@ -1597,7 +1601,7 @@ describe(
 
     /** A clone on dev with one foreign commit already ahead; the run starts after it. */
     function started(name: string) {
-      const { origin, clone } = withOrigin(name);
+      const { origin, clone } = withOrigin(name, true);
       commit(clone, { "foreign-before.txt": "f\n" }, "foreign: made before the run");
       writeRecord(clone, newRecord(clone, FID, "dev"));
       return { origin, clone };
@@ -3066,6 +3070,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     git(repo, "config", "user.name", "t");
     write(repo, ".gitignore", "docs/plans/*/logs/**/.lock\n");
     write(repo, "docs/roadmap.md", "# Roadmap\n");
+    write(repo, "package.json", JSON.stringify(gatePackage));
     git(repo, "add", "-A");
     git(repo, "commit", "-qm", "init");
     git(repo, "remote", "add", "origin", remote);

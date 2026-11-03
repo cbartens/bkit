@@ -6,13 +6,20 @@
 // dev and push again, with backoff. Used by the design / plan close, the
 // build / debug roadmap mirror, ship's close and FAILED record, and the
 // own-commit push of a debug run in place on dev, which replays the run's
-// commits. The throwaway runs no git hooks: it lands bookkeeping (docs, logs,
-// ledgers, `[skip ci]`) or the commits a debug run on dev made.
+// commits. The throwaway runs its declared gate explicitly before pushing.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { CommandError, DEV, EXIT, git, runGit } from "./lib.js";
 import { TIMEOUTS } from "../shared/timeouts.js";
+import { gitEnv } from "../ledgers/telemetry.js";
+import { readBkitConfig } from "../shared/settings.js";
+import { readPackageJson } from "../shared/package-json.js";
+import { installCommand } from "../shared/package-manager.js";
+import { minPushPathspecs } from "./ci/ci.js";
+import { requiredPushGate, runPushGate } from "./ci/push-gate.js";
+import { changedOutside } from "./workflow/ledgers.js";
 
 const REMOTE = "origin";
 const UPSTREAM = `${REMOTE}/${DEV}`;
@@ -123,10 +130,90 @@ export type DevPush =
   | { kind: "fetch-failed"; stderr: string }
   | { kind: "setup-failed"; stderr: string };
 
+/** Copy ignored inputs without replacing anything in the built checkout. */
+function prepareLandInputs(root: string, dir: string, log: (line: string) => void): void {
+  const config = readBkitConfig(dir);
+  const sourceRoot = fs.realpathSync(root);
+  for (const entry of config.worktreeCopy) {
+    const relative = path.normalize(entry);
+    if (path.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path.sep}`)) {
+      log(`landing input is outside the checkout — skipped: ${entry}`);
+      continue;
+    }
+    const source = path.join(root, relative);
+    const destination = path.join(dir, relative);
+    const tracked = runGit(dir, ["ls-files", "--", relative]);
+    if (!tracked.ok) throw new CommandError(EXIT.NO, `cannot inspect landing input: ${entry}`);
+    if (tracked.stdout || fs.existsSync(destination)) continue;
+    if (!runGit(dir, ["check-ignore", "-q", "--", relative]).ok) continue;
+    if (!fs.existsSync(source)) {
+      log(`landing input absent in the main checkout: ${entry}`);
+      continue;
+    }
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.cpSync(source, destination, {
+      recursive: true,
+      dereference: true,
+      filter: (file) => {
+        const actual = fs.realpathSync(file);
+        if (actual !== sourceRoot && !actual.startsWith(`${sourceRoot}${path.sep}`)) {
+          throw new CommandError(EXIT.NO, `landing input resolves outside the checkout: ${entry}`);
+        }
+        return true;
+      },
+    });
+  }
+  if (config.worktreeInstall) {
+    const [command, ...args] = installCommand({ frozen: true });
+    if (!fs.existsSync(path.join(dir, "pnpm-workspace.yaml"))) args.push("--ignore-workspace");
+    log("installing frozen dependencies in the throwaway dev checkout");
+    const result = spawnSync(command!, args, {
+      cwd: dir,
+      env: gitEnv(),
+      encoding: "utf8",
+      maxBuffer: 1 << 26,
+    });
+    if (result.error || result.status !== 0) {
+      for (const line of `${result.stdout ?? ""}${result.stderr ?? ""}`
+        .trim()
+        .split("\n")
+        .slice(-20))
+        log(line);
+      throw new CommandError(EXIT.NO, "landing dependency install failed — nothing pushed");
+    }
+  }
+}
+
+/** Validate the committed landing against the freshly fetched base before sending it. */
+function checkLanding(root: string, dir: string, base: string, log: (line: string) => void): void {
+  const head = git(dir, ["rev-parse", "HEAD"]);
+  const unchanged = () =>
+    head !== null &&
+    git(dir, ["rev-parse", "HEAD"]) === head &&
+    git(dir, ["status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none"]) === "";
+  if (!unchanged())
+    throw new CommandError(EXIT.NO, "landing checkout is not clean — nothing pushed");
+  if (!readPackageJson(dir).ok)
+    throw new CommandError(EXIT.NO, "landing package.json is unreadable — nothing pushed");
+  const diff = changedOutside(dir, base, head!, minPushPathspecs(readBkitConfig(dir)));
+  if (!diff.ok) throw new CommandError(EXIT.NO, `cannot classify landing: ${diff.stderr}`);
+  const gate = diff.outside.length === 0 ? "bkit:gate:min" : requiredPushGate(dir);
+  if (!gate) throw new CommandError(EXIT.NO, "landing has no declared full gate — nothing pushed");
+  prepareLandInputs(root, dir, log);
+  if (!unchanged())
+    throw new CommandError(EXIT.NO, "landing preparation changed the checkout — nothing pushed");
+  const status = runPushGate(dir, gate, log);
+  if (status !== 0)
+    throw new CommandError(EXIT.NO, `landing ${gate} failed (exit ${status}) — nothing pushed`);
+  if (!unchanged())
+    throw new CommandError(EXIT.NO, "landing gate changed the checkout — nothing pushed");
+}
+
 /**
  * Land on dev what `build` makes: per attempt, fetch dev, add `dir` detached at
  * origin/dev, let `build` make one or more commits there (a bookkeeping commit,
- * or a replay of a run's commits), push `HEAD:dev` — git hooks off. `build`
+ * or a replay of a run's commits), validate the checkout, then push `HEAD:dev`.
+ * Git hooks are off; the minimum or full local gate runs explicitly. `build`
  * throwing stops the landing with that throw. A server refusal runs `refused` on
  * the built commits first, when given. dev moving, or another landing in this
  * clone updating `origin/dev` during the fetch, retries with backoff within
@@ -140,7 +227,7 @@ export async function pushToDev(o: {
   log: (line: string) => void;
 }): Promise<DevPush> {
   o.log(
-    "git hooks skipped in the throwaway dev checkout — it lands bookkeeping, or the commits a debug run on dev made",
+    "git hooks skipped in the throwaway dev checkout — its declared minimum or full gate runs explicitly",
   );
   for (let attempt = 1; ; attempt++) {
     let wait = 0;
@@ -154,7 +241,10 @@ export async function pushToDev(o: {
         }
         const added = runGit(o.root, ["worktree", "add", "--detach", o.dir, UPSTREAM]);
         if (!added.ok) return { kind: "setup-failed", stderr: added.stderr };
+        const base = git(o.dir, ["rev-parse", "HEAD"]);
+        if (!base) throw new CommandError(EXIT.NO, "cannot read the fetched landing base");
         o.build(o.dir, attempt);
+        checkLanding(o.root, o.dir, base, o.log);
         const pushed = runGit(o.dir, ["push", REMOTE, `HEAD:${DEV}`]);
         if (pushed.ok) {
           return {

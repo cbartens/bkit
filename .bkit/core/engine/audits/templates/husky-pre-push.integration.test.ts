@@ -6,6 +6,10 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+// Gate-order fixtures stand in for package execution; the min-push suite runs the real CLI.
+const UNWRAP_PUSH_GATE =
+  'case "$*" in "-s bkit ci push-gate --gate="*) shift 4; set -- "${1#--gate=}" ;; esac';
+
 // ---------------------------------------------------------------------------
 // .husky/pre-push delete-only skip — runs the real hook with a stub `pnpm` on PATH
 // that records each gate call, feeding git's pre-push stdin shape.
@@ -306,6 +310,7 @@ describe(".husky/pre-push CI-suppressor guard", () => {
         `  shift 2; exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} "$@" ;;`,
         "esac",
         'case "$*" in *"ci min-push"*) exit 1 ;; esac',
+        UNWRAP_PUSH_GATE,
         `echo "$*" >> "${tmp}/pnpm.log"`,
         "exit 0",
         "",
@@ -518,7 +523,7 @@ describe(".husky/pre-push disk prune", () => {
   const runHook = (hook: string, fail: string) => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\n${UNWRAP_PUSH_GATE}\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     const result = spawnSync("sh", [path.join(REPO, hook)], {
@@ -578,7 +583,7 @@ describe(".husky/pre-push template fast checks", () => {
   const runHook = (register: number | null, fail = "*skip-token*") => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\n${UNWRAP_PUSH_GATE}\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     if (register !== null) {
@@ -677,6 +682,7 @@ describe(".husky/pre-push slop base", () => {
       [
         "#!/bin/sh",
         'case "$*" in *"ci min-push"*|*"ci skip-token"*) exit 1 ;; esac',
+        UNWRAP_PUSH_GATE,
         `echo "$* SLOP_BASE_REF=\${SLOP_BASE_REF:-}" >> "${tmp}/calls.log"`,
         "exit 0",
         "",
@@ -1084,20 +1090,45 @@ describe(".husky/pre-push min push", () => {
     );
     fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     gitIn("init", "-q", "-b", "feat/1-x");
-    gitIn("update-ref", "refs/remotes/origin/dev", commitFiles({ "src/a.ts": "a\n" }, "base"));
+    gitIn(
+      "update-ref",
+      "refs/remotes/origin/dev",
+      commitFiles(
+        {
+          "src/a.ts": "a\n",
+          ".gitignore": "bin/\ntmp/\npnpm.log\n",
+          "package.json": JSON.stringify({
+            scripts: {
+              "bkit:gate:static-unit": "echo full",
+              "bkit:gate:min": "echo minimum",
+            },
+          }),
+        },
+        "base",
+      ),
+    );
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  const push = (hook: string, sha: string, remoteRef = "refs/heads/feat/1-x") => {
+  const push = (
+    hook: string,
+    sha: string,
+    remoteRef = "refs/heads/feat/1-x",
+    remoteSha = ZERO,
+    extraRefs = "",
+  ) => {
+    fs.writeFileSync(path.join(tmp, "pnpm.log"), "");
     const result = spawnSync("sh", [path.join(REPO, hook)], {
       cwd: tmp,
-      input: `refs/heads/feat/1-x ${sha} ${remoteRef} ${ZERO}\n`,
+      input: `refs/heads/feat/1-x ${sha} ${remoteRef} ${remoteSha}\n${extraRefs}`,
       encoding: "utf-8",
       timeout: 30_000,
       env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
     });
     const log = path.join(tmp, "pnpm.log");
-    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    const calls = fs.existsSync(log)
+      ? fs.readFileSync(log, "utf-8").trim().split("\n").filter(Boolean)
+      : [];
     return { status: result.status, stderr: result.stderr, calls };
   };
 
@@ -1107,6 +1138,52 @@ describe(".husky/pre-push min push", () => {
   };
 
   for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: checked code followed by bookkeeping runs only the minimum gate`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).calls).toContain("bkit:gate:static-unit");
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const r = push(hook, book, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: a checked empty trigger uses minimum validation`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).status).toBe(0);
+      const trigger = commitFiles({}, "chore(1): trigger CI");
+      const r = push(hook, trigger, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: a remote code head without checked evidence still runs the full gate`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const r = push(hook, book, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+      expect(r.calls).not.toContain("bkit:gate:min");
+    });
+
+    it(`${hook}: code on another outgoing ref prevents a bookkeeping shortcut`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).status).toBe(0);
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const changed = commitFiles({ "src/a.ts": "c\n" }, "feat(2): code");
+      const r = push(
+        hook,
+        book,
+        "refs/heads/feat/1-x",
+        code,
+        `refs/heads/other ${changed} refs/heads/other ${code}\n`,
+      );
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+      expect(r.calls).not.toContain("bkit:gate:min");
+    });
+
     it(`${hook}: plan logs and ledgers only → bkit:gate:min, not the full gate`, () => {
       const r = push(hook, commitFiles(PLAN, "docs(1): plan bkit [skip ci]"));
       expect(r.status).toBe(0);

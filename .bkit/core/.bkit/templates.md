@@ -287,7 +287,7 @@ A `context` job resolves the phase and argument once. Then two runner jobs follo
 
 Pre-push re-runs itself once with all its output copied to `tmp/pre-push.log`, which is rewritten on each push. It prints that path first and last, with the exit code. `--no-verify` and a checkout without husky (a linked worktree) write no log.
 
-Workflows care because they commit and push without `--no-verify`, so a failing hook stops a workflow. One checkout is the exception: the throwaway `.worktrees/_land-{FID}` checkout that lands bookkeeping on `dev` (docs, logs, ledgers, `[skip ci]`) runs no hooks, and logs that it skipped them. Reference: https://typicode.github.io/husky/.
+Workflows care because they commit and push without `--no-verify`, so a failing hook stops a workflow. The throwaway `.worktrees/_land-{FID}` checkout runs its selected gate explicitly before pushing, with hooks disabled (§ One landing routine in `.bkit/workflows.md`). Reference: https://typicode.github.io/husky/.
 
 ```bash
 pnpm add -D husky@^9.1.7   # plus "prepare": "husky" (§ Gate tool scripts)
@@ -298,10 +298,12 @@ chmod +x .husky/pre-commit .husky/pre-push
 - Adapt: repo-only checks go below the bkit lines in each hook. What a gate runs belongs in the `bkit:gate:*` script, not the hook.
 - Min push:
   - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
+  - The hook passes each remote-old and pushed-new commit as `bkit ci min-push --update=<old>:<new>`. A fast-forward bookkeeping increment also qualifies when a successful local full-gate receipt covers an ancestor of the old commit and every change since that checked commit is allowed.
+  - `bkit ci push-gate --gate=<script>` runs the selected consumer script. A successful deepest full push gate records its clean, unchanged commit and script definitions in the repository's Git metadata. A failed or interrupted full check prevents reuse of earlier evidence until a later full check succeeds. Minimum and revert gates create no full-gate evidence. Receipts are local; a new clone starts without them.
   - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 14 steps) plus `docs/plans/**`.
   - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`, which leaves what bkit writes alone, because the setting only adds to it.
   - `bkit ci min-push` decides from files, never from `[skip ci]`, because that is a typed label and GitHub reads the last commit only.
-  - **If** there are no files, the range is unreadable or there is no ref list → the full gate runs.
+  - Empty trigger commits need checked-ancestor evidence. Missing evidence, unreadable ranges, rewritten history, or any outgoing ref carrying new code keeps the full gate. A new branch can still qualify from its complete bookkeeping-only branch diff.
 - Min-push paths: list only files that no code, build or test reads.
   - Never list `docs/**`, because a doc can be test input.
   - **If** a test reads a ledger → put that test into `bkit:gate:min`.
@@ -309,7 +311,7 @@ chmod +x .husky/pre-commit .husky/pre-push
   - On a feature branch, the push is blocked only while a PR is open, because workflows push `[skip ci]` code heads mid-run.
   - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
   - A rewritten head or a code file still blocks.
-  - On `dev` / `main`, the push is blocked unless it is a min push, because GitHub skips CI for the whole push.
+  - On `dev` / `main`, the skip-CI check uses the complete branch diff, independently of local gate receipts. Code cannot skip CI merely because its local gate passed.
 - Slop base:
   - **If** the push is to `dev` **and** `scripts/ci/lanes/bkit-resolve-push-base.mjs` is copied → the hook runs it with `--local --branch=dev --head=<pushed sha>`, and exports `SLOP_BASE_REF` as CI's push base. That base is the head of the last green CI push run on `dev`, else `origin/dev`. The hook prints the base and its source.
   - Pre-push and CI slop then share a base, so a finding that an earlier red push landed fails locally too.

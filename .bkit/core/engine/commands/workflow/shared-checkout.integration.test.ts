@@ -8,12 +8,15 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, readRecord, removeRecord, writeRecord } from "./ledgers";
+
+useGateRunner();
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -70,6 +73,7 @@ function fixture(o: { ahead?: boolean } = {}) {
   git(cwd, "config", "user.name", "t");
   write(cwd, "src/a.txt", "a\n");
   write(cwd, "src/staged.txt", "s\n");
+  write(cwd, "package.json", JSON.stringify(gatePackage));
   write(cwd, ".bkit/version", JSON.stringify({ pinnedVersion: "5.5.0" }));
   write(cwd, ISSUES, row({ id: "base" }));
   git(cwd, "add", "-A");

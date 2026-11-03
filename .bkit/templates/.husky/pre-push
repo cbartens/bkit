@@ -67,6 +67,7 @@ PUSH_HAS_COMMITS=0
 PUSH_DEV_SHA=""
 PUSH_BRANCH_SHA=""
 PUSH_SHAS=""
+PUSH_UPDATES=""
 PUSH_SHARED_SHAS=""
 PUSH_BRANCH_REMOTE_SHA=""
 if [ ! -t 0 ]; then
@@ -77,6 +78,7 @@ if [ ! -t 0 ]; then
       *[!0]*)
         PUSH_HAS_COMMITS=1
         PUSH_SHAS="$PUSH_SHAS $push_local_sha"
+        PUSH_UPDATES="$PUSH_UPDATES --update=$push_remote_sha:$push_local_sha"
         [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
         if [ "$push_remote_ref" = "refs/heads/$BRANCH" ]; then
           PUSH_BRANCH_SHA="$push_local_sha"
@@ -140,17 +142,13 @@ case "$BRANCH" in
     ;;
 esac
 
-# Min push: `bkit ci min-push` exits 0 only when every file changed since each pushed
-# commit left origin/dev (else origin/main) is one bkit writes or `bkit.testing.minPushPaths`
-# adds. Anything else
-# (code, no files, unreadable range, no refs) → MIN_PUSH=0, full gate: a skip on no
-# evidence reads as a pass.
+# Min push: every outgoing ref is either bookkeeping since its integration base,
+# or a bookkeeping increment over a locally checked ancestor of its remote head.
+# Missing evidence, code or rewritten history keeps the full gate.
 MIN_PUSH=0
-if [ -n "$PUSH_SHAS" ]; then
-  MIN_PUSH_REFS=""
-  for push_sha in $PUSH_SHAS; do MIN_PUSH_REFS="$MIN_PUSH_REFS --ref=$push_sha"; done
+if [ -n "$PUSH_UPDATES" ]; then
   # shellcheck disable=SC2086 # hex SHAs only: word-splitting is the point
-  if pnpm -s bkit ci min-push $MIN_PUSH_REFS < /dev/null > /dev/null; then
+  if pnpm -s bkit ci min-push $PUSH_UPDATES < /dev/null > /dev/null; then
     MIN_PUSH=1
   fi
 fi
@@ -160,8 +158,7 @@ fi
 # the open-PR guard above (workflows push `[skip ci]` code heads mid-run).
 for push_sha in $PUSH_SHARED_SHAS; do
   if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
-    if [ "$MIN_PUSH" != "1" ] &&
-      ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
+    if ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
       echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside the min-push paths (what bkit writes, plus bkit.testing.minPushPaths) — that code would land on dev / main with no CI run." >&2
       echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
       exit 1
@@ -240,14 +237,14 @@ fi
 # and bkit:slop:delta still run. Otherwise the deepest push gate package.json declares.
 if [ "$MIN_PUSH" = "1" ]; then
   echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
-  pnpm bkit:gate:min < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:min < /dev/null
 elif [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — skipping the test suite"
-  pnpm bkit:gate:static < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static < /dev/null
 elif grep -q '"bkit:gate:static-unit-integration"[[:space:]]*:' package.json 2>/dev/null; then
-  pnpm bkit:gate:static-unit-integration < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static-unit-integration < /dev/null
 else
-  pnpm bkit:gate:static-unit < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static-unit < /dev/null
 fi
 
 # Slow repo extras go here, above the disk prune. Ones that need Docker, a database or a

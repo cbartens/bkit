@@ -348,11 +348,15 @@ export const SETUP_TIPS = [
         workflows: ["plan", "ship"],
         title: "Quick pushes for logs and records",
         line: "Pushing only plan logs and records still runs every test. Add the quick path for those pushes.",
-        why: "A workflow's last push is often just its logs and records. The quick path checks only formatting and wording on such a push, so it takes seconds and never waits on anything another session is using. Any other file still runs everything.",
-        ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_SHAS / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and the `bkit:gate:min` branch. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
+        why: "A workflow's last push is often just its logs and records. A successful full gate can cover the earlier code while the quick path checks the remaining bookkeeping. Any unverified code still runs the full gate.",
+        ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_UPDATES / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and every `bkit ci push-gate` gate call. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
         steps: "`.bkit/templates.md` § Git hooks.",
-        fires: (cwd) => exists(cwd, ".husky/pre-push") &&
-            !fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8").includes("bkit ci min-push"),
+        fires: (cwd) => {
+            if (!exists(cwd, ".husky/pre-push"))
+                return false;
+            const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+            return ["bkit ci min-push", "--update=", "bkit ci push-gate"].some((part) => !hook.includes(part));
+        },
     },
     {
         id: "disk-prune",

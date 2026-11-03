@@ -107,9 +107,9 @@ function unresolvedGateCalls(declared: Record<string, string>, subcommands: Set<
 const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   // Hooks run the same scripts as the agents.
   [".bkit/templates/.husky/pre-commit", "pnpm bkit:gate:format"],
-  [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static-unit"],
-  [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:static"],
-  [".bkit/templates/.husky/pre-push", "pnpm bkit:gate:min"],
+  [".bkit/templates/.husky/pre-push", "bkit ci push-gate --gate=bkit:gate:static-unit"],
+  [".bkit/templates/.husky/pre-push", "bkit ci push-gate --gate=bkit:gate:static"],
+  [".bkit/templates/.husky/pre-push", "bkit ci push-gate --gate=bkit:gate:min"],
   // Agent steps check their own change through `bkit tests changed`, which runs
   // `bkit:gate:changed` when declared and the named fallback gate otherwise.
   [".bkit/core/prompts/bkit-build-plan-tasks.md", "--fallback=bkit:gate:static`"],
@@ -143,7 +143,9 @@ describe("bkit-local-gate-audit (#437)", () => {
   it("every gate a call site names is one install actually seeds", () => {
     const seeded = new Set(Object.keys(BKIT_GATE_SCRIPTS));
     const named = new Set(
-      GATE_CALLERS.map(([, call]) => call.replace(/^(pnpm |--fallback=)/, "").replace(/`$/, "")),
+      GATE_CALLERS.map(([, call]) =>
+        call.replace(/^(pnpm |--fallback=|bkit ci push-gate --gate=)/, "").replace(/`$/, ""),
+      ),
     );
     for (const name of named) expect(seeded).toContain(name);
   });

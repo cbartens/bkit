@@ -415,11 +415,16 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("dependency-audit").fires(cwd)).toBe(false);
   });
 
-  it("min-push fires only once a pre-push hook exists without the min-push check", () => {
+  it("min-push fires when a hook lacks update pairs or checked gate execution", () => {
     expect(tip("min-push").fires(cwd)).toBe(false);
     write(".husky/pre-push", "pnpm bkit:gate:static-unit\n");
     expect(tip("min-push").fires(cwd)).toBe(true);
     write(".husky/pre-push", "pnpm -s bkit ci min-push $REFS\n");
+    expect(tip("min-push").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      "pnpm -s bkit ci min-push --update=$OLD:$NEW\npnpm -s bkit ci push-gate --gate=bkit:gate:min\n",
+    );
     expect(tip("min-push").fires(cwd)).toBe(false);
   });
 

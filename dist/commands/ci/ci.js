@@ -37,6 +37,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, commitMessage, EXIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
 import { bookPathspecs, changedOutside, checkOnlyBookkeeping, globPathspecs, } from "../workflow/ledgers.js";
 import { pins } from "./pins.js";
+import { hasVerifiedIncrement, runPushGate } from "./push-gate.js";
 /** Exit code: slop-scan could not be started (not installed, not executable). */
 export const EXIT_SLOP_UNAVAILABLE = 3;
 /** Exit code: slop-scan ran but failed, or its JSON lacks the fields the gate reads. */
@@ -505,6 +506,13 @@ function minPush(ctx) {
     const refs = Array.isArray(given) && given.length > 0 ? given.map(String) : ["HEAD"];
     const baseFlag = typeof ctx.flags.base === "string" && ctx.flags.base ? ctx.flags.base : null;
     const paths = minPushPathspecs(readBkitConfig(top.stdout));
+    const updates = ctx.flags.update;
+    if (Array.isArray(updates) && updates.length > 0) {
+        if ((Array.isArray(given) && given.length > 0) || baseFlag) {
+            throw new CommandError(EXIT.USAGE, "--update cannot be combined with --ref or --base");
+        }
+        return minPushUpdates(ctx, top.stdout, updates.map(String), paths);
+    }
     const changed = new Set();
     const outside = new Set();
     for (const ref of refs) {
@@ -545,6 +553,60 @@ function minPush(ctx) {
         return result("outside", EXIT.NO, `${outside.size} of ${changed.size} changed files match no min-push path (first: ${first})`);
     }
     return result(null, EXIT.OK, `all ${changed.size} changed files match min-push paths`);
+}
+function minPushUpdates(ctx, cwd, updates, paths) {
+    const changed = new Set();
+    const outside = new Set();
+    let unknown = false;
+    let failed = false;
+    for (const update of updates) {
+        const pair = /^([0-9a-f]{40}|[0-9a-f]{64}):([0-9a-f]{40}|[0-9a-f]{64})$/.exec(update);
+        if (!pair)
+            throw new CommandError(EXIT.USAGE, "--update requires <old-sha>:<new-sha>");
+        const oldSha = pair[1];
+        const newSha = pair[2];
+        const isNew = /^0+$/.test(oldSha);
+        if (!isNew && !runGit(cwd, ["merge-base", "--is-ancestor", oldSha, newSha]).ok) {
+            failed = true;
+            unknown = true;
+            continue;
+        }
+        const increment = isNew ? null : changedOutside(cwd, oldSha, newSha, paths);
+        const base = pushBase(cwd, newSha);
+        const whole = base ? changedOutside(cwd, base, newSha, paths) : null;
+        if (hasVerifiedIncrement(cwd, oldSha, newSha, paths)) {
+            if (increment?.ok)
+                for (const file of increment.changed)
+                    changed.add(file);
+            ctx.log(`${oldSha}..${newSha}: covered by a successful full push gate`);
+            continue;
+        }
+        if (whole?.ok) {
+            for (const file of whole.changed)
+                changed.add(file);
+            for (const file of whole.outside)
+                outside.add(file);
+            if (whole.changed.length > 0 &&
+                whole.outside.length === 0 &&
+                (isNew || (increment?.ok && increment.changed.length > 0)))
+                continue;
+        }
+        else
+            unknown = true;
+        failed = true;
+    }
+    const reason = !failed ? null : unknown ? "unknown" : outside.size ? "outside" : "no-changes";
+    ctx.emit({
+        minPush: !failed,
+        reason,
+        changed: changed.size,
+        outside: [...outside].sort(),
+        paths,
+    });
+    ctx.log(failed
+        ? "push is not covered by minimum paths or verified full-gate proof"
+        : "every update qualifies for the minimum push gate");
+    return !failed ? EXIT.OK : unknown ? EXIT_RANGE_UNKNOWN : EXIT.NO;
 }
 // ---------------------------------------------------------------------------
 // bookkeeping-push
@@ -664,6 +726,12 @@ export const ciCommand = {
                     help: "a pushed commit (default HEAD); its range starts at its merge-base with origin/dev, else origin/main",
                 },
                 { name: "base", type: "string", help: "start every range here instead" },
+                {
+                    name: "update",
+                    type: "string",
+                    repeatable: true,
+                    help: "actual <old-sha>:<new-sha> push update; permits verified bookkeeping increments; excludes --ref and --base",
+                },
             ],
             output: {
                 minPush: "true when every changed file matches a min-push path",
@@ -676,6 +744,25 @@ export const ciCommand = {
                 [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",
             },
             run: minPush,
+        },
+        "push-gate": {
+            summary: "Run a consumer push gate and record successful full-gate proof for the exact clean commit.",
+            use: "by-hand",
+            flags: [
+                {
+                    name: "gate",
+                    type: "string",
+                    required: true,
+                    help: "consumer package script to execute",
+                },
+            ],
+            output: { gate: "the script executed", passed: "whether it exited zero" },
+            run: (ctx) => {
+                const gate = String(ctx.flags.gate);
+                const status = runPushGate(ctx.cwd, gate, ctx.log);
+                ctx.emit({ gate, passed: status === 0 });
+                return status;
+            },
         },
         "bookkeeping-push": {
             summary: "Exit 0 when a feature-branch push adds bookkeeping only on top of the remote head (ship's --scope=pr allow-list).",

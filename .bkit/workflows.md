@@ -18,6 +18,8 @@
 
 The source files live in `.bkit/core/workflows/`. `bkit install` regenerates `.claude/commands/` as byte-identical copies, and `.cursor/commands/` with the T1/T2/T3 transforms applied. Never edit the generated copies.
 
+Skill selection and activation within every workflow follow `.agents/skills.md` § Activation Rules.
+
 ```
 .bkit/core/workflows/
 ├── bkit-design.md         # Workflow 1/5 — 12 steps; hard stop after summary
@@ -111,7 +113,7 @@ Rendering can be re-run: the source carries every wired variant, so a tracker sw
 - **No archive step in ship:** artifacts sit at the canonical `docs/plans/{YYYYMM}/` from the start of design, so there is nothing to move at close.
 - **Debug's three attempt counters are mode-matched pairs.**
 - **Runtime capability table:** `bkit runtime detect` classifies the runtime (`LOCAL` / `GITHUB_ACTION` / `CLOUD_CLAUDE` / `CLOUD_CURSOR` / `UNKNOWN`) and emits `runtimeWorktrees` / `runtimeDevPushes` / `runtimeGithubCli` (the `runtime-resolved` row's keys; ship holds `{RUNTIME_WORKTREES}`) plus `runtimeHeadless`, derived from `runtime` and never stored on the row (`bkit runtime assert` re-derives it; design Step 3 holds it as `{RUNTIME_HEADLESS}`). Headless = `GITHUB_ACTION` only: a runner job ends when the agent ends its turn, so no reply reaches it. Every other runtime counts as attended; `BKIT_RUNTIME` overrides. `CLOUD_CURSOR` is detected via a `.bkit/.runtime-cursor` marker written by `.cursor/hooks/bkit-preflight.sh` when `is_background_agent` is true (Cursor exposes that only on stdin JSON to the hook, not as an env var). `RUNTIME_DEVPUSHES` is a conservative default and is never probed. A `git push --dry-run` sends no ref-update, so a protected branch's pre-receive hook never fires, and a false positive would strand a cloud session on a `dev` checkout. `runtimeGithubCli` is the one live probe (`gh auth status`). An explicit falsy primitive (`CI=false`, `GITHUB_ACTIONS=false`) means absence, not ambiguity, because treating it as ambiguous would cost a laptop its worktree model. Only a value that is neither truthy nor falsy goes `UNKNOWN`.
-- **One landing routine for every dev write:** `pushToDev` (`.bkit/core/engine/commands/land.ts`) builds the commit in a throwaway `.worktrees/_land-{FID}` off fresh `origin/dev`, then runs `git push origin HEAD:dev`. It never touches the main checkout, so it cannot collide with parallel closes or uncommitted work. It never pushes local-only `dev` commits. It runs no git hooks (pre-commit and pre-push are skipped and logged), because it lands only docs / logs / ledger files, under `[skip ci]`. The exception is the own-commit push of a debug run in place on `dev` (`bkit branches push --mode=dev`), which replays the run's own commits as copies and fires CI. It fetches with the explicit refspec `+refs/heads/dev:refs/remotes/origin/dev`.
+- **One landing routine for every dev write:** `pushToDev` (`.bkit/core/engine/commands/land.ts`) builds the commit in a throwaway `.worktrees/_land-{FID}` off fresh `origin/dev`, validates that checkout, then runs `git push origin HEAD:dev`. It never touches the main checkout or pushes local-only `dev` commits. Hooks are disabled and logged; explicit validation runs `bkit:gate:min` for allowed bookkeeping changes or the deepest declared full push gate for code, including debug's own-commit replay. Missing gates, failed checks and a changed landing tree stop the push. Configured ignored inputs are copied without overwriting tracked files, and declared dependencies use the configured frozen worktree install. It fetches with the explicit refspec `+refs/heads/dev:refs/remotes/origin/dev`.
   - **If** `dev` moved before the push (`[rejected] … (fetch first|non-fast-forward)`) or while it was in flight (`[remote rejected] … (incorrect old value provided|cannot lock ref …)`), or another landing in the clone updated `origin/dev` during the fetch (`cannot lock ref 'refs/remotes/origin/dev'`) → rebuild and push again, up to `LAND_ATTEMPTS`.
   - **If** the server refuses (any other `[remote rejected]`, `returned error: 403`, a `GH0nn` rule) → take the caller's refused route.
   - **If** the push gets no server answer (network, credentials) → return to the caller. Nothing landed, and there is no PR.
@@ -1514,7 +1516,7 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | Gate | Seeded default | Called by |
 | --- | --- | --- |
 | `bkit:gate:format` | `pnpm lint-staged` | `.husky/pre-commit` |
-| `bkit:gate:min` | `pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `.husky/pre-push` on a min push |
+| `bkit:gate:min` | `pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `.husky/pre-push` on a min push; bookkeeping landings through `pushToDev` |
 | `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `@bkit-build-plan-tasks` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared), `.husky/pre-push` revert path |
 | `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Step 8 (group gate), build Step 12 and `.husky/pre-push` (no integration gate declared); `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify` and `@bkit-debug-failure-remediate` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared) |
 | `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Step 12, debug Step 3, `.husky/pre-push` |
@@ -1524,6 +1526,8 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build` | `@bkit-ship-conflict-resolve` |
 
 Gate contents: every gate but `bkit:gate:static-unit-integration-e2e` and `bkit:gate:static-unit-integration-e2e-live` runs on a push or inside `/bkit-build`, so it must not run tests that need a deployed boundary or remote service; local services (a database in Docker) are fine. Those tests go in the two deep gates, which only debug Step 3 runs. bkit cannot check this, because it never reads what a gate runs beyond its seeded default. That is why every gate advisory at install, upgrade and `bkit check` restates it.
+
+Push gates execute through `bkit ci push-gate --gate=<script>`. It records successful full checks for incremental bookkeeping classification (§ Git hooks in `.bkit/templates.md`). Minimum local validation does not suppress required CI, and workflow test gates retain their declared scope.
 
 Dependency inspection: `bkit:deps:outdated` / `bkit:deps:audit` exist so prompts stop hardcoding `pnpm outdated` / `pnpm audit`; neither belongs in the table above. CI and pre-push gate: the copy-and-own `Check Dependency Audit` step (`bkit-tests-static`, `scripts/ci/bkit-check-dependency-audit.mjs`) fails on a high / critical advisory without an in-date `scripts/ci/bkit-accepted-advisories.json` acceptance, and the `.husky/pre-push` template runs the same gate above the gates (`deployments.md` § Dependency updaters).
 
