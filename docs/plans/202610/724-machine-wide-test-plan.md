@@ -941,7 +941,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 7 end -->
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** `bkit branches push` carries the lock wait to the pre-push hook and maps its give-up to exit 81 (owner answer A to Open Question 15)
+- [x] **TASK 11:** `bkit branches push` carries the lock wait to the pre-push hook and maps its give-up to exit 81 (owner answer A to Open Question 15)
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: the `git push` call's env gains `LOCAL_STACK_LOCK_WAIT_S` = `BKIT_LOCK_WAIT_S` else `60` (`wholeNumber` from `../lib.js`; a bad variable value → `CommandError(EXIT.USAGE)` naming the variable) and `LOCAL_STACK_LOCK_WHO` = `bkit branches push <branch>`; the push's combined output goes through `classifyLockExit` (TASK 4) with `who` = that run name: `lock-wait` → exit `EXIT.AGENT_WAIT` (81), output field `lockHolder` (the holder line), nothing reported as pushed; `could-not-run` → exit 4; else today's mapping. Verb summary names `81 tests lock held`
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: every fenced `branches push` block gains the exit-81 retry route before `Else`; preserve exit 81 in any chained push block
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: every fenced `branches push` block gains the exit-81 retry route before `Else`; preserve exit 81 in any chained push block
@@ -1018,7 +1018,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Cancelling a gate wrapper releases its lock while the gate keeps running
+- [x] **TASK 13:** Cancelling a gate wrapper releases its lock while the gate keeps running
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:370` · **Round:** 1
   - **DONE WHEN:** Sending SIGTERM to a running wrapper cannot leave its gate command alive after another run acquires the same tests lock; ordinary command status propagation and inherited-owner behavior still pass.
   - **TEST FIRST:**
@@ -1027,7 +1027,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 13 end -->
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** A tests-lock retry closes and publishes the same build repeatedly
+- [x] **TASK 14:** A tests-lock retry closes and publishes the same build repeatedly
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:1156` · **Round:** 1
   - **DONE WHEN:** An exit-81 push followed by a successful retry executes workflow close once, preserves its original final-return data, and releases the workflow lock only after the successful push.
   - **TEST FIRST:**

@@ -1,4 +1,4 @@
-Verdict: CONCERNS
+Verdict: PASS
 Failures: 0
 
 <!-- verdict:end -->
@@ -9,35 +9,17 @@ Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integri
 
 ## Findings Log
 
-<!-- bkit:task 1 start -->
+None.
 
-- [ ] **TASK 1:** Cancelling a gate wrapper releases its lock while the gate keeps running
-      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:370`
-  - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: supervise the wrapped command on cancellation so the lock remains held until that command has stopped; mirror the adopted `scripts/ci/bkit-machine-lock.sh` copy through the normal generation path.
-  - **DONE WHEN:** Sending SIGTERM to a running wrapper cannot leave its gate command alive after another run acquires the same tests lock; ordinary command status propagation and inherited-owner behavior still pass.
-  - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `terminating a run wrapper stops its gate before another run acquires the tests lock` fails because SIGTERM kills the wrapper, the Perl holder releases within a second, and the wrapped command survives while a second run acquires the lock.
+## Review Scope
 
-<!-- bkit:task 1 end -->
+Round 2 of 2. Partial diff coverage: the supplied context is a truncated selection from the origin/dev comparison. This review supplements it with scoped `git diff dev...HEAD` reads of the canonical lock script, Vitest setup/configuration, CLI lock-outcome handling and workflow retry changes. The local-dev comparison separates this feature from the twelve local-dev commits absent from origin/dev. This verdict applies to those reviewed surfaces, not an independent audit of every installed skill or generated mirror.
 
-Evidence: a real private-cache probe started `run challenge-holder --lock tests -- sh -c 'echo $$ > "$1"; exec sleep 30'`, waited for the child PID, sent SIGTERM only to the wrapper, and then tried a second zero-wait run. Observed `wrapperExit: -15`, `commandStillAlive: true`, `secondLockExit: 0`. The probe stopped its surviving child afterward. The existing killed-holder test covers a sourced lock holder, not a wrapper supervising a live gate. This contradicts the run-wide exclusion described in `docs/testing.md` § Tests lock and the template's wrapped-gate contract.
+The review considered missing and malformed values, empty filters, zero-wait acquisition, inherited owners, lock acquisition/refusal paths, foreground-command cancellation, teardown, ordinary gate failures, hook failures and retry side effects. No additional reproducible defect was identified within this lens.
 
-<!-- bkit:task 2 start -->
+Both prior findings are closed in the reviewed source. Cancellation keeps the wrapper and its lock alive until the foreground command finishes, then returns the signal status. Build closes once, retains the original close outputs, retries only the push and releases the workflow lock after success. The raw-Vitest worker-limit boundary matches the plan's accepted Open Question 4; it is not a new finding.
 
-- [ ] **TASK 2:** A tests-lock retry closes and publishes the same build repeatedly
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:1156`
-  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: separate the once-only roadmap and workflow close work from the retryable push, retain the close outputs before retrying, and release the workflow lock after a successful push; regenerate its mirrors and snapshot.
-  - **DONE WHEN:** An exit-81 push followed by a successful retry executes workflow close once, preserves its original final-return data, and releases the workflow lock only after the successful push.
-  - **TEST FIRST:**
-    - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `a build close push retry does not repeat workflow close or lose its outputs` fails because the exit-81 route retries a fenced block that runs `workflows close --post --message --session-dir` before its push and retains the close outputs only after that block succeeds.
+The rebased Vitest configuration retains dev's `planUnitLoad()` alongside global setup and worker configuration. CLI changes preserve the existing progress and CI-selection paths. The Task 11 inventory correction follows dev's removal of ship Path A, while the remaining push routes retain exit-81 handling.
 
-<!-- bkit:task 2 end -->
-
-Evidence: the new route at line 1156 says to rerun the whole lines 1148–1153 block. `closeWorkflow` appends completeness, `workflow-done` and telemetry rows on each invocation; it has no closed-run guard. A real built-CLI probe in an isolated temporary repository invoked `workflows close` twice and returned `closeExitCodes: [0, 0]`, `workflowDoneRows: 2`. The production block additionally passes `--message` and `--post`, so retries also create new close commits/comments. `sessionRemoval` deletes the session after the first close; `finalReturnParts` reads its issue facts only while that file exists. Retaining outputs after the retry therefore loses the original final-return issue link. The existing route-presence test proves exit preservation, not safe replay of preceding side effects. This conflicts with the append-only workflow status and close-report contract in `.bkit/workflows.md`.
-
-## Coverage and existing work
-
-- Coverage: partial diff coverage. The supplied diff truncates large files and omits smaller files. Review focused on the shown lock implementation and its integration tests, with supplemental scoped diffs/source reads for the CLI classifiers, push paths, Vitest setup and retry workflows. This is not a claim that every generated mirror or installed skill reference was exhaustively reviewed.
-- Both findings were reproduced against current code; no source, tests, plan or ledger was changed. Temporary probe resources and the surviving probe command were cleaned up. No full-suite rerun was needed to establish either failure.
-- The holistic report's missing decision-ledger rows remain unresolved existing plan work: `724-lock-wait-is-host-budget-not-constant`, `724-branches-push-maps-hook-lock-give-up-to-81`, and `724-test-workers-leave-one-core`. They are not duplicated as a challenge task because the plan already requires them; this report does not accept or waive that gap.
+Cross-checks used `docs/testing.md` § Tests lock, `.bkit/workflows.md` tests-lock routing, `docs/architecture.md` package boundaries and `docs/observability.md` log conventions. Group 6 execution and independent verification reports supply the recorded red/green, changed-gate and consumer evidence; this challenge did not rerun test suites. No source, plan, test or ledger files were changed.
 
