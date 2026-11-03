@@ -944,6 +944,49 @@ describe("placeholderLines", () => {
 describe("bkit steps finish", () => {
   const FINISH = ["steps", "finish", "--file=logs/status.jsonl", "--workflow=build"];
 
+  it("preserves challenge findings in the event when a later round overwrites the report", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      "logs/challenge.md",
+      [
+        "Verdict: FAIL",
+        "Failures: 1",
+        "<!-- verdict:end -->",
+        "## Findings Log",
+        "<!-- bkit:task 1 start -->",
+        "- [ ] **TASK 1:** Handle missing value.",
+        "  **Severity:** CRITICAL · **Fixable:** true · **Location:** `a.ts:10`",
+        "  - **DONE WHEN:** Missing values work.",
+        "  - **TEST FIRST:**",
+        "    - `a.test.ts` `missing value` fails on null",
+        "<!-- bkit:task 1 end -->",
+      ].join("\n"),
+    );
+    const args = [
+      ...FINISH,
+      "--step=build-challenge",
+      "--attempt=1",
+      "--field=round=1",
+      "--agent=bkit-build-challenge-1",
+      "--artifact=logs/challenge.md",
+      "--commit=none",
+    ];
+    const r = await run(cwd, args);
+    expect(r.code).toBe(0);
+    expect(r.json.row.challengeFindings).toEqual([
+      { severity: "CRITICAL", location: "a.ts:10", title: "Handle missing value." },
+    ]);
+    write(
+      cwd,
+      "logs/challenge.md",
+      "Verdict: PASS\nFailures: 0\n<!-- verdict:end -->\n## Findings Log\nNone\n",
+    );
+    const events = fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8");
+    expect(events).toContain('"location":"a.ts:10"');
+    expect(events).toContain('"severity":"CRITICAL"');
+  });
+
   it("reads the agent's header, derives the attempt, writes and commits the row, prints the comment", async () => {
     const cwd = repo();
     const before = git(cwd, "rev-parse", "HEAD");

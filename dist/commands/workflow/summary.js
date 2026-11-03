@@ -6,6 +6,7 @@ import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
 import { parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
+import { challengeResolution, taskVerified } from "./summary-findings.js";
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"];
 /** Per workflow and verdict, the next command the summary recommends. */
 export const NEXT_STEP = {
@@ -46,18 +47,12 @@ export function refOf(fid, tracker = "any") {
     return /^[0-9]+$/.test(id) ? `#${id}` : id;
 }
 /**
- * A step whose FAIL a later, non-FAIL step of the same workflow (and the same plan
- * group, when the failed row has one) answers; the run carried on past it. A build
- * challenge is answered by its fix tasks running (`build-plan-tasks`) or by a
- * Decision Pause (`build-decision`); a group's execute or gaps fix by that group's
- * verify, which judges the group's work after the executor, the gaps fix and any
- * Decision Pause on it. The build workflow never routes on the gaps fix's own verdict.
+ * Review updates cover their review's findings. Group verification covers failed
+ * execution, but does not cover a remediation agent's separate warnings or flakes.
  */
-const ANSWERED_BY = {
+const RESOLVED_BY = {
     "plan/plan-review": ["plan-apply-review"],
     "design/design-review": ["design-apply-review"],
-    "design/design-spike": ["design-apply-review"],
-    "build/build-challenge": ["build-plan-tasks", "build-decision"],
     "build/build-plan-tasks": ["build-plan-verify"],
     "build/build-plan-gaps-remediate": ["build-plan-verify"],
 };
@@ -79,7 +74,8 @@ function stepGroups(rows) {
         if (row.type !== "step-done" || step === undefined)
             return;
         const sub = taskGroupOf(row);
-        const key = sub === undefined ? step : `${step}#${sub}`;
+        const scope = sub === undefined ? step : `${step}#${sub}`;
+        const key = step === "build-challenge" && typeof row.round === "number" ? `${scope}@${row.round}` : scope;
         const g = groups.get(key) ?? {
             label: sub === undefined ? step : `${step} (group ${sub})`,
             key,
@@ -135,6 +131,9 @@ export function buildSummary(input) {
     const groups = stepGroups(input.rows);
     const fails = [];
     const concerns = [];
+    const resolved = new Map();
+    const resolvedFindings = [];
+    const reassessed = [];
     const read = (rel) => input.read(rel);
     // Debug: a reproduce step that could not reproduce is a re-run, not a failure.
     const reproduce = groups.find((g) => g.step === "debug-failure-reproduce");
@@ -153,28 +152,71 @@ export function buildSummary(input) {
         }
     for (const g of groups) {
         const { row, index } = lastOf(g);
+        if (g.step === `${workflow}-summary`)
+            continue;
         if (RUN_TESTS.has(g.step)) {
             if (row.verdict === "FAIL")
                 fails.push(`${g.label} FAIL`);
             continue;
         }
-        if (row.verdict === "CONCERNS")
-            concerns.push(`${g.label} CONCERNS`);
-        if (row.verdict !== "FAIL")
+        if (row.verdict !== "FAIL" && row.verdict !== "CONCERNS")
             continue;
         if (g.step === "debug-failure-reproduce" && notReproduced)
             continue;
-        const answers = ANSWERED_BY[`${workflow}/${g.step}`] ?? [];
+        if (workflow === "build" && g.step === "build-challenge") {
+            const assessment = challengeResolution(input, row, index, tasks);
+            if (assessment !== undefined) {
+                fails.push(...assessment.failures);
+                concerns.push(...assessment.concerns);
+                resolvedFindings.push(...assessment.resolved);
+                continue;
+            }
+        }
+        if (workflow === "build" &&
+            g.step === "build-plan-current" &&
+            tasks.length > 0 &&
+            tasks.every((t) => taskVerified(input, t, index))) {
+            resolved.set(g.key, "build-plan-verify");
+            continue;
+        }
+        const review = g.step === `${workflow}-review`;
+        const spike = workflow === "design" && g.step === "design-spike";
+        const answers = spike
+            ? ["design-apply-review"]
+            : review || row.verdict === "FAIL"
+                ? (RESOLVED_BY[`${workflow}/${g.step}`] ?? [])
+                : [];
         const sub = taskGroupOf(row);
-        const answeredBy = input.rows.find((r, i) => i > index &&
-            r.type === "step-done" &&
+        const answer = groups
+            .map(lastOf)
+            .find(({ row: r, index: i }) => i > index &&
             answers.includes(String(r.step)) &&
-            r.verdict !== "FAIL" &&
-            (sub === undefined || taskGroupOf(r) === sub))?.step;
-        if (answeredBy !== undefined)
-            concerns.push(`${g.label} FAIL, answered by ${String(answeredBy)}`);
-        else
+            (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
+            (r.failures === undefined || r.failures === 0) &&
+            taskGroupOf(r) === sub &&
+            (!review || r.attempt === row.attempt));
+        if (answer !== undefined && spike) {
+            const reports = artifactsOf(row).map((p) => read(p));
+            const unsettled = reports.map((report) => report === null ? undefined : planSection(report, /^## Unsettled\s*$/));
+            if (unsettled.length > 0 &&
+                unsettled.every((section) => section !== undefined && section !== "")) {
+                if (unsettled.every((section) => /^None\.?$/i.test(section)))
+                    resolved.set(g.key, String(answer.row.step));
+                else {
+                    concerns.push("design-spike: unsettled claims remain");
+                    reassessed.push("design-spike: design impact addressed by design-apply-review; unsettled claims remain");
+                }
+                continue;
+            }
+        }
+        if (answer !== undefined && !spike && answer.row.verdict === "CONCERNS")
+            reassessed.push(`${g.label} ${String(row.verdict)}, remaining findings assessed by ${String(answer.row.step)}`);
+        else if (answer !== undefined && !spike)
+            resolved.set(g.key, String(answer.row.step));
+        else if (row.verdict === "FAIL")
             fails.push(`${g.label} FAIL`);
+        else
+            concerns.push(`${g.label} CONCERNS`);
     }
     // The Decision Pause: accepted items in this run's decision files.
     const decided = groups
@@ -199,7 +241,7 @@ export function buildSummary(input) {
     if (unconfirmed.length > 0)
         concerns.push(`shipped with ${unconfirmed.length} assumed item(s) the owner did not confirm`);
     if (input.deferralsAdded > 0)
-        concerns.push(`${input.deferralsAdded} deferral(s) written this run`);
+        concerns.push(`${input.deferralsAdded} deferral(s) from this run remain open`);
     const verdict = fails.length > 0 ? "FAIL" : concerns.length > 0 ? "CONCERNS" : "PASS";
     const reasons = [...fails, ...concerns];
     // Next step.
@@ -225,7 +267,9 @@ export function buildSummary(input) {
         "",
         ...(reasons.length > 0
             ? reasons.map((r) => `- ${r}`)
-            : ["- No failing step, open task, accepted item or new deferral."]),
+            : [
+                "- No unresolved finding, failing check, open task, accepted limitation or open deferral.",
+            ]),
     ];
     if (workflow === "build")
         out.push("", input.plans.length === 0
@@ -238,6 +282,22 @@ export function buildSummary(input) {
             .map((a) => `\`${a}\``)
             .join(", ");
         out.push(`| ${g.label} | ${str(row.verdict) ?? "-"} | ${typeof row.failures === "number" ? row.failures : "-"} | ${g.rows.length} | ${artifact || "-"} |`);
+    }
+    out.push("", "## Resolved Findings", "");
+    const resolutions = groups
+        .filter((g) => resolved.has(g.key))
+        .map((g) => `- ${g.label} ${String(lastOf(g).row.verdict)}, resolved by ${resolved.get(g.key)}`);
+    resolutions.push(...resolvedFindings.map((r) => `- ${r}`));
+    out.push(...(resolutions.length > 0 ? resolutions : ["None"]));
+    if (reassessed.length > 0)
+        out.push("", "## Reassessed Findings", "", ...reassessed.map((r) => `- ${r}`));
+    out.push("", "## Assessment History", "", "| Step | Verdict | Attempt | Artifact |", "| --- | --- | --- | --- |");
+    for (const { g, row } of groups
+        .flatMap((g) => g.rows.map(({ row, index }) => ({ g, row, index })))
+        .sort((a, b) => a.index - b.index)) {
+        out.push(`| ${g.label} | ${str(row.verdict) ?? "-"} | ${String(row.attempt ?? "-")} | ${artifactsOf(row)
+            .map((a) => `\`${a}\``)
+            .join(", ") || "-"} |`);
     }
     if (workflow === "build") {
         const appended = tasks.filter((t) => SEVERITY.test(t.text));
@@ -252,7 +312,7 @@ export function buildSummary(input) {
         for (const t of appended)
             out.push(`- Task ${t.task} — ${SEVERITY.exec(t.text)[1]} — ${t.done ? "ticked" : "not ticked"} (\`${t.path}\`)`);
         for (const r of low)
-            out.push(`- LOW, deferred: ${String(r.key ?? "")} — ${String(r.description ?? "")}`);
+            out.push(`- LOW, ${r.status === "CLOSED" ? "closed" : "deferred"}: ${String(r.key ?? "")} — ${String(r.description ?? "")}`);
     }
     if (workflow === "build" || workflow === "debug") {
         const runs = groups.filter((g) => RUN_TESTS.has(g.step)).flatMap((g) => g.rows);
@@ -283,8 +343,18 @@ export function buildSummary(input) {
     // Risks and action items.
     const items = [];
     for (const g of groups) {
+        if (resolved.has(g.key))
+            continue;
         for (const rel of artifactsOf(lastOf(g).row).filter((a) => a.endsWith("-log.md"))) {
-            for (const line of (read(rel) ?? "").split("\n").filter((l) => /^BLOCKED\b/.test(l)))
+            const dispositions = new Map();
+            for (const line of (read(rel) ?? "").split("\n")) {
+                const entry = /^(BLOCKED|DONE)\s*—\s*((?:task|step|gap)\s+\d+)\b/i.exec(line);
+                if (entry !== null)
+                    dispositions.set(entry[2].toLowerCase(), line);
+                else if (/^BLOCKED\b/.test(line))
+                    dispositions.set(line, line);
+            }
+            for (const line of [...dispositions.values()].filter((l) => /^BLOCKED\b/.test(l)))
                 items.push(`- ${line} (\`${rel}\`)`);
         }
     }
