@@ -6,10 +6,16 @@
 // Direction matters: file -> doc. Every catalog FILE must be documented, but the docs
 // MAY describe entries that have no dedicated file.
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import { getBkitDocsRoot, getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
+import {
+  getBkitDocsRoot,
+  getPkgRoot,
+  getPromptsRoot,
+  getWorkflowsRoot,
+} from "../../shared/package-roots";
 
 const PROMPTS_INDEX = path.join(getBkitDocsRoot(), "prompts.md");
 const WORKFLOWS_INDEX = path.join(getBkitDocsRoot(), "workflows.md");
@@ -51,5 +57,50 @@ describe("catalog parity — prompts", () => {
   it("every .bkit/prompts/*.md agent is referenced in the prompts.md catalog", () => {
     const missing = PROMPT_NAMES.filter((n) => !index.includes(n));
     expect(missing).toEqual([]);
+  });
+});
+
+// Retired plan agents, steps and file names. Built from parts so this file never names them.
+const REMOVED_PLAN_NAMES = [
+  `bkit-plan-review-${3}`,
+  `bkit-plan-scope-check-${1}`,
+  `bkit-plan-scope-check-${2}`,
+  `plan-apply-${"scope"}`,
+  `step=plan-scope-${"check"}`,
+  `plan-v3-${"checked"}`,
+  `plan-v4-${"split"}`,
+  `bkit-plan-complexity-${"split"}`,
+];
+// History files keep the names they were written with.
+const HISTORY_PATHS = [
+  /^CHANGELOG\.md$/,
+  /^docs\/[^/]+\.jsonl$/,
+  /^docs\/audits\//,
+  /^docs\/plans\//,
+  /^\.bkit\/issues\.jsonl$/,
+  /^scripts\/harvest\/.*\.test\.mjs$/,
+];
+
+/** Each `file: name` where a shipped, non-history file still names a removed plan agent or step. */
+function removedNameHits(root: string): string[] {
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    cwd: root,
+    encoding: "utf-8",
+  })
+    .split("\n")
+    .filter((f) => f && !HISTORY_PATHS.some((re) => re.test(f)));
+  const hits: string[] = [];
+  for (const f of files) {
+    const abs = path.join(root, f);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
+    const text = fs.readFileSync(abs, "utf-8");
+    for (const name of REMOVED_PLAN_NAMES) if (text.includes(name)) hits.push(`${f}: ${name}`);
+  }
+  return hits;
+}
+
+describe("catalog parity — retired plan agents", () => {
+  it("removed plan agents absent", () => {
+    expect(removedNameHits(getPkgRoot())).toEqual([]);
   });
 });

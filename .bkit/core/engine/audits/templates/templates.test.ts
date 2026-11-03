@@ -408,15 +408,32 @@ describe("husky templates — no bkit markers in template content", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Root README workflow guidance
+// Retired lite workflows: the change form, the reference docs and the root README
 // ---------------------------------------------------------------------------
 
-describe("README workflow guidance", () => {
+describe("retired lite guidance", () => {
   const REPO_ROOT = path.resolve(".");
   const readRepo = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
   const README = readRepo("README.md");
 
+  it("the change issue form names no lite workflow", () => {
+    for (const rel of [
+      ".github/ISSUE_TEMPLATE/bkit-change.yml",
+      ".bkit/templates/.github/ISSUE_TEMPLATE/bkit-change.yml",
+    ]) {
+      expect(readRepo(rel)).not.toMatch(/:lite\b|lite\.md|lite workflow/i);
+    }
+  });
+
+  it("the shipped reference docs list no lite doc", () => {
+    const docs = fs.readdirSync(path.join(CORE_ROOT, ".bkit"));
+    expect(docs).not.toContain("lite.md");
+    expect(readRepo(".bkit/core/.agents/docs.md")).not.toMatch(/lite\.md/);
+    expect(readRepo(".bkit/core/.bkit/README.md")).not.toMatch(/lite\.md|:lite\b/);
+  });
+
   it("the root README points small changes at /bkit-build", () => {
+    expect(README).not.toMatch(/:lite\b|lite\.md|\blite workflows?\b/i);
     expect(README).toContain("/bkit-build #N publish=false");
   });
 

@@ -1950,6 +1950,154 @@ describe("branches fast-forward", { timeout: GIT_TIMEOUT }, () => {
 });
 
 describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
+  it.each<{
+    name: string;
+    before: Record<string, string>;
+    after: Record<string, string>;
+    hits: Array<{ file: string; line: number; test: string }>;
+  }>([
+    {
+      name: "does not treat an existing skip in a renamed file as newly disabled",
+      before: {
+        "old.test.ts": "it.skip('existing skip', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      after: { "new.test.ts": "it.skip('existing skip', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [],
+    },
+    {
+      name: "still reports a new skip when its test moves files",
+      before: { "old.test.ts": "it('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it.skip('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "new.test.ts", line: 1, test: "moved" }],
+    },
+    {
+      name: "reports a skip moved onto a different test in the same file",
+      before: {
+        "a.test.ts":
+          "it('enabled', () => {\n  test.skip();\n});\nit('disabled', () => {\n  work();\n});\n",
+      },
+      after: {
+        "a.test.ts":
+          "it('enabled', () => {\n  work();\n});\nit('disabled', () => {\n  test.skip();\n});\n",
+      },
+      hits: [{ file: "a.test.ts", line: 5, test: "disabled" }],
+    },
+    {
+      name: "does not cancel a skip moved between ambiguous same-named tests",
+      before: {
+        "a.test.ts":
+          "describe('A', () => {\n  it('works', () => {\n    test.skip();\n  });\n});\ndescribe('B', () => {\n  it('works', () => {\n    work();\n  });\n});\n",
+      },
+      after: {
+        "a.test.ts":
+          "describe('A', () => {\n  it('works', () => {\n    work();\n  });\n});\ndescribe('B', () => {\n  it('works', () => {\n    test.skip();\n  });\n});\n",
+      },
+      hits: [{ file: "a.test.ts", line: 8, test: "works" }],
+    },
+    {
+      name: "does not spend an unchanged duplicate to conceal deletion",
+      before: {
+        "old.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n",
+        "kept.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      after: { "kept.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "old.test.ts", line: 2, test: "lost" }],
+    },
+    {
+      name: "recognizes a renamed test file",
+      before: { "old.test.ts": "it('keeps coverage', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it('keeps coverage', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [],
+    },
+    {
+      name: "recognizes a suite moved into a different test file",
+      before: { "old.test.ts": "it('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: {
+        "new.test.mjs": "// extracted suite\nit('moved', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      hits: [],
+    },
+    {
+      name: "does not let unrelated additions hide a deleted assertion",
+      before: { "a.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "a.test.ts": "it('unrelated', () => {\n  expect(other).toBe(2);\n});\n" },
+      hits: [{ file: "a.test.ts", line: 1, test: "lost" }],
+    },
+    {
+      name: "attributes deletion to its old test instead of the following test",
+      before: {
+        "a.test.ts":
+          "it('lost', () => {\n  expect(value).toBe(1);\n});\nit('kept', () => {\n  expect(other).toBe(2);\n});\n",
+      },
+      after: { "a.test.ts": "it('kept', () => {\n  expect(other).toBe(2);\n});\n" },
+      hits: [{ file: "a.test.ts", line: 1, test: "lost" }],
+    },
+    {
+      name: "consumes each moved assertion once and identifies the missing occurrence",
+      before: {
+        "old.test.ts":
+          "it('moved', () => {\n  expect(value).toBe(1);\n  expect(value).toBe(1);\n  expect(other).toBe(2);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "it('moved', () => {\n  expect(value).toBe(1);\n  expect(other).toBe(2);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "moved" }],
+    },
+    {
+      name: "does not match identical assertions from unrelated tests across files",
+      before: { "old.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it('unrelated', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "old.test.ts", line: 2, test: "lost" }],
+    },
+    {
+      name: "does not match the same leaf test name in a different suite",
+      before: {
+        "old.test.ts":
+          "describe('parser A', () => {\n  it('rejects invalid input', () => {\n    expect(result).toBe(false);\n  });\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "describe('parser B', () => {\n  it('rejects invalid input', () => {\n    expect(result).toBe(false);\n  });\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "rejects invalid input" }],
+    },
+    {
+      name: "does not match a same-named test with different setup",
+      before: {
+        "old.test.ts":
+          "it('rejects invalid input', () => {\n  const result = parseA('bad');\n  expect(result).toBe(false);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "it('rejects invalid input', () => {\n  const result = parseB('bad');\n  expect(result).toBe(false);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "rejects invalid input" }],
+    },
+    {
+      name: "does not match a same-named test with changed shared setup",
+      before: {
+        "old.test.ts":
+          "beforeEach(() => {\n  result = parseA('bad');\n});\nit('rejects invalid input', () => {\n  expect(result).toBe(false);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "beforeEach(() => {\n  result = parseB('bad');\n});\nit('rejects invalid input', () => {\n  expect(result).toBe(false);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 5, test: "rejects invalid input" }],
+    },
+  ])("scan-diff $name", async ({ before, after, hits }) => {
+    const { clone } = featureBranch("scan-moves");
+    commit(clone, before, "original coverage");
+    for (const file of Object.keys(before).filter((file) => !(file in after)))
+      git(clone, "rm", file);
+    for (const [file, text] of Object.entries(after)) write(clone, file, text);
+    commit(clone, {}, "reorganize coverage");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.json?.disabled).toEqual(hits);
+    expect(r.code).toBe(Number(hits.length > 0));
+  });
+
   it("--paths finds a changed path matching the pattern (exit 0) and names it", async () => {
     const { clone } = featureBranch("scan-paths");
     commit(clone, { "db/migrations/001.sql": "create\n" }, "feat(1-x): migrate");

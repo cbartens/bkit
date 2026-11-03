@@ -69,7 +69,7 @@ import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
-import { declaredName } from "./test-blocks.js";
+import { declaredName, testSource } from "./test-blocks.js";
 import {
   addAllButCopied,
   copyExcludes,
@@ -1481,17 +1481,7 @@ function testAt(body: string | null, line: string, at: number): string {
   return line.trim();
 }
 
-/** The test a removed line sits in when its file is gone: the nearest removed declaration above it. */
-function goneTestAt(lines: Array<{ at: number; text: string }>, at: number, line: string): string {
-  for (let i = lines.length - 1; i >= 0; i--) {
-    if (lines[i]!.at > at) continue;
-    const name = declaredName(lines[i]!.text);
-    if (name !== null) return name;
-  }
-  return line.trim();
-}
-
-const HUNK = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 /**
  * The text of the regular file `rel` names under `root`, or null when it is missing, a
@@ -1512,10 +1502,10 @@ function inRepoFile(root: string, rel: string): string | null {
 }
 
 /**
- * The added lines of a `--no-renames` unified diff that disable a test, and the removed
- * assertion lines of a test file whose added assertion lines no longer outnumber them: each
- * with its line and the test it sits in. A deleted test file reports its removed assertions
- * by their old line, since it has no new file left.
+ * Unmatched disabled markers and removed assertion occurrences in a unified diff.
+ * Exact moves consume one added occurrence; cross-file moves require unchanged test context.
+ * Rewritten assertions pair only inside the same file and test. Removed lines retain their
+ * original test name; a deleted file uses old line numbers, otherwise the new hunk position.
  */
 export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
   const out: DisabledTest[] = [];
@@ -1524,18 +1514,26 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
     if (!bodies.has(rel)) bodies.set(rel, inRepoFile(root, rel));
     return bodies.get(rel)!;
   };
-  /** Added assertion lines per test file, so a rewritten or moved assertion is not a drop. */
-  const added = new Map<string, number>();
-  const removed: Array<{ file: string; line: number; text: string }> = [];
-  /** Removed lines per file, by their old line — the only body a deleted file has left. */
-  const erased = new Map<string, Array<{ at: number; text: string }>>();
-  /** Files the diff deletes: their `+++` is `/dev/null`, so the `---` path names them. */
-  const deleted = new Set<string>();
+  type Occurrence = DisabledTest & { text: string };
+  type Removed = { file: string; line: number; old: number; text: string };
+  type Hunk = { start: number; count: number; lines: string[] };
+  const added: Occurrence[] = [];
+  const removed: Removed[] = [];
+  const addedMarkers: Occurrence[] = [];
+  const removedMarkers: Removed[] = [];
+  const patches = new Map<string, Hunk[]>();
   let file = "";
   let from = "";
+  let deleted = false;
+  let current: Hunk | undefined;
   let next = 0;
   let old = 0;
   for (const raw of diff.split("\n")) {
+    if (raw.startsWith("diff --git ")) {
+      current = undefined;
+      file = "";
+      continue;
+    }
     if (raw.startsWith("--- ")) {
       from = raw.replace(/^--- (a\/)?/, "");
       continue;
@@ -1543,56 +1541,103 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
     if (raw.startsWith("+++ ")) {
       const plus = raw.replace(/^\+\+\+ (b\/)?/, "");
       file = plus === "/dev/null" ? from : plus;
-      if (plus === "/dev/null") deleted.add(file);
+      deleted = plus === "/dev/null";
       continue;
     }
     const hunk = HUNK.exec(raw);
     if (hunk !== null) {
       old = Number(hunk[1]);
-      next = Number(hunk[2]);
+      next = Number(hunk[3]);
+      current = { start: next, count: Number(hunk[4] ?? 1), lines: [] };
+      const hunks = patches.get(file) ?? [];
+      hunks.push(current);
+      patches.set(file, hunks);
       continue;
     }
+    if (current === undefined) continue;
     if (raw.startsWith("+")) {
       const text = raw.slice(1);
       if (TEST_FILE.test(file)) {
-        if (markersFor(file).some((m) => m.test(stripProse(text))))
-          out.push({ file, line: next, test: testAt(body(file), text, next) });
-        if (isAssertion(text)) added.set(file, (added.get(file) ?? 0) + 1);
+        const occurrence = { file, line: next, text, test: testAt(body(file), text, next) };
+        if (markersFor(file).some((m) => m.test(stripProse(text)))) addedMarkers.push(occurrence);
+        if (isAssertion(text)) added.push(occurrence);
       }
       next++;
     } else if (raw.startsWith("-")) {
       const text = raw.slice(1);
+      current.lines.push(text);
       if (TEST_FILE.test(file)) {
-        const lines = erased.get(file) ?? [];
-        lines.push({ at: old, text });
-        erased.set(file, lines);
-        if (isAssertion(text)) removed.push({ file, line: deleted.has(file) ? old : next, text });
+        const occurrence = { file, line: deleted ? old : next, old, text };
+        if (isAssertion(text)) removed.push(occurrence);
+        if (markersFor(file).some((m) => m.test(stripProse(text)))) removedMarkers.push(occurrence);
       }
       old++;
     } else if (raw.startsWith(" ")) {
+      current.lines.push(raw.slice(1));
       next++;
       old++;
     }
   }
-  /** Removed assertions per file, in diff order: a file reports only its net drop. */
-  const drops = new Map<string, Array<{ file: string; line: number; text: string }>>();
-  for (const r of removed) {
-    const list = drops.get(r.file) ?? [];
-    list.push(r);
-    drops.set(r.file, list);
-  }
-  for (const [rel, list] of drops) {
-    const excess = list.length - (added.get(rel) ?? 0);
-    if (excess <= 0) continue;
-    for (const r of list.slice(list.length - excess))
-      out.push({
-        file: r.file,
-        line: r.line,
-        test: deleted.has(rel)
-          ? goneTestAt(erased.get(rel) ?? [], r.line, r.text)
-          : testAt(body(rel), r.text, r.line),
-      });
-  }
+  const oldBodies = new Map<string, string>();
+  const original = (r: Removed): Occurrence => {
+    if (!oldBodies.has(r.file)) {
+      const lines = body(r.file)?.split(/\r?\n/) ?? [];
+      for (const hunk of [...(patches.get(r.file) ?? [])].reverse())
+        lines.splice(Math.max(0, hunk.start - 1), hunk.count, ...hunk.lines);
+      oldBodies.set(r.file, lines.join("\n"));
+    }
+    return { ...r, test: testAt(oldBodies.get(r.file)!, r.text, r.old) };
+  };
+  const contexts = new Map<string, string | null>();
+  const context = (occurrence: Occurrence, before: boolean) => {
+    const key = JSON.stringify([before, occurrence.file, occurrence.test]);
+    if (!contexts.has(key)) {
+      const source = before ? oldBodies.get(occurrence.file) : body(occurrence.file);
+      const lines = source == null ? null : testSource(source, occurrence.test);
+      contexts.set(
+        key,
+        lines === null
+          ? null
+          : lines
+              .filter((line) => stripProse(line).trim() !== "" && !isAssertion(stripProse(line)))
+              .map((line) =>
+                line
+                  .trim()
+                  .replace(
+                    /\b(it|test|suite|describe|context|bench)\.(?:skip|todo|fixme)\b/g,
+                    "$1",
+                  ),
+              )
+              .join("\n"),
+      );
+    }
+    return contexts.get(key)!;
+  };
+  const exact = (a: Occurrence, b: Occurrence) =>
+    a.text.trim() === b.text.trim() &&
+    (a.file === b.file ||
+      (a.test === b.test && context(a, true) !== null && context(a, true) === context(b, false)));
+  const consume = (available: Occurrence[], occurrence: Occurrence, match = exact) => {
+    const index = available.findIndex((candidate) => match(occurrence, candidate));
+    if (index === -1) return false;
+    available.splice(index, 1);
+    return true;
+  };
+  for (const r of removedMarkers)
+    consume(
+      addedMarkers,
+      original(r),
+      (a, b) =>
+        exact(a, b) &&
+        a.test === b.test &&
+        context(a, true) !== null &&
+        context(a, true) === context(b, false),
+    );
+  const drops = removed.map(original).filter((r) => !consume(added, r));
+  for (const r of drops)
+    if (!consume(added, r, (a, b) => a.file === b.file && a.test === b.test))
+      out.push({ file: r.file, line: r.line, test: r.test });
+  out.unshift(...addedMarkers.map(({ file, line, test }) => ({ file, line, test })));
   return out;
 }
 
@@ -1643,7 +1688,7 @@ function scanDiffVerb(ctx: RunContext): number {
     ctx.emit({ found: hits.length > 0, paths: files, disabled: hits });
     if (hits.length > 0)
       ctx.log(
-        `added lines disable tests:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`,
+        `disabled tests or removed assertions:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`,
       );
     return hits.length > 0 ? EXIT.NO : EXIT.OK;
   }
@@ -3409,7 +3454,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "disabled-tests",
           type: "boolean",
-          help: "an added line of a test file disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside a comment or a quoted span, or a test file's removed assertions outweigh the ones that same file adds — a deleted test file included; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+          help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside comments or quotes, or an assertion is removed; matches exact moved occurrences once (unchanged test name, scope and setup across files), and rewritten assertions within the same file and test; unchanged duplicates do not cancel removals; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
         },
         {
           name: "expect-none",
@@ -3421,7 +3466,7 @@ export const branchesCommand: CommandSpec = {
         found: "something matched",
         paths: "the matching paths",
         disabled:
-          "[{file, line, test}]: added lines that disable a test, and removed assertion lines of a test file that no added line re-adds (only with --disabled-tests)",
+          "[{file, line, test}]: unmatched added disabling markers and removed assertion occurrences, attributed to their original test (only with --disabled-tests)",
       },
       exitCodes: {
         [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",
