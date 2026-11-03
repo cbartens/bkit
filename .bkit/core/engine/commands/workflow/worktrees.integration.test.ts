@@ -101,7 +101,8 @@ beforeAll(() => {
   git(template, "init", "-q", "--bare", "-b", "dev", t.origin);
   git(template, "clone", "-q", t.origin, t.seed);
   fs.writeFileSync(path.join(t.seed, "a.txt"), "base\n");
-  git(t.seed, "add", "a.txt");
+  fs.writeFileSync(path.join(t.seed, "package.json"), '{"private":true}\n');
+  git(t.seed, "add", "a.txt", "package.json");
   git(t.seed, "commit", "-q", "-m", "init");
   git(t.seed, "push", "-q", "origin", "HEAD:dev");
   git(template, "clone", "-q", t.origin, t.repo);

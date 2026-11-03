@@ -105,10 +105,12 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 
 The block rules (markers, contexts, self-skip, output bounds) are in the managed block of `.agents/context.md`. Each fetch block bounds its own output at the source, with a window, a severity / level filter, a row / line cap, a page cap or a per-lane tail, because everything it prints is written into an artifact that an agent then reads. A block that bounds nothing downloads a whole-run dump, and only the post-hoc clamp catches it (`bkit check` advises, `context-fetch-unbounded`).
 
+For selected CI, `context fetch --ci-selection-file` supplies the four `BKIT_CI_*` identity inputs listed below and validates the `bkit-ci-evidence` receipt defined in `.agents/context.md`. The receipt follows complete metadata, job and log reads; empty, partial or mismatched evidence stays unchecked. An unpinned block discovers its own source. Consumer-owned blocks remain unchanged on upgrade; Debug adapts a temporary script for the selected identity.
+
 <!-- prettier-ignore -->
 | File | Fits | `context=` | Fetches | Secret / non-secret env | Domains | CLI (provision) |
 | --- | --- | --- | --- | --- | --- | --- |
-| `bkit-github.md` | GitHub Actions | `ci`, `diff` | `ci`: failing run: failed jobs / steps, `::error` annotations, failed-step logs tail-bounded per failed job; `diff`: `git diff --stat` (capped) since the last green CI run on trunk | `GH_TOKEN` / `CI_LOG_TAIL`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
+| `bkit-github.md` | GitHub Actions | `ci`, `diff` | `ci`: exact selected run/attempt, complete identity receipt and bounded logs for every failed job; `diff`: selected failing commit against an ancestral same-workflow green baseline | `GH_TOKEN` / `CI_LOG_TAIL`; optional `BKIT_CI_RUN_ID`, `BKIT_CI_RUN_ATTEMPT`, `BKIT_CI_REPO`, `BKIT_CI_HEAD_SHA`; configured `bkit.testing.ciWorkflow`; `BASELINE_BRANCH`, `BASELINE_WORKFLOW`, `DIFF_STAT_N` (`diff`) | — | `gh` (base tool) |
 | `bkit-playwright.md` | Playwright on GitHub Actions | `e2e` | failing run's report artifact, failing specs first; inlined files, lines and binary paths capped | `GH_TOKEN` / `E2E_ARTIFACT`, `E2E_JOB_RE`, `E2E_MAX_FILES`, `E2E_MAX_LINES`, `E2E_MAX_BIN` | — | `gh` (base tool) |
 | `bkit-maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `bkit-tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |

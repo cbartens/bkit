@@ -554,10 +554,23 @@ See `deployments.md` § Commit-message force tags for the marker mechanics. That
 `/bkit-debug` gates on declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when consumer declares one — appended to Run-Tests (`[live=off]` opt-out); recorded in `TEST_SCOPE`. **`/bkit-build` does not run live tier**, because @live needs deployed URL; validated post-merge by push-only `bkit-tests-live` + reproduced via `/bkit-debug` (never purely local).
 
 - **Build** — local tiers only (`test`); never `test:live`; @live = push-only canary.
-- **Debug** — live boundary iteration 1 (reproduce); diagnose live-tier failure; require fail→pass before close.
+- **Debug** — selected CI evidence is the first round when available; otherwise discover failures through declared local gates. Run local gates after a current-generation fix and require the pushed-head CI proof before closing a CI-only failure.
 - **Soak** (`DEBUG_MODE = SOAK` at start when fix attempts across the feature's debug runs reach `debug.fix.maxAttempts` or `[soak]`, mid-run `Mode: SOAK`, or fix attempts used up) — one instrument-or-fix step / iteration on live boundary, bounded by `debug.soak.maxAttempts` across the feature's debug runs.
 
 No live tier (or `[live=off]`) → Debug degrades to CONCERNS + `testsLiveSkipped` in status.jsonl / close comment — green != "works." bkit has no deploy → CONCERNS by design. Build records no `testsLiveSkipped` — @live out of scope, not skipped.
+
+## Debug CI evidence verification
+
+CI evidence, reproduction and local verification have separate purposes:
+
+1. A validated selected red run supplies the first failure round. Its artifact identifies the exact repository, workflow, run, attempt, commit and generation, and records that no local gate ran. Unavailable reads, missing logs and wrong-branch evidence block diagnosis; they do not establish a clean result.
+2. `[repro]` asks for a failing regression test before remediation, even when CI is already red. The successful reproduction is stored for its generation. A CI reproduction result of NO blocks resolution; an explicit `[local]` clears saved CI selection and restores local discovery.
+3. A DONE remediation or soak result for the active generation enables declared local gates. Known failed tiers guide their order, while `[live=off]` retains its live opt-out. The existing live-skipped warning and CONCERNS behavior still apply.
+4. After the final push, the configured gate and the selected workflow must both pass at the exact pushed head. Original failure and verifying run links remain distinct. Local success alone does not resolve a CI-only failure.
+
+`.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` runs real built CLI commands taken from the Debug workflow against fresh temporary consumers. It exercises selection, durable metadata and resume, exact-attempt context scripts, explicit local and reproduction overrides, generation-specific fixes, conditional local-gate execution, and green or red pushed-head verification. The fixture replaces remote CI reads and agent-produced reports; it uses the actual selection, context validation, status fold and gate evaluation.
+
+Run the focused integration file with `pnpm bkit:test:file .bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`, then the complete `pnpm bkit:gate:static-unit-integration` and `pnpm bkit check`. Release dogfood also installs the built package into a scratch consumer under `tmp/` and inspects its metadata, artifacts and host files. Historical run replay is reported separately as available or unavailable; missing history or expired logs are never a passing smoke result.
 
 ## Consumer-runtime parity rule
 

@@ -30,6 +30,7 @@ import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table
 import { substituteWorkflow } from "../render/trackers.js";
 import { parseJson } from "../shared/json.js";
 import { getWorkflowsRoot } from "../shared/package-roots.js";
+import { ciRoundMatches } from "../ledgers/status.js";
 // ---------------------------------------------------------------------------
 // Canonical ship step order (mirrors audits/workflows/ship-invariants.test.ts
 // CANONICAL_SHIP_STEP_KEYS — the frozen schema). The detector cross-checks its
@@ -518,6 +519,69 @@ export function check(rows, contract, options = {}) {
         }
     });
     const evidenceHoles = [];
+    if (workflow === "debug") {
+        rows.forEach((stepRow, position) => {
+            if (stepRow.type === "step-done" &&
+                stepRow.workflow === "debug" &&
+                stepRow.step === "context-fetch") {
+                const prior = rows.slice(0, position);
+                const previous = prior
+                    .map((r, i) => (r.type === "step-done" || r.type === "workflow-started" ? i : -1))
+                    .filter((i) => i >= 0)
+                    .at(-1) ?? -1;
+                const start = prior
+                    .map((r, i) => (r.type === "workflow-started" ? i : -1))
+                    .filter((i) => i >= 0)
+                    .at(-1) ?? -1;
+                const history = prior.slice(start + 1);
+                const meta = [...history]
+                    .reverse()
+                    .find((r) => r.type === "workflow-meta" && r.workflow === "debug" && r.ciSelection !== undefined);
+                const ci = history.some((r) => r.type === "test-run" &&
+                    r.workflow === "debug" &&
+                    ciRoundMatches(r, meta?.ciSelection, meta?.ciGeneration));
+                if (ci &&
+                    !prior
+                        .slice(previous + 1)
+                        .some((r) => r.type === "engine-call" && r.noun === "context" && r.verb === "fetch"))
+                    evidenceHoles.push({
+                        step: "context-fetch",
+                        number: unitOf.get("context-fetch")?.number ?? 2,
+                        index: 1,
+                        missing: [{ noun: "context", verb: "fetch", flags: ["context"] }],
+                    });
+            }
+            if (stepRow.type !== "step-done" ||
+                stepRow.workflow !== "debug" ||
+                stepRow.step !== "debug-run-tests" ||
+                stepRow.source !== "ci")
+                return;
+            const prior = rows.slice(0, position);
+            const start = prior
+                .map((r, i) => (r.type === "workflow-started" ? i : -1))
+                .filter((i) => i >= 0)
+                .at(-1) ?? -1;
+            const history = prior.slice(start + 1).reverse();
+            const meta = history.find((r) => r.type === "workflow-meta" && r.workflow === "debug" && r.ciSelection !== undefined);
+            const round = history.find((r) => r.type === "test-run" &&
+                r.workflow === "debug" &&
+                r.step === "debug-run-tests" &&
+                r.attempt === stepRow.attempt);
+            if (!round ||
+                !ciRoundMatches(round, meta?.ciSelection, meta?.ciGeneration) ||
+                stepRow.scope !== round.scope ||
+                stepRow.verdict !== "FAIL" ||
+                stepRow.ciGeneration !== meta?.ciGeneration ||
+                !Array.isArray(stepRow.artifacts) ||
+                !stepRow.artifacts.includes(round.artifact))
+                evidenceHoles.push({
+                    step: "debug-run-tests",
+                    number: unitOf.get("debug-run-tests")?.number ?? 1,
+                    index: 1,
+                    missing: [{ noun: "tests", verb: "run", flags: ["ci-run"] }],
+                });
+        });
+    }
     const occurrence = new Map();
     const exercised = new Map();
     for (const v of visits) {

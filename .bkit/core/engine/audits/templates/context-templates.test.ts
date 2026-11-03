@@ -207,11 +207,13 @@ describe(".bkit/templates/context/", () => {
     }
   });
 
+  // bkit-github.md's `context=ci` block names its workflow before `--branch`, so the migration
+  // scopes an older copy's `RUN_JSON` lookup in place but cannot produce the current block.
   it("the upgrade migration turns each shipped unscoped lookup into the template's lines", () => {
     const scopedFiles = files.filter(
       (f) => runLookups(fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8")).length > 0,
     );
-    expect(scopedFiles).toEqual(["bkit-github.md", "bkit-maestro.md", "bkit-playwright.md"]);
+    expect(scopedFiles).toEqual(["bkit-maestro.md", "bkit-playwright.md"]);
     for (const f of scopedFiles) {
       const current = fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8");
       const old = current

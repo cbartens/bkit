@@ -2831,7 +2831,7 @@ Do not enter **Failure Path** for the recovered denial.
 - workflow: where-used
 - block: contract
 - anchored: yes
-- carriers: workflow all except `bkit-auto`
+- carriers: workflow all except `bkit-auto`, `bkit-debug`
 
 ```text
 **Resume:** After Step 2, {{when?}}`"{BKIT}" status resume --workflow={{workflow}} --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`.
@@ -6178,7 +6178,7 @@ Final return displayed
 ### workflow-final-return
 
 - workflow: where-used
-- carriers: workflow all except `bkit-auto`
+- carriers: workflow all except `bkit-auto`, `bkit-debug`
 
 ```text
 Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke.
@@ -9566,7 +9566,7 @@ Run context recovered
 [tracker-issue-creation] Never pass a bare `FID` or bare number: the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
 [workflows-commands] Invoke the matching phase skill with the `Skill` tool, then exit.
 `PHASE` = `ship` → `/bkit-ship {FID} {REF}`
-`PHASE` = `debug` → `/bkit-debug {FID} {REF}`
+`PHASE` = `debug` → `/bkit-debug {FID} {REF} https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID}` when `RUN_ID` is held; otherwise `/bkit-debug {FID} {REF}`.
 `PHASE` = `design` → `/bkit-design {REF}`
 `PHASE` = `plan` → `/bkit-plan {REF}`
 `PHASE` = `build` → `/bkit-build {REF}`
@@ -9858,6 +9858,20 @@ PR created
 - source: `.bkit/core/workflows/bkit-debug.md`
 
 ```text
+**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`.
+Hold `branch` as `NAMED_BRANCH`; `{BRANCH_FLAG}` = `--branch="{NAMED_BRANCH}"` when non-null, else empty. Exit 3 or 8 → **STOP** with the missing or ambiguous branch and ask the owner to name one existing branch; no tests or edits.
+Resolve evidence before any downstream resume. `{CI_SELECTION_FILE}` = `{OUTBOX}/ci-selection.json`, outside the disposable session directory. Read the old generation before changing metadata:
+**If** exit 1 → the validated selection explicitly chooses local discovery or proves no red run; clear the held CI identity.
+**If** exit 80 → use the existing mapped metadata/jobs read fallback, retaining the printed request identity, exact repository, attempt, workflow and commit. Write its normalized `request`, `run`, complete `jobs` and `complete: true` to `{OUTBOX}/ci-evidence.json`; rerun the same `runs locate` command with `--evidence-file="{OUTBOX}/ci-evidence.json"`. Record the transport with `prs transport-row`. Never substitute local discovery for unavailable reads.
+**If** exit 8 or 82 → record `status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=decision`, release the workflow lock, and **STOP**, naming the ambiguous references, branch conflict or unavailable evidence and its reference. Record `owner-answer` before retrying after an owner reply.
+**Else**, or fallback still unavailable → **Failure Path** with the unresolved evidence reference.
+With selected CI, adapt legacy blocks only in this temporary script to honor all selection pins and emit the identity receipt plus complete nonempty logs. A mapped fallback writes normalized metadata/job/log evidence through the same `context fetch` validator. Require `outcome: checked` for the selected CI block collected in this generation; unchecked, skipped, missing, partial or mismatched CI evidence → **Failure Path** before diagnosis. Older context artifacts cannot satisfy this check.
+**If** CI is selected **and** `REPRO` = true **and** `CI_REPRODUCED` != true → Step 5 once for this generation, including a CI evidence FAIL.
+**If** `REPRODUCED` = YES and CI is selected → set `CI_REPRODUCED` = true → Step 8 in SOAK, else Step 6.
+**If** `REPRODUCED` = NO and CI is selected → **Failure Path** with the reproduction blocker; no successful Summary.
+**If** exit 11 → the selected workflow is still running; poll the same exact-head gate once per turn, for at most six turns, retaining its workflow ID/path from the selection. Exhaustion → **Failure Path**.
+**Else**, including a red, skipped, cancelled, absent or unavailable verification → **Failure Path**, naming the original and verifying evidence. A green configured workflow alone does not resolve a different selected workflow.
+Final return: display `{FINAL_RETURN}` verbatim. With selected CI, append `Original failure: {CI_RUN_URL} (run {CI_RUN_ID}). Verification: {VERIFY_RUN_URL} (run {VERIFY_RUN_ID}).` after the successful pushed-head checks. Do not auto-invoke.
 **Scope:** Fix the feature's failures, and push the fixes to its branch.
 **Modes:** Step 1 decides `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`). `DEBUG_MODE` selects the fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, in either mode. A run starts in `SOAK` on `[soak]`, on an open run already soaking, or once the feature's runs hold `debug.fix.maxAttempts` Remediate rows. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the fix attempts are used up. `SOAK` is terminal.
 **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
@@ -9896,7 +9910,8 @@ Repro decided
 Open the run inside the worktree:
 Record the runtime and the run's modes, then finish:
 Runtime row written and asserted
-Run the deepest declared gate. It writes the trimmed log to the artifact. `{GATE_FLAGS}` = one `--gate=<name>` per `GATES` entry, in order:
+Derive this run's next test round independently of `{DEBUG_ATTEMPT}`, which numbers workflow runs:
+Hold `value` as `NORMAL_ATTEMPT`. Exit non-zero → **Failure Path**.
 **If** `TEST_VERDICT` = PASS → route on the fix and reproduce rows in the active run:
 **If** exit 1 **and** it printed `step-9` → Step 9.
 **If** exit 1 **and** it printed `step-10` → Step 10.
@@ -9906,14 +9921,15 @@ Run the deepest declared gate. It writes the trimmed log to the artifact. `{GATE
 **If** exit 1 (it printed `soak-escalation`: the fix attempts are used up) → record the switch → `DEBUG_MODE` = SOAK → sub-step 5:
 **If** `TEST_VERDICT` = FAIL **and** `DEBUG_MODE` = SOAK → route on soak attempts across the feature's debug runs:
 **If** exit 1 **and** `LOOP_ASK` = true → `debug.soak.maxAttempts` is used up, so the owner decides: `LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`, `LOOP_LIMIT` = true → **Loop Question** → Step 4.
-Tests executed (`tests run`)
-[debug-on-demand] Live fail-then-pass observed
+Current evidence round or local tests recorded (`tests run`)
+Current round artifact checked
+[debug-on-demand] Selected CI fail-then-pass proved at the pushed head, when selected
 [external-context-first] Reset the clamp log, then enumerate every `context-fetch` block after `<!-- bkit:end -->` in `.agents/context.md` and narrate coverage per context before fetching:
 [provider-data] **For each** entry in `FETCH_BLOCKS` (`{IDX}` = its `idx`):
 Take its `body` as the starting template, and customise it for the failure (severity, freshness, limit, query, filters).
 **If** `{DEBUG_ATTEMPT}` > 1 → vary the customisations from prior attempts.
 Run it through the block below. The block writes stdout fenced as the context artifact (a JSON list of flat rows as a table), or else the `[context-fetch:<name>]` skip breadcrumb:
-[honest-reporting; command-output] Confirm the local-test artifact Step 3 captured. Do not re-run the tests here:
+[honest-reporting; command-output] Confirm the current Step 3 artifact. When `TEST_SOURCE` = ci, narrate the selected identity and that no local gate executed; do not label it local output. Otherwise confirm the local-test artifact. Do not re-run the tests here:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md` is non-empty → narrate `[bkit-debug] local test output CHECKED — captured by Step 3`.
 [empty-is-inconclusive] **Else** → narrate `[bkit-debug] local test output MISSING — Step 3 captured nothing; treat local-test evidence as unavailable, never as clean`.
 [commits] Record the step — verdict, the non-empty `context-*-{DEBUG_ATTEMPT}.md` artifacts, the contexts configured, the clamp records — commit, and print the comment:
@@ -9921,10 +9937,10 @@ Run it through the block below. The block writes stdout fenced as the context ar
 Context-fetch blocks enumerated and coverage narrated
 Context-fetch blocks run and outcomes narrated
 [commits] Finish — commits the test:
-[reproduce-first] **If** `REPRODUCED` = YES → Step 3.
+[reproduce-first] **If** `REPRODUCED` = YES on the local path → Step 3.
 → Step 3.
 → Step 3.
-**If** `REPRODUCED` = NO → Step 10.
+**If** `REPRODUCED` = NO on the local path → Step 10.
 Read the strategy ladder from status.jsonl:
 **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → record the switch → `DEBUG_MODE` = SOAK → Step 8:
 Strategy computed
@@ -9950,10 +9966,12 @@ Mirrors the roadmap row to `dev`.
 Closes the run (telemetry, report, artifact links) and commits it.
 [fit `workflow-exit-0` 0.60; keep: routes on exit 10, not exit 0] **If** exit 10 → **Foreign path**.
 **If** `BRANCH` != `dev`:
+**If** exit 0 **and** `pushed` = true **and** `sha` non-empty → hold `sha` as `VERIFY_HEAD`.
+**Else** → **Failure Path** with the missing pushed verification head.
 **If** `BRANCH` = `dev`:
 [workflow-pushes] Push ONLY the run's own commits, and keep the lock:
 **If** exit 0 **and** `skipped` null → hold `sha` as `DEV_SHA` (never the local HEAD); `BRANCH` = `dev` → `{CLOSE_PARENT}` = `{DEV_SHA}`; `DEV_PUSHED` = true.
-**If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false.
+**If** exit 0 **and** `skipped` = `no-run-commits` → narrate `[bkit-debug] dev push: every run commit is already on origin/dev; nothing pushed, no CI run to gate` → `DEV_PUSHED` = false. With a saved CI selection and no held pushed SHA, take **Failure Path** with the missing verification reference.
 **If** exit 8 (push failed or refused), exit 10 (fetch failed), exit 11 (replay conflict, the conflicting paths printed) or exit 20 (the run's record is gone, nothing pushed) → **Failure Path**.
 [name-the-suites-you-ran] **If** `{PR_OPEN}` = 0 → record the close row and audit the landed commit. `{LIVE_SKIPPED}` = `--field="testsLiveSkipped=No live tests ran, runtime-only defects not gated (not declared or opted out)."` when `TEST_SCOPE` lacks `live`, else empty:
 Set `TRIGGER_PR`:
@@ -9963,7 +9981,7 @@ Set `TRIGGER_PR`:
 **If** `TRIGGER_PR` = 1 → create or adopt the PR (its body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present). `--existing=reuse` adopts a PR that appeared since sub-step 1:
 **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
 [code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
-**Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev`.
+**Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
 **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
@@ -9971,6 +9989,7 @@ Set `TRIGGER_PR`:
 [fit `workflow-verdict-fail` 0.67; keep: fails on a missing CI run, not on a FAIL verdict] **If** `result` != `found` → **Failure Path**.
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).
+With a saved CI selection, require fail-then-pass proof after the final push and applicable dispatch, before a success comment or final return. Keep the original `CI_RUN_ID`/`CI_RUN_URL` unchanged. On `dev`, set `VERIFY_HEAD` = `DEV_SHA`; other branches keep the exact head held from their final successful push or dispatch, including `main` without a PR. **If** `VERIFY_HEAD` is empty or not held → **Failure Path** with the missing pushed verification head. Wait for the configured workflow at that exact head:
 **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
 PR title `[verbose ci]` stripped
 Auto-label presence re-read

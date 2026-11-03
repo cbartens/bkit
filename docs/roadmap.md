@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-02T16:26:54Z)_
+_(refreshed 2026-11-03T02:18:04Z)_
 
 ### Design
 
@@ -31,6 +31,7 @@ _(refreshed 2026-11-02T16:26:54Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793515836097 |
+| 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793609906429 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 
@@ -43,8 +44,8 @@ _(refreshed 2026-11-02T16:26:54Z)_
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
-| 825-show-progress-bar | 825-show-progress-bar | 1793615665496 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
+| 836-record-host-model | 836-record-host-model | 1793671481372 |
 
 ### Build
 
@@ -52,18 +53,21 @@ _(refreshed 2026-11-02T16:26:54Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793603451032 |
-| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793636814106 |
+| 825-show-progress-bar | 825-show-progress-bar | 1793672284602 |
 
 ### Debug
 
-_(none)_
+<!-- prettier-ignore -->
+| FID | Title | Last-transition (ts) |
+| --- | --- | --- |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793662389773 |
 
 ### Shipped _(last 10)_
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
@@ -73,7 +77,6 @@ _(none)_
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
 | 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
-| 384-ship-bookkeeping | Ship bookkeeping mutated the validated PR head | 1785303519000 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
