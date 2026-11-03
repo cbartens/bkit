@@ -23,9 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T02:18:04Z)_
-_(refreshed 2026-11-02T16:26:54Z)_
-_(refreshed 2026-11-02T23:33:09Z)_
+_(refreshed 2026-11-03T04:45:46Z)_
 
 ### Design
 
@@ -56,20 +54,17 @@ _(refreshed 2026-11-02T23:33:09Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793672284602 |
-| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793636814106 |
 
 ### Debug
 
-<!-- prettier-ignore -->
-| FID | Title | Last-transition (ts) |
-| --- | --- | --- |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793662389773 |
+_(none)_
 
 ### Shipped _(last 10)_
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
 | 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
@@ -79,7 +74,6 @@ _(refreshed 2026-11-02T23:33:09Z)_
 | 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 | 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 | 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
-| 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
