@@ -12,7 +12,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 import { parseText } from "../../shared/text";
+
+useGateRunner();
 
 const DEFAULT_FID = "999-close-squash";
 const FID = DEFAULT_FID;
@@ -77,12 +80,10 @@ function initFixture(
   write(path.join(repo, ".gitignore"), ".worktrees/\nnode_modules/\ndocs/plans/*/logs/**/.lock\n");
   write(path.join(repo, "docs/roadmap.md"), "# Roadmap\n");
   write(path.join(repo, "src/app.ts"), "export {};\n");
-  if (opts.tracker !== undefined) {
-    write(
-      path.join(repo, "package.json"),
-      JSON.stringify({ bkit: { tracker: { default: opts.tracker } } }),
-    );
-  }
+  write(
+    path.join(repo, "package.json"),
+    JSON.stringify({ ...gatePackage, bkit: { tracker: { default: opts.tracker } } }),
+  );
   const docPath = `docs/plans/${MONTH}/${FID}-${workflow}.md`;
   if (opts.docOnDev !== undefined) write(path.join(repo, docPath), opts.docOnDev);
   git(repo, "add", "-A");

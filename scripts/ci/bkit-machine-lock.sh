@@ -248,7 +248,7 @@ _local_stack_lock() {
         print STDERR "[machine-lock] ⏳ $who is waiting for $label$so_far (up to ${wait_s}s): in use by " . $holder->() . "\n";
         $next_note = time + 60;
       }
-      sleep 1;
+      select(undef, undef, undef, 0.1);
     }
     my $stopping = 0;
     $SIG{TERM} = $SIG{INT} = $SIG{HUP} = sub { $stopping = 1 };
@@ -259,7 +259,7 @@ _local_stack_lock() {
     }
     print $out "ok\n";
     close $out;
-    sleep 1 while !$stopping && $caller_alive->();
+    select(undef, undef, undef, 0.1) while !$stopping && $caller_alive->();
     if (length $name) {
       # Serialize history updates across slots; the portable shell replaces just this checkout row.
       my $history_lock;

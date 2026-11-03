@@ -5,10 +5,12 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 
 vi.setConfig({ testTimeout: 30_000 });
+useGateRunner();
 
 const FID = "825-progress";
 const MONTH = "202611";
@@ -63,6 +65,7 @@ function repo(workflow = "build", limits: Record<string, { ask: boolean; max: nu
     cwd,
     "package.json",
     JSON.stringify({
+      ...gatePackage,
       name: "progress-fixture",
       private: true,
       bkit: { tracker: { default: "none" } },

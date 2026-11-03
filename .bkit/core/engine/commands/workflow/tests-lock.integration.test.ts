@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { useGateRunner } from "../../../../../vitest.gate-fixture";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 
@@ -35,6 +36,8 @@ let cache: string;
 let eventsFile: string;
 let env: NodeJS.ProcessEnv;
 let children: ChildProcess[];
+
+useGateRunner();
 
 function git(...args: string[]): void {
   const result = spawnSync(
@@ -78,7 +81,17 @@ beforeEach(() => {
   fs.mkdirSync(path.join(cwd, "scripts", "ci"), { recursive: true });
   fs.mkdirSync(path.join(cwd, "src"));
   fs.copyFileSync(TEMPLATE, path.join(cwd, "scripts", "ci", "bkit-machine-lock.sh"));
-  fs.writeFileSync(path.join(cwd, ".gitignore"), "logs/\n");
+  fs.copyFileSync(
+    path.resolve("scripts/ci/bkit-test-awake.mjs"),
+    path.join(cwd, "scripts", "ci", "bkit-test-awake.mjs"),
+  );
+  fs.mkdirSync(path.join(cwd, "node_modules"));
+  fs.symlinkSync(
+    fs.realpathSync(path.resolve("node_modules/cross-spawn")),
+    path.join(cwd, "node_modules", "cross-spawn"),
+    "dir",
+  );
+  fs.writeFileSync(path.join(cwd, ".gitignore"), "logs/\nnode_modules/\n");
   fs.writeFileSync(
     path.join(cwd, "package.json"),
     JSON.stringify({
@@ -217,9 +230,13 @@ const events = (): GateEvent[] =>
         .map((line) => JSON.parse(line) as GateEvent)
     : [];
 
-/** Replace the gate's work with a fixture while retaining its actual lock prefix. */
+/** Replace the gate's work while retaining its sleep-prevention and lock wrappers. */
 function gatePrefix(value: string): string {
-  return value.match(/^bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /)?.[0] ?? "";
+  const prefix = value.match(
+    /^node scripts\/ci\/bkit-test-awake\.mjs bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /,
+  )?.[0];
+  if (!prefix) throw new Error(`Gate wrappers missing: ${value}`);
+  return prefix;
 }
 
 describe("tests lock through a consumer's wrapped gate", () => {

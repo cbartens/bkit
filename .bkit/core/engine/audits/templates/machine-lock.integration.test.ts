@@ -285,7 +285,7 @@ describe("machine lock slots, order and wait budgets", () => {
     const killedAt = Date.now();
     holder.child.kill("SIGKILL");
     await waitForOutput(waiter, "entered");
-    // A one-second poll may straddle two scheduler ticks; allow one extra polling tick.
+    // Holder detection and waiter acquisition must both fit within the handoff budget.
     expect(Date.now() - killedAt).toBeLessThan(2000);
     expect((await waiter.done).status).toBe(0);
   });
