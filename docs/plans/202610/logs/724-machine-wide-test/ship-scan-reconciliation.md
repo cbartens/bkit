@@ -6,7 +6,9 @@
 
 ## Result
 
-All 107 findings are accounted for: 94 assertions have surviving coverage, 12 findings are resolved by restoring their original guards, and one unused-fixture existence check is intentionally retired. The restorations add eight test cases and restore one assertion to an existing case across five files. No assertions were weakened.
+All 107 original findings are accounted for: 95 assertions have surviving coverage and 12 findings are resolved by restoring their original guards. None is retired. The restorations add eight test cases and restore one assertion to an existing case across five files. No assertions were weakened.
+
+The fresh source review supersedes the earlier count of 94 surviving, 12 restored and one retired. B105 is preserved by an enabled upgrade test that directly consumes the live fixture; the cleanup approved removing its unused manifest and redundant existence check, not the fixture directory.
 
 The reviewed comparison is `origin/dev` at `3d1b8f1e8ee7b1833edd5ecba33da2dfa47280e8` against HEAD `8543394a21a5e65de7f97c8fcc1d737e1562a3e6`. The repository is not shallow. Every removed assertion was read from this comparison, including both deleted files in full. The original reported names and coordinates remain unchanged in `ship-deferred-sweep.md`; this table uses the actual assertion because the scanner sometimes labels deletions with an adjacent test.
 
@@ -149,7 +151,7 @@ C:121–135 enumerates and executes every shipped standalone test file as a real
 | B102 | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:1086` | Restored | All shipped prompt/workflow lines exclude lite workflow spellings. | Restored the original full directory scan and assertion in W:1095–1115. |
 | B103 | `.bkit/core/engine/commands/workflow/steps.test.ts:918` | Survives | ROW_FIELDS excludes the three removed challenge steps. | S:912–915 requires exact equality between ROW_FIELDS and all current workflow row-writing calls. None uses the removed steps. Reintroducing an obsolete table entry produces an extra key and fails this assertion. |
 | B104 | `.bkit/core/engine/commands/workflow/steps.test.ts:929` | Survives | Ledger writer lists exclude the three removed challenge agents. | S:919–929 requires every configured writer to have a real prompt file. The three removed agents have no prompt files, so each obsolete reference fails the surviving assertion. |
-| B105 | `.bkit/core/engine/install/write.integration.test.ts:44` | Retired | Unused heavy-customised-consumer fixture directory exists. | Cleanup plan Task 2 specifically authorizes deletion of this unused fixture manifest; commit 1d458933f removes it. The fixture was not consumed by the surrounding behavior tests. I:45–75 preserves actual Stop-hook/custom-key checks; I:103–172 preserves provider customization and idempotence. |
+| B105 | `.bkit/core/engine/install/write.integration.test.ts:44` | Survives | The heavy-customised-consumer fixture directory exists. | `.bkit/core/engine/commands/install/upgrade.integration.test.ts:146`, `does not silently overwrite consumer drift in --non-interactive mode`, copies the same fixture at lines 64–66, directly reads `cursor-hooks.json` at line 169 and asserts exact preserved content at line 170. A missing directory or fixture fails this enabled test. |
 | B106 | `.bkit/core/engine/tools/instructions-sources.test.ts:174` | Restored | Rules/prompts exclude historical next:*:lite labels and lite paths. | Restored the original rules/prompt scan and assertion in .bkit/core/engine/tools/instructions-sources.test.ts:175–184. |
 | B107 | `.bkit/core/engine/tools/instructions-sources.test.ts:174` | Restored | Clause store excludes historical lite text outside retired fences. | Restored the original clause-store scan and assertion in .bkit/core/engine/tools/instructions-sources.test.ts:187–190. |
 
@@ -170,5 +172,5 @@ After restoring the guards, a fresh `pnpm exec vitest run` passed all six affect
 
 ## Remaining work
 
-The scanner must distinguish verified relocation and reviewed semantic deduplication or retirement from unexplained removal. The original FAIL is not silently changed by this report. Scanner regression verification, a fresh scan against the then-current base, and the ship gates belong to the parent task. The 12 restored findings require no exception; their original assertions are present again.
+The scanner now distinguishes exact relocation from unexplained removal, and the fresh scan reports 95 candidates with preserved coverage and no retired or blocked candidates. The 12 restored findings no longer appear because their original assertions are present again. The original FAIL and earlier verification above remain historical evidence; the fresh ship sweep supplies the current disposition.
 
