@@ -28,3 +28,11 @@ Reviewed the updated plan's Task 5, refreshed capped diff and complete 187-line 
 The saved soak and challenge values are converted to numbers and accepted only as positive safe integers before formatting. Cross-run remediation counting remains restricted to DONE rows for the same workflow in the supplied feature status file. These changes affect displayed progress; they do not grant allowances or change authorization, execution limits, persisted completion fields, subprocess arguments or filesystem destinations. No additional dependency or installation surface changed. No new security finding was established against `docs/security.md` or the documented progress contract.
 
 The three new regression tests were inspected for their counter-context assertions and unchanged persisted row values. No additional suite was run in round 2; the focused round-1 verification above remains the independently executed test evidence.
+
+## Build Run 2 — After Rebase
+
+Reviewed at `6e73cf21c` against the prior reviewed state `3312953f7`, using the refreshed aggregate diff and scoped source diffs. Partial diff coverage remains: this pass reviews the feature and its upstream interactions, not every unrelated upstream change. The plan, progress integration tests, formatter, allowance helper, dependency manifests, skill lock and security contract are unchanged from the prior state.
+
+Inspected upstream changes in the shared status ledger, step completion, context finalisation and CI dispatch/gate module. The new CI-selection and evidence validation remains before completion writes; progress does not turn a rejected CI completion into an accepted one. CI identity fields and fetched evidence do not enter the progress string. Status-row identity changes and cross-run reads preserve the feature-file/workflow scope used by numeric progress calculations. The rebased wrapper diffs continue to forward only the derived progress string without introducing a subprocess, network destination or new persistence field. No confirmed security finding arose from these interactions.
+
+No additional tests were run in this pass; the orchestrator owns the full post-rebase gate. Earlier executed tests are recorded above as prior-state evidence, not as a claim that the rebased tree passed them. Only this report was updated.
