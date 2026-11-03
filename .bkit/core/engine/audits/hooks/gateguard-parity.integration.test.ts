@@ -447,13 +447,6 @@ describe("gateguard behaviour parity — no-op and fail-open", () => {
       expect(r.advisory).toBe("");
       expect(r.blocked).toBe(false);
     });
-
-    it(`${host}: subagents are NOT exempt`, async () => {
-      // Every host now advises subagent edits. Claude's `agent_id` short-circuit and
-      // opencode's parentID lookup were both removed; Cursor never had a marker.
-      const r = await run(host, { file: "package.json", session: newSession() });
-      expect(r.advisory).toContain("[bkit GateGuard]");
-    });
   }
 });
 

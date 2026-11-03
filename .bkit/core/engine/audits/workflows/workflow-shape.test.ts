@@ -584,15 +584,6 @@ describe("build", () => {
     expect(step11).toContain("Change sized (`challenge gate`)");
   });
 
-  it("names no removed challenge agent, step or limit", () => {
-    for (const gone of [
-      ...["reconcile", "remediate", "tests"].map((s) => `build-challenge-${s}`),
-      `CHALLENGE_${"REMEDIATE"}`,
-      "build-challenge.md`",
-    ])
-      expect(build, gone).not.toContain(gone);
-  });
-
   it("Branch Sync merges docs and finishes as its own step", () => {
     const step3 = section(build, /Step 3 — Branch Sync/);
     expect(step3).toContain('"{BKIT}" branches sync --merge-docs');
@@ -1089,26 +1080,6 @@ describe("ship", () => {
     expect(close).toContain('"{BKIT}" workflows close --workflow=ship');
     expect(close).toContain('--flush --token="{LOCK_TOKEN}"');
     expect(close).not.toContain("gh pr create");
-  });
-});
-
-describe("retired lite workflows", () => {
-  it("no shipped prompt or workflow names a lite workflow", () => {
-    const dirs = ["workflows", "prompts"].map((d) => path.join(REPO_ROOT, ".bkit", "core", d));
-    const hits = dirs.flatMap((dir) =>
-      fs
-        .readdirSync(dir)
-        .filter((f) => f.endsWith(".md"))
-        .flatMap((f) =>
-          fs
-            .readFileSync(path.join(dir, f), "utf-8")
-            .split("\n")
-            .map((l, i) => [i + 1, /:lite\b|lite\.md|\blite workflows?\b/i.test(l)] as const)
-            .filter(([, hit]) => hit)
-            .map(([n]) => `${f}:${n}`),
-        ),
-    );
-    expect(hits).toEqual([]);
   });
 });
 

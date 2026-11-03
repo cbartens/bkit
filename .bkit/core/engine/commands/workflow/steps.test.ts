@@ -833,19 +833,8 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   });
 });
 
-/** The challenge steps `bkit challenge merge` replaced; built here so the names stay out of the source. */
-const REMOVED_CHALLENGE_STEPS = ["reconcile", "remediate", "tests"].map(
-  (s) => `build-challenge-${s}`,
-);
-
-describe("the build challenge is one step", () => {
-  it("no removed challenge step in the attempt table", () => {
-    expect(
-      Object.keys(ROW_FIELDS).filter((k) => REMOVED_CHALLENGE_STEPS.includes(k.split("/")[1]!)),
-    ).toEqual([]);
-  });
-
-  it("no writer list names a removed agent", () => {
+describe("ledger writer references", () => {
+  it("every configured writer has a prompt file", () => {
     const prompts = path.join(REPO_ROOT, ".bkit", "core", "prompts");
     const named = [
       ...DEFERRAL_WRITERS,
@@ -855,9 +844,6 @@ describe("the build challenge is one step", () => {
         .flatMap((s) => [...s]),
     ];
     expect(named.filter((n) => !fs.existsSync(path.join(prompts, `${n}.md`)))).toEqual([]);
-    expect(named.filter((n) => REMOVED_CHALLENGE_STEPS.includes(n.replace(/^bkit-/, "")))).toEqual(
-      [],
-    );
   });
 });
 

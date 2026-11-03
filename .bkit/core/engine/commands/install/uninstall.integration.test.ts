@@ -47,12 +47,12 @@ function makeCtx(overrides: Partial<UninstallContext> = {}): UninstallContext {
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-surgical-test-"));
 
-  // Write .bkit-version (no hashes → preserve every hash-guarded file)
+  // Write .bkit/version (no hashes → preserve every hash-guarded file)
   const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(
     versionFilePath,
-    serializeBkitVersion({ pinnedVersion: "0.6.0", canonicalHashes: {}, claudeAllowDerived: [] }),
+    serializeBkitVersion({ pinnedVersion: "5.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
     "utf-8",
   );
 

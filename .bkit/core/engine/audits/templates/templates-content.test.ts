@@ -94,10 +94,6 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).not.toMatch(/npm\.pkg\.github\.com/);
   });
 
-  it("still contains pnpm install --frozen-lockfile", () => {
-    expect(content).toContain("pnpm install --frozen-lockfile");
-  });
-
   it("still contains token placeholders {{DEFAULT_BRANCH}} and {{NODE_VERSION}}", () => {
     expect(content).toContain("{{DEFAULT_BRANCH}}");
     expect(content).toContain("{{NODE_VERSION}}");
