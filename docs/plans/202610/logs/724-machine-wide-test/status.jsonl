@@ -535,3 +535,8 @@
 {"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-03T09:45:46Z","parentSha":"1821f8475289e0e6afab1434fc81e6d7e4f0ee3d","artifacts":[]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T09:45:51Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-03T09:45:51Z","parentSha":"1821f8475289e0e6afab1434fc81e6d7e4f0ee3d","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-input-3.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T09:46:06Z","noun":"counters","verb":"grant","flags":["name","of","point","file","workflow"]}
+{"type":"allowance-granted","workflow":"build","at":"2026-11-03T09:46:06Z","point":"build.tests","value":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T09:46:11Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-decision/-/1/comment","hash":"ca01947ba198032b2928dd56f33ec0aa5e898c5e1f5781f887e86e4c75bae8cf","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6600344988","at":"2026-11-03T09:46:12Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-03T09:46:12Z","parentSha":"2b41044a7335a88f767e98a1dde3b1827d4889ad","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-decision-3-1.md"],"attempt":1,"route":"retry"}
