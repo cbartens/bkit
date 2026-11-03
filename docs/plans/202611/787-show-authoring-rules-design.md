@@ -12,7 +12,7 @@ Verdict: PASS
 
 ## Subsequent Live Evidence
 
-The [2026-11-03 host probe report](../../../tests/hooks/bkit-hook-probe-report-2026-11-03.md) preserves the five user-run results and their limitations. The reusable [probe guide](../../../tests/hooks/bkit-hook-probe.md) and collector now live in `tests/hooks/`. These observations do not establish non-blocking before-edit acknowledgement and retain the design's conservative coverage boundaries.
+The [2026-11-03 host probe report](../../../tests/experiments/hooks/reports/bkit-hook-probe-report-2026-11-03.md) preserves the five user-run results and their limitations. The reusable [probe guide](../../../tests/experiments/hooks/bkit-hook-probe.md) and collector now live in `tests/experiments/hooks/`. These observations do not establish non-blocking before-edit acknowledgement and retain the design's conservative coverage boundaries.
 
 ## Related Issues
 

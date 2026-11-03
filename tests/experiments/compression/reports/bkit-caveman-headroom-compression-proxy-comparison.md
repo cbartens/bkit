@@ -26,8 +26,8 @@ Investigation for #545 (caveman) and #538 (Headroom), run 2026-10-14, and #585 (
 ## Why the savings are so small
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="bkit-compression-why-dark.svg">
-  <img alt="Where Claude Code's cost goes: 69% is the model re-reading the system prompt, rules, tool list and conversation; 4% is the model's own writing; 27% is big tool output; the tools remove 1–3% of the bill. Below it, the gains and the cons and risks listed under 'Is it worth it?'." src="bkit-compression-why-light.svg">
+  <source media="(prefers-color-scheme: dark)" srcset="../assets/bkit-compression-why-dark.svg">
+  <img alt="Where Claude Code's cost goes: 69% is the model re-reading the system prompt, rules, tool list and conversation; 4% is the model's own writing; 27% is big tool output; the tools remove 1–3% of the bill. Below it, the gains and the cons and risks listed under 'Is it worth it?'." src="../assets/bkit-compression-why-light.svg">
 </picture>
 
 **Most of the bill is the model re-reading the same context, not tool output.** On every step, Claude Code sends the model the whole conversation again: the system prompt, bkit's rules, the tool list, everything said so far and every tool output so far. Most of it comes from the prompt cache at a tenth of the normal price. But it is sent on every request, and that repetition is most of the cost.
@@ -356,7 +356,7 @@ Measure first (T4). It is free, offline, and tells you the ceiling for your work
 Claude Code keeps every session as JSONL under `~/.claude/projects/<slug>/`. The slug is the project path with `/` replaced by `-`. Subagent transcripts are in `<slug>/<session>/subagents/`.
 
 ```bash
-python3 tests/compression/bkit-compression-usage.py "$HOME/.claude/projects/-Users-me-src-my-app*" --by-command --context
+python3 tests/experiments/compression/bkit-compression-usage.py "$HOME/.claude/projects/-Users-me-src-my-app*" --by-command --context
 ```
 
 If "results ≥ 2 KB" is a small share of cost, no proxy can help you much; stop here.
@@ -367,14 +367,14 @@ Install the tools as in [Setup](#setup), then:
 
 ```bash
 mkdir -p tmp/compression
-python3 tests/compression/bkit-compression-usage.py "$HOME/.claude/projects/<slug>*" --dump tmp/compression/dump
+python3 tests/experiments/compression/bkit-compression-usage.py "$HOME/.claude/projects/<slug>*" --dump tmp/compression/dump
 HR=~/.local/share/uv/tools/headroom-ai/bin/python
-$HR tests/compression/bkit-compression-replay.py tmp/compression/dump 250 tmp/compression/replay.jsonl
-$HR tests/compression/bkit-compression-replay.py tmp/compression/dump 250 tmp/compression/replay-no-kompress.jsonl --no-kompress
-python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl
-python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --by-type
-python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --rows   # one line per sample
-python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --project Bash=0.236,Read=0.030
+$HR tests/experiments/compression/bkit-compression-replay.py tmp/compression/dump 250 tmp/compression/replay.jsonl
+$HR tests/experiments/compression/bkit-compression-replay.py tmp/compression/dump 250 tmp/compression/replay-no-kompress.jsonl --no-kompress
+python3 tests/experiments/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl
+python3 tests/experiments/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --by-type
+python3 tests/experiments/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --rows   # one line per sample
+python3 tests/experiments/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl --project Bash=0.236,Read=0.030
 ```
 
 Projected saving = each tool's "≥2KB share" (step 1) × its saving rate (this step), summed. `--project` does the sum and prints a 95% range; replace `0.236` and `0.030` with your own Bash and Read "≥2KB share" from step 1. `--before YYYY-MM-DD` on the usage script repeats a measurement on the same period later.
@@ -386,9 +386,9 @@ Projected saving = each tool's "≥2KB share" (step 1) × its saving rate (this 
 
 ```bash
 DO_NOT_TRACK=1 CAVEMAN_RECOVERY=mcp CAVEMAN_MODE=compress CAVEMAN_LISTEN=127.0.0.1:8787 \
-  CAVEMAN_CONFIG=tests/compression/bkit-compression-caveman.yaml ~/.caveman/bin/caveman-proxy &
+  CAVEMAN_CONFIG=tests/experiments/compression/bkit-compression-caveman.yaml ~/.caveman/bin/caveman-proxy &
 HEADROOM_BEACON=off OPENAI_TARGET_API_URL=https://openrouter.ai/api/v1 headroom proxy --port 8788 --mode cache &
-python3 tests/compression/bkit-compression-probe.py <payload-file>    # needs BKIT_OPENROUTER_API_KEY
+python3 tests/experiments/compression/bkit-compression-probe.py <payload-file>    # needs BKIT_OPENROUTER_API_KEY
 ```
 
 ### 4. Real workflow A/B on opencode (optional)
@@ -397,10 +397,10 @@ Three worktrees from the same commit, one per arm, each running the same `/bkit-
 
 ```bash
 git worktree add ../bkit-test-caveman HEAD && cd ../bkit-test-caveman
-../bkit/tests/compression/bkit-compression-opencode-arm.sh caveman    # or baseline / headroom; starts the proxy
+../bkit/tests/experiments/compression/bkit-compression-opencode-arm.sh caveman    # or baseline / headroom; starts the proxy
 opencode --standalone                                                  # must be a new opencode process
-python3 ../bkit/tests/compression/bkit-compression-opencode-tokens.py --latest .
-../bkit/tests/compression/bkit-compression-opencode-arm.sh baseline   # restore config; `stop` ends both proxies
+python3 ../bkit/tests/experiments/compression/bkit-compression-opencode-tokens.py --latest .
+../bkit/tests/experiments/compression/bkit-compression-opencode-arm.sh baseline   # restore config; `stop` ends both proxies
 ```
 
 **Read before trusting the numbers:**
@@ -414,11 +414,11 @@ python3 ../bkit/tests/compression/bkit-compression-opencode-tokens.py --latest .
 Needs the dump and `replay-no-kompress.jsonl` from step 2, and the checkout the transcripts came from:
 
 ```bash
-python3 tests/compression/bkit-compression-rtk-replay.py tmp/compression/dump tmp/compression/replay-no-kompress.jsonl \
+python3 tests/experiments/compression/bkit-compression-rtk-replay.py tmp/compression/dump tmp/compression/replay-no-kompress.jsonl \
   tmp/compression/rtk-plan.jsonl --repo ../my-app --rtk /path/to/rtk --plan   # classify only, runs nothing
-python3 tests/compression/bkit-compression-rtk-replay.py tmp/compression/dump tmp/compression/replay-no-kompress.jsonl \
+python3 tests/experiments/compression/bkit-compression-rtk-replay.py tmp/compression/dump tmp/compression/replay-no-kompress.jsonl \
   tmp/compression/rtk.jsonl --repo ../my-app --rtk /path/to/rtk
-python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl \
+python3 tests/experiments/compression/bkit-compression-summary.py tmp/compression/replay.jsonl --no-kompress tmp/compression/replay-no-kompress.jsonl \
   --rtk tmp/compression/rtk.jsonl --project Bash=0.243,Read=0.029
 ```
 
@@ -427,15 +427,17 @@ python3 tests/compression/bkit-compression-summary.py tmp/compression/replay.jso
 
 ## Files
 
+Paths below are relative to `tests/experiments/compression/`.
+
 <!-- prettier-ignore -->
 | File | Purpose |
 | --- | --- |
-| `bkit-caveman-headroom-compression-proxy-comparison.md` | This report |
+| `reports/bkit-caveman-headroom-compression-proxy-comparison.md` | This report |
 | `bkit-compression-usage.py` | T4: cost attribution from Claude Code transcripts; `--dump` feeds T5 |
 | `bkit-compression-replay.py` | T5: offline replay through caveman and Headroom (run with Headroom's Python) |
 | `bkit-compression-summary.py` | T5: per-tool and per-content-type savings; `--project` for the projected total with a 95% range; `--rtk` adds T7's RTK columns |
 | `bkit-compression-rtk-replay.py` | T7: classify samples with `rtk rewrite`, re-run the read-only ones raw and through RTK |
-| `bkit-compression-why-light.svg`, `bkit-compression-why-dark.svg` | The chart in [Why the savings are so small](#why-the-savings-are-so-small) |
+| `assets/bkit-compression-why-light.svg`, `assets/bkit-compression-why-dark.svg` | The chart in [Why the savings are so small](#why-the-savings-are-so-small) |
 | `bkit-compression-probe.py` | T1/T2: live direct vs caveman vs Headroom through OpenRouter |
 | `bkit-compression-caveman.yaml` | caveman proxy config: compress mode plus an `openrouter` compat mount |
 | `bkit-compression-opencode-arm.sh` | T3: switch a checkout between baseline / caveman / Headroom for opencode |

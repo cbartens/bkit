@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
-# tests/status-holes-sweep-liveness.bats — the CI "Check Status Holes" step greps the sweep's
+# tests/shell/bkit-status-holes-sweep.bats — the CI "Check Status Holes" step greps the sweep's
 # summary line so a silent no-op reds the lane while a hole does not (#699).
 # Corpus: tests/fixtures/status-holes/status.jsonl (a closed design run with step holes).
 
-REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 
 # The literal the lane's `grep -qF` names, read from the workflow file itself.
 lane_pattern() {

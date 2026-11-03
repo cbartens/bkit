@@ -64,8 +64,8 @@
 <!-- prettier-ignore -->
 | Doc | Design | Plan | Build | Debug | Ship | Scope |
 | --- | --- | --- | --- | --- | --- | --- |
-| `tests/hooks/bkit-hook-probe.md` | ○ | ○ | — | ○ | — | Manual host-hook experiment setup, routes and collector checks. |
-| `tests/hooks/bkit-hook-probe-report-2026-11-03.md` | ○ | ○ | — | ○ | — | Five-host advisory timing and visibility observations, with preserved evidence. |
+| `tests/experiments/hooks/bkit-hook-probe.md` | ○ | ○ | — | ○ | — | Manual host-hook experiment setup, routes and collector checks. |
+| `tests/experiments/hooks/reports/bkit-hook-probe-report-2026-11-03.md` | ○ | ○ | — | ○ | — | Five-host advisory timing and visibility observations, with preserved evidence. |
 | `.bkit/README.md` | ○ | ○ | ○ | ○ | ○ | Operator guide — workflow run, prerequisites, env, tracker setup, CLI, friction-sharing paste. |
 | `.bkit/install.md` | — | — | — | — | ○ | First-time install / upgrade paste, local env setup, install lifecycle, uninstall. |
 | `.bkit/providers.md` | ○ | ○ | ○ | ○ | ○ | IDE host differences — install transforms, hosts, providers, model pins. |

@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
-# tests/launchd-env-loader.bats — scripts/launchd/bkit-launchd-env.sh against a stub `launchctl`.
+# tests/shell/bkit-launchd-env-loader.bats — scripts/launchd/bkit-launchd-env.sh against a stub `launchctl`.
 #
 # The stub appends each call ("setenv KEY VALUE" / "unsetenv KEY") to $CALLS and fails
-# for any key listed in $STUB_FAIL_KEYS. Run: bats tests/launchd-env-loader.bats
+# for any key listed in $STUB_FAIL_KEYS. Run: bats tests/shell/bkit-launchd-env-loader.bats
 
-LOADER="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/scripts/launchd/bkit-launchd-env.sh"
+LOADER="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)/scripts/launchd/bkit-launchd-env.sh"
 
 setup() {
   WORK="$(mktemp -d)"

@@ -1,6 +1,6 @@
 # Host advisory delivery — 2026-11-03
 
-Investigation for [#787 — Show authoring rules before every edit, including shell edits](https://github.com/cbartens/bkit/issues/787). Reviewed the five result reports, target files and acknowledgement records. The generated collectors matched the original `host-kit.mjs`; the collector is now [bkit-hook-probe.mjs](bkit-hook-probe.mjs), with its usage path and formatting updated. No production hooks or original evidence were changed.
+Investigation for [#787 — Show authoring rules before every edit, including shell edits](https://github.com/cbartens/bkit/issues/787). Reviewed the five result reports, target files and acknowledgement records. The generated collectors matched the original `host-kit.mjs`; the collector is now [bkit-hook-probe.mjs](../bkit-hook-probe.mjs), with its usage path and formatting updated. No production hooks or original evidence were changed.
 
 | Host (reported version)                                 | Observed result                                                                                                                                                                                                                                                                            |
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -16,15 +16,15 @@ Conclusion: these runs do not demonstrate non-blocking before-edit acknowledgeme
 
 ## Method and preserved evidence
 
-The [run guide](bkit-hook-probe.md) describes the protocol and rerun commands. Each host tested native edits and shell edits with 1,200, 8,000, 12,000 and 32,000 ASCII characters. Cursor also tested its legacy envelope; Antigravity compared allow-only with deny-once delivery. OpenCode was an explicit after-execution control. Random markers sampled the beginning, middle and end of each advisory. Acknowledgements captured the target contents at that moment.
+The [run guide](../bkit-hook-probe.md) describes the protocol and rerun commands. Each host tested native edits and shell edits with 1,200, 8,000, 12,000 and 32,000 ASCII characters. Cursor also tested its legacy envelope; Antigravity compared allow-only with deny-once delivery. OpenCode was an explicit after-execution control. Random markers sampled the beginning, middle and end of each advisory. Acknowledgements captured the target contents at that moment.
 
-- [codex complete result report](results/2026-11-03/bkit-hook-results-codex.json).
-- [claude complete result report](results/2026-11-03/bkit-hook-results-claude.json).
-- [cursor complete result report](results/2026-11-03/bkit-hook-results-cursor.json).
-- [antigravity complete result report](results/2026-11-03/bkit-hook-results-antigravity.json).
-- [opencode complete result report](results/2026-11-03/bkit-hook-results-opencode.json).
-- [Result checksums and original collector checksums](results/2026-11-03/bkit-hook-results-manifest.json).
-- [Acknowledgement timestamps, marker matches and target-state summaries](results/2026-11-03/bkit-hook-acknowledgements.json).
+- [codex complete result report](../results/2026-11-03/bkit-hook-results-codex.json).
+- [claude complete result report](../results/2026-11-03/bkit-hook-results-claude.json).
+- [cursor complete result report](../results/2026-11-03/bkit-hook-results-cursor.json).
+- [antigravity complete result report](../results/2026-11-03/bkit-hook-results-antigravity.json).
+- [opencode complete result report](../results/2026-11-03/bkit-hook-results-opencode.json).
+- [Result checksums and original collector checksums](../results/2026-11-03/bkit-hook-results-manifest.json).
+- [Acknowledgement timestamps, marker matches and target-state summaries](../results/2026-11-03/bkit-hook-acknowledgements.json).
 
 The result JSON files preserve every original field and value with repository formatting applied. The manifest records both original and archived byte checksums. The acknowledgement archive is a derived summary: it omits random marker values and synthetic filler, preserving target lengths and hashes. Chat transcripts and private hook state are not archived. The [issue comment](https://github.com/cbartens/bkit/issues/787#issuecomment-6597096126) also preserves the results.
 

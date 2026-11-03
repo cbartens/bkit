@@ -82,7 +82,7 @@ async function cli(cwd: string, argv: string[]) {
 }
 
 // ---------------------------------------------------------------------------
-// The fixture gh stub (tests/gh-stub-smoke.bats) — the gate tests rest on it
+// The fixture gh stub (tests/shell/bkit-gh-stub.bats) — the gate tests rest on it
 // ---------------------------------------------------------------------------
 
 function verificationProvenanceFixture() {

@@ -8,10 +8,10 @@
 # (both keyed off BKIT_GH_TOKEN) can authenticate — never a hook hard-stop
 # (SessionStart hooks cannot block the session).
 #
-# Run: bats tests/bkit-cloud-bootstrap-preflight.bats
+# Run: bats tests/shell/bkit-cloud-bootstrap-preflight.bats
 # Requires: bats >= 1.0
 
-REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
 # The template is the source of truth; this repo's adopted copy
 # (.claude/hooks/bkit-cloud-bootstrap.sh) is kept byte-equal to it by
 # dogfood-templates.test.ts.

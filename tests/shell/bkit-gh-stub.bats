@@ -1,14 +1,13 @@
 #!/usr/bin/env bats
-# tests/gh-stub-smoke.bats — fixtures/gh stub-harness smoke test (#384 SP1 T2).
+# tests/shell/bkit-gh-stub.bats — fixtures/gh stub-harness smoke test (#384 SP1 T2).
 #
 # Proves the PATH-shimmed `gh` (tests/fixtures/gh/bin/gh) dispatches argv → JSON
 # fixture deterministically. `bkit runs gate` (commands/workflow/runs.test.ts) rests
-# on it. Run: bats tests/gh-stub-smoke.bats
+# on it. Run: bats tests/shell/bkit-gh-stub.bats
 #
-# Lives in tests/ NOT tests/fixtures/gh/ because both runners glob `tests/*.bats`
-# (package.json test:bats and ci.yml) — a file one level deeper never runs.
+# The bkit:test:bats package script selects tests/shell/*.bats for local and CI runs.
 
-GH_FIXTURE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/fixtures/gh" && pwd)"
+GH_FIXTURE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../fixtures/gh" && pwd)"
 
 setup() {
   export PATH="$GH_FIXTURE_ROOT/bin:$PATH"

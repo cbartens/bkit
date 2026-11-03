@@ -322,7 +322,7 @@ function main() {
   }
   if (command === "report") return report(root);
   throw new Error(
-    "Usage: node tests/hooks/bkit-hook-probe.mjs setup HOST NEW_DIRECTORY; inside generated workspace: node probe.mjs arm|ack|metadata|report",
+    "Usage: node tests/experiments/hooks/bkit-hook-probe.mjs setup HOST NEW_DIRECTORY; inside generated workspace: node probe.mjs arm|ack|metadata|report",
   );
 }
 
