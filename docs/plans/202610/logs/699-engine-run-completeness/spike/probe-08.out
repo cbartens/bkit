@@ -1,0 +1,12 @@
+workflow files scanned: 6
+"{BKIT}" call sites: 358
+distinct nouns used: 21 — branches, challenge, context, counters, decisions, fids, issues, ledgers, locks, prs, repo, roadmap, runs, runtime, skills, status, steps, tests, workflows, workstreams, worktrees
+distinct noun+verb pairs: 79
+registered nouns in COMMANDS: 24
+
+call sites whose noun is also in CLASSIC_VERBS: 39
+call sites that bypass runCommand (classic fallback or unrunnable): 0
+
+unknown noun/verb call sites: 0
+
+seam at runCommand covers every call site: true

@@ -35,7 +35,7 @@ REPORTS="$OUT/reports"
 # Report filenames — RENAME HERE AND NOWHERE ELSE. Each is referenced once
 # below, so a new name takes effect on the next run with no other edit. These
 # are all derived artifacts: renaming one never invalidates the graph, and the
-# old file is not cleaned up automatically — delete it or run `pnpm graph:clean`.
+# old file is not cleaned up automatically — delete it or run `pnpm bkit:graph:clean`.
 R_REPORT="graph-report.md"                # cluster-only's own report, moved here
 R_TREE="graph-tree.html"                  # collapsible folder tree
 R_FULL_GRAPHML="graph.graphml"            # whole graph for Gephi
@@ -83,39 +83,48 @@ R_EAGER="graph-eager.json"
 # register carries its findings.
 REACH_MJS="scripts/ci/guards/assert-routes-reachable.mjs"
 R_REACH="graph-reachability.json"
+# Docs that carry a copy of the register's packages diagram between the
+# graph:packages markers, space-separated; empty = none. rollup, register and
+# refresh rewrite each copy, and check fails on a stale one. Runs on system python.
+EMBED_PY="scripts/graphify/bkit-graph-embed.py"
+GRAPH_EMBED_DOCS="README.md"
 
 usage() {
   cat <<'EOF'
-Usage: pnpm graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
+Usage: pnpm bkit:graph[:clean|:update|:rollup|:refresh|:check|:graphml|:tree|:scoped]
 
-  graph           Full repo: extract + cluster. ~2 min, 0 tokens.
-  graph:clean     Same, but deletes the output dir first. REQUIRED after any
+  bkit:graph      Full repo: extract + cluster. ~2 min, 0 tokens.
+  bkit:graph:clean Same, but deletes the output dir first. REQUIRED after any
                   tsconfig `paths` change — `--force` re-reads source files but
                   NOT the module-resolution cache, so a graph built after an
                   alias edit will silently keep the old, unresolved edges.
-  graph:update    Re-extract changed files only, then recluster.
-  graph:check     Rebuild from THIS tree; fail if the tracked register
-                  docs/capabilities.md differs from the rebuild. Writes nothing
-                  tracked. Reads uncommitted edits — `check-at` does not.
-  graph:refresh   Rebuild the register in a clean checkout of HEAD, copy it
-                  over docs/capabilities.md. Fixes a red gate; commit it.
+  bkit:graph:update Re-extract changed files only, then recluster.
+  bkit:graph:check Rebuild from THIS tree; fail if the tracked register
+                  docs/capabilities.md differs from the rebuild, or a
+                  GRAPH_EMBED_DOCS copy of its packages diagram differs from
+                  the register. Writes nothing tracked. Reads uncommitted
+                  edits — `check-at` does not.
+  bkit:graph:refresh Rebuild the register in a clean checkout of the STAGED
+                  files (the index), copy it over docs/capabilities.md, and
+                  rewrite the GRAPH_EMBED_DOCS copies. Stage your change
+                  first. Fixes a red gate; commit it.
   check-at <rev>  `check` in a throwaway checkout of <rev>. Pre-push runs it
-                  for every push to dev; CI runs `check` on every push to dev.
+                  for every push to dev; CI runs it for every push and pull request.
   spec            Print the pinned graphify release (pip spec).
-  graph:rollup    Collapse the symbol graph into a package view (~24 nodes, the
+  bkit:graph:rollup Collapse the symbol graph into a package view (~24 nodes, the
                   architecture) and a module view (~133 nodes, the subsystems),
                   as interactive HTML. Edge weight is the number of underlying
                   symbol edges. Open these INSTEAD of the full graph; 9.8K nodes
                   is a database, not a picture.
-  graph:graphml   OPT-IN, for Gephi / yEd only — nothing else produces GraphML.
+  bkit:graph:graphml OPT-IN, for Gephi / yEd only — nothing else produces GraphML.
                   Writes all three views: the whole graph plus the two rollups.
                   The CLI has no --graphml flag (it exists only on the /graphify
                   skill, which this repo does not install), so the whole-graph
                   export calls graphify's own to_graphml() through its bundled
                   interpreter.
-  graph:tree      Collapsible folder tree with search and an outbound-edge
+  bkit:graph:tree Collapsible folder tree with search and an outbound-edge
                   inspector.
-  graph:scoped    One subtree with a browsable graph.html.
+  bkit:graph:scoped One subtree with a browsable graph.html.
                   Path defaults to apps/web/src; pass another as $2.
 
 Two directories, both gitignored and both rebuilt from source:
@@ -123,7 +132,7 @@ Two directories, both gitignored and both rebuilt from source:
   <out>/          RAW graph data — graph.json, manifest.json, cache/. graphify
                   owns this layout; the read commands (affected, god-nodes,
                   explain, path, query) all resolve <out>/graph.json.
-  <out>/reports/  Every DERIVED view. Safe to delete wholesale; `pnpm graph`
+  <out>/reports/  Every DERIVED view. Safe to delete wholesale; `pnpm bkit:graph`
                   plus the view command that made it rebuilds any of it.
 
 A whole-repo graph.html is never kept — 8.3 MB rendering ~9.8k nodes as a
@@ -165,14 +174,14 @@ graphify_python() {
 }
 
 require_graph() {
-  [ -f "$OUT/graph.json" ] || { echo "[graph] no $OUT/graph.json — run 'pnpm graph' first" >&2; exit 1; }
+  [ -f "$OUT/graph.json" ] || { echo "[graph] no $OUT/graph.json — run 'pnpm bkit:graph' first" >&2; exit 1; }
 }
 
 # The ONE graphify release that builds and judges the register — here, in the pre-push gate
 # and in CI (installs `$(bash scripts/graphify/bkit-graphify.sh spec)`). Another release draws
 # different edges → drift no one else can reproduce. PyPI `graphifyy`, CLI `graphify`.
 # renovate: datasource=pypi depName=graphifyy
-GRAPHIFY_SPEC="graphifyy[sql]==0.9.70"
+GRAPHIFY_SPEC="graphifyy[sql]==0.9.93"
 if [ "${1:-}" = "spec" ]; then
   printf '%s\n' "$GRAPHIFY_SPEC"
   exit 0
@@ -200,7 +209,7 @@ esac
 # The whole-repo graph.html is DELETED, never kept. --no-viz below stops
 # cluster-only writing one, but `graphify update` regenerates it on its own
 # ("regenerated missing or stale graph.html") before this function reclusters, so
-# the rm removes it. Use graph:rollup for something clickable, or Gephi on the
+# the rm removes it. Use bkit:graph:rollup for something clickable, or Gephi on the
 # GraphML for metrics.
 cluster() {
   run_local cluster-only . --no-label --no-viz
@@ -268,28 +277,31 @@ capabilities() {
     --min-weight "$MMD_MIN_WEIGHT" --overlay "$REPORTS/$R_OVERLAY"
 }
 
-# Strip the three provenance stamps (one header line, two `%% Generated ... from
-# <sha>` comments) so `check` compares CONTENT: the graph is built at HEAD, a
-# committed register at the PARENT of the commit carrying it. Stamp staleness is
-# the freshness warning in .husky/pre-push.
-strip_stamps() {
-  sed -E -e 's/(Diagrams from `graph\.json` @ `)[0-9a-f]+(`)/\1<sha>\2/' \
-         -e 's/(Generated by bkit-graphify-rollup\.py from )[0-9a-f]+/\1<sha>/' "$1"
+# Rewrite every GRAPH_EMBED_DOCS copy of the packages diagram from the tracked
+# register; pass --check to fail on a stale copy instead.
+embed() {
+  [ -n "$GRAPH_EMBED_DOCS" ] || return 0
+  local docs
+  read -r -a docs <<< "$GRAPH_EMBED_DOCS"
+  python3 "$EMBED_PY" "$CAPABILITIES_DOC" "${docs[@]}" "$@"
 }
 
 # Run this script's subcommands in a throwaway checkout of ONE commit: graphify reads the
 # working tree, so the build belongs to that commit, not to uncommitted edits here. Root
-# node_modules is linked in for the route scan. $1 = commit; rest = subcommands, in order.
-# $AT_DIR = the checkout.
+# node_modules is linked in for the route scan. $1 = commit; an optional `--tree=<tree>`
+# next replaces the checkout's files with that tree, deletions included, while HEAD stays
+# the commit; rest = subcommands, in order. $AT_DIR = the checkout.
 at_commit() {
-  local rev="$1" sha tmp sub
+  local rev="$1" tree="" sha tmp sub
   shift
+  case "${1:-}" in --tree=*) tree="${1#--tree=}"; shift ;; esac
   sha=$(git rev-parse --verify --quiet "$rev^{commit}") || { echo "[graph] not a commit: $rev" >&2; exit 2; }
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/graph-at-XXXXXX")
   AT_DIR="$tmp/checkout"
   # shellcheck disable=SC2064 # expand now: $tmp is local and gone by the time EXIT fires
   trap "git worktree remove --force '$AT_DIR' >/dev/null 2>&1; rm -rf '$tmp'" EXIT
   git -c core.hooksPath=/dev/null worktree add --detach --quiet "$AT_DIR" "$sha"
+  if [ -n "$tree" ]; then git -C "$AT_DIR" read-tree -u --reset "$tree"; fi
   ln -s "$(git rev-parse --show-toplevel)/node_modules" "$AT_DIR/node_modules"
   for sub in "$@"; do
     (cd "$AT_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
@@ -302,6 +314,7 @@ case "${1:-build}" in
   clean)  rm -rf "$OUT" && run_local extract . --code-only && repair && cluster ;;
   rollup)
     capabilities "$CAPABILITIES_DOC"
+    embed
     for lvl in packages modules; do
       run_scratch cluster-only "$REPORTS/.build/$lvl" --no-label >/dev/null 2>&1 || true
     done
@@ -320,7 +333,7 @@ case "${1:-build}" in
     echo "[graph] mermaid (paste into mermaid.live, or render per docs/setup.md):"
     echo "         $REPORTS/$R_PACKAGES_MMD"
     echo "         $REPORTS/$R_MODULES_MMD"
-    echo "[graph] GraphML for Gephi is opt-in: pnpm graph:graphml"
+    echo "[graph] GraphML for Gephi is opt-in: pnpm bkit:graph:graphml"
     ;;
   tree)
     require_graph
@@ -341,15 +354,17 @@ case "${1:-build}" in
     ;;
   update) run_local update . && repair && cluster ;;
   check)
-    # Gate on every push to dev: pre-push runs it via `check-at` in a clean
-    # checkout of the pushed commit; CI runs it in its own clean checkout.
+    # Gate on every push to dev and every pull request: pre-push runs it via
+    # `check-at` in a clean checkout of the pushed commit; CI runs `check-at HEAD` on
+    # the checked-out commit: the pushed commit (push) or GitHub's test merge of the PR
+    # into its base (pull_request), the tree a squash merge lands.
     # Rebuild graph from this tree → regenerate register into a throwaway copy
     # → fail if it differs from the tracked file. Writes nothing tracked; fix a
-    # red with `pnpm graph:refresh` plus a commit.
+    # red with `pnpm bkit:graph:refresh` plus a commit.
     #
     # By hand it reads the working tree, not the commit: uncommitted edits show
     # as drift nobody else can reproduce. After a tsconfig `paths` change run
-    # `pnpm graph:clean` first: `update` keeps the stale module-resolution
+    # `pnpm bkit:graph:clean` first: `update` keeps the stale module-resolution
     # cache, and the drift reported would be the cache, not the register.
     if [ -n "$(git status --porcelain -- '*.ts' '*.tsx' 2>/dev/null)" ]; then
       echo "[graph] WARNING: uncommitted .ts/.tsx edits — graphify reads the WORKING TREE," >&2
@@ -364,12 +379,16 @@ case "${1:-build}" in
     cp "$CAPABILITIES_DOC" "$fresh"
     capabilities "$fresh" >/dev/null
     rm -rf "$REPORTS/.build"
-    if diff -u <(strip_stamps "$CAPABILITIES_DOC") <(strip_stamps "$fresh") \
+    if diff -u "$CAPABILITIES_DOC" "$fresh" \
          --label "$CAPABILITIES_DOC (committed)" --label "rebuilt from $(git rev-parse --short HEAD)"; then
       echo "[graph] $CAPABILITIES_DOC matches a rebuild at $(git rev-parse --short HEAD)."
     else
       echo "[graph] DRIFT: $CAPABILITIES_DOC is not what this tree produces (diff above)." >&2
-      echo "[graph] Fix:   pnpm graph:refresh && git add $CAPABILITIES_DOC && git commit" >&2
+      echo "[graph] Fix:   pnpm bkit:graph:refresh && git add $CAPABILITIES_DOC $GRAPH_EMBED_DOCS && git commit" >&2
+      exit 1
+    fi
+    if ! embed --check; then
+      echo "[graph] Fix:   pnpm bkit:graph:refresh && git add $GRAPH_EMBED_DOCS && git commit" >&2
       exit 1
     fi
     ;;
@@ -377,6 +396,7 @@ case "${1:-build}" in
     # Tracked register only: `rollup` minus its HTML views (minutes of rendering `refresh`
     # does not need). Needs a built graph.
     capabilities "$CAPABILITIES_DOC"
+    embed
     ;;
   check-at)
     # `check` in a clean checkout of one commit (default HEAD); pre-push runs it for every
@@ -384,12 +404,15 @@ case "${1:-build}" in
     at_commit "${2:-HEAD}" check
     ;;
   refresh)
-    # Rebuild the register in a clean checkout of HEAD → copy over the tracked file here.
-    # Fixes a `check` / `check-at` red without baking in uncommitted edits, as
-    # `graph:update && graph:rollup` would. Commit the result.
-    at_commit HEAD build register
+    # Rebuild the register in a clean checkout of the staged files → copy over the tracked
+    # file here. Staged = the commit about to be made, so running it before that commit
+    # rebuilds the new state; unstaged edits stay out, as `bkit:graph:update && bkit:graph:rollup`
+    # would not. Fixes a `check` / `check-at` red. Commit the result.
+    staged=$(git write-tree) || { echo "[graph] the index has unmerged paths — resolve them first" >&2; exit 1; }
+    at_commit HEAD --tree="$staged" build register
     cp "$AT_DIR/$CAPABILITIES_DOC" "$CAPABILITIES_DOC"
-    echo "[graph] $CAPABILITIES_DOC rebuilt from $(git rev-parse --short HEAD) — commit it"
+    embed
+    echo "[graph] $CAPABILITIES_DOC rebuilt from the staged files on $(git rev-parse --short HEAD) — commit it"
     ;;
   scoped)
     target="${2:-apps/web/src}"

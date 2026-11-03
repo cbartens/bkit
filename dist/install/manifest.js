@@ -89,19 +89,20 @@ const CORE_MANIFEST = [
     // `.bkit/core/.bkit/` and are read from there at runtime (getBkitDocsRoot); these
     // consumer copies are force-overwritten mirrors (writeTier1) so a consumer can read
     // them in-repo. Whole file is bkit-owned → byte-equal-text (refreshed every install);
-    // prompts.md and lite.md are markered-text, keeping the consumer section below `bkit:end`.
+    // prompts.md is markered-text, keeping the consumer section below `bkit:end`.
     { path: ".bkit/authoring.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
+    { path: ".bkit/cli.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/comparison.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/install.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/jsonl.md", format: "byte-equal-text", module: "core" },
     // The MIT notice that travels with the files bkit writes: the full text and copyright
     // notice. Sourced from `.bkit/core/.bkit/LICENSE.md`.
     { path: ".bkit/LICENSE.md", format: "byte-equal-text", module: "core" },
-    { path: ".bkit/lite.md", format: "markered-text", module: "core" },
     { path: ".bkit/pipeline.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
+    { path: ".bkit/router.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/templates.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
@@ -159,7 +160,7 @@ const CLAUDE_MANIFEST = [
 // (bkit-tests-static / -unit / -integration / -e2e / -live). Where a step is not a
 // tier (`format`, the ship gate) the name spells out the actual steps. One exception:
 // `min` sits off the chain: the least a push runs, on a push that changes no code
-// (`bkit.testing.minPushPaths`); its steps are whatever that push can still break.
+// (what bkit writes, plus `bkit.testing.minPushPaths`); its steps are whatever that push can still break.
 //
 // The consumer owns every value: a turbo monorepo writes `turbo run … --filter`,
 // a Python repo writes `ruff check && pytest`. bkit never reads a value — only
@@ -168,7 +169,7 @@ const CLAUDE_MANIFEST = [
 // Seeded by core on every install and upgrade (seedCorePackageJsonScripts,
 // install/modules/index.ts): add-if-missing, so a name already present is never touched,
 // and uninstall leaves every name in place. The tool scripts the defaults chain
-// (typecheck, lint, format:check, lint:prose, slop:delta, lint-staged) are the
+// (typecheck, lint, format:check, bkit:lint:prose, bkit:slop:delta, lint-staged) are the
 // consumer's to add — `.bkit/templates.md` lists them; the
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
@@ -177,7 +178,7 @@ const CLAUDE_MANIFEST = [
 // directly, one step each.
 //
 // `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
-// that fails on new findings is `slop:delta`.
+// that fails on new findings is `bkit:slop:delta`.
 //
 // NOT SEEDED: the three deeper gates (…-integration, …-integration-e2e,
 // …-integration-e2e-live) are absent unless the consumer writes them. Each is one line
@@ -189,16 +190,16 @@ export const BKIT_GATE_SCRIPTS = {
     // `.husky/pre-commit`: prettier --write over staged files, and nothing else —
     // seconds, not minutes. Prose is a whole-repo scan, so it gates at pre-push.
     "bkit:gate:format": "pnpm lint-staged",
-    // `.husky/pre-push` on a min push (every file matches `bkit.testing.minPushPaths`): no code, so
+    // `.husky/pre-push` on a min push (every file is one bkit writes or `bkit.testing.minPushPaths` adds): no code, so
     // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
-    "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:min": "pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta",
     // Everything that needs no test runner. Every part has a matching step in the
     // bkit-tests-static CI job; audits/templates/template-ci-yml.test.ts fails when one is missing.
     // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
     // path.
-    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta",
     // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
-    // build Step 11, the remediates. `pnpm test` is the unit tier only: a test file the
+    // build Steps 8 and 12, the remediates. `pnpm test` is the unit tier only: a test file the
     // integration gate also runs must not match it.
     "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test",
     // Ship's conflict-resolve, the only caller whose dependency graph may have just
@@ -229,17 +230,23 @@ export const BKIT_DEBUG_GATES = [
     "bkit:gate:static-unit",
 ];
 /**
- * What `/bkit-build` Step 11 will run, in DESCENDING order — first one declared wins.
+ * What `/bkit-build` Step 12 will run, in DESCENDING order — first one declared wins.
+ * The Step 8 group gate runs `BKIT_GROUP_GATES` instead.
  *
  * Build stops at integration; E2E and live are not in this list.
  *
- * Neither entry is seeded: declaring `bkit:gate:static-unit-integration` opts the build
- * loop and the pre-push hook into the integration tier.
+ * Declaring `bkit:gate:static-unit-integration` (never seeded) opts Step 12 and the
+ * pre-push hook into the integration tier.
  */
 export const BKIT_BUILD_GATES = [
     "bkit:gate:static-unit-integration",
     "bkit:gate:static-unit",
 ];
+/**
+ * What `/bkit-build` Step 8 runs after every group but the last, and hands the Step 9 fix
+ * round: static checks and the unit tier. Integration runs once, at Step 12.
+ */
+export const BKIT_GROUP_GATES = ["bkit:gate:static-unit"];
 /**
  * What `.husky/pre-push` runs on a full push, in DESCENDING order — first one declared wins.
  *
@@ -257,6 +264,21 @@ export const BKIT_PUSH_GATES = [
  * upgrade advise when it is missing (detectGateAdvisories).
  */
 export const BKIT_TEST_FILE_SCRIPT = "bkit:test:file";
+/**
+ * Lints ONE test file — `pnpm bkit:lint:file <repo-relative path>`, exit 0 when clean.
+ * `bkit tests red` runs it before recording a red, so a lint rewrite never lands after
+ * the red. Never seeded: install, check and upgrade advise when `bkit:test:file` is
+ * declared and this is not (detectGateAdvisories).
+ */
+export const BKIT_LINT_FILE_SCRIPT = "bkit:lint:file";
+/**
+ * Checks only what changed — `pnpm bkit:gate:changed <repo-relative path>...`, exit 0
+ * when clean: the tests that import the files, the tests that name their paths, and
+ * static checks on the files. `bkit tests changed` passes the files and falls back to a
+ * whole gate when this is undeclared. Never seeded: install, check and upgrade advise
+ * when it is missing (detectGateAdvisories).
+ */
+export const BKIT_GATE_CHANGED_SCRIPT = "bkit:gate:changed";
 /**
  * The deeper gates, shallowest first, with what declaring each one costs.
  *
@@ -349,6 +371,13 @@ export const OPENCODE_MANIFEST = [
         format: "markered-text",
         module: "opencode",
     },
+    // bkit-rules.js — same split as bkit-gateguard.js. Delivers the rules-read advisory
+    // on the session's first tool call (opencode has no session-start event).
+    {
+        path: ".opencode/plugin/bkit-rules.js",
+        format: "markered-text",
+        module: "opencode",
+    },
     // Agent and command mirrors are managed dynamically (not listed individually here —
     // the exact set depends on the bkit-prefix prompt/workflow files at install time).
     // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
@@ -385,6 +414,14 @@ export const CODEX_MANIFEST = [
         format: "markered-text",
         module: "codex",
     },
+    // bkit-rules.cjs — Tier-2 markered-text. Delivers the rules-read advisory once per
+    // session as `additionalContext` on the first tool call (Codex has no session-start
+    // event). Registered on two single-value matchers, `apply_patch` and `Bash`.
+    {
+        path: ".codex/hooks/bkit-rules.cjs",
+        format: "markered-text",
+        module: "codex",
+    },
     // Agent mirrors (.codex/agents/*.toml) and workflow skills (.agents/skills/bkit-*/) are
     // managed dynamically — the set follows the bkit-prefix prompt/workflow files at install.
 ];
@@ -418,6 +455,14 @@ export const ANTIGRAVITY_MANIFEST = [
     // on matcher `view_file|run_command`, Antigravity's file-read and shell tool names.
     {
         path: ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+        format: "markered-text",
+        module: "antigravity",
+    },
+    // bkit-rules.cjs — Tier-2 markered-text. Delivers the rules-read advisory once per
+    // session by denying the first tool call with the advisory as the reason (Antigravity's
+    // only channel to the model); the identical retry is allowed.
+    {
+        path: ".agents/plugins/bkit/hooks/bkit-rules.cjs",
         format: "markered-text",
         module: "antigravity",
     },

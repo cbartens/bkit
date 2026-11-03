@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import {
+  CLAMP_PROFILES,
   FENCE_CLOSE,
   FENCE_INSTRUCTION_LINES,
   FENCE_OPEN,
@@ -14,7 +15,9 @@ import {
   fetchBlocks,
   humanBytes,
   keepRaw,
+  summariseRecords,
   writeDiffArtifact,
+  type ClampRecord,
 } from "./context";
 import { parseContextFetchStart } from "../../checks/before/context-fetch";
 
@@ -321,6 +324,191 @@ describe("bkit context clamp (#427 T1)", () => {
     const out = read(f);
     expect(out.startsWith("q 0\r\nq 1\r\n")).toBe(true);
     expect(out).toContain("\nq 4999\r\n> [bkit] TRUNCATED");
+  });
+});
+
+describe("bkit context clamp — per-context profiles (#697)", () => {
+  it("names the ledger, base and per-context profiles", () => {
+    expect(CLAMP_PROFILES).toEqual(["ledger", "debug-evidence", "ci", "e2e", "runtime"]);
+  });
+
+  /**
+   * One section header per context, each carrying no base signal word, buried past the
+   * kept head and tail. The `ci` marker is `bkit-github.md`'s `===== job … =====`; the
+   * `e2e` marker is `bkit-playwright.md`'s `===== file: … =====`; the `runtime` marker is
+   * `bkit-cloudrun.md`'s `===== cloud run … =====`.
+   */
+  const HEADERS: Record<string, string> = {
+    ci: "===== job build =====",
+    e2e: "===== file: test-results/checkout/missing.md (first 300 lines) =====",
+    runtime: "===== cloud run my-service, freshness 4h — 3 entr(ies), newest 50 max =====",
+  };
+  const PROFILES = ["ci", "e2e", "runtime"];
+
+  it("keeps each context's own section header and drops every other context's", async () => {
+    for (const profile of PROFILES) {
+      const line = HEADERS[profile]!;
+      const body = quietLines(9000);
+      body[4500] = line;
+      const content = body.join("\n") + "\n";
+      const own = write(`own-${profile}.md`, content);
+      await clamp(own, profile);
+      expect(read(own), `${profile} must keep its own header`).toContain(line);
+      for (const other of [...PROFILES, "debug-evidence"].filter((p) => p !== profile)) {
+        const file = write(`cross-${profile}-${other}.md`, content);
+        await clamp(file, other);
+        expect(read(file), `${other} must not keep ${profile}'s header`).not.toContain(line);
+      }
+    }
+  });
+
+  /**
+   * Every banner a context's shipped blocks print must survive that context's profile.
+   * Each banner below carries no base signal word, so only the profile whose block prints
+   * it keeps it and every other profile drops it. The remaining shipped banners
+   * (`supabase`, `inngest`, `stripe`, `expo`'s FAILURE runs, `===== failing steps …`)
+   * carry `error` / `fail` in their own text and are kept by every profile already;
+   * `sentry` prints no banner. Sourced from `.bkit/templates/context/`: `vercel`,
+   * `cloudrun`, `resend`, `expo` (`runtime`); `expo-workflows` (`e2e`).
+   */
+  const CONTEXT_BANNERS: Record<string, string[]> = {
+    runtime: [
+      "===== cloud run my-service, freshness 4h — 3 entr(ies), newest 50 max =====",
+      "===== resend outbound since 2026-01-01 — 1 send(s), 1 page(s) =====",
+      "===== eas builds, newest 50 (ios) — 3 build(s) =====",
+    ],
+    e2e: [
+      "===== eas workflow runs, newest 10 — 1 run(s) =====",
+      "===== JUnit (first 300 lines) =====",
+      "===== app JS console per flow (count, then the lines) =====",
+      "===== distinct app messages =====",
+    ],
+  };
+
+  it("keeps each context's own section banner and drops every other context's", async () => {
+    for (const [profile, banners] of Object.entries(CONTEXT_BANNERS)) {
+      for (const banner of banners) {
+        const body = quietLines(9000);
+        body[4500] = banner;
+        const content = body.join("\n") + "\n";
+        const own = write(`banner-own-${profile}.md`, content);
+        await clamp(own, profile);
+        expect(read(own), `${profile} must keep ${banner}`).toContain(banner);
+        for (const other of [...PROFILES, "debug-evidence"].filter((p) => p !== profile)) {
+          const file = write(`banner-cross-${profile}-${other}.md`, content);
+          await clamp(file, other);
+          expect(read(file), `${other} must not keep ${banner}`).not.toContain(banner);
+        }
+      }
+    }
+  });
+
+  it("a ci artifact keeps a section header that carries none of the base signal words", async () => {
+    const body = quietLines(9000);
+    body[4500] = "===== job build ===== — the lines below belong to this job";
+    const f = write("ci-header.md", body.join("\n") + "\n");
+    const r = await clamp(f, "ci");
+    expect(r.json).toMatchObject({ clamped: true });
+    expect(read(f)).toContain("===== job build =====");
+  });
+
+  it("every evidence profile keeps a buried ===== TRUNCATED: … ===== line", async () => {
+    // The page-cap line `.agents/context.md` § Authoring your own asks every block to print.
+    const line = "===== TRUNCATED: stopped at CI_MAX_PAGES=5 — older runs NOT read =====";
+    for (const profile of [...PROFILES, "debug-evidence"]) {
+      const body = quietLines(9000);
+      body[4500] = line;
+      const f = write(`truncated-${profile}.md`, body.join("\n") + "\n");
+      const r = await clamp(f, profile);
+      expect(r.json, profile).toMatchObject({ clamped: true });
+      expect(read(f), `${profile} must keep the TRUNCATED line`).toContain(line);
+    }
+  });
+});
+
+describe("bkit context clamp — per-context saving (#697)", () => {
+  const record = (artifact: string, extra: Partial<ClampRecord> = {}): ClampRecord => ({
+    artifact,
+    clamped: true,
+    origLines: 10,
+    keptLines: 4,
+    origBytes: 100,
+    keptBytes: 40,
+    lineCapped: 0,
+    ceilingHit: false,
+    raw: null,
+    source: null,
+    fetchedAt: null,
+    ...extra,
+  });
+  const dir = "docs/plans/202608/logs/427-x";
+
+  it("totals artifacts, lines, bytes and table / raw per context", () => {
+    expect(
+      summariseRecords([
+        record(`${dir}/context-ci-github-1-1.md`, {
+          render: "table",
+          origLines: 10,
+          keptLines: 4,
+          origBytes: 100,
+          keptBytes: 40,
+        }),
+        record(`${dir}/context-ci-1-1.md`, {
+          render: "raw",
+          origLines: 20,
+          keptLines: 5,
+          origBytes: 200,
+          keptBytes: 50,
+        }),
+        record(`${dir}/context-runtime-vercel-1.md`, {
+          render: "table",
+          origLines: 8,
+          keptLines: 8,
+          origBytes: 80,
+          keptBytes: 80,
+        }),
+      ]),
+    ).toEqual({
+      ci: {
+        artifacts: 2,
+        origLines: 30,
+        keptLines: 9,
+        origBytes: 300,
+        keptBytes: 90,
+        table: 1,
+        raw: 1,
+      },
+      runtime: {
+        artifacts: 1,
+        origLines: 8,
+        keptLines: 8,
+        origBytes: 80,
+        keptBytes: 80,
+        table: 1,
+        raw: 0,
+      },
+    });
+  });
+
+  it("counts a record whose render is absent, and skips a record naming no context-fetch context", () => {
+    expect(
+      summariseRecords([
+        record(`${dir}/context-e2e-maestro-1.md`),
+        record(`${dir}/context-e2e-2-1.md`, { render: "raw" }),
+        record(`${dir}/run-tests-1.md`, { origLines: 999, keptLines: 1 }),
+        record(`${dir}/context-tests-local-1.md`, { origLines: 999, keptLines: 1 }),
+      ]),
+    ).toEqual({
+      e2e: {
+        artifacts: 2,
+        origLines: 20,
+        keptLines: 8,
+        origBytes: 200,
+        keptBytes: 80,
+        table: 0,
+        raw: 1,
+      },
+    });
   });
 });
 
@@ -753,6 +941,62 @@ describe("bkit context list-blocks", () => {
   });
 });
 
+describe("bkit context provision", () => {
+  const recipe = (name: string, body: string) => [
+    `<!-- context-fetch:provision ${name} -->`,
+    "```bash",
+    body,
+    "```",
+    "<!-- context-fetch:end -->",
+  ];
+  const unavailable = (dir: string) => path.join(dir, ".bkit/.unavailable");
+
+  it("runs every recipe, lists each failed one with its last error line, and keeps going", async () => {
+    const dir = path.join(tmpDir, "pv");
+    write(
+      "pv/.agents/context.md",
+      [
+        "<!-- bkit:end -->",
+        ...recipe(
+          "db",
+          'echo "pulling" >&2\necho "db unavailable: 3 GB free, needs 10 GB" >&2\nexit 1',
+        ),
+        ...recipe("ok", "touch ran-ok"),
+        ...recipe("cli", "false"),
+      ].join("\n"),
+    );
+    const r = await run(["provision"], dir);
+    expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(dir, "ran-ok"))).toBe(true);
+    expect(r.json.recipes).toBe(3);
+    expect(r.json.unavailable).toEqual([
+      { name: "db", reason: "db unavailable: 3 GB free, needs 10 GB" },
+      { name: "cli", reason: "exit 1" },
+    ]);
+    expect(r.json.file).toBe(".bkit/.unavailable");
+    expect(fs.readFileSync(unavailable(dir), "utf-8")).toBe(
+      "db: db unavailable: 3 GB free, needs 10 GB\ncli: exit 1\n",
+    );
+  });
+
+  it("removes a stale failure file once every recipe succeeds", async () => {
+    const dir = path.join(tmpDir, "pv-ok");
+    write("pv-ok/.agents/context.md", ["<!-- bkit:end -->", ...recipe("ok", "true")].join("\n"));
+    write("pv-ok/.bkit/.unavailable", "ok: old failure\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 1, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
+  });
+
+  it("with no recipes, runs nothing and removes a stale failure file", async () => {
+    const dir = fs.mkdtempSync(path.join(tmpDir, "pv-none-"));
+    write(`${path.basename(dir)}/.bkit/.unavailable`, "x: old\n");
+    const r = await run(["provision"], dir);
+    expect(r.json).toMatchObject({ recipes: 0, unavailable: [], file: null });
+    expect(fs.existsSync(unavailable(dir))).toBe(false);
+  });
+});
+
 describe("bkit context run-block / finalise (#427 T4)", () => {
   function workspace() {
     const dir = fs.mkdtempSync(path.join(tmpDir, "fetch-"));
@@ -960,6 +1204,18 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     ).toBe(2);
   });
 
+  it("clamps a ci block with the ci profile and a runtime block without it", async () => {
+    const dir = workspace();
+    const body =
+      '{ seq 1 4499 | sed "s/$/ quiet payload/"; echo "===== job build ====="; seq 4500 9000 | sed "s/$/ quiet payload/"; }';
+    const ci = await run(["run-block", "--idx=1", script(dir, body), ...base], dir);
+    expect(ci.json.clamp).toMatchObject({ clamped: true });
+    expect(read(path.join(dir, ci.json.artifact))).toContain("===== job build =====");
+    const rt = await run(["run-block", "--idx=2", script(dir, body), ...base], dir);
+    expect(rt.json.clamp).toMatchObject({ clamped: true });
+    expect(read(path.join(dir, rt.json.artifact))).not.toContain("===== job build =====");
+  });
+
   it("finalise derives verdict, artifacts, configured contexts and clamp records", async () => {
     const dir = workspace();
     await run(["run-block", "--idx=1", script(dir, "echo ci"), ...base], dir);
@@ -977,6 +1233,45 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
     ]);
     expect(r.json.contextsConfigured).toEqual(["runtime", "ci", "web"]);
     expect(r.json.clamped).toHaveLength(2);
+    // render is absent on these run-block records: counted as neither table nor raw.
+    const one = {
+      artifacts: 1,
+      origLines: 1,
+      keptLines: 1,
+      origBytes: 3,
+      keptBytes: 3,
+      table: 0,
+      raw: 0,
+    };
+    expect(r.json.clampSummary).toEqual({ ci: one, runtime: one });
+  });
+
+  it("finalise totals a rendered fetch per context (table vs raw)", async () => {
+    const dir = workspace();
+    const fetched = await run(
+      ["fetch", "--idx=1", script(dir, `echo '[{"name":"widget","state":"open"}]'`), ...base],
+      dir,
+    );
+    expect(fetched.json.render).toBe("table");
+    const r = await run(["finalise", ...base], dir);
+    expect(r.json.verdict).toBe("PASS");
+    expect(r.json.clampSummary).toEqual({
+      ci: expect.objectContaining({ artifacts: 1, table: 1, raw: 0 }),
+    });
+  });
+
+  it("finalise totals a rendered fetch's origBytes as the bytes the block printed", async () => {
+    const dir = workspace();
+    const printed = `[${Array.from({ length: 3 }, (_, i) => `{"name":"widget-${i}","state":"open"}`).join(",")}]`;
+    const fetched = await run(["fetch", "--idx=1", script(dir, `echo '${printed}'`), ...base], dir);
+    expect(fetched.json.render).toBe("table");
+    const r = await run(["finalise", ...base], dir);
+    const ci = r.json.clampSummary.ci;
+    expect(ci.origLines).toBe(1);
+    expect(ci.origBytes).toBe(Buffer.byteLength(`${printed}\n`));
+    // The table is what the artifact holds: header, divider and one row per object.
+    expect(ci.keptLines).toBe(5);
+    expect(ci.keptBytes).not.toBe(ci.origBytes);
   });
 
   it("finalise with no artifacts is FAIL", async () => {
@@ -1022,6 +1317,17 @@ describe("bkit context run-block / finalise (#427 T4)", () => {
       attempt: 1,
       artifacts: ["docs/plans/202608/logs/427-x/context-ci-github-1-1.md"],
       contextsConfigured: ["runtime", "ci", "web"],
+      clampSummary: {
+        ci: {
+          artifacts: 1,
+          origLines: 1,
+          keptLines: 1,
+          origBytes: 3,
+          keptBytes: 3,
+          table: 0,
+          raw: 0,
+        },
+      },
     });
     expect(r.json.commit).toBe(g("rev-parse", "HEAD"));
     expect(g("log", "-1", "--format=%s")).toBe("chore(427-x): fetch-context attempt 1");
@@ -1362,9 +1668,9 @@ describe("bkit context brief", () => {
     fs.writeFileSync(plan, PLAN);
     const logs = path.join(dir, "logs");
     fs.mkdirSync(logs, { recursive: true });
-    fs.writeFileSync(path.join(logs, "build-plan-execute-1-log.md"), "DONE — TASK 2\n");
+    fs.writeFileSync(path.join(logs, "build-plan-tasks-1-log.md"), "DONE — TASK 2\n");
     fs.writeFileSync(
-      path.join(logs, "build-plan-execute-2-log.md"),
+      path.join(logs, "build-plan-tasks-2-log.md"),
       "notes\nDONE — TASK 4: validated\n",
     );
     return { dir, plan, logs };
@@ -1390,13 +1696,24 @@ describe("bkit context brief", () => {
     expect(again.json.artifact).toBe(path.join(logs, "build-brief-2-2.md"));
   });
 
+  it("brief --next reads a build-plan-execute-*-log.md written before the step rename", async () => {
+    const { dir, plan, logs } = setup("old-log-name");
+    fs.renameSync(
+      path.join(logs, "build-plan-tasks-2-log.md"),
+      path.join(logs, "build-plan-execute-2-log.md"),
+    );
+    const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3, 5] });
+  });
+
   it("brief --next with every task done writes nothing and reports no group", async () => {
     const { dir, plan, logs } = setup("all-done");
     fs.writeFileSync(
-      path.join(logs, "build-plan-execute-2-log.md"),
+      path.join(logs, "build-plan-tasks-2-log.md"),
       "DONE — TASK 3\nDONE — TASK 4\nDONE — TASK 5\n",
     );
-    fs.writeFileSync(path.join(logs, "build-plan-execute-3-log.md"), "DONE — TASK 6\n");
+    fs.writeFileSync(path.join(logs, "build-plan-tasks-3-log.md"), "DONE — TASK 6\n");
     const r = await run(["brief", `--plan=${plan}`, "--next", `--dir=${logs}`], dir);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
@@ -1404,6 +1721,7 @@ describe("bkit context brief", () => {
       bytes: 0,
       group: null,
       tasks: [],
+      tests: 0,
       workBytes: 0,
       workCap: 8192,
     });
@@ -1445,29 +1763,6 @@ describe("bkit context brief", () => {
     expect(read(plain.json.artifact)).not.toContain("## Deviations");
   });
 
-  it("brief names a red already recorded for an open task", async () => {
-    const { dir, plan, logs } = setup("red");
-    const status = path.join(dir, "status.jsonl");
-    fs.writeFileSync(
-      status,
-      JSON.stringify({
-        type: "step-done",
-        workflow: "build",
-        step: "build-task-red",
-        task: 5,
-        test: "src/t5.test.ts",
-        testName: "logs the change",
-      }) + "\n",
-    );
-    const r = await run(
-      ["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, `--file=${status}`],
-      dir,
-    );
-    expect(read(r.json.artifact)).toContain(
-      "TASK 5: red already recorded for `src/t5.test.ts` `logs the change` — test written and seen failing; code may be partly done in the files it names",
-    );
-  });
-
   it("brief prints path and sizes only", async () => {
     const { dir, plan, logs } = setup("stdout");
     const r = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
@@ -1476,6 +1771,7 @@ describe("bkit context brief", () => {
       "bytes",
       "group",
       "tasks",
+      "tests",
       "workBytes",
       "workCap",
     ]);
@@ -1562,6 +1858,154 @@ describe("bkit context brief", () => {
     );
     expect(r.json.workBytes).toBeLessThanOrEqual(8192);
     expect(r.err).toBe("");
+  });
+
+  /** The sections plan with TEST FIRST tests on tasks 3 and 5 and a Derived Test Matrix. */
+  function setupWithTests(name: string) {
+    const s = setupWithSections(name, smallArch);
+    const withTests = (plan: string, task: number, tests: string[]) =>
+      plan.replace(
+        new RegExp(
+          `(- \\[ \\] \\*\\*TASK ${task}:\\*\\*[\\s\\S]*?)  - \\*\\*TEST FIRST:\\*\\* n/a — docs only`,
+        ),
+        `$1  - **TEST FIRST:**\n${tests.map((t) => `    - ${t} fails on the stub`).join("\n")}`,
+      );
+    const matrix = [
+      "## Derived Test Matrix",
+      "",
+      "| Test description | Type | Target file |",
+      "| --- | --- | --- |",
+      "| sets it | unit | `src/t3.test.ts` |",
+      "| logs it | unit | `src/t5.test.ts` |",
+      "| shows it | unit | `src/t6.test.ts` |",
+      "",
+      "## Reuse Inventory",
+    ].join("\n");
+    let plan = read(s.plan).replace("## Reuse Inventory", matrix);
+    plan = withTests(plan, 3, ["`src/t3.test.ts` `sets it`", "`src/t3.test.ts` `rejects bad`"]);
+    plan = withTests(plan, 5, ["`src/t5.test.ts` `logs it`"]);
+    fs.writeFileSync(s.plan, plan);
+    return s;
+  }
+  const testsOnly = (plan: string, logs: string, dir: string, extra: string[] = []) =>
+    run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`, "--tests-only", ...extra], dir);
+
+  it("--tests-only writes build-brief-tests-{group}-{n}.md with the open task blocks and no Reuse Inventory or Architecture entries", async () => {
+    const { dir, plan, logs } = setupWithTests("tests-only");
+    const r = await testsOnly(plan, logs, dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3, 5], tests: 3 });
+    expect(r.json.artifact).toBe(path.join(logs, "build-brief-tests-2-1.md"));
+    const body = read(r.json.artifact);
+    expect(body).toContain("# Brief: group 2 — API (tests)");
+    expect(body).toContain("Widgets need a status the API can set.");
+    const work = body.split("## The work")[1]!;
+    expect(work).toContain("- [ ] **TASK 3:** Set the status");
+    expect(work).toContain("- [ ] **TASK 5:** Log the change");
+    expect(work).not.toContain("**TASK 4:**");
+    expect(work).not.toContain("### Reuse Inventory rows");
+    expect(work).not.toContain("### Architecture entries");
+    expect(work).not.toContain("left out");
+    // The tests briefs and the code briefs count separately.
+    expect((await testsOnly(plan, logs, dir)).json.artifact).toBe(
+      path.join(logs, "build-brief-tests-2-2.md"),
+    );
+    const code = await run(["brief", `--plan=${plan}`, "--group=2", `--dir=${logs}`], dir);
+    expect(code.json.artifact).toBe(path.join(logs, "build-brief-2-1.md"));
+    expect(read(code.json.artifact)).toContain("### Reuse Inventory rows");
+  });
+
+  it("--tests-only adds the Derived Test Matrix rows whose Target file a TEST FIRST line of the group names", async () => {
+    const { dir, plan, logs } = setupWithTests("matrix");
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    const rows = work.split("### Derived Test Matrix rows")[1]!;
+    expect(rows).toContain("| Test description | Type | Target file |");
+    expect(rows).toContain("| sets it | unit | `src/t3.test.ts` |");
+    expect(rows).toContain("| logs it | unit | `src/t5.test.ts` |");
+    expect(rows).not.toContain("src/t6.test.ts");
+  });
+
+  it("--tests-only lists each planned test its file already holds, with the line it starts on, and leaves the section out when none exists", async () => {
+    const { dir, plan, logs } = setupWithTests("existing");
+    const none = read((await testsOnly(plan, logs, dir)).json.artifact);
+    expect(none).not.toContain("### Planned tests that already exist");
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "src/t3.test.ts"),
+      [
+        "describe('status', () => {",
+        "  it('rejects bad', () => {",
+        "    expect(set('x')).toBe(false);",
+        "  });",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    const work = read((await testsOnly(plan, logs, dir)).json.artifact).split("## The work")[1]!;
+    const section = work.split("### Planned tests that already exist")[1]!;
+    expect(section).toContain(
+      "- TASK 3 `src/t3.test.ts` `rejects bad` — exists at `src/t3.test.ts:2`; update that test in place: add expectations, never remove or loosen one",
+    );
+    expect(section).not.toContain("`sets it`");
+  });
+
+  it("--tests-only --file leaves out a test a build-tests-red row of the group proved red, and a task with no test left", async () => {
+    const { dir, plan, logs } = setupWithTests("proven");
+    const status = path.join(logs, "status.jsonl");
+    const redRow = (tests: Array<[number, string, string, string]>) =>
+      fs.appendFileSync(
+        status,
+        `${JSON.stringify({
+          type: "step-done",
+          workflow: "build",
+          step: "build-tests-red",
+          status: "DONE",
+          at: "2026-11-01T05:00:00Z",
+          group: 2,
+          attempt: 1,
+          enforced: true,
+          tests: tests.map(([task, test, testName, state]) => ({
+            task,
+            test,
+            testName,
+            state,
+            blob: "0".repeat(40),
+          })),
+        })}\n`,
+      );
+    redRow([
+      [3, "src/t3.test.ts", "sets it", "red"],
+      [3, "src/t3.test.ts", "rejects bad", "vacuous"],
+      [5, "src/t5.test.ts", "logs it", "red-not-loaded"],
+    ]);
+    const r = await testsOnly(plan, logs, dir, [`--file=${status}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ group: 2, tasks: [3], tests: 1 });
+    const work = read(r.json.artifact).split("## The work")[1]!;
+    expect(work).toContain("**TASK 3:**");
+    expect(work).not.toContain("**TASK 5:**");
+    // Without --file every planned test is briefed.
+    expect((await testsOnly(plan, logs, dir)).json).toMatchObject({ tasks: [3, 5], tests: 3 });
+    // A later row proving the last test leaves nothing to brief.
+    redRow([[3, "src/t3.test.ts", "rejects bad", "red"]]);
+    const done = await testsOnly(plan, logs, dir, [`--file=${status}`]);
+    expect(done.json).toMatchObject({ artifact: null, tasks: [], tests: 0 });
+  });
+
+  it("--tests-only prints tests: 0 for a group with no planned test, and writes nothing", async () => {
+    const { dir, plan, logs } = setup("no-tests");
+    const r = await testsOnly(plan, logs, dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      artifact: null,
+      bytes: 0,
+      group: 2,
+      tasks: [],
+      tests: 0,
+      workBytes: 0,
+      workCap: 8192,
+    });
+    expect(fs.readdirSync(logs).some((f) => f.startsWith("build-brief-"))).toBe(false);
   });
 
   it("brief refuses a group the plan does not have", async () => {

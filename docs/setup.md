@@ -1,46 +1,57 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
 > [!CAUTION]
-> **Purpose:** Local dev — CLIs, configuration, secrets, troubleshooting. Humans only.
+> **Purpose:** Local development setup for humans: CLIs, configuration, secrets and troubleshooting.
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
-> - Local seed / test fixtures must never run against remote projects.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
+> - Local seed / test fixtures must NEVER run against remote projects.
 
 ## Templates
 
-Optional, copy and own, never installed. Catalog and install steps: `.bkit/templates.md`.
+Templates are optional. You copy and own them, and bkit never installs them. The catalog and install steps are in `.bkit/templates.md`.
 
 ## Agent hosts
 
-Run each host (`claude`, `opencode`, `codex`) in its own terminal window — not inside an IDE or a desktop app.
+Run each host (`claude`, `codex`, `opencode`) in its own terminal window, not inside an IDE or a desktop app.
 
-- Separate processes: restart one host without quitting the others.
-- Terminal sessions inherit the direnv-loaded `.bkit/.env`; GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
-- macOS: [Ghostty](https://ghostty.org).
+- Separate processes let you restart one host without quitting the others.
+- Terminal sessions inherit the direnv-loaded `.bkit/.env`. GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
+- On macOS, use [Ghostty](https://ghostty.org).
 
 ## Remote access
 
-Mostly relevant to the `opencode` host — `claude` / `cursor` / `codex` ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services: [Tailscale](https://tailscale.com/) (mesh VPN; free Personal plan covers device-to-device access), [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797) (OpenCode iOS client).
+This section matters mostly for OpenCode, because Claude / Codex / Cursor ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services:
 
-- Bind: `opencode service set hostname 0.0.0.0` (all interfaces) or the tailnet IP (tailnet only); `opencode service set port <port>`; `opencode service start` to apply. Loopback-only default keeps the service off the LAN; tailnet ACLs still apply.
-- HTTPS proxy: `tailscale serve --bg <port>` → `https://<host>.<tailnet>.ts.net`. Requires tailnet HTTPS certificates enabled (DNS page); publishes machine names to the certificate-transparency log (free).
-- Auth: HTTP Basic, username `opencode`, password in `~/.config/opencode/service.json` (mirror `~/.local/state/opencode/service.json`); persists across restarts; `opencode service set password <value>` to rotate. NEVER commit it.
+- [Tailscale](https://tailscale.com/), a mesh VPN. Its free Personal plan covers device-to-device access.
+- [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797), an OpenCode iOS client.
+
+Set it up as follows:
+
+- Bind:
+  - Run `opencode service set hostname 0.0.0.0` for all interfaces, or set the tailnet IP for tailnet only.
+  - Run `opencode service set port <port>`.
+  - Run `opencode service start` to apply.
+  - The loopback-only default keeps the service off the LAN. Tailnet ACLs still apply.
+- HTTPS proxy: `tailscale serve --bg <port>` serves the port at `https://<host>.<tailnet>.ts.net`.
+  - It requires tailnet HTTPS certificates to be enabled (on the DNS page).
+  - It publishes machine names to the certificate-transparency log (free).
+- Auth: HTTP Basic, with username `opencode`.
+  - The password is in `~/.config/opencode/service.json`, mirrored at `~/.local/state/opencode/service.json`. It persists across restarts.
+  - Run `opencode service set password <value>` to rotate it.
+  - NEVER commit the password.
 - Client CLI: `OPENCODE_PASSWORD=<password> opencode --server https://<host>.<tailnet>.ts.net`.
-- Browser / app pairing: `opencode pair --url https://<host>.<tailnet>.ts.net` → one-time link, 5-minute expiry.
-- Pin the port: the service port is dynamic; `serve` targets a fixed port, so pin it or the proxy breaks on restart.
+- Browser / app pairing: `opencode pair --url https://<host>.<tailnet>.ts.net` returns a one-time link with a 5-minute expiry.
+- Pin the port. The service port is dynamic, but `serve` targets a fixed port, so pin it or the proxy breaks on restart.
 
 <!-- bkit:end -->
 
-> Consumer first-time install / upgrade → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude Code on the web, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
+> Consumer first-time install / upgrade → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude on the web, Codex Cloud, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.codex/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
 
 ## Required tools
 
@@ -52,7 +63,7 @@ Mostly relevant to the `opencode` host — `claude` / `cursor` / `codex` ship th
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
 | `jq` | latest | Reads the JSON that `bkit` commands print, inside workflows. |
-| `vale` | `3.9.1` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
+| `vale` | `3.24.0` | Prose lint (`pnpm bkit:lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables
 
@@ -79,7 +90,7 @@ echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh
 pnpm install --frozen-lockfile                                          # workspace deps + husky git hooks
 pnpm tsx .bkit/core/engine/cli.ts install --claude --cursor  # dogfood install (this repo only)
 pnpm tsx .bkit/core/engine/cli.ts check                                # drift gate
-vale sync                                                               # one-off; pulls lint:prose styles
+vale sync                                                               # one-off; pulls bkit:lint:prose styles
 ```
 
 `install` requires >=1 module flag or `--tracker=` (which re-renders every installed host), because bare `install` exits 1. `bkit upgrade` is flag-free; re-renders every installed module.
@@ -101,5 +112,5 @@ pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories
 
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
-- **Lockfile rebase conflict in workflow** — Tier 2 auto-resolver `bkit branches rebase` takes the rebase target's copy and regenerates it (pnpm, npm, yarn, bun, cargo, go, uv); see `.bkit/workflows.md` § Rebase Conflict Tiering.
-- **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` in setup script to force rebuild.
+- **Lockfile merge conflict in a workflow** — `bkit branches sync --merge` takes the integration branch's lockfile and regenerates it with the project's package manager. Other unresolved files stay conflicted for the ship conflict resolver; see `.bkit/workflows.md` § `/bkit-ship` — 14 steps.
+- **Cloud snapshot stuck on stale vale (Claude)** — run `pnpm bkit install`, which re-stamps the `# cache-bust` line, then paste the new setup script to force a rebuild.

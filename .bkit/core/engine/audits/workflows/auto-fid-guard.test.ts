@@ -56,7 +56,7 @@ describe("auto-fid-guard", () => {
         const block = BASH_BLOCKS.find((b) => b.includes("runs context"));
         expect(block, "the runs context block").toBeDefined();
         expect(block).toMatch(/"\{BKIT\}" runs context --phase="\{PHASE\}" --arg="\{ARG\}"/);
-        expect(AUTO).toContain("`fid` as `{FID}`");
+        expect(AUTO).toContain("`fid` as `FID`");
       });
 
       it("no bash block recovers a FID from the marker by hand (sed/grep/jq on bkit:fid=)", () => {

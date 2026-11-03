@@ -10,8 +10,10 @@ import { runCommand } from "../lib";
 import {
   ciCommand,
   EXIT_VALE_FAILED,
+  formatFindings,
   gateFails,
   globToRegExp,
+  netNewFindings,
   proseFiles,
   readSummary,
   resolveBaseRef,
@@ -138,6 +140,18 @@ const summary = (over: Record<string, number> = {}) => ({
   ...over,
 });
 
+/** A `slop-scan delta --json` change; `added` / `worsened` carry a head snapshot, `resolved` a base one. */
+const change = (status: string, file: string | null, ruleId: string, message: string, line = 1) => {
+  const snapshot = { message, primaryLocation: { path: file, line }, locations: [] };
+  return {
+    status,
+    path: file,
+    ruleId,
+    base: status === "added" ? null : snapshot,
+    head: status === "resolved" ? null : snapshot,
+  };
+};
+
 async function run(cwd: string, argv: string[], verb = "slop") {
   const out: string[] = [];
   const err: string[] = [];
@@ -171,14 +185,60 @@ describe("bkit ci slop — gate decision", () => {
       worsened: 0,
       netFindingCount: 1,
       netScore: 3.5,
+      findings: [],
     });
     expect(r.err).toContain(
       "[bkit-ci] added 1, resolved 0, worsened 0; net findings 1, net score 3.50",
     );
+    expect(r.err).toContain("names no single net-new finding");
     expect(r.err).toContain("FAIL — change adds/worsens slop on net.");
     expect(r.err).toContain("ONLY fix net-new, NEVER the baseline");
     expect(r.err).toContain("Inspect: slop-scan delta --base <base-worktree> --head .");
     expect(fake.calls()).toMatch(/argv=delta --base \S+ --head \. --json/);
+    expectCleaned(cwd);
+  });
+
+  it("names each net-new and worsened finding in the log and the JSON", async () => {
+    const { cwd, base } = repo();
+    fakeSlop(
+      JSON.stringify({
+        summary: summary({ addedCount: 1, worsenedCount: 1, netFindingCount: 1, netRepoScore: 2 }),
+        paths: [
+          {
+            path: "src/a.ts",
+            changes: [
+              change("added", "src/a.ts", "defensive.empty-catch", "Empty catch block", 12),
+            ],
+          },
+          {
+            path: "src/b.ts",
+            changes: [change("worsened", "src/b.ts", "structure.x", "Too many params", 40)],
+          },
+        ],
+        repoChanges: [],
+      }),
+    );
+    const r = await run(cwd, [`--base=${base}`]);
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("Net-new / worsened findings:");
+    expect(r.err).toContain("added     src/a.ts:12  defensive.empty-catch  Empty catch block");
+    expect(r.err).toContain("worsened  src/b.ts:40  structure.x  Too many params");
+    expect(r.json.findings).toEqual([
+      {
+        status: "worsened",
+        path: "src/b.ts",
+        line: 40,
+        ruleId: "structure.x",
+        message: "Too many params",
+      },
+      {
+        status: "added",
+        path: "src/a.ts",
+        line: 12,
+        ruleId: "defensive.empty-catch",
+        message: "Empty catch block",
+      },
+    ]);
     expectCleaned(cwd);
   });
 
@@ -384,6 +444,50 @@ describe("slop-scan resolution and summary reading", () => {
   });
 });
 
+describe("netNewFindings", () => {
+  const report = (changes: ReturnType<typeof change>[]) =>
+    JSON.stringify({ summary: summary(), paths: [{ path: "a.ts", changes }], repoChanges: [] });
+
+  it("drops a line shift: one added and one resolved for the same file and rule", () => {
+    expect(
+      netNewFindings(
+        report([change("resolved", "a.ts", "r", "m", 3), change("added", "a.ts", "r", "m", 5)]),
+      ),
+    ).toEqual([]);
+  });
+
+  it("cancels the shifted finding by message and keeps the new one", () => {
+    expect(
+      netNewFindings(
+        report([
+          change("resolved", "a.ts", "r", "old", 3),
+          change("added", "a.ts", "r", "new", 4),
+          change("added", "a.ts", "r", "old", 9),
+        ]),
+      ),
+    ).toEqual([{ status: "added", path: "a.ts", line: 4, ruleId: "r", message: "new" }]);
+  });
+
+  it("reads repo-scoped changes, which have no path", () => {
+    const raw = JSON.stringify({
+      summary: summary(),
+      paths: [],
+      repoChanges: [change("added", null, "dup", "Duplicated function")],
+    });
+    expect(netNewFindings(raw)).toEqual([
+      { status: "added", path: null, line: 1, ruleId: "dup", message: "Duplicated function" },
+    ]);
+    expect(formatFindings(netNewFindings(raw))[1]).toBe(
+      "  added     (repo):1  dup  Duplicated function",
+    );
+  });
+
+  it("is empty for a report with no change lists, or not JSON", () => {
+    expect(netNewFindings(JSON.stringify({ summary: summary() }))).toEqual([]);
+    expect(netNewFindings("not json")).toEqual([]);
+  });
+});
+
 // Behaviour cases against the real slop-scan this repo installs, end to end
 // through the command.
 describe("bkit ci slop — real slop-scan", () => {
@@ -406,7 +510,23 @@ describe("bkit ci slop — real slop-scan", () => {
     const r = await run(cwd, [`--base=${base}`]);
     expect(r.code).toBe(1);
     expect(r.json.netFindingCount).toBeGreaterThan(0);
+    expect(r.json.findings).toContainEqual(
+      expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
+    );
+    expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
     expectCleaned(cwd);
+  }, 30_000);
+
+  it("names the file and rule when a per-file finding's count grows (score rise, flat count)", async () => {
+    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+    write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
+    const r = await run(cwd, [`--base=${base}`]);
+    expect(r.code).toBe(1);
+    expect(r.json.netFindingCount).toBe(0);
+    expect(
+      r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
+    ).toEqual(["y.ts:3", "y.ts:8"]);
+    expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
   }, 30_000);
 
   it("an unchanged tree nets to zero and passes — and every gated summary field is present", async () => {
@@ -538,12 +658,12 @@ describe("bkit ci prose — file selection", () => {
 });
 
 describe("bkit ci prose — gate", () => {
-  it("skips with exit 0 when vale is not installed", async () => {
+  it("fails when vale is not installed", async () => {
     const cwd = proseRepo();
     process.env.PATH = `${mkdir("bkit-ci-novale-")}${path.delimiter}/usr/bin${path.delimiter}/bin`;
     const r = await run(cwd, [], "prose");
-    expect(r.code).toBe(0);
-    expect(r.json).toEqual({ passed: true, skipped: "vale-missing", files: 0 });
+    expect(r.code).toBe(EXIT_VALE_FAILED);
+    expect(r.json).toEqual({ passed: false, skipped: "vale-missing", files: 0 });
     expect(r.err).toContain("vale not installed");
   });
 
@@ -606,13 +726,13 @@ describe("bkit ci prose — write-good restore", () => {
     expect(vale.calls().split("\n")).toEqual(["sync", "README.md"]);
   });
 
-  it("skips loudly with exit 0 when vale sync cannot restore it either", async () => {
+  it("fails when vale sync cannot restore the required styles", async () => {
     const cwd = proseRepo(false);
     fakeVale(0, false);
     const r = await run(cwd, [], "prose");
-    expect(r.code).toBe(0);
-    expect(r.json).toEqual({ passed: true, skipped: "write-good-missing", files: 0 });
-    expect(r.err).toContain("PROSE LINT SKIPPED");
+    expect(r.code).toBe(EXIT_VALE_FAILED);
+    expect(r.json).toEqual({ passed: false, skipped: "write-good-missing", files: 0 });
+    expect(r.err).toContain("PROSE LINT UNAVAILABLE");
   });
 });
 
@@ -655,6 +775,91 @@ describe("bkit ci skip-token", () => {
 // bkit ci min-push
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// bkit ci bookkeeping-push
+// ---------------------------------------------------------------------------
+
+describe("bkit ci bookkeeping-push", () => {
+  /** A feat/1-x repo: a base commit (the head the remote holds), then a commit writing `files`. */
+  function pushed(files: Record<string, string>, pkg?: unknown, branch = "feat/1-x") {
+    const cwd = mkdir("bkit-ci-bookpush-");
+    git(cwd, "init", "-q", "-b", branch);
+    write(cwd, "src/a.ts", "export {};\n");
+    write(cwd, "CHANGELOG.md", "# Changelog\n");
+    if (pkg !== undefined) write(cwd, "package.json", JSON.stringify(pkg));
+    const remote = commit(cwd, "feat(1): code");
+    for (const [rel, body] of Object.entries(files)) write(cwd, rel, body);
+    const head = commit(cwd, "docs(1): ship bookkeeping bkit [skip ci]");
+    return { cwd, remote, head };
+  }
+
+  it("exits 0 when the push adds docs, the FID's logs in any month and ledgers only", async () => {
+    const { cwd, remote } = pushed({
+      "docs/plans/202611/logs/1-x/ship-summary.md": "s\n",
+      "docs/architecture.md": "a\n",
+      "docs/decisions.jsonl": "{}\n",
+    });
+    const r = await run(cwd, [`--from=${remote}`], "bookkeeping-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bookkeepingPush: true, reason: null, outside: [] });
+  });
+
+  it("exits 1 naming the code file, whatever the commit message says", async () => {
+    const { cwd, remote } = pushed({
+      "docs/architecture.md": "a\n",
+      "src/a.ts": "export const a = 1;\n",
+    });
+    const r = await run(cwd, [`--from=${remote}`], "bookkeeping-push");
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      bookkeepingPush: false,
+      reason: "outside",
+      outside: ["src/a.ts"],
+    });
+  });
+
+  it("exits 1 when the remote head is not an ancestor (a rewritten PR head)", async () => {
+    const { cwd, remote } = pushed({ "docs/architecture.md": "a\n" });
+    git(cwd, "checkout", "-q", "--orphan", "rewritten");
+    const other = commit(cwd, "feat(1): rewritten");
+    const r = await run(
+      cwd,
+      [`--from=${remote}`, `--to=${other}`, "--branch=feat/1-x"],
+      "bookkeeping-push",
+    );
+    expect(r.code).toBe(1);
+    expect(r.json.reason).toBe("not-ancestor");
+  });
+
+  it("exits 1 on an all-zero remote head and on a branch that is not feat/{FID}", async () => {
+    const { cwd, remote } = pushed({ "docs/architecture.md": "a\n" });
+    const zero = await run(cwd, [`--from=${"0".repeat(40)}`], "bookkeeping-push");
+    expect(zero.code).toBe(1);
+    expect(zero.json.reason).toBe("no-remote-head");
+    const branch = await run(cwd, [`--from=${remote}`, "--branch=release/1.0"], "bookkeeping-push");
+    expect(branch.code).toBe(1);
+    expect(branch.json.reason).toBe("not-a-feature-branch");
+  });
+
+  it("CHANGELOG.md passes only through bkit.testing.ciSkipPaths in package.json", async () => {
+    const { cwd, remote } = pushed(
+      { "CHANGELOG.md": "# Changelog\n\n- x\n" },
+      { bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } },
+    );
+    expect((await run(cwd, [`--from=${remote}`], "bookkeeping-push")).code).toBe(0);
+    const plain = pushed({ "CHANGELOG.md": "# Changelog\n\n- x\n" });
+    const r = await run(plain.cwd, [`--from=${plain.remote}`], "bookkeeping-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["CHANGELOG.md"]);
+  });
+
+  it("exits 7 when a commit cannot be read", async () => {
+    const { cwd } = pushed({});
+    const r = await run(cwd, ["--from=deadbeef"], "bookkeeping-push");
+    expect(r.code).toBe(7);
+  });
+});
+
 describe("bkit ci min-push", () => {
   /** A repo whose first commit is `origin/dev`, then a branch commit writing `files`. */
   function pushed(files: Record<string, string>, pkg?: unknown) {
@@ -682,9 +887,10 @@ describe("bkit ci min-push", () => {
   });
 
   it("exits 1 naming the files outside, whatever the commit message says", async () => {
+    // A nested doc: only top-level `docs/*.md` is on ship's allow-list.
     const { cwd, head } = pushed({
       "docs/plans/202610/logs/1-x/status.jsonl": "{}\n",
-      "docs/design.md": "# Design\n",
+      "docs/guides/design.md": "# Design\n",
       "src/a.ts": "export const a = 1;\n",
     });
     const r = await run(cwd, [`--ref=${head}`], "min-push");
@@ -693,7 +899,7 @@ describe("bkit ci min-push", () => {
       minPush: false,
       reason: "outside",
       changed: 3,
-      outside: ["docs/design.md", "src/a.ts"],
+      outside: ["docs/guides/design.md", "src/a.ts"],
     });
   });
 
@@ -717,26 +923,43 @@ describe("bkit ci min-push", () => {
     expect(r.json.outside).toEqual(["src/c.ts"]);
   });
 
-  it("reads bkit.testing.minPushPaths from package.json; an explicit [] turns it off", async () => {
-    const custom = pushed(
-      { "notes/today.md": "x\n" },
-      { bkit: { testing: { minPushPaths: ["notes/**"] } } },
-    );
-    expect((await run(custom.cwd, [`--ref=${custom.head}`], "min-push")).code).toBe(0);
-    const off = pushed(
-      { "docs/decisions.jsonl": "{}\n" },
+  it("the floor is ship's pr allow-list plus the plans tree, and an explicit [] keeps it", async () => {
+    const floor = pushed(
+      {
+        "docs/architecture.md": "# A\n",
+        "docs/plans/202610/1-x-design.md": "# D\n",
+        "docs/roadmap.md": "x\n",
+        ".claude/skills/old/SKILL.md": "x\n",
+      },
       { bkit: { testing: { minPushPaths: [] } } },
     );
-    const r = await run(off.cwd, [`--ref=${off.head}`], "min-push");
-    expect(r.code).toBe(1);
-    expect(r.json.reason).toBe("no-paths");
+    const r = await run(floor.cwd, [`--ref=${floor.head}`], "min-push");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ minPush: true, reason: null, changed: 4, outside: [] });
+    expect(r.json.paths).toContain(":(glob)docs/*.md");
+    expect(r.json.paths).toContain(":(glob)docs/plans/**");
   });
 
-  it("a top-level glob does not reach into folders", async () => {
-    const { cwd, head } = pushed({ "docs/sub/notes.jsonl": "{}\n" });
+  it("bkit.testing.minPushPaths and ciSkipPaths add to the floor; a repo file passes only through them", async () => {
+    const bare = pushed({ "notes/today.md": "x\n", "CHANGELOG.md": "# C\n" });
+    const r = await run(bare.cwd, [`--ref=${bare.head}`], "min-push");
+    expect(r.code).toBe(1);
+    expect(r.json.outside).toEqual(["CHANGELOG.md", "notes/today.md"]);
+    const named = pushed(
+      { "notes/today.md": "x\n", "CHANGELOG.md": "# C\n" },
+      { bkit: { testing: { minPushPaths: ["notes/**"], ciSkipPaths: ["CHANGELOG.md"] } } },
+    );
+    expect((await run(named.cwd, [`--ref=${named.head}`], "min-push")).code).toBe(0);
+  });
+
+  it("a top-level glob in the setting does not reach into folders", async () => {
+    const { cwd, head } = pushed(
+      { "notes/sub/deep.md": "x\n" },
+      { bkit: { testing: { minPushPaths: ["notes/*.md"] } } },
+    );
     const r = await run(cwd, [`--ref=${head}`], "min-push");
     expect(r.code).toBe(1);
-    expect(r.json.outside).toEqual(["docs/sub/notes.jsonl"]);
+    expect(r.json.outside).toEqual(["notes/sub/deep.md"]);
   });
 
   it("a push that changes no files is not proven a min push", async () => {

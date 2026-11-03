@@ -4,8 +4,8 @@
 // lines, an optional progress block, then one item per question:
 //
 //   **Q{n} — {title}:** {question}
-//   Options: {A} / {B}
-//   Recommended: {A} — {reason}          (a hard blocker: `No recommendation — {why}`)
+//   Options: A) {A} / B) {B}
+//   Recommended: A) {A} — {reason}       (a hard blocker: `No recommendation — {why}`)
 //   Decision: {answer} — {words}         (once decided)
 //
 // `apply --by=headless` takes each recommendation when nobody can or should be asked: an
@@ -26,6 +26,38 @@ import { positiveInt, str } from "./status.js";
 export const EXIT_HARD_BLOCKERS = 4;
 const ITEM_SPLIT = /^(?=\*\*Q\d+ — )/m;
 const lineOf = (text, key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
+/** Options one item may hold: one per letter, `A` to `Z`. */
+const MAX_OPTIONS = 26;
+/** `A`, `B`, … for option index `i`. */
+const letterAt = (i) => String.fromCharCode(65 + i);
+/** An option entry's leading letter (`A) `) dropped, so a parsed name stays bare. */
+const bareName = (s) => s.replace(/^[A-Z]\)[ \t]*/, "");
+/** A reply opening on an option letter: `B`, `B)`, `B — …`, `B) {option} …`, `B {option} …`. */
+const LETTER_REPLY = /^([A-Za-z])(?:\)|(?=[ \t—:,.-]|$))[ \t]*(?:[—:,.-][ \t]*)?/;
+/**
+ * An answer read as the option it names. A leading letter of `options` (either case, with or
+ * without `)`) becomes the option it labels: `B`, `B) Reject` and `B — too risky` read as
+ * `Reject`, `Reject` and `Reject — too risky`. Any other answer is returned unchanged; with
+ * no options known, only a leading `A) ` is dropped.
+ */
+export function optionAnswer(answer, options) {
+    if (options.length === 0)
+        return bareName(answer);
+    const m = LETTER_REPLY.exec(answer);
+    const name = m === null ? undefined : options[m[1].toUpperCase().charCodeAt(0) - 65];
+    if (m === null || name === undefined)
+        return answer;
+    const rest = answer.slice(m[0].length);
+    if (rest.toLowerCase().startsWith(name.toLowerCase()))
+        return name + rest.slice(name.length);
+    if (rest === "")
+        return name;
+    return /[)—:,.-]/.test(m[0]) ? `${name} — ${rest}` : answer;
+}
+/** The option list as it is written: `A) {A} / B) {B}`. */
+const letteredOptions = (options) => options.map((o, i) => `${letterAt(i)}) ${o}`).join(" / ");
+/** The letter `name` holds in `options`, or null when it is not one of them. */
+const letterOf = (options, name) => options.includes(name) ? letterAt(options.indexOf(name)) : null;
 /** The items of a decision file's text, in file order. */
 export function parseDecisionItems(text) {
     return text
@@ -36,16 +68,18 @@ export function parseDecisionItems(text) {
         const rec = lineOf(part, "Recommended");
         const none = /^No recommendation\b/m.test(part);
         const [option, ...why] = (rec ?? "").split(" — ");
-        const decision = lineOf(part, "Decision");
+        const options = (lineOf(part, "Options") ?? "")
+            .split(" / ")
+            .map((o) => bareName(o.trim()))
+            .filter(Boolean);
+        const answer = lineOf(part, "Decision");
+        const decision = answer === null ? null : optionAnswer(answer, options);
         return {
             n: Number(head?.[1] ?? 0),
             title: head?.[2] ?? "",
             text: part.trimEnd(),
-            options: (lineOf(part, "Options") ?? "")
-                .split(" / ")
-                .map((o) => o.trim())
-                .filter(Boolean),
-            recommended: none || rec === null ? null : (option ?? "").trim(),
+            options,
+            recommended: none || rec === null ? null : bareName((option ?? "").trim()),
             reason: why.join(" — ").trim(),
             decision,
             assumed: decision !== null && /^Accept \(assumed\)/.test(decision),
@@ -116,6 +150,8 @@ function composeItems(raw) {
         const options = Array.isArray(o.options) ? o.options.filter((x) => typeof x === "string") : [];
         if (s("title") === "" || s("question") === "" || options.length === 0)
             throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
+        if (options.length > MAX_OPTIONS)
+            throw new CommandError(EXIT.USAGE, `item ${i + 1}: at most ${MAX_OPTIONS} options (A-Z)`);
         if (s("noRecommendation") === "" && !options.includes(s("recommended")))
             throw new CommandError(EXIT.USAGE, `item ${i + 1}: recommended must be one of its options, or set noRecommendation`);
         return {
@@ -128,13 +164,17 @@ function composeItems(raw) {
         };
     });
 }
-const itemLines = (n, it) => [
-    `**Q${n} — ${it.title}:** ${it.question}`,
-    `Options: ${it.options.join(" / ")}`,
-    it.noRecommendation
-        ? `No recommendation — ${it.noRecommendation}`
-        : `Recommended: ${it.recommended} — ${it.reason || "the orchestrator's call"}`,
-];
+const itemLines = (n, it) => {
+    const rec = it.recommended ?? "";
+    const letter = letterOf(it.options, rec);
+    return [
+        `**Q${n} — ${it.title}:** ${it.question}`,
+        `Options: ${letteredOptions(it.options)}`,
+        it.noRecommendation
+            ? `No recommendation — ${it.noRecommendation}`
+            : `Recommended: ${letter === null ? rec : `${letter}) ${rec}`} — ${it.reason || "the orchestrator's call"}`,
+    ];
+};
 // ---------------------------------------------------------------------------
 // apply
 // ---------------------------------------------------------------------------
@@ -192,7 +232,7 @@ function deferralRow(file, it) {
         severity,
         reason: "needs-decision",
         summary: `${fid}: ${it.title} accepted without the owner (${ref})`,
-        description: `Decision needed: accept or fix "${it.title}". Options: ${it.options.join(" / ")}. ${it.rejected ? "The owner rejected the assumed accept at ship." : "Nobody confirmed the assumed accept before the merge."} Item: ${it.text.split("\n")[0]}`,
+        description: `Decision needed: accept or fix "${it.title}". Options: ${letteredOptions(it.options)}. ${it.rejected ? "The owner rejected the assumed accept at ship." : "Nobody confirmed the assumed accept before the merge."} Item: ${it.text.split("\n")[0]}`,
         status: "OPEN",
     };
 }
@@ -216,6 +256,7 @@ export const decisionsCommand = {
     verbs: {
         compose: {
             summary: "Write a decision file in the one question layout, with loop progress when asked.",
+            use: "workflow",
             flags: [
                 { name: "out", type: "string", required: true, help: "the decision file to write" },
                 {
@@ -235,7 +276,7 @@ export const decisionsCommand = {
                     help: "verify | tests: add the progress block and the loop question as Q1",
                 },
                 { name: "file", type: "string", help: "status.jsonl, with --loop" },
-                { name: "group", type: "string", help: "with --loop=verify: the plan group" },
+                { name: "group", type: "string", help: "with --loop=verify: the task group" },
                 { name: "attempt", type: "string", help: "with --loop: the attempt just failed" },
                 { name: "max", type: "string", help: "with --loop: the point's maxAttempts" },
             ],
@@ -308,6 +349,7 @@ export const decisionsCommand = {
         },
         apply: {
             summary: "Settle a decision file's items: --by=headless takes each recommendation; --by=owner confirms or rejects one assumed item.",
+            use: "workflow",
             flags: [
                 { name: "file", type: "string", required: true, help: "the decision file" },
                 { name: "by", type: "string", required: true, help: "headless | owner" },
@@ -382,6 +424,7 @@ export const decisionsCommand = {
         },
         pending: {
             summary: "List the feature's assumed Accepts nobody confirmed; --defer writes one needs-decision deferral per item.",
+            use: "workflow",
             flags: [
                 { name: "fid", type: "string", required: true, help: "feature id" },
                 { name: "month", type: "string", required: true, help: "YYYYMM of the feature's logs" },

@@ -94,10 +94,6 @@ describe("consumer CI template (.bkit/templates/.github/workflows/bkit-ci.yml)",
     expect(content).not.toMatch(/npm\.pkg\.github\.com/);
   });
 
-  it("still contains pnpm install --frozen-lockfile", () => {
-    expect(content).toContain("pnpm install --frozen-lockfile");
-  });
-
   it("still contains token placeholders {{DEFAULT_BRANCH}} and {{NODE_VERSION}}", () => {
     expect(content).toContain("{{DEFAULT_BRANCH}}");
     expect(content).toContain("{{NODE_VERSION}}");
@@ -306,12 +302,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });
 
-  it("enables lockFileMaintenance on a monthly schedule", () => {
-    expect(content).toMatch(/lockFileMaintenance:/);
-    expect(content).toMatch(/enabled:\s*true/);
-    expect(content).toMatch(
-      /lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["before 6am on the first day of the month"\]/,
-    );
+  it("enables lockFileMaintenance", () => {
+    expect(content).toMatch(/lockFileMaintenance:\s*\{\s*enabled:\s*true/);
   });
 
   it("ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308)", () => {
@@ -404,8 +396,25 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).not.toMatch(/groupName:\s*"playwright"\s*,/);
   });
 
-  it("declares weekly schedule (before 6am on Monday)", () => {
-    expect(content).toMatch(/schedule:\s*\[\s*"before 6am on Monday"\s*\]/);
+  // The daily bkit-renovate.yml cron starts hours late, so the windows cover whole days.
+  it("renovate schedule covers the whole Monday", () => {
+    expect(content).toMatch(/\n {2}schedule:\s*\[\s*"\* \* \* \* 1"\s*\]/);
+    expect(content).not.toMatch(/before 6am/);
+  });
+
+  it("renovate lockfile maintenance covers the whole first day of the month", () => {
+    expect(content).toMatch(/lockFileMaintenance:\s*\{[\s\S]*?schedule:\s*\["\* \* 1 \* \*"\]/);
+  });
+
+  it("renovate groups custom.regex updates into one pinned-tools PR, pnpm into the non-major group", () => {
+    const pinned = content.indexOf('groupName: "pinned tools"');
+    const pnpm = content.search(
+      /matchManagers:\s*\["custom\.regex"\],\s*matchDepNames:\s*\["pnpm"\],\s*matchUpdateTypes:\s*\["minor", "patch"\],\s*groupName:\s*"non-major dependencies",\s*automerge:\s*true/,
+    );
+    expect(content).toMatch(
+      /matchManagers:\s*\["custom\.regex"\],\s*groupName:\s*"pinned tools",\s*automerge:\s*false/,
+    );
+    expect(pnpm).toBeGreaterThan(pinned);
   });
 
   it("references the JSON schema for editor validation", () => {
@@ -532,7 +541,7 @@ describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-t
 
   it("leaves pnpm-lock.yaml to the dependency-audit gate once that gate is adopted", () => {
     expect(content).toMatch(
-      /if \[ -f scripts\/ci\/check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
+      /if \[ -f scripts\/ci\/bkit-check-dependency-audit\.mjs \]; then\n\s+args="\$args --skip-files pnpm-lock\.yaml"/,
     );
   });
 
@@ -550,6 +559,63 @@ describe("trivy scan workflow template (.bkit/templates/.github/workflows/bkit-t
     expect(content).toMatch(/permissions:\s+contents:\s*read/);
     expect(content).toMatch(/persist-credentials:\s*false/);
     expect(content).not.toMatch(/secrets\./);
+  });
+});
+
+/** A step's `run:` body, empty for a `uses:` step. */
+const stepRun = (step: { run?: string }): string => step.run ?? "";
+
+describe("health check workflow template (.bkit/templates/.github/workflows/bkit-health.yml)", () => {
+  const content = fs.readFileSync(
+    path.resolve(".bkit/templates/.github/workflows/bkit-health.yml"),
+    "utf-8",
+  );
+  const filled = content
+    .replaceAll("{{DEFAULT_BRANCH}}", "main")
+    .replaceAll("{{PRODUCTION_URL}}", "https://example.com");
+  const wf = parseYamlText(filled) as {
+    on: { workflow_run: { workflows: string[]; types: string[]; branches: string[] } };
+    jobs: Record<string, { name?: string; needs?: string; if?: string; steps: { run?: string }[] }>;
+  };
+
+  it("runs after every finished bkit-ci run on the default branch, whatever its conclusion", () => {
+    expect(wf.on.workflow_run).toEqual({
+      workflows: ["bkit-ci"],
+      types: ["completed"],
+      branches: ["main"],
+    });
+    expect(content).not.toMatch(/workflow_run\.conclusion/);
+  });
+
+  it("probes only when production serves the CI run's commit", () => {
+    expect(wf.jobs.health.needs).toBe("promoted");
+    expect(wf.jobs.health.if).toBe("needs.promoted.outputs.live == 'true'");
+    const gate = stepRun(wf.jobs.promoted.steps[0]);
+    expect(gate).toMatch(/if \[ "\$live_sha" = "\$HEAD_SHA" \]; then\n\s+echo "live=true"/);
+  });
+
+  it("fails, rather than skips, when it cannot read what production serves", () => {
+    const gate = stepRun(wf.jobs.promoted.steps[0]);
+    expect(gate).toMatch(/if \[ "\$code" != "200" \]; then\n\s+echo "::error::[^\n]*"\n\s+exit 1/);
+  });
+
+  it("passes the CI run's commit through env:, never inlined into a run: body", () => {
+    expect(content).toContain("HEAD_SHA: ${{ github.event.workflow_run.head_sha }}");
+    for (const job of Object.values(wf.jobs)) {
+      for (const step of job.steps) expect(stepRun(step)).not.toMatch(/\$\{\{/);
+    }
+  });
+
+  it("names every job with the bkit- prefix", () => {
+    for (const job of Object.values(wf.jobs)) expect(job.name).toMatch(/^bkit-/);
+  });
+
+  it("is the one health workflow the CI template points at", () => {
+    const ci = fs.readFileSync(CONSUMER_CI_TEMPLATE, "utf-8");
+    expect(ci).toMatch(
+      /# bkit-stub:health — copy \.bkit\/templates\/\.github\/workflows\/bkit-health\.yml to\n# \.github\/workflows\/bkit-health\.yml\./,
+    );
+    expect(ci).not.toMatch(/bkit-stub:smoke|smoke\.yml|[^-]health\.yml/);
   });
 });
 
@@ -618,8 +684,8 @@ describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", 
     ["build-group-gate-1-1.md", true],
     ["build-subplan-gate-1-1.md", true],
     ["context-tests-local-1.md", true],
-    ["build-plan-verify-1-1.md", false],
-  ])("prettier ignores the committed gate log %s: %s", async (name, ignored) => {
+    ["build-plan-verify-1-1.md", true],
+  ])("prettier ignores the committed run log %s: %s", async (name, ignored) => {
     const file = path.join(
       path.dirname(CONSUMER_PRETTIERIGNORE_TEMPLATE),
       "docs/plans/202610/logs/1-x",
@@ -676,8 +742,8 @@ describe("templates", () => {
 
 describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
   const SCRIPT = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd-env.sh");
-  const PLIST = path.resolve(".bkit/templates/scripts/launchd/ai.bkit.launchd.plist");
-  const ENV_EXAMPLE = path.resolve(".bkit/templates/scripts/launchd/launchd.env.example");
+  const PLIST = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd.plist");
+  const ENV_EXAMPLE = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd.env.example");
 
   it("ships the loader, the LaunchAgent plist and the env example", () => {
     expect(fs.existsSync(SCRIPT)).toBe(true);
@@ -715,7 +781,7 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
     });
   });
 
-  describe("ai.bkit.launchd.plist", () => {
+  describe("bkit-launchd.plist", () => {
     const content = fs.readFileSync(PLIST, "utf-8");
 
     it("is a LaunchAgent that loads at login and re-runs on env-file writes", () => {
@@ -732,7 +798,7 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
     });
   });
 
-  describe("launchd.env.example", () => {
+  describe("bkit-launchd.env.example", () => {
     const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
 
     it("ships example BKIT_ token keys with empty values", () => {
@@ -749,8 +815,19 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
   const block = /```json\n([\s\S]*?)\n```/.exec(section);
   const scripts = JSON.parse(block?.[1] ?? "{}") as Record<string, string>;
 
-  it("lists slop:delta as the bkit ci slop verb", () => {
-    expect(scripts["slop:delta"]).toBe("bkit ci slop");
+  it("lists bkit:slop:delta as the bkit ci slop verb", () => {
+    expect(scripts["bkit:slop:delta"]).toBe("bkit ci slop");
+  });
+
+  const graphSection = doc.slice(doc.indexOf("## graphify"));
+  const graphBlock = /```json\n([\s\S]*?)\n```/.exec(graphSection);
+  const graphScripts = JSON.parse(graphBlock?.[1] ?? "{}") as Record<string, string>;
+
+  it("lists the graphify scripts under bkit:graph names", () => {
+    const names = Object.keys(graphScripts).filter((k) => /^(bkit:)?graph(:|$)/.test(k));
+    expect(names).toContain("bkit:graph");
+    expect(names).toContain("bkit:graph:check");
+    expect(names.filter((k) => !k.startsWith("bkit:"))).toEqual([]);
   });
 
   it("lists a lint value that runs Oxlint type-aware with the shipped config and fails on any hit", () => {

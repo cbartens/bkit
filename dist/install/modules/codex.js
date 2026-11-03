@@ -8,6 +8,7 @@ import { getCoreRoot, getSharedRoot, getWorkflowsRoot, getPromptsRoot, } from ".
 import { DEFAULT_ISSUE_TRACKER } from "../manifest.js";
 import { substituteWorkflow } from "../../render/trackers.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
+import { writeCodexCloudDoc } from "../cloud-env.js";
 import { BKIT_PREFIX, installFile, listMdFiles, removeOrphans, trackMirrorWrite } from "./core.js";
 /**
  * Convert a workflow orchestrator (`.bkit/core/workflows/*.md`) into a Codex SKILL.md.
@@ -141,8 +142,9 @@ export function runCodexModule(ctx) {
                 console.log(`${logPrefix} ${tag}codex: ${jsonDst}`);
         }
     }
-    // --- bkit-gateguard.cjs / bkit-readguard.cjs — Tier-2 markered-text, twins of the Claude hooks ---
-    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+    // --- bkit-gateguard.cjs / bkit-readguard.cjs / bkit-rules.cjs — Tier-2 markered-text,
+    // twins of the Claude hooks ---
+    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs", "bkit-rules.cjs"]) {
         const hookSrc = path.join(codexHooks, hook);
         const hookDst = `.codex/hooks/${hook}`;
         if (fs.existsSync(hookSrc)) {
@@ -169,6 +171,14 @@ export function runCodexModule(ctx) {
             if (ws.writes.length > prevLen)
                 console.log(`${logPrefix} ${tag}codex: ${railDst}`);
         }
+    }
+    // Generated copy-paste-ready Codex Cloud setup doc — `.codex/bkit-cloud.md`. Twin of
+    // `.claude/bkit-cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL secret
+    // values resolved from `.envrc`, never enters ws.writes / canonicalHashes / `bkit check`
+    // drift. Skipped on dry-run (`bkit check`), which never writes secrets. Upgrade
+    // regenerates it via the same helper (see runUpgrade caller).
+    if (!dryRun && writeCodexCloudDoc(process.cwd(), ctx.tokens)) {
+        console.log(`${logPrefix} ${tag}codex: .codex/bkit-cloud.md (generated — gitignored, holds resolved secrets)`);
     }
     advisories.push({
         id: "codex-setup",

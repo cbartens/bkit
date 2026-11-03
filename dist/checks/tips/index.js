@@ -1,7 +1,41 @@
 // checks/tips/index.ts — collect the firing setup tips and render them for `bkit tips`, the
 // console checklist and `.bkit/advisories.md`. Catalogue + priority: ./catalogue.ts.
+//
+// Every `fires` reads the directory `tipsBase` returns — the main checkout, the tree the
+// integration branch is checked out in — never the calling directory. A workflow runs in a
+// worktree, but a worktree is an ephemeral branch: an empty or half-created one would fire
+// every "file is missing" tip as a false gap. When no checkout is found at all, nothing fires.
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { git, mainCheckoutRoot } from "../../commands/lib.js";
 import { ignoredAdvisoryIds, } from "../after/suppression.js";
 import { ALL_WORKFLOWS, SETUP_TIPS } from "./catalogue.js";
+/**
+ * The directory the tips are checked against: the main checkout's root — the tree the
+ * integration branch is checked out in — resolved from any worktree by
+ * `mainCheckoutRoot` (git's common dir), else `cwd` when git cannot say. A bare main
+ * repo has no checkout: the common dir's parent then belongs to no repo or to another
+ * one, so the caller's own top level is used. `null` when the base is not a checkout
+ * (holds neither `.git` nor `package.json`): a directory with nothing to check fires no
+ * tip rather than every "missing" tip as a false gap.
+ */
+export function tipsBase(cwd) {
+    const base = mainCheckoutOf(cwd) ?? git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+    if (!fs.existsSync(base))
+        return null;
+    return fs.existsSync(path.join(base, ".git")) || fs.existsSync(path.join(base, "package.json"))
+        ? base
+        : null;
+}
+/** `mainCheckoutRoot(cwd)` when git there resolves to the same common dir, else null. */
+function mainCheckoutOf(cwd) {
+    const commonDir = (dir) => git(dir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const root = mainCheckoutRoot(cwd);
+    if (root === null || !fs.existsSync(root))
+        return null;
+    const own = commonDir(cwd);
+    return own !== null && commonDir(root) === own ? root : null;
+}
 /** Tips `bkit tips` prints without `--all` or `--workflow`. */
 export const TIPS_CAP = 3;
 /** Tips a workflow prints at its close (`bkit tips --workflow=<name>`). */
@@ -32,13 +66,15 @@ export const STAR_TIP = "Do you like bkit? Then give it a star at [https://githu
 /** `STAR_TIP` for a workflow's `## bkit Tips`, its question bold like each tip's title. */
 export const STAR_TIP_PARAGRAPH = STAR_TIP.replace("Do you like bkit?", "**Do you like bkit?**");
 /** Intro of the Setup tips section: who reads which field, and how to silence a tip. */
-export const TIPS_SECTION_INTRO = "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.advisories.ignore` in package.json. Full template catalogue: .bkit/templates.md.";
+export const TIPS_SECTION_INTRO = "Things not set up yet, most useful first. For the person: each tip says what goes wrong today and a sentence to ask your agent. For an AI agent: follow each tip's Agent steps unless the person declines it. Silence a tip by adding its id to `bkit.advisories.ignore` in package.json; `bkit-upgrade` cannot be silenced. Full template catalogue: .bkit/templates.md.";
 /** True when advisory `id` matches catalogue pattern `pattern` (trailing `*` = prefix). */
 export function matchesAdvisory(pattern, id) {
     return pattern.endsWith("*") ? id.startsWith(pattern.slice(0, -1)) : id === pattern;
 }
-/** True when `ignored` names the tip's id or any advisory id it reuses. */
+/** True when `ignored` names the tip's id or any advisory id it reuses; never for an unsilenceable tip. */
 export function isTipSilenced(tip, ignored) {
+    if (tip.silenceable === false)
+        return false;
     if (ignored.has(tip.id))
         return true;
     const patterns = tip.advisories ?? [];
@@ -46,11 +82,14 @@ export function isTipSilenced(tip, ignored) {
 }
 /** Every firing tip in priority order, minus the ones the root package.json silences. */
 export function collectTips(cwd, catalogue = SETUP_TIPS) {
-    const ignored = ignoredAdvisoryIds(cwd);
+    const base = tipsBase(cwd);
+    if (base === null)
+        return { tips: [], suppressed: [], star: false };
+    const ignored = ignoredAdvisoryIds(base);
     const tips = [];
     const suppressed = [];
     for (const tip of catalogue) {
-        if (!tip.fires(cwd))
+        if (!tip.fires(base))
             continue;
         if (isTipSilenced(tip, ignored))
             suppressed.push({ id: tip.id, scope: "." });
@@ -66,7 +105,10 @@ export function collectTips(cwd, catalogue = SETUP_TIPS) {
  * never dropped.
  */
 export function dropTipSilencedAdvisories(findings, cwd, onSuppressed, catalogue = SETUP_TIPS) {
-    const ignored = ignoredAdvisoryIds(cwd);
+    const base = tipsBase(cwd);
+    if (base === null)
+        return findings;
+    const ignored = ignoredAdvisoryIds(base);
     if (ignored.size === 0)
         return findings;
     const patterns = catalogue
@@ -125,7 +167,7 @@ export function formatTips(tips, opts = {}) {
 /** `formatTips` for a workflow's `## bkit Tips`: tips, star line, how to silence both. */
 function formatWorkflowTips(tips, workflow, star) {
     const shown = orderForWorkflow(tips, workflow).slice(0, WORKFLOW_TIPS_CAP);
-    const ids = shown.map((t) => t.id);
+    const ids = shown.filter((t) => t.silenceable !== false).map((t) => t.id);
     const parts = shown.map(tipParagraph);
     if (star) {
         parts.push(STAR_TIP_PARAGRAPH);

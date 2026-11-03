@@ -101,7 +101,7 @@
   "mcp": {
     "@@OPENCODE_TRACKER_MCP@@": {}
   },
-  "plugin": ["./plugin/bkit-gateguard.js", "./plugin/bkit-readguard.js"],
+  "plugin": ["./plugin/bkit-gateguard.js", "./plugin/bkit-readguard.js", "./plugin/bkit-rules.js"],
   "provider": {
     "@@OPENCODE_PROVIDER_KEY@@": {
       "npm": "@ai-sdk/openai-compatible",

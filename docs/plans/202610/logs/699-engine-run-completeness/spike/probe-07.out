@@ -1,0 +1,12 @@
+cwd: /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+toplevel: /Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness
+IN_PROGRESS runs found from this toplevel: [{"file":"/Users/christian/Documents/GitHub/bkit/.worktrees/699-engine-run-completeness/docs/plans/202610/logs/699-engine-run-completeness/status.jsonl","workflow":"design"}]
+
+scan (walk + fold every corpus log): 0.40 ms/call over 200 calls
+git rev-parse --show-toplevel spawn  : 3.83 ms/call over 200 calls
+resolve-or-skip total (git + scan)   : 4.23 ms/call
+
+main checkout: /Users/christian/Documents/GitHub/bkit
+IN_PROGRESS runs found from the main checkout: []
+
+call sites: 357; carrying --file=: 169; needing the scan: 188

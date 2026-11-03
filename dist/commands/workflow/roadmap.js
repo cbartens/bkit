@@ -16,7 +16,7 @@
 // a bad ledger or an unwritable board, and never gates the caller's close.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SCHEMA, compareTs, mintTs, parse, resolveRepoSlug, validate, } from "../../ledgers/telemetry.js";
+import { SCHEMA, compareTs, mintTs, parse, resolveRepoSlug, validate, withLineage, } from "../../ledgers/telemetry.js";
 import { readBkitVersion } from "../../install/version-file.js";
 import { CommandError, DEV, EXIT, git, parseJson, repoRoot, runGit, } from "../lib.js";
 import { landDir, pushToDev } from "../land.js";
@@ -39,6 +39,20 @@ export const MARKERS = {
     analysisStart: "<!-- bkit:roadmap-analysis start -->",
     analysisEnd: "<!-- bkit:roadmap-analysis end -->",
 };
+/** Title and rules box a new board opens with; the consumer owns both once the file exists. */
+export const SEEDED_HEAD = [
+    "# Roadmap",
+    "",
+    "> [!CAUTION]",
+    "> **Purpose:** Phase board of every bkit feature, projected from `.bkit/issues.jsonl`, plus the best-next-step analysis and your notes.",
+    ">",
+    "> **Rules:**",
+    ">",
+    "> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit the parts that are yours.",
+    "> - Text above the first marker and the `## Notes` blocks are yours; bkit never overwrites them.",
+    "> - Everything between the `bkit:roadmap-status` markers is generated: `bkit roadmap fold` rewrites it on every run, so a hand edit there is lost. Append to `.bkit/issues.jsonl` instead.",
+    "> - Everything between the `bkit:roadmap-analysis` markers belongs to `@bkit-utility-update-roadmap`, which rewrites it on every run.",
+].join("\n");
 const ANALYSIS_PLACEHOLDER = "_(no analysis yet; run @bkit-utility-update-roadmap to populate)_";
 const NOTES_PRE_PLACEHOLDER = "## Notes\n\n_(above the bkit list — yours, never overwritten)_";
 const NOTES_POST_PLACEHOLDER = "## Notes\n\n_(end of the board — yours, never overwritten)_";
@@ -199,7 +213,7 @@ export function foldBoard(p, current, now) {
     // never rewrites it. The generated-tables warning lives in the status block,
     // so its wording stays true as the region's rules change.
     if (blank(head))
-        head = "# Roadmap";
+        head = SEEDED_HEAD;
     let merge = adopted;
     if (!blank(tail))
         merge = appendNotes(merge, tail);
@@ -223,11 +237,15 @@ export function foldBoard(p, current, now) {
     return { board: `${board}\n`, log };
 }
 const EMPTY = { designed: [], planned: [], built: [], debugged: [], shipped: [] };
-/** Re-render `<root>/docs/roadmap.md` from `<root>/.bkit/issues.jsonl`; never throws for a bad ledger or board. */
-export function foldRoadmap(root, log) {
+/** The `_(refreshed …)_` stamp for this moment, to the second. */
+export const refreshStamp = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+/**
+ * Re-render `<root>/docs/roadmap.md` from `<root>/.bkit/issues.jsonl`, stamped
+ * `now`; never throws for a bad ledger or board.
+ */
+export function foldRoadmap(root, log, now = refreshStamp()) {
     const md = path.join(root, "docs", "roadmap.md");
     const ledger = path.join(root, ".bkit", "issues.jsonl");
-    const now = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
     let projection = EMPTY;
     let malformed = 0;
     const raw = fs.existsSync(ledger) && fs.statSync(ledger).isFile() ? fs.readFileSync(ledger, "utf-8") : "";
@@ -292,11 +310,13 @@ function appendLedgerRow(root, row) {
     }
 }
 /**
- * Append the feature's roadmap row (built from `workflow` / `fid`, or `row` as
- * given) under `root`, then re-render the board. Fail-open: a failed append or
- * render is logged and reported, never thrown.
+ * Append the feature's roadmap row under `root`, then re-render the board stamped
+ * `now`. A row built from `workflow` / `fid`, or a `row` without `updates`, gets
+ * `firstTs` + `updates` carried forward from the FID's rows already in the ledger;
+ * a `row` that carries `updates` (one an earlier call printed) is appended byte
+ * for byte. Fail-open: a failed append or render is logged and reported, never thrown.
  */
-export function appendFeature(root, o, log) {
+export function appendFeature(root, o, log, now = refreshStamp()) {
     let row;
     if (o.row !== undefined) {
         const parsed = parseJson(o.row);
@@ -318,13 +338,19 @@ export function appendFeature(root, o, log) {
             step: o.step ?? `${o.workflow}-close-workflow`,
         });
     }
+    const ledger = path.join(root, ".bkit", "issues.jsonl");
+    const prior = fs.existsSync(ledger) && fs.statSync(ledger).isFile()
+        ? parse(fs.readFileSync(ledger, "utf-8")).events
+        : [];
+    if (o.row === undefined || !("updates" in row))
+        row = withLineage(prior, row);
     const check = validate(row);
     if (!check.ok)
         throw new CommandError(EXIT.USAGE, `not a valid feature row: ${check.reason}`);
     const problem = appendLedgerRow(root, row);
     if (problem)
-        log(`append failed: ${path.join(root, ".bkit", "issues.jsonl")} — ${problem}`);
-    const board = foldRoadmap(root, log);
+        log(`append failed: ${ledger} — ${problem}`);
+    const board = foldRoadmap(root, log, now);
     return { row, appended: problem === undefined, written: board.written, path: board.path };
 }
 function feature(ctx) {
@@ -341,17 +367,21 @@ function feature(ctx) {
 const ROADMAP_FILES = [".bkit/issues.jsonl", "docs/roadmap.md"];
 /**
  * Build / debug close: append the feature row in the worktree, then land the
- * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). The
- * main checkout is never touched. Skipped when the run's own checkout is on dev
- * (the row rides that branch's commit). Fail-open throughout: the feat-side row
- * is already written and reaches dev with ship's merge.
+ * SAME row on `dev` through a throwaway origin/dev checkout (`pushToDev`). Both
+ * sides get the row's exact bytes and one shared refresh stamp, so the branch and
+ * dev make the same change to `.bkit/issues.jsonl` and `docs/roadmap.md` and the
+ * feature PR merges without a conflict on either. The main checkout is never
+ * touched. Skipped when the run's own checkout is on dev (the row rides that
+ * branch's commit). Fail-open throughout: the feat-side row is already written
+ * and reaches dev with ship's merge.
  */
 async function mirror(ctx) {
     const workflow = String(ctx.flags.workflow);
     const fid = String(ctx.flags.fid);
     const wt = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
     const root = repoRoot(ctx.cwd);
-    const feat = appendFeature(wt, { workflow, fid }, ctx.log);
+    const now = refreshStamp();
+    const feat = appendFeature(wt, { workflow, fid }, ctx.log, now);
     const done = (mirrored, skipped) => {
         if (skipped)
             ctx.log(`skipping the dev-side roadmap mirror — ${skipped} (feat-side row already written)`);
@@ -368,7 +398,7 @@ async function mirror(ctx) {
         dir: landDir(root, fid),
         build: (dir) => {
             committed = "";
-            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log).appended) {
+            if (!appendFeature(dir, { row: JSON.stringify(feat.row) }, ctx.log, now).appended) {
                 committed = "row not appended on dev";
                 return;
             }
@@ -420,6 +450,7 @@ export const roadmapCommand = {
     verbs: {
         fold: {
             summary: "Rewrite the status tables; carry notes, analysis and the consumer's head through.",
+            use: "by-hand",
             flags: [
                 {
                     name: "root",
@@ -437,6 +468,7 @@ export const roadmapCommand = {
         },
         feature: {
             summary: "Append the feature's roadmap row to .bkit/issues.jsonl, then re-render the board (fail-open).",
+            use: "workflow",
             flags: [
                 {
                     name: "root",
@@ -476,6 +508,7 @@ export const roadmapCommand = {
         },
         mirror: {
             summary: "Build / debug close: append the feature row in the worktree, then land the same row on dev through a throwaway origin/dev checkout (fail-open).",
+            use: "workflow",
             flags: [
                 { name: "workflow", type: "string", required: true, help: "build | debug" },
                 { name: "fid", type: "string", required: true, help: "feature id (the row's key)" },

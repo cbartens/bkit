@@ -1,21 +1,4 @@
-// commands/install/upgrade.integration.test.ts — Integration test: 0.4.x → 0.5.x customised hooks scenario.
-//
-// Tests: "Upgrade integration (customised hooks scenario)"
-//
-// Fixture: tests/fixtures/heavy-customised-consumer/
-//
-// Scenario:
-//   A consumer had bkit@0.4.x installed with a customised .cursor/hooks.json:
-//   - Consumer added `failClosed: true` and `loop_limit: 5` (consumer drift).
-//   - bkit@0.5.x ships an updated hooks.json template.
-//
-//   `bkit upgrade` against this consumer must:
-//   - NOT silently overwrite the consumer's `failClosed` and `loop_limit` fields.
-//   - Report the conflict to stderr.
-//   - Exit non-zero in --non-interactive mode.
-//
-// This test exercises the full runUpgrade function at the integration level,
-// wiring the heavy-customised-consumer fixture to simulate a real upgrade path.
+// commands/install/upgrade.integration.test.ts — Upgrade conflict detection and consumer preservation.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -85,9 +68,8 @@ function seedCursorHooksFromFixture(): void {
 }
 
 function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
-  fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
   const v: BkitVersion = {
-    pinnedVersion: "0.4.0",
+    pinnedVersion: "5.0.0",
     canonicalHashes,
     claudeAllowDerived: [],
   };
@@ -95,20 +77,15 @@ function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 1: Consumer has customised .cursor/hooks.json
-//   - bkit@0.4.x installed: hooks.json had only SessionStart (bkit default)
-//   - Consumer added failClosed + loop_limit → drift
-//   - bkit@0.5.x ships new hooks.json template
-//   - bkit upgrade must: detect conflict, NOT overwrite, report to stderr
+// Consumer changes conflict with a new template; unchanged files can still upgrade.
 // ---------------------------------------------------------------------------
 
-describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", () => {
+describe("upgrade integration: consumer customizations", () => {
   it("detects conflict on customised .cursor/hooks.json (failClosed, loop_limit preserved)", () => {
     seedCursorHooksFromFixture();
 
-    // Simulate what bkit@0.4.x would have written as the canonical content:
-    // A minimal hooks.json with just SessionStart (no consumer additions)
-    const bkit04CanonicalContent =
+    // The recorded template has no consumer additions.
+    const canonicalContent =
       JSON.stringify(
         {
           hooks: {
@@ -124,10 +101,10 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
         2,
       ) + "\n";
 
-    // Record the 0.4.x canonical hash — disk content differs (consumer drift)
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    // Disk content differs from the recorded hash: consumer drift.
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
-    // bkit@0.5.x template: updated hooks.json (adds a new hook event)
+    // The new template adds another hook event.
     const newTemplateContent =
       JSON.stringify(
         {
@@ -169,8 +146,8 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("does not silently overwrite consumer drift in --non-interactive mode", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    const canonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
     const newTemplateContent =
       JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
@@ -196,8 +173,8 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("conflict list has relPath and both content versions for AI-actionable diff", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    const canonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
     const newTemplateContent =
       JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
@@ -223,8 +200,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("upgrades non-conflicting file while preserving conflicting consumer file", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalHooksContent =
-      JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    const canonicalHooksContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
     const oldAgentContent = "old agent content\n";
 
     // Two files: .cursor/hooks.json (conflict) + .claude/agents/bkit-test.md (clean update)
@@ -236,7 +212,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     );
 
     writeVersionFile({
-      ".cursor/hooks.json": sha256(bkit04CanonicalHooksContent),
+      ".cursor/hooks.json": sha256(canonicalHooksContent),
       ".claude/agents/bkit-test.md": sha256(oldAgentContent), // no consumer drift
     });
 
@@ -381,7 +357,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), owned, "utf-8");
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"),
-      "name: Renovate\n",
+      "name: Renovate (ours)\n",
       "utf-8",
     );
 
@@ -390,7 +366,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8")).toBe(owned);
     expect(
       fs.readFileSync(path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"), "utf-8"),
-    ).toBe("name: Renovate\n");
+    ).toBe("name: Renovate (ours)\n");
   });
 
   it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {
@@ -728,7 +704,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     const version = readInstallingVersion();
     const written = writtenFiles();
 
-    // Simulate an install made by an older bkit: every marker reads 4.0.0, and the
+    // Simulate an install made by an older bkit: every marker reads 5.0.0, and the
     // recorded hashes and pin are what that older bkit wrote.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const recorded = readBkitVersion(versionFile)!;
@@ -737,19 +713,19 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
         rel,
         fs
           .readFileSync(path.join(tmpDir, rel), "utf-8")
-          .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 "),
+          .replaceAll(`bkit:managed v${version} `, "bkit:managed v5.0.0 "),
       ]),
     );
     for (const [rel, content] of aged) fs.writeFileSync(path.join(tmpDir, rel), content, "utf-8");
     for (const rel of written.filter((r) => r in recorded.canonicalHashes)) {
       recorded.canonicalHashes[rel] = sha256(aged.get(rel)!);
     }
-    writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "4.0.0" });
+    writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "5.0.0" });
 
     const stale = runCli(["check"]);
     expect(stale.out).toContain("bkit-managed-stale");
     expect(stale.out).toContain(`${written.length} of ${written.length} bkit-managed file(s)`);
-    expect(stale.out).toContain("(v4.0.0)");
+    expect(stale.out).toContain("(v5.0.0)");
 
     const upgrade = runCli(["upgrade", "--auto-apply"]);
     expect(upgrade.status, upgrade.out).toBe(0);
@@ -773,6 +749,48 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
 // gated on sentinel-detected installation: a `--claude`-only consumer gets no
 // cursor/lint files on upgrade.
 // ---------------------------------------------------------------------------
+
+describe("#717 — .codex/bkit-cloud.md through install, upgrade and check", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../cli.ts",
+  );
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("codex install writes it gitignored at 0600; upgrade regenerates it; check stays clean", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const doc = path.join(tmpDir, ".codex", "bkit-cloud.md");
+
+    expect(runCli(["install", "--codex", "--tracker=linear"]).status).toBe(0);
+    expect(fs.statSync(doc).mode & 0o777).toBe(0o600);
+    const ignored = spawnSync("git", ["check-ignore", "-q", ".codex/bkit-cloud.md"], {
+      cwd: tmpDir,
+    });
+    expect(ignored.status).toBe(0);
+
+    fs.rmSync(doc);
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.statSync(doc).mode & 0o777).toBe(0o600);
+    expect(fs.readFileSync(doc, "utf-8")).toContain("Settings > Codex Cloud > Environments");
+
+    const check = runCli(["check"]);
+    expect(check.status, combinedOutput(check)).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+});
 
 describe("#255 — upgrade does not force-create uninstalled host/tooling modules", () => {
   const bkitInstallPath = path.resolve(
@@ -916,11 +934,333 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     expect(scripts["bkit:gate:static-unit"]).toBe("pnpm bkit:gate:static && pnpm test");
     expect(scripts["bkit:deps:audit"]).toBe("pnpm audit");
     expect(scripts["slop:delta"]).toBeUndefined();
+    expect(scripts["bkit:slop:delta"]).toBeUndefined();
     expect(scripts.typecheck).toBeUndefined();
 
     const check = runCli(["check"]);
     expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
     expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("slop plugin migration upgrades old bytes, stays idempotent, and preserves customization", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync("package.json", JSON.stringify({ name: "consumer", version: "0.0.0" }));
+    const install = runCli(["install", "--claude"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
+    const fixture = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../../../tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt",
+    );
+    const oldPlugin = fs.readFileSync(fixture);
+    const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
+    expect(fs.existsSync(plugin)).toBe(false);
+    fs.mkdirSync(path.dirname(plugin), { recursive: true });
+    fs.writeFileSync(plugin, oldPlugin);
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(oldPlugin);
+    expect(combinedOutput(dry)).toContain(`core: ${plugin} — slop plugin updated`);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(combinedOutput(second)).not.toContain(`core: ${plugin}`);
+
+    const custom = Buffer.concat([oldPlugin, Buffer.from("\n// consumer customization\n")]);
+    fs.writeFileSync(plugin, custom);
+    const customized = runCli(["upgrade", "--auto-apply"]);
+    expect(customized.status, combinedOutput(customized)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(custom);
+    expect(combinedOutput(customized)).toContain(`.bkit/templates/${plugin}`);
+    expect(combinedOutput(customized)).toContain("by hand");
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
+  });
+
+  it("branded script migration is idempotent and dry-run writes nothing", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const pkgPath = path.join(tmpDir, "package.json");
+    const write = (scripts: Record<string, string>): void =>
+      fs.writeFileSync(
+        pkgPath,
+        JSON.stringify({ name: "consumer", version: "0.0.0", scripts }, null, 2) + "\n",
+        "utf-8",
+      );
+    write({});
+    expect(runCli(["install", "--claude"]).status).toBe(0);
+    write({
+      "lint:prose": "custom-prose-linter",
+      "slop:delta": "bash scripts/slop/bkit-slop-delta.sh",
+      "graph:check": "bash scripts/graphify/bkit-graphify.sh --check",
+    });
+    const oldShape = fs.readFileSync(pkgPath, "utf-8");
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, `${dry.stdout}\n${dry.stderr}`).toBe(0);
+    expect(fs.readFileSync(pkgPath, "utf-8")).toBe(oldShape);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+    const after = fs.readFileSync(pkgPath, "utf-8");
+    const scripts = (JSON.parse(after) as { scripts: Record<string, string> }).scripts;
+    expect(scripts["bkit:lint:prose"]).toBe("custom-prose-linter");
+    expect(scripts["bkit:slop:delta"]).toBe("bash scripts/slop/bkit-slop-delta.sh");
+    expect(scripts["bkit:graph:check"]).toBe("bash scripts/graphify/bkit-graphify.sh --check");
+    expect(scripts["lint:prose"]).toBeUndefined();
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, `${second.stdout}\n${second.stderr}`).toBe(0);
+    expect(fs.readFileSync(pkgPath, "utf-8")).toBe(after);
+    const check = runCli(["check"]);
+    expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  /** An old-shape consumer: installed, then hooks and CI naming the pre-#748 script names. */
+  const OLD_HOOK = "#!/bin/sh\npnpm lint:prose\npnpm slop:delta\n";
+  const OLD_CI = "name: CI\njobs:\n  lint:\n    steps:\n      - run: pnpm lint:prose\n";
+  function seedOldShapeConsumer(): void {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0", scripts: {} }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude"]).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "consumer",
+          version: "0.0.0",
+          scripts: { "lint:prose": "custom-prose-linter", "slop:delta": "custom-slop" },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-push"), OLD_HOOK, "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-ci.yml"), OLD_CI, "utf-8");
+  }
+  const HOOK = path.join(".husky", "pre-push");
+  const CI = path.join(".github", "workflows", "bkit-ci.yml");
+
+  it("copy-and-own migration second upgrade logs no branded line for the hook and CI file", () => {
+    seedOldShapeConsumer();
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+
+    const hook = fs.readFileSync(path.join(tmpDir, HOOK), "utf-8");
+    const ci = fs.readFileSync(path.join(tmpDir, CI), "utf-8");
+    expect(hook).toContain("pnpm bkit:lint:prose");
+    expect(hook).toContain("pnpm bkit:slop:delta");
+    expect(hook).not.toMatch(/pnpm (lint:prose|slop:delta)/);
+    expect(ci).toContain("pnpm bkit:lint:prose");
+
+    const hashes = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes;
+    expect(Object.keys(hashes)).not.toContain(".husky/pre-push");
+    expect(Object.keys(hashes)).not.toContain(".github/workflows/bkit-ci.yml");
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(fs.readFileSync(path.join(tmpDir, HOOK), "utf-8")).toBe(hook);
+    expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).toBe(ci);
+    expect(combinedOutput(second)).not.toContain("core: .husky/pre-push — branded");
+    expect(fs.readFileSync(path.join(tmpDir, HOOK), "utf-8")).not.toMatch(
+      /pnpm (lint:prose|slop:delta)/,
+    );
+    expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).not.toMatch(
+      /pnpm (lint:prose|slop:delta)/,
+    );
+    const hashesAfter = readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes;
+    expect(Object.keys(hashesAfter)).not.toContain(".husky/pre-push");
+    expect(Object.keys(hashesAfter)).not.toContain(".github/workflows/bkit-ci.yml");
+  });
+
+  it("a dry-run hook and CI token migration writes nothing", () => {
+    seedOldShapeConsumer();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(fs.readFileSync(path.join(tmpDir, HOOK), "utf-8")).toBe(OLD_HOOK);
+    expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).toBe(OLD_CI);
+    const out = combinedOutput(dry);
+    expect(out).toContain(".husky/pre-push");
+    expect(out).toContain(".github/workflows/bkit-ci.yml");
+  });
+
+  /** The shipped pre-#748 content of a CI script, read from the committed v6.0.0 fixtures. */
+  function shippedOldCiScript(file: string): string {
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0/scripts/ci",
+        `${file}.fixture`,
+      ),
+      "utf-8",
+    );
+  }
+  const CI_FILES = [
+    "check-capstone.mjs",
+    "check-capstone.test.mjs",
+    "check-dependency-audit.mjs",
+    "check-dependency-audit.test.mjs",
+    "accepted-advisories.json",
+  ];
+  function seedOldCiScripts(): void {
+    seedOldShapeConsumer();
+    const dir = path.join(tmpDir, "scripts", "ci");
+    fs.mkdirSync(dir, { recursive: true });
+    for (const f of CI_FILES) {
+      fs.writeFileSync(
+        path.join(dir, f),
+        f.endsWith(".json") ? '{"advisories":[]}\n' : shippedOldCiScript(f),
+        "utf-8",
+      );
+    }
+    fs.writeFileSync(
+      path.join(tmpDir, CI),
+      "name: CI\njobs:\n  a:\n    steps:\n      - run: node scripts/ci/check-capstone.mjs\n",
+      "utf-8",
+    );
+  }
+  function snapshotTree(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const abs of listFilesRecursive(tmpDir)) {
+      const rel = path.relative(tmpDir, abs);
+      if (rel.startsWith(".git" + path.sep)) continue;
+      if (rel === path.join(".claude", "bkit-cloud.md")) continue;
+      out[rel] = fs.readFileSync(abs, "utf-8");
+    }
+    return out;
+  }
+
+  it("a second template-file migration and a dry run leave scripts/ci and the hooks unchanged", () => {
+    seedOldCiScripts();
+    const before = snapshotTree();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(snapshotTree()).toEqual(before);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const dir = path.join(tmpDir, "scripts", "ci");
+    expect(fs.existsSync(path.join(dir, "check-capstone.mjs"))).toBe(false);
+    expect(fs.existsSync(path.join(dir, "bkit-check-capstone.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(dir, "bkit-accepted-advisories.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmpDir, CI), "utf-8")).toContain(
+      "node scripts/ci/bkit-check-capstone.mjs",
+    );
+    const hashes = Object.keys(
+      readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes,
+    );
+    expect(hashes.filter((h) => h.startsWith("scripts/ci/"))).toEqual([]);
+
+    const afterFirst = snapshotTree();
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(snapshotTree()).toEqual(afterFirst);
+  });
+
+  /** The shipped pre-#748 content of a template file, read from the committed v6.0.0 fixtures. */
+  function shippedAtV6(templateRel: string): string {
+    return fs.readFileSync(
+      path.join(
+        originalCwd,
+        ".bkit/core/engine/install/modules/__fixtures__/v6.0.0",
+        `${templateRel}.fixture`,
+      ),
+      "utf-8",
+    );
+  }
+  const WF_FILES = ["bkit-cloud.yml", "bkit-renovate.yml", "bkit-trivy.yml"];
+  function seedOldCheckNames(): void {
+    seedOldShapeConsumer();
+    for (const f of WF_FILES) {
+      fs.writeFileSync(
+        path.join(tmpDir, ".github", "workflows", f),
+        shippedAtV6(`.github/workflows/${f}`),
+        "utf-8",
+      );
+    }
+  }
+
+  it("a second check-name migration writes nothing", () => {
+    seedOldCheckNames();
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    const trivy = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-trivy.yml"),
+      "utf-8",
+    );
+    expect(trivy).toMatch(/^name: bkit-trivy$/m);
+    expect(trivy).toMatch(/^ {2}trivy:\n {4}name: bkit-trivy\n/m);
+    const renovate = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-renovate.yml"),
+      "utf-8",
+    );
+    expect(renovate).toMatch(/^name: bkit-renovate$/m);
+    const hashes = Object.keys(
+      readBkitVersion(path.join(tmpDir, ".bkit", "version"))!.canonicalHashes,
+    );
+    expect(hashes.filter((h) => WF_FILES.some((f) => h.endsWith(f)))).toEqual([]);
+
+    const afterFirst = snapshotTree();
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(snapshotTree()).toEqual(afterFirst);
+    expect(combinedOutput(second)).not.toContain("Trivy / trivy");
+  });
+
+  it("a dry-run check-name migration writes and moves nothing", () => {
+    seedOldCheckNames();
+    const before = snapshotTree();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(snapshotTree()).toEqual(before);
+    const trivy = fs.readFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-trivy.yml"),
+      "utf-8",
+    );
+    expect(trivy).toMatch(/^name: Trivy$/m);
+    expect(combinedOutput(dry)).toContain("bkit-trivy.yml");
+  });
+
+  it("a second Vale migration and a dry run write nothing", () => {
+    seedOldShapeConsumer();
+    const house = path.join(tmpDir, ".vale", "styles", "House");
+    fs.mkdirSync(house, { recursive: true });
+    for (const r of ["Filler", "Hedging", "LLMSlop", "Verbose"]) {
+      fs.writeFileSync(
+        path.join(house, `${r}.yml`),
+        shippedAtV6(`.vale/styles/House/${r}.yml`),
+        "utf-8",
+      );
+    }
+    fs.writeFileSync(path.join(tmpDir, ".vale.ini"), shippedAtV6(".vale.ini"), "utf-8");
+
+    const before = snapshotTree();
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(snapshotTree()).toEqual(before);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.existsSync(path.join(tmpDir, ".vale", "styles", "Bkit", "Filler.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(house, "Filler.yml"))).toBe(false);
+    expect(fs.readFileSync(path.join(tmpDir, ".vale.ini"), "utf-8")).toContain("Bkit.Filler = NO");
+
+    const afterFirst = snapshotTree();
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(snapshotTree()).toEqual(afterFirst);
   });
 });
 
@@ -1156,7 +1496,7 @@ describe("upgrade-preservation", () => {
   }
 
   function seedVersion(canonicalHashes: Record<string, string> = {}): void {
-    const v: BkitVersion = { pinnedVersion: "2.4.0", canonicalHashes, claudeAllowDerived: [] };
+    const v: BkitVersion = { pinnedVersion: "5.0.0", canonicalHashes, claudeAllowDerived: [] };
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
   }
 
@@ -1567,7 +1907,9 @@ describe("upgrade-render", () => {
       const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
       const dead = `bkit-retired-${"agent"}`;
       const prompts = fs.readFileSync(promptsPath, "utf-8");
-      const end = prompts.indexOf("<!-- bkit:end -->");
+      // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
+      // table cell, and indexOf would land there and insert into a preset table instead.
+      const end = prompts.search(/^<!-- bkit:end -->$/m);
       const sep = prompts.indexOf("| --- | --- | --- |\n", end);
       expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
         end,
@@ -1960,5 +2302,52 @@ describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
     const combined = combinedOutput(result);
     expect(combined, combined).toContain("mutually exclusive");
     expect(result.status).toBe(1);
+  });
+});
+
+describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../cli.ts",
+  );
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade from a 5.2.4 lite.md keeps the consumer section", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    const own = "### hotfix\n\n```text\nShip the hotfix below.\n```";
+    const lite = path.join(tmpDir, ".bkit", "lite.md");
+    fs.writeFileSync(
+      lite,
+      "<!-- bkit:start -->\n\n<!-- bkit:managed v5.2.4 — do not edit; run `bkit upgrade` to refresh -->\n\n# Lite Workflows\n\nbody\n\n<!-- bkit:end -->\n\n## Project Lite Workflows\n\n" +
+        own +
+        "\n",
+      "utf-8",
+    );
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    const after = fs.readFileSync(lite, "utf-8");
+    expect(after).toContain(own);
+    expect(after).not.toContain("bkit:start");
+    expect(after.split("\n")[0]).toBe("<!-- bkit:retired-lite-stub -->");
+    expect(runCli(["check"]).status).toBe(0);
   });
 });

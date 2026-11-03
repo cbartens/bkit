@@ -1,0 +1,21 @@
+import { createHash } from "node:crypto";
+import { gh, recentComments, trackerTarget } from "../../../../../../.bkit/core/engine/commands/workflow/tracker.ts";
+
+const target = trackerTarget(process.cwd(), { issue: "826" });
+const query = "query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){comments(last:5){nodes{id body url createdAt updatedAt author{login}} pageInfo{hasPreviousPage hasNextPage}}}}}";
+const read = () => JSON.parse(gh(target, ["api", "graphql", "-f", `query=${query}`, "-F", "o=cbartens", "-F", "r=bkit", "-F", "n=826"])).data.repository.issue.comments;
+const first = read();
+const production = await recentComments(target, 5);
+const second = read();
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+console.log(`raw_comment_count=${first.nodes.length}`);
+console.log(`production_comment_count=${production.length}`);
+console.log(`raw_metadata_complete=${first.nodes.every((c: Record<string, unknown>) => ["id", "body", "url", "createdAt", "updatedAt", "author"].every(k => c[k] !== null && c[k] !== undefined))}`);
+console.log(`production_keys=${Object.keys(production[0] ?? {}).sort().join(",")}`);
+console.log(`production_bodies_match_raw=${production.every(c => first.nodes.some((r: Record<string, string>) => r.url === c.url && hash(r.body) === hash(c.body)))}`);
+console.log(`generated_h6_first_lines=${first.nodes.filter((c: Record<string, string>) => /^###### bkit:generated [a-f0-9]+$/m.test(c.body.split("\n")[0])).length}`);
+console.log(`repeat_read_same_ids_and_body_fingerprints=${first.nodes.every((c: Record<string, string>) => second.nodes.some((r: Record<string, string>) => r.id === c.id && hash(r.body) === hash(c.body)))}`);
+console.log(`raw_creation_order_ascending=${first.nodes.every((c: Record<string, string>, i: number, a: Array<Record<string, string>>) => i === 0 || a[i-1].createdAt <= c.createdAt)}`);
+console.log(`has_previous_page=${first.pageInfo.hasPreviousPage}`);
+console.log(`has_next_page=${first.pageInfo.hasNextPage}`);
+console.log("scope=existing_comments_read_only_no_mutation_or_lost_response_injected");

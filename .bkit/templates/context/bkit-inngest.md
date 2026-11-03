@@ -3,28 +3,34 @@
 
 # Inngest — failed function runs
 
-Fits: apps running durable functions on Inngest Cloud. `context=runtime`: `inngest/function.failed` system events across a time window (default last 4 h), paged — a count per day and function, then the newest events with function id, run id, error class, and the opaque `*Id` keys of the triggering event. Never the error message: it can carry secrets.
+Fits: apps running durable functions on Inngest Cloud. The `context=runtime` block pages through the `inngest/function.failed` system events in a time window (default the last 4 h). It returns a count per day and function, then the newest events with their function id, run id, error class and the opaque `*Id` keys of the triggering event. It never returns the error message, because the message can carry secrets.
 
-- Secret: `INNGEST_SIGNING_KEY` — reuse the app's existing key. It is environment-scoped (branch environments and production have separate keys): use the key whose runs you want.
-- Non-secret: `SINCE_ISO` / `UNTIL_ISO` (window, default last 4 h; the API alone looks back only 1 h), `INNGEST_ENV` (branch environment name; required with a branch key, ignored otherwise), `INNGEST_N` (newest events listed, default 25), `INNGEST_MAX_PAGES` (pages of up to 51 events, default 40).
-- CLI: none (`curl` + `jq`), no provision block.
-- PII: the projection keeps only keys ending in `Id` from the triggering event's data. Keep free text and personal data out of `*Id` keys in your event payloads, or narrow the projection.
+- Secret: `INNGEST_SIGNING_KEY`. Reuse the app's existing key. The key is scoped to one environment: branch environments and production have separate keys. Use the key whose runs you want.
+- Non-secret: `SINCE_ISO` / `UNTIL_ISO`, the window (default the last 4 h). The API on its own looks back only 1 h.
+- Non-secret: `INNGEST_ENV`, the branch environment name. It is required with a branch key and ignored otherwise.
+- Non-secret: `INNGEST_N`, the number of newest events listed (default 25).
+- Non-secret: `INNGEST_MAX_PAGES`, the number of pages of up to 51 events each (default 40).
+- CLI: none (`curl` and `jq`), so there is no provision block.
+- PII: the projection keeps only the keys ending in `Id` from the triggering event's data. Keep free text and personal data out of the `*Id` keys in your event payloads, or narrow the projection.
 
 Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 <!-- context-fetch:start inngest context=runtime -->
 
 ```bash
-# Inngest Cloud — failed durable-function runs, exhausted retries (read-only).
-# INNGEST_SIGNING_KEY is ENV-SCOPED (branch env vs production) — use the key for the env whose
-# runs you want. Branch key (`signkey-branch-…`) reads the env in header `x-inngest-env`; without
-# it the API reads env `branch` and returns nothing → block refuses a branch key with INNGEST_ENV
-# unset. Lists `inngest/function.failed` events from received_after, paged by
-# cursor=<last internal_id>; pages stop at 51 events whatever `limit` says; API default window 1 h.
-# Non-200 first page → `skipped`; failed later page or page cap → TRUNCATED line.
-# NEVER prints `.data.error.message` / `.stack`: error strings can carry secrets from request
-# headers or URLs. Prints function id, run id, time, error class (`.data.error.name`, ONLY when
-# class-shaped), ONLY /Id$/ keys from the triggering event.
+# Inngest Cloud: failed durable-function runs that exhausted their retries (read-only).
+# INNGEST_SIGNING_KEY is scoped to one environment (a branch env or production). Use the key for
+# the env whose runs you want. A branch key (`signkey-branch-…`) reads the env named in the header
+# `x-inngest-env`. Without that header the API reads the env `branch` and returns nothing, so the
+# block refuses a branch key while INNGEST_ENV is unset.
+# The block lists `inngest/function.failed` events from received_after, paged by
+# cursor=<last internal_id>. Pages stop at 51 events whatever `limit` says. The API's default
+# window is 1 h.
+# A non-200 first page → `skipped`. A failed later page or the page cap → a TRUNCATED line.
+# The block NEVER prints `.data.error.message` / `.stack`, because error strings can carry
+# secrets from request headers or URLs. It prints the function id, run id, time, error class
+# (`.data.error.name`, printed only when it is shaped like a class name) and only the /Id$/ keys
+# from the triggering event.
 # Customise: INNGEST_ENV (branch environment name, with a branch key); SINCE_ISO / UNTIL_ISO (window, default last 4 h); INNGEST_N (newest events listed); INNGEST_MAX_PAGES (x 51 events); the ids projection (narrow it if any *Id key in your events carries PII). Positive control (suggested): run once over a window holding a run the dashboard shows Failed; nothing back = reader broken, not clean.
 [ -n "${INNGEST_SIGNING_KEY:-}" ] \
   || { echo "[context-fetch:inngest] skipped — INNGEST_SIGNING_KEY unset" >&2; exit 0; }

@@ -5,7 +5,7 @@
 #!/usr/bin/env python3
 """Find modules that do work when they are imported, and count who pays for it.
 
-Called by `pnpm graph:rollup` (scripts/graphify/bkit-graphify.sh). Writes a JSON that
+Called by `pnpm bkit:graph:rollup` (scripts/graphify/bkit-graphify.sh). Writes a JSON that
 bkit-graphify-rollup.py renders as the import-time side-effect table in
 docs/capabilities.md.
 
@@ -135,7 +135,7 @@ def inside_callable(path, line):
 # --- who imports this, transitively -------------------------------------------
 # graph.json already carries the imports graphify cannot resolve — a `.js`
 # specifier never reaching a `.tsx` file, and workspace subpaths through an
-# `exports` map. bkit-graph-repair.py injects them during `pnpm graph`, so they are
+# `exports` map. bkit-graph-repair.py injects them during `pnpm bkit:graph`, so they are
 # read here like any other edge; warns if graph.json lacks any of them.
 INBOUND = collections.defaultdict(set)
 for link in raw["links"]:
@@ -232,5 +232,5 @@ print(f"[eager] {REPAIRED} of those edges came from bkit-graph-repair.py — imp
       f"graphify cannot resolve (.js -> .tsx, workspace exports subpaths)")
 if ungraphed:
     print(f"[eager] {ungraphed} scanned files absent from graph.json (column-0 filter only) "
-          f"— run 'pnpm graph:update' to close the gap", file=sys.stderr)
+          f"— run 'pnpm bkit:graph:update' to close the gap", file=sys.stderr)
 print(f"[eager] wrote {args.eager_out}", file=sys.stderr)

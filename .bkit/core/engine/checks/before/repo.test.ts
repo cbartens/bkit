@@ -9,6 +9,7 @@ import {
   detectMalformedPackageJson,
   detectNotGitRepo,
   detectBkitNotOnPath,
+  detectBuildPublish,
   detectInvalidTaskCaps,
   detectTaskCapFormStale,
   detectUnmarkedPlans,
@@ -198,8 +199,51 @@ describe("detectInvalidTaskCaps", () => {
     expect(finding!.detect).toContain("`bkit.workflows.tasks.maxPerGroup`");
     expect(finding!.detect).toContain("`bkit.workflows.tasks.maxTestsPerTask`");
     expect(finding!.detect).not.toContain("maxTestsPerGroup");
-    expect(finding!.action).toContain("`bkit.workflows.tasks.maxPerGroup` (default 3)");
+    expect(finding!.action).toContain("`bkit.workflows.tasks.maxPerGroup` (default 5)");
     expect(finding!.action).toContain("`bkit.workflows.tasks.maxTestsPerTask` (default 10)");
+  });
+});
+
+describe("detectBuildPublish", () => {
+  const pkg = (publish: unknown) =>
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ bkit: { workflows: { build: { publish } } } }),
+      "utf-8",
+    );
+  const ids = () => detectBuildPublish(tmpDir).map((f) => f.id);
+
+  it("reports bkit-build-publish-remote for publish.remote false", () => {
+    pkg({ remote: false });
+    const found = detectBuildPublish(tmpDir);
+    expect(found.map((f) => f.id)).toEqual(["bkit-build-publish-remote"]);
+    expect(found[0]).toMatchObject({ severity: "advisory" });
+    expect(found[0]!.detect).toContain("`bkit.workflows.build.publish.remote`");
+  });
+
+  it("reports bkit-build-publish-invalid for a non-boolean publish.local", () => {
+    pkg({ local: "no" });
+    expect(ids()).toEqual(["bkit-build-publish-invalid"]);
+  });
+
+  it("reports bkit-build-publish-invalid for a non-object publish block", () => {
+    pkg(false);
+    expect(ids()).toEqual(["bkit-build-publish-invalid"]);
+  });
+
+  it("stays quiet for a valid or absent build.publish", () => {
+    expect(ids()).toEqual([]);
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ bkit: {} }), "utf-8");
+    expect(ids()).toEqual([]);
+    pkg({ remote: true, local: false });
+    expect(ids()).toEqual([]);
+    pkg({});
+    expect(ids()).toEqual([]);
+  });
+
+  it("reports only the remote advisory when remote is false and local is valid", () => {
+    pkg({ remote: false, local: false });
+    expect(ids()).toEqual(["bkit-build-publish-remote"]);
   });
 });
 
@@ -213,7 +257,7 @@ describe("detectTaskCapFormStale", () => {
     fs.mkdirSync(path.join(tmpDir, ".github/ISSUE_TEMPLATE"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, FORM),
-      `description: groups of up to \`bkit.workflows.tasks.maxPerGroup\` tasks (default ${perGroup}) and \`bkit.workflows.tasks.maxTestsPerGroup\` **TEST FIRST** tests (default 15), 1 to \`bkit.workflows.tasks.maxTestsPerTask\` per task (default ${perTask}) across up to \`bkit.workflows.tasks.maxTestFilesPerTask\` test files (default 3).\n`,
+      `description: groups of up to \`bkit.workflows.tasks.maxPerGroup\` tasks (default ${perGroup}) and \`bkit.workflows.tasks.maxTestsPerGroup\` **TEST FIRST** tests (default 25), 1 to \`bkit.workflows.tasks.maxTestsPerTask\` per task (default ${perTask}) across up to \`bkit.workflows.tasks.maxTestFilesPerTask\` test files (default 3).\n`,
       "utf-8",
     );
   };
@@ -236,11 +280,11 @@ describe("detectTaskCapFormStale", () => {
   });
 
   it("compares against the defaults when package.json sets no caps", () => {
-    form(3, 10);
+    form(5, 10);
     expect(detectTaskCapFormStale(tmpDir)).toBeNull();
     form(4, 10);
     expect(detectTaskCapFormStale(tmpDir)?.detect).toContain(
-      "`bkit.workflows.tasks.maxPerGroup` (default 4) is 3",
+      "`bkit.workflows.tasks.maxPerGroup` (default 4) is 5",
     );
   });
 

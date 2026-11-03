@@ -172,12 +172,12 @@ export function runCursorModule(ctx) {
     });
     // Generated copy-paste-ready Cursor Background Agents setup doc — `.cursor/bkit-cloud.md`.
     // Twin of `.claude/bkit-cloud.md` (runClaudeModule): UNTRACKED + gitignored, inlines REAL
-    // secret values resolved from `.envrc` under the Cursor env-var policy (Linear tracker
-    // adds BKIT_LINEAR_API_KEY, no autocompact knob). Never enters ws.writes / canonicalHashes /
-    // `bkit check` drift — values are machine-local and expected to differ. Skipped on
-    // dry-run (`bkit check`) so a read-only check never writes secrets. Upgrade regenerates
-    // it via the same helper (see runUpgrade caller).
-    if (!dryRun && writeCursorCloudDoc(process.cwd(), tokens, issueTracker)) {
+    // secret values resolved from `.envrc` — the same tracker-independent set as the Claude
+    // doc. Never enters ws.writes / canonicalHashes / `bkit check` drift — values are
+    // machine-local and expected to differ. Skipped on dry-run (`bkit check`) so a read-only
+    // check never writes secrets. Upgrade regenerates it via the same helper (see runUpgrade
+    // caller).
+    if (!dryRun && writeCursorCloudDoc(process.cwd(), tokens)) {
         console.log(`${logPrefix} ${tag}cursor: .cursor/bkit-cloud.md (generated — gitignored, holds resolved secrets)`);
     }
 }

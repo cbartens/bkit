@@ -1,0 +1,33 @@
+Verdict: CONCERNS
+Failures: 5
+
+<!-- verdict:end -->
+
+# Plan Scope Check
+
+Lens: Scope, criteria, verification audit.
+
+## CRITICAL
+
+1. **Edge Cases with no Derived Test Matrix row or task test.** Plan-added rows `/usr/bin/perl` missing (exit 73 from `run`, exit 4 from `bkit tests run`; Open Question 2) and `--lock-wait-s=0` (one try → exit 81 at once) have no matrix row and no `TEST FIRST` test. Open Question 3 enforces three lock-order refusals ("`tests` while holding the stack lock", "`tests` while holding another named lock", "a named lock while holding the stack lock", plus the "live parent holds" case); only the first has a row (TASK 2). Fix: add rows + tests — perl missing → TASK 1 (`machine-lock.integration.test.ts`, e.g. `PATH`/perl path override) and TASK 4 (`tests-lock.integration.test.ts`); `--lock-wait-s=0` → TASK 4; the two other lock-order refusals → TASK 2. Caps hold: TASK 1 8, TASK 2 6 (group 1 = 14 <= 15), TASK 4 10 (group 2 = 11).
+2. **Pre-push gate in bkit's repo can block a workflow push for up to 3600 s.** `.husky/pre-push:300` runs `pnpm bkit:gate:static-unit-integration` raw; after TASK 6 both its heavy vitest runs (`test:coverage:unit`, `test:integration` = filter `integration.test`) hit the global setup, which spawns `bkit-machine-lock.sh run` without `LOCAL_STACK_LOCK_WAIT_S` → default 3600 s wait. Workflows push through `bkit branches push` (`bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-plan.md`, `bkit-design.md`) inside an agent tool call with a 10-minute ceiling — the hang SC 2 rules out for `bkit tests run`, reached by a path the plan does not name (`related-failures.md` shows the pre-push gate is exactly where today's contention lands). Fix: add an Edge Cases row, an Open Question with options (e.g. A) global setup takes a bounded wait / exits with a holder line when stdin is not a TTY or under a hook · B) pre-push gate runs through `bkit tests run` · C) accept the wait, documented) and the matching task change + test in TASK 6.
+3. **Issue TASK 2 `DONE WHEN` weakened without being surfaced.** Issue: `grep -rn 'local-stack-lock\|Local stack lock' .bkit/core docs/testing.md` finds nothing. Plan TASK 3: pattern narrowed to `bkit-local-stack-lock` and `docs/testing.md` dropped from the scope. The narrowing is defensible (the unnamed lock path `~/.cache/bkit/local-stack-lock/` stays, so the issue's grep cannot pass), but `Plan-input deviations` does not list it, and dropping `docs/testing.md` is not explained. Fix: add a deviation bullet giving the reason, and put `docs/testing.md` back in the TASK 3 (or TASK 4) grep scope.
+4. **Reuse Inventory row "Heavy / light decision tests" (`vitest-test-lock.test.ts`) gives a `NEW` reason that contradicts its own row.** Reason (a) means "searches find no candidate", but the row names `vitest-timeout-budget.test.ts` as a candidate. Fix: either (b), naming the contract (that file tests only `vitest.timeout-budget.ts`; one test file per root helper) and its callers, or `EXTEND` that file.
+5. **`EXTEND` rows with no `[MODIFY]` and no change.** "Packaged script path" (`.bkit/core/engine/shared/package-roots.ts`, "read only; no change") has no `[MODIFY]` in `Architecture & Component Changes` and only a `READ` in TASK 4. "Exit 81 code" (`lib.ts`, "used as is; no new code") changes nothing. Both rows are untraced as written. Fix: drop both rows (they are reuse of existing symbols, not new capabilities) and name `getTemplatesRoot` / `EXIT.AGENT_WAIT` in the `Existing candidates` cell of the `tests.ts` row.
+
+## OPTIONAL
+
+1. Several `TEST FIRST` "fails on" clauses state a literal error, not the wrong behaviour a stub shows. TASK 6: four unit tests "fail on module not found" — a stub module exists, so name the wrong decision instead (e.g. "a light run told to take the lock"). TASK 4: `exits 81 … past --lock-wait-s` and `--lock-wait-s that is not a whole number` "fail on unknown flag". Issue tests may be tightened, never weakened, so tightening these is allowed.
+2. Open Question 5 option B (`watch takes the lock like a heavy run`) states no trade-off.
+3. Missing assumption: the global setup reads `project.vitest.config.watch` at runtime. Only `filters` is confirmed in the vitest 5.0.3 types. Name the field, and what breaks if it is absent: watch sessions take the lock and block gates for hours.
+4. SC 3 ("the gate's own child processes never wait") and the Process Sketch line "exports `BKIT_TEST_WORKERS`" are only proven piece by piece: the script-level child-skip test plus the unit decision test. A stub-gate assertion in `tests-lock.integration.test.ts` would prove it end to end: the gate env carries `BKIT_TEST_WORKERS` and `LOCAL_STACK_LOCK_OWNER_tests`, and a nested `run --lock tests` inside the gate does not wait.
+5. SC 4 names `CI=true` / `CI=1`. The engine test (`tests run under CI=true …`) and the unit test (`CI=true takes no lock`) cover only `true`. Use `it.each(["true","1"])`, as the existing stack-lock test does.
+6. TASK 4 adds a "new § Tests lock" to `docs/testing.md` but does not say where. The file's `bkit:start` / `bkit:end` block is lines 1-446. Say it goes below `bkit:end` (beside § Stack / § Key test files), or in the shipped universal source if it documents consumer-facing `bkit tests run` behaviour.
+7. The exit-81 route "end turn, re-run this block" has no retry cap and no escalation for a holder that stays alive but hung (a stuck gate never frees the lock). Consider a cap, or holder age in `lockHolder`, so the agent can report a stale holder instead of looping.
+8. TASK 1 deletes `bkit-local-stack-lock.sh`, but the catalog rows in `.bkit/core/.bkit/templates.md` (lines 17 / 41 / 73) that name it are only renamed in TASK 3, so the tree names a missing file between the two tasks. Consider moving the catalog-row rename into TASK 1, as was done for the dogfood registry.
+9. The dogfood check that `.agents/rules.md` § Verify before complete requires (packed tarball, two concurrent `bkit tests run` in a scratch consumer) sits only in the advisory Manual Verification. TASK 4's `DONE WHEN` checks only `--help`. Consider putting the tarball dogfood in an automated Verification Plan item or in TASK 4's `DONE WHEN`.
+10. Edge case "holder killed mid-gate" relies on the carried-over unnamed-lock test `a killed holder leaves no stale lock`. A named / slotted `tests` lock variant would pin the per-slot perl holder TASK 2 adds.
+
+## OUT OF SCOPE
+
+1. Shipped consumer gate templates (`.bkit/templates/` CI / package scripts) could pass `BKIT_TEST_WORKERS` to their runner (`--maxWorkers`), so consumers get their worker share without editing anything. The plan only documents this in `.bkit/templates.md`. Propose separately.

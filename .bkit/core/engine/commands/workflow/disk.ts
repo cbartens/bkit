@@ -7,17 +7,22 @@
 // folder). Each exports a list of steps; `max` also runs every `min` step. No file → nothing
 // runs, and worktree setup checks nothing.
 //
-// `--auto` is the hooks' entry: a mode runs at most once a day per machine, and `max` at
-// most once an hour while free disk is under `bkit.workflows.minFreeGb`; the sweep then runs
-// detached and logs to the bkit cache folder, so the hook does not wait. `bkit worktrees
-// setup` calls `ensureDiskSpace` before it mints. A lock in the cache folder keeps one sweep
-// at a time across every repo. CI and cloud sessions run nothing.
+// `--auto` is the hooks' entry: a mode runs at most once a day, and `max` at most once an
+// hour while free disk is under `bkit.workflows.minFreeGb`. The machine file's steps keep one
+// limit for the whole machine; each checkout's repo steps keep their own, so a sweep another
+// repo started never uses up this checkout's day. The sweep then runs detached, only for the
+// files that are due, and logs to the bkit cache folder, so the hook does not wait. `bkit
+// worktrees setup` calls `ensureDiskSpace` before it mints. A lock in the cache folder keeps
+// one sweep at a time across every repo; the detached sweep and the worktree check wait for
+// their turn, so a day already counted is never lost to a running sweep. A hand run stops
+// unless it passes `--wait`. CI and cloud sessions run nothing.
 //
 // A step calls `note()` for what it found but would not delete on its own (a worktree with
 // uncommitted files, say). Each sweep replaces its checkout's notes in the cache folder;
 // `bkit tips` lists them first, so the workflow that prints its tips surfaces them.
 
 import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,6 +31,7 @@ import { pathToFileURL } from "node:url";
 import { isCloudOrCi } from "../../checks/before/env.js";
 import { readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { TIMEOUTS } from "../../shared/timeouts.js";
 import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
 import { tryCreate } from "./locks.js";
 
@@ -40,6 +46,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 /** A lock this old, or whose process is gone, belongs to a sweep that died. */
 const LOCK_STALE_MS = HOUR_MS;
+/** How often a running sweep renews its lock, so a long sweep is never taken for a dead one. */
+const LOCK_RENEW_MS = 10 * 60 * 1000;
+/** How often a waiting sweep tries the lock again. */
+const LOCK_POLL_MS = 5_000;
 const GB = 1e9;
 
 const configDir = () =>
@@ -49,10 +59,21 @@ const cacheDir = () =>
 export const machineStepsPath = () => path.join(configDir(), "disk-prune.mjs");
 export const sweepLogPath = () => path.join(cacheDir(), "disk-prune.log");
 const lockPath = () => path.join(cacheDir(), "disk-prune.lock");
-const stampPath = (name: string) => path.join(cacheDir(), `disk-prune-${name}.stamp`);
+/** One stamp per limit: the machine file's under `machine`, a checkout's repo file's under its top. */
+const stampPath = (key: string, name: string) =>
+  path.join(
+    cacheDir(),
+    key === MACHINE
+      ? `disk-prune-${name}.stamp`
+      : `disk-prune-${name}-${createHash("sha256").update(key).digest("hex").slice(0, 12)}.stamp`,
+  );
+/** A checkout's stamps this old belong to a checkout no hook has run in since (a removed worktree). */
+const STAMP_STALE_MS = 7 * DAY_MS;
+const REPO_STAMP = /^disk-prune-[a-z]+-[0-9a-f]{12}\.stamp$/;
 const notesPath = () => path.join(cacheDir(), "disk-prune-notes.json");
 /** Notes older than this are dropped: no sweep has run there since. */
 const NOTES_STALE_MS = 7 * DAY_MS;
+const MACHINE = "machine";
 
 const gb = (bytes: number | null) => (bytes === null ? "?" : `${(bytes / GB).toFixed(1)} GB`);
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -81,7 +102,8 @@ export interface Step {
   paths?: string[];
 }
 
-type Scope = "repo" | "machine";
+export type Scope = "repo" | "machine";
+const SCOPES: readonly string[] = ["repo", "machine"];
 
 interface StepFile {
   scope: Scope;
@@ -94,14 +116,20 @@ interface StepFile {
 
 const checkoutTop = (cwd: string) => git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
 
-/** The step files that exist for `cwd`, repo first. */
-function stepFilePaths(cwd: string): { scope: Scope; file: string; cwd: string }[] {
+/** The step files that exist for `cwd`, repo first; only `scopes`' files when given. */
+function stepFilePaths(
+  cwd: string,
+  scopes?: readonly Scope[],
+): { scope: Scope; file: string; cwd: string }[] {
   const top = checkoutTop(cwd);
   return [
     { scope: "repo" as const, file: path.join(top, REPO_STEPS), cwd: top },
     { scope: "machine" as const, file: machineStepsPath(), cwd: os.homedir() },
-  ].filter((f) => fs.existsSync(f.file));
+  ].filter((f) => (scopes === undefined || scopes.includes(f.scope)) && fs.existsSync(f.file));
 }
+
+/** Whose limits a step file counts against: the machine's, or its checkout's. */
+const stampKey = (f: { scope: Scope; cwd: string }) => (f.scope === "machine" ? MACHINE : f.cwd);
 
 const isAction = (v: unknown) => typeof v === "string" || typeof v === "function";
 
@@ -167,14 +195,22 @@ function sizeOf(patterns: string[], cwd: string): number | null {
     .reduce((sum, line) => sum + Number(line.split(/\s/)[0] ?? 0) * 1024, 0);
 }
 
-function due(name: string, everyMs: number, now: number): boolean {
-  const st = fs.statSync(stampPath(name), { throwIfNoEntry: false });
+function due(key: string, name: string, everyMs: number, now: number): boolean {
+  const st = fs.statSync(stampPath(key, name), { throwIfNoEntry: false });
   return st === undefined || now - st.mtimeMs >= everyMs;
 }
 
-function touch(...names: string[]): void {
+/** Stamp `names` for `key`, and drop checkout stamps no hook has renewed in 7 days. */
+function touch(key: string, ...names: string[]): void {
   fs.mkdirSync(cacheDir(), { recursive: true });
-  for (const name of names) fs.writeFileSync(stampPath(name), `${new Date().toISOString()}\n`);
+  for (const name of names) fs.writeFileSync(stampPath(key, name), `${new Date().toISOString()}\n`);
+  for (const entry of fs.readdirSync(cacheDir())) {
+    if (!REPO_STAMP.test(entry)) continue;
+    const file = path.join(cacheDir(), entry);
+    const st = fs.statSync(file, { throwIfNoEntry: false });
+    if (st !== undefined && Date.now() - st.mtimeMs >= STAMP_STALE_MS)
+      fs.rmSync(file, { force: true });
+  }
 }
 
 function pidAlive(pid: number): boolean {
@@ -186,24 +222,80 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-/** Take the sweep lock; a dead or hour-old holder's lock is replaced. False when held. */
+/**
+ * Take the sweep lock; a lock whose holder is gone, or that no holder renewed for an hour, is
+ * replaced. False when held. The stale lock is renamed aside before it is removed, so a lock
+ * another sweep took after this one's check is put back, never deleted.
+ */
 function takeLock(): boolean {
   const file = lockPath();
   const line = `${new Date().toISOString()} ${process.pid}`;
   if (tryCreate(file, line)) return true;
   const st = fs.statSync(file, { throwIfNoEntry: false });
-  const holder = st === undefined ? "" : fs.readFileSync(file, "utf-8");
+  if (st === undefined) return tryCreate(file, line);
+  const holder = fs.readFileSync(file, "utf-8");
   const pid = Number(holder.split(/\s+/)[1]);
-  const live = st !== undefined && Date.now() - st.mtimeMs < LOCK_STALE_MS;
+  const live = Date.now() - st.mtimeMs < LOCK_STALE_MS;
   if (live && Number.isInteger(pid) && pid > 0 && pidAlive(pid)) return false;
-  fs.rmSync(file, { force: true });
+  const aside = `${file}.${process.pid}.${Date.now()}.stale`;
+  try {
+    fs.renameSync(file, aside);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    return tryCreate(file, line);
+  }
+  const taken = fs.readFileSync(aside, "utf-8");
+  if (taken !== holder) {
+    restoreLock(aside, file);
+    return false;
+  }
+  fs.rmSync(aside, { force: true });
   return tryCreate(file, line);
+}
+
+/** Put a lock renamed aside back at `file`, unless a third sweep has taken `file` since. */
+function restoreLock(aside: string, file: string): void {
+  try {
+    fs.linkSync(aside, file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+  }
+  fs.rmSync(aside, { force: true });
+}
+
+/**
+ * Take the sweep lock, waiting while another sweep holds it. False only when it is still held
+ * after `maxWaitMs` (default `LOCK_STALE_MS`): a sweep that long renews its lock, so `takeLock`
+ * never replaces it.
+ */
+async function waitForLock(
+  pollMs: number,
+  log: (m: string) => void,
+  maxWaitMs: number = LOCK_STALE_MS + pollMs,
+): Promise<boolean> {
+  if (takeLock()) return true;
+  log(`another sweep is running (${lockPath()}) — waiting for it to end`);
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (takeLock()) return true;
+  }
+  return false;
+}
+
+const holdsLock = (file: string) =>
+  fs.existsSync(file) && fs.readFileSync(file, "utf-8").split(/\s+/)[1] === String(process.pid);
+
+/** Mark this sweep's lock as live; another process's lock is left alone. */
+function renewLock(): void {
+  const file = lockPath();
+  const now = new Date();
+  if (holdsLock(file)) fs.utimesSync(file, now, now);
 }
 
 function releaseLock(): void {
   const file = lockPath();
-  const pid = fs.existsSync(file) ? fs.readFileSync(file, "utf-8").split(/\s+/)[1] : undefined;
-  if (pid === String(process.pid)) fs.rmSync(file, { force: true });
+  if (holdsLock(file)) fs.rmSync(file, { force: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -234,17 +326,38 @@ export interface SweepResult {
   freeAfter: number | null;
 }
 
-function shell(command: string, cwd: string, log: (m: string) => void) {
-  const r = spawnSync("sh", ["-c", command], { cwd, encoding: "utf-8", maxBuffer: 1 << 26 });
-  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
-  if (out !== "") for (const line of out.split("\n").slice(-20)) log(`  ${line}`);
-  return r.error ? 127 : (r.status ?? 1);
+/**
+ * Run a step's shell command and log its last 20 output lines. Spawned, not run in step: the
+ * lock renewal timer has to fire while a long command runs.
+ */
+function shell(command: string, cwd: string, log: (m: string) => void): Promise<number> {
+  return new Promise((resolve) => {
+    const child = spawn("sh", ["-c", command], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    const keep = (chunk: Buffer) => {
+      out = `${out}${chunk.toString()}`.slice(-(1 << 16));
+    };
+    child.stdout.on("data", keep);
+    child.stderr.on("data", keep);
+    let settled = false;
+    const finish = (status: number) => {
+      if (settled) return;
+      settled = true;
+      const text = out.trim();
+      if (text !== "") for (const line of text.split("\n").slice(-20)) log(`  ${line}`);
+      resolve(status);
+    };
+    child.on("error", () => finish(127));
+    child.on("close", (status) => finish(status ?? 1));
+  });
 }
 
 async function skipReason(step: Step, ctx: StepContext): Promise<string | null> {
   if (step.skip === undefined) return null;
   if (typeof step.skip === "string") {
-    return shell(step.skip, ctx.cwd, ctx.log) === 0 ? `skip check passed: ${step.skip}` : null;
+    return (await shell(step.skip, ctx.cwd, ctx.log)) === 0
+      ? `skip check passed: ${step.skip}`
+      : null;
   }
   const answer = await step.skip(ctx);
   if (!answer) return null;
@@ -259,7 +372,7 @@ async function runStep(
     const reason = await skipReason(step, ctx);
     if (reason !== null) return { outcome: "skipped", detail: reason };
     if (typeof step.run === "string") {
-      const status = shell(step.run, ctx.cwd, ctx.log);
+      const status = await shell(step.run, ctx.cwd, ctx.log);
       if (status !== 0) return { outcome: "failed", detail: `exit ${status}` };
     } else {
       await step.run(ctx);
@@ -271,13 +384,22 @@ async function runStep(
 }
 
 /**
- * Run the `mode` steps from every step file for `cwd`, one at a time, repo file first.
- * `dryRun` runs nothing and sizes each step's paths instead.
+ * Run the `mode` steps from every step file for `cwd` (only `scopes`' files when given), one
+ * at a time, repo file first. `dryRun` runs nothing and sizes each step's paths instead.
+ * While another sweep runs, `wait` waits for it to end; without it the sweep stops.
  */
 export async function sweep(opts: {
   cwd: string;
   mode: Mode;
   dryRun: boolean;
+  scopes?: readonly Scope[];
+  wait?: boolean;
+  /** How often a waiting sweep tries the lock again; tests shorten it. */
+  pollMs?: number;
+  /** Longest wait for the lock with `wait`; default a full stale lock age. */
+  maxWaitMs?: number;
+  /** How often a running sweep renews its lock; tests shorten it. */
+  renewMs?: number;
   log: (m: string) => void;
 }): Promise<SweepResult> {
   const result: SweepResult = {
@@ -289,7 +411,7 @@ export async function sweep(opts: {
     freeAfter: null,
   };
   if (isCloudOrCi()) return { ...result, reason: "ci" };
-  const files = await Promise.all(stepFilePaths(opts.cwd).map(loadStepFile));
+  const files = await Promise.all(stepFilePaths(opts.cwd, opts.scopes).map(loadStepFile));
   result.files = files.map((f) => ({
     scope: f.scope,
     file: f.file,
@@ -321,10 +443,15 @@ export async function sweep(opts: {
     }
     return result;
   }
-  if (!takeLock()) {
+  const locked = opts.wait
+    ? !(await waitForLock(opts.pollMs ?? LOCK_POLL_MS, opts.log, opts.maxWaitMs))
+    : !takeLock();
+  if (locked) {
     opts.log(`another sweep is running (${lockPath()})`);
     return { ...result, reason: "locked" };
   }
+  const renewal = setInterval(renewLock, opts.renewMs ?? LOCK_RENEW_MS);
+  renewal.unref();
   try {
     result.freeBefore = freeBytes(opts.cwd);
     opts.log(`${new Date().toISOString()} ${opts.mode} sweep, ${gb(result.freeBefore)} free`);
@@ -343,6 +470,7 @@ export async function sweep(opts: {
     opts.log(`${gb(result.freeBefore)} → ${gb(result.freeAfter)} free`);
     saveNotes(checkoutTop(opts.cwd), result.notes);
   } finally {
+    clearInterval(renewal);
     releaseLock();
   }
   return result;
@@ -407,13 +535,22 @@ export function formatNotes(notes: readonly string[]): string {
 // Scheduling (hooks) and the worktree check
 // ---------------------------------------------------------------------------
 
-/** Start `bkit disk prune --mode=<mode>` detached, its output appended to the sweep log. */
-function spawnDetached(mode: Mode, cwd: string): void {
+/**
+ * The `bkit` arguments of the sweep `--auto` starts: the due `scopes` only, and waiting for
+ * a running sweep to end, so a hook that fires mid-sweep still gets its turn.
+ */
+export function detachedArgs(mode: Mode, scopes: readonly Scope[]): string[] {
+  const only = scopes.length === 1 ? [`--scope=${scopes[0]}`] : [];
+  return ["disk", "prune", `--mode=${mode}`, ...only, "--wait"];
+}
+
+/** Start the `--auto` sweep detached, its output appended to the sweep log. */
+function spawnDetached(mode: Mode, cwd: string, scopes: readonly Scope[]): void {
   fs.mkdirSync(cacheDir(), { recursive: true });
   const fd = fs.openSync(sweepLogPath(), "a");
   const child = spawn(
     process.execPath,
-    [...process.execArgv, process.argv[1]!, "disk", "prune", `--mode=${mode}`],
+    [...process.execArgv, process.argv[1]!, ...detachedArgs(mode, scopes)],
     { cwd, detached: true, stdio: ["ignore", fd, fd] },
   );
   child.unref();
@@ -428,57 +565,77 @@ export interface Schedule {
 }
 
 /**
- * `--auto`: start a detached sweep when one is due. Under `minFreeGb` free → `max`, at
- * most hourly; else `mode`, at most daily. A `max` run also counts as that day's `min`.
+ * `--auto`: start a detached sweep of the step files that are due. Under `minFreeGb` free →
+ * `max`, at most hourly; else `mode`, at most daily. A `max` run also counts as that day's
+ * `min`. The machine file is due by the machine's stamps, the repo file by its checkout's.
  */
 export function schedule(opts: {
   cwd: string;
   mode: Mode;
   minFreeGb: number;
   now?: number;
-  start?: (mode: Mode, cwd: string) => void;
+  start?: (mode: Mode, cwd: string, scopes: readonly Scope[]) => void;
 }): Schedule {
   if (isCloudOrCi()) return { started: null, reason: "ci" };
-  if (stepFilePaths(opts.cwd).length === 0) return { started: null, reason: "no-steps" };
+  const files = stepFilePaths(opts.cwd);
+  if (files.length === 0) return { started: null, reason: "no-steps" };
   const now = opts.now ?? Date.now();
   const start = opts.start ?? spawnDetached;
   const free = freeBytes(opts.cwd);
-  if (free !== null && free < opts.minFreeGb * GB) {
-    if (!due("low", HOUR_MS, now)) return { started: null, reason: "not-due" };
-    touch("low", "max", "min");
-    start("max", opts.cwd);
-    return { started: "max", reason: "low-disk" };
-  }
-  if (!due(opts.mode, DAY_MS, now)) return { started: null, reason: "not-due" };
-  touch(...(opts.mode === "max" ? ["max", "min"] : ["min"]));
-  start(opts.mode, opts.cwd);
-  return { started: opts.mode, reason: "due" };
+  const low = free !== null && free < opts.minFreeGb * GB;
+  const mode = low ? "max" : opts.mode;
+  const dueFiles = files.filter((f) =>
+    low ? due(stampKey(f), "low", HOUR_MS, now) : due(stampKey(f), mode, DAY_MS, now),
+  );
+  if (dueFiles.length === 0) return { started: null, reason: "not-due" };
+  const names = low ? ["low", "max", "min"] : mode === "max" ? ["max", "min"] : ["min"];
+  for (const f of dueFiles) touch(stampKey(f), ...names);
+  start(
+    mode,
+    opts.cwd,
+    dueFiles.map((f) => f.scope),
+  );
+  return { started: mode, reason: low ? "low-disk" : "due" };
 }
 
 /**
  * Before worktree setup mints: under `minFreeGb` free with step files present, run the
- * `max` steps and check again. Null = carry on; else why the worktree must not be made.
+ * `max` steps (waiting for a running sweep to end first) and check again. Null = carry on;
+ * else why the worktree must not be made.
  */
 export async function ensureDiskSpace(opts: {
   cwd: string;
   minFreeGb: number;
   log: (m: string) => void;
+  /** How often to try the sweep lock again while another sweep runs; tests shorten it. */
+  pollMs?: number;
+  /** Longest wait for a running sweep; default `TIMEOUTS.DISK_SETUP_SWEEP_WAIT_S`. */
+  maxWaitMs?: number;
 }): Promise<string | null> {
-  if (isCloudOrCi() || stepFilePaths(opts.cwd).length === 0) return null;
+  const files = isCloudOrCi() ? [] : stepFilePaths(opts.cwd);
+  if (files.length === 0) return null;
   const min = opts.minFreeGb * GB;
   const before = freeBytes(opts.cwd);
   if (before === null || before >= min) return null;
   opts.log(
     `${gb(before)} free, under ${SETTING} (${opts.minFreeGb} GB) — running your max cleanup steps`,
   );
-  touch("low", "max", "min");
-  const ran = await sweep({ cwd: opts.cwd, mode: "max", dryRun: false, log: opts.log });
+  for (const f of files) touch(stampKey(f), "low", "max", "min");
+  const ran = await sweep({
+    cwd: opts.cwd,
+    mode: "max",
+    dryRun: false,
+    wait: true,
+    pollMs: opts.pollMs,
+    maxWaitMs: opts.maxWaitMs ?? TIMEOUTS.DISK_SETUP_SWEEP_WAIT_S * 1000,
+    log: opts.log,
+  });
   const after = freeBytes(opts.cwd);
   if (after === null || after >= min) return null;
   opts.log("what your max steps still cover:");
   await sweep({ cwd: opts.cwd, mode: "max", dryRun: true, log: opts.log });
   const locked =
-    ran.reason === "locked" ? " (another sweep was running — re-run once it ends)" : "";
+    ran.reason === "locked" ? " (another sweep still holds the lock — re-run once it ends)" : "";
   return `${gb(after)} free after your max cleanup steps, still under ${SETTING} (${opts.minFreeGb} GB)${locked} — free space by hand or add steps (.bkit/templates.md § Disk prune), then re-run`;
 }
 
@@ -492,6 +649,7 @@ export const diskCommand: CommandSpec = {
   verbs: {
     prune: {
       summary: `Run the min or max steps from ${REPO_STEPS} and ~/.config/bkit/disk-prune.mjs.`,
+      use: "by-hand",
       flags: [
         {
           name: "mode",
@@ -505,9 +663,19 @@ export const diskCommand: CommandSpec = {
           help: "run nothing; list each step with the size of its paths",
         },
         {
+          name: "scope",
+          type: "string",
+          help: "repo or machine: run only that file's steps (default: both)",
+        },
+        {
+          name: "wait",
+          type: "boolean",
+          help: "while another sweep runs, wait for it to end instead of stopping (the sweep --auto starts always waits)",
+        },
+        {
           name: "auto",
           type: "boolean",
-          help: `for hooks: run detached, at most once a day per mode; max at most hourly while free disk is under ${SETTING}`,
+          help: `for hooks: run detached, at most once a day per mode (machine steps once per machine, repo steps once per checkout); max at most hourly while free disk is under ${SETTING}`,
         },
       ],
       output: {
@@ -525,8 +693,15 @@ export const diskCommand: CommandSpec = {
         const mode = String(ctx.flags.mode);
         if (!MODES.includes(mode)) throw new CommandError(EXIT.USAGE, "--mode must be min or max");
         const dryRun = ctx.flags.dryRun === true;
+        const scope = ctx.flags.scope === undefined ? undefined : String(ctx.flags.scope);
+        if (scope !== undefined && !SCOPES.includes(scope))
+          throw new CommandError(EXIT.USAGE, "--scope must be repo or machine");
+        const scopes = scope === undefined ? undefined : [scope as Scope];
         if (ctx.flags.auto === true) {
           if (dryRun) throw new CommandError(EXIT.USAGE, "give --auto or --dry-run, not both");
+          if (scopes) throw new CommandError(EXIT.USAGE, "give --auto or --scope, not both");
+          if (ctx.flags.wait === true)
+            throw new CommandError(EXIT.USAGE, "give --auto or --wait, not both");
           const plan = schedule({
             cwd: ctx.cwd,
             mode: mode as Mode,
@@ -545,7 +720,14 @@ export const diskCommand: CommandSpec = {
           });
           return EXIT.OK;
         }
-        const r = await sweep({ cwd: ctx.cwd, mode: mode as Mode, dryRun, log: ctx.log });
+        const r = await sweep({
+          cwd: ctx.cwd,
+          mode: mode as Mode,
+          dryRun,
+          scopes,
+          wait: ctx.flags.wait === true,
+          log: ctx.log,
+        });
         ctx.emit({ mode, started: null, ...r });
         const failed =
           r.files.some((f) => f.error !== null) || r.steps.some((s) => s.outcome === "failed");

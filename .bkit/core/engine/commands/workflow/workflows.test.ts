@@ -4,8 +4,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
+import { contractUnits, deriveContract } from "../../checks/status-holes";
 import { validate } from "../../ledgers/telemetry";
+import { substituteWorkflow } from "../../render/trackers";
 import { runCommand } from "../lib";
 import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
@@ -13,8 +16,49 @@ import { locksCommand } from "./locks";
 import { chatFingerprint } from "./run-facts";
 import { workflowsCommand } from "./workflows";
 
+useGateRunner();
+
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
 vi.setConfig({ testTimeout: 30_000 });
+
+/** A hook run as `removeWorktree` is entered, before it removes anything. */
+const removing = vi.hoisted(() => ({ onEnter: null as null | (() => void) }));
+vi.mock("./worktrees", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./worktrees")>();
+  return {
+    ...actual,
+    removeWorktree: (...args: Parameters<typeof actual.removeWorktree>) => {
+      removing.onEnter?.();
+      return actual.removeWorktree(...args);
+    },
+  };
+});
+/** Makes the completeness checker throw when a test sets a flag; otherwise the real one. */
+const holes = vi.hoisted(() => ({ throwCheck: false, throwRead: false, unserialisable: false }));
+vi.mock("../../checks/status-holes", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../checks/status-holes")>();
+  return {
+    ...actual,
+    check: (...args: Parameters<typeof actual.check>) => {
+      if (holes.throwCheck) throw new Error("forced checker failure");
+      // A verdict the row write cannot serialise: the write throws, the check does not.
+      if (holes.unserialisable) return { ...actual.check(...args), extra: 1n };
+      return actual.check(...args);
+    },
+    readCompleteness: (...args: Parameters<typeof actual.readCompleteness>) => {
+      if (holes.throwRead) throw new Error("forced checker failure");
+      return actual.readCompleteness(...args);
+    },
+  };
+});
+afterEach(() => {
+  removing.onEnter = null;
+  holes.throwCheck = false;
+  holes.throwRead = false;
+  holes.unserialisable = false;
+});
+
+const WORKFLOWS_DIR = path.resolve(__dirname, "../../../workflows");
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -43,6 +87,7 @@ function repo() {
   fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
   fs.writeFileSync(path.join(cwd, ".bkit/version"), JSON.stringify({ pinnedVersion: "4.6.3" }));
   fs.writeFileSync(path.join(cwd, "a.txt"), "base\n");
+  fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify(gatePackage));
   git(cwd, "add", "-A");
   git(cwd, "commit", "-qm", "base");
   return cwd;
@@ -64,6 +109,11 @@ const rebaseInProgress = (gitDir: string) =>
   fs.existsSync(path.join(gitDir, "rebase-merge")) ||
   fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
+/** A `package.json` whose worktree copy list also names a file outside the checkout. */
+const outsideCopy = {
+  ...gatePackage,
+  bkit: { workflows: { worktree: { copy: [".env", "../shared/.env"] } } },
+};
 
 async function run(cwd: string, argv: string[]) {
   const out: string[] = [];
@@ -127,6 +177,74 @@ function linearCommentServer(): string[] {
 // ---------------------------------------------------------------------------
 
 describe("bkit workflows start", () => {
+  /** A closed build run that recorded only its close step: a step hole on every other required step. */
+  const holeyBuild = [
+    { type: "workflow-started", workflow: "build", at: "2020-01-01T00:00:00Z" },
+    {
+      type: "step-done",
+      workflow: "build",
+      step: "build-close-workflow",
+      status: "DONE",
+      at: "2020-01-01T00:59:00Z",
+      parentSha: "x",
+      artifacts: [],
+    },
+    { type: "workflow-done", workflow: "build", at: "2020-01-01T01:00:00Z" },
+  ];
+  const warnings = (err: string) =>
+    err.split("\n").filter((l) => l.includes("[bkit-workflows]") && l.includes("previous run"));
+
+  it("warns when the previous run for this fid was holey", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    const r = await run(cwd, wf("start", "design"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ resumed: false, run: 1 });
+    const lines = warnings(r.err);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("build");
+    expect(lines[0]).toContain("run 1");
+    expect(lines[0]).toContain("2020-01-01T01:00:00Z");
+    expect(lines[0]).toContain("bkit completeness check");
+  });
+
+  it("prints nothing when the previous run is clean, absent, or unreadable", async () => {
+    // Positive control: the same fixture warns while the checker works.
+    const control = repo();
+    write(control, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    expect(warnings((await run(control, wf("start", "design"))).err)).toHaveLength(1);
+
+    // Absent: the first run of a feature has no previous run.
+    const first = await run(repo(), wf("start", "design"));
+    expect(first.code).toBe(0);
+    expect(warnings(first.err)).toHaveLength(0);
+
+    // Clean: a stored CLEAN verdict.
+    const clean = repo();
+    write(
+      clean,
+      `${REL}/status.jsonl`,
+      jsonl([
+        ...holeyBuild.slice(0, 2),
+        { type: "completeness", workflow: "build", at: "2020-01-01T01:00:00Z", verdict: "CLEAN" },
+        holeyBuild[2]!,
+      ]),
+    );
+    const c = await run(clean, wf("start", "design"));
+    expect(c.code).toBe(0);
+    expect(warnings(c.err)).toHaveLength(0);
+
+    // Unreadable: the checker throws at start.
+    holes.throwRead = true;
+    const broken = repo();
+    write(broken, `${REL}/status.jsonl`, jsonl(holeyBuild));
+    const b = await run(broken, wf("start", "design"));
+    expect(b.code).toBe(0);
+    expect(b.err).not.toMatch(/forced checker failure|error/i);
+    expect(warnings(b.err)).toHaveLength(0);
+    expect(b.json).toMatchObject({ resumed: false, run: 1 });
+  });
+
   it("takes the lock and opens run 1 with a workflow-started row carrying HEAD", async () => {
     const cwd = repo();
     const r = await run(cwd, wf("start", "build"));
@@ -140,8 +258,31 @@ describe("bkit workflows start", () => {
         workflow: "build",
         at: r.json.row.at,
         parentSha: git(cwd, "rev-parse", "HEAD"),
+        limits: {
+          "build.verify": { ask: true, max: 2 },
+          "build.challenge": { ask: true, max: 2 },
+          "build.tests": { ask: true, max: 2 },
+        },
       },
     ]);
+  });
+
+  it("freezes the workflow's own limits from package.json in the workflow-started row", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      "package.json",
+      JSON.stringify({ bkit: { workflows: { debug: { fix: { ask: false, maxAttempts: 4 } } } } }),
+    );
+    expect((await run(cwd, wf("start", "debug"))).json.row.limits).toEqual({
+      "debug.fix": { ask: false, max: 4 },
+      "debug.soak": { ask: true, max: 2 },
+    });
+  });
+
+  it("writes no limits for a workflow with no ask point", async () => {
+    const cwd = repo();
+    expect((await run(cwd, wf("start", "plan"))).json.row).not.toHaveProperty("limits");
   });
 
   it("does not open a new run when resuming the same workflow's IN_PROGRESS run", async () => {
@@ -162,6 +303,30 @@ describe("bkit workflows start", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ resumed: true, row: null, run: 1 });
     expect(rows(statusOf(cwd))).toHaveLength(1);
+  });
+
+  it("resumes the workflow's own IN_PROGRESS run when another workflow's run came after it", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        { type: "workflow-started", workflow: "build", at: "2026-07-01T00:00:00Z" },
+        { type: "workflow-started", workflow: "debug", at: "2026-07-02T00:00:00Z" },
+        { type: "workflow-done", workflow: "debug", at: "2026-07-02T01:00:00Z" },
+      ]),
+    );
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=build",
+      `--fid=${FID}`,
+    ]);
+    const r = await run(cwd, wf("start", "build", "--lock-held", `--token=${lock.json.token}`));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ resumed: true, row: null, run: 1 });
+    expect(rows(statusOf(cwd))).toHaveLength(3);
   });
 
   describe("start records the chat that runs the workflow", () => {
@@ -332,7 +497,7 @@ describe("bkit workflows start — resume facts", () => {
         started("2026-07-01T00:00:00Z"),
         done("build-start-workflow", "2026-07-01T00:01:00Z"),
         done("build-worktree-setup", "2026-07-01T00:02:00Z"),
-        { ...done("build-plan-execute", "2026-07-01T00:03:00Z"), status: "FAILED" },
+        { ...done("build-plan-tasks", "2026-07-01T00:03:00Z"), status: "FAILED" },
       ]),
     );
     writeDecision(cwd, 1, 1, ["Status: DECIDED", "Question: CHALLENGE", "From: challenge"]);
@@ -478,6 +643,23 @@ describe("bkit workflows fail", () => {
     expect(
       (await run(cwd, wf("fail", "build", `--month=${M}`, "--token=t"))).json.rebaseAborted,
     ).toBe(false);
+  });
+
+  it("aborts a merge left in progress (ship Step 4's hand-resolution state)", async () => {
+    const cwd = repo();
+    git(cwd, "checkout", "-q", "-b", "other");
+    write(cwd, "a.txt", "theirs\n");
+    git(cwd, "commit", "-qam", "theirs");
+    git(cwd, "checkout", "-q", "dev");
+    write(cwd, "a.txt", "ours\n");
+    git(cwd, "commit", "-qam", "ours");
+    git(cwd, "merge", "other");
+    const gitDir = git(cwd, "rev-parse", "--absolute-git-dir");
+    expect(fs.existsSync(path.join(gitDir, "MERGE_HEAD"))).toBe(true);
+    const r = await run(cwd, wf("fail", "build", `--month=${M}`, "--token=t"));
+    expect(r.json.rebaseAborted).toBe(true);
+    expect(fs.existsSync(path.join(gitDir, "MERGE_HEAD"))).toBe(false);
+    expect(fs.readFileSync(path.join(cwd, "a.txt"), "utf-8")).toBe("ours\n");
   });
 
   it("the workflow-failed row survives the rebase abort when status.jsonl is tracked in the rebasing tree", async () => {
@@ -666,7 +848,7 @@ describe("bkit workflows close", () => {
 
   describe("context peaks", () => {
     const SID = "0f0e0d0c-1111-2222-3333-444455556666";
-    /** A Claude config dir whose session SID ran one `bkit-build-plan-execute` subagent. */
+    /** A Claude config dir whose session SID ran one `bkit-build-plan-tasks` subagent. */
     function claudeDir() {
       const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-claude-")));
       dirs.push(dir);
@@ -684,7 +866,7 @@ describe("bkit workflows close", () => {
       fs.writeFileSync(path.join(sub, "agent-a.jsonl"), `${JSON.stringify(line)}\n`);
       fs.writeFileSync(
         path.join(sub, "agent-a.meta.json"),
-        JSON.stringify({ agentType: "bkit-build-plan-execute" }),
+        JSON.stringify({ agentType: "bkit-build-plan-tasks" }),
       );
       return dir;
     }
@@ -697,7 +879,7 @@ describe("bkit workflows close", () => {
       const outcome = writtenOutcome(cwd);
       expect(outcome?.context).toEqual({
         host: "claude-code",
-        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+        byAgent: { "bkit-build-plan-tasks": { peak: 6, runs: 1 } },
       });
       expect(validate(outcome)).toEqual({ ok: true });
     });
@@ -721,7 +903,7 @@ describe("bkit workflows close", () => {
       expect((await run(cwd, wf("close", "build"))).code).toBe(0);
       expect(writtenOutcome(cwd)?.context).toEqual({
         host: "claude-code",
-        byAgent: { "bkit-build-plan-execute": { peak: 6, runs: 1 } },
+        byAgent: { "bkit-build-plan-tasks": { peak: 6, runs: 1 } },
       });
     });
 
@@ -795,6 +977,35 @@ describe("bkit workflows close", () => {
       comment: null,
     });
     expect(r.json.report.length).toBeGreaterThan(0);
+  });
+
+  it("records ending held and publish false on the workflow-done row", async () => {
+    const cwd = closable();
+    const r = await run(cwd, wf("close", "build", "--ending=held", "--publish=false"));
+    expect(r.code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ ending: "held", publish: false });
+    const outcome = writtenOutcome(cwd);
+    expect(outcome).toMatchObject({ ending: "held", publish: false });
+    expect(validate(outcome!)).toEqual({ ok: true });
+  });
+
+  it("defaults the close row to ending done", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const done = rows(statusOf(cwd)).filter((x) => x.type === "workflow-done");
+    expect(done[0]).toMatchObject({ ending: "done" });
+    expect(done[0]).not.toHaveProperty("publish");
+    expect(writtenOutcome(cwd)).toMatchObject({ ending: "done" });
+    expect(writtenOutcome(cwd)).not.toHaveProperty("publish");
+  });
+
+  it("refuses an unknown ending", async () => {
+    const cwd = closable();
+    expect((await run(cwd, wf("close", "build", "--ending=paused"))).code).toBe(2);
+    expect((await run(cwd, wf("close", "build", "--publish=maybe"))).code).toBe(2);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-done")).toBe(false);
   });
 
   it("stamps its compliance rows with the same run.parentSha as its counter and outcome, at the close step", async () => {
@@ -946,6 +1157,123 @@ describe("bkit workflows close", () => {
     expect(r.json.counterRow).toBeNull();
   });
 
+  it("appends the completeness row before the workflow-done row", async () => {
+    const cwd = closable("build");
+    const r = await run(cwd, wf("close", "build", "--record-step"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    const at = all.findIndex((x) => x.type === "completeness");
+    expect(at).toBeGreaterThan(-1);
+    expect(all[at]).toMatchObject({ workflow: "build", journalSuspect: true });
+    expect(["CLEAN", "HOLEY"]).toContain(all[at]!.verdict);
+    expect(all[at - 1]).toMatchObject({ type: "step-done", step: "build-close-workflow" });
+    expect(all[at + 1]).toMatchObject({ type: "workflow-done", workflow: "build" });
+  });
+
+  it("close on a tracker-none consumer writes a CLEAN completeness row for a fully journaled run", async () => {
+    const cwd = closable("ship");
+    const workflow = "ship";
+    const AT = "2020-01-02T00:00:00Z";
+    const rendered = substituteWorkflow(
+      fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-ship.md"), "utf-8"),
+      "none",
+    ).output;
+    const replay = contractUnits(deriveContract(rendered, workflow)).flatMap((u) => {
+      const take = (position: "pre" | "post") =>
+        u.calls
+          .filter((c) => c.position === position)
+          .filter((c) => !c.branch)
+          .filter((c) => `${c.noun} ${c.verb}` !== "workflows start")
+          .map((c) => ({
+            type: "engine-call",
+            workflow,
+            at: AT,
+            noun: c.noun,
+            verb: c.verb,
+            flags: [],
+          }));
+      return [
+        ...take("pre"),
+        ...u.keys.map((k) => ({ type: "step-done", workflow, step: k, status: "DONE", at: AT })),
+        ...take("post"),
+      ];
+    });
+    fs.appendFileSync(statusOf(cwd), jsonl(replay));
+    expect((await run(cwd, wf("close", workflow))).code).toBe(0);
+    const stored = rows(statusOf(cwd)).find((x) => x.type === "completeness");
+    expect(stored).toMatchObject({ workflow, holey: false, verdict: "CLEAN" });
+  });
+
+  it("prints one telemetry line on stderr when the journal looks dead at close", async () => {
+    const cwd = closable("build");
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const lines = r.err.split("\n").filter((l) => l.includes("journal looks dead"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("[bkit-telemetry] journal looks dead at close");
+    // stdout is still the one output object, with no journal field.
+    expect(JSON.stringify(r.json)).not.toContain("journal looks dead");
+    expect(r.json).not.toHaveProperty("journalSuspect");
+  });
+
+  it("writes one completeness row per close", async () => {
+    const cwd = closable("build");
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.filter((x) => x.type === "completeness")).toHaveLength(2);
+    expect(all.filter((x) => x.type === "workflow-done")).toHaveLength(2);
+    expect(all.map((x) => x.type).slice(-4)).toEqual([
+      "completeness",
+      "workflow-done",
+      "completeness",
+      "workflow-done",
+    ]);
+  });
+
+  it("leaves out the previous run's rows that share a second with this run's start", async () => {
+    const cwd = closable("build");
+    const T = "2020-01-01T00:00:00Z";
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        { type: "workflow-started", workflow: "build", at: "2019-12-31T00:00:00Z" },
+        { type: "step-done", workflow: "build", step: "build-stray-step", status: "DONE", at: T },
+        { type: "workflow-done", workflow: "build", at: T },
+        { type: "workflow-started", workflow: "build", at: T },
+      ]),
+    );
+    expect((await run(cwd, wf("close", "build"))).code).toBe(0);
+    const stored = rows(statusOf(cwd)).find((x) => x.type === "completeness");
+    expect(stored?.unexpected).toEqual([]);
+  });
+
+  it("still closes when the completeness check throws", async () => {
+    const cwd = closable("build");
+    holes.throwCheck = true;
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.at(-1)).toMatchObject({ type: "workflow-done", workflow: "build" });
+    expect(all.some((x) => x.type === "completeness")).toBe(false);
+    const lines = r.err.split("\n").filter((l) => l.includes("completeness row not written"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("forced checker failure");
+  });
+
+  it("still closes when the completeness row write throws", async () => {
+    const cwd = closable("build");
+    holes.unserialisable = true;
+    const r = await run(cwd, wf("close", "build"));
+    expect(r.code).toBe(0);
+    const all = rows(statusOf(cwd));
+    expect(all.at(-1)).toMatchObject({ type: "workflow-done", workflow: "build" });
+    expect(all.some((x) => x.type === "completeness")).toBe(false);
+    const lines = r.err.split("\n").filter((l) => l.includes("completeness row not written"));
+    expect(lines).toHaveLength(1);
+  });
+
   it("refuses without status.jsonl and writes nothing", async () => {
     const cwd = repo();
     const r = await run(cwd, wf("close", "build"));
@@ -1092,6 +1420,20 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
   });
 
+  it("--message commits when bkit.workflows.worktree.copy names a path outside the checkout", async () => {
+    const cwd = started();
+    write(cwd, "package.json", JSON.stringify(outsideCopy));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-qm", "outside copy entry");
+    write(cwd, ".env", "SECRET=1\n");
+    write(cwd, "a.txt", "changed\n");
+    const r = await run(cwd, wf("close", "build", "--message=m"));
+    expect(r.code).toBe(0);
+    expect(git(cwd, "log", "-1", "--format=%s")).toBe("m");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("a.txt");
+    expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
+  });
+
   it("an exact bkit:auto match only — a near-miss label leaves the subject alone", async () => {
     const cwd = started();
     await run(cwd, wf("close", "build", "--message=m", "--label=bkit:auto-paused"));
@@ -1114,7 +1456,11 @@ describe("bkit workflows close — commit, outbox, comment", () => {
     const cwd = started("design");
     await run(cwd, wf("close", "design", "--record-step"));
     const kinds = rows(statusOf(cwd)).map((x) => [x.type, x.step].join(":"));
-    expect(kinds.slice(-2)).toEqual(["step-done:design-close-workflow", "workflow-done:"]);
+    expect(kinds.slice(-3)).toEqual([
+      "step-done:design-close-workflow",
+      "completeness:",
+      "workflow-done:",
+    ]);
   });
 
   it("--outbox writes the artifact links and telemetry, and --number prints the close comment", async () => {
@@ -1194,6 +1540,22 @@ describe("bkit workflows handover", () => {
       `${REL}/status.jsonl`,
     );
     expect(git(cwd, "status", "--porcelain")).toBe("?? .env");
+  });
+
+  it("handover --push commits the record when a copy entry points outside the checkout", async () => {
+    const { cwd, remote } = withRemote();
+    write(cwd, "package.json", JSON.stringify(outsideCopy));
+    git(cwd, "add", "package.json");
+    git(cwd, "commit", "-qm", "outside copy entry");
+    write(cwd, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "build" }]));
+    write(cwd, ".env", "SECRET=1\n");
+    const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
+    expect(r.code).toBe(0);
+    expect(r.err).not.toContain("git add failed");
+    expect(git(remote, "show", "--name-only", "--format=", `feat/${FID}`)).toBe(
+      `${REL}/status.jsonl`,
+    );
+    expect(git(remote, "show", `feat/${FID}:${REL}/status.jsonl`)).toContain("workflow-failed");
   });
 
   it("--push commits the aborted subject, pushes, and links the handover in the comment", async () => {
@@ -1659,6 +2021,25 @@ describe("bkit workflows close --flush (ship)", () => {
     ]);
     const r = await run(wt, [...close, `--token=${lock.json.token}`]);
     expect(r.code).toBe(0);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
+  });
+
+  it("removes the worktree before it releases the lock", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const lock = await run(cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    const seen: { lock: boolean; worktree: boolean }[] = [];
+    removing.onEnter = () =>
+      seen.push({ lock: fs.existsSync(path.join(cwd, REL, ".lock")), worktree: fs.existsSync(wt) });
+    const r = await run(wt, [...close, `--token=${lock.json.token}`]);
+    expect(r.code).toBe(0);
+    expect(seen).toEqual([{ lock: true, worktree: true }]);
+    expect(fs.existsSync(wt)).toBe(false);
     expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(false);
   });
 
@@ -2577,6 +2958,28 @@ describe("bkit workflows summary", () => {
       `--file=${path.join(cwd, SREL, "status.jsonl")}`,
     ]);
 
+  it("passes publish into the summary input", async () => {
+    const cwd = tree(
+      [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
+      planOf(task(1, true)),
+    );
+    const md = () => fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    const base = [
+      "workflows",
+      "summary",
+      "--workflow=build",
+      `--file=${path.join(cwd, SREL, "status.jsonl")}`,
+    ];
+    expect((await run(cwd, [...base, "--publish=false"])).code).toBe(0);
+    expect(md()).toContain("Publish: held");
+    expect(md()).toContain("Docs: not synced");
+    expect((await run(cwd, [...base, "--publish=true"])).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, base)).code).toBe(0);
+    expect(md()).toContain("Publish: pr");
+    expect((await run(cwd, [...base, "--publish=maybe"])).code).toBe(2);
+  });
+
   it("summary is FAIL when a plan task is not done", async () => {
     const cwd = tree(
       [done("build-plan-verify", "2020-01-01T00:10:00Z", { verdict: "PASS", failures: 0 })],
@@ -2609,6 +3012,48 @@ describe("bkit workflows summary", () => {
     expect(r.code).toBe(0);
     expect(r.json.verdict).toBe("CONCERNS");
     expect(r.json.failures).toBe(0);
+  });
+
+  it("a deferral closed later no longer lowers the verdict, while its history stays on disk", async () => {
+    const cwd = tree([], planOf(task(1, true)));
+    const ledger = jsonl([
+      {
+        kind: "deferral",
+        key: "fixed",
+        by: { workflow: "build" },
+        ts: START_MS + 5,
+        status: "OPEN",
+      },
+      {
+        kind: "deferral",
+        key: "fixed",
+        by: { workflow: "utility" },
+        ts: START_MS + 10,
+        status: "CLOSED",
+      },
+    ]);
+    write(cwd, "docs/deferrals.jsonl", ledger);
+    const r = await summarize(cwd);
+    expect(r.json.verdict).toBe("PASS");
+    expect(fs.readFileSync(path.join(cwd, "docs/deferrals.jsonl"), "utf-8")).toBe(ledger);
+  });
+
+  it("recomputes the verdict from resolved work without rewriting the earlier summary event", async () => {
+    const cwd = tree(
+      [
+        done("build-plan-tasks", "2020-01-01T00:01:00Z", { verdict: "FAIL", group: 1 }),
+        done("build-summary", "2020-01-01T00:02:00Z", { verdict: "FAIL" }),
+        done("build-plan-verify", "2020-01-01T00:03:00Z", { verdict: "PASS", group: 1 }),
+      ],
+      planOf(task(1, true)),
+    );
+    const before = fs.readFileSync(path.join(cwd, SREL, "status.jsonl"), "utf-8");
+    const r = await summarize(cwd);
+    expect(r.json.verdict).toBe("PASS");
+    expect(fs.readFileSync(path.join(cwd, SREL, "status.jsonl"), "utf-8")).toBe(before);
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    expect(md).toContain("build-plan-tasks (group 1) FAIL, resolved by build-plan-verify");
+    expect(md).toContain("build-summary | FAIL");
   });
 
   it("summary recommends /bkit-debug on FAIL", async () => {

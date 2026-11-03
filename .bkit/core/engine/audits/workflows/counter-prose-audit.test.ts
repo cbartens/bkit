@@ -109,13 +109,13 @@ function derivedSteps(text: string): string[] {
 
 /** The `bkit steps done|finish` call lines in a block, each with the step it writes. */
 function stepDoneLines(block: string): Array<{ step: string; line: string }> {
-  return block
-    .split("\n")
-    .filter((l) => /\bsteps (?:done|finish)\b/.test(l))
-    .flatMap((line) => {
-      const m = /--step="?([\w-]+)"?/.exec(line);
-      return m ? [{ step: m[1]!, line }] : [];
-    });
+  return block.split("\n").flatMap((line) => {
+    // `bkit tests red` writes the build-tests-red row itself, with no `steps finish`.
+    if (/"\{BKIT\}" tests red\b/.test(line)) return [{ step: "build-tests-red", line }];
+    if (!/\bsteps (?:done|finish)\b/.test(line)) return [];
+    const m = /--step="?([\w-]+)"?/.exec(line);
+    return m ? [{ step: m[1]!, line }] : [];
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -126,8 +126,11 @@ function stepDoneLines(block: string): Array<{ step: string; line: string }> {
  * Bans ANY bare `*_ATTEMPT` token in prose — assignment, increment, reset,
  * comparison all name the counter bare — exempting only:
  *   (a) `{X_ATTEMPT}` brace placeholders NOT preceded by `$` (a substitution
- *       token holding a value a command printed, never a computation), and
- *   (b) bare `MAX_*_ATTEMPT` threshold NAMES.
+ *       token holding a value a command printed, never a computation),
+ *   (b) bare `MAX_*_ATTEMPT` threshold NAMES,
+ *   (c) a hold target, ``as `X_ATTEMPT` `` (the name a command's printed field is
+ *       held under; held names carry no braces), and
+ *   (d) a held check, `` `X_ATTEMPT` is held `` or `` `X_ATTEMPT` is not held ``.
  * `${X_ATTEMPT}` is a `$`-prefixed VALUE reference and is NOT exempt; the
  * negative lookbehind on `$` is what keeps the two apart.
  */
@@ -136,9 +139,15 @@ function findBareAttemptTokenViolations(content: string): Array<{ line: number; 
   const hits: Array<{ line: number; text: string }> = [];
   const placeholderExempt = /(?<!\$)\{[A-Z][A-Z0-9_]*_ATTEMPT\}/g;
   const maxNameExempt = /\bMAX_[A-Z0-9_]*_ATTEMPT\b/g;
+  const holdExempt = /\bas `[A-Z][A-Z0-9_]*_ATTEMPT`(?!\s*[-+=<>])/g;
+  const heldCheckExempt = /`[A-Z][A-Z0-9_]*_ATTEMPT` is (?:not )?held\b/g;
   const bareToken = /\b[A-Z][A-Z0-9_]*_ATTEMPT\b/;
   lines.forEach((l, i) => {
-    const masked = l.replace(placeholderExempt, "").replace(maxNameExempt, "");
+    const masked = l
+      .replace(placeholderExempt, "")
+      .replace(maxNameExempt, "")
+      .replace(holdExempt, "")
+      .replace(heldCheckExempt, "");
     if (bareToken.test(masked)) hits.push({ line: i + 1, text: l.trim() });
   });
   return hits;
@@ -164,7 +173,7 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       const hits = findBareAttemptTokenViolations(readRepo(wfFile));
       expect(
         hits.map((h) => `line ~${h.line}: ${h.text.slice(0, 120)}`),
-        "derive the counter with bkit counters derive|run in a fenced block; prose may only hold {X_ATTEMPT}",
+        "derive the counter with bkit counters derive|run in a fenced block; prose may only name it as {X_ATTEMPT}, a hold target or a held check",
       ).toEqual([]);
     });
 
@@ -181,6 +190,8 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       "`NORMAL_ATTEMPT` > 1",
       "`SOAK_ATTEMPT` reset to 0",
       "cost `${TEST_ATTEMPT}` in prose",
+      "Hold `value` as `VERIFY_ATTEMPT` + 1",
+      "**If** `TEST_ATTEMPT` is held **and** `TEST_ATTEMPT` = 2",
     ];
     for (const line of knownBad) {
       it(`bare-token rule fires on: ${line}`, () => {
@@ -198,6 +209,18 @@ describe("1. no bare *_ATTEMPT token and no counter arithmetic in workflow prose
       expect(findBareAttemptTokenViolations("Attempt: {VERIFY_ATTEMPT}").length).toBe(0);
       expect(findBareAttemptTokenViolations("Bounded by MAX_TEST_ATTEMPT.").length).toBe(0);
       expect(findProseCounterArithmetic("Attempt: {VERIFY_ATTEMPT}").length).toBe(0);
+    });
+
+    it("does NOT fire on a hold target or a held check", () => {
+      expect(findBareAttemptTokenViolations("Hold `value` as `VERIFY_ATTEMPT`.").length).toBe(0);
+      expect(
+        findBareAttemptTokenViolations(
+          "`verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`",
+        ).length,
+      ).toBe(0);
+      expect(
+        findBareAttemptTokenViolations("**If** `TEST_ATTEMPT` is not held → read it back").length,
+      ).toBe(0);
     });
   });
 });
@@ -265,6 +288,11 @@ const TRANSITIVE_EXEMPTIONS: ExemptionEntry[] = [
     reason:
       "#384: ship-merge-pr integrates via `bkit prs merge` (server-side squash); the squash commit IS the integration. No local `git commit` — the PR merge is the advancement.",
   },
+  {
+    step: "build-tests-red",
+    reason:
+      "#796: `bkit tests red` writes the build-tests-red row itself and commits nothing; the reds are evidence inside the group's execute attempt, which `steps finish --step=build-plan-tasks` commits later in Step 7.",
+  },
 ];
 
 /** Steps whose attempts are counted (see `derivedSteps`). */
@@ -287,6 +315,8 @@ function stepCommitsInBlock(content: string, step: string): boolean | null {
   for (const { block } of fencedBlocks(content)) {
     const row = stepDoneLines(block).find((s) => s.step === step);
     if (!row) continue;
+    // `bkit tests red` has no commit of its own; only a `git commit` in the block counts.
+    if (/"\{BKIT\}" tests red\b/.test(row.line)) return /\bgit commit\b/.test(block);
     return !/--commit=none\b/.test(row.line) || /\bgit commit\b/.test(block);
   }
   return null;
@@ -570,7 +600,8 @@ describe("5. no $(( )) arithmetic on a counter — positions are the command's j
 // ---------------------------------------------------------------------------
 
 const COUNTER_STEP_MAP: Record<string, string[]> = {
-  "build-plan-execute": ["build-plan-execute"],
+  "build-plan-tests": ["build-plan-tests"],
+  "build-plan-tasks": ["build-plan-tasks"],
   "build-plan-verify": ["build-plan-verify"],
   "build-plan-gaps-remediate": ["build-plan-verify"],
   "build-group-gate": ["build-plan-verify"],
@@ -586,6 +617,8 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "debug-failure-remediate": ["debug-run-tests"],
   "debug-failure-soak": ["debug-run-tests", "debug-failure-soak"],
   "debug-push-remediation": ["debug-run-tests"],
+  "plan-review": ["plan-review"],
+  "plan-apply-review": ["plan-apply-review"],
   "ship-merge-pr": ["ship-merge-pr"],
   "ship-failure-diagnose": ["ship-merge-pr"],
   "ship-failure-remediate": ["ship-merge-pr"],

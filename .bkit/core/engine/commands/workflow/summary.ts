@@ -3,10 +3,11 @@
 // its log files, the plan and the ledger rows it added. Pure: the caller reads the
 // disk and passes `read` for the log files.
 
-import type { Workstream } from "./workstreams.js";
+import { coversList, type Plan, type Workstream } from "./plans.js";
 import { issueIdOf, type FidTracker } from "./fids.js";
 import { parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
+import { challengeResolution, taskVerified } from "./summary-findings.js";
 
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"] as const;
 export type SummaryWorkflow = (typeof SUMMARY_WORKFLOWS)[number];
@@ -59,15 +60,14 @@ export function refOf(fid: string, tracker: FidTracker = "any"): string | undefi
 }
 
 /**
- * A critique step whose FAIL a later step of the same workflow answers; the run
- * carried on past it. A build challenge is answered by its fix tasks running
- * (`build-plan-execute`) or by a Decision Pause (`build-decision`).
+ * Review updates cover their review's findings. Group verification covers failed
+ * execution, but does not cover a remediation agent's separate warnings or flakes.
  */
-const ANSWERED_BY: Readonly<Record<string, readonly string[]>> = {
+const RESOLVED_BY: Readonly<Record<string, readonly string[]>> = {
   "plan/plan-review": ["plan-apply-review"],
   "design/design-review": ["design-apply-review"],
-  "design/design-spike": ["design-apply-review"],
-  "build/build-challenge": ["build-plan-execute", "build-decision"],
+  "build/build-plan-tasks": ["build-plan-verify"],
+  "build/build-plan-gaps-remediate": ["build-plan-verify"],
 };
 
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
@@ -77,6 +77,8 @@ const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 type Row = Record<string, unknown>;
 
 export interface SummaryInput {
+  /** Checkout root for normalising finding locations. */
+  root?: string;
   workflow: SummaryWorkflow;
   fid: string;
   /** `refOf(fid)`; undefined = no tracker reference. */
@@ -85,18 +87,22 @@ export interface SummaryInput {
   rows: Row[];
   /** The plan files the run worked from, repo-relative path and text. */
   plans: Array<{ path: string; text: string }>;
-  /** Deferral rows this workflow added since the run started. */
+  /** Current deferrals whose keys this workflow touched since the run started, including closed ones. */
   deferrals: Row[];
-  /** Distinct deferral keys this workflow added since the run started. */
+  /** Number of those distinct keys still open. */
   deferralsAdded: number;
   /** build and ship: every `build-decision-*.md` in the log folder, repo-relative. */
   decisionFiles: string[];
   /** A repo-relative file's text, or null when it is missing. */
   read: (rel: string) => string | null;
-  /** design: the workstreams `workstreams parse` reads from the organised design. */
+  /** design: the workstreams `plans parse` reads from the organised design. */
   workstreams?: Workstream[];
+  /** design: the plans `plans parse` reads from the organised design. */
+  suggestedPlans?: Plan[];
   /** design: the organised design's text; its `## Risks & Open Questions` becomes `## Open Questions`. */
   organised?: string;
+  /** build: `false` = the run held (no push, no PR); absent or `true` = it publishes. */
+  publish?: boolean;
   /** ship: the PR's size; absent when `gh` could not read it. */
   pr?: { number: number; additions: number; deletions: number; changedFiles: number };
 }
@@ -119,16 +125,22 @@ interface StepGroup {
 const str = (v: unknown) => (typeof v === "string" ? v : undefined);
 const artifactsOf = (r: Row) =>
   Array.isArray(r.artifacts) ? r.artifacts.filter((a): a is string => typeof a === "string") : [];
+/** A step row's task group (`group`, or debug's `subPlan`); undefined when it has none. */
+const taskGroupOf = (r: Row) => {
+  const taskGroup = r.group ?? r.subPlan;
+  return typeof taskGroup === "number" ? taskGroup : undefined;
+};
 
-/** The run's step rows grouped per step (and plan group), in first-seen order. */
+/** The run's step rows grouped per step (and task group), in first-seen order. */
 function stepGroups(rows: Row[]): StepGroup[] {
   const groups = new Map<string, StepGroup>();
   rows.forEach((row, index) => {
     const step = str(row.step);
     if (row.type !== "step-done" || step === undefined) return;
-    const planGroup = row.group ?? row.subPlan;
-    const sub = typeof planGroup === "number" ? planGroup : undefined;
-    const key = sub === undefined ? step : `${step}#${sub}`;
+    const sub = taskGroupOf(row);
+    const scope = sub === undefined ? step : `${step}#${sub}`;
+    const key =
+      step === "build-challenge" && typeof row.round === "number" ? `${scope}@${row.round}` : scope;
     const g = groups.get(key) ?? {
       label: sub === undefined ? step : `${step} (group ${sub})`,
       key,
@@ -158,11 +170,34 @@ function planSection(text: string, title: RegExp): string | undefined {
   return out.join("\n").trim();
 }
 
+/**
+ * A TEST EXCEPTION field's entries from its 1-based plan `fieldLines` (`plan-blocks.ts`):
+ * the label line's inline value and each sub-bullet, continuation lines joined to the entry above.
+ */
+function exceptionEntries(lines: string[], fieldLines: number[]): string[] {
+  const out: string[] = [];
+  for (const n of fieldLines) {
+    const raw = lines[n - 1] ?? "";
+    const label = raw.indexOf(TEST_EXCEPTION);
+    const bullet = /^\s*- (.*)$/.exec(raw);
+    const text = (
+      label >= 0 ? raw.slice(label + TEST_EXCEPTION.length) : (bullet?.[1] ?? raw)
+    ).trim();
+    if (text === "") continue;
+    if (label < 0 && bullet === null && out.length > 0) out[out.length - 1] += ` ${text}`;
+    else out.push(text);
+  }
+  return out;
+}
+
 export function buildSummary(input: SummaryInput): Summary {
   const { workflow } = input;
   const groups = stepGroups(input.rows);
   const fails: string[] = [];
   const concerns: string[] = [];
+  const resolved = new Map<string, string>();
+  const resolvedFindings: string[] = [];
+  const reassessed: string[] = [];
   const read = (rel: string) => input.read(rel);
 
   // Debug: a reproduce step that could not reproduce is a re-run, not a failure.
@@ -186,35 +221,91 @@ export function buildSummary(input: SummaryInput): Summary {
 
   for (const g of groups) {
     const { row, index } = lastOf(g);
+    if (g.step === `${workflow}-summary`) continue;
     if (RUN_TESTS.has(g.step)) {
       if (row.verdict === "FAIL") fails.push(`${g.label} FAIL`);
       continue;
     }
-    if (row.verdict === "CONCERNS") concerns.push(`${g.label} CONCERNS`);
-    if (row.verdict !== "FAIL") continue;
+    if (row.verdict !== "FAIL" && row.verdict !== "CONCERNS") continue;
     if (g.step === "debug-failure-reproduce" && notReproduced) continue;
-    const answers = ANSWERED_BY[`${workflow}/${g.step}`] ?? [];
-    const answeredBy = input.rows.find(
-      (r, i) => i > index && r.type === "step-done" && answers.includes(String(r.step)),
-    )?.step;
-    if (answeredBy !== undefined)
-      concerns.push(`${g.label} FAIL, answered by ${String(answeredBy)}`);
-    else fails.push(`${g.label} FAIL`);
+    if (workflow === "build" && g.step === "build-challenge") {
+      const assessment = challengeResolution(input, row, index, tasks);
+      if (assessment !== undefined) {
+        fails.push(...assessment.failures);
+        concerns.push(...assessment.concerns);
+        resolvedFindings.push(...assessment.resolved);
+        continue;
+      }
+    }
+    if (
+      workflow === "build" &&
+      g.step === "build-plan-current" &&
+      tasks.length > 0 &&
+      tasks.every((t) => taskVerified(input, t, index))
+    ) {
+      resolved.set(g.key, "build-plan-verify");
+      continue;
+    }
+    const review = g.step === `${workflow}-review`;
+    const spike = workflow === "design" && g.step === "design-spike";
+    const answers = spike
+      ? ["design-apply-review"]
+      : review || row.verdict === "FAIL"
+        ? (RESOLVED_BY[`${workflow}/${g.step}`] ?? [])
+        : [];
+    const sub = taskGroupOf(row);
+    const answer = groups
+      .map(lastOf)
+      .find(
+        ({ row: r, index: i }) =>
+          i > index &&
+          answers.includes(String(r.step)) &&
+          (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
+          (r.failures === undefined || r.failures === 0) &&
+          taskGroupOf(r) === sub &&
+          (!review || r.attempt === row.attempt),
+      );
+    if (answer !== undefined && spike) {
+      const reports = artifactsOf(row).map((p) => read(p));
+      const unsettled = reports.map((report) =>
+        report === null ? undefined : planSection(report, /^## Unsettled\s*$/),
+      );
+      if (
+        unsettled.length > 0 &&
+        unsettled.every((section) => section !== undefined && section !== "")
+      ) {
+        if (unsettled.every((section) => /^None\.?$/i.test(section!)))
+          resolved.set(g.key, String(answer.row.step));
+        else {
+          concerns.push("design-spike: unsettled claims remain");
+          reassessed.push(
+            "design-spike: design impact addressed by design-apply-review; unsettled claims remain",
+          );
+        }
+        continue;
+      }
+    }
+    if (answer !== undefined && !spike && answer.row.verdict === "CONCERNS")
+      reassessed.push(
+        `${g.label} ${String(row.verdict)}, remaining findings assessed by ${String(answer.row.step)}`,
+      );
+    else if (answer !== undefined && !spike) resolved.set(g.key, String(answer.row.step));
+    else if (row.verdict === "FAIL") fails.push(`${g.label} FAIL`);
+    else concerns.push(`${g.label} CONCERNS`);
   }
 
   // The Decision Pause: accepted items in this run's decision files.
   const decided = groups
     .filter((g) => g.step === "build-decision")
     .flatMap((g) => g.rows.flatMap(({ row }) => artifactsOf(row)));
-  const acceptLines = decided.flatMap((rel) =>
-    (read(rel) ?? "")
-      .split("\n")
-      .filter((l) => /^Decision:\s*Accept\b/.test(l.trim()))
-      .map((l) => `${rel}: ${l.trim()}`),
+  const acceptItems = decided.flatMap((rel) =>
+    parseDecisionItems(read(rel) ?? "")
+      .filter((i) => /^Accept\b/.test(i.decision ?? ""))
+      .map((i) => ({ assumed: i.assumed, line: `${rel}: Decision: ${i.decision}` })),
   );
   // `Accept (assumed)`: taken without the owner (`ask: false` or headless); ship asks to confirm.
-  const assumed = acceptLines.filter((a) => /Decision:\s*Accept \(assumed\)/.test(a));
-  const accepted = acceptLines.filter((a) => !assumed.includes(a));
+  const assumed = acceptItems.filter((a) => a.assumed).map((a) => a.line);
+  const accepted = acceptItems.filter((a) => !a.assumed).map((a) => a.line);
   if (accepted.length > 0)
     concerns.push(`${accepted.length} item(s) accepted at the Decision Pause`);
   if (assumed.length > 0)
@@ -233,7 +324,7 @@ export function buildSummary(input: SummaryInput): Summary {
   if (unconfirmed.length > 0)
     concerns.push(`shipped with ${unconfirmed.length} assumed item(s) the owner did not confirm`);
   if (input.deferralsAdded > 0)
-    concerns.push(`${input.deferralsAdded} deferral(s) written this run`);
+    concerns.push(`${input.deferralsAdded} deferral(s) from this run remain open`);
 
   const verdict: SummaryVerdict =
     fails.length > 0 ? "FAIL" : concerns.length > 0 ? "CONCERNS" : "PASS";
@@ -244,10 +335,9 @@ export function buildSummary(input: SummaryInput): Summary {
   const withRef = (cmd: string) => (input.ref === undefined ? cmd : `${cmd} ${input.ref}`);
   let nextStep = step.command === undefined ? (step.line ?? "") : withRef(step.command);
   if (workflow === "debug" && notReproduced) nextStep = `${withRef("/bkit-debug")} [repro]`;
-  const streams = input.workstreams ?? [];
-  if (workflow === "design" && step.command === "/bkit-plan" && streams.length > 1)
-    nextStep =
-      "File the Suggested Workstreams issues, then /bkit-plan <first root workstream's new issue>";
+  const suggested = input.suggestedPlans ?? [];
+  if (workflow === "design" && step.command === "/bkit-plan" && suggested.length > 1)
+    nextStep = "File the Suggested Plans issues, then /bkit-plan <first root plan's new issue>";
 
   // Sections.
   const out: string[] = [
@@ -263,7 +353,9 @@ export function buildSummary(input: SummaryInput): Summary {
     "",
     ...(reasons.length > 0
       ? reasons.map((r) => `- ${r}`)
-      : ["- No failing step, open task, accepted item or new deferral."]),
+      : [
+          "- No unresolved finding, failing check, open task, accepted limitation or open deferral.",
+        ]),
   ];
   if (workflow === "build")
     out.push(
@@ -271,6 +363,9 @@ export function buildSummary(input: SummaryInput): Summary {
       input.plans.length === 0
         ? "Plan tasks: no plan file."
         : `Plan tasks: ${tasks.filter((t) => t.done).length} of ${tasks.length} ticked in ${input.plans.map((p) => `\`${p.path}\``).join(", ")}.`,
+      "",
+      input.publish === false ? "Publish: held" : "Publish: pr",
+      ...(input.publish === false ? ["", "Docs: not synced (ship syncs on landing)"] : []),
     );
 
   out.push(
@@ -287,6 +382,35 @@ export function buildSummary(input: SummaryInput): Summary {
       .join(", ");
     out.push(
       `| ${g.label} | ${str(row.verdict) ?? "-"} | ${typeof row.failures === "number" ? row.failures : "-"} | ${g.rows.length} | ${artifact || "-"} |`,
+    );
+  }
+
+  out.push("", "## Resolved Findings", "");
+  const resolutions = groups
+    .filter((g) => resolved.has(g.key))
+    .map(
+      (g) => `- ${g.label} ${String(lastOf(g).row.verdict)}, resolved by ${resolved.get(g.key)!}`,
+    );
+  resolutions.push(...resolvedFindings.map((r) => `- ${r}`));
+  out.push(...(resolutions.length > 0 ? resolutions : ["None"]));
+  if (reassessed.length > 0)
+    out.push("", "## Reassessed Findings", "", ...reassessed.map((r) => `- ${r}`));
+  out.push(
+    "",
+    "## Assessment History",
+    "",
+    "| Step | Verdict | Attempt | Artifact |",
+    "| --- | --- | --- | --- |",
+  );
+  for (const { g, row } of groups
+    .flatMap((g) => g.rows.map(({ row, index }) => ({ g, row, index })))
+    .sort((a, b) => a.index - b.index)) {
+    out.push(
+      `| ${g.label} | ${str(row.verdict) ?? "-"} | ${String(row.attempt ?? "-")} | ${
+        artifactsOf(row)
+          .map((a) => `\`${a}\``)
+          .join(", ") || "-"
+      } |`,
     );
   }
 
@@ -308,7 +432,9 @@ export function buildSummary(input: SummaryInput): Summary {
         `- Task ${t.task} — ${SEVERITY.exec(t.text)![1]} — ${t.done ? "ticked" : "not ticked"} (\`${t.path}\`)`,
       );
     for (const r of low)
-      out.push(`- LOW, deferred: ${String(r.key ?? "")} — ${String(r.description ?? "")}`);
+      out.push(
+        `- LOW, ${r.status === "CLOSED" ? "closed" : "deferred"}: ${String(r.key ?? "")} — ${String(r.description ?? "")}`,
+      );
   }
 
   if (workflow === "build" || workflow === "debug") {
@@ -336,13 +462,15 @@ export function buildSummary(input: SummaryInput): Summary {
   }
 
   if (workflow === "design") {
-    out.push("", "## Suggested Workstreams", "");
-    if (streams.length === 0) out.push("None");
-    for (const w of streams)
-      out.push(`### ${w.id}: ${w.name}`, "", `Requires: ${w.requiresText || "None"}`, "");
-    if (streams.length > 1)
+    out.push("", "## Suggested Plans", "");
+    if (suggested.length === 0) out.push("None");
+    for (const p of suggested)
       out.push(
-        "File these as one issue each? Body per .bkit/trackers.md § Issue shapes; file in Requires order.",
+        `### ${p.id}: ${p.name}`,
+        "",
+        `Covers: ${coversList(p, input.workstreams ?? []) || "None"}`,
+        `Requires: ${p.requiresText || "None"}`,
+        "",
       );
     out.push(
       "",
@@ -374,8 +502,15 @@ export function buildSummary(input: SummaryInput): Summary {
   // Risks and action items.
   const items: string[] = [];
   for (const g of groups) {
+    if (resolved.has(g.key)) continue;
     for (const rel of artifactsOf(lastOf(g).row).filter((a) => a.endsWith("-log.md"))) {
-      for (const line of (read(rel) ?? "").split("\n").filter((l) => /^BLOCKED\b/.test(l)))
+      const dispositions = new Map<string, string>();
+      for (const line of (read(rel) ?? "").split("\n")) {
+        const entry = /^(BLOCKED|DONE)\s*—\s*((?:task|step|gap)\s+\d+)\b/i.exec(line);
+        if (entry !== null) dispositions.set(entry[2]!.toLowerCase(), line);
+        else if (/^BLOCKED\b/.test(line)) dispositions.set(line, line);
+      }
+      for (const line of [...dispositions.values()].filter((l) => /^BLOCKED\b/.test(l)))
         items.push(`- ${line} (\`${rel}\`)`);
     }
   }
@@ -385,8 +520,19 @@ export function buildSummary(input: SummaryInput): Summary {
     if (!/^Decision:/m.test(read(rel) ?? "")) items.push(`- \`${rel}\`: no decision recorded`);
   }
   for (const p of input.plans) {
-    for (const line of p.text.split("\n").filter((l) => l.includes(TEST_EXCEPTION)))
-      items.push(`- \`${p.path}\`: ${line.trim()}`);
+    const lines = p.text.split(/\r?\n/);
+    const covered = new Set<number>();
+    for (const t of tasks.filter((x) => x.path === p.path && x.testException !== undefined)) {
+      const fieldLines = t.testException!.lines;
+      for (const n of fieldLines) covered.add(n);
+      const entries = exceptionEntries(lines, fieldLines);
+      for (const e of entries.length > 0 ? entries : ["no reason recorded"])
+        items.push(`- TEST EXCEPTION, task ${t.task}: ${e} (\`${p.path}\`)`);
+    }
+    lines.forEach((l, i) => {
+      if (l.includes(TEST_EXCEPTION) && !covered.has(i + 1))
+        items.push(`- \`${p.path}\`: ${l.trim()}`);
+    });
   }
   out.push("", "## Risks and Action Items", "", ...(items.length > 0 ? items : ["None"]));
 

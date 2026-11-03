@@ -6,6 +6,10 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+// Gate-order fixtures stand in for package execution; the min-push suite runs the real CLI.
+const UNWRAP_PUSH_GATE =
+  'case "$*" in "-s bkit ci push-gate --gate="*) shift 4; set -- "${1#--gate=}" ;; esac';
+
 // ---------------------------------------------------------------------------
 // .husky/pre-push delete-only skip — runs the real hook with a stub `pnpm` on PATH
 // that records each gate call, feeding git's pre-push stdin shape.
@@ -57,6 +61,83 @@ describe(".husky/pre-push delete-only push", () => {
 
     it(`${hook}: empty stdin → gates still run`, () => {
       expect(runHook(hook, "").gated).toBe(true);
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push log — the hook re-runs itself once with everything it prints copied to
+// `tmp/pre-push.log`. Stub `pnpm` reports no skip-CI token and no min push, prints a line
+// for every other call and fails it with exit 3.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push log", () => {
+  const ZERO = "0".repeat(40);
+  const SHA = "a".repeat(40);
+  const REPO = process.cwd();
+  const LOG_LINE = "[pre-push] log: tmp/pre-push.log";
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-log-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "gate: $*"\nexit 3\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  /** This process's env without the logged-run marker: run inside a real push, the outer hook sets it and the hook under test would skip its log. */
+  const outsideHookEnv = (): NodeJS.ProcessEnv => {
+    const env = { ...process.env };
+    delete env.BKIT_PRE_PUSH_LOGGED;
+    return env;
+  };
+
+  const runHook = (hook: string, stdin: string) => {
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 10_000,
+      env: { ...outsideHookEnv(), PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
+    });
+    const log = path.join(tmp, "tmp", "pre-push.log");
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      log: fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : null,
+    };
+  };
+
+  for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: failing gate → tmp/pre-push.log holds its output, exit code kept`, () => {
+      const r = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`);
+      expect(r.status).toBe(3);
+      expect(r.log).toContain("gate: bkit check");
+      expect(r.log).toContain("exit 3");
+    });
+
+    it(`${hook}: delete-only push → the early exit is logged, exit 0`, () => {
+      const r = runHook(hook, `(delete) ${ZERO} refs/heads/a ${SHA}\n`);
+      expect(r.status).toBe(0);
+      expect(r.log).toContain("delete-only push");
+    });
+
+    it(`${hook}: first and last lines name the log`, () => {
+      const lines = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`)
+        .stderr.trim()
+        .split("\n");
+      expect(lines[0]).toBe(LOG_LINE);
+      expect(lines.at(-1)).toContain(LOG_LINE);
+    });
+
+    it(`${hook}: the hook body runs once`, () => {
+      const r = runHook(hook, `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`);
+      expect(r.stderr.split("gate: bkit check").length - 1).toBe(1);
+      expect(r.stderr.split(LOG_LINE).length - 1).toBe(2);
     });
   }
 });
@@ -225,7 +306,11 @@ describe(".husky/pre-push CI-suppressor guard", () => {
         'if [ "$*" = "-s bkit ci skip-token" ]; then',
         `  exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} ci skip-token`,
         "fi",
+        'case "$*" in "-s bkit ci bookkeeping-push "*)',
+        `  shift 2; exec node ${JSON.stringify(path.join(REPO, "dist", "cli.js"))} "$@" ;;`,
+        "esac",
         'case "$*" in *"ci min-push"*) exit 1 ;; esac',
+        UNWRAP_PUSH_GATE,
         `echo "$*" >> "${tmp}/pnpm.log"`,
         "exit 0",
         "",
@@ -237,11 +322,22 @@ describe(".husky/pre-push CI-suppressor guard", () => {
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  const pushWithHead = (hook: string, message: string) => {
+  /** Commit `files` (empty: an empty commit) under `message`, then push onto `remoteSha`. */
+  const pushWithHead = (
+    hook: string,
+    message: string,
+    files: Record<string, string> = {},
+    remoteSha = "0".repeat(40),
+  ) => {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(tmp, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmp, rel), body);
+      gitIn(tmp, "add", rel);
+    }
     gitIn(tmp, "commit", "-q", "--allow-empty", "-m", message);
     const result = spawnSync("sh", [path.join(REPO, hook)], {
       cwd: tmp,
-      input: `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${"0".repeat(40)}\n`,
+      input: `refs/heads/feat/1-x ${SHA} refs/heads/feat/1-x ${remoteSha}\n`,
       encoding: "utf-8",
       timeout: 20_000,
       env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
@@ -266,6 +362,40 @@ describe(".husky/pre-push CI-suppressor guard", () => {
       const r = pushWithHead(hook, "feat(1): change");
       expect(r.stderr).not.toContain("BLOCKED");
       expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: [skip ci] bookkeeping only on top of the remote head, open PR → allowed, gates run`, () => {
+      // CHANGELOG.md is bookkeeping only because the repo's package.json says so.
+      fs.writeFileSync(
+        path.join(tmp, "package.json"),
+        JSON.stringify({ bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } }),
+      );
+      gitIn(tmp, "add", "package.json");
+      gitIn(tmp, "commit", "-q", "-m", "feat(1): code");
+      const remote = gitIn(tmp, "rev-parse", "HEAD").stdout.trim();
+      const r = pushWithHead(
+        hook,
+        "docs(1): ship bookkeeping bkit [skip ci]",
+        { "docs/plans/202611/logs/1-x/ship-summary.md": "s\n", "CHANGELOG.md": "- x\n" },
+        remote,
+      );
+      expect(r.stderr).not.toContain("BLOCKED");
+      expect(r.stderr).toContain("is bookkeeping");
+      expect(r.gates).toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: [skip ci] head that also changes code, open PR → blocked before any gate`, () => {
+      gitIn(tmp, "commit", "-q", "--allow-empty", "-m", "feat(1): code");
+      const remote = gitIn(tmp, "rev-parse", "HEAD").stdout.trim();
+      const r = pushWithHead(
+        hook,
+        "docs(1): ship bookkeeping bkit [skip ci]",
+        { "docs/architecture.md": "a\n", "src/a.ts": "export {};\n" },
+        remote,
+      );
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain("PR #7 is open");
+      expect(r.gates).toBe("");
     });
 
     it(`${hook}: no integration gate declared → the unit gate runs`, () => {
@@ -393,7 +523,7 @@ describe(".husky/pre-push disk prune", () => {
   const runHook = (hook: string, fail: string) => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\n${UNWRAP_PUSH_GATE}\necho "$*" >> "${tmp}/pnpm.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     const result = spawnSync("sh", [path.join(REPO, hook)], {
@@ -453,14 +583,16 @@ describe(".husky/pre-push template fast checks", () => {
   const runHook = (register: number | null, fail = "*skip-token*") => {
     fs.writeFileSync(
       path.join(tmp, "bin", "pnpm"),
-      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
+      `#!/bin/sh\ncase "$*" in *"ci min-push"*) exit 1 ;; esac\n${UNWRAP_PUSH_GATE}\necho "$*" >> "${tmp}/calls.log"\ncase "$*" in ${fail}) exit 1 ;; esac\nexit 0\n`,
       { mode: 0o755 },
     );
     if (register !== null) {
       fs.mkdirSync(path.join(tmp, "scripts", "graphify"), { recursive: true });
       fs.writeFileSync(
         path.join(tmp, "scripts", "graphify", "bkit-graph-pre-push.sh"),
-        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\nexit ${register}\n`,
+        `echo "register $PUSH_DEV_SHA $IS_REVERT" >> "${tmp}/calls.log"\n` +
+          `echo "register-vars \${BRANCH+set} \${PUSH_BRANCH_SHA+set}" >> "${tmp}/calls.log"\n` +
+          `exit ${register}\n`,
       );
     }
     const result = spawnSync("sh", [path.join(REPO, HOOK)], {
@@ -482,6 +614,8 @@ describe(".husky/pre-push template fast checks", () => {
     const at = r.calls.indexOf(`register ${SHA} 0`);
     expect(at).toBeGreaterThanOrEqual(0);
     expect(gateAt(r.calls)).toBeGreaterThan(at);
+    // The open-PR gate reads the checked-out branch and the commit pushed to it.
+    expect(r.calls).toContain("register-vars set set");
   });
 
   it("a stale register stops the push before any gate runs", () => {
@@ -497,6 +631,25 @@ describe(".husky/pre-push template fast checks", () => {
     expect(gateAt(r.calls)).toBe(-1);
   });
 
+  it("the dependency audit runs before any gate, when its script is present", () => {
+    fs.mkdirSync(path.join(tmp, "scripts", "ci"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, "scripts", "ci", "bkit-check-dependency-audit.mjs"),
+      `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(path.join(tmp, "calls.log"))}, "audit\\n");\n`,
+    );
+    const r = runHook(0);
+    expect(r.status).toBe(0);
+    const at = r.calls.indexOf("audit");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(gateAt(r.calls)).toBeGreaterThan(at);
+  });
+
+  it("no dependency-audit script → skipped, the gates still run", () => {
+    const r = runHook(0);
+    expect(r.calls).not.toContain("audit");
+    expect(gateAt(r.calls)).toBeGreaterThanOrEqual(0);
+  });
+
   it("no register script → skipped, the gates still run", () => {
     const r = runHook(null);
     expect(r.status).toBe(0);
@@ -507,7 +660,7 @@ describe(".husky/pre-push template fast checks", () => {
 
 // ---------------------------------------------------------------------------
 // .husky/pre-push slop base — on a dev push the hook asks scripts/ci/lanes/
-// resolve-push-base.mjs (local mode) for CI's base and hands it to the gates as
+// bkit-resolve-push-base.mjs (local mode) for CI's base and hands it to the gates as
 // SLOP_BASE_REF. Stub resolver logs its argv and answers a fixed base + source; stub `pnpm`
 // logs each gate with the SLOP_BASE_REF it sees.
 // ---------------------------------------------------------------------------
@@ -529,6 +682,7 @@ describe(".husky/pre-push slop base", () => {
       [
         "#!/bin/sh",
         'case "$*" in *"ci min-push"*|*"ci skip-token"*) exit 1 ;; esac',
+        UNWRAP_PUSH_GATE,
         `echo "$* SLOP_BASE_REF=\${SLOP_BASE_REF:-}" >> "${tmp}/calls.log"`,
         "exit 0",
         "",
@@ -542,7 +696,7 @@ describe(".husky/pre-push slop base", () => {
   const adoptResolver = (base: string, source: string) => {
     fs.mkdirSync(path.join(tmp, "scripts", "ci", "lanes"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmp, "scripts", "ci", "lanes", "resolve-push-base.mjs"),
+      path.join(tmp, "scripts", "ci", "lanes", "bkit-resolve-push-base.mjs"),
       [
         'import fs from "node:fs";',
         `fs.appendFileSync(${JSON.stringify(`${tmp}/calls.log`)}, \`resolver \${process.argv.slice(2).join(" ")}\\n\`);`,
@@ -708,6 +862,136 @@ describe("graphify register pre-push gate", () => {
     expect(r.stderr).toBe("");
   });
 
+  // A branch with an open PR into dev: CI's Check Capability Register fails the PR, so the
+  // push is gated as a push to dev is. Stub gh logs its args and prints `pr` for `pr list`.
+  const installGh = (pr: string) =>
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "${pr}"\n`,
+      { mode: 0o755 },
+    );
+  const ghCalls = () => {
+    const log = path.join(tmp, "gh.log");
+    return fs.existsSync(log) ? fs.readFileSync(log, "utf-8") : "";
+  };
+  const BRANCH_SHA = "c".repeat(40);
+  const branchPush = { PUSH_DEV_SHA: "", BRANCH: "feat/1-x", PUSH_BRANCH_SHA: BRANCH_SHA };
+  /** A PATH with no gh on it: the stubs, then only the system tools the snippet calls,
+   * linked from `/usr/bin` / `/bin`. GitHub runners ship gh at `/usr/bin/gh`. */
+  const pathWithoutGh = () => {
+    const dir = path.join(tmp, "sysbin");
+    fs.mkdirSync(dir);
+    for (const tool of ["sh", "bash", "git", "env", "sed", "head", "tr", "wc"]) {
+      const found = ["/usr/bin", "/bin"]
+        .map((d) => path.join(d, tool))
+        .find((p) => fs.existsSync(p));
+      if (found === undefined) throw new Error(`${tool} is in neither /usr/bin nor /bin`);
+      fs.symlinkSync(found, path.join(dir, tool));
+    }
+    return `${path.join(tmp, "bin")}:${dir}`;
+  };
+
+  it("branch with an open PR into dev, register stale → blocked, check-at on the pushed commit", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(1);
+    expect(ghCalls()).toContain("pr list --head feat/1-x --base dev --state open");
+    expect(r.calls).toContain(`check-at ${BRANCH_SHA}`);
+    expect(r.stderr).toContain(
+      "BLOCKED: docs/capabilities.md is not what the pushed commit builds",
+    );
+    expect(r.stderr).toContain("CI fails PR #7 into dev on it");
+  });
+
+  it("branch with an open PR into dev, register current → push goes on", () => {
+    adopt(0);
+    installGraphify();
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(r.calls).toContain(`check-at ${BRANCH_SHA}`);
+  });
+
+  it("branch with no open PR → no check, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    installGh("");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toContain("pr list");
+    expect(r.calls).toBe("");
+  });
+
+  it("branch push, gh not installed → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    const r = run({ ...branchPush, PATH: pathWithoutGh() });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh is not installed");
+  });
+
+  it("branch push, gh installed but pr list fails → loud NOT-checked warning, push goes on", () => {
+    adopt(1);
+    installGraphify();
+    fs.writeFileSync(
+      path.join(tmp, "bin", "gh"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/gh.log"\necho "gh: not logged in" >&2\nexit 4\n`,
+      { mode: 0o755 },
+    );
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toContain("pr list");
+    expect(r.calls).toBe("");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — gh pr list failed");
+    expect(r.stderr).toContain("whether 'feat/1-x' has an open PR is unknown");
+  });
+
+  it("branch with an open PR, graphify not installed → loud NOT-checked warning naming the PR", () => {
+    adopt(1);
+    installGh("7");
+    const r = run(branchPush);
+    expect(r.status).toBe(0);
+    expect(r.calls).not.toContain("check-at");
+    expect(r.stderr).toContain("docs/capabilities.md was NOT checked — graphify is not installed");
+    expect(r.stderr).toContain("checks it for PR #7 into dev");
+  });
+
+  it("a push that does not update the checked-out branch → no PR lookup, no check", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run({ ...branchPush, PUSH_BRANCH_SHA: "" });
+    expect(r.status).toBe(0);
+    expect(ghCalls()).toBe("");
+    expect(r.calls).toBe("");
+  });
+
+  it("revert push of a branch with an open PR → no check", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const r = run({ ...branchPush, IS_REVERT: "1" });
+    expect(r.status).toBe(0);
+    expect(r.calls).toBe("");
+  });
+
+  it("an older hook copy (no BRANCH / PUSH_BRANCH_SHA) → the checked-out branch and HEAD stand in", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    const git = (...a: string[]) =>
+      spawnSync("git", a, { cwd: tmp, encoding: "utf-8" }).stdout.trim();
+    git("init", "-q", "-b", "feat/1-x");
+    git("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x");
+    const r = run({ PUSH_DEV_SHA: "" });
+    expect(r.status).toBe(1);
+    expect(ghCalls()).toContain("pr list --head feat/1-x");
+    expect(r.calls).toContain(`check-at ${git("rev-parse", "HEAD")}`);
+  });
+
   // bkit's own hook carries the snippet: git's stdin ref reaches it as PUSH_DEV_SHA only for
   // a push to dev. Stub pnpm passes every gate, reports no skip-CI token.
   const runRepoHook = (stdin: string) => {
@@ -739,6 +1023,22 @@ describe("graphify register pre-push gate", () => {
     const r = runRepoHook(`refs/heads/x ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
     expect(r.status).toBe(0);
     expect(fs.existsSync(path.join(tmp, "graph.log"))).toBe(false);
+  });
+
+  it(".husky/pre-push: push of the checked-out branch with an open PR → the gate checks the pushed commit", () => {
+    adopt(1);
+    installGraphify();
+    installGh("7");
+    // An unborn branch has no name for `git rev-parse --abbrev-ref HEAD` → commit once.
+    spawnSync("git", ["init", "-q", "-b", "feature"], { cwd: tmp });
+    spawnSync(
+      "git",
+      ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "x"],
+      { cwd: tmp },
+    );
+    const r = runRepoHook(`refs/heads/feature ${SHA} refs/heads/feature ${"0".repeat(40)}\n`);
+    expect(r.status).toBe(1);
+    expect(fs.readFileSync(path.join(tmp, "graph.log"), "utf-8")).toContain(`check-at ${SHA}`);
   });
 });
 
@@ -790,20 +1090,45 @@ describe(".husky/pre-push min push", () => {
     );
     fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
     gitIn("init", "-q", "-b", "feat/1-x");
-    gitIn("update-ref", "refs/remotes/origin/dev", commitFiles({ "src/a.ts": "a\n" }, "base"));
+    gitIn(
+      "update-ref",
+      "refs/remotes/origin/dev",
+      commitFiles(
+        {
+          "src/a.ts": "a\n",
+          ".gitignore": "bin/\ntmp/\npnpm.log\n",
+          "package.json": JSON.stringify({
+            scripts: {
+              "bkit:gate:static-unit": "echo full",
+              "bkit:gate:min": "echo minimum",
+            },
+          }),
+        },
+        "base",
+      ),
+    );
   });
   afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-  const push = (hook: string, sha: string, remoteRef = "refs/heads/feat/1-x") => {
+  const push = (
+    hook: string,
+    sha: string,
+    remoteRef = "refs/heads/feat/1-x",
+    remoteSha = ZERO,
+    extraRefs = "",
+  ) => {
+    fs.writeFileSync(path.join(tmp, "pnpm.log"), "");
     const result = spawnSync("sh", [path.join(REPO, hook)], {
       cwd: tmp,
-      input: `refs/heads/feat/1-x ${sha} ${remoteRef} ${ZERO}\n`,
+      input: `refs/heads/feat/1-x ${sha} ${remoteRef} ${remoteSha}\n${extraRefs}`,
       encoding: "utf-8",
       timeout: 30_000,
       env: { ...process.env, PATH: `${path.join(tmp, "bin")}:${process.env.PATH}` },
     });
     const log = path.join(tmp, "pnpm.log");
-    const calls = fs.existsSync(log) ? fs.readFileSync(log, "utf-8").trim().split("\n") : [];
+    const calls = fs.existsSync(log)
+      ? fs.readFileSync(log, "utf-8").trim().split("\n").filter(Boolean)
+      : [];
     return { status: result.status, stderr: result.stderr, calls };
   };
 
@@ -813,6 +1138,52 @@ describe(".husky/pre-push min push", () => {
   };
 
   for (const hook of [".bkit/templates/.husky/pre-push", ".husky/pre-push"]) {
+    it(`${hook}: checked code followed by bookkeeping runs only the minimum gate`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).calls).toContain("bkit:gate:static-unit");
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const r = push(hook, book, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: a checked empty trigger uses minimum validation`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).status).toBe(0);
+      const trigger = commitFiles({}, "chore(1): trigger CI");
+      const r = push(hook, trigger, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: a remote code head without checked evidence still runs the full gate`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const r = push(hook, book, "refs/heads/feat/1-x", code);
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+      expect(r.calls).not.toContain("bkit:gate:min");
+    });
+
+    it(`${hook}: code on another outgoing ref prevents a bookkeeping shortcut`, () => {
+      const code = commitFiles({ "src/a.ts": "b\n" }, "feat(1): code");
+      expect(push(hook, code).status).toBe(0);
+      const book = commitFiles(PLAN, "docs(1): summary");
+      const changed = commitFiles({ "src/a.ts": "c\n" }, "feat(2): code");
+      const r = push(
+        hook,
+        book,
+        "refs/heads/feat/1-x",
+        code,
+        `refs/heads/other ${changed} refs/heads/other ${code}\n`,
+      );
+      expect(r.status).toBe(0);
+      expect(r.calls).toContain("bkit:gate:static-unit");
+      expect(r.calls).not.toContain("bkit:gate:min");
+    });
+
     it(`${hook}: plan logs and ledgers only → bkit:gate:min, not the full gate`, () => {
       const r = push(hook, commitFiles(PLAN, "docs(1): plan bkit [skip ci]"));
       expect(r.status).toBe(0);

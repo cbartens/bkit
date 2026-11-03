@@ -154,8 +154,9 @@ export function isConsumerModified(
  * reads the file, uninstall deletes it — so an entry for an absent path is dead
  * bookkeeping, and a file recreated at that path later would be misclassified as
  * bkit-owned. A template-set path is never a file bkit owns: install copies it
- * byte-for-byte into `.bkit/templates/` and never writes the consumer's own copy,
- * so it must carry no ownership hash. Retired and renamed managed files leave such
+ * byte-for-byte into `.bkit/templates/` and never writes the consumer's own copy
+ * (bar the brand migrations, which rewrite it only where bkit's exact shipped old text matches,
+ * `docs/migrations.md`), so it must carry no ownership hash. Retired and renamed managed files leave such
  * entries behind, and a pure merge would preserve them forever (the
  * `.bkit/scripts/…` entry a #507 move left and the `scripts/graphify/**` +
  * `scripts/serena/bkit-serena-mcp.sh` entries a #489 move left are the observed

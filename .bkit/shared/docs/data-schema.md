@@ -5,15 +5,12 @@
 # Data Schema
 
 > [!CAUTION]
-> **Purpose:** Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, triggers.
+> **Purpose:** The active production database schema: entities / tables, fields, access policies (e.g. RLS), indices and triggers.
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
-> - One section / table: `Field | Type | Unique | Notes`, `Indices`, `Pending`.
-> - Fields whose existence is a decision: link `decisions.jsonl` ADR; do not restate rationale.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
+> - Give each table one section, holding a `Field | Type | Unique | Notes` table, `Indices` and `Pending`.
+> - For a field whose existence is a decision, link its ADR in `decisions.jsonl`, and do not restate the rationale.
 
 <!-- bkit:end -->

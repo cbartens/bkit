@@ -79,9 +79,8 @@ digraph skill_flow {
 
 These thoughts mean STOP—you're rationalizing:
 
-<!-- prettier-ignore -->
 | Thought | Reality |
-| --- | --- |
+|---------|---------|
 | "This is just a simple question" | Questions are tasks. Check for skills. |
 | "I need more context first" | Skill check comes BEFORE clarifying questions. |
 | "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |

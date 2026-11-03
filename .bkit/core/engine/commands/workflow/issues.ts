@@ -818,6 +818,7 @@ export const issuesCommand: CommandSpec = {
   verbs: {
     text: {
       summary: "ISSUE_TEXT: description + human comments, after the bkit:ignore-earlier cut.",
+      use: "workflow",
       flags: [
         { name: "description-file", type: "string", help: "file holding the issue description" },
         {
@@ -838,6 +839,7 @@ export const issuesCommand: CommandSpec = {
     fetch: {
       summary:
         "Read the run's issue into issue-description.md, issue-comments.json and issue-facts.json; prints the facts, never the body.",
+      use: "by-hand",
       flags: [
         { name: "fid", type: "string", help: "the run's FID (names the issue)" },
         { name: "issue", type: "string", help: "the issue id (instead of --fid)" },
@@ -865,6 +867,7 @@ export const issuesCommand: CommandSpec = {
     related: {
       summary:
         "Fetch each hit of the orchestrator's related-issue search and write the related-issues file.",
+      use: "workflow",
       flags: [
         {
           name: "hits-file",
@@ -892,6 +895,7 @@ export const issuesCommand: CommandSpec = {
     },
     "blocked-by": {
       summary: "The issues blocking the run's issue, with their states and the ones still open.",
+      use: "by-hand",
       flags: [
         { name: "fid", type: "string", help: "the run's FID (names the issue)" },
         { name: "issue", type: "string", help: "the issue id (instead of --fid)" },
@@ -909,6 +913,7 @@ export const issuesCommand: CommandSpec = {
     },
     labels: {
       summary: "Label arithmetic for a transition, the tracker state, and the board payload.",
+      use: "workflow",
       flags: [
         { name: "label", type: "string", repeatable: true, help: "a label the issue carries now" },
         {
@@ -956,6 +961,7 @@ export const issuesCommand: CommandSpec = {
     comment: {
       summary:
         "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
+      use: "workflow",
       flags: [
         { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
         { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },

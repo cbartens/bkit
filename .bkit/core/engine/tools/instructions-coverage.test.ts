@@ -53,7 +53,7 @@ const STORE_MD = [
   "",
   "### rule",
   "",
-  "- rule: R01 · Universal Rules",
+  "- rule: Universal Rules",
   "- prompt:",
   "  - verbatim: `p-one`",
   "  - partial: `p-two`",
@@ -96,7 +96,7 @@ const STORE_MD = [
   "",
   "```text",
   "Keep the local line.",
-  "[R01] NEVER skip the shortcut.",
+  "[rule] NEVER skip the shortcut.",
   "```",
 ].join("\n");
 
@@ -138,23 +138,41 @@ describe("checkCoverage", () => {
       ...FILES.slice(1),
     ];
     expect(checkCoverage(STORE_MD, files).join("\n")).toMatch(
-      /R01 `rule`: verbatim carrier `p-one` lacks the text/,
+      /`rule`: verbatim carrier `p-one` lacks the text/,
     );
   });
 
   it("a condensed carrier without a tagged local line fails", () => {
-    const untagged = STORE_MD.replace("[R01] NEVER skip the shortcut.", "NEVER skip the shortcut.");
+    const untagged = STORE_MD.replace(
+      "[rule] NEVER skip the shortcut.",
+      "NEVER skip the shortcut.",
+    );
     expect(checkCoverage(untagged, FILES).join("\n")).toMatch(
-      /R01 `rule`: condensed carrier `p-one` has no local line or clause tagged R01/,
+      /`rule`: condensed carrier `p-one` has no local line or clause tagged `rule`/,
     );
   });
 
   it("a clause tagged with the rule backs a condensed carrier", () => {
     const viaClause = STORE_MD.replace(
-      "[R01] NEVER skip the shortcut.",
+      "[rule] NEVER skip the shortcut.",
       "NEVER skip the shortcut.",
-    ).replace("- prompt: required\n", "- prompt: required\n- tags: R01\n");
+    ).replace("- prompt: required\n", "- prompt: required\n- tags: rule\n");
     expect(checkCoverage(viaClause, FILES)).toEqual([]);
+  });
+
+  it("a tag naming no rule fails instead of pointing at another rule", () => {
+    const typo = STORE_MD.replace("[rule] NEVER", "[rules] NEVER");
+    expect(checkCoverage(typo, FILES)).toContain(
+      ".bkit/core/prompts/p-one.md: tag `rules` names no rule: NEVER skip the shortcut.",
+    );
+  });
+
+  it("a clause rule or tag naming no rule fails", () => {
+    const typo = STORE_MD.replace(
+      "- prompt: required\n",
+      "- prompt: required\n- tags: rule, gone\n",
+    );
+    expect(checkCoverage(typo, FILES)).toContain("clause `order`: `gone` names no rule");
   });
 
   it("two entries 80% alike are flagged", () => {
@@ -200,13 +218,13 @@ describe("checkCarry", () => {
 
   it("a carry line naming a prompt without the whole rule fails", () => {
     expect(checkCarry(carrying("`p-one`, `p-two`"), FILES).missing).toEqual([
-      "R01 `rule`: carry `p-two` lacks the whole rule bullet",
+      "`rule`: carry `p-two` lacks the whole rule bullet",
     ]);
   });
 
   it("a prompt holding a bkit rule its carry line does not name fails", () => {
     expect(checkCarry(STORE_MD, FILES).undeclared).toEqual([
-      "R01 `rule`: `p-one` holds the rule but no carry line names it",
+      "`rule`: `p-one` holds the rule but no carry line names it",
     ]);
   });
 

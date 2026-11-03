@@ -133,6 +133,17 @@ export const SEVERITY_KINDS = new Set(["friction", "deferral", "failure"]);
 export const TRIAGE_STATUSES = new Set(["OPEN", "TRIAGED", "CLOSED"]);
 /** The `ACTIVE` / `SUPERSEDED` lifecycle shared by `decision` and `knowledge`. */
 export const DECISION_STATUSES = new Set(["ACTIVE", "SUPERSEDED"]);
+/**
+ * The kinds whose rows carry `firstTs` + `updates` (`.bkit/jsonl.md` § Compaction):
+ * the keyed kinds of the ledgers `bkit ledgers compact` rewrites to their fold winners.
+ */
+export const AGED_KINDS = new Set([
+    "deferral",
+    "failure",
+    "knowledge",
+    "decision",
+    "feature",
+]);
 export const FEATURE_STATUSES = new Set([
     "DESIGNED",
     "PLANNED",
@@ -164,7 +175,7 @@ export const UNJUSTIFIED_REASON = "unjustified";
  * § Ledgers & Writers). EXHAUSTIVE: a subagent absent from this set does not
  * write the kind at all.
  *
- * `@bkit-build-plan-execute` and `@bkit-build-plan-gaps-remediate` are not in it: a
+ * `@bkit-build-plan-tasks` and `@bkit-build-plan-gaps-remediate` are not in it: a
  * blocked plan task's record is its `BLOCKED` log line, which the next verify pass reads.
  *
  * Orchestrator-written rows carry no `subagent` and are outside this check.
@@ -195,6 +206,11 @@ export const APPEND_LEDGERS = {
 /** The workflows whose close writes `.bkit/stats.jsonl` rows (`bkit workflows close`, `bkit comply`). */
 const CLOSING_WORKFLOWS = new Set(["design", "plan", "build", "debug", "ship"]);
 /**
+ * The stats writers: the closing workflows, plus `utility`, a direct chat outside any
+ * workflow (`by.step` `manual`), the owner deciding in it.
+ */
+const STATS_WRITERS = new Set([...CLOSING_WORKFLOWS, "utility"]);
+/**
  * `.bkit/jsonl.md` § Ledgers & Writers as code, for the kinds in
  * {@link APPEND_LEDGERS}. EXHAUSTIVE: a name absent from a set does not write the
  * kind. `telemetry.test.ts` holds this to the doc table.
@@ -207,31 +223,37 @@ export const KIND_WRITERS = {
             "bkit-plan-update",
             "bkit-utility-update-decisions",
         ]),
-        // Build: Decision Pause accept; plan: an open question answered after close; ship: an
-        // assumed accept the owner confirms (`bkit decisions apply --by=owner`). All ONLY after
-        // explicit human approval.
-        orchestrators: new Set(["build", "plan", "ship"]),
+        // Build: Decision Pause accept; plan: an open question answered after close; design: an
+        // open question answered by the owner at close (the human decides, the orchestrator
+        // records); ship: an assumed accept the owner confirms (`bkit decisions apply --by=owner`);
+        // utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
+        // All ONLY after explicit human approval.
+        orchestrators: new Set(["design", "build", "plan", "ship", "utility"]),
     },
     // Build: `bkit challenge merge` writes each LOW challenge finding (`low-severity`). Ship:
     // `bkit decisions pending --defer` writes each assumed accept nobody confirmed (`needs-decision`).
-    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship"]) },
+    // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
+    deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship", "utility"]) },
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
     knowledge: {
         subagents: new Set([
-            "bkit-build-plan-execute",
+            "bkit-build-plan-tests",
+            "bkit-build-plan-tasks",
             "bkit-build-plan-gaps-remediate",
             "bkit-debug-failure-remediate",
             "bkit-utility-update-knowledge",
         ]),
-        orchestrators: new Set(),
+        // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
+        orchestrators: new Set(["utility"]),
     },
     friction: {
         subagents: new Set(),
-        orchestrators: new Set(["design", "plan", "build", "debug", "ship"]),
+        // Utility: a direct chat outside any workflow (`by.step` `manual`) that meets friction.
+        orchestrators: new Set(["design", "plan", "build", "debug", "ship", "auto", "utility"]),
     },
-    compliance: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
-    counter: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
-    outcome: { subagents: new Set(), orchestrators: CLOSING_WORKFLOWS },
+    compliance: { subagents: new Set(), orchestrators: STATS_WRITERS },
+    counter: { subagents: new Set(), orchestrators: STATS_WRITERS },
+    outcome: { subagents: new Set(), orchestrators: STATS_WRITERS },
 };
 const writerList = (w) => w === ANY_WRITER ? "any" : w.size === 0 ? "none" : [...w].join(", ");
 /** A row's `by` block, or an empty one when it has none. */
@@ -285,13 +307,14 @@ export function mintTs(after) {
  * tokens" per build group). Rows store peaks only; readers judge them against this.
  */
 export const AGENT_CONTEXT_CAP = 160_000;
-export const OUTCOME_ENDINGS = new Set(["done", "close-failed"]);
+export const OUTCOME_ENDINGS = new Set(["done", "close-failed", "held"]);
 export const RUN_ENDINGS = new Set([
     "done",
     "close-failed",
     "failed",
     "decision-pause",
     "stopped",
+    "held",
 ]);
 // ---------------------------------------------------------------------------
 // Identity — per-kind composite tuple for dedup (NOT bare ts)
@@ -776,7 +799,7 @@ export function totalsProblem(row) {
             checks.push(() => eq("build.challenge.findings.total", findings["total"], sumOf(["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => findings[s]))));
         }
         if (typeof build["redTests"] === "number" && isObj(field(steps, "byStep"))) {
-            checks.push(() => eq("build.redTests", build["redTests"], Number(field(steps, "byStep", "build-task-red", "n") ?? 0)));
+            checks.push(() => eq("build.redTests", build["redTests"], Number(field(steps, "byStep", "build-tests-red", "n") ?? 0)));
         }
     }
     const usage = row["usage"];
@@ -984,6 +1007,23 @@ export function validate(event) {
     else if (e["reason"] !== undefined) {
         return { ok: false, reason: `${kind} rows do not carry reason` };
     }
+    // firstTs / updates — the entry's age and row count, set by the writer (withLineage).
+    if (AGED_KINDS.has(kind)) {
+        const first = e["firstTs"];
+        if (first !== undefined && (typeof first !== "number" || !(first <= e["ts"]))) {
+            return { ok: false, reason: "firstTs must be a number no later than ts" };
+        }
+        const updates = e["updates"];
+        if (updates !== undefined && (!Number.isInteger(updates) || updates < 1)) {
+            return { ok: false, reason: "updates must be a positive integer" };
+        }
+    }
+    else {
+        for (const f of ["firstTs", "updates"]) {
+            if (e[f] !== undefined)
+                return { ok: false, reason: `${kind} rows do not carry ${f}` };
+        }
+    }
     const run = isObj(e["run"]) ? e["run"] : undefined;
     if (kind === "compliance" || kind === "counter") {
         if (typeof run?.["parentSha"] !== "string" || run["parentSha"] === "") {
@@ -1035,7 +1075,13 @@ export function validate(event) {
         if (!OUTCOME_ENDINGS.has(e["ending"])) {
             return {
                 ok: false,
-                reason: `outcome ending must be done|close-failed (got: ${String(e["ending"])})`,
+                reason: `outcome ending must be ${[...OUTCOME_ENDINGS].join("|")} (got: ${String(e["ending"])})`,
+            };
+        }
+        if (e["publish"] !== undefined && typeof e["publish"] !== "boolean") {
+            return {
+                ok: false,
+                reason: `outcome publish must be a boolean (got: ${String(e["publish"])})`,
             };
         }
         const ledgers = e["ledgers"];
@@ -1218,6 +1264,64 @@ export function fold(events) {
     }
     return state;
 }
+const positiveInt = (v) => Number.isInteger(v) && v > 0 ? v : undefined;
+/**
+ * `firstTs` + `updates` of one entry from all of its rows, in any order. A row
+ * carrying `updates` stands for that many rows, so the count survives compaction;
+ * each later row adds one. Rows sharing a numeric `ts` are one write: a compacted
+ * winner beside the pre-compaction copy a union merge brought back.
+ */
+export function lineage(rows) {
+    let firstTs;
+    let updates = 0;
+    let prev;
+    for (const r of [...rows].sort((a, b) => compareTs({ ts: a.ts }, { ts: b.ts }))) {
+        for (const t of [r.firstTs, r.ts]) {
+            if (typeof t === "number" && Number.isFinite(t) && (firstTs === undefined || t < firstTs)) {
+                firstTs = t;
+            }
+        }
+        const own = positiveInt(r.updates);
+        const at = tsOrder(r.ts);
+        updates =
+            at === prev && Number.isFinite(at)
+                ? Math.max(updates, own ?? updates)
+                : Math.max(own ?? 0, updates + 1);
+        prev = at;
+    }
+    return firstTs === undefined ? { updates } : { firstTs, updates };
+}
+/** `row` with `firstTs` + `updates` set to `l`, placed right after `ts` (at the end when it has none). */
+export function placeLineage(row, l) {
+    const fields = l.firstTs === undefined ? {} : { firstTs: l.firstTs };
+    fields["updates"] = l.updates;
+    const out = {};
+    for (const [k, v] of Object.entries(row)) {
+        if (k === "firstTs" || k === "updates")
+            continue;
+        out[k] = v;
+        if (k === "ts")
+            Object.assign(out, fields);
+    }
+    return "ts" in row ? out : { ...out, ...fields };
+}
+/** True for a row `bkit ledgers compact` folds: an {@link AGED_KINDS} kind with a non-empty string `key`. */
+export const isAgedRow = (row) => AGED_KINDS.has(String(row["kind"])) && typeof row["key"] === "string" && row["key"] !== "";
+/**
+ * `row` about to be appended, with `firstTs` + `updates` carried forward from
+ * `prior` (rows already in its ledger) and any supplied values replaced. A row
+ * {@link isAgedRow} rejects is returned unchanged.
+ */
+export function withLineage(prior, row) {
+    if (!isAgedRow(row))
+        return row;
+    const id = identity(normalizeEvent(row));
+    const same = prior
+        .map(normalizeEvent)
+        .filter((p) => isAgedRow(p) && identity(p) === id);
+    const { firstTs: _first, updates: _updates, ...fresh } = row;
+    return placeLineage(row, lineage([...same, fresh]));
+}
 /** Reads every existing file in `paths` and folds all events together. */
 export function foldFrom(paths) {
     let allEvents = [];
@@ -1377,8 +1481,8 @@ export function workflowTelemetry(result, workflow) {
             show("lines.total.files", (r) => r.lines?.total?.files);
         }
         show("plan.total.tasks", (r) => r.plan?.total?.tasks);
-        if (cur.ending === "close-failed")
-            row("ending", "close-failed", "—");
+        if (cur.ending === "close-failed" || cur.ending === "held")
+            row("ending", cur.ending, "—");
         // Instinct-loop deltas — friction is the featured signal (shown even at 0).
         show("ledgers.friction.added", (r) => r.ledgers?.friction?.added);
         show("ledgers.deferrals.added", (r) => r.ledgers?.deferrals?.added);

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { WORKFLOW_STEPS, type ResumableWorkflow } from "./step-table";
+import { WORKFLOW_STEPS, runProgress, type ResumableWorkflow } from "./step-table";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -57,8 +57,129 @@ const setUp = (workflow: ResumableWorkflow) => [
   ...WORKFLOW_STEPS[workflow].filter((s) => s.setup).map((s) => done(workflow, s.step!)),
 ];
 
+describe("workflow progress", () => {
+  it("runProgress flat workflow", () => {
+    expect(runProgress({ workflow: "ship", step: "ship-merge-pr" })).toMatchObject({
+      percent: 71,
+      progressLine: "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR",
+    });
+  });
+
+  it("runProgress build groups", () => {
+    expect(
+      runProgress({ workflow: "build", step: "build-plan-verify", groups: [1, 2, 3], group: 2 })
+        .progressLine,
+    ).toBe("Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 2 of 3");
+    expect(
+      runProgress({ workflow: "build", step: "build-plan-verify", groups: [1, 5], group: 5 })
+        .progressLine,
+    ).toBe("Progress: ██████░░░░ 58% · Step 8/16 Plan Verify · Group 2 of 2");
+  });
+
+  it("runProgress groups added", () => {
+    const before = runProgress({ workflow: "build", step: "build-challenge", groups: [1] });
+    const after = runProgress({ workflow: "build", step: "build-challenge", groups: [1, 2, 3] });
+    expect(before.percent).toBe(69);
+    expect(after.percent).toBe(77);
+    expect(after.progressLine).toBe("Progress: ████████░░ 77% · Step 11/16 Build Challenge");
+  });
+
+  it("runProgress loop back", () => {
+    const before = runProgress({
+      workflow: "build",
+      step: "build-plan-gaps-remediate",
+      groups: [1, 2],
+      group: 1,
+    });
+    const after = runProgress({
+      workflow: "build",
+      step: "build-plan-verify",
+      groups: [1, 2],
+      group: 1,
+      attempt: 2,
+      max: 3,
+    });
+    expect(after.percent).toBeLessThan(before.percent);
+    expect(after.progressLine).toBe(
+      "Progress: ████░░░░░░ 42% · Step 8/16 Plan Verify · Group 1 of 2 · Attempt 2 of 3",
+    );
+  });
+
+  it("runProgress bar width", () => {
+    for (const workflow of Object.keys(WORKFLOW_STEPS) as ResumableWorkflow[]) {
+      for (const position of WORKFLOW_STEPS[workflow]) {
+        const { progressLine } = runProgress({ workflow, number: position.number });
+        const prefix = progressLine.split(" · ")[0]!;
+        expect(prefix).toMatch(/^Progress: [█░]{10} \d{1,3}%$/);
+        expect(prefix.length).toBeLessThanOrEqual(25);
+      }
+    }
+  });
+
+  it("runProgress all workflow numbers", () => {
+    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 14 };
+    for (const workflow of Object.keys(totals) as ResumableWorkflow[]) {
+      for (const position of WORKFLOW_STEPS[workflow]) {
+        const result = runProgress({ workflow, number: position.number });
+        expect(result.percent).toBe(Math.round((100 * position.number) / totals[workflow]));
+        expect(result.progressLine).toContain(
+          `Step ${position.number}/${totals[workflow]} ${position.title}`,
+        );
+      }
+    }
+    expect(runProgress({ workflow: "ship", number: 3 }).progressLine).toBe(
+      "Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check",
+    );
+    expect(runProgress({ workflow: "ship", number: 9 }).progressLine).toBe(
+      "Progress: ██████░░░░ 64% · Step 9/14 Re-validate",
+    );
+    expect(runProgress({ workflow: "build", step: "build-plan-tests" }).percent).toBe(
+      runProgress({ workflow: "build", step: "build-plan-tasks" }).percent,
+    );
+  });
+
+  it("runProgress missing plan fallback", () => {
+    const missing = runProgress({ workflow: "build", step: "build-plan-verify", group: 1 });
+    const empty = runProgress({
+      workflow: "build",
+      step: "build-plan-verify",
+      groups: [],
+      group: 1,
+    });
+    expect(missing.progressLine).toBe(
+      "Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 1 of 1",
+    );
+    expect(empty).toEqual(missing);
+  });
+
+  it("runProgress attempt suffix", () => {
+    expect(
+      runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 1, max: 3 }).progressLine,
+    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR");
+    expect(
+      runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2, max: 3 }).progressLine,
+    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2 of 3");
+    expect(runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2 }).progressLine).toBe(
+      "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2",
+    );
+  });
+
+  it("runProgress final completion only", () => {
+    const groups = Array.from({ length: 1000 }, (_, index) => index + 1);
+    const nonfinal = runProgress({ workflow: "build", step: "build-summary", groups });
+    expect(nonfinal.percent).toBe(99);
+    expect(nonfinal.progressLine).not.toContain("100%");
+    for (const workflow of Object.keys(WORKFLOW_STEPS) as ResumableWorkflow[]) {
+      const final = WORKFLOW_STEPS[workflow].at(-1)!;
+      expect(runProgress({ workflow, number: final.number, groups }).progressLine).toBe(
+        `Progress: ██████████ 100% · Step ${final.number}/${final.number} ${final.title}`,
+      );
+    }
+  });
+});
+
 describe("bkit status resume", () => {
-  it("a build stopped after build-challenge resumes at the challenge merge (Step 10)", async () => {
+  it("a build stopped after build-challenge resumes at the challenge merge (Step 11)", async () => {
     const file = log([
       ...setUp("build"),
       done("build", "build-plan-verify-holistic"),
@@ -68,10 +189,39 @@ describe("bkit status resume", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({
       step: "build-challenge",
-      number: 10,
+      number: 11,
       title: "Build Challenge",
       after: "build-challenge",
       active: true,
+    });
+  });
+
+  it("a build that stopped after Plan Convert resumes at Plan Convert (Step 4)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-convert")]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-convert",
+      number: 4,
+      title: "Plan Convert",
+      after: "build-plan-convert",
+    });
+  });
+
+  it("a build that stopped after Plan Current resumes at Install Skills (Step 6)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-current")]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-install-skills",
+      number: 6,
+      title: "Install Skills",
+    });
+  });
+
+  it("a build that stopped after Plan Verify resumes at Plan Verify (Step 8)", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-verify", { group: 1 })]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-verify",
+      number: 8,
+      title: "Plan Verify",
+      group: 1,
     });
   });
 
@@ -82,16 +232,12 @@ describe("bkit status resume", () => {
     expect(await round([...verified, done("build", "build-challenge", { round: 2 })])).toBe(2);
     expect(await round([...verified, done("build", "build-challenge", { round: 1 })])).toBe(1);
     expect(await round(verified)).toBe(1);
-    // A round-1 challenge that sent the build back to Step 6 (route fix), or to a decision.
+    // A round-1 challenge that sent the build back to Step 7 (route fix), or to a decision.
     const fixed = [...verified, done("build", "build-challenge", { round: 1 })];
-    expect(await round([...fixed, done("build", "build-plan-execute")])).toBe(2);
+    expect(await round([...fixed, done("build", "build-plan-tasks")])).toBe(2);
     expect(await round([...fixed, done("build", "build-decision")])).toBe(2);
     // A round-1 challenge that passed on to Run Tests (route none) wrote no tasks.
-    const passed = [
-      ...fixed,
-      done("build", "build-run-tests"),
-      done("build", "build-plan-execute"),
-    ];
+    const passed = [...fixed, done("build", "build-run-tests"), done("build", "build-plan-tasks")];
     expect(await round(passed)).toBe(1);
     expect((await resume("plan", log(setUp("plan")))).json.challengeRound).toBeNull();
   });
@@ -106,14 +252,14 @@ describe("bkit status resume", () => {
       (await resume("build", log([...challenged, done("build", "build-decision", { route })])))
         .json;
     expect(await after("fix")).toMatchObject({
-      step: "build-plan-execute",
-      number: 6,
+      step: "build-plan-tasks",
+      number: 7,
       after: "build-decision",
       challengeRound: 2,
     });
     expect(await after("tests")).toMatchObject({
       step: "build-run-tests",
-      number: 11,
+      number: 12,
       after: "build-decision",
     });
     // No route: the row places nothing, as before.
@@ -126,16 +272,16 @@ describe("bkit status resume", () => {
     ]);
     expect((await resume("build", verified)).json).toMatchObject({
       step: "build-plan-verify",
-      number: 7,
+      number: 8,
       after: "build-decision",
       group: 2,
     });
   });
 
   it.each([
-    ["build-plan-verify", { step: "build-plan-gaps-remediate", number: 8, group: 2 }],
-    ["build-group-gate", { step: "build-plan-gaps-remediate", number: 8, group: 2 }],
-    ["build-run-tests", { step: "build-failure-diagnose", number: 12 }],
+    ["build-plan-verify", { step: "build-plan-gaps-remediate", number: 9, group: 2 }],
+    ["build-group-gate", { step: "build-plan-gaps-remediate", number: 9, group: 2 }],
+    ["build-run-tests", { step: "build-failure-diagnose", number: 13 }],
   ])("a retry decision after %s resumes at that loop's fix step", async (prior, expected) => {
     const file = log([
       ...setUp("build"),
@@ -179,21 +325,22 @@ describe("bkit status resume", () => {
     expect(await doneOf(r1)).toBe(false);
     const r2 = [
       ...r1,
-      done("build", "build-plan-execute"),
+      done("build", "build-plan-tasks"),
       done("build", "build-challenge", { round: 2 }),
     ];
     expect(await doneOf(r2)).toBe(false);
     expect(await doneOf([...r2, done("build", "build-decision", { route: "fix" })])).toBe(true);
+    expect(await doneOf([...r2, done("build", "build-plan-tasks")])).toBe(true);
     expect(await doneOf([...r2, done("build", "build-run-tests")])).toBe(true);
     expect((await resume("plan", log(setUp("plan")))).json.challengeDone).toBeNull();
   });
 
-  it("old reconcile, remediate or tests rows resume at Run Tests (Step 11)", async () => {
+  it("old reconcile, remediate or tests rows resume at Run Tests (Step 12)", async () => {
     for (const old of ["reconcile", "remediate", "tests"].map((s) => `build-challenge-${s}`)) {
       const file = log([...setUp("build"), done("build", "build-challenge"), done("build", old)]);
       expect((await resume("build", file)).json, old).toMatchObject({
         step: "build-run-tests",
-        number: 11,
+        number: 12,
         title: "Run Tests",
         after: old,
       });
@@ -231,13 +378,24 @@ describe("bkit status resume", () => {
   it("ignores rows that are not steps of the table (a red-test row, the decision)", async () => {
     const file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2 }),
-      done("build", "build-task-red"),
+      done("build", "build-plan-tasks", { group: 2 }),
+      done("build", "build-tests-red", { group: 2 }),
       done("build", "build-decision"),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
+      number: 8,
+      after: "build-plan-tasks",
+      group: 2,
+    });
+  });
+
+  it("build-plan-tests is step 7 Plan Execute resuming at build-plan-tests", async () => {
+    const file = log([...setUp("build"), done("build", "build-plan-tests", { group: 2 })]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-tests",
       number: 7,
-      after: "build-plan-execute",
+      title: "Plan Execute",
+      after: "build-plan-tests",
       group: 2,
     });
   });
@@ -245,21 +403,21 @@ describe("bkit status resume", () => {
   it("a HANDOVER execute resumes at Plan Execute with the same group; PASS goes on to verify", async () => {
     let file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2, verdict: "HANDOVER" }),
+      done("build", "build-plan-tasks", { group: 2, verdict: "HANDOVER" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      step: "build-plan-execute",
-      number: 6,
-      after: "build-plan-execute",
+      step: "build-plan-tasks",
+      number: 7,
+      after: "build-plan-tasks",
       group: 2,
     });
     file = log([
       ...setUp("build"),
-      done("build", "build-plan-execute", { group: 2, verdict: "PASS" }),
+      done("build", "build-plan-tasks", { group: 2, verdict: "PASS" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
       step: "build-plan-verify",
-      number: 7,
+      number: 8,
       group: 2,
     });
   });

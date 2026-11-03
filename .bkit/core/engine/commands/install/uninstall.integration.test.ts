@@ -47,12 +47,12 @@ function makeCtx(overrides: Partial<UninstallContext> = {}): UninstallContext {
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-surgical-test-"));
 
-  // Write .bkit-version (no hashes → preserve every hash-guarded file)
+  // Write .bkit/version (no hashes → preserve every hash-guarded file)
   const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(
     versionFilePath,
-    serializeBkitVersion({ pinnedVersion: "0.6.0", canonicalHashes: {}, claudeAllowDerived: [] }),
+    serializeBkitVersion({ pinnedVersion: "5.0.0", canonicalHashes: {}, claudeAllowDerived: [] }),
     "utf-8",
   );
 
@@ -296,7 +296,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     const cmdDir = path.join(tmpDir, ".opencode", "commands");
     fs.mkdirSync(agentDir, { recursive: true });
     fs.mkdirSync(cmdDir, { recursive: true });
-    const agentFile = path.join(agentDir, "bkit-build-plan-execute.md");
+    const agentFile = path.join(agentDir, "bkit-build-plan-tasks.md");
     const cmdFile = path.join(cmdDir, "bkit-build.md");
     const consumerAgentFile = path.join(agentDir, "my-custom-agent.md");
     fs.writeFileSync(agentFile, "# bkit agent", "utf-8");
@@ -351,7 +351,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     fs.writeFileSync(pluginPath, pluginContent, "utf-8");
 
     // bkit-prefix dynamic mirrors
-    const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-execute.md");
+    const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-tasks.md");
     const cmdFile = path.join(opencodeDir, "commands", "bkit-build.md");
     fs.writeFileSync(agentFile, "# agent", "utf-8");
     fs.writeFileSync(cmdFile, "# cmd", "utf-8");
@@ -390,7 +390,7 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
       const c = path.join(tmpDir, host, cmdsDir);
       fs.mkdirSync(a, { recursive: true });
       fs.mkdirSync(c, { recursive: true });
-      const agentFile = path.join(a, "bkit-build-plan-execute.md");
+      const agentFile = path.join(a, "bkit-build-plan-tasks.md");
       const cmdFile = path.join(c, "bkit-build.md");
       fs.writeFileSync(agentFile, "# bkit agent", "utf-8");
       fs.writeFileSync(cmdFile, "# bkit command", "utf-8");
@@ -550,7 +550,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     // Seed a bkit-prefix agent mirror so we can detect if full teardown was (wrongly) triggered
     const agentDir = path.join(tmpDir, ".opencode", "agents");
     fs.mkdirSync(agentDir, { recursive: true });
-    fs.writeFileSync(path.join(agentDir, "bkit-build-plan-execute.md"), "# agent", "utf-8");
+    fs.writeFileSync(path.join(agentDir, "bkit-build-plan-tasks.md"), "# agent", "utf-8");
 
     await runSurgicalOpencodeUninstall("openrouter", false, tmpDir);
 
@@ -564,7 +564,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
 
     // Full teardown must NOT have been triggered
     expect(
-      fs.existsSync(path.join(agentDir, "bkit-build-plan-execute.md")),
+      fs.existsSync(path.join(agentDir, "bkit-build-plan-tasks.md")),
       "bkit-prefix agent mirror must NOT be deleted when other providers remain",
     ).toBe(true);
   });
@@ -610,7 +610,7 @@ describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
     const cmdDir = path.join(tmpDir, ".opencode", "commands");
     fs.mkdirSync(agentDir, { recursive: true });
     fs.mkdirSync(cmdDir, { recursive: true });
-    const agentFile = path.join(agentDir, "bkit-build-plan-execute.md");
+    const agentFile = path.join(agentDir, "bkit-build-plan-tasks.md");
     const cmdFile = path.join(cmdDir, "bkit-build.md");
     fs.writeFileSync(agentFile, "# agent", "utf-8");
     fs.writeFileSync(cmdFile, "# cmd", "utf-8");

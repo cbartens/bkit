@@ -1,0 +1,28 @@
+
+design example row, verbatim (no envelope)
+  validate     : REFUSED — schema must be 3 (got: undefined)
+  writerProblem: (not reached)
+
+envelope + design example row
+  validate     : OK
+  writerProblem: OK (admitted)
+
+envelope + row, no scope
+  validate     : OK
+  writerProblem: OK (admitted)
+
+envelope + row, scope: consumer
+  validate     : OK
+  writerProblem: OK (admitted)
+
+envelope + row, by.step = '' (the unknown-step case)
+  validate     : REFUSED — by.step must be a non-empty string
+  writerProblem: (not reached)
+
+envelope + row, by.step = 'tests-run' (noun-verb sentinel)
+  validate     : OK
+  writerProblem: OK (admitted)
+
+KIND_WRITERS.friction.orchestrators = ["design","plan","build","debug","ship"]
+
+fold over rows with the two new types: [{"workflow":"build","startedAt":"2026-10-26T00:00:00Z","status":"DONE","steps":[]}]

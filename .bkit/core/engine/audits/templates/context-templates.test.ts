@@ -13,8 +13,10 @@ import * as path from "node:path";
 
 import { afterAll, describe, expect, it } from "vitest";
 
+import { scopeCiRunLookups } from "../../install/context-ci-workflow";
 import { syncTemplateCopies } from "../../install/template-copies";
-import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
+import { getCoreRoot, getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
+import { blockBoundsOutput } from "../../checks/before/context-fetch";
 import type { WriteSet } from "../../install/write";
 
 const CONTEXT_DIR = path.join(getTemplatesRoot(), "context");
@@ -120,6 +122,108 @@ describe(".bkit/templates/context/", () => {
     expect(r.status, r.stderr).toBe(0);
     expect(r.stderr).toContain(`[context-fetch:${name}] skipped —`);
     expect(r.stdout).toBe("");
+  });
+
+  /**
+   * The last line of a block's leading comment header, or `null` when it opens with code.
+   * `.agents/context.md` § Context Fetch promises the knobs sit "in the block's
+   * `# Customise:` comment, last comment before the body".
+   */
+  const lastCommentLine = (body: string): string | null => {
+    const lines = body.split("\n");
+    let last = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i]!.startsWith("#")) last = i;
+      else if (lines[i]!.trim() !== "") break;
+    }
+    return last === -1 ? null : lines[last]!;
+  };
+
+  it.each(fetchBlocks)(
+    "$file: $name bounds its own output at the source",
+    ({ file, name, body }) => {
+      expect(blockBoundsOutput(body.split("\n")), `${file} ${name}`).toBe(true);
+    },
+  );
+
+  it.each(fetchBlocks)(
+    "$file: $name ends its comment header with a `# Customise:` line",
+    ({ file, name, body }) => {
+      expect(lastCommentLine(body), `${file} ${name}`).toMatch(/^# Customise:/);
+    },
+  );
+
+  // The positive-control sentence is a suggested addendum, not a universal one: five shipped
+  // fetch blocks (github ci / diff, tavily, playwright, maestro) do not carry it, so only the
+  // blocks that DO name a positive control are pinned to the canonical wording.
+  it("states a positive control the same way wherever a `# Customise:` comment carries one", () => {
+    const named = fetchBlocks.filter((b) => b.body.includes("Positive control"));
+    expect(named.length).toBeGreaterThan(0);
+    for (const b of named) {
+      expect(b.body, `${b.file} ${b.name}`).toMatch(
+        /Positive control \(suggested\): .*reader broken, not clean\./,
+      );
+    }
+  });
+
+  it("rejects a fetch block that bounds nothing (the audit's own red case)", () => {
+    const text =
+      "<!-- context-fetch:start dump context=runtime -->\n" +
+      "```bash\n# Whole-run dump.\n" +
+      'gh run view "$RUN_ID" --log\n' +
+      "```\n" +
+      "<!-- context-fetch:end -->\n";
+    const fetchBlocksInFixture = parseBlocks(text).blocks.filter((b) => b.kind === "start");
+    expect(fetchBlocksInFixture).toHaveLength(1);
+    expect(fetchBlocksInFixture.every((b) => blockBoundsOutput(b.body.split("\n")))).toBe(false);
+  });
+
+  it("rejects a block whose only bound words sit in its mandated `# Customise:` comment", () => {
+    const text =
+      "<!-- context-fetch:start dump context=runtime -->\n" +
+      "```bash\n" +
+      "# Customise: raise --limit as needed.\n" +
+      'gh run view "$RUN_ID" --log\n' +
+      "```\n" +
+      "<!-- context-fetch:end -->\n";
+    const fetchBlocksInFixture = parseBlocks(text).blocks.filter((b) => b.kind === "start");
+    expect(fetchBlocksInFixture).toHaveLength(1);
+    expect(fetchBlocksInFixture.every((b) => blockBoundsOutput(b.body.split("\n")))).toBe(false);
+  });
+
+  // Other workflows on the branch (a security scan, a cloud agent) can finish after the CI
+  // workflow and pass, so an unscoped `--limit 1` reads their run and reports nothing failing.
+  const runLookups = (text: string): string[] =>
+    text
+      .split("\n")
+      .filter((l) => /gh run list --branch "\$\(git branch --show-current\)"/.test(l));
+
+  it.each([
+    ...files.map((f) => path.join(CONTEXT_DIR, f)),
+    path.join(getPkgRoot(), ".agents", "context.md"),
+  ])("%s: every lookup of the current branch's runs reads only the CI workflow", (abs) => {
+    for (const line of runLookups(fs.readFileSync(abs, "utf-8"))) {
+      expect(line, abs).toContain('--workflow "$CI_WORKFLOW"');
+    }
+  });
+
+  // bkit-github.md's `context=ci` block names its workflow before `--branch`, so the migration
+  // scopes an older copy's `RUN_JSON` lookup in place but cannot produce the current block.
+  it("the upgrade migration turns each shipped unscoped lookup into the template's lines", () => {
+    const scopedFiles = files.filter(
+      (f) => runLookups(fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8")).length > 0,
+    );
+    expect(scopedFiles).toEqual(["bkit-maestro.md", "bkit-playwright.md"]);
+    for (const f of scopedFiles) {
+      const current = fs.readFileSync(path.join(CONTEXT_DIR, f), "utf-8");
+      const old = current
+        .replace(/^CI_WORKFLOW="\$\{CI_WORKFLOW:-bkit-ci\.yml\}"\n/gm, "")
+        .replace(/ --workflow "\$CI_WORKFLOW"/g, "");
+      const managed = "<!-- bkit:start -->\n<!-- bkit:end -->\n";
+      const migrated = scopeCiRunLookups(managed + old, "bkit-ci.yml").content;
+      for (const line of runLookups(current)) expect(migrated, f).toContain(line);
+      expect(migrated.match(/^CI_WORKFLOW=/gm)?.length, f).toBe(runLookups(current).length);
+    }
   });
 
   it("names no maintainer: no bartens string in the context templates", () => {

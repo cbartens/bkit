@@ -12,8 +12,8 @@
 //   - ADVISORY BY DEFAULT: emits `additionalContext` only, never blocks. Deny mode
 //     is wired behind BKIT_GATEGUARD=deny (see MODES).
 //   - FAIL OPEN: a single top-level catch swallows every error (the process exits
-//     0 with whatever was already emitted). Normal control paths use existence
-//     guards, never try/catch; that catch is the only error sink.
+//     0 with whatever was already emitted). The engine catches only its own state
+//     write: the checklist is still returned, as advisory.
 //   - SUBAGENTS INCLUDED: a subagent edit is an edit. Dedup is per (session, agent,
 //     file): a subagent shares its parent's session_id and carries its own agent_id,
 //     so it gets its own checklist.

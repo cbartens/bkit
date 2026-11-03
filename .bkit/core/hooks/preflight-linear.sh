@@ -4,16 +4,16 @@
 
 # BKIT_LINEAR_API_KEY required to call the Linear GraphQL API.
 if [[ -z "${BKIT_LINEAR_API_KEY:-}" ]]; then
-  echo "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID:-(unset)}." >&2
-  emit_context "Guard pre-check: FAIL — BKIT_LINEAR_API_KEY missing for ${LINEAR_ISSUE_ID:-(unset)}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+  echo "Guard pre-check: FAIL. BKIT_LINEAR_API_KEY not set, so ${LINEAR_ISSUE_ID:-(unset)} cannot be validated." >&2
+  emit_context "Guard pre-check: FAIL. BKIT_LINEAR_API_KEY is not set, so bkit cannot check ${LINEAR_ISSUE_ID:-(unset)}. HARD STOP: refuse any Linear-related work. Report the failure to the user, then stop."
   exit 1
 fi
 
 # LINEAR_ISSUE_ID required (Claude's trigger above already demands it; a Cursor Cloud
 # Agent sets it from workflow context).
 if [[ -z "${LINEAR_ISSUE_ID:-}" ]]; then
-  echo "Guard pre-check: FAIL — LINEAR_ISSUE_ID not set." >&2
-  emit_context "Guard pre-check: FAIL — LINEAR_ISSUE_ID not set. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+  echo "Guard pre-check: FAIL. LINEAR_ISSUE_ID not set." >&2
+  emit_context "Guard pre-check: FAIL. LINEAR_ISSUE_ID is not set. HARD STOP: refuse any Linear-related work. Report the failure to the user, then stop."
   exit 1
 fi
 
@@ -31,8 +31,8 @@ RESPONSE=$(curl -sS \
   -H "Authorization: ${BKIT_LINEAR_API_KEY}" \
   --data "$BODY" \
   "https://api.linear.app/graphql" 2>/dev/null) || {
-    echo "Guard pre-check: FAIL — Linear API request failed for ${LINEAR_ISSUE_ID}." >&2
-    emit_context "Guard pre-check: FAIL — Linear API unreachable for ${LINEAR_ISSUE_ID}. HARD STOP: refuse any Linear-related work, report the failure to the user, and stop."
+    echo "Guard pre-check: FAIL. Linear API request failed for ${LINEAR_ISSUE_ID}." >&2
+    emit_context "Guard pre-check: FAIL. The Linear API could not be reached for ${LINEAR_ISSUE_ID}. HARD STOP: refuse any Linear-related work. Report the failure to the user, then stop."
     exit 1
   }
 
@@ -60,12 +60,12 @@ fi
 
 # Guard 2: Issue must not be in a terminal state.
 if [[ "$ISSUE_STATE" == "Cancelled" || "$ISSUE_STATE" == "Done" ]]; then
-  FAIL_REASON="Issue is in terminal state: ${ISSUE_STATE}"
+  FAIL_REASON="the issue is in a terminal state (${ISSUE_STATE})"
 fi
 
 if [[ -n "$FAIL_REASON" ]]; then
-  echo "Guard pre-check: FAIL — issue: ${ISSUE_ID_DISPLAY} | ${FAIL_REASON}" >&2
-  emit_context "Guard pre-check: FAIL — issue ${ISSUE_ID_DISPLAY} | ${FAIL_REASON}. HARD STOP: refuse any Linear-related work on this issue, report the failure to the user, and stop."
+  echo "Guard pre-check: FAIL. Issue ${ISSUE_ID_DISPLAY}: ${FAIL_REASON}" >&2
+  emit_context "Guard pre-check: FAIL. Issue ${ISSUE_ID_DISPLAY}: ${FAIL_REASON}. HARD STOP: refuse any Linear-related work on this issue. Report the failure to the user, then stop."
   exit 1
 fi
 

@@ -90,13 +90,13 @@ const PLAN_HEADINGS = [
   "## Documentation Updates",
   "## Rollback Strategy",
   "## Agent Execution Runbook",
-  "### GROUP 1: [e.g., Item status in the API]",
+  "### TASK GROUP 1: [e.g., Item status in the API]",
   "### 🔒 Gate 2: Code Implementation Check",
   "### 🔒 Gate 3: Testing & Documentation Check",
   "## Verification Plan",
   "### Automated Tests",
   "### 🔒 Gate 4: Automated Verification Check",
-  "### 👤 Manual Verification",
+  "### Manual Verification",
 ];
 
 /** Lines every audit template carried before they moved into `bkit-audit-generate`. */
@@ -124,11 +124,40 @@ const AUDIT_MOVED = [
 /** Step 1 keeps its title and `Done when` once its procedure moved out. */
 const STEP_1_KEPT = /\*\*Step 1 — Previous Run:\*\*.*\*\*Done when:\*\*/;
 
+/** The opening note: the HTML comment naming the output path and the agent that fills it. */
+const OPENING_NOTE = /^<!-- Note: @bkit-(?:audit|plan)-generate fills this template\. .* -->$/;
+
+/** True when a template's first non-blank lines are `bkit:start`, the managed marker, then the note. */
+function opensWithNote(name: string): boolean {
+  const head = fs
+    .readFileSync(path.join(templatesDir(), name), "utf-8")
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .slice(0, 3);
+  return (
+    head[0] === "<!-- bkit:start -->" &&
+    head[1] === "{{BKIT_MANAGED_MARKER}}" &&
+    OPENING_NOTE.test(head[2] ?? "")
+  );
+}
+
+/** Lines with a standing word, leaving out the opening note: the one comment the plan keeps. */
+const standingLines = (block: string): string[] =>
+  block.split("\n").filter((l) => STANDING_WORD.test(l) && !OPENING_NOTE.test(l));
+
 describe("template shape", () => {
+  it("every template opens its block with bkit:start, the managed marker, then the note", () => {
+    // `bkit upgrade` refreshes only the block, so a note above `bkit:start` would go stale.
+    const names = fs.readdirSync(templatesDir()).filter((f) => /^bkit-.+\.md$/.test(f));
+    const wrong = names.filter((name) => !opensWithNote(name));
+    expect(names).toContain("bkit-plan.md");
+    expect(wrong).toEqual([]);
+  });
+
   it("plan template is shape only", () => {
     const block = planTemplate();
     const found = PLAN_INSTRUCTION_MARKERS.filter((m) => block.includes(m));
-    const standing = block.split("\n").filter((l) => STANDING_WORD.test(l));
+    const standing = standingLines(block);
     expect({ found, standing }).toEqual({ found: [], standing: [] });
   });
 
@@ -176,7 +205,9 @@ describe("template shape", () => {
     expect(bare).toEqual([]);
   });
 
-  it("only bkit-build-plan-execute carries the gate no-permission line", () => {
+  // Execute works from a group brief that carries no gate boxes, and no agent ticks a plan
+  // gate, so no prompt or workflow has a gate at which to ask for permission.
+  it("no prompt or workflow carries a gate no-permission line", () => {
     const carriers = [promptsDir(), workflowsDir()].flatMap((dir) =>
       fs
         .readdirSync(dir)
@@ -186,7 +217,7 @@ describe("template shape", () => {
         )
         .map((f) => f),
     );
-    expect(carriers).toEqual(["bkit-build-plan-execute.md"]);
+    expect(carriers).toEqual([]);
   });
 
   it("no plan prompt defers a rule to the template", () => {

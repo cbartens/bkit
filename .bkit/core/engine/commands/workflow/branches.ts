@@ -13,6 +13,7 @@
 // never force-pushed and a personal one survives the rebase that rewrote it.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -21,6 +22,7 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
 import {
   bodySkipToken,
+  classifyLockExit,
   CommandError,
   DEV,
   EXIT,
@@ -33,11 +35,18 @@ import {
   runGh,
   runGit,
   SKIP_CI_TOKEN,
+  testsLockHolder,
+  wholeNumber,
   type CommandSpec,
   type RunContext,
 } from "../lib.js";
 import { bkitVersionStatus, type BkitVersionStatus } from "../../shared/bkit-latest.js";
-import { landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
+import {
+  parseBkitVersion,
+  serializeBkitVersion,
+  type BkitVersion,
+} from "../../install/version-file.js";
+import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import {
   activeRecord,
@@ -55,18 +64,27 @@ import {
   mergePr,
   openPrFor,
   probePr,
-  updateBranch,
 } from "./prs.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
-import { removeWorktree, worktreeDir } from "./worktrees.js";
+import { declaredName, testSource } from "./test-blocks.js";
+import {
+  addAllButCopied,
+  copyExcludes,
+  hasLeftovers,
+  recordRebase,
+  removeWorktree,
+  worktreeDir,
+} from "./worktrees.js";
 import {
   COULD_NOT_RUN_EXIT_CODES,
   LOCKFILE_REGENERATE,
   installCommand,
+  scriptCommand,
 } from "../../shared/package-manager.js";
+import { readPackageJson } from "../../shared/package-json.js";
 import { str } from "./status.js";
 
 const REMOTE = "origin";
@@ -92,6 +110,8 @@ export const EXIT_NO_RECORD = 20;
 export const EXIT_NOTHING_TO_PUSH = 21;
 export const EXIT_DIVERGED = 22;
 export const EXIT_DIFF_FAILED = 23;
+export const EXIT_HAND_RESOLVE = 24;
+export const EXIT_GENERATE_FAILED = 25;
 
 // ---------------------------------------------------------------------------
 // Process helpers
@@ -170,10 +190,71 @@ const globToRegExp = (glob: string) =>
   );
 const LEDGER_PATTERNS = LEDGERS.map(globToRegExp);
 
-export type ConflictKind = "ledger" | "lockfile" | "refuse";
+/** bkit's install record: merged entry by entry (`recordResolve`), never line by line. */
+export const INSTALL_RECORD = ".bkit/version";
 
-/** How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate runs there. */
-export function classifyConflict(file: string): ConflictKind {
+/**
+ * Generated registers a conflict is settled in by taking dev's copy. Each side rebuilt
+ * the whole file, so neither side's text is worth a hand merge, and running `script`
+ * with `args` after the rebase or merge makes dev's copy current. `keep` brackets the
+ * one hand-written region, which the rebuild reads back and re-emits, so a branch's
+ * edit to it is carried onto dev's copy. `embed` names the variable in `script` that
+ * lists the hand-written docs the rebuild copies a generated block into, and the
+ * markers around that block.
+ */
+export const REGISTERS: Readonly<
+  Record<
+    string,
+    {
+      script: string;
+      args: readonly string[];
+      keep: readonly [string, string];
+      embed: { variable: string; block: readonly [string, string] };
+    }
+  >
+> = {
+  "docs/capabilities.md": {
+    script: "scripts/graphify/bkit-graphify.sh",
+    args: ["refresh"],
+    keep: ["<!-- overrides:start -->", "<!-- overrides:end -->"],
+    embed: {
+      variable: "GRAPH_EMBED_DOCS",
+      block: ["<!-- graph:packages:start -->", "<!-- graph:packages:end -->"],
+    },
+  },
+};
+
+/**
+ * Each doc a register's script in `top` embeds a generated block into, mapped to that
+ * register. Read from the script's own `embed.variable` assignment, so a repo whose
+ * script lists no docs, or that has no script, gets an empty map.
+ */
+export function embedDocs(top: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [register, entry] of Object.entries(REGISTERS)) {
+    const script = path.join(top, entry.script);
+    if (!fs.existsSync(script)) continue;
+    const assigned = new RegExp(`^${entry.embed.variable}="([^"]*)"`, "m").exec(
+      fs.readFileSync(script, "utf-8"),
+    );
+    for (const doc of (assigned?.[1] ?? "").split(/\s+/).filter(Boolean)) out.set(doc, register);
+  }
+  return out;
+}
+
+export type ConflictKind = "ledger" | "lockfile" | "register" | "embed" | "record" | "refuse";
+
+/**
+ * How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate
+ * runs there. `embeds` is the repo's `embedDocs`.
+ */
+export function classifyConflict(
+  file: string,
+  embeds: ReadonlyMap<string, string> = new Map(),
+): ConflictKind {
+  if (Object.hasOwn(REGISTERS, file)) return "register";
+  if (embeds.has(file)) return "embed";
+  if (file === INSTALL_RECORD) return "record";
   if (Object.hasOwn(LOCKFILE_REGENERATE, file)) return "lockfile";
   if (LEDGER_PATTERNS.some((re) => re.test(file))) return "ledger";
   return "refuse";
@@ -240,22 +321,180 @@ export function unionResolve(
 }
 
 /**
- * Resolve a lockfile conflict: start from the rebase target's copy, then
- * regenerate from the manifest, which merged normally (or refused and stopped
- * the rebase before this). During a rebase `--ours` is the branch being rebased
- * ONTO; `--theirs` is the commit being replayed.
+ * Resolve a lockfile conflict: start from dev's copy, then regenerate from the
+ * manifest, which merged normally (or refused and stopped the rebase or merge
+ * before this). During a rebase dev is `--ours` (the branch being rebased ONTO;
+ * `--theirs` is the commit being replayed); in a merge of origin/dev it is `--theirs`.
  */
-function lockfileResolve(top: string, file: string): boolean {
+function lockfileResolve(top: string, file: string, dev: "ours" | "theirs" = "ours"): boolean {
   const regenerate = LOCKFILE_REGENERATE[file];
   if (!regenerate) return false;
-  if (!runGit(top, ["checkout", "--ours", "--", file]).ok) return false;
+  if (!runGit(top, ["checkout", `--${dev}`, "--", file]).ok) return false;
   const res = spawnSync(regenerate[0]!, regenerate.slice(1), { cwd: top, stdio: "ignore" });
   return res.status === 0;
 }
 
+/** The text from `keep`'s open marker through its close marker; null when either is missing. */
+function keptRegion(text: string, [open, close]: readonly [string, string]): string | null {
+  const start = text.indexOf(open);
+  if (start === -1) return null;
+  const end = text.indexOf(close, start + open.length);
+  return end === -1 ? null : text.slice(start, end + close.length);
+}
+
+/**
+ * Settle a conflicted register on dev's copy, carrying the branch's edit to the
+ * hand-written region when dev left that region as the merge base had it. Refuses when
+ * a side deleted the file, or both sides changed the region: that needs a hand merge.
+ * During a rebase dev is `ours`; in a merge of origin/dev it is `theirs`.
+ */
+export function registerResolve(
+  top: string,
+  file: string,
+  dev: "ours" | "theirs",
+): { ok: true } | { ok: false; problem: string } {
+  const entry = REGISTERS[file];
+  if (entry === undefined) return { ok: false, problem: "not a generated register" };
+  const base = stageBytes(top, 1, file);
+  const devSide = stageBytes(top, dev === "ours" ? 2 : 3, file);
+  const branchSide = stageBytes(top, dev === "ours" ? 3 : 2, file);
+  if (base === null || devSide === null || branchSide === null)
+    return { ok: false, problem: "git show of a conflict stage failed" };
+  if (devSide.length === 0 || branchSide.length === 0)
+    return { ok: false, problem: "one side deleted the register" };
+  let text = devSide.toString("utf-8");
+  const baseKept = keptRegion(base.toString("utf-8"), entry.keep);
+  const devKept = keptRegion(text, entry.keep);
+  const branchKept = keptRegion(branchSide.toString("utf-8"), entry.keep);
+  if (branchKept !== baseKept && branchKept !== devKept) {
+    if (devKept !== baseKept)
+      return { ok: false, problem: "both sides changed the hand-written region" };
+    if (devKept === null || branchKept === null)
+      return { ok: false, problem: "one side added or removed the hand-written region" };
+    text = text.replace(devKept, () => branchKept);
+  }
+  fs.writeFileSync(path.join(top, file), text);
+  return { ok: true };
+}
+
+/**
+ * Settle a conflicted doc that embeds a register's generated block: give all three
+ * stages dev's copy of the block, then merge the rest of the doc as git would. Refuses
+ * when a side lacks the block, or when the doc still conflicts outside it: that needs a
+ * hand merge. The register's rebuild rewrites the block afterwards.
+ */
+export function embedResolve(
+  top: string,
+  file: string,
+  register: string,
+  dev: "ours" | "theirs",
+): { ok: true } | { ok: false; problem: string } {
+  const entry = REGISTERS[register];
+  if (entry === undefined) return { ok: false, problem: "not a generated register" };
+  const stages = { base: 1, ours: 2, theirs: 3 } as const;
+  const texts: Record<keyof typeof stages, string> = { base: "", ours: "", theirs: "" };
+  for (const [name, stage] of Object.entries(stages) as [keyof typeof stages, 1 | 2 | 3][]) {
+    const bytes = stageBytes(top, stage, file);
+    if (bytes === null) return { ok: false, problem: `git show :${stage}:${file} failed` };
+    texts[name] = bytes.toString("utf-8");
+  }
+  const devBlock = keptRegion(texts[dev], entry.embed.block);
+  if (devBlock === null) return { ok: false, problem: "a side lacks the generated block" };
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-embed-"));
+  try {
+    for (const name of Object.keys(stages) as (keyof typeof stages)[]) {
+      const block = keptRegion(texts[name], entry.embed.block);
+      if (block === null) return { ok: false, problem: "a side lacks the generated block" };
+      fs.writeFileSync(
+        path.join(tmp, name),
+        texts[name].replace(block, () => devBlock),
+      );
+    }
+    const merged = spawnSync(
+      "git",
+      [
+        "merge-file",
+        "-p",
+        path.join(tmp, "ours"),
+        path.join(tmp, "base"),
+        path.join(tmp, "theirs"),
+      ],
+      { cwd: top, env: gitEnv(), maxBuffer: OUTPUT_LIMIT },
+    );
+    // Exit status = conflicts left, capped at 127; above that it failed.
+    if (merged.error || merged.status === null || merged.status > 127)
+      return { ok: false, problem: "git merge-file failed" };
+    if (merged.status > 0)
+      return { ok: false, problem: "it conflicts outside the generated block" };
+    fs.writeFileSync(path.join(top, file), merged.stdout);
+    return { ok: true };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+/** The value one entry takes: the side that changed it, or dev's when both did. */
+function pickEntry<T>(base: T, dev: T, branch: T): T {
+  const same = (a: T, b: T) => JSON.stringify(a) === JSON.stringify(b);
+  return same(dev, base) ? branch : dev;
+}
+
+/**
+ * Merge a conflicted install record entry by entry: `pinnedVersion`,
+ * `claudeAllowDerived` and each `canonicalHashes` path take the side that changed
+ * them, and dev's value when both did. A fingerprint left at dev's value makes
+ * `bkit upgrade` treat that file as edited by hand until it refreshes the entry, so
+ * the record needs no rebuild. Refuses when a side deleted the record or a copy is
+ * not a record. During a rebase dev is `ours`; in a merge of origin/dev it is `theirs`.
+ */
+export function recordResolve(
+  top: string,
+  dev: "ours" | "theirs",
+): { ok: true } | { ok: false; problem: string } {
+  const copies: BkitVersion[] = [];
+  for (const stage of [1, dev === "ours" ? 2 : 3, dev === "ours" ? 3 : 2] as const) {
+    const bytes = stageBytes(top, stage, INSTALL_RECORD);
+    if (bytes === null)
+      return { ok: false, problem: `git show :${stage}:${INSTALL_RECORD} failed` };
+    if (bytes.length === 0 && stage !== 1)
+      return { ok: false, problem: "one side deleted the install record" };
+    // Both sides adding the record leaves no base: merge against an empty one.
+    const parsed =
+      bytes.length === 0
+        ? { pinnedVersion: "", canonicalHashes: {}, claudeAllowDerived: [] }
+        : parseBkitVersion(bytes.toString("utf-8"));
+    if (parsed === null) return { ok: false, problem: "a copy of the install record is not valid" };
+    copies.push(parsed);
+  }
+  const [base, devSide, branch] = copies as [BkitVersion, BkitVersion, BkitVersion];
+  const canonicalHashes: Record<string, string> = {};
+  for (const p of new Set([
+    ...Object.keys(devSide.canonicalHashes),
+    ...Object.keys(branch.canonicalHashes),
+  ])) {
+    const hash = pickEntry(
+      base.canonicalHashes[p],
+      devSide.canonicalHashes[p],
+      branch.canonicalHashes[p],
+    );
+    if (hash !== undefined) canonicalHashes[p] = hash;
+  }
+  const merged: BkitVersion = {
+    pinnedVersion: pickEntry(base.pinnedVersion, devSide.pinnedVersion, branch.pinnedVersion),
+    canonicalHashes,
+    claudeAllowDerived: pickEntry(
+      base.claudeAllowDerived,
+      devSide.claudeAllowDerived,
+      branch.claudeAllowDerived,
+    ),
+  };
+  fs.writeFileSync(path.join(top, INSTALL_RECORD), serializeBkitVersion(merged));
+  return { ok: true };
+}
+
 export interface Resolution {
   path: string;
-  how: "union" | "lockfile" | "dev";
+  how: "union" | "lockfile" | "register" | "embed" | "record" | "dev";
 }
 
 export interface RebaseResult {
@@ -267,6 +506,18 @@ export interface RebaseResult {
   reason: string | null;
   log: string[];
 }
+
+const NOT_RESOLVABLE =
+  "not an append-only ledger, a recognised lockfile, a generated register, a doc embedding one or the install record";
+
+/** How a rebase settled each kind of conflict, for its log. */
+const REBASE_HOW: Record<Exclude<Resolution["how"], "dev">, string> = {
+  union: "union (append-only ledger)",
+  lockfile: "took rebase target + regenerated",
+  register: "took rebase target's copy of a generated register",
+  embed: "took rebase target's copy of the generated block, merged the rest",
+  record: "merged the install record entry by entry, rebase target's value where both changed",
+};
 
 /**
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
@@ -298,32 +549,47 @@ export function resolveRebase(
     return result;
   };
 
+  const embeds = embedDocs(top);
   while (result.rounds < 100) {
     result.rounds++;
     const conflicts = unmergedPaths(top);
     if (conflicts.length > 0) {
       // Classify the whole set before resolving any of it, so a refused path
       // never leaves half the set rewritten.
-      const refused = conflicts.find((f) => classifyConflict(f) === "refuse");
+      const refused = conflicts.find((f) => classifyConflict(f, embeds) === "refuse");
       if (refused !== undefined) {
         return refuse(
-          `REFUSE ${refused} — not an append-only ledger or a recognised lockfile; routing to Failure Path`,
+          `REFUSE ${refused} — ${NOT_RESOLVABLE}; routing to Failure Path`,
           refused,
-          "not an append-only ledger or a recognised lockfile",
+          NOT_RESOLVABLE,
         );
       }
       for (const f of conflicts) {
-        const kind = classifyConflict(f);
-        const ok = kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f);
+        const kind = classifyConflict(f, embeds);
+        const settled =
+          kind === "register"
+            ? registerResolve(top, f, "ours")
+            : kind === "embed"
+              ? embedResolve(top, f, embeds.get(f)!, "ours")
+              : kind === "record"
+                ? recordResolve(top, "ours")
+                : null;
+        if (settled !== null && !settled.ok)
+          return refuse(`REFUSE ${f} — ${settled.problem}`, f, settled.problem);
+        const ok =
+          settled !== null ||
+          (kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f));
         if (!ok || !runGit(top, ["add", "--", f]).ok) {
           return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
         }
-        result.resolved.push({ path: f, how: kind === "ledger" ? "union" : "lockfile" });
-        log(
+        const how: Exclude<Resolution["how"], "dev"> =
           kind === "ledger"
-            ? `RESOLVED ${f} — union (append-only ledger)`
-            : `RESOLVED ${f} — took rebase target + regenerated`,
-        );
+            ? "union"
+            : kind === "register" || kind === "embed" || kind === "record"
+              ? kind
+              : "lockfile";
+        result.resolved.push({ path: f, how });
+        log(`RESOLVED ${f} — ${REBASE_HOW[how]}`);
       }
     }
 
@@ -522,6 +788,7 @@ function rebaseVerb(ctx: RunContext): number {
     ctx.log("no rebase in progress");
     return EXIT_NO_REBASE;
   }
+  const origHead = rebaseOrigHead(top);
   const result = resolveRebase(top, (line) => ctx.log(line));
   let aborted = false;
   if (!result.ok) {
@@ -533,6 +800,19 @@ function rebaseVerb(ctx: RunContext): number {
       : `ABORT FAILED — git rebase --abort: ${abort.stderr}`;
     result.log.push(line);
     ctx.log(line);
+  }
+  let rebuilt: boolean | null = null;
+  if (result.ok) {
+    const fid = currentBranch(top).replace(/^feat\//, "") || "rebase";
+    rebuilt = rebuildRegisters(
+      top,
+      result.resolved,
+      (files) => `chore(${fid}): rebuild ${files.join(" ")} after the rebase`,
+      (line) => {
+        result.log.push(line);
+        ctx.log(line);
+      },
+    );
   }
   appendLog(ctx, str(ctx.flags.logFile), result.log);
   if (!result.ok && sentinelPath) {
@@ -548,8 +828,26 @@ function rebaseVerb(ctx: RunContext): number {
     reason: result.reason,
     aborted,
     sentinel: !result.ok && sentinel !== undefined ? sentinel : null,
+    rebuilt,
   });
+  const statusFile = str(ctx.flags.file);
+  if (result.ok && statusFile !== undefined)
+    recordRebase(path.resolve(ctx.cwd, statusFile), origHead, git(top, ["rev-parse", "HEAD"]));
   return result.ok ? EXIT.OK : EXIT_REFUSED;
+}
+
+/** The branch tip the in-progress rebase started from. */
+function rebaseOrigHead(top: string): string | null {
+  for (const dir of ["rebase-merge", "rebase-apply"]) {
+    const file = git(top, [
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      `${dir}/orig-head`,
+    ]);
+    if (file !== null && fs.existsSync(file)) return fs.readFileSync(file, "utf-8").trim();
+  }
+  return null;
 }
 
 export interface PushOutcome {
@@ -563,6 +861,29 @@ export interface PushOutcome {
     prNumber: number | null;
     /** The run's commits went out as copies cherry-picked onto a fresh origin/dev. */
     replayed: boolean;
+    /** origin/dev's docs and ledger commits were merged in before the push. */
+    mergedDev: boolean;
+    lockHolder?: string | null;
+  };
+}
+
+/** Git collapses a failing pre-push hook's status; classify its exact tests-lock markers. */
+function runPush(cwd: string, args: string[], branch: string) {
+  const who = `bkit branches push ${branch}`;
+  const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
+  const res = runGit(cwd, args, {
+    LOCAL_STACK_LOCK_WAIT_S: String(wait),
+    LOCAL_STACK_LOCK_WHO: who,
+  });
+  const log = [res.stdout, res.stderr].filter(Boolean).join("\n");
+  const lockHolder = res.ok ? null : testsLockHolder(log, who);
+  const outcome = res.ok
+    ? "gate"
+    : classifyLockExit({ exitCode: lockHolder === null ? 73 : 75, log, who });
+  return {
+    ...res,
+    lockHolder,
+    lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
   };
 }
 
@@ -606,6 +927,7 @@ export async function pushBranch(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
       ...extra,
     },
   });
@@ -643,6 +965,18 @@ export async function pushBranch(
     }
   }
   if (rec !== null) return pushOwnCommits(cwd, rec, o, log, notPushed);
+  let mergedDev = false;
+  if (mode === "feature" && o.requireCi === true && !shared) {
+    const top = topLevel(cwd);
+    const fetched = fetchDev(top);
+    if (!fetched.ok) {
+      log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
+      return notPushed(EXIT_FETCH_FAILED);
+    }
+    const m = mergeDevDocs(top, { branch, generate: true }, log);
+    if (m.code !== EXIT.OK) return notPushed(m.code, { mergedDev: m.merged });
+    mergedDev = m.merged;
+  }
   if (mode === "abort" && !shared) {
     const pr =
       openPrFlag === undefined
@@ -664,10 +998,10 @@ export async function pushBranch(
     REMOTE,
     branch,
   ];
-  const res = runGit(cwd, args);
+  const res = runPush(cwd, args, branch);
   if (!res.ok) {
     log(`git ${args.join(" ")} failed: ${res.stderr}`);
-    return notPushed(EXIT_PUSH_FAILED);
+    return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
   }
   log(`pushed ${branch}${shared ? "" : " (--force-with-lease)"}`);
   return {
@@ -680,6 +1014,7 @@ export async function pushBranch(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev,
     },
   };
 }
@@ -732,10 +1067,10 @@ function pushPlain(
     return notPushed(EXIT_SKIP_CI, { skipped: "skip-ci" });
   }
   const args = ["push", ...(o.setUpstream === true ? ["-u"] : []), REMOTE, branch];
-  const res = runGit(cwd, args);
+  const res = runPush(cwd, args, branch);
   if (!res.ok) {
     log(`git ${args.join(" ")} failed: ${res.stderr}`);
-    return notPushed(EXIT_PUSH_FAILED);
+    return notPushed(res.lockExit ?? EXIT_PUSH_FAILED, { lockHolder: res.lockHolder });
   }
   log(`pushed ${branch}`);
   return {
@@ -748,6 +1083,7 @@ function pushPlain(
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
     },
   };
 }
@@ -777,7 +1113,7 @@ function markerCommit(
     return { sha: prior.ref, deduped: true };
   }
   if (o.addAll) {
-    const added = runGit(cwd, ["add", "-A"]);
+    const added = addAllButCopied(cwd);
     if (!added.ok) throw new CommandError(EXIT_PUSH_FAILED, `git add -A failed: ${added.stderr}`);
   }
   const made = runGit(cwd, ["commit", "--allow-empty", "-m", o.message]);
@@ -842,7 +1178,7 @@ async function pushOwnCommits(
     );
     return notPushed(EXIT_PUSH_FAILED);
   }
-  const fetched = runGit(cwd, ["fetch", REMOTE, `+refs/heads/${DEV}:refs/remotes/${UPSTREAM}`]);
+  const fetched = fetchDev(cwd);
   if (!fetched.ok) {
     log(`git fetch ${REMOTE} ${DEV} failed: ${fetched.stderr}`);
     return notPushed(EXIT_FETCH_FAILED);
@@ -881,7 +1217,7 @@ async function pushOwnCommits(
       REMOTE,
       `${last}:refs/heads/${rec.branch}`,
     ];
-    const res = runGit(cwd, args);
+    const res = runPush(cwd, args, rec.branch);
     if (res.ok) {
       log(`pushed ${rec.branch}: the run's ${pending.length} commit(s) are all local dev holds`);
       return {
@@ -894,8 +1230,13 @@ async function pushOwnCommits(
           skipped: null,
           prNumber: null,
           replayed: false,
+          mergedDev: false,
         },
       };
+    }
+    if (res.lockExit !== null) {
+      log(`git ${args.join(" ")} failed: ${res.stderr}`);
+      return notPushed(res.lockExit, { lockHolder: res.lockHolder });
     }
     log(`git ${args.join(" ")} failed: ${res.stderr} — replaying onto a fresh ${UPSTREAM}`);
   }
@@ -930,6 +1271,7 @@ async function pushOwnCommits(
           skipped: null,
           prNumber: null,
           replayed: true,
+          mergedDev: false,
         },
       };
     case "refused":
@@ -994,6 +1336,7 @@ async function pushVerb(ctx: RunContext): Promise<number> {
         skipped: "skip-ci",
         prNumber: null,
         replayed: false,
+        mergedDev: false,
       });
       return EXIT_SKIP_CI;
     }
@@ -1021,7 +1364,9 @@ async function pushVerb(ctx: RunContext): Promise<number> {
   // A detached HEAD and a wrong checkout print nothing, as the push never got to run.
   if (r.code !== EXIT_DETACHED && r.code !== EXIT_NOT_DEV) {
     ctx.emit(
-      marker === undefined ? r.out : { ...r.out, commit: marker.sha, deduped: marker.deduped },
+      marker === undefined
+        ? { lockHolder: null, ...r.out }
+        : { lockHolder: null, ...r.out, commit: marker.sha, deduped: marker.deduped },
     );
   }
   return r.code;
@@ -1058,14 +1403,261 @@ function fastForwardVerb(ctx: RunContext): number {
 /** Paths a source-change check leaves out: plan logs and the append-only ledgers. */
 const NOT_CODE = [":(exclude)docs/plans", ":(exclude)docs/*.jsonl", ":(exclude).bkit/*.jsonl"];
 
+/** One added line that disables a test, or removes one of its assertions. */
+export interface DisabledTest {
+  file: string;
+  /** 1-based line in the new file, or in the old one when the diff deletes the file. */
+  line: number;
+  /** The test it sits in, else the marker line's own text. */
+  test: string;
+}
+
+/** A test file's name at any tier: unit, integration, E2E. */
+const TEST_FILE = /\.(?:test|spec)\.|_test\.|(^|\/)test_[^/]*\.py$/;
+
+/** Added-line markers that disable a test: `bkit-slop-type-suppression.mjs`'s set, widened. */
+const MARKERS = [
+  /\b(?:describe|context|it|test|suite|bench)\.(?:skip|todo|fixme)\b/,
+  /(?<!\.)\bx(?:it|describe|test|context)\s*\(/,
+  /\bxfail\b/,
+  /\bt\.Skip\(/,
+  /#\[ignore\b/,
+  /@Disabled\b/,
+  /@pytest\.mark\.skip\b/,
+  /@unittest\.skip\b/,
+  /\.skip\s*\(/,
+];
+
+/** The markers that apply to an added line of `file`: only a test file carries them. */
+const markersFor = (file: string) => (TEST_FILE.test(file) ? MARKERS : []);
+
+/** A quoted span: a marker inside it is prose or a fixture string, not a call. */
+const QUOTED = /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+
+/** A line's trailing comment (`#` is one unless it opens a Rust or C attribute). */
+const COMMENT_TAIL = /(?:^|\s)(?:\/\/|#(?!\[))/;
+
+/** A line that opens or continues a block comment. */
+const BLOCK_COMMENT = /^\s*(?:\/\*|\*)/;
+
+/** `line` with its quoted spans and comment removed — the part a marker can be a call in. */
+function stripProse(line: string): string {
+  if (BLOCK_COMMENT.test(line)) return "";
+  const code = line.replace(QUOTED, '""');
+  const cut = code.search(COMMENT_TAIL);
+  return cut === -1 ? code : code.slice(0, cut);
+}
+
+/** An assertion call a change deletes from a test file: `expect(…)`, `assert.equal(…)`, `should(…)`. */
+const ASSERTION = /(?<![\w$])(?:expect|assert\w*|should_\w+|should)\s*[(.]/;
+
+/** Python's bare `assert x` statement, which calls nothing but asserts. */
+const BARE_ASSERT = /^\s*assert\s+\S/;
+
+/** A commented-out line: its words are prose, not a call. */
+const COMMENT = /^\s*(?:\/\/|\/\*|\*|#|--)/;
+
+/** True when a removed `line` takes an assertion, rather than being a comment or an import. */
+const isAssertion = (line: string) =>
+  !COMMENT.test(line) && (ASSERTION.test(line) || BARE_ASSERT.test(line));
+
+/** The test at 1-based `at` in `body`: the nearest declaration above it, else `line` itself. */
+function testAt(body: string | null, line: string, at: number): string {
+  if (body !== null) {
+    const lines = body.split(/\r?\n/);
+    const from = Math.min(at, lines.length) - 1;
+    // A decorator (`@pytest.mark.skip`) names the test it sits on, which is below it.
+    if (line.trimStart().startsWith("@")) {
+      for (let i = from + 1; i < lines.length; i++) {
+        const name = declaredName(lines[i]!);
+        if (name !== null) return name;
+      }
+    }
+    for (let i = from; i >= 0; i--) {
+      const name = declaredName(lines[i]!);
+      if (name !== null) return name;
+    }
+  }
+  return line.trim();
+}
+
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
+
+/**
+ * The text of the regular file `rel` names under `root`, or null when it is missing, a
+ * symlink, or resolves outside `root` — so a diff path never opens a file the repo does not hold.
+ */
+function inRepoFile(root: string, rel: string): string | null {
+  const abs = path.resolve(root, rel);
+  const inside = (base: string, p: string) => {
+    const r = path.relative(base, p);
+    return r !== "" && !r.startsWith("..") && !path.isAbsolute(r);
+  };
+  if (!inside(root, abs)) return null;
+  const stat = fs.lstatSync(abs, { throwIfNoEntry: false });
+  if (stat === undefined || stat.isSymbolicLink() || !stat.isFile()) return null;
+  // A symlinked parent directory can still lead outside the repo.
+  if (!inside(fs.realpathSync(root), fs.realpathSync(abs))) return null;
+  return fs.readFileSync(abs, "utf-8");
+}
+
+/**
+ * Unmatched disabled markers and removed assertion occurrences in a unified diff.
+ * Exact moves consume one added occurrence; cross-file moves require unchanged test context.
+ * Rewritten assertions pair only inside the same file and test. Removed lines retain their
+ * original test name; a deleted file uses old line numbers, otherwise the new hunk position.
+ */
+export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
+  const out: DisabledTest[] = [];
+  const bodies = new Map<string, string | null>();
+  const body = (rel: string) => {
+    if (!bodies.has(rel)) bodies.set(rel, inRepoFile(root, rel));
+    return bodies.get(rel)!;
+  };
+  type Occurrence = DisabledTest & { text: string };
+  type Removed = { file: string; line: number; old: number; text: string };
+  type Hunk = { start: number; count: number; lines: string[] };
+  const added: Occurrence[] = [];
+  const removed: Removed[] = [];
+  const addedMarkers: Occurrence[] = [];
+  const removedMarkers: Removed[] = [];
+  const patches = new Map<string, Hunk[]>();
+  let file = "";
+  let from = "";
+  let deleted = false;
+  let current: Hunk | undefined;
+  let next = 0;
+  let old = 0;
+  for (const raw of diff.split("\n")) {
+    if (raw.startsWith("diff --git ")) {
+      current = undefined;
+      file = "";
+      continue;
+    }
+    if (raw.startsWith("--- ")) {
+      from = raw.replace(/^--- (a\/)?/, "");
+      continue;
+    }
+    if (raw.startsWith("+++ ")) {
+      const plus = raw.replace(/^\+\+\+ (b\/)?/, "");
+      file = plus === "/dev/null" ? from : plus;
+      deleted = plus === "/dev/null";
+      continue;
+    }
+    const hunk = HUNK.exec(raw);
+    if (hunk !== null) {
+      old = Number(hunk[1]);
+      next = Number(hunk[3]);
+      current = { start: next, count: Number(hunk[4] ?? 1), lines: [] };
+      const hunks = patches.get(file) ?? [];
+      hunks.push(current);
+      patches.set(file, hunks);
+      continue;
+    }
+    if (current === undefined) continue;
+    if (raw.startsWith("+")) {
+      const text = raw.slice(1);
+      if (TEST_FILE.test(file)) {
+        const occurrence = { file, line: next, text, test: testAt(body(file), text, next) };
+        if (markersFor(file).some((m) => m.test(stripProse(text)))) addedMarkers.push(occurrence);
+        if (isAssertion(text)) added.push(occurrence);
+      }
+      next++;
+    } else if (raw.startsWith("-")) {
+      const text = raw.slice(1);
+      current.lines.push(text);
+      if (TEST_FILE.test(file)) {
+        const occurrence = { file, line: deleted ? old : next, old, text };
+        if (isAssertion(text)) removed.push(occurrence);
+        if (markersFor(file).some((m) => m.test(stripProse(text)))) removedMarkers.push(occurrence);
+      }
+      old++;
+    } else if (raw.startsWith(" ")) {
+      current.lines.push(raw.slice(1));
+      next++;
+      old++;
+    }
+  }
+  const oldBodies = new Map<string, string>();
+  const original = (r: Removed): Occurrence => {
+    if (!oldBodies.has(r.file)) {
+      const lines = body(r.file)?.split(/\r?\n/) ?? [];
+      for (const hunk of [...(patches.get(r.file) ?? [])].reverse())
+        lines.splice(Math.max(0, hunk.start - 1), hunk.count, ...hunk.lines);
+      oldBodies.set(r.file, lines.join("\n"));
+    }
+    return { ...r, test: testAt(oldBodies.get(r.file)!, r.text, r.old) };
+  };
+  const contexts = new Map<string, string | null>();
+  const context = (occurrence: Occurrence, before: boolean) => {
+    const key = JSON.stringify([before, occurrence.file, occurrence.test]);
+    if (!contexts.has(key)) {
+      const source = before ? oldBodies.get(occurrence.file) : body(occurrence.file);
+      const lines = source == null ? null : testSource(source, occurrence.test);
+      contexts.set(
+        key,
+        lines === null
+          ? null
+          : lines
+              .filter((line) => stripProse(line).trim() !== "" && !isAssertion(stripProse(line)))
+              .map((line) =>
+                line
+                  .trim()
+                  .replace(
+                    /\b(it|test|suite|describe|context|bench)\.(?:skip|todo|fixme)\b/g,
+                    "$1",
+                  ),
+              )
+              .join("\n"),
+      );
+    }
+    return contexts.get(key)!;
+  };
+  const exact = (a: Occurrence, b: Occurrence) =>
+    a.text.trim() === b.text.trim() &&
+    (a.file === b.file ||
+      (a.test === b.test && context(a, true) !== null && context(a, true) === context(b, false)));
+  const consume = (available: Occurrence[], occurrence: Occurrence, match = exact) => {
+    const index = available.findIndex((candidate) => match(occurrence, candidate));
+    if (index === -1) return false;
+    available.splice(index, 1);
+    return true;
+  };
+  for (const r of removedMarkers)
+    consume(
+      addedMarkers,
+      original(r),
+      (a, b) =>
+        exact(a, b) &&
+        a.test === b.test &&
+        context(a, true) !== null &&
+        context(a, true) === context(b, false),
+    );
+  const drops = removed.map(original).filter((r) => !consume(added, r));
+  for (const r of drops)
+    if (!consume(added, r, (a, b) => a.file === b.file && a.test === b.test))
+      out.push({ file: r.file, line: r.line, test: r.test });
+  out.unshift(...addedMarkers.map(({ file, line, test }) => ({ file, line, test })));
+  return out;
+}
+
 function scanDiffVerb(ctx: RunContext): number {
   const base = String(ctx.flags.base);
   const pattern = str(ctx.flags.paths);
   const marker = str(ctx.flags.marker);
   const code = ctx.flags.code === true;
-  if ([pattern !== undefined, marker !== undefined, code].filter(Boolean).length !== 1) {
-    throw new CommandError(EXIT.USAGE, "give exactly one of --paths, --marker, --code");
+  const disabled = ctx.flags.disabledTests === true;
+  if ([pattern !== undefined, marker !== undefined, code, disabled].filter(Boolean).length !== 1) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "give exactly one of --paths, --marker, --code, --disabled-tests",
+    );
   }
+  if (disabled && ctx.flags.expectNone === true)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--disabled-tests inverts the exit already; drop --expect-none",
+    );
   let re: RegExp | undefined;
   if (pattern !== undefined) {
     try {
@@ -1085,6 +1677,21 @@ function scanDiffVerb(ctx: RunContext): number {
     return EXIT_DIFF_FAILED;
   }
   const range = `${base}...HEAD`;
+  if (disabled) {
+    const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
+    if (!diff.ok) {
+      ctx.log(`git diff ${range} failed: ${diff.stderr}`);
+      return EXIT_DIFF_FAILED;
+    }
+    const hits = disabledTestsIn(diff.stdout, top);
+    const files = [...new Set(hits.map((h) => h.file))];
+    ctx.emit({ found: hits.length > 0, paths: files, disabled: hits });
+    if (hits.length > 0)
+      ctx.log(
+        `disabled tests or removed assertions:\n${hits.map((h) => `${h.file}:${h.line} — ${h.test}`).join("\n")}`,
+      );
+    return hits.length > 0 ? EXIT.NO : EXIT.OK;
+  }
   let paths: string[];
   if (marker !== undefined) {
     const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
@@ -1212,41 +1819,529 @@ async function forceBuildVerb(ctx: RunContext): Promise<number> {
   return pushed.code;
 }
 
-/** Resolve sync's docs-merge conflicts: ledgers by union, other `docs/` paths take dev's side. */
-function resolveDocsMerge(top: string): { resolved: Resolution[] } | { refused: string } {
-  const conflicts = unmergedPaths(top);
-  const refused = conflicts.find((f) => classifyConflict(f) !== "ledger" && !f.startsWith("docs/"));
-  if (refused !== undefined) return { refused };
-  const resolved: Resolution[] = [];
-  for (const f of conflicts) {
-    if (classifyConflict(f) === "ledger") {
-      if (!unionResolve(top, f).ok || !runGit(top, ["add", "--", f]).ok) return { refused: f };
-      resolved.push({ path: f, how: "union" });
-      continue;
-    }
+/** The paths a feature branch must hold dev's commits for before GitHub reads it: docs/ and every ledger. */
+const DEV_DOC_PATHSPECS = ["docs/", ...LEDGERS.map((l) => `:(glob)${l}`)];
+
+/** Commits on origin/dev not in `head` that touch docs/ or a ledger. */
+function docsBehindOf(top: string, head: string): number {
+  return Number(
+    git(top, ["rev-list", "--count", `${head}..${UPSTREAM}`, "--", ...DEV_DOC_PATHSPECS]) ?? "0",
+  );
+}
+
+export interface DevDocsMerge extends DevMerge {
+  docsBehind: number;
+}
+
+/**
+ * The `docs` merge: bring dev's docs/ and ledger commits onto the feature branch
+ * when it is behind them, so GitHub, which ignores `merge=union`, reads no ledger
+ * conflict and CI runs. Nothing on a shared branch or when docs/ is current.
+ */
+function mergeDevDocs(
+  top: string,
+  o: { branch: string; generate: boolean },
+  log: (m: string) => void,
+): DevDocsMerge {
+  const docsBehind = docsBehindOf(top, "HEAD");
+  const current = isSharedBranch(o.branch) || docsBehind === 0;
+  if (!current)
+    log(`docs/ and the ledgers are ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
+  const merged = mergeDev(
+    top,
+    { branch: o.branch, policy: "docs", generate: o.generate, current },
+    log,
+  );
+  return { ...merged, docsBehind };
+}
+
+/**
+ * Run the consumer's `bkit:generate` (`.bkit/workflows.md` § Local gate scripts)
+ * and commit what it changed (`commitWhatChanged`). null when the script is undeclared.
+ */
+function regenerate(
+  top: string,
+  branch: string,
+  log: (m: string) => void,
+  o: { fid?: string } = {},
+): boolean | null {
+  if (!generateDeclared(top)) return null;
+  const fid = o.fid ?? branch.replace(/^feat\//, "");
+  const message = `chore(${fid}): regenerate after merging ${DEV}`;
+  const done = commitWhatChanged(
+    top,
+    "bkit:generate",
+    () => runGenerate(top, log, "after the merge"),
+    message,
+    log,
+  );
+  if (done.outcome === "committed")
+    log(`committed bkit:generate's output after merging ${UPSTREAM}`);
+  return done.outcome !== "failed";
+}
+
+/** Whether `top`'s package.json declares a non-empty `bkit:generate` script. */
+function generateDeclared(top: string): boolean {
+  const pkg = readPackageJson(top);
+  const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
+  return (
+    typeof scripts === "object" &&
+    scripts !== null &&
+    typeof (scripts as Record<string, unknown>)["bkit:generate"] === "string" &&
+    (scripts as Record<string, unknown>)["bkit:generate"] !== ""
+  );
+}
+
+/** Run `bkit:generate` in `top`; false when it failed, logged with its output's last lines. */
+function runGenerate(top: string, log: (m: string) => void, when: string): boolean {
+  return runLogged(top, scriptCommand("bkit:generate"), log, when);
+}
+
+/** Run `argv` in `top`; false when it failed, logged with its output's last lines. */
+function runLogged(
+  top: string,
+  argv: readonly string[],
+  log: (m: string) => void,
+  when: string,
+): boolean {
+  const res = spawnSync(argv[0]!, argv.slice(1), {
+    cwd: top,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 1 << 26,
+  });
+  if (res.status === 0) return true;
+  log(`${argv.join(" ")} exited ${String(res.status ?? res.error?.message)} ${when}`);
+  const out = `${res.stdout ?? ""}${res.stderr ?? ""}`.trim();
+  if (out !== "") for (const line of out.split("\n").slice(-20)) log(`  ${line}`);
+  return false;
+}
+
+/**
+ * Each changed path in `top` (the entries worktree setup copies in left out), with a hash
+ * of its content ("" when deleted); null when git could not run. Read raw: `--porcelain`
+ * lines start with a status column that may be a space.
+ */
+function changedPaths(top: string): Map<string, string> | null {
+  const res = spawnSync(
+    "git",
+    ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".", ...copyExcludes(top)],
+    { cwd: top, env: gitEnv(), encoding: "utf-8", maxBuffer: OUTPUT_LIMIT },
+  );
+  if (res.error || res.status !== 0) return null;
+  const out = new Map<string, string>();
+  const entries = res.stdout.split("\0");
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (entry.length < 4) continue;
+    const file = entry.slice(3);
+    // A staged rename or copy carries its source as the next entry.
+    if (entry[0] === "R" || entry[0] === "C") i++;
+    const abs = path.join(top, file);
+    out.set(
+      file,
+      fs.existsSync(abs) && fs.statSync(abs).isFile()
+        ? createHash("sha256").update(fs.readFileSync(abs)).digest("hex")
+        : "",
+    );
+  }
+  return out;
+}
+
+/**
+ * What a generator changed between two `changedPaths` reads: `rewritten` were already
+ * changed and changed again, so they cannot be told apart from work that is not
+ * generated; `added` are the paths only the generator changed, sorted.
+ */
+function changedSince(
+  dirty: Map<string, string>,
+  after: Map<string, string>,
+): { rewritten: string[]; added: string[] } {
+  return {
+    rewritten: [...after].filter(([f, h]) => dirty.has(f) && dirty.get(f) !== h).map(([f]) => f),
+    added: [...after.keys()].filter((f) => !dirty.has(f)).sort(),
+  };
+}
+
+/** Commit exactly `paths`, deletions included; false when the add or the commit failed. */
+function commitPaths(top: string, paths: string[], message: string): boolean {
+  return (
+    runGit(top, ["add", "-A", "--", ...paths]).ok &&
+    quietGit(top, ["commit", "-q", "-m", message, "--", ...paths]).ok
+  );
+}
+
+/**
+ * Run a generator (`run`, named `what` in the log) in `top` and commit exactly the paths
+ * it changed as `message`, so uncommitted work already in the tree stays out of the
+ * commit. `failed` (logged) when `git status` or the commit failed, `run` failed, or it
+ * changed a path that already held uncommitted changes again: that cannot be told apart
+ * from work that is not generated. `unchanged` when it changed nothing.
+ */
+function commitWhatChanged(
+  top: string,
+  what: string,
+  run: () => boolean,
+  message: string,
+  log: (m: string) => void,
+): { outcome: "committed" | "unchanged" | "failed"; paths: string[] } {
+  const failed = { outcome: "failed" as const, paths: [] };
+  const dirty = changedPaths(top);
+  if (dirty === null) {
+    log(`git status failed — ${what} not run`);
+    return failed;
+  }
+  if (!run()) return failed;
+  const after = changedPaths(top);
+  if (after === null) {
+    log(`git status failed after ${what}`);
+    return failed;
+  }
+  const { rewritten, added } = changedSince(dirty, after);
+  if (rewritten.length > 0) {
+    for (const f of rewritten) log(`  ${f}`);
+    log(`${what} changed paths that already held uncommitted changes — nothing committed`);
+    return failed;
+  }
+  if (added.length === 0) return { outcome: "unchanged", paths: [] };
+  if (!commitPaths(top, added, message)) {
+    log(`committing the output of ${what} failed`);
+    return failed;
+  }
+  return { outcome: "committed", paths: added };
+}
+
+/**
+ * Rebuild each register a conflict settled on dev's copy (`REGISTERS`), or whose
+ * generated block a conflicted doc took from dev, and commit only the paths the rebuild
+ * changed. null when none was settled, or no settled register's script exists in the
+ * repo; false when a rebuild failed, or changed a path that already held uncommitted
+ * changes. A register not rebuilt keeps dev's copy: the pre-push gate, CI and ship's
+ * `bkit:generate` still judge it.
+ */
+function rebuildRegisters(
+  top: string,
+  resolved: Resolution[],
+  commitMessage: (files: string[]) => string,
+  log: (m: string) => void,
+): boolean | null {
+  const embeds = embedDocs(top);
+  const settled = [
+    ...new Set(
+      resolved.flatMap((r) => {
+        const register =
+          r.how === "register" ? r.path : r.how === "embed" ? embeds.get(r.path) : undefined;
+        return register === undefined ? [] : [register];
+      }),
+    ),
+  ];
+  const due = settled.filter((f) => fs.existsSync(path.join(top, REGISTERS[f]!.script)));
+  for (const f of settled)
+    if (!due.includes(f)) log(`NOT REBUILT ${f} — ${REGISTERS[f]!.script} is absent`);
+  if (due.length === 0) return null;
+  const which = due.join(", ");
+  const rebuild = () =>
+    due.every((f) => {
+      const { script, args } = REGISTERS[f]!;
+      if (runLogged(top, ["bash", script, ...args], log, `rebuilding ${f}`)) return true;
+      log(`NOT REBUILT ${f} — it keeps ${DEV}'s copy`);
+      return false;
+    });
+  const done = commitWhatChanged(top, `the rebuild of ${which}`, rebuild, commitMessage(due), log);
+  if (done.outcome === "failed") return false;
+  log(
+    done.outcome === "unchanged"
+      ? `REBUILT ${which} — ${DEV}'s copy was already current`
+      : `REBUILT ${which} — committed as ${git(top, ["rev-parse", "HEAD"])}`,
+  );
+  return true;
+}
+
+/**
+ * Ship's regenerate (`.bkit/workflows.md` § `/bkit-ship`): run a declared `bkit:generate`
+ * on the checked-out feature branch and commit only the paths it changed
+ * (`commitWhatChanged`), so the run's own uncommitted bookkeeping (status.jsonl) stays out
+ * of the commit. Step 10 runs it when every failed CI step is one it fixes (`--attempt`).
+ */
+function regenerateVerb(ctx: RunContext): number {
+  const top = topLevel(ctx.cwd);
+  const branch = currentBranch(top);
+  if (branch === "") {
+    ctx.log("no branch checked out (detached HEAD) — cannot regenerate");
+    return EXIT_DETACHED;
+  }
+  if (isSharedBranch(branch))
+    throw new CommandError(EXIT.USAGE, `regenerate runs on a feature branch, never on ${branch}`);
+  const attempt = str(ctx.flags.attempt);
+  if (attempt !== undefined && !/^[1-9]\d*$/.test(attempt))
+    throw new CommandError(EXIT.USAGE, "--attempt must be a whole number >= 1");
+  const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+  const before = git(top, ["rev-parse", "HEAD"]);
+  const out = { outcome: "undeclared", head: before, paths: [] as string[] };
+  if (!generateDeclared(top)) {
+    ctx.log("bkit:generate is not declared — nothing regenerated");
+    ctx.emit(out);
+    return EXIT.OK;
+  }
+  const message =
+    attempt === undefined
+      ? `chore(${fid}): regenerate before re-validating`
+      : `fix(${fid}): regenerate attempt ${attempt}`;
+  const done = commitWhatChanged(
+    top,
+    "bkit:generate",
+    () => runGenerate(top, ctx.log, "on the branch"),
+    message,
+    ctx.log,
+  );
+  if (done.outcome === "failed") return EXIT_GENERATE_FAILED;
+  out.paths = done.paths;
+  if (done.outcome === "unchanged") {
+    out.outcome = "unchanged";
+    ctx.log("bkit:generate changed nothing");
+    ctx.emit(out);
+    return EXIT.OK;
+  }
+  out.outcome = "committed";
+  out.head = git(top, ["rev-parse", "HEAD"]);
+  for (const f of out.paths) ctx.log(`regenerated ${f}`);
+  ctx.log(`committed bkit:generate's output as ${out.head}`);
+  const statusFile = str(ctx.flags.file);
+  if (statusFile !== undefined && before !== null && out.head !== null) {
+    recordAction(path.resolve(ctx.cwd, statusFile), {
+      action: "regenerate",
+      key: actionKey("regenerate", before),
+      hash: actionHash(`${before}..${out.head}`),
+      ref: out.head,
+    });
+  }
+  ctx.emit(out);
+  return EXIT.OK;
+}
+
+/** Whether a merge is in progress in `top` (its MERGE_HEAD exists). */
+function mergeInProgress(top: string): boolean {
+  const p = git(top, ["rev-parse", "--path-format=absolute", "--git-path", "MERGE_HEAD"]);
+  return p !== null && fs.existsSync(p);
+}
+
+/**
+ * Which conflicts a merge of origin/dev settles on its own. `docs` (build's Branch
+ * Sync, a `--require-ci` push, land's PR retry) integrates only what GitHub must see
+ * merged: ledgers union, other docs/ paths take dev, anything else refuses and the
+ * merge is aborted. `full` (ship Step 4) integrates all of dev: ledgers union, a
+ * lockfile regenerates from dev's copy, anything else is left conflicted for a hand
+ * resolution with the merge in progress.
+ */
+export type MergePolicy = "docs" | "full";
+
+/** Settle one conflicted path under `policy`, staging it when it is resolved. */
+function resolvePath(
+  top: string,
+  file: string,
+  policy: MergePolicy,
+  embeds: ReadonlyMap<string, string>,
+): Resolution["how"] | "pending" | { refused: string } {
+  const kind = classifyConflict(file, embeds);
+  if (kind === "ledger") {
+    const union = unionResolve(top, file);
+    if (!union.ok) return { refused: union.problem };
+    return runGit(top, ["add", "--", file]).ok ? "union" : { refused: "git add failed" };
+  }
+  if (kind === "register") {
+    const settled = registerResolve(top, file, "theirs");
+    if (!settled.ok) return { refused: settled.problem };
+    return runGit(top, ["add", "--", file]).ok ? "register" : { refused: "git add failed" };
+  }
+  if (kind === "embed") {
+    const settled = embedResolve(top, file, embeds.get(file)!, "theirs");
+    if (!settled.ok) return { refused: settled.problem };
+    return runGit(top, ["add", "--", file]).ok ? "embed" : { refused: "git add failed" };
+  }
+  if (kind === "record") {
+    const settled = recordResolve(top, "theirs");
+    if (!settled.ok) return { refused: settled.problem };
+    return runGit(top, ["add", "--", file]).ok ? "record" : { refused: "git add failed" };
+  }
+  if (policy === "docs") {
+    if (!file.startsWith("docs/")) return { refused: "outside docs/ and the ledgers" };
     // In a merge `--theirs` is the branch merged in: dev. Dev deleting the file
     // leaves no stage 3, and taking dev's side means deleting it here too.
-    const devHasIt = runGit(top, ["cat-file", "-e", `:3:${f}`]).ok;
+    const devHasIt = runGit(top, ["cat-file", "-e", `:3:${file}`]).ok;
     const ok = devHasIt
-      ? runGit(top, ["checkout", "--theirs", "--", f]).ok && runGit(top, ["add", "--", f]).ok
-      : runGit(top, ["rm", "-q", "--", f]).ok;
-    if (!ok) return { refused: f };
-    resolved.push({ path: f, how: "dev" });
+      ? runGit(top, ["checkout", "--theirs", "--", file]).ok && runGit(top, ["add", "--", file]).ok
+      : runGit(top, ["rm", "-q", "--", file]).ok;
+    return ok ? "dev" : { refused: `taking ${DEV}'s side failed` };
   }
-  return { resolved };
+  if (kind === "lockfile") {
+    if (!lockfileResolve(top, file, "theirs")) return { refused: "lockfile regenerate failed" };
+    return runGit(top, ["add", "--", file]).ok ? "lockfile" : { refused: "git add failed" };
+  }
+  return "pending";
+}
+
+const RESOLVED_HOW: Record<Resolution["how"], string> = {
+  union: "union (append-only ledger)",
+  dev: `took ${DEV}`,
+  lockfile: `lockfile regenerated from ${DEV}'s copy`,
+  register: `took ${DEV}'s copy of a generated register`,
+  embed: `took ${DEV}'s copy of the generated block, merged the rest`,
+  record: `merged the install record entry by entry, ${DEV}'s value where both changed`,
+};
+
+export interface DevMerge {
+  /** EXIT.OK, EXIT_REFUSED, EXIT_MERGE_CONFLICT, EXIT_HAND_RESOLVE or EXIT_GENERATE_FAILED. */
+  code: number;
+  outcome: "merged" | "current" | "pending" | "refused";
+  merged: boolean;
+  /** The commit that carried the tree's uncommitted work before the merge; null when it was clean or not carried. */
+  carried: string | null;
+  resolved: Resolution[];
+  /** Paths left conflicted for a hand resolution, the merge still in progress (`full` only). */
+  pending: string[];
+  /** A refused merge was aborted. */
+  aborted: boolean;
+  /** bkit:generate ran after the merge: true, false (failed), null (not run). */
+  generated: boolean | null;
+  /** A register settled on dev's copy was rebuilt: true, false (failed), null (not run). */
+  rebuilt: boolean | null;
+  /** The branch tip the merge started from (ORIG_HEAD when continuing one). */
+  before: string | null;
+}
+
+interface MergeDevOptions {
+  branch: string;
+  policy: MergePolicy;
+  /** The feature id in the commit messages (default: the branch name without feat/). */
+  fid?: string;
+  /** Rebuild a register settled on dev's copy, then run a declared bkit:generate, committing each one's output. */
+  generate: boolean;
+  /** Nothing to integrate: outcome `current`, the tree untouched. */
+  current: boolean;
+}
+
+/**
+ * Merge origin/dev (already fetched) into the checked-out feature branch under
+ * `policy`. A merge in progress at the start is continued: its remaining conflicts
+ * are settled and it is committed, which is how a `full` hand resolution finishes
+ * (`git add`, then run again). `full` also commits the tree's uncommitted work first
+ * (ship's open status.jsonl). No commit carries a skip token: the merge brings dev's
+ * code, and the pre-push hook refuses a skip-token head that carries code while the
+ * PR is open. Never a rebase: GitHub ignores `merge=union`, so a
+ * branch rebased onto dev still shows as conflicting on every ledger both sides
+ * appended to, while the merge commit is what GitHub's own merge would compute.
+ */
+function mergeDev(top: string, o: MergeDevOptions, log: (m: string) => void): DevMerge {
+  const out: DevMerge = {
+    code: EXIT.OK,
+    outcome: "merged",
+    merged: false,
+    carried: null,
+    resolved: [],
+    pending: [],
+    aborted: false,
+    generated: null,
+    rebuilt: null,
+    before: null,
+  };
+  const full = o.policy === "full";
+  const fid = o.fid ?? o.branch.replace(/^feat\//, "");
+  const refuse = (why: string): DevMerge => {
+    const abort = runGit(top, ["merge", "--abort"]);
+    out.aborted = abort.ok;
+    log(abort.ok ? `${why} — merge aborted` : `${why} — git merge --abort failed: ${abort.stderr}`);
+    return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
+  };
+  if (mergeInProgress(top)) {
+    out.before = git(top, ["rev-parse", "--verify", "--quiet", "ORIG_HEAD"]);
+    log(`a merge of ${UPSTREAM} is in progress — continuing it`);
+  } else {
+    if (o.current) return { ...out, outcome: "current" };
+    if (full && hasLeftovers(top)) {
+      const message = `chore(${fid}): carry uncommitted work before merging ${DEV}`;
+      if (!addAllButCopied(top).ok || !quietGit(top, ["commit", "-q", "-m", message]).ok) {
+        log("the uncommitted work could not be committed before the merge");
+        return { ...out, code: EXIT_REFUSED, outcome: "refused" };
+      }
+      out.carried = git(top, ["rev-parse", "HEAD"]);
+      log(`committed the uncommitted work as ${out.carried} before merging ${UPSTREAM}`);
+    }
+    out.before = git(top, ["rev-parse", "HEAD"]);
+    const message = `chore(${fid}): merge ${DEV}`;
+    const merge = quietGit(top, ["merge", "--no-edit", "-m", message, UPSTREAM]);
+    if (!merge.ok && !mergeInProgress(top)) {
+      // Not a conflict: git refused to start the merge at all.
+      log(`git merge ${UPSTREAM} failed: ${merge.stderr.trim()}`);
+      return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
+    }
+  }
+  if (mergeInProgress(top)) {
+    const embeds = embedDocs(top);
+    for (const f of unmergedPaths(top)) {
+      const r = resolvePath(top, f, o.policy, embeds);
+      if (typeof r === "object") return refuse(`${f}: ${r.refused}`);
+      if (r === "pending") {
+        out.pending.push(f);
+        continue;
+      }
+      out.resolved.push({ path: f, how: r });
+      log(`RESOLVED ${f} — ${RESOLVED_HOW[r]}`);
+    }
+    if (out.pending.length > 0) {
+      for (const p of out.pending)
+        log(`PENDING ${p} — needs a hand resolution; run again after git add`);
+      return { ...out, code: EXIT_HAND_RESOLVE, outcome: "pending" };
+    }
+    if (!quietGit(top, ["commit", "--no-edit"]).ok)
+      return refuse("the merge could not be committed");
+  }
+  out.merged = true;
+  log(`merged ${UPSTREAM} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
+  if (o.generate) {
+    out.rebuilt = rebuildRegisters(
+      top,
+      out.resolved,
+      (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${DEV}`,
+      log,
+    );
+    out.generated = regenerate(top, o.branch, log, { fid });
+    if (out.generated === false) out.code = EXIT_GENERATE_FAILED;
+  }
+  return out;
+}
+
+/**
+ * An engine-action row for a merge of origin/dev that moved the branch, keyed on
+ * the tip it started from, so the run's record shows the integration. Nothing when
+ * HEAD did not move.
+ */
+function recordMerge(statusFile: string, before: string | null, after: string | null): void {
+  if (before === null || after === null || before === after) return;
+  recordAction(statusFile, {
+    action: "merge",
+    key: actionKey("merge", before),
+    hash: actionHash(`${before}..${after}`),
+    ref: after,
+  });
 }
 
 function syncVerb(ctx: RunContext): number {
   const mergeDocs = ctx.flags.mergeDocs === true;
+  const merge = ctx.flags.merge === true;
   const headFlag = str(ctx.flags.head);
-  if (mergeDocs && headFlag !== undefined) {
+  if ((mergeDocs || merge) && headFlag !== undefined) {
     throw new CommandError(
       EXIT.USAGE,
-      "--merge-docs merges into HEAD; give --head or --merge-docs, not both",
+      "--merge and --merge-docs merge into HEAD; give --head or one of them, not both",
     );
   }
+  if (mergeDocs && merge)
+    throw new CommandError(EXIT.USAGE, "give --merge or --merge-docs, not both");
+  const sentinel = str(ctx.flags.sentinel);
+  const sentinelPath = sentinel === undefined ? undefined : path.resolve(ctx.cwd, sentinel);
+  if (merge && sentinelPath) fs.rmSync(sentinelPath, { force: true });
   const top = topLevel(ctx.cwd);
-  const fetch = runGit(top, ["fetch", REMOTE, DEV]);
+  const fetch = fetchDev(top);
   if (!fetch.ok) {
     ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
     return EXIT_FETCH_FAILED;
@@ -1268,7 +2363,7 @@ function syncVerb(ctx: RunContext): number {
   }
   const count = (args: string[]) => Number(git(top, ["rev-list", "--count", ...args]) ?? "0");
   const behind = count([`${head}..${UPSTREAM}`]);
-  const docsBehind = count([`${head}..${UPSTREAM}`, "--", "docs/"]);
+  const docsBehind = docsBehindOf(top, head);
   const out = {
     branch: branch === "" ? null : branch,
     head,
@@ -1277,6 +2372,8 @@ function syncVerb(ctx: RunContext): number {
     docsBehind,
     merged: false,
     resolved: [] as Resolution[],
+    generated: null as boolean | null,
+    rebuilt: null as boolean | null,
   };
 
   if (mergeDocs) {
@@ -1284,31 +2381,56 @@ function syncVerb(ctx: RunContext): number {
       ctx.log("no branch checked out (detached HEAD) — cannot merge dev's docs");
       return EXIT_DETACHED;
     }
-    if (!isSharedBranch(branch) && docsBehind > 0) {
-      ctx.log(`docs/ is ${docsBehind} commit(s) behind ${UPSTREAM} — merging it in`);
-      if (!quietGit(top, ["merge", "--no-edit", UPSTREAM]).ok) {
-        const outcome = resolveDocsMerge(top);
-        if ("refused" in outcome) {
-          runGit(top, ["merge", "--abort"]);
-          ctx.log(
-            `merge of ${UPSTREAM} conflicts on ${outcome.refused} — outside docs/, merge aborted`,
-          );
-          return EXIT_MERGE_CONFLICT;
-        }
-        if (unmergedPaths(top).length > 0 || !quietGit(top, ["commit", "--no-edit"]).ok) {
-          runGit(top, ["merge", "--abort"]);
-          ctx.log(`merge of ${UPSTREAM} could not be committed — merge aborted`);
-          return EXIT_MERGE_CONFLICT;
-        }
-        out.resolved = outcome.resolved;
-        for (const r of outcome.resolved)
-          ctx.log(
-            `RESOLVED ${r.path} — ${r.how === "union" ? "union (append-only ledger)" : `took ${DEV}`}`,
-          );
-      }
-      out.merged = true;
-      out.head = git(top, ["rev-parse", "HEAD"]) ?? head;
+    const m = mergeDevDocs(top, { branch, generate: true }, ctx.log);
+    if (m.code === EXIT_MERGE_CONFLICT) return m.code;
+    out.merged = m.merged;
+    out.resolved = m.resolved;
+    out.generated = m.generated;
+    out.rebuilt = m.rebuilt;
+    if (m.merged) out.head = git(top, ["rev-parse", "HEAD"]) ?? head;
+    ctx.emit(out);
+    return m.code;
+  }
+  if (merge) {
+    if (branch === "") {
+      ctx.log(`no branch checked out (detached HEAD) — cannot merge ${UPSTREAM}`);
+      return EXIT_DETACHED;
     }
+    if (isSharedBranch(branch)) {
+      throw new CommandError(
+        EXIT.USAGE,
+        `--merge merges ${UPSTREAM} into a feature branch, never into ${branch}`,
+      );
+    }
+    const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+    const m = mergeDev(
+      top,
+      { branch, policy: "full", fid, generate: true, current: out.basePath === "A" },
+      ctx.log,
+    );
+    const refused = m.outcome === "refused";
+    if (refused && sentinelPath) {
+      fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
+      fs.writeFileSync(sentinelPath, "");
+    }
+    const newHead = git(top, ["rev-parse", "HEAD"]) ?? head;
+    ctx.emit({
+      ...out,
+      head: newHead,
+      merged: m.merged,
+      resolved: m.resolved,
+      generated: m.generated,
+      rebuilt: m.rebuilt,
+      outcome: m.outcome,
+      carried: m.carried,
+      pending: m.pending,
+      aborted: m.aborted,
+      sentinel: refused && sentinel !== undefined ? sentinel : null,
+    });
+    const statusFile = str(ctx.flags.file);
+    if (m.merged && statusFile !== undefined)
+      recordMerge(path.resolve(ctx.cwd, statusFile), m.before, newHead);
+    return m.code;
   }
   ctx.emit(out);
   return EXIT.OK;
@@ -1321,7 +2443,7 @@ function syncVerb(ctx: RunContext): number {
  */
 function syncDevVerb(ctx: RunContext): number {
   const root = repoRoot(ctx.cwd);
-  const fetch = runGit(root, ["fetch", REMOTE, DEV]);
+  const fetch = fetchDev(root);
   if (!fetch.ok) {
     ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
     return EXIT_FETCH_FAILED;
@@ -1463,11 +2585,13 @@ function buildClose(
   const staged = (git(dir, ["diff", "--cached", "--name-only"]) ?? "")
     .split("\n")
     .filter((p) => p !== "" && !CLOSE_DOCS.test(p));
-  if (staged.length)
+  if (staged.length) {
+    const inherited = localDevCopies(dir, staged, (p) => `:${p}`);
     throw new Stop(
       EXIT_LAND_STOPPED,
-      `${o.workflow} close staged non-doc files:\n${staged.join("\n")}`,
+      `${o.workflow} close staged non-doc files:\n${staged.join("\n")}${unpushedDevCause(dir, inherited.length, staged.length, ", then re-run the close.")}`,
     );
+  }
   const docs = canonicalDocs(dir, o.branch, o.workflow, o.month, o.fid);
   const main = `docs/plans/${o.month}/${o.fid}-${o.workflow}.md`;
   if (!docs.includes(main))
@@ -1557,10 +2681,41 @@ function branchTree(root: string, branch: string): string | null {
 }
 
 /**
+ * A land retry: merge origin/dev's docs and ledger commits into the PR branch in
+ * the checkout holding it and push, so the PR carries dev's ledger rows. GitHub's
+ * own branch update ignores `merge=union` and fails on the same conflict each time.
+ */
+async function mergeDevIntoPrBranch(
+  root: string,
+  branch: string,
+  log: (m: string) => void,
+): Promise<void> {
+  const tree = branchTree(root, branch);
+  if (tree === null)
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `no checkout has ${branch} checked out — cannot merge ${DEV} into the PR branch; the PR stays open`,
+    );
+  if (!fetchDev(tree).ok)
+    throw new Stop(EXIT_LAND_STOPPED, `fetch of ${UPSTREAM} failed — the PR stays open`);
+  const m = mergeDevDocs(tree, { branch, generate: false }, log);
+  if (m.code !== EXIT.OK)
+    throw new Stop(
+      EXIT_LAND_STOPPED,
+      `merging ${UPSTREAM} into ${branch} stopped on a conflict outside docs/ and the ledgers — the PR stays open`,
+    );
+  if (!m.merged) return;
+  const pushed = await pushBranch(tree, { mode: "feature" }, log);
+  if (pushed.code !== EXIT.OK)
+    throw new Stop(EXIT_PUSH_FAILED, `push of ${branch} after merging ${DEV} failed`);
+  log(`merged ${UPSTREAM} into ${branch} and pushed it`);
+}
+
+/**
  * The PR close (the dev push was refused): commit the roadmap row on the branch
  * in the checkout holding it, push it, open or reuse the PR, squash-merge it with
- * an empty body. A merge that does not land on an open PR → update its branch
- * from dev and try again, with backoff, LAND_ATTEMPTS tries in all; then stop with
+ * an empty body. A merge that does not land on an open PR → merge dev into its
+ * branch locally, push, and try again, with backoff, LAND_ATTEMPTS tries in all; then stop with
  * the PR left open. gh missing → EXIT.USE_MCP with what to create / merge; re-run
  * with `--pr` (and `--merged-sha` once merged).
  */
@@ -1585,7 +2740,12 @@ async function landPr(
         EXIT_LAND_STOPPED,
         `no checkout has ${o.branch} checked out — the PR close commits the roadmap row on it; nothing landed`,
       );
-    runGit(tree, ["fetch", REMOTE, DEV, o.branch]);
+    runGit(tree, [
+      "fetch",
+      REMOTE,
+      DEV_REFSPEC,
+      `+refs/heads/${o.branch}:refs/remotes/${REMOTE}/${o.branch}`,
+    ]);
     appendFeature(tree, { workflow: o.workflow, fid: o.fid }, ctx.log);
     commitBookkeeping(
       {
@@ -1661,10 +2821,10 @@ async function landPr(
           EXIT_LAND_STOPPED,
           `PR ${prNumber} still not merged after ${attempt} tries — left open; merge it, then re-run with --pr=${prNumber} --merged-sha=<merge commit>`,
         );
-      updateBranch(root, prNumber, ctx.log);
+      await mergeDevIntoPrBranch(root, o.branch, ctx.log);
       const wait = landBackoffMs(attempt);
       ctx.log(
-        `PR ${prNumber} not merged on try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — branch updated from dev; trying again in ${(wait / 1000).toFixed(1)}s`,
+        `PR ${prNumber} not merged on try ${attempt} of ${TIMEOUTS.LAND_ATTEMPTS} — trying again in ${(wait / 1000).toFixed(1)}s`,
       );
       await sleep(wait);
     }
@@ -1676,7 +2836,7 @@ async function landPr(
   }
   if (sha === "")
     throw new Stop(EXIT_LAND_STOPPED, `could not resolve the landed SHA for PR ${prNumber}`);
-  if (!runGit(root, ["fetch", REMOTE, DEV]).ok)
+  if (!fetchDev(root).ok)
     throw new Stop(EXIT_LAND_STOPPED, "fetch of origin/dev after the merge failed");
   return { shape: "pr", transport, sha, prNumber: Number(prNumber), pushAttempts: 0 };
 }
@@ -1684,10 +2844,11 @@ async function landPr(
 /**
  * Bring local dev up to `sha` when that is a pure fast-forward — `merge
  * --ff-only` when the main checkout is on dev, else move the branch pointer
- * alone; nothing is checked out or pushed. Local commits origin/dev lacks (listed
- * with the command that publishes them), or git refusing (an uncommitted edit the
- * move would overwrite, dev checked out in another worktree), skip it with a log
- * line: what landed is on origin/dev either way.
+ * alone; nothing is checked out or pushed. Local dev already past `sha` and on
+ * origin/dev (a later landing fast-forwarded it) is current. Local commits
+ * origin/dev lacks (listed with the command that publishes them), or git refusing
+ * (an uncommitted edit the move would overwrite, dev checked out in another
+ * worktree), skip it with a log line: what landed is on origin/dev either way.
  */
 function fastForwardDev(
   root: string,
@@ -1697,8 +2858,11 @@ function fastForwardDev(
   const local = git(root, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
   if (local === null) return "none";
   if (local === sha) return "current";
-  if (!runGit(root, ["merge-base", "--is-ancestor", local, sha]).ok) {
-    const ahead = (git(root, ["log", "--format=%h %s", `${sha}..${local}`]) ?? "")
+  const isAncestor = (a: string, b: string) =>
+    runGit(root, ["merge-base", "--is-ancestor", a, b]).ok;
+  if (!isAncestor(local, sha)) {
+    if (isAncestor(sha, local) && isAncestor(local, UPSTREAM)) return "current";
+    const ahead = (git(root, ["log", "--format=%h %s", `${UPSTREAM}..${local}`]) ?? "")
       .split("\n")
       .filter((l) => l !== "");
     log(`local ${DEV} has ${ahead.length} commit(s) ${UPSTREAM} does not — not fast-forwarded:`);
@@ -1745,11 +2909,41 @@ function notOnDev(root: string, branch: string): string[] {
     });
 }
 
-/** Uncommitted or untracked files in the feature worktree; [] when there is no worktree. */
+/**
+ * Those of `paths` whose content at `spec(p)` is already local `dev`'s: work the
+ * branch carries because `dev` is unpushed, not work a run in this branch made.
+ * `spec` names the side to compare — the index (`:path`) or a commit (`ref:path`).
+ */
+function localDevCopies(root: string, paths: string[], spec: (p: string) => string): string[] {
+  if (git(root, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]) === null) return [];
+  return paths.filter((p) => {
+    const at = git(root, ["rev-parse", "-q", "--verify", `${DEV}:${p}`]);
+    return at !== null && at === git(root, ["rev-parse", "-q", "--verify", spec(p)]);
+  });
+}
+
+/**
+ * What a close refusal adds when some of the paths it names are unpushed `dev`'s
+ * own content: the branch inherited them, and publishing `dev` is what unblocks
+ * the close. Empty when none are, so the refusal reads as it did before.
+ */
+function unpushedDevCause(root: string, inherited: number, total: number, then: string): string {
+  if (inherited === 0) return "";
+  const ahead = git(root, ["rev-list", "--count", `${UPSTREAM}..${DEV}`]) ?? "?";
+  const tip = git(root, ["rev-parse", "--short", DEV]) ?? DEV;
+  const which = inherited === total ? "all of them" : `${inherited} of them`;
+  return `\n${which} are local ${DEV}'s content (tip ${tip}, ${ahead} commit(s) ahead of ${UPSTREAM}): this branch carries unpushed ${DEV} work — publish ${DEV} (git push ${REMOTE} ${DEV})${then}`;
+}
+
+/**
+ * Uncommitted or untracked files in the feature worktree; [] when there is no
+ * worktree. The worktree copy entries setup copied in (`copyExcludes`) are never
+ * committed, so they are not work left behind.
+ */
 function uncommitted(root: string, fid: string): string[] {
   const wt = worktreeDir(root, fid);
   if (!fs.existsSync(wt)) return [];
-  const status = runGit(wt, ["status", "--porcelain", "-uall"]);
+  const status = runGit(wt, ["status", "--porcelain", "-uall", "--", ".", ...copyExcludes(wt)]);
   if (!status.ok) return [`git status in ${wt} failed: ${status.stderr}`];
   return status.stdout.split("\n").filter((l) => l !== "");
 }
@@ -1788,7 +2982,7 @@ async function landVerb(ctx: RunContext): Promise<number> {
       }));
     if (typeof landed === "number") return landed;
 
-    runGit(root, ["fetch", REMOTE, DEV]);
+    fetchDev(root);
     const localDev = devPushes ? fastForwardDev(root, landed.sha, ctx.log) : null;
 
     // The audit: canonical docs on origin/dev, the landed body clean, the transport recorded.
@@ -1826,11 +3020,13 @@ async function landVerb(ctx: RunContext): Promise<number> {
         `canonical ${workflow} missing on ${UPSTREAM}: ${missing.join(", ")}`,
       );
     const notLanded = notOnDev(root, branch);
-    if (notLanded.length)
+    if (notLanded.length) {
+      const inherited = localDevCopies(root, notLanded, (p) => `${branch}:${p}`);
       throw new Stop(
         EXIT_LANDED_UNVERIFIED,
-        `${branch} carries work ${UPSTREAM} does not — ${branch} and its worktree kept:\n${notLanded.join("\n")}`,
+        `${branch} carries work ${UPSTREAM} does not — ${branch} and its worktree kept:\n${notLanded.join("\n")}${unpushedDevCause(root, inherited.length, notLanded.length, "; the close landed without it.")}`,
       );
+    }
 
     let worktree: Record<string, unknown> | null = null;
     const left = devPushes ? uncommitted(root, fid) : [];
@@ -1965,8 +3161,71 @@ export const branchesCommand: CommandSpec = {
   noun: "branches",
   summary: "Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.",
   verbs: {
+    parse: {
+      summary: "Read an explicitly named or existing branch from the session prompt.",
+      use: "workflow",
+      flags: [
+        { name: "prompt-file", type: "string", required: true, help: "session prompt" },
+        {
+          name: "workflow",
+          type: "string",
+          help: "debug: validate an explicit debug adoption request",
+        },
+      ],
+      output: {
+        branch: "one existing branch, or null",
+        via: "explicit | token | null",
+        where: "local | remote | both | null",
+      },
+      exitCodes: {
+        3: "an explicit branch is invalid or absent",
+        8: "multiple branches were named",
+      },
+      run: (ctx) => {
+        if (ctx.flags.workflow !== undefined && ctx.flags.workflow !== "debug")
+          throw new CommandError(EXIT.USAGE, "--workflow must be debug");
+        const prompt = fs.readFileSync(path.resolve(ctx.cwd, String(ctx.flags.promptFile)), "utf8");
+        const candidates = new Map<string, { via: string; where: string }>();
+        for (const token of prompt.split(/\s+/)) {
+          const explicit = token.startsWith("branch=");
+          const branch = explicit ? token.slice("branch=".length) : token;
+          if (!explicit && (!branch.includes("/") || /^[a-z][a-z0-9+.-]*:\/\//i.test(branch)))
+            continue;
+          const valid = runGit(ctx.cwd, ["check-ref-format", "--branch", branch]).ok;
+          const local =
+            valid &&
+            runGit(ctx.cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]).ok;
+          const remote =
+            valid &&
+            runGit(ctx.cwd, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`])
+              .ok;
+          if (!local && !remote) {
+            if (explicit)
+              throw new CommandError(3, `branch ${branch} is invalid or does not exist`);
+            continue;
+          }
+          candidates.set(branch, {
+            via: explicit ? "explicit" : "token",
+            where: local && remote ? "both" : local ? "local" : "remote",
+          });
+        }
+        if (candidates.size > 1)
+          throw new CommandError(
+            8,
+            `multiple branch selections: ${[...candidates.keys()].join(", ")}`,
+          );
+        const selected = [...candidates.entries()][0];
+        ctx.emit(
+          selected
+            ? { branch: selected[0], ...selected[1] }
+            : { branch: null, via: null, where: null },
+        );
+        return EXIT.OK;
+      },
+    },
     sync: {
-      summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ is behind; optionally merge it in.`,
+      summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in.`,
+      use: "workflow",
       flags: [
         {
           name: "head",
@@ -1974,31 +3233,101 @@ export const branchesCommand: CommandSpec = {
           help: "commit to compare (default HEAD), e.g. ship's ENTRY_HEAD",
         },
         {
+          name: "merge",
+          type: "boolean",
+          help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, a doc embedding the register's generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry with ${DEV}'s value where both changed, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
+        },
+        {
           name: "merge-docs",
           type: "boolean",
-          help: `on a feature branch whose docs/ is behind, merge ${UPSTREAM} (ledgers union, other docs/ take ${DEV}, anything else aborts)`,
+          help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, a doc embedding its generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
+        },
+        {
+          name: "fid",
+          type: "string",
+          help: "--merge: the feature id in the commit messages (default: the branch name without feat/)",
+        },
+        {
+          name: "file",
+          type: "string",
+          help: "--merge: the run's status.jsonl: a completed merge appends an engine-action row (action merge, key merge/{old tip}, ref the new HEAD)",
+        },
+        {
+          name: "sentinel",
+          type: "string",
+          help: "--merge: file removed at start and created on refusal, e.g. logs/{FID}/.rebase-failed",
         },
       ],
       output: {
         branch: "current branch (null when detached)",
-        head: "commit compared (after a merge: the merge commit)",
+        head: "commit compared (after a merge: the new HEAD)",
         basePath: `A when ${UPSTREAM} is an ancestor of head (nothing to integrate), else B`,
         behind: `commits on ${UPSTREAM} not in head`,
-        docsBehind: `of those, commits touching docs/`,
-        merged: `true when --merge-docs merged ${UPSTREAM}`,
-        resolved: "conflicts the merge resolved: [{path, how: union|dev}]",
+        docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,
+        merged: `true when --merge or --merge-docs merged ${UPSTREAM}`,
+        resolved:
+          "conflicts the merge resolved: [{path, how: union|lockfile|register|embed|record|dev}]",
+        rebuilt:
+          "a generated register the merge settled on dev's copy, or whose generated block a doc took from dev, rebuilt after the merge: true (rebuilt; output committed), false (failed: it keeps dev's copy), null (not run: none settled, its script absent, or no merge)",
+        generated:
+          "bkit:generate after the merge: true (ran; only the paths it changed committed), false (failed, or it changed a path that already held uncommitted changes; exit 25), null (not run: no merge, or undeclared)",
+        outcome: `--merge: merged | current (${UPSTREAM} already an ancestor; nothing done) | pending (conflicts left for a hand resolution, merge in progress) | refused (merge aborted)`,
+        carried:
+          "--merge: the commit that carried the uncommitted work before the merge (null when the tree was clean)",
+        pending: "--merge: the paths left conflicted for a hand resolution (empty otherwise)",
+        aborted: "--merge: a refused merge was aborted",
+        sentinel: "--merge: the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
-        [EXIT_DETACHED]: "--merge-docs with no branch checked out",
+        [EXIT_REFUSED]: "--merge: the uncommitted work could not be committed before the merge",
+        [EXIT_DETACHED]: "--merge / --merge-docs with no branch checked out",
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
-        [EXIT_MERGE_CONFLICT]:
-          "the docs merge conflicted outside docs/ or could not be committed; merge aborted",
+        [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union, lockfile regenerate or register resolution failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
+        [EXIT_HAND_RESOLVE]:
+          "--merge: conflicts outside the ledgers, lockfiles, generated registers, their generated blocks and the install record are left in the tree with the merge in progress; resolve them, git add, run again",
+        [EXIT_GENERATE_FAILED]:
+          "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
       },
       run: syncVerb,
     },
+    regenerate: {
+      summary:
+        "Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 10's fix round).",
+      use: "workflow",
+      flags: [
+        {
+          name: "fid",
+          type: "string",
+          help: "the feature id in the commit message (default: the branch name without feat/)",
+        },
+        {
+          name: "attempt",
+          type: "string",
+          help: "ship Step 10's merge round: the commit is fix({FID}): regenerate attempt {N}; without it, chore({FID}): regenerate before re-validating",
+        },
+        {
+          name: "file",
+          type: "string",
+          help: "the run's status.jsonl: a commit appends an engine-action row (action regenerate, key regenerate/{old tip}, ref the new HEAD)",
+        },
+      ],
+      output: {
+        outcome:
+          "committed (bkit:generate changed paths; committed) | unchanged (it changed nothing) | undeclared (no bkit:generate script; nothing run)",
+        head: "HEAD after the verb (the regenerate commit when committed)",
+        paths: "the paths bkit:generate changed and the commit carries (empty otherwise)",
+      },
+      exitCodes: {
+        [EXIT_DETACHED]: "no branch checked out",
+        [EXIT_GENERATE_FAILED]:
+          "bkit:generate failed, changed a path that already held uncommitted changes, or its output could not be committed; nothing committed",
+      },
+      run: regenerateVerb,
+    },
     push: {
       summary:
-        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise.",
+        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held.",
+      use: "workflow",
       flags: [
         {
           name: "mode",
@@ -2028,7 +3357,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "require-ci",
           type: "boolean",
-          help: "this push must start a CI run: refuse when the HEAD message carries a skip-CI token",
+          help: `this push must start a CI run: refuse when the HEAD message carries a skip-CI token; --mode=feature on a feature branch first merges ${UPSTREAM} in when its docs/ or ledgers are behind (as sync --merge-docs does), so GitHub sees no ledger conflict`,
         },
         {
           name: "open-pr",
@@ -2043,6 +3372,7 @@ export const branchesCommand: CommandSpec = {
       ],
       output: {
         pushed: "true when the push ran and succeeded",
+        lockHolder: "the tests-lock holder on exit 81 (null otherwise)",
         replayed:
           "true when the run's commits went out as copies cherry-picked onto a fresh origin/dev (an in-place run on dev whose local dev holds other commits); sha is then the landed origin/dev commit",
         ref: "the branch pushed — link handover artifacts to this ref; null when nothing was pushed",
@@ -2051,10 +3381,12 @@ export const branchesCommand: CommandSpec = {
         skipped:
           "why the push did not run: open-pr | skip-ci | no-run-commits (an in-place run on dev with nothing new to push) (null otherwise)",
         prNumber: "the open PR that stopped an abort push (null otherwise)",
+        mergedDev: `--require-ci: ${UPSTREAM} was merged in before the push`,
         commit: "--commit: the marker commit's sha",
         deduped: "--commit: the marker commit was already made this run (not made again)",
       },
       exitCodes: {
+        4: "the pre-push hook could not acquire the tests lock",
         [EXIT_DETACHED]: "no branch checked out",
         [EXIT_NOTHING_TO_PUSH]:
           "--mode=plain or --commit on dev / main, or --ahead-of and HEAD has no commits beyond it",
@@ -2066,14 +3398,18 @@ export const branchesCommand: CommandSpec = {
         [EXIT_NOT_DEV]: "--mode=dev and the checkout is not on dev",
         [EXIT_NO_RECORD]:
           "--mode=dev, or --fid, on dev with no shared-checkout record for the run: nothing pushed",
-        [EXIT_FETCH_FAILED]: "in-place run on dev: fetching origin/dev failed",
+        [EXIT_FETCH_FAILED]:
+          "fetching origin/dev failed (in-place run on dev, or a --require-ci feature push); nothing pushed",
         [EXIT_MERGE_CONFLICT]:
-          "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; the conflicting paths are printed, nothing pushed",
+          "in-place run on dev: a run commit does not apply onto origin/dev without the local commits it builds on; or a --require-ci feature push: merging origin/dev conflicts outside docs/ and the ledgers (merge aborted). The conflicting paths are printed, nothing pushed",
+        [EXIT_GENERATE_FAILED]:
+          "--require-ci feature push: bkit:generate failed after merging origin/dev; nothing pushed",
       },
       run: pushVerb,
     },
     "fast-forward": {
       summary: "Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged.",
+      use: "workflow",
       flags: [
         {
           name: "onto",
@@ -2091,7 +3427,8 @@ export const branchesCommand: CommandSpec = {
     },
     "scan-diff": {
       summary:
-        "Exit 0 when the branch's diff from --base matches (paths, an added marker line, or a source change); 1 when not.",
+        "Exit 0 when the branch's diff from --base matches (paths, an added marker line, a source change, or a disabled test); 1 when not — --disabled-tests turns that round: 1 when a test was disabled or lost an assertion, 0 when none was.",
+      use: "by-hand",
       flags: [
         {
           name: "base",
@@ -2115,12 +3452,22 @@ export const branchesCommand: CommandSpec = {
           help: "a path changed outside docs/plans, docs/*.jsonl and .bkit/*.jsonl",
         },
         {
+          name: "disabled-tests",
+          type: "boolean",
+          help: "an added line disables a test (`.skip` / `.todo` / `.fixme` / `xfail`, `t.Skip()`, `#[ignore]`, `@Disabled`, `@pytest.mark.skip`, `@unittest.skip`), outside comments or quotes, or an assertion is removed; matches exact moved occurrences once (unchanged test name, scope and setup across files), and rewritten assertions within the same file and test; unchanged duplicates do not cancel removals; inverts --paths / --marker / --code's polarity, so never pass it with --expect-none",
+        },
+        {
           name: "expect-none",
           type: "boolean",
           help: "invert the exit: 0 when nothing matched, 1 (naming the paths on stderr) when something did",
         },
       ],
-      output: { found: "something matched", paths: "the matching paths" },
+      output: {
+        found: "something matched",
+        paths: "the matching paths",
+        disabled:
+          "[{file, line, test}]: unmatched added disabling markers and removed assertion occurrences, attributed to their original test (only with --disabled-tests)",
+      },
       exitCodes: {
         [EXIT_DIFF_FAILED]: "--base does not resolve, or git diff failed",
       },
@@ -2128,6 +3475,7 @@ export const branchesCommand: CommandSpec = {
     },
     "force-build": {
       summary: `Force a full CI build: put ${FORCE_BUILD} on the open PR's title, then push an empty marker commit (once per run).`,
+      use: "workflow",
       flags: [
         { name: "fid", type: "string", required: true, help: "feature id, for the commit subject" },
         {
@@ -2177,7 +3525,8 @@ export const branchesCommand: CommandSpec = {
     },
     rebase: {
       summary:
-        "Drive a rebase to completion, auto-resolving ledger (union) and lockfile (regenerate) conflicts; refuse and abort on anything else.",
+        "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after), embedded generated-block (take the target's block, merge the rest, rebuild after) and install-record (merge entry by entry, the target's value where both changed) conflicts; refuse and abort on anything else.",
+      use: "workflow",
       flags: [
         {
           name: "log-file",
@@ -2189,14 +3538,21 @@ export const branchesCommand: CommandSpec = {
           type: "string",
           help: "file removed at start and created on refusal, e.g. logs/{FID}/.rebase-failed",
         },
+        {
+          name: "file",
+          type: "string",
+          help: "the run's status.jsonl: a completed rebase appends an engine-action row (action rebase, key rebase/{old tip}, ref the new HEAD)",
+        },
       ],
       output: {
         outcome: "resolved | refused (a refused rebase is aborted)",
-        resolved: "conflicts resolved: [{path, how: union|lockfile}]",
+        resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed|record}]",
+        rebuilt:
+          "a generated register settled on the rebase target's copy, or whose generated block a doc took from the target, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
         skippedCommits: "commits skipped because resolution emptied them",
         rounds: "resolve rounds run",
         refused: "the path that stopped resolution (null when none, or not path-specific)",
-        reason: "why resolution refused (null on success)",
+        reason: "why resolution refused or stopped (null on success)",
         aborted: "a refused rebase was aborted (false on success, or when the abort failed)",
         sentinel: "the sentinel written on refusal (null otherwise)",
       },
@@ -2209,6 +3565,7 @@ export const branchesCommand: CommandSpec = {
     "sync-dev": {
       summary:
         "After a merge, fast-forward local dev to origin/dev without checking it out or pushing; frozen install when the main checkout is on dev and moved.",
+      use: "workflow",
       flags: [],
       output: {
         devLocal:
@@ -2226,6 +3583,7 @@ export const branchesCommand: CommandSpec = {
     land: {
       summary:
         "Design / plan close: squash the branch onto origin/dev in a throwaway worktree and push it as dev (retrying with backoff when dev moved), else the PR squash-merge; then audit it, fast-forward local dev on a laptop and release the lock.",
+      use: "workflow",
       flags: [
         { name: "workflow", type: "string", required: true, help: "design | plan" },
         { name: "fid", type: "string", required: true, help: "feature id" },
@@ -2281,6 +3639,7 @@ export const branchesCommand: CommandSpec = {
     "anchor-stamp": {
       summary:
         "Put a <!-- bkit:anchor --> block recording the base commit and bkit release on top of a design/plan doc or audit report (idempotent).",
+      use: "workflow",
       flags: [
         { name: "file", type: "string", required: true, help: "doc to stamp (must exist)" },
         {
@@ -2321,6 +3680,7 @@ export const branchesCommand: CommandSpec = {
     "anchor-read": {
       summary:
         "Read a doc's anchor fields; with --against, decide whether anything landed since its baseSha.",
+      use: "by-hand",
       flags: [
         { name: "file", type: "string", required: true, help: "design/plan doc or audit report" },
         {

@@ -56,7 +56,7 @@ const STORE_MD = [
   "# Agent Instructions",
   "## Rules",
   "### one",
-  "- rule: R01 · Universal Rules",
+  "- rule: Universal Rules",
   "- refs:",
   "  - `.agents/rules.md` § Project Rules",
   "",
@@ -65,7 +65,7 @@ const STORE_MD = [
   "```",
   "",
   "### two",
-  "- rule: R02 · Universal Rules",
+  "- rule: Universal Rules",
   "",
   "```text",
   "**Two:** second rule.",
@@ -73,7 +73,7 @@ const STORE_MD = [
   "",
   "## Project Rules",
   "### mine",
-  "- rule: P01 · Project Rules",
+  "- rule: Project Rules",
   "",
   "```text",
   "**Mine:** a project rule.",
@@ -94,11 +94,10 @@ describe("rules and Project Rules", () => {
     expect(ruleBullets(RULES_MD, "project")).toEqual(["**Mine:** a project rule."]);
   });
 
-  it("parseRuleEntries reads id, text, retired and refs", () => {
+  it("parseRuleEntries reads name, text, retired and refs", () => {
     const [one] = parseRuleEntries(STORE_MD, "Rules");
     expect(one).toMatchObject({
       name: "one",
-      id: "R01",
       text: "**One:** first rule.",
       retired: [],
       refs: [{ path: ".agents/rules.md", section: "Project Rules" }],
@@ -109,15 +108,42 @@ describe("rules and Project Rules", () => {
     expect(checkRules(STORE_MD, FIXTURE, yes)).toEqual([]);
   });
 
-  it("rule IDs match rules.md one to one", () => {
+  it("rule entries match rules.md bullets one to one", () => {
     const deleted = { ...FIXTURE, bkit: RULES_MD.replace("- **Two:** second rule.\n", "") };
     const findings = checkRules(STORE_MD, deleted, yes);
-    expect(findings.join("\n")).toMatch(/R02/);
+    expect(findings.join("\n")).toMatch(/`two`: no rules.md bullet at position 2/);
+  });
+
+  it("a rule inserted mid-list needs no edit to any other entry", () => {
+    const inserted = {
+      ...FIXTURE,
+      bkit: RULES_MD.replace("- **Two:**", "- **Middle:** a new rule.\n- **Two:**"),
+    };
+    const store = STORE_MD.replace(
+      "### two",
+      [
+        "### middle",
+        "- rule: Universal Rules",
+        "",
+        "```text",
+        "**Middle:** a new rule.",
+        "```",
+        "",
+        "### two",
+      ].join("\n"),
+    );
+    expect(checkRules(store, inserted, yes)).toEqual([]);
+  });
+
+  it("two rules with one name fail, since names are rule IDs", () => {
+    expect(checkRules(STORE_MD.replace("### mine", "### one"), FIXTURE, yes)).toContain(
+      "`one`: name used by another rule; names are rule IDs",
+    );
   });
 
   it("a reworded rules.md bullet fails until sync retires the old text", () => {
     const reworded = { ...FIXTURE, bkit: RULES_MD.replace("second rule.", "the second rule.") };
-    expect(checkRules(STORE_MD, reworded, yes).join("\n")).toMatch(/R02 `two`: text differs/);
+    expect(checkRules(STORE_MD, reworded, yes).join("\n")).toMatch(/`two`: text differs/);
     const synced = syncRules(STORE_MD, reworded);
     expect(checkRules(synced, reworded, yes)).toEqual([]);
     const two = parseRuleEntries(synced, "Rules")[1]!;
@@ -129,7 +155,7 @@ describe("rules and Project Rules", () => {
   it("a refs section that does not exist fails", () => {
     const missing = (_ref: string, section?: string) => section !== "Project Rules";
     expect(checkRules(STORE_MD, FIXTURE, missing).join("\n")).toMatch(
-      /R01 `one`: ref `.agents\/rules.md` § Project Rules does not exist/,
+      /`one`: ref `.agents\/rules.md` § Project Rules does not exist/,
     );
   });
 

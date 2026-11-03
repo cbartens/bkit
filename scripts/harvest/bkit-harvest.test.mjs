@@ -4,13 +4,15 @@
  * bkit-harvest.test.mjs — tests for bkit-harvest.mjs against made-up chats of every host
  * under a temp home folder, with a temp git repo as the repo the chats ran in.
  *
- * Pure Node, no runner: `node scripts/harvest/bkit-harvest.test.mjs`. The opencode, Cursor and
- * Antigravity tests need Node 22.5+ (`node:sqlite`) and are skipped on an older Node.
+ * `node:test`: `node scripts/harvest/bkit-harvest.test.mjs`, or `pnpm bkit:test:file` on this file
+ * for a JUnit report. The opencode, Cursor and Antigravity tests need Node 22.5+ (`node:sqlite`)
+ * and are skipped on an older Node.
  * Exit: 0 = all tests passed, 1 = at least one test failed.
  */
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { test as nodeTest } from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -75,25 +77,8 @@ try {
   // Node older than 22.5: the SQLite hosts' tests are skipped
 }
 
-let passed = 0;
-let failed = 0;
-let skipped = 0;
-
-async function test(name, fn, { needsSqlite = false } = {}) {
-  if (needsSqlite && !sqlite) {
-    skipped++;
-    console.log(`  skip ${name} — no node:sqlite`);
-    return;
-  }
-  try {
-    await fn();
-    passed++;
-    console.log(`  ok   ${name}`);
-  } catch (err) {
-    failed++;
-    console.log(`  FAIL ${name} — ${err.message}`);
-  }
-}
+const test = (name, fn, { needsSqlite = false } = {}) =>
+  nodeTest(name, { skip: needsSqlite && !sqlite ? "no node:sqlite" : false }, fn);
 
 const SHA = "d3187b9daa21f7652a4d85f3c89aae040280b72b";
 const SHA2 = "0123456789abcdef0123456789abcdef01234567";
@@ -818,7 +803,7 @@ await test("claude-code: one folded row per chat, with fingerprints and no prose
     "models",
   ])
     assert.ok(!(gone in row), `row still has ${gone}`);
-  const text = JSON.stringify(row);
+  const text = JSON.stringify({ ...row, time: { ...row.time, lastActivity: 0 } });
   for (const leak of ["widget", "secret", "650", "/tmp", repoDir])
     assert.ok(!text.includes(leak), `row contains ${leak}`);
 });
@@ -1111,7 +1096,7 @@ function makeRunLogs() {
     status(200, "workflow-started", { workflow: "build", parentSha: SHA2 }),
     step(201, "build", "build-task-red", { subPlan: 1 }),
     step(202, "build", "build-task-red", { subPlan: 1 }),
-    step(210, "build", "build-plan-execute", { subPlan: 1, attempt: 1, verdict: "PASS" }),
+    step(210, "build", "build-plan-tasks", { subPlan: 1, attempt: 1, verdict: "PASS" }),
     step(215, "build", "build-plan-verify", {
       subPlan: 1,
       attempt: 1,
@@ -1270,6 +1255,61 @@ await test("endingOf: a failure only at close is close-failed; a later close tha
     "failed",
     "a failure before any done row is the work's",
   );
+});
+
+await test("derives held from a workflow-done row ending held", () => {
+  const rows = [
+    { type: "workflow-started", workflow: "build", at: at(0) },
+    { type: "workflow-done", workflow: "build", at: at(1), ending: "held", publish: false },
+  ];
+  assert.equal(endingOf(splitRuns(rows)[0], logDir, 1), "held");
+});
+
+await test("keeps a normal done run as done", () => {
+  const rows = [
+    { type: "workflow-started", workflow: "build", at: at(0) },
+    { type: "workflow-done", workflow: "build", at: at(1), ending: "done" },
+  ];
+  assert.equal(endingOf(splitRuns(rows)[0], logDir, 1), "done");
+  const bare = [rows[0], { type: "workflow-done", workflow: "build", at: at(1) }];
+  assert.equal(endingOf(splitRuns(bare)[0], logDir, 1), "done");
+});
+
+await test("counts held runs in the workflow report", () => {
+  const run = (start, ending) => ({
+    ts: start,
+    kind: "run",
+    repo: repoFp("acme/widget"),
+    bkitVersion: "5.5.1",
+    workflow: "build",
+    step: "scan",
+    key: `k:${start}`,
+    fid: fingerprint(`acme/widget:${FID}`),
+    issue: issueFp("acme/widget", 650),
+    run: 1,
+    start,
+    end: start + 60_000,
+    lastActivityAt: start + 60_000,
+    minutes: 1,
+    activeMinutes: null,
+    activeFrom: null,
+    ending,
+    steps: {},
+    closeCi: [],
+    settled: true,
+  });
+  const md = renderReport(
+    [
+      ...readLedger(statsFile).filter((r) => r.kind === "chat"),
+      run(T0, "held"),
+      run(T0 + DAY, "held"),
+      run(T0 + 2 * DAY, "done"),
+    ],
+    new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
+    T0 + 5 * DAY,
+  );
+  assert.match(md, /\| decision-pause \| stopped \| held \|/);
+  assert.match(md, /\| build \| 3 \| 0 \| 1 \| 0 \| 0 \| 0 \| 0 \| 2 \|/);
 });
 
 await test("scan appends one run row per finished run, with fingerprints and no FID text", async () => {
@@ -1514,7 +1554,7 @@ await test("active spans end at a gap over 5 minutes, and subagent events fill t
     counts({ stamps: [s(0), s(120), s(1200)] }),
     [
       {
-        agentType: "bkit-build-plan-execute",
+        agentType: "bkit-build-plan-tasks",
         counts: counts({ stamps: [s(130), s(400), s(600)] }),
       },
     ],
@@ -1916,7 +1956,7 @@ await test("the report lists open runs, marked, and leaves them out of the media
     activeMinutes: null,
     activeFrom: null,
     ending: settled ? "done" : "stopped",
-    steps: { "build-plan-execute": { n: 1, minutes, active: null } },
+    steps: { "build-plan-tasks": { n: 1, minutes, active: null } },
     closeCi: [],
     settled,
   });
@@ -1929,11 +1969,11 @@ await test("the report lists open runs, marked, and leaves them out of the media
     new Map([[fingerprint(`acme/widget:${FID}`), FID]]),
     T0 + 2 * DAY,
   );
-  assert.match(md, /\| build \| 2 \| 1 \| 1 \| 0 \| 0 \| 0 \| 1 \| 100 \| 100 \|/);
+  assert.match(md, /\| build \| 2 \| 1 \| 1 \| 0 \| 0 \| 0 \| 1 \| 0 \| 100 \| 100 \|/);
   assert.match(md, /\| 650-secret-feature \(open\) \| 5\.5\.1 \| stopped \| 7 \|/);
   assert.match(
     md,
-    /\| build-plan-execute \| 1 \| 1 \| 100\.0 \|/,
+    /\| build-plan-tasks \| 1 \| 1 \| 100\.0 \|/,
     "step medians use the settled run only",
   );
   assert.match(md, /\| build \(open\)|build×2 \(open\)/);
@@ -2698,10 +2738,10 @@ await test("outcome readers keep only the newest row per repo, workflow and pare
   };
   const first = { ...base, ts: ms(352) };
   const otherWorkflow = { ...base, ts: ms(352), by: { workflow: "debug", step: "close" } };
-  assert.deepEqual(latestOutcomes([redispatched, first, otherWorkflow]), [
-    redispatched,
-    otherWorkflow,
-  ]);
+  assert.deepEqual(latestOutcomes([redispatched, first, otherWorkflow]), {
+    workflow: [redispatched, otherWorkflow],
+    utility: [],
+  });
   const chat = {
     ...normalize({
       ...OLD_CHAT,
@@ -2766,6 +2806,50 @@ await test("the run check pairs outcome rows with run rows on parentSha, per rep
   const md = renderRunCheck(runCheck(rows), new Map([[fp, "widget"]]));
   assert.match(md, /\| widget \| 1 \| 1 \| 1 \|/);
   assert.match(md, /\| widget \| run only \| build \| .* \| cccccccc \|/);
+});
+
+await test("outcome readers keep a direct chat's outcome rows apart from workflow rows", () => {
+  const workflowRow = {
+    schema: 2,
+    ts: ms(352),
+    kind: "outcome",
+    repo: "acme/widget",
+    bkit: { version: "5.6.0" },
+    by: { workflow: "build", step: "build-close-workflow" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: ms(300), end: ms(352), totalMinutes: 52 },
+    ending: "done",
+    lines: { total: { added: 30, deleted: 3, changed: 33, files: 3 } },
+  };
+  // Same repo and parentSha, written later by hand in a direct chat.
+  const utilityRow = {
+    ...workflowRow,
+    ts: ms(360),
+    by: { workflow: "utility", step: "manual" },
+    time: { start: ms(358), end: ms(360), totalMinutes: 2 },
+    lines: { total: { added: 1, deleted: 0, changed: 1, files: 1 } },
+  };
+  const noSha = { ...utilityRow, ts: ms(361), run: undefined };
+  assert.deepEqual(latestOutcomes([workflowRow, utilityRow, noSha]), {
+    workflow: [workflowRow],
+    utility: [utilityRow, noSha],
+  });
+
+  const fp = repoFp("acme/widget");
+  const run = {
+    schema: 2,
+    ts: 1,
+    kind: "run",
+    key: `${fp}:${BUILD_SHA}`,
+    repo: fp,
+    by: { workflow: "build", step: "scan" },
+    run: { parentSha: BUILD_SHA },
+    time: { start: 1 },
+    scan: { settled: true },
+  };
+  const c = runCheck([workflowRow, utilityRow, noSha, run]).get(fp);
+  assert.equal(c.both, 1);
+  assert.deepEqual(c.outcomeOnly, [], "a direct chat's row is no run-log mismatch");
 });
 
 // Per-run tokens, context at turn 10, plan reads, owner waits -----------------------------------
@@ -2940,7 +3024,8 @@ await test("MARK_ROWS is the engine's", () => {
     "utf8",
   );
   const list = facts.match(/export const MARK_ROWS[^=]*= new Set\((\[[^\]]*\])\)/)?.[1];
-  assert.deepEqual([...MARK_ROWS], JSON.parse(list));
+  assert.deepEqual([...MARK_ROWS], JSON.parse(list.replace(/,\s*\]$/, "]")));
+  for (const t of ["engine-call", "completeness"]) assert.ok(MARK_ROWS.has(t), `${t} is a mark row`);
 });
 
 await test("report shows per-run tokens and owner waits", () => {
@@ -2988,5 +3073,3 @@ function fingerprintNone(n) {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log(`\n${passed} passed, ${failed} failed${skipped ? `, ${skipped} skipped` : ""}`);
-process.exitCode = failed ? 1 : 0;

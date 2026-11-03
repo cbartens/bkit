@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
@@ -230,13 +230,13 @@ describe("bkit issues labels", () => {
       "--label=bkit:design",
       "--label=bkit:auto",
       "--label=bkit:failed",
-      "--label=next:plan:lite",
+      "--label=next:plan",
       "--label=nextjs",
       "--phase=plan",
     );
     expect(r.json).toEqual({
       add: ["bkit:plan"],
-      remove: ["bkit:design", "next:plan:lite", "bkit:failed"],
+      remove: ["bkit:design", "next:plan", "bkit:failed"],
       labels: ["bug", "bkit:auto", "nextjs", "bkit:plan"],
       changed: true,
       autoRouteSuffix: " bkit [auto route]",
@@ -803,6 +803,9 @@ describe("issues reaches the tracker only through tracker.ts", () => {
 describe("bkit issues comment --post", () => {
   const STEP = ["issues", "comment", "--step-number=3", "--step-title=Plan Verify"];
   const saved = process.env.BKIT_LINEAR_API_KEY;
+  beforeEach(() => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;

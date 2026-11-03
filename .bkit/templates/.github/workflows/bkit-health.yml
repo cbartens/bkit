@@ -1,0 +1,97 @@
+# Example health check. Copy it to `.github/workflows/bkit-health.yml` and own it.
+# bkit install does not write this file and does not overwrite a copy.
+#
+# Probes production after every finished bkit-ci run on the default branch, whatever the run's
+# conclusion: bkit-tests-deploy promotes before the E2E and @live lanes run, so a red run can
+# still have put a release live. The probe runs only when production serves the run's commit,
+# and the job fails, rather than skips, when it cannot tell. Not a required check.
+# See `.bkit/templates.md` § Health check.
+#
+# Fits a deploy that bkit-ci promotes. When the host deploys on its own after merge, trigger on
+# `deployment_status` instead (`docs/deployments.md` § Smoke trigger plumbing).
+# `Did This Run Promote?` asks Vercel; swap it for your host's API. The probe is host-agnostic.
+name: bkit-health
+
+on:
+  workflow_run:
+    # The `name:` of your CI workflow.
+    workflows: [bkit-ci]
+    types: [completed]
+    branches: [{{DEFAULT_BRANCH}}]
+
+permissions:
+  contents: read
+
+concurrency:
+  # workflow_run sets github.ref to the default branch, so key by the CI run's branch.
+  group: bkit-health-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+env:
+  PRODUCTION_URL: "{{PRODUCTION_URL}}"
+  HEALTH_PATH: /api/health
+
+jobs:
+  promoted:
+    name: bkit-health-promoted
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      live: ${{ steps.live.outputs.live }}
+    steps:
+      - name: Did This Run Promote?
+        id: live
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          host="${PRODUCTION_URL#*://}"
+          host="${host%%/*}"
+          resp=$(curl -sS --max-time 30 -w '\n%{http_code}' -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v13/deployments/${host}?teamId=${VERCEL_TEAM_ID}" || true)
+          code=$(printf '%s\n' "$resp" | tail -1)
+          body=$(printf '%s\n' "$resp" | sed '$d')
+          if [ "$code" != "200" ]; then
+            echo "::error::Could not read which deployment production serves (HTTP ${code:-none}). Failing, because a skipped probe would look green."
+            exit 1
+          fi
+          live_sha=$(printf '%s' "$body" | jq -r '.meta.githubCommitSha // empty')
+          if [ "$live_sha" = "$HEAD_SHA" ]; then
+            echo "live=true" >> "$GITHUB_OUTPUT"
+            echo "Production serves ${HEAD_SHA}, this run's commit: probing it."
+          else
+            echo "live=false" >> "$GITHUB_OUTPUT"
+            echo "Production serves '${live_sha:-nothing}', not ${HEAD_SHA}: this run released nothing to probe."
+          fi
+
+  health:
+    name: bkit-health
+    needs: promoted
+    if: needs.promoted.outputs.live == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A deployment the host reports as live can still be warming up, so retry until it
+      # answers. Check the body your endpoint returns as well as the status, so a 200 from
+      # an error page fails.
+      - name: Probe Health Endpoint
+        run: |
+          url="${PRODUCTION_URL%/}${HEALTH_PATH}"
+          deadline=$(( $(date +%s) + 240 ))
+          while :; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$url" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "$url answered 200."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::$url did not answer 200 within 240s (last HTTP $code)."
+              exit 1
+            fi
+            sleep 10
+          done
+
+      # Add your own probes as further steps: a curl script over key routes, or a small tagged
+      # browser suite. A step that runs a repo script needs `actions/checkout` first, with
+      # `ref: ${{ github.event.workflow_run.head_sha }}` so it runs the released commit's code.

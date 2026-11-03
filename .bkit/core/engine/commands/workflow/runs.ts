@@ -22,8 +22,16 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readJsonFile } from "../../shared/json.js";
 
-import { statusTimestamp } from "../../ledgers/status.js";
+import {
+  CI_TIERS,
+  lastRun,
+  statusTimestamp,
+  validateCiSelection,
+  type CiSelection,
+  type CiTier,
+} from "../../ledgers/status.js";
 import {
   bodySkipToken,
   commitMessage,
@@ -35,14 +43,16 @@ import {
   parseJson,
   runGh,
   runGit,
+  runTool,
   SKIP_CI_TOKEN,
+  wholeNumber,
   type CommandSpec,
   type FlagSpec,
   type FlagValue,
   type GhResult,
   type RunContext,
 } from "../lib.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import { ciGeneratedSteps, readBkitConfig } from "../../shared/settings.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } from "./fids.js";
 import type { IssueTracker } from "../../install/manifest.js";
@@ -59,7 +69,7 @@ import {
 } from "./prs.js";
 import { resolveOwnerRepo, splitSlug } from "./repo.js";
 import { restateOutcome } from "./run-facts.js";
-import { extraField, str } from "./status.js";
+import { extraField, readRuns, str } from "./status.js";
 import { writeStepRow } from "./steps.js";
 import { attempt, issueRef, readLabels, trackerTarget } from "./tracker.js";
 
@@ -103,6 +113,396 @@ export function ciDeclared(root: string): { declared: boolean; ciWorkflow: strin
   const { ciWorkflow } = readBkitConfig(root);
   const rel = path.join(".github", "workflows", ciWorkflow);
   return { declared: fs.existsSync(path.join(root, rel)), ciWorkflow, path: rel };
+}
+
+type CiReference = { kind: "run" | "pr"; repo: string; id: string; attempt?: number };
+
+/** Only the winning reference kind is actionable; a run takes precedence over a PR. */
+export function parseCiReference(input: string): CiReference | undefined {
+  const references: CiReference[] = [];
+  const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`]+/g)].map((match) =>
+    match[0].replace(/[),.;\]]+$/, ""),
+  );
+  const parsed = urls.flatMap((url) => {
+    const ref =
+      /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(actions\/runs|pull)\/([^/?#]*)([^?#]*)/.exec(url);
+    return ref ? [{ url, ref }] : [];
+  });
+  const winning = parsed.some(({ ref }) => ref[2] === "actions/runs") ? "actions/runs" : "pull";
+  for (const { url, ref } of parsed.filter(({ ref }) => ref[2] === winning)) {
+    const id = ref[3]!;
+    const suffix = ref[4]!;
+    const kind = ref[2] === "pull" ? "pr" : "run";
+    if (!/^[1-9][0-9]*$/.test(id))
+      throw new CommandError(EXIT.USAGE, `invalid ${kind} id in ${url}`);
+    let attempt: number | undefined;
+    if (kind === "run" && suffix !== "" && suffix !== "/") {
+      const pinned = /^\/attempts\/([1-9][0-9]*)\/?$/.exec(suffix);
+      if (!pinned || !Number.isSafeInteger(Number(pinned[1])))
+        throw new CommandError(EXIT.USAGE, `invalid run attempt in ${url}`);
+      attempt = Number(pinned[1]);
+    } else if (kind === "pr" && suffix !== "" && suffix !== "/") continue;
+    references.push({ kind, repo: ref[1]!, id, ...(attempt === undefined ? {} : { attempt }) });
+  }
+  const kind = references.some((ref) => ref.kind === "run") ? "run" : "pr";
+  const winners = [
+    ...new Map(
+      references.filter((ref) => ref.kind === kind).map((ref) => [JSON.stringify(ref), ref]),
+    ).values(),
+  ];
+  if (winners.length > 1)
+    throw new CommandError(8, `multiple ${kind} references were supplied; name one`);
+  return winners[0];
+}
+
+function selectionHeadRelation(
+  cwd: string,
+  selection: Extract<CiSelection, { mode: "ci" }>,
+  repo: string,
+  branch: string,
+): "current" | "ancestor" {
+  if (selection.repo.toLowerCase() !== repo.toLowerCase() || selection.headBranch !== branch) {
+    throw new CommandError(
+      82,
+      `selected evidence belongs to ${selection.repo} branch ${selection.headBranch}; adopted ${repo} branch ${branch}. Supply branch=${selection.headBranch} in its checkout`,
+    );
+  }
+  const head = git(cwd, ["rev-parse", "--verify", `refs/heads/${branch}^{commit}`]);
+  if (head === selection.headSha) return "current";
+  if (head === null || !runGit(cwd, ["cat-file", "-e", `${selection.headSha}^{commit}`]).ok) {
+    throw new CommandError(
+      82,
+      `selected commit ${selection.headSha} or branch ${branch} is unavailable; ancestry is unknown`,
+    );
+  }
+  const relation = runTool("git", ["merge-base", "--is-ancestor", selection.headSha, head], cwd);
+  if (relation.status === 0) return "ancestor";
+  throw new CommandError(
+    82,
+    relation.status === 1
+      ? `selected commit ${selection.headSha} is divergent from ${branch}`
+      : `ancestry of ${selection.headSha} is unknown: ${relation.stderr}`,
+  );
+}
+
+function locateCi(ctx: RunContext): number {
+  const f = ctx.flags;
+  const repo = String(f.repo);
+  const branch = String(f.branch);
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repo) ||
+    !runGit(ctx.cwd, ["check-ref-format", "--branch", branch]).ok
+  ) {
+    throw new CommandError(
+      EXIT.USAGE,
+      "--repo and --branch must name a repository and a valid branch",
+    );
+  }
+  const readInput = (flag: string) =>
+    f[flag] === undefined ? "" : fs.readFileSync(path.resolve(ctx.cwd, String(f[flag])), "utf8");
+  const prompt = readInput("promptFile");
+  const selectionFile = path.resolve(ctx.cwd, String(f.selectionOut));
+  const finish = (selection: CiSelection, failedJobs: Record<string, unknown>[] = []) => {
+    if (!validateCiSelection(selection))
+      throw new CommandError(82, "selected evidence has malformed or missing identity fields");
+    const headRelation =
+      selection.mode === "ci" ? selectionHeadRelation(ctx.cwd, selection, repo, branch) : null;
+    if (headRelation === "ancestor")
+      ctx.log(
+        `selected run ${selection.mode === "ci" ? selection.runId : ""} is historical ancestor evidence; inspect intervening changes before fixing`,
+      );
+    fs.mkdirSync(path.dirname(selectionFile), { recursive: true });
+    fs.writeFileSync(selectionFile, `${JSON.stringify(selection, null, 2)}\n`);
+    ctx.emit({
+      selection: selection.mode,
+      runId: selection.mode === "ci" ? selection.runId : null,
+      runUrl: selection.mode === "ci" ? selection.runUrl : null,
+      runAttempt: selection.mode === "ci" ? selection.runAttempt : null,
+      workflowId: selection.mode === "ci" ? selection.workflowId : null,
+      workflowPath: selection.mode === "ci" ? selection.workflowPath : null,
+      headSha: selection.mode === "ci" ? selection.headSha : null,
+      headRelation,
+      failedJobs,
+      tiers: selection.mode === "ci" ? selection.redTiers : [],
+      via: selection.mode === "ci" ? selection.via : null,
+      reason: selection.mode === "local" ? selection.reason : null,
+      selectionFile,
+    });
+    return selection.mode === "ci" ? EXIT.OK : 1;
+  };
+  if (/\[local\]/i.test(prompt)) return finish({ mode: "local", reason: "explicit-local" });
+  let reference = parseCiReference(prompt);
+  let via = reference ? `prompt-${reference.kind}` : "branch";
+  let saved: CiSelection | undefined;
+  if (!reference && f.file !== undefined && fs.existsSync(path.resolve(ctx.cwd, String(f.file)))) {
+    const active = lastRun(readRuns(path.resolve(ctx.cwd, String(f.file))), "debug");
+    if (active?.status === "IN_PROGRESS" && active.ciSelection !== undefined) {
+      if (!validateCiSelection(active.ciSelection))
+        throw new CommandError(82, "active saved CI selection is invalid");
+      saved = active.ciSelection;
+      if (saved.mode === "local") return finish(saved);
+      reference = { kind: "run", repo: saved.repo, id: saved.runId, attempt: saved.runAttempt };
+      via = saved.via;
+    }
+  }
+  if (!reference) {
+    const issue = readInput("issueTextFile");
+    // issues text already removes generated comments; refuse a raw generated payload too.
+    reference = parseCiReference(/^######\s+bkit:generated/m.test(issue) ? "" : issue);
+    if (reference) via = `issue-${reference.kind}`;
+  }
+  if (reference && reference.repo.toLowerCase() !== repo.toLowerCase())
+    throw new CommandError(
+      82,
+      `reference repository ${reference.repo} does not match adopted repository ${repo}`,
+    );
+  const declared = ciDeclared(checkoutRoot(ctx.cwd));
+  if (!reference && !declared.declared)
+    return finish({ mode: "local", reason: "no-configured-ci" });
+  const api = (endpoint: string, extra: string[] = []) => {
+    const response = runGh(ctx.cwd, ["api", endpoint, ...extra]);
+    if (!response.ok)
+      throw new CommandError(
+        /HTTP 404/.test(response.stderr) ? 82 : EXIT.USE_MCP,
+        `CI evidence unavailable: ${response.stderr || GH_MISSING}`,
+      );
+    const parsed = jsonOrUndefined(response.stdout);
+    if (parsed === undefined) throw new CommandError(82, "CI evidence response is malformed");
+    return parsed;
+  };
+  const validateRun = (candidate: Record<string, unknown>) => {
+    const base = {
+      mode: "ci",
+      provider: "github",
+      repo,
+      runId: String(candidate.id),
+      runAttempt: Number(candidate.run_attempt),
+      runUrl: `https://github.com/${repo}/actions/runs/${candidate.id}/attempts/${candidate.run_attempt}`,
+      workflowId: String(candidate.workflow_id ?? ""),
+      workflowPath: text(candidate.path),
+      headBranch: text(candidate.head_branch),
+      headSha: text(candidate.head_sha),
+      conclusion: "failure",
+      redTiers: [],
+      via,
+    };
+    if (
+      !validateCiSelection(base) ||
+      text(obj(candidate.repository).full_name).toLowerCase() !== repo.toLowerCase() ||
+      text(obj(candidate.head_repository).full_name).toLowerCase() !== repo.toLowerCase()
+    )
+      throw new CommandError(
+        82,
+        "run identity, repository or fork metadata is incomplete or mismatched",
+      );
+    if (candidate.head_branch !== branch)
+      throw new CommandError(
+        82,
+        `run branch ${text(candidate.head_branch)} differs from adopted branch ${branch}; supply branch=${text(candidate.head_branch)} in its checkout`,
+      );
+    if (reference?.kind !== "run" && candidate.path !== declared.path)
+      throw new CommandError(82, "discovered run does not belong to the configured workflow");
+  };
+  let run: Record<string, unknown>;
+  let jobs: Record<string, unknown>[];
+  const requested: Record<string, unknown> = { repo, branch, kind: reference?.kind ?? "branch" };
+  if (reference?.kind === "run") {
+    requested.runId = reference.id;
+    if (reference.attempt !== undefined) requested.runAttempt = reference.attempt;
+  } else if (reference?.kind === "pr") requested.pr = reference.id;
+  else requested.workflow = declared.ciWorkflow;
+  if (f.evidenceFile !== undefined) {
+    const envelope = obj(jsonOrUndefined(readInput("evidenceFile")));
+    const request = obj(envelope.request);
+    if (
+      envelope.complete !== true ||
+      !Object.entries(requested).every(([key, value]) => request[key] === value)
+    )
+      throw new CommandError(82, "fallback evidence is incomplete or its request identity differs");
+    if (
+      envelope.noRed === true &&
+      !reference &&
+      typeof request.headSha === "string" &&
+      request.headSha === git(ctx.cwd, ["rev-parse", "HEAD"])
+    )
+      return finish({ mode: "local", reason: "automatic-no-red" });
+    run = obj(envelope.run);
+    if (reference?.kind === "pr") {
+      const head = obj(obj(envelope.pr).head);
+      if (
+        head.ref !== branch ||
+        head.sha !== run.head_sha ||
+        text(obj(head.repo).full_name).toLowerCase() !== repo.toLowerCase()
+      )
+        throw new CommandError(82, "fallback PR head is missing or differs from the selected run");
+    }
+    if (!Array.isArray(envelope.jobs) || envelope.jobs.some((job) => obj(job).id === undefined))
+      throw new CommandError(82, "fallback jobs are incomplete");
+    jobs = envelope.jobs.map(obj);
+  } else {
+    let expectedHead: string | undefined;
+    if (reference?.kind === "pr") {
+      const pr = obj(api(`/repos/${repo}/pulls/${reference.id}`));
+      const head = obj(pr.head);
+      if (
+        text(obj(head.repo).full_name).toLowerCase() !== repo.toLowerCase() ||
+        head.ref !== branch ||
+        !/^[0-9a-f]{40,64}$/.test(text(head.sha))
+      )
+        throw new CommandError(
+          82,
+          `PR head does not match adopted ${repo} branch ${branch}; inspect its branch and fork repository`,
+        );
+      expectedHead = text(head.sha);
+    }
+    if (reference?.kind === "run") {
+      run = obj(
+        api(
+          `/repos/${repo}/actions/runs/${reference.id}${reference.attempt === undefined ? "" : `/attempts/${reference.attempt}`}`,
+        ),
+      );
+    } else {
+      const response = obj(
+        api(
+          `/repos/${repo}/actions/workflows/${queryValue(declared.ciWorkflow)}/runs?branch=${queryValue(branch)}&status=completed&per_page=100${expectedHead ? `&head_sha=${expectedHead}` : ""}`,
+        ),
+      );
+      if (
+        !Array.isArray(response.workflow_runs) ||
+        !Number.isSafeInteger(response.total_count) ||
+        Number(response.total_count) < 0 ||
+        Number(response.total_count) < response.workflow_runs.length
+      )
+        throw new CommandError(82, "workflow lookup returned an incomplete response");
+      const candidates = response.workflow_runs
+        .map(obj)
+        .filter((candidate) => candidate.status === "completed");
+      run =
+        candidates.sort(
+          (a, b) =>
+            text(b.created_at).localeCompare(text(a.created_at)) || Number(b.id) - Number(a.id),
+        )[0] ?? {};
+      if (Object.keys(run).length === 0) {
+        if (Number(response.total_count) > 0)
+          throw new CommandError(
+            82,
+            "workflow lookup returned no completed records despite a nonempty result",
+          );
+        if (reference)
+          throw new CommandError(
+            82,
+            "named PR has no completed red run; choose [local] to discover locally",
+          );
+        return finish({ mode: "local", reason: "automatic-no-red" });
+      }
+      if (expectedHead && run.head_sha !== expectedHead)
+        throw new CommandError(82, "PR lookup returned a run from another head");
+    }
+    validateRun(run);
+    if (
+      run.status !== "completed" ||
+      !["failure", "timed_out", "startup_failure"].includes(text(run.conclusion))
+    ) {
+      if (reference)
+        throw new CommandError(
+          82,
+          `named evidence is ${text(run.status)}/${text(run.conclusion)}; choose [local] to discover locally`,
+        );
+      if (
+        run.status !== "completed" ||
+        !["success", "cancelled", "skipped", "neutral", "action_required", "stale"].includes(
+          text(run.conclusion),
+        )
+      )
+        throw new CommandError(82, "workflow run has an invalid state");
+      return finish({ mode: "local", reason: "automatic-no-red" });
+    }
+    const attempt = reference?.attempt ?? Number(run.run_attempt);
+    if (!Number.isSafeInteger(attempt) || attempt <= 0 || !/^[1-9][0-9]*$/.test(String(run.id)))
+      throw new CommandError(82, "run identity or attempt is missing");
+    const pages = api(
+      `/repos/${repo}/actions/runs/${run.id}/attempts/${attempt}/jobs?per_page=100`,
+      ["--paginate", "--slurp"],
+    );
+    if (!Array.isArray(pages) || pages.length === 0)
+      throw new CommandError(82, "job pagination returned no complete pages");
+    const total = obj(pages[0]).total_count;
+    if (
+      !Number.isSafeInteger(total) ||
+      Number(total) < 0 ||
+      pages.some((page) => !Array.isArray(obj(page).jobs) || obj(page).total_count !== total)
+    )
+      throw new CommandError(82, "job pagination returned incomplete pages");
+    jobs = pages.flatMap((page) => arr(obj(page).jobs).map(obj));
+    if (
+      jobs.length !== total ||
+      new Set(jobs.map((job) => job.id)).size !== total ||
+      jobs.some(
+        (job) =>
+          !Number.isSafeInteger(job.id) ||
+          typeof job.name !== "string" ||
+          typeof job.conclusion !== "string",
+      )
+    )
+      throw new CommandError(82, "job pagination did not return every job");
+  }
+  const attempt = reference?.attempt ?? Number(run.run_attempt);
+  validateRun(run);
+  if (
+    jobs.some(
+      (job) =>
+        !Number.isSafeInteger(job.id) ||
+        typeof job.name !== "string" ||
+        job.name.length === 0 ||
+        typeof job.conclusion !== "string",
+    ) ||
+    new Set(jobs.map((job) => job.id)).size !== jobs.length
+  )
+    throw new CommandError(82, "job identities or conclusions are incomplete");
+  if (reference?.kind === "run" && String(run.id) !== reference.id)
+    throw new CommandError(82, "selected run differs from the requested run");
+  if (
+    Number(run.run_attempt) !== attempt ||
+    run.status !== "completed" ||
+    text(obj(run.repository).full_name).toLowerCase() !== repo.toLowerCase() ||
+    text(obj(run.head_repository).full_name).toLowerCase() !== repo.toLowerCase()
+  )
+    throw new CommandError(82, "run attempt, repository or fork identity does not match");
+  const failedJobs = jobs.filter((job) =>
+    ["failure", "timed_out", "startup_failure"].includes(text(job.conclusion)),
+  );
+  const mapped = failedJobs
+    .filter((job) => job.name !== "bkit-tests-check")
+    .map(
+      (job) =>
+        /^bkit-tests-(static|unit|integration|e2e|live|migration)$/.exec(text(job.name))?.[1],
+    );
+  const tiers: CiTier[] = mapped.some((tier) => tier === undefined)
+    ? []
+    : CI_TIERS.filter((tier) => mapped.includes(tier));
+  const selection: CiSelection = {
+    mode: "ci",
+    provider: "github",
+    repo,
+    runId: String(run.id),
+    runAttempt: attempt,
+    runUrl: `https://github.com/${repo}/actions/runs/${run.id}/attempts/${attempt}`,
+    workflowId: String(run.workflow_id ?? ""),
+    workflowPath: text(run.path),
+    headBranch: text(run.head_branch),
+    headSha: text(run.head_sha),
+    conclusion: text(run.conclusion) as Extract<CiSelection, { mode: "ci" }>["conclusion"],
+    redTiers: tiers,
+    via,
+  };
+  if (
+    saved?.mode === "ci" &&
+    (saved.workflowId !== selection.workflowId ||
+      saved.headSha !== selection.headSha ||
+      saved.workflowPath !== selection.workflowPath)
+  )
+    throw new CommandError(82, "saved evidence identity differs from the returned run");
+  return finish(selection, failedJobs);
 }
 
 /** Skip-token scan of a landed commit's body (see `bodySkipToken`). */
@@ -324,14 +724,16 @@ export interface DispatchResult {
 /** Exit code: the re-trigger commit or its push failed. */
 export const EXIT_RETRIGGER_FAILED = 6;
 
-function pushCurrentBranch(cwd: string): boolean {
+/** Push the current branch; the failure text is kept so the gate can name why. */
+function pushCurrentBranch(cwd: string): { ok: boolean; error: string } {
   const branch = git(cwd, ["branch", "--show-current"]);
-  if (!branch) return false;
+  if (!branch) return { ok: false, error: "no branch checked out (detached HEAD)" };
   // Shared branches never force; a feature branch is rewritten only by this run.
   const args = isSharedBranch(branch)
     ? ["push", "origin", branch]
     : ["push", "--force-with-lease", "origin", branch];
-  return runGit(cwd, args).ok;
+  const res = runGit(cwd, args);
+  return { ok: res.ok, error: res.ok ? "" : res.stderr || res.stdout };
 }
 
 /**
@@ -454,10 +856,24 @@ export async function ciDispatchGate(
       return res;
     }
     let pushed: boolean;
+    let failure = "";
     if (rec === null) {
       landed = null;
-      pushed =
-        runGit(o.cwd, ["commit", "--allow-empty", "-m", message]).ok && pushCurrentBranch(o.cwd);
+      const before = git(o.cwd, ["rev-parse", "HEAD"]);
+      const made = runGit(o.cwd, ["commit", "--allow-empty", "-m", message]);
+      if (!made.ok) {
+        pushed = false;
+        failure = made.stderr || made.stdout;
+      } else {
+        const push = pushCurrentBranch(o.cwd);
+        pushed = push.ok;
+        if (!push.ok) {
+          failure = push.error;
+          // The commit never reached the remote: drop it so a re-run does not pile
+          // up orphan re-triggers. --soft restores the index exactly as the commit left it.
+          if (before !== null) runGit(o.cwd, ["reset", "--soft", before]);
+        }
+      }
     } else {
       const made = retriggerCommit(o.cwd, rec, message);
       if (!made.ok) deps.log(`re-trigger commit failed: ${made.error}`);
@@ -469,7 +885,9 @@ export async function ciDispatchGate(
       if (pushed) fetchLanded();
     }
     if (!pushed) {
-      deps.log("re-trigger commit or push failed — no verdict; route to the Failure Path");
+      deps.log(
+        `re-trigger commit or push failed${failure ? `: ${failure}` : ""} — no verdict; route to the Failure Path`,
+      );
       res.phase = "repoll";
       res.handoff = EXIT_RETRIGGER_FAILED;
       return res;
@@ -528,7 +946,7 @@ export const GATE = {
   SUPERSEDED: 14,
   /** The selected run was cancelled. */
   CANCELLED: 15,
-  /** A lane named in bkit.testing.shipGate concluded skipped. */
+  /** A lane named in bkit.testing.ciRequired concluded skipped. */
   LANE_SKIPPED: 16,
   /** --validated is not an ancestor of the head plus bookkeeping-only commits. */
   NOT_BOOKKEEPING: 17,
@@ -600,7 +1018,37 @@ export interface GateResult {
   repo: string | null;
   skippedLanes: string[];
   nonBookkeepingPaths: string[];
+  /**
+   * Exit 12: `{job}/{step}` of each failed step outside the capstone; `{job}/` for a
+   * failed job with no failed step. Empty when the jobs could not be read.
+   */
+  failedSteps: string[];
+  /** Exit 12, and every failed step is one `bkit:generate` fixes (`ciGeneratedSteps`). */
+  regenerable: boolean;
   reason: string;
+}
+
+/** Job and step conclusions that are not a failure. */
+const NOT_FAILED = new Set(["success", "skipped", "neutral"]);
+
+/**
+ * The failed steps of a run's jobs as `{job}/{step}`, the capstone left out: it fails
+ * only because another job did. A job that did not pass with no step that failed (a
+ * runner or setup failure) is `{job}/`, which no list entry matches.
+ */
+export function failedStepsOf(jobs: Array<Record<string, unknown>>, capstone: string): string[] {
+  const out: string[] = [];
+  for (const job of jobs) {
+    const name = text(job.name);
+    if (name === capstone || NOT_FAILED.has(text(job.conclusion))) continue;
+    const steps = arr(job.steps)
+      .map(obj)
+      .filter((st) => st.conclusion !== null && st.conclusion !== undefined)
+      .filter((st) => !NOT_FAILED.has(text(st.conclusion)))
+      .map((st) => `${name}/${text(st.name)}`);
+    out.push(...(steps.length > 0 ? steps : [`${name}/`]));
+  }
+  return out;
 }
 
 interface Run {
@@ -654,9 +1102,11 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     repo: o.repo || null,
     skippedLanes: [],
     nonBookkeepingPaths: [],
+    failedSteps: [],
+    regenerable: false,
     reason: "",
   };
-  const requiredLanes = cfg.shipGateRequiredLanes;
+  const requiredLanes = cfg.ciRequired;
 
   const refuse = (code: number, reason: string, runUrl?: string): GateResult => {
     log(reason);
@@ -726,32 +1176,59 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     return r;
   };
 
-  /** The run's jobs, or the refusal. `--slurp` turns --paginate's one-document-per-page
-   * stream into one array; without it a run with more than 100 jobs hides every page but the first. */
-  const readJobs = (run: Run): Array<Record<string, unknown>> | GateResult => {
+  /** The run's jobs. `--slurp` turns --paginate's one-document-per-page stream into one
+   * array; without it a run with more than 100 jobs hides every page but the first. */
+  const listJobs = (
+    run: Run,
+  ): Array<Record<string, unknown>> | "missing" | "api-error" | "invalid" => {
     const jobsRes = gh([
       "api",
       `/repos/${r.repo}/actions/runs/${run.id}/jobs`,
       "--paginate",
       "--slurp",
     ]);
-    if (jobsRes.missing) return ghMissing();
-    if (!jobsRes.ok) {
+    if (jobsRes.missing) return "missing";
+    if (!jobsRes.ok) return "api-error";
+    const jobsJson = jsonOrUndefined(jobsRes.stdout);
+    if (jobsJson === undefined) return "invalid";
+    const pages = Array.isArray(jobsJson) ? jobsJson : [jobsJson];
+    return pages.flatMap((p) => arr(obj(p).jobs).map(obj));
+  };
+
+  /** The run's jobs, or the refusal. */
+  const readJobs = (run: Run): Array<Record<string, unknown>> | GateResult => {
+    const jobs = listJobs(run);
+    if (jobs === "missing") return ghMissing();
+    if (jobs === "api-error") {
       return apiError(
         `jobs query failed for run ${run.id} — API error (distinct from 'no capstone')`,
         run.html_url,
       );
     }
-    const jobsJson = jsonOrUndefined(jobsRes.stdout);
-    if (jobsJson === undefined) {
+    if (jobs === "invalid") {
       return refuse(
         GATE.API_ERROR,
         `jobs response for run ${run.id} is not valid JSON`,
         run.html_url,
       );
     }
-    const pages = Array.isArray(jobsJson) ? jobsJson : [jobsJson];
-    return pages.flatMap((p) => arr(obj(p).jobs).map(obj));
+    return jobs;
+  };
+
+  /** A failed run's failed steps, and whether `bkit:generate` fixes each one. Jobs that
+   * cannot be read leave it unregenerable; the refusal itself does not change. */
+  const classifyFailure = (run: Run): void => {
+    const jobs = listJobs(run);
+    if (!Array.isArray(jobs)) {
+      log(`failed steps unknown: the jobs of run ${run.id} could not be read`);
+      return;
+    }
+    r.failedSteps = failedStepsOf(jobs, r.capstone);
+    const fixable = ciGeneratedSteps(cfg);
+    r.regenerable = r.failedSteps.length > 0 && r.failedSteps.every((st) => fixable.includes(st));
+    for (const st of r.failedSteps) log(`failed step: ${st}`);
+    if (r.regenerable)
+      log("every failed step is one bkit:generate fixes (bkit.testing.ciGenerated)");
   };
 
   /** Capstone-only verdict: the capstone job's own result, whatever the run and its other jobs did. */
@@ -911,6 +1388,7 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
   if (o.capstoneOnly) return capstoneVerdict(selected);
 
   if (selected.conclusion === "failure") {
+    classifyFailure(selected);
     return refuse(GATE.FAILED, `selected run concluded FAILURE at head ${r.head}`, url);
   }
   if (selected.conclusion === "cancelled") {
@@ -963,7 +1441,7 @@ export function shipGate(o: GateOptions, gh: Gh, log: (m: string) => void): Gate
     );
     const required = r.skippedLanes.filter((l) => requiredLanes.includes(l));
     if (required.length) {
-      log(`declared in bkit.testing.shipGate: ${requiredLanes.join(",")}`);
+      log(`declared in bkit.testing.ciRequired: ${requiredLanes.join(",")}`);
       return refuse(
         GATE.LANE_SKIPPED,
         `required lane(s) concluded 'skipped' at head ${r.head} — vacuous green: ${required.join(", ")}`,
@@ -1108,15 +1586,6 @@ export const EXIT_TRIGGER_FAILED = 5;
 export const EXIT_SKIP_TOKEN = 4;
 /** Exit code: the pushed head's commit message could not be read for the body scan. */
 export const EXIT_SCAN_ERROR = 5;
-
-const wholeNumber = (v: FlagValue, flag: string, fallback: number, min = 0): number => {
-  if (v === undefined) return fallback;
-  const s = String(v);
-  if (!/^[0-9]+$/.test(s) || Number(s) < min) {
-    throw new CommandError(EXIT.USAGE, `--${flag} takes a whole number >= ${min} (got "${s}")`);
-  }
-  return Number(s);
-};
 
 const HEAD_FLAG: FlagSpec = { name: "head", type: "string", help: "commit SHA" };
 const REPO_FLAG: FlagSpec = {
@@ -1354,11 +1823,12 @@ async function runDispatch(ctx: RunContext): Promise<number> {
   if ((file === undefined) !== (step === undefined))
     throw new CommandError(EXIT.USAGE, "--file and --step go together");
   let row: Record<string, unknown> | null = null;
+  let progressLine: string | undefined;
   let transport: Record<string, unknown> | null = null;
   const code = dispatchCode(r, pr, scanResult, ctx.log);
   if (file !== undefined && r.ciDispatch !== null) {
     const status = path.resolve(ctx.cwd, file);
-    row = writeStepRow(
+    const written = writeStepRow(
       ctx.cwd,
       {
         file: status,
@@ -1372,7 +1842,9 @@ async function runDispatch(ctx: RunContext): Promise<number> {
         commit: "none",
       },
       ctx.log,
-    ).row;
+    );
+    row = written.row;
+    progressLine = written.progressLine;
     if (/-close-workflow$/.test(step!)) {
       const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
       restateOutcome(tree, status, String(f.workflow ?? "build"), { ...r.ciDispatch }, ctx.log);
@@ -1392,6 +1864,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
           ciWorkflow: r.ciWorkflow,
           row,
           transport,
+          ...(progressLine === undefined ? {} : { progressLine }),
         });
         return EXIT.NO;
       }
@@ -1413,6 +1886,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
     ciWorkflow: r.ciWorkflow,
     row,
     transport,
+    ...(progressLine === undefined ? {} : { progressLine }),
   });
   return code;
 }
@@ -1483,6 +1957,17 @@ function logResolvedPrRepo(
 
 function runGate(ctx: RunContext): number {
   const f = ctx.flags;
+  let selection: CiSelection | undefined;
+  const selectionFile = str(f.ciSelectionFile);
+  if (selectionFile !== undefined) {
+    const parsed = readJsonFile(path.resolve(ctx.cwd, selectionFile));
+    if (!parsed.ok || !validateCiSelection(parsed.value))
+      throw new CommandError(
+        EXIT.USAGE,
+        "cannot read validated CI selection: unreadable JSON or invalid selection",
+      );
+    selection = parsed.value;
+  }
   const given = [f.head, f.pr, f.squashOf].filter((v) => v !== undefined).length;
   if (given !== 1)
     throw new CommandError(EXIT.USAGE, "give exactly one of --head, --pr, --squash-of");
@@ -1585,7 +2070,7 @@ function runGate(ctx: RunContext): number {
   // A title carrying a skip token would squash into a dev commit CI never runs on.
   const title = pr?.kind === "ok" ? (pr.pr?.title ?? "") : "";
   const titleToken = f.pr !== undefined ? SKIP_CI_TOKEN.exec(title)?.[0] : undefined;
-  const r: GateResult =
+  let r: GateResult =
     titleToken !== undefined
       ? {
           code: GATE.TITLE_SKIP,
@@ -1602,6 +2087,8 @@ function runGate(ctx: RunContext): number {
           repo: str(f.repo) ?? null,
           skippedLanes: [],
           nonBookkeepingPaths: [],
+          failedSteps: [],
+          regenerable: false,
           reason: `PR title '${title}' contains the CI-suppressing token ${titleToken}`,
         }
       : shipGate(
@@ -1623,6 +2110,54 @@ function runGate(ctx: RunContext): number {
         );
   if (titleToken !== undefined) ctx.log(r.reason);
 
+  // Debug retains the configured gate above and also proves the original
+  // selected workflow at the pushed head. A different workflow need not contain
+  // the configured capstone, but its whole run must have completed successfully.
+  let verifyingRun: Run | undefined;
+  if (r.code === EXIT.OK && selection?.mode === "ci") {
+    const repo = str(f.repo) ?? r.repo;
+    let reason = "";
+    let code: number = GATE.FAILED;
+    if (repo !== selection.repo) {
+      reason = "selected CI repository differs from the gated repository";
+    } else {
+      const response = gh([
+        "api",
+        `/repos/${selection.repo}/actions/workflows/${selection.workflowId}/runs?head_sha=${queryValue(head)}`,
+      ]);
+      if (!response.ok) {
+        code = response.missing ? EXIT.USE_MCP : GATE.API_ERROR;
+        reason = "selected workflow verification is unavailable";
+      } else {
+        const payload = jsonOrUndefined(response.stdout);
+        const candidates = arr(obj(payload).workflow_runs)
+          .filter(
+            (value) =>
+              String(obj(value).workflow_id) === selection.workflowId &&
+              text(obj(obj(value).repository).full_name).toLowerCase() ===
+                selection.repo.toLowerCase() &&
+              text(obj(obj(value).head_repository).full_name).toLowerCase() ===
+                selection.repo.toLowerCase() &&
+              obj(value).head_branch === (str(f.branch) ?? selection.headBranch) &&
+              (str(f.event) === undefined || obj(value).event === str(f.event)),
+          )
+          .map(toRun)
+          .filter((run) => run.head_sha === head && run.id !== null);
+        verifyingRun = latest(candidates.filter((run) => run.status === "completed"));
+        if (!verifyingRun) {
+          code = candidates.length > 0 ? GATE.IN_PROGRESS : GATE.NO_RUN;
+          reason = `selected workflow ${selection.workflowId} has no completed run at pushed head ${head}`;
+        } else if (verifyingRun.conclusion !== "success") {
+          reason = `selected workflow verification concluded '${verifyingRun.conclusion}' at pushed head ${head}`;
+        }
+      }
+    }
+    if (reason) {
+      ctx.log(reason);
+      r = { ...r, code, passed: false, overridden: false, reason };
+    }
+  }
+
   if (recordFile !== undefined && r.code !== EXIT.USE_MCP) {
     if (f.capstoneOnly === true) {
       const verdict = r.code === EXIT.OK ? "PASS" : "FAIL";
@@ -1636,7 +2171,17 @@ function runGate(ctx: RunContext): number {
       auditRow(recordFile, "ship-gate-refusal", { exitCode: r.code, head: r.mergeHead });
     }
   }
-  ctx.emit({ ...r });
+  ctx.emit({
+    ...r,
+    ...(selection?.mode === "ci"
+      ? {
+          originalRunId: selection.runId,
+          originalRunUrl: selection.runUrl,
+          verifyingRunId: verifyingRun?.id ?? null,
+          verifyingRunUrl: verifyingRun?.html_url ?? null,
+        }
+      : {}),
+  });
   return r.code;
 }
 
@@ -1966,9 +2511,63 @@ export const runsCommand: CommandSpec = {
   summary:
     "CI runs: wait for one, prove one was dispatched, re-validate and gate a merge on one; auto's start context.",
   verbs: {
+    locate: {
+      summary:
+        "Select and validate the red CI run for the adopted debug branch before local discovery: exit 0 selects red CI, 1 selects local discovery, 2 rejects arguments, 8 rejects ambiguous references, 80 requests read fallback, and 82 requires owner action for unavailable or mismatched evidence.",
+      use: "workflow",
+      flags: [
+        {
+          name: "prompt-file",
+          type: "string",
+          required: true,
+          help: "session prompt; [local] overrides all CI references",
+        },
+        {
+          name: "issue-text-file",
+          type: "string",
+          help: "current issue description and human comments from issues text",
+        },
+        { name: "branch", type: "string", required: true, help: "adopted existing branch" },
+        { name: "repo", type: "string", required: true, help: "owner/repository" },
+        {
+          name: "file",
+          type: "string",
+          help: "active debug status log; saved selection takes precedence over issue discovery",
+        },
+        {
+          name: "selection-out",
+          type: "string",
+          required: true,
+          help: "write the validated candidate selection; does not update active metadata",
+        },
+        {
+          name: "evidence-file",
+          type: "string",
+          help: "normalized fallback JSON: exact request identity, run, complete jobs, complete:true; automatic no-red also identifies workflow and inspected head",
+        },
+      ],
+      output: {
+        selection: "ci | local",
+        runId: "selected run ID, or null",
+        runUrl: "selected attempt URL, or null",
+        runAttempt: "frozen attempt, or null",
+        workflowId: "selected workflow ID, or null",
+        workflowPath: "selected workflow path, or null",
+        headSha: "selected commit, or null",
+        headRelation: "current | ancestor | null; divergent or unknown evidence exits 82",
+        failedJobs: "complete failed-job list",
+        tiers: "known failed tiers; empty when any failed job is unknown",
+        via: "prompt-run | prompt-pr | issue-run | issue-pr | branch, or null",
+        reason: "local selection reason, or null",
+        selectionFile: "validated candidate JSON path",
+      },
+      exitCodes: { 8: "ambiguous winning references" },
+      run: locateCi,
+    },
     wait: {
       summary:
         "Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed.",
+      use: "by-hand",
       flags: [
         { name: "pr", type: "string", help: "PR number: read its check rollup" },
         { ...HEAD_FLAG, help: "commit SHA: read the CI workflow's runs at it (with --branch)" },
@@ -2008,6 +2607,7 @@ export const runsCommand: CommandSpec = {
     dispatch: {
       summary:
         "CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work.",
+      use: "workflow",
       flags: [
         {
           name: "pr",
@@ -2082,6 +2682,8 @@ export const runsCommand: CommandSpec = {
         ciWorkflow: "the CI workflow file the no-ci check looked for",
         row: "--file: the step-done row written (null on a hand-off)",
         transport: "--file: the close-transport row written for a passed verdict, else null",
+        progressLine:
+          "--file: the exact chat progress line after a numbered completion is recorded",
       },
       exitCodes: {
         [EXIT_SKIP_TOKEN]: "the pushed head's body carries a CI-suppression token",
@@ -2093,7 +2695,13 @@ export const runsCommand: CommandSpec = {
     gate: {
       summary:
         "Ship merge gate: the capstone job present and green at the head (exit 0), or why not.",
+      use: "workflow",
       flags: [
+        {
+          name: "ci-selection-file",
+          type: "string",
+          help: "validated original debug selection: additionally require its workflow to succeed at the exact pushed head",
+        },
         { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
         {
           name: "pr",
@@ -2158,6 +2766,12 @@ export const runsCommand: CommandSpec = {
         testedHead: "head the selected (or superseded) run tested",
         runId: "selected run id",
         runUrl: "selected run URL",
+        originalRunId: "--ci-selection-file: original failing run ID",
+        originalRunUrl: "--ci-selection-file: original failing attempt URL",
+        verifyingRunId:
+          "--ci-selection-file: selected workflow's verifying run ID at the pushed head",
+        verifyingRunUrl:
+          "--ci-selection-file: selected workflow's verifying run URL at the pushed head",
         conclusion: "selected run conclusion",
         capstone: "capstone job name",
         ciWorkflow: "CI workflow file",
@@ -2186,6 +2800,7 @@ export const runsCommand: CommandSpec = {
     revalidate: {
       summary:
         "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
+      use: "workflow",
       flags: [
         { name: "pr", type: "string", required: true, help: "the PR number" },
         { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
@@ -2235,6 +2850,7 @@ export const runsCommand: CommandSpec = {
     mirror: {
       summary:
         "Release PR: wait for the branch's push run at the head and copy its capstone verdict.",
+      use: "workflow",
       flags: [
         { ...HEAD_FLAG, required: true, help: "the PR head (same SHA the push run tests)" },
         { name: "branch", type: "string", help: "branch whose push run to mirror (default dev)" },
@@ -2270,6 +2886,7 @@ export const runsCommand: CommandSpec = {
     context: {
       summary:
         "/bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries.",
+      use: "workflow",
       flags: [
         {
           name: "phase",
@@ -2319,6 +2936,7 @@ export const runsCommand: CommandSpec = {
     declared: {
       summary:
         "Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1).",
+      use: "by-hand",
       flags: [],
       output: {
         declared: "the workflow file exists",

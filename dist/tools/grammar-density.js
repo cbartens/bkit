@@ -1,6 +1,6 @@
 // tools/grammar-density.ts — articles (`a`, `an`, `the`) per 1,000 words of agent text.
 //
-// The measure behind `.bkit/core/.bkit/authoring.md` § Notation, Grammar: clipped text
+// The measure behind `.bkit/core/.bkit/authoring.md` § All Agent-Read Files, Plain, complete sentences: clipped text
 // drops articles, plain English keeps them. `pnpm grammar:density` prints one row per
 // group for the working tree, `--rev=<rev>` for a past commit, and `--diff=<base>..<head>`
 // for only the lines `<head>` added. Repo-only tooling, like `tools/instructions.ts`.

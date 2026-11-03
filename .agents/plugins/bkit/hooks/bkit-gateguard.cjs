@@ -34,11 +34,12 @@
 
 // bkit:start
 
-// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 // Antigravity's file-writing tools. `write_to_file` creates or overwrites a whole file;
 // `replace_file_content` edits in place. `Edit` / `Write` are accepted as matchers too.
@@ -114,28 +115,29 @@ function isGateConfig(filePath) {
 function investigationChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] First edit to \`${base}\` this session — confirm the following, and investigate anything you cannot answer before editing:\n` +
-    `- Confirm you read this file and the exact symbols / lines you are about to change.\n` +
-    `- Confirm the precise field names, types and signatures being changed.\n` +
-    `- Confirm the callers / importers the change affects: search code / read source, do not assume.\n` +
-    `- Confirm the symbols / flags / configs the change requires exist: search code / read source, do not assume.\n` +
-    `- Confirm the external data contracts (DB schemas, APIs / SDKs) the change affects: verify the actual shape, do not assume.\n` +
-    `- Confirm the change follows the patterns / conventions already in this file / its neighbours where feasible: read source, do not assume.\n` +
-    `- Confirm the user instructions or plan tasks the change serves: quote them, do not trust memory.\n` +
-    `Advisory — proceed once satisfied.`
+    `[bkit GateGuard] First edit to \`${base}\` this session. Before you edit, confirm each point below, and investigate any you cannot answer:\n` +
+    `- Confirm you read this file and the exact symbols and lines you are about to change.\n` +
+    `- Confirm the exact field names, types and signatures you are changing.\n` +
+    `- Confirm the callers and importers the change affects, by searching or reading the code.\n` +
+    `- Confirm the symbols, flags and configs the change needs exist, by searching or reading the code.\n` +
+    `- Confirm the external data contracts (database schemas, APIs and SDKs) the change affects, by checking their actual shape.\n` +
+    `- Confirm the change follows the patterns and conventions already in this file or its neighbours where feasible, by reading the code.\n` +
+    `- Confirm the user instructions or plan tasks the change serves, by quoting them, not from memory.\n` +
+    `Advisory: proceed once satisfied.`
   );
 }
 
 function reuseChecklist(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] New file \`${base}\` this session — confirm the following, and investigate anything you cannot answer before adding:\n` +
-    `- Confirm existing code does not already provide the capability: search code / read source, do not assume.\n` +
-    `- Confirm existing code cannot be reused / extended to provide the capability: search code / read source, do not assume.\n` +
-    `- Confirm anything the new code supersedes is deleted, not left as duplicate work: verify the removal, do not assume.\n` +
-    `- Confirm the location / naming fits the project architecture / topology / standards: search code / read source, do not assume.\n` +
-    `- Confirm the structures / patterns / conventions follow the closest equivalent files where feasible: read source, do not assume.\n` +
-    `Evolve existing code first. Advisory — proceed once satisfied.`
+    `[bkit GateGuard] New file \`${base}\` this session. Before you add it, confirm each point below, and investigate any you cannot answer:\n` +
+    `- Confirm existing code does not already provide the capability, by searching or reading the code.\n` +
+    `- Confirm existing code cannot be reused or extended to provide the capability, by searching or reading the code.\n` +
+    `- Confirm anything the new code supersedes is deleted rather than left as duplicate work, by checking the removal.\n` +
+    `- Confirm the location and naming fit the project's architecture, topology and standards, by searching or reading the code.\n` +
+    `- Confirm the structures, patterns and conventions follow the closest equivalent files where feasible, by reading the code.\n` +
+    `Evolve existing code first.\n` +
+    `Advisory: proceed once satisfied.`
   );
 }
 
@@ -154,28 +156,42 @@ function isDocsPath(filePath) {
 function docAuthoringAdvisory() {
   return (
     `[bkit GateGuard] docs/*.md authoring:\n` +
-    `- Read this file's header block and follow its purpose and rules if present.\n` +
-    `- Check the .agents/docs.md index first and confirm the topic belongs in this doc, not another.\n` +
-    `- Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.\n` +
-    `- Describe current state / rules, not reasons / history; state what to do, not why. only exceptions: docs where purpose is the record.\n` +
-    `Advisory — proceed once satisfied.`
+    `- Read this file's \`> [!CAUTION]\` header and follow its \`Purpose\` and \`Rules\`.\n` +
+    `- Find the topic's home in the \`.agents/docs.md\` index first, and confirm that it is this doc.\n` +
+    `- Follow \`.bkit/authoring.md\` § All Agent-Read Files and § Docs.\n` +
+    `Advisory: proceed once satisfied.`
   );
 }
 
 function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
-    `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
-    `- Prefer fixing code over weakening any gate.\n` +
-    `- If a change is genuinely warranted, use targeted per-file / per-rule opt-outs over a blanket disable.\n` +
+    `[bkit GateGuard] \`${base}\` quality-gate config (lint, format, types, tests or slop):\n` +
+    `- Prefer fixing the code over weakening any gate.\n` +
+    `- If a change is genuinely warranted, use targeted opt-outs per file or per rule rather than a blanket disable.\n` +
     `- ALWAYS get explicit human sign-off for any quality-gate config change.\n` +
-    `- Inside \`/bkit-*\` workflows no sign-off is available: record the block and continue; NEVER self-approve the opt-out.\n` +
-    `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
+    `- If you are inside a \`/bkit-*\` workflow, where no sign-off is available:\n` +
+    `  - Record the block and continue.\n` +
+    `  - NEVER self-approve the opt-out.\n` +
+    `With BKIT_ALLOW_CONFIG_EDIT=1 set, this file gets the normal first-edit or new-file checklist instead.\n` +
+    `Advisory: proceed once satisfied.`
   );
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function stateDir() {
-  return path.join(os.tmpdir(), "bkit-gateguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-gateguard-${process.getuid()}` : "bkit-gateguard",
+  );
+}
+
+// (session, file) warnings this process could not write to its state file, standing in
+// for it for the process's life.
+const warnedInProcess = new Set();
+
+function inProcessKey(sessionId, filePath) {
+  return JSON.stringify([sessionId, filePath]);
 }
 
 // Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
@@ -204,6 +220,7 @@ function readState(sessionId) {
 }
 
 function alreadyWarned(sessionId, filePath) {
+  if (warnedInProcess.has(inProcessKey(sessionId, filePath))) return true;
   return Boolean(readState(sessionId).files[filePath]);
 }
 
@@ -232,6 +249,9 @@ function gcOldState() {
 // The advisory for the first touch of `filePath` this session, or null when GateGuard
 // is off, the path is unusable, or this session was already warned about it. Records
 // the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
+// Fail-open: a state-file write error still returns the checklist and the process
+// remembers it, as advisory only — a deny no later call can see was given would block
+// every retry of the edit.
 function firstTouchAdvice(filePath, sessionId, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
@@ -252,15 +272,20 @@ function firstTouchAdvice(filePath, sessionId, isNewFile) {
     ? `${baseContext}\n\n${docAuthoringAdvisory()}`
     : baseContext;
 
-  markWarned(sid, filePath);
-  gcOldState();
+  try {
+    markWarned(sid, filePath);
+    gcOldState();
+  } catch {
+    warnedInProcess.add(inProcessKey(sid, filePath));
+    return { mode: "advisory", context };
+  }
 
   return { mode: mode === "deny" ? "deny" : "advisory", context };
 }
 
 // --- Antigravity hook contract: identical in bkit's three Antigravity hooks (bkit renders
-// it from one source). Needs `fs`, `os` and `path` in scope; the host's own code above
-// declares them.
+// it from one source). Needs `fs`, `os`, `path` and `crypto` in scope; the host's own code
+// above declares them.
 //
 // Live-verified on the agy CLI: PreToolUse stdin is `{ conversationId, toolCall: { name,
 // args }, workspacePaths, stepIdx, ... }` — no tool_name / tool_input / session_id / cwd.
@@ -301,29 +326,44 @@ function agCallSignature(toolName, input) {
 }
 
 // One record per (hook, conversation): two hooks on the same call each let its retry through.
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function agRetryFile(hook, sessionId) {
   const safe =
     typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
-  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(
+    os.tmpdir(),
+    `bkit-antigravity-retry${user}`,
+    `${hook}.${safe || "no-session"}.json`,
+  );
 }
 
 /**
  * Delivers an advisory the only way Antigravity shows one to the model: deny the call
  * with the advisory as the reason, once. The identical call right after is the agent's
- * retry and is allowed.
+ * retry and is allowed. Fail-open: a retry-store error allows the call — each call is
+ * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
-  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === signature) {
-    fs.rmSync(file, { force: true });
+  // One-way digest of the call signature: the retry store is world-readable and has no
+  // TTL, so no tool argument (a shell command line with an inline secret, a file path)
+  // may rest on disk in cleartext.
+  const digest = crypto.createHash("sha256").update(signature).digest("hex");
+  try {
+    const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    if (last === digest) {
+      fs.rmSync(file, { force: true });
+      return { decision: "allow" };
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, digest, "utf-8");
+  } catch {
     return { decision: "allow" };
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, signature, "utf-8");
   return {
     decision: "deny",
-    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+    reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
   };
 }
 

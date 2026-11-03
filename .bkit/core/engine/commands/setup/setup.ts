@@ -149,6 +149,7 @@ export const setupCommand: CommandSpec = {
   verbs: {
     "protect-main": {
       summary: "Apply bkit's branch protection to main, requiring the capstone check.",
+      use: "by-hand",
       flags: [
         {
           name: "dry-run",

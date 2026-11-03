@@ -98,7 +98,7 @@ function gitDenyRule(g) {
   if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
     return {
       what: "git force-push",
-      fix: "Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
+      fix: "NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
     };
   }
   return null;
@@ -153,13 +153,13 @@ function denyRule(c) {
   ) {
     return {
       what: "recursive delete of a filesystem root",
-      fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
     };
   }
   if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
     return {
       what: "chmod -R 777 on the filesystem root",
-      fix: "Do not world-writable-chmod the filesystem root.",
+      fix: "NEVER make the filesystem root world-writable.",
     };
   }
   return null;

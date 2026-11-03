@@ -648,6 +648,70 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
 }
 
 /**
+ * CI template copies named without the `bkit-` prefix: unprefixed path → template name, both
+ * relative to the repo root.
+ */
+const CI_SCRIPT_DIR = "scripts/ci";
+const ciScriptUnit = (...files: string[]): ReadonlyArray<readonly [string, string]> =>
+  files.map((file) => {
+    const slash = file.lastIndexOf("/");
+    const dir = slash === -1 ? "" : file.slice(0, slash + 1);
+    return [`${CI_SCRIPT_DIR}/${file}`, `${CI_SCRIPT_DIR}/${dir}bkit-${file.slice(slash + 1)}`];
+  });
+
+/**
+ * The renamed files grouped into units that move together: a script, its test and the
+ * data file it reads. `bkit upgrade` moves a unit only whole.
+ */
+export const CI_SCRIPT_UNITS: ReadonlyArray<ReadonlyArray<readonly [string, string]>> = [
+  ciScriptUnit("check-capstone.mjs", "check-capstone.test.mjs"),
+  ciScriptUnit(
+    "check-dependency-audit.mjs",
+    "check-dependency-audit.test.mjs",
+    "accepted-advisories.json",
+  ),
+  ciScriptUnit(
+    "check-accepted-divergences.mjs",
+    "check-accepted-divergences.test.mjs",
+    "accepted-divergences.json",
+  ),
+  ciScriptUnit("lanes/resolve-push-base.mjs", "lanes/resolve-push-base.test.mjs"),
+];
+
+export const CI_SCRIPT_RENAMES: ReadonlyArray<readonly [string, string]> = CI_SCRIPT_UNITS.flat();
+
+/**
+ * Detect CI template copies named without the `bkit-` prefix. They keep working while every
+ * reference uses the same old name; the risk is renaming a file without its references — the
+ * CI dependency-audit step is guarded by `hashFiles(...)` and silently skips. The copies are the
+ * consumer's: `bkit upgrade` moves the unedited ones (`migrateBrandedTemplateFiles`), and this
+ * advisory names the ones it leaves (edited, or a `bkit-` target already present); the action
+ * inlines the rename and the reference edit.
+ */
+export function detectCiScriptsOldNames(cwd: string): PreflightFinding | null {
+  const found = CI_SCRIPT_RENAMES.filter(([oldPath]) => fs.existsSync(path.join(cwd, oldPath)));
+  if (found.length === 0) return null;
+  const moves = found
+    .filter(([, newPath]) => !fs.existsSync(path.join(cwd, newPath)))
+    .map(([oldPath, newPath]) => `    git mv ${oldPath} ${newPath}`);
+  const both = found
+    .filter(([, newPath]) => fs.existsSync(path.join(cwd, newPath)))
+    .map(([oldPath, newPath]) => `    ${oldPath} (also present: ${newPath})`);
+  const pairs = found.map(([oldPath, newPath]) => `${oldPath} → ${newPath}`).join(", ");
+  return {
+    id: "ci-scripts-old-names",
+    severity: "advisory",
+    detect: `${found.length} CI template ${found.length === 1 ? "copy uses its" : "copies use their"} old name without the \`bkit-\` prefix: ${found.map(([oldPath]) => `\`${oldPath}\``).join(", ")}. They work while every reference uses the old name too; renaming a file without its references makes the CI dependency-audit step skip silently.`,
+    action:
+      (moves.length > 0 ? `Rename:\n\n${moves.join("\n")}\n\n` : "") +
+      (both.length > 0
+        ? `Both names present — move any edits (accepted advisories, registry rows) into the new file, then \`git rm\` the old one:\n\n${both.join("\n")}\n\n`
+        : "") +
+      `In the same commit, replace each old path with its new one in \`.github/workflows/*.yml\`, \`.husky/pre-push\`, \`package.json\` and the files under \`scripts/ci/\` (the scripts name their JSON files): ${pairs}. Then \`grep -rn -E "(^|[^a-z-])(check-capstone|check-dependency-audit|check-accepted-divergences|accepted-advisories|accepted-divergences|resolve-push-base)(\\.test)?\\.(mjs|json)" .github .husky package.json scripts/ci\` prints nothing.`,
+  };
+}
+
+/**
  * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
  * outputs (`should_force_build` / `should_run_full`). The bkit-ci.yml template ships these
  * primitives only — without a consumer-side gate reading the outputs, the force-tag
@@ -705,8 +769,7 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
     action:
       "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
       "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
-      "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n" +
-      "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
+      "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n\n" +
       `If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the \`Detect Direct Push\` step from ${ciRel}. Note this also disables \`[force cache]\` / \`[force build]\` / \`[force full]\` tag detection.`,
   };
 }

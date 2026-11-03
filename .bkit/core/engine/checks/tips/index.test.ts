@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PreflightFinding } from "../before/index";
 import type { SuppressionNote } from "../after/suppression";
@@ -21,6 +22,7 @@ import {
   setupTipsChecklistLines,
   setupTipsMarkdownLines,
   silenceLine,
+  tipsBase,
   tipsIntro,
 } from "./index";
 
@@ -44,9 +46,54 @@ const ignore = (ids: string[]) =>
 
 beforeEach(() => {
   cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tips-"));
+  fs.writeFileSync(path.join(cwd, "package.json"), "{}");
 });
 afterEach(() => {
   fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+describe("tipsBase", () => {
+  it("is null for a directory that is not a checkout and holds no manifest", () => {
+    fs.rmSync(path.join(cwd, "package.json"));
+    expect(tipsBase(cwd)).toBeNull();
+  });
+
+  it("returns the repo root from a nested directory, not the directory itself", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd }).status).toBe(0);
+    const nested = path.join(cwd, "docs", "plans");
+    fs.mkdirSync(nested, { recursive: true });
+    expect(tipsBase(nested)).toBe(fs.realpathSync(cwd));
+  });
+
+  it("returns the main checkout from a worktree, not the worktree", () => {
+    const g = (...args: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd });
+    expect(g("init", "-q").status).toBe(0);
+    g("add", "package.json");
+    expect(g("commit", "-q", "-m", "init").status).toBe(0);
+    const wt = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tips-wt-"));
+    try {
+      expect(g("worktree", "add", "-q", wt).status).toBe(0);
+      expect(tipsBase(wt)).toBe(fs.realpathSync(cwd));
+    } finally {
+      fs.rmSync(wt, { recursive: true, force: true });
+    }
+  });
+
+  it("returns the worktree's top level when the main repo is bare, never the bare repo's parent", () => {
+    // `cwd` (the bare repo's parent folder) holds an unrelated package.json.
+    const g = (dir: string, ...args: string[]) =>
+      spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd: dir });
+    const seed = path.join(cwd, "seed");
+    expect(g(cwd, "init", "-q", seed).status).toBe(0);
+    expect(g(seed, "commit", "-q", "--allow-empty", "-m", "init").status).toBe(0);
+    expect(g(cwd, "clone", "-q", "--bare", seed, "repo.git").status).toBe(0);
+    const wt = path.join(cwd, "wt");
+    expect(g(path.join(cwd, "repo.git"), "worktree", "add", "-q", wt).status).toBe(0);
+    const nested = path.join(wt, "docs");
+    fs.mkdirSync(nested);
+    expect(tipsBase(nested)).toBe(fs.realpathSync(wt));
+  });
 });
 
 describe("matchesAdvisory / isTipSilenced", () => {
@@ -63,6 +110,11 @@ describe("matchesAdvisory / isTipSilenced", () => {
     expect(isTipSilenced(t, new Set(["blank-key-1"]))).toBe(true);
     expect(isTipSilenced(t, new Set(["other"]))).toBe(false);
   });
+
+  it("never silences an unsilenceable tip", () => {
+    const t = fake("t", true, { advisories: ["adv-x"], silenceable: false });
+    expect(isTipSilenced(t, new Set(["t", "adv-x"]))).toBe(false);
+  });
 });
 
 describe("collectTips", () => {
@@ -70,6 +122,15 @@ describe("collectTips", () => {
 
   it("keeps firing tips in catalogue order", () => {
     expect(collectTips(cwd, catalogue).tips.map((t) => t.id)).toEqual(["a", "c"]);
+  });
+
+  it("fires nothing and hides the star when there is no checkout to check", () => {
+    fs.rmSync(path.join(cwd, "package.json"));
+    expect(collectTips(cwd, [fake("a", true)])).toEqual({
+      tips: [],
+      suppressed: [],
+      star: false,
+    });
   });
 
   it("keeps the star line until its id is ignored", () => {
@@ -197,6 +258,15 @@ describe("formatTips — star line", () => {
     expect(formatTips(tips, { star: false })).not.toContain(STAR_TIP);
     expect(formatTips([], { star: false })).toBe("");
     expect(formatTips([], { workflow: "ship", star: false })).toBe("");
+  });
+
+  it("leaves an unsilenceable tip out of the silence line", () => {
+    const pinned = fake("up", true, { silenceable: false });
+    const out = formatTips([pinned], { workflow: "ship", star: true });
+    expect(out.endsWith(silenceLine([STAR_TIP_ID])), out).toBe(true);
+    expect(formatTips([pinned], { workflow: "audit", star: true })).not.toContain(
+      "Want to silence",
+    );
   });
 
   it("is left out of audit and utility output, which often run back to back", () => {

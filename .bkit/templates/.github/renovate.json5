@@ -35,12 +35,17 @@
   // `dev`'s config over `main`'s for dev-targeted runs, so config edits on `dev`
   // apply to them. This option is itself read from `main`, so it needs one merge
   // to `main` before dev-side config edits apply.
+  // The merge appends list options (`customManagers`, `packageRules`) instead of
+  // replacing them: each custom manager runs twice, so the dashboard lists its
+  // files twice and the run logs "Cannot find replaceString" for the second pass.
+  // PRs still open once. A rule deleted on `dev` keeps applying until `main` drops it.
   // See docs/deployments.md § Dependency updaters.
   useBaseBranchConfig: "merge",
 
-  // Weekly batched runs. CVE-driven updates are not held to this schedule
-  // (`osvVulnerabilityAlerts` below).
-  schedule: ["before 6am on Monday"],
+  // Weekly batched runs: every hour of Monday (UTC). The daily bkit-renovate.yml cron
+  // can start hours after its set time, so a window of a few hours would miss it.
+  // CVE-driven updates are not held to this schedule (`osvVulnerabilityAlerts` below).
+  schedule: ["* * * * 1"],
   timezone: "UTC",
 
   // CVE alerts → Renovate opens a PR immediately, outside the weekly schedule.
@@ -71,10 +76,11 @@
 
   // Lockfile maintenance — picks up indirect-dependency updates that a
   // direct-dependency bump alone wouldn't catch. Monthly: it rewrites the whole
-  // lockfile, so a weekly PR is mostly churn.
+  // lockfile, so a weekly PR is mostly churn. Every hour of the 1st (UTC), for the
+  // same late-start reason as `schedule` above.
   lockFileMaintenance: {
     enabled: true,
-    schedule: ["before 6am on the first day of the month"],
+    schedule: ["* * 1 * *"],
   },
 
   // Rebase a Renovate PR only when it conflicts. The default re-bases every open PR
@@ -123,7 +129,8 @@
   //   bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 (installer-script version argument)
   // Pins paired with a checksum (Vale, gh, jq, Node, actionlint) get the new VERSION
   // from Renovate, but the sha256 beside it stays old: update it by hand in the same
-  // PR, or the install fails closed. See the NOTE in the docker images rule below.
+  // PR, or the install fails closed. CI's Check Pinned Checksums step (`bkit ci pins`)
+  // fails the PR until it matches. See the NOTE in the docker images rule below.
   // ─────────────────────────────────────────────────────────────────────
   customManagers: [
     {
@@ -293,6 +300,27 @@
       matchManagers: ["dockerfile"],
       groupName: "docker images",
       automerge: false,
+    },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Pins the `customManagers` entry finds (Dockerfile, bkit-cloud.md, workflows,
+    // scripts) land in ONE reviewed PR, so their hand-edited checksums are fixed
+    // once. The Dockerfile pnpm pin instead joins the non-major group, so it moves
+    // in the same PR as `packageManager` in package.json.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchManagers: ["custom.regex"],
+      groupName: "pinned tools",
+      automerge: false,
+    },
+    {
+      matchManagers: ["custom.regex"],
+      matchDepNames: ["pnpm"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "non-major dependencies",
+      automerge: true,
+      automergeType: "pr",
+      platformAutomerge: true,
     },
   ],
 

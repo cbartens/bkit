@@ -27,11 +27,13 @@ import {
 import {
   buildDepUpdaterSetupAdvisory,
   detectBkitStubs,
+  detectValeMissing,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
 } from "./tools.js";
 import {
   detectBkitCloudYmlAlwaysTrueGate,
+  detectCiScriptsOldNames,
   detectCiYmlCapstoneContractDrift,
   detectCiYmlMissingActionlint,
   detectCiYmlRunInjection,
@@ -172,7 +174,7 @@ export function renderAdvisoriesMarkdown(
   // This is a generated, gitignored artifact — not authored prose. Advisory
   // strings (and reproduced config snippets like `.vale.ini`'s `write-good.So =
   // NO`) legitimately contain sentence-initial "So" and slop tokens. The shipped
-  // `lint:prose` globs on-disk `.agents/*.md`, so without this whole-file Vale
+  // `bkit:lint:prose` globs on-disk `.agents/*.md`, so without this whole-file Vale
   // skip the husky hooks fail on a file the consumer cannot edit.
   lines.push("<!-- vale off -->");
   lines.push("");
@@ -362,7 +364,7 @@ export function runPostInstallCheck(
   const ghMcpToken = detectGhMcpToken(cwd);
   if (ghMcpToken) phase3.push(ghMcpToken);
 
-  // Main branch protection — bkit's PR-base gates (build Step 14, ship Step 2)
+  // Main branch protection — bkit's PR-base gates (build Step 16, ship Step 2)
   // assert feat/* PRs target dev. Enforcing it at the GitHub layer needs branch
   // protection on main restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
@@ -436,6 +438,10 @@ export function runPostInstallCheck(
   const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
   if (cloudGate) phase3.push(cloudGate);
 
+  // CI template copies named without the `bkit-` prefix.
+  const ciScriptNames = detectCiScriptsOldNames(cwd);
+  if (ciScriptNames) phase3.push(ciScriptNames);
+
   // Self-installed opencode.yml (/oc handler) drifted from the installed opencode provider —
   // it hardcodes a model + secret that `bkit install --opencode=` does not rewrite. Not for
   // claude.yml (its @claude handler is provider-fixed). bkit-cloud.yml self-syncs, so exempt.
@@ -473,6 +479,10 @@ export function runPostInstallCheck(
   // Consumer composed run-levels on bkit primitives (else docs/deployments.md matrix is doc-only).
   const runLevels = detectRunLevelsNotComposed(cwd);
   if (runLevels) phase3.push(runLevels);
+
+  // vale missing while bkit:lint:prose runs the prose gate
+  const valeMissing = detectValeMissing(cwd);
+  if (valeMissing) phase3.push(valeMissing);
 
   // vale not synced
   const vale = detectValePackageNotSynced(cwd);

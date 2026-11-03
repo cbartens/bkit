@@ -1,30 +1,43 @@
 // bkit ci — the gates CI and the git hooks run.
 //
-// `slop` — the enforcing slop gate (`slop:delta`). `lint:slop` (`slop-scan scan`) only
+// `slop` — the enforcing slop gate (`bkit:slop:delta`). `lint:slop` (`slop-scan scan`) only
 // reports. This gate checks the base ref out as a detached worktree, runs
 // `slop-scan delta` against the working tree, and fails when the change makes the repo
 // worse on NET: more findings, or a higher score. It gates on the net figures, not on
 // "added": slop-scan's delta is keyed by position, so editing above a pre-existing
 // finding reports it as resolved at the old line and added at the new one, netting to
-// zero. The pre-existing baseline is never the change's to fix.
+// zero. The pre-existing baseline is never the change's to fix. On failure it names each
+// net-new or worsened finding (`path:line`, rule, message), with line shifts dropped.
 //
-// `prose` — the prose gate (`lint:prose`): Vale over the markdown files the globs
-// select. Skips with a log line when vale is not installed; restores the gitignored
-// write-good package from the main worktree (else `vale sync`) when it is missing.
+// `prose` — the prose gate (`bkit:lint:prose`): Vale over the markdown files the globs
+// select. Restores the gitignored write-good package from the main worktree (else
+// `vale sync`) when it is missing, and fails when vale or write-good is unavailable.
 //
 // `skip-token` — whether a commit message carries a GitHub skip-CI token
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
 //
-// `min-push` — whether every file a push changes matches `bkit.testing.minPushPaths`, so
+// `min-push` — whether every file a push changes is one bkit's workflows write (ship's bookkeeping
+// allow-list, the plans tree) or one `bkit.testing.minPushPaths` / `ciSkipPaths` adds, so
 // `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
 // GitHub reads off the last commit only).
+//
+// `bookkeeping-push` — whether a feature-branch push adds bookkeeping only on top of the
+// head the remote holds (ship's `--scope=pr` allow-list, the one `bkit ledgers
+// only-bookkeeping` and the merge gate's carry-forward read). The `.husky/pre-push`
+// CI-suppressor guard lets a `[skip ci]` head through to an open PR on exit 0: the PR's
+// checks at the remote head still cover every line of code.
+//
+// `pins` — downloads each `*_VERSION` + `*_SHA256` pinned tool the files name and checks
+// the hash, so a version-only Renovate bump goes red in its own PR (`pins.ts`).
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { readBkitConfig } from "../../shared/settings.js";
 import { CommandError, commitMessage, EXIT, git, parseJson, runGit, SKIP_CI_TOKEN, } from "../lib.js";
-import { changedOutside } from "../workflow/ledgers.js";
+import { bookPathspecs, changedOutside, checkOnlyBookkeeping, globPathspecs, } from "../workflow/ledgers.js";
+import { pins } from "./pins.js";
+import { hasVerifiedIncrement, runPushGate } from "./push-gate.js";
 /** Exit code: slop-scan could not be started (not installed, not executable). */
 export const EXIT_SLOP_UNAVAILABLE = 3;
 /** Exit code: slop-scan ran but failed, or its JSON lacks the fields the gate reads. */
@@ -104,6 +117,70 @@ export function readSummary(raw) {
     return out;
 }
 export const gateFails = (s) => s.netFindingCount > 0 || s.netRepoScore > SCORE_EPSILON;
+const asArray = (v) => (Array.isArray(v) ? v : []);
+function toFinding(status, c) {
+    const loc = c.head?.primaryLocation ?? c.head?.locations?.[0];
+    return {
+        status,
+        path: typeof c.path === "string" ? c.path : null,
+        line: typeof loc?.line === "number" ? loc.line : null,
+        ruleId: String(c.ruleId),
+        message: typeof c.head?.message === "string" ? c.head.message : "",
+    };
+}
+/**
+ * The net-new and worsened findings in a `slop-scan delta --json` report. Grouped by file
+ * and rule: a group that resolves as many as it adds is a line shift and is dropped; in a
+ * group that adds more, each resolved finding cancels one added finding with the same
+ * message, and the rest are listed. Empty when the report carries no change lists.
+ */
+export function netNewFindings(raw) {
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return [];
+    const report = parsed.value;
+    const changes = [
+        ...asArray(report?.paths).flatMap((p) => asArray(p?.changes)),
+        ...asArray(report?.repoChanges),
+    ];
+    const groups = new Map();
+    const findings = [];
+    for (const c of changes) {
+        if (c.status === "worsened")
+            findings.push(toFinding("worsened", c));
+        if (c.status !== "added" && c.status !== "resolved")
+            continue;
+        const key = `${String(c.path)}\0${String(c.ruleId)}`;
+        const group = groups.get(key) ?? { added: [], resolved: [] };
+        groups.set(key, group);
+        group[c.status].push(c);
+    }
+    for (const { added, resolved } of groups.values()) {
+        if (added.length <= resolved.length)
+            continue;
+        const left = [...added];
+        for (const r of resolved) {
+            const i = left.findIndex((a) => a.head?.message === r.base?.message);
+            if (i >= 0)
+                left.splice(i, 1);
+        }
+        findings.push(...left.map((c) => toFinding("added", c)));
+    }
+    return findings;
+}
+/** One log line per finding: status, `path:line`, rule, message. */
+export function formatFindings(findings) {
+    if (findings.length === 0) {
+        return ["slop-scan's report names no single net-new finding; the rise is spread across files."];
+    }
+    return [
+        "Net-new / worsened findings:",
+        ...findings.map((f) => {
+            const where = `${f.path ?? "(repo)"}${f.line === null ? "" : `:${f.line}`}`;
+            return `  ${f.status.padEnd(8)}  ${where}  ${f.ruleId}  ${f.message}`.trimEnd();
+        }),
+    ];
+}
 /** Whether a failed slop-scan run means it never started, rather than that it failed. */
 function couldNotRun(res, viaNpx) {
     if (res.error?.code === "ENOENT")
@@ -154,7 +231,14 @@ function slop(ctx) {
         throw new CommandError(EXIT.USAGE, `not inside a git repository: ${ctx.cwd}`);
     const given = typeof ctx.flags.base === "string" ? ctx.flags.base : undefined;
     const baseRef = resolveBaseRef(ctx.cwd, given || process.env.SLOP_BASE_REF || undefined);
-    const empty = { added: 0, resolved: 0, worsened: 0, netFindingCount: 0, netScore: 0 };
+    const empty = {
+        added: 0,
+        resolved: 0,
+        worsened: 0,
+        netFindingCount: 0,
+        netScore: 0,
+        findings: [],
+    };
     const sha = runGit(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`]);
     if (!sha.ok) {
         ctx.log(`base ref '${baseRef}' not found locally — fetch it (CI needs fetch-depth: 0). Skipping.`);
@@ -217,8 +301,9 @@ function slop(ctx) {
         ctx.log(`added ${s.addedCount}, resolved ${s.resolvedCount}, worsened ${s.worsenedCount}; ` +
             `net findings ${s.netFindingCount}, net score ${s.netRepoScore.toFixed(2)}`);
         const failed = gateFails(s);
+        const findings = netNewFindings(stdout);
         for (const line of failed
-            ? FAIL_GUIDANCE
+            ? [...formatFindings(findings), ...FAIL_GUIDANCE]
             : ["OK — no net-new or worsened findings (baseline line-shifts ignored)."]) {
             ctx.log(line);
         }
@@ -232,6 +317,7 @@ function slop(ctx) {
             worsened: s.worsenedCount,
             netFindingCount: s.netFindingCount,
             netScore: s.netRepoScore,
+            findings,
         });
         return failed ? EXIT.NO : EXIT.OK;
     }, removeWorktree);
@@ -347,11 +433,16 @@ function prose(ctx) {
         ctx.emit({ passed: true, skipped, files: 0 });
         return EXIT.OK;
     };
+    const unavailable = (skipped, message) => {
+        ctx.log(message);
+        ctx.emit({ passed: false, skipped, files: 0 });
+        return EXIT_VALE_FAILED;
+    };
     if (!onPath("vale")) {
-        return skip("vale-missing", "vale not installed - skipping prose lint (install vale, then run vale sync, to enable)");
+        return unavailable("vale-missing", "vale not installed - prose lint unavailable (install vale, then run vale sync)");
     }
     if (!restoreWriteGood(ctx)) {
-        return skip("write-good-missing", "WARNING - PROSE LINT SKIPPED: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). The prose gate is NOT enforcing here - run: vale sync");
+        return unavailable("write-good-missing", "PROSE LINT UNAVAILABLE: vale is installed but .vale/styles/write-good could not be restored (main-worktree copy and vale sync both failed). Run: vale sync");
     }
     const files = proseFiles(ctx.cwd, globs);
     if (files.length === 0) {
@@ -383,8 +474,19 @@ function skipToken(ctx) {
 // ---------------------------------------------------------------------------
 // min-push
 // ---------------------------------------------------------------------------
-/** `bkit.testing.minPushPaths` as git pathspecs: `:(glob)` unless an entry carries its own magic. */
-export const minPushPathspecs = (paths) => paths.map((p) => (p.startsWith(":") ? p : `:(glob)${p}`));
+/**
+ * The min-push pathspecs: ship's `pr` bookkeeping allow-list for every month and feature
+ * (the same list `bkit ci bookkeeping-push` and the ship gate accept untested, including
+ * `bkit.testing.ciSkipPaths`), the plans tree bkit's workflows write, and whatever the repo
+ * adds in `bkit.testing.minPushPaths` (`:(glob)` unless an entry carries its own magic).
+ * The engine hardcodes no consumer file: the floor is what bkit itself writes.
+ */
+export function minPushPathspecs(cfg) {
+    return [
+        ...bookPathspecs("*", "*", "pr", cfg.ciSkipPaths),
+        ...globPathspecs(["docs/plans/**", ...cfg.minPushPaths]),
+    ];
+}
 /** Where a pushed commit's range starts: its merge-base with origin/dev, else origin/main. */
 export function pushBase(cwd, sha) {
     for (const cand of BASE_CANDIDATES) {
@@ -403,14 +505,20 @@ function minPush(ctx) {
     const given = ctx.flags.ref;
     const refs = Array.isArray(given) && given.length > 0 ? given.map(String) : ["HEAD"];
     const baseFlag = typeof ctx.flags.base === "string" && ctx.flags.base ? ctx.flags.base : null;
-    const paths = readBkitConfig(top.stdout).minPushPaths;
-    const specs = minPushPathspecs(paths);
+    const paths = minPushPathspecs(readBkitConfig(top.stdout));
+    const updates = ctx.flags.update;
+    if (Array.isArray(updates) && updates.length > 0) {
+        if ((Array.isArray(given) && given.length > 0) || baseFlag) {
+            throw new CommandError(EXIT.USAGE, "--update cannot be combined with --ref or --base");
+        }
+        return minPushUpdates(ctx, top.stdout, updates.map(String), paths);
+    }
     const changed = new Set();
     const outside = new Set();
     for (const ref of refs) {
         const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
         const base = sha ? (baseFlag ?? pushBase(ctx.cwd, sha)) : null;
-        const diff = sha && base ? changedOutside(top.stdout, base, sha, specs) : null;
+        const diff = sha && base ? changedOutside(top.stdout, base, sha, paths) : null;
         if (!diff?.ok) {
             const why = !sha
                 ? `cannot read commit '${ref}'`
@@ -437,9 +545,6 @@ function minPush(ctx) {
         });
         return code;
     };
-    if (paths.length === 0) {
-        return result("no-paths", EXIT.NO, "bkit.testing.minPushPaths is empty — not a min push");
-    }
     if (changed.size === 0) {
         return result("no-changes", EXIT.NO, "the push changes no files — not proven a min push");
     }
@@ -449,12 +554,108 @@ function minPush(ctx) {
     }
     return result(null, EXIT.OK, `all ${changed.size} changed files match min-push paths`);
 }
+function minPushUpdates(ctx, cwd, updates, paths) {
+    const changed = new Set();
+    const outside = new Set();
+    let unknown = false;
+    let failed = false;
+    for (const update of updates) {
+        const pair = /^([0-9a-f]{40}|[0-9a-f]{64}):([0-9a-f]{40}|[0-9a-f]{64})$/.exec(update);
+        if (!pair)
+            throw new CommandError(EXIT.USAGE, "--update requires <old-sha>:<new-sha>");
+        const oldSha = pair[1];
+        const newSha = pair[2];
+        const isNew = /^0+$/.test(oldSha);
+        if (!isNew && !runGit(cwd, ["merge-base", "--is-ancestor", oldSha, newSha]).ok) {
+            failed = true;
+            unknown = true;
+            continue;
+        }
+        const increment = isNew ? null : changedOutside(cwd, oldSha, newSha, paths);
+        const base = pushBase(cwd, newSha);
+        const whole = base ? changedOutside(cwd, base, newSha, paths) : null;
+        if (hasVerifiedIncrement(cwd, oldSha, newSha, paths)) {
+            if (increment?.ok)
+                for (const file of increment.changed)
+                    changed.add(file);
+            ctx.log(`${oldSha}..${newSha}: covered by a successful full push gate`);
+            continue;
+        }
+        if (whole?.ok) {
+            for (const file of whole.changed)
+                changed.add(file);
+            for (const file of whole.outside)
+                outside.add(file);
+            if (whole.changed.length > 0 &&
+                whole.outside.length === 0 &&
+                (isNew || (increment?.ok && increment.changed.length > 0)))
+                continue;
+        }
+        else
+            unknown = true;
+        failed = true;
+    }
+    const reason = !failed ? null : unknown ? "unknown" : outside.size ? "outside" : "no-changes";
+    ctx.emit({
+        minPush: !failed,
+        reason,
+        changed: changed.size,
+        outside: [...outside].sort(),
+        paths,
+    });
+    ctx.log(failed
+        ? "push is not covered by minimum paths or verified full-gate proof"
+        : "every update qualifies for the minimum push gate");
+    return !failed ? EXIT.OK : unknown ? EXIT_RANGE_UNKNOWN : EXIT.NO;
+}
+// ---------------------------------------------------------------------------
+// bookkeeping-push
+// ---------------------------------------------------------------------------
+/** A feature branch, as the workflows name one; the FID is the slug after `feat/`. */
+const FEAT_BRANCH = /^feat\/([a-z0-9][a-z0-9-]*)$/;
+function bookkeepingPush(ctx) {
+    const top = runGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+    if (!top.ok)
+        throw new CommandError(EXIT.USAGE, `not inside a git repository: ${ctx.cwd}`);
+    const from = String(ctx.flags.from);
+    const toRef = typeof ctx.flags.to === "string" && ctx.flags.to !== "" ? ctx.flags.to : "HEAD";
+    const branch = typeof ctx.flags.branch === "string" && ctx.flags.branch !== ""
+        ? ctx.flags.branch
+        : (git(ctx.cwd, ["rev-parse", "--abbrev-ref", "HEAD"]) ?? "");
+    const result = (reason, code, outside, message) => {
+        ctx.log(message);
+        ctx.emit({ bookkeepingPush: reason === null, reason, branch, from, to: toRef, outside });
+        return code;
+    };
+    const fid = FEAT_BRANCH.exec(branch)?.[1];
+    if (fid === undefined) {
+        return result("not-a-feature-branch", EXIT.NO, [], `'${branch}' is not a feat/{FID} branch — not a bookkeeping push`);
+    }
+    if (/^0+$/.test(from)) {
+        return result("no-remote-head", EXIT.NO, [], "the remote holds no head for this branch — nothing to carry CI forward from");
+    }
+    // Every plan month: the hook knows the branch, not the run's `{YYYYMM}`.
+    const check = checkOnlyBookkeeping(top.stdout, { month: "*", fid, from, to: toRef });
+    switch (check.kind) {
+        case "ok":
+            return result(null, EXIT.OK, [], `every file changed in ${from}..${toRef} is bookkeeping`);
+        case "not-ancestor":
+            return result("not-ancestor", EXIT.NO, [], `${from} is not an ancestor of ${toRef} — the push rewrites the PR head`);
+        case "outside":
+            return result("outside", EXIT.NO, check.outside, `${check.outside.length} changed file(s) outside the bookkeeping allow-list (first: ${check.outside[0]})`);
+        case "unknown-commit":
+            throw new CommandError(EXIT_RANGE_UNKNOWN, `cannot read commit '${check.ref}'`);
+        case "diff-failed":
+            throw new CommandError(EXIT_RANGE_UNKNOWN, `'git diff' failed for ${from}..${toRef}: ${check.stderr}`);
+    }
+}
 export const ciCommand = {
     noun: "ci",
     summary: "Gates CI and the git hooks run.",
     verbs: {
         slop: {
             summary: "Fail when the working tree adds or worsens slop on net against a base ref.",
+            use: "by-hand",
             flags: [
                 {
                     name: "base",
@@ -473,6 +674,7 @@ export const ciCommand = {
                 worsened: "findings worsened",
                 netFindingCount: "net change in finding count — gated on",
                 netScore: "net change in slop score — gated on",
+                findings: "net-new and worsened findings ({status, path, line, ruleId, message}); line shifts dropped",
             },
             exitCodes: {
                 [EXIT_SLOP_UNAVAILABLE]: "slop-scan could not run (not installed or not executable)",
@@ -482,7 +684,8 @@ export const ciCommand = {
             run: slop,
         },
         prose: {
-            summary: "Run Vale over the markdown files the globs select; skip when vale is not installed.",
+            summary: "Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable.",
+            use: "by-hand",
             flags: [
                 {
                     name: "glob",
@@ -492,7 +695,7 @@ export const ciCommand = {
                 },
             ],
             output: {
-                passed: "false when vale reported alerts",
+                passed: "false when vale reported alerts or required tooling is unavailable",
                 skipped: "vale-missing | write-good-missing | no-files when nothing was linted, else null",
                 files: "how many files vale linted",
             },
@@ -503,6 +706,7 @@ export const ciCommand = {
         },
         "skip-token": {
             summary: "Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin).",
+            use: "by-hand",
             flags: [{ name: "ref", type: "string", help: "commit to read (default HEAD)" }],
             output: {
                 ref: "the ref read",
@@ -512,7 +716,8 @@ export const ciCommand = {
             run: skipToken,
         },
         "min-push": {
-            summary: "Exit 0 when every file a push changes matches bkit.testing.minPushPaths (the pre-push light gate).",
+            summary: "Exit 0 when every file a push changes is one bkit writes or bkit.testing.minPushPaths / ciSkipPaths adds (the pre-push light gate).",
+            use: "by-hand",
             flags: [
                 {
                     name: "ref",
@@ -521,18 +726,90 @@ export const ciCommand = {
                     help: "a pushed commit (default HEAD); its range starts at its merge-base with origin/dev, else origin/main",
                 },
                 { name: "base", type: "string", help: "start every range here instead" },
+                {
+                    name: "update",
+                    type: "string",
+                    repeatable: true,
+                    help: "actual <old-sha>:<new-sha> push update; permits verified bookkeeping increments; excludes --ref and --base",
+                },
             ],
             output: {
-                minPush: "true when every changed file matches bkit.testing.minPushPaths",
-                reason: "null when a min push; else no-paths | no-changes | outside | unknown",
+                minPush: "true when every changed file matches a min-push path",
+                reason: "null when a min push; else no-changes | outside | unknown",
                 changed: "files the push changes, across every ref",
                 outside: "the changed files no min-push path matches",
-                paths: "bkit.testing.minPushPaths as read",
+                paths: "the min-push pathspecs in force: ship's pr bookkeeping allow-list (with bkit.testing.ciSkipPaths), docs/plans/**, bkit.testing.minPushPaths",
             },
             exitCodes: {
                 [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",
             },
             run: minPush,
+        },
+        "push-gate": {
+            summary: "Run a consumer push gate and record successful full-gate proof for the exact clean commit.",
+            use: "by-hand",
+            flags: [
+                {
+                    name: "gate",
+                    type: "string",
+                    required: true,
+                    help: "consumer package script to execute",
+                },
+            ],
+            output: { gate: "the script executed", passed: "whether it exited zero" },
+            run: (ctx) => {
+                const gate = String(ctx.flags.gate);
+                const status = runPushGate(ctx.cwd, gate, ctx.log);
+                ctx.emit({ gate, passed: status === 0 });
+                return status;
+            },
+        },
+        "bookkeeping-push": {
+            summary: "Exit 0 when a feature-branch push adds bookkeeping only on top of the remote head (ship's --scope=pr allow-list).",
+            use: "by-hand",
+            flags: [
+                {
+                    name: "from",
+                    type: "string",
+                    required: true,
+                    help: "the head the remote holds (git's remote sha on the hook's stdin)",
+                },
+                { name: "to", type: "string", help: "the head being pushed (default HEAD)" },
+                {
+                    name: "branch",
+                    type: "string",
+                    help: "the feat/{FID} branch (default the current branch); the FID picks the plan log dir",
+                },
+            ],
+            output: {
+                bookkeepingPush: "true when every file changed in from..to is bookkeeping",
+                reason: "null when bookkeeping only; else not-a-feature-branch | no-remote-head | not-ancestor | outside",
+                branch: "the branch read",
+                from: "the remote head as given",
+                to: "the pushed head as given",
+                outside: "the changed files outside the allow-list",
+            },
+            exitCodes: {
+                [EXIT_RANGE_UNKNOWN]: "a commit or the git diff could not be read",
+            },
+            run: bookkeepingPush,
+        },
+        pins: {
+            summary: "Download each *_VERSION + *_SHA256 pinned tool in the files and fail when a hash differs.",
+            use: "by-hand",
+            flags: [
+                {
+                    name: "file",
+                    type: "string",
+                    repeatable: true,
+                    help: "a file holding pins (shell `X=v`, `export X=v`, Dockerfile `ARG X=v`)",
+                },
+            ],
+            output: {
+                passed: "false when any pin failed",
+                pins: "one row per pin ({file, tool, version, url, status, expected, actual, error}); status ok | skipped (no download) | mismatch | unreachable | missing-sha256 | missing-version | unresolved-url | ambiguous-url",
+            },
+            run: (ctx) => pins(ctx),
         },
     },
 };

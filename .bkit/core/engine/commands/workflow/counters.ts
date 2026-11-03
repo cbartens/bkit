@@ -1,4 +1,4 @@
-// bkit counters derive|run|route|max — attempt counters derived from status.jsonl.
+// bkit counters derive|run|route|grant|max — attempt counters derived from status.jsonl.
 //
 // No counter is stored. Each is counted from the log when needed, at one of three
 // positions — read this before picking `--position`:
@@ -9,14 +9,17 @@
 //   count    routing on a DIFFERENT step, prior or not yet run: the bare count, and
 //            0 is a legal answer (that step simply has not run).
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 import {
   activeDoneSteps,
   allRunsDoneSteps,
+  appendLine,
   lastDoneStepAllRuns,
   nextStrategy,
   runNumber,
+  statusTimestamp,
   type Step,
 } from "../../ledgers/status.js";
 import {
@@ -121,6 +124,32 @@ const ALL_RUNS_FLAG = {
   help: "count every run of the workflow in --file, not only the active one",
 } as const;
 
+/** The `workflow-started` row that opened `workflow`'s active run; undefined with no file or no run. */
+export function activeRunStart(
+  file: string,
+  workflow: string,
+): Record<string, unknown> | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  return readStatusRows(file)
+    .filter((r) => r.type === "workflow-started" && r.workflow === workflow)
+    .sort((a, b) => String(a.at).localeCompare(String(b.at)))
+    .at(-1);
+}
+
+/** The point's limit as the active run froze it in its `workflow-started` row's `limits`. */
+function frozenAskSetting(file: string, workflow: string, point: AskPoint): AskSetting | undefined {
+  const limits = activeRunStart(file, workflow)?.limits;
+  const frozen =
+    limits !== null && typeof limits === "object"
+      ? (limits as Record<string, unknown>)[point]
+      : undefined;
+  if (frozen === null || typeof frozen !== "object") return undefined;
+  const { ask, max } = frozen as Record<string, unknown>;
+  return typeof ask === "boolean" && Number.isInteger(max) && (max as number) >= 0
+    ? { ask, max: max as number }
+    : undefined;
+}
+
 /** Rows of `type` in `workflow`'s active run (since its last workflow-started row). */
 function typedRowCount(file: string, workflow: string, type: string): number {
   const rows = readStatusRows(file);
@@ -131,6 +160,52 @@ function typedRowCount(file: string, workflow: string, type: string): number {
   return rows
     .slice(start + 1)
     .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
+}
+
+/** The row `counters grant` writes: the owner gave one loop one more full allowance. */
+export const ALLOWANCE_ROW = "allowance-granted";
+
+/**
+ * Allowances granted to `point` (and `group`, when given) in `workflow`'s active run, or
+ * across every run of the file with `allRuns`.
+ */
+export function grantCount(
+  file: string,
+  workflow: string,
+  point: AskPoint,
+  group: number | undefined,
+  allRuns: boolean,
+): number {
+  if (!fs.existsSync(file)) return 0;
+  const rows = readStatusRows(file);
+  let start = -1;
+  if (!allRuns)
+    rows.forEach((r, i) => {
+      if (r.type === "workflow-started" && r.workflow === workflow) start = i;
+    });
+  return rows
+    .slice(start + 1)
+    .filter(
+      (r) =>
+        r.type === ALLOWANCE_ROW &&
+        r.workflow === workflow &&
+        r.point === point &&
+        (group === undefined || r.group === group),
+    ).length;
+}
+
+/** A loop's frozen allowance, including the owner's saved grants; absent for legacy runs. */
+export function savedPointLimit(
+  file: string,
+  workflow: string,
+  point: AskPoint,
+  group?: number,
+  allRuns = false,
+): number | undefined {
+  const setting = frozenAskSetting(file, workflow, point);
+  return setting === undefined
+    ? undefined
+    : setting.max * (1 + grantCount(file, workflow, point, group, allRuns));
 }
 
 /** `route --rows=<type>:count`: rows of that type in the active run. */
@@ -229,12 +304,86 @@ export function loopProgress(
   };
 }
 
+/**
+ * `--point`'s limit for route and grant: the run's frozen setting (else package.json's), its
+ * max raised by one full allowance per `allowance-granted` row when `--file` and
+ * `--workflow` name the run; undefined without `--point`.
+ */
+function pointLimit(
+  ctx: RunContext,
+): { point: AskPoint; max: number; ask: boolean; out: Record<string, unknown> } | undefined {
+  if (ctx.flags.point === undefined) return undefined;
+  const point = askPoint(String(ctx.flags.point));
+  const inRun = ctx.flags.file !== undefined && ctx.flags.workflow !== undefined;
+  const frozen = inRun
+    ? frozenAskSetting(statusFile(ctx), String(ctx.flags.workflow), point)
+    : undefined;
+  const setting = frozen ?? askSetting(ctx.cwd, point);
+  const grants = inRun
+    ? grantCount(
+        statusFile(ctx),
+        String(ctx.flags.workflow),
+        point,
+        positiveInt(ctx.flags.group, "group"),
+        ctx.flags.allRuns === true,
+      )
+    : 0;
+  return {
+    point,
+    max: setting.max * (1 + grants),
+    ask: setting.ask && !headlessRun(ctx.cwd),
+    out: {
+      limitsFrom: frozen ? "run" : "package.json",
+      ...(inRun ? { grants, allowance: setting.max } : {}),
+    },
+  };
+}
+
+/** The flags route and grant share: the counter's value, and the limit it is compared to. */
+const VALUE_FLAGS = [
+  { name: "name", type: "string", required: true, help: "counter name, for the log line" },
+  {
+    name: "value",
+    type: "string",
+    help: "counter value (non-negative integer), or derive it with --of / --rows",
+  },
+  {
+    name: "of",
+    type: "string",
+    help: "<step>:<next|current|count> — derive the value from --file (active run); <step>,<step>...:count sums the listed steps",
+  },
+  {
+    name: "rows",
+    type: "string",
+    help: "<row type>:count — rows of that type in --file's active run; with --of, added to it",
+  },
+  { ...FILE_FLAG, required: false, help: "status.jsonl, with --of or --rows" },
+  { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of or --rows" },
+  { ...GROUP_FLAG, help: "with --of: only rows for this task group; with --point: its grants" },
+  {
+    ...ALL_RUNS_FLAG,
+    help: "with --of: count every run of the workflow in --file; with --point: grants of every run",
+  },
+] as const;
+
+/** The counter's value: `--value`, or derived with `--of` and/or `--rows`. */
+function counterValue(ctx: RunContext): number {
+  const derived = ctx.flags.of !== undefined || ctx.flags.rows !== undefined;
+  if (derived === (ctx.flags.value !== undefined))
+    throw new CommandError(EXIT.USAGE, "give --value, or --of and/or --rows");
+  return derived
+    ? (ctx.flags.of !== undefined ? derivedOf(ctx) : 0) +
+        (ctx.flags.rows !== undefined ? derivedRows(ctx) : 0)
+    : nonNegativeInt(ctx.flags.value, "value");
+}
+
 export const countersCommand: CommandSpec = {
   noun: "counters",
   summary: "Attempt counters derived from status.jsonl, and the ask points' limits.",
   verbs: {
     derive: {
       summary: "Count a step's DONE rows in the active run, at one of three positions.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -275,6 +424,7 @@ export const countersCommand: CommandSpec = {
     },
     run: {
       summary: "Which run of the workflow this invocation is (1-based; a resume keeps its number).",
+      use: "workflow",
       flags: [FILE_FLAG, WORKFLOW_FLAG],
       output: { run: "run number" },
       exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
@@ -286,32 +436,14 @@ export const countersCommand: CommandSpec = {
     route: {
       summary:
         "Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask.",
+      use: "workflow",
       flags: [
-        { name: "name", type: "string", required: true, help: "counter name, for the log line" },
-        {
-          name: "value",
-          type: "string",
-          help: "counter value (non-negative integer), or derive it with --of / --rows",
-        },
-        {
-          name: "of",
-          type: "string",
-          help: "<step>:<next|current|count> — derive the value from --file (active run); <step>,<step>...:count sums the listed steps",
-        },
-        {
-          name: "rows",
-          type: "string",
-          help: "<row type>:count — rows of that type in --file's active run; with --of, added to it",
-        },
-        { ...FILE_FLAG, required: false, help: "status.jsonl, with --of or --rows" },
-        { ...WORKFLOW_FLAG, required: false, help: "workflow, with --of or --rows" },
-        { ...GROUP_FLAG, help: "with --of: only rows for this plan group" },
-        { ...ALL_RUNS_FLAG, help: "with --of: count every run of the workflow in --file" },
+        ...VALUE_FLAGS,
         { name: "max", type: "string", help: "max as a number (or use --point)" },
         {
           name: "point",
           type: "string",
-          help: `ask point whose limit is the max: ${ASK_POINTS.join(" | ")}`,
+          help: `ask point whose limit is the max: ${ASK_POINTS.join(" | ")}; with --file and --workflow, as the active run's workflow-started row froze it, else live from package.json`,
         },
         { name: "continue", type: "string", help: "step to go to when value <= max" },
         { name: "exceeded", type: "string", help: "step to go to when value > max" },
@@ -322,6 +454,12 @@ export const countersCommand: CommandSpec = {
         next: "--continue or --exceeded step, whichever applies (null when not given)",
         max: "the max compared against",
         ask: "with --point: the point's ask setting, false when headless (GITHUB_ACTION); else false",
+        limitsFrom:
+          "with --point: run (the active run's workflow-started row froze the limit) | package.json (read live: no --file / --workflow, or no frozen limit)",
+        grants:
+          "with --point, --file and --workflow: allowance-granted rows for the point (and --group); max = allowance x (1 + grants)",
+        allowance:
+          "with --point, --file and --workflow: one full allowance, the point's maxAttempts",
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "--of / --rows: status.jsonl missing, unreadable, or not valid NDJSON",
@@ -329,19 +467,12 @@ export const countersCommand: CommandSpec = {
       },
       run: (ctx) => {
         const name = String(ctx.flags.name);
-        const derived = ctx.flags.of !== undefined || ctx.flags.rows !== undefined;
-        if (derived === (ctx.flags.value !== undefined))
-          throw new CommandError(EXIT.USAGE, "give --value, or --of and/or --rows");
-        const value = derived
-          ? (ctx.flags.of !== undefined ? derivedOf(ctx) : 0) +
-            (ctx.flags.rows !== undefined ? derivedRows(ctx) : 0)
-          : nonNegativeInt(ctx.flags.value, "value");
+        const value = counterValue(ctx);
         if ((ctx.flags.max === undefined) === (ctx.flags.point === undefined)) {
           throw new CommandError(EXIT.USAGE, "give exactly one of --max or --point");
         }
-        const point = ctx.flags.point === undefined ? undefined : askPoint(String(ctx.flags.point));
-        const setting = point === undefined ? undefined : askSetting(ctx.cwd, point);
-        const max = setting === undefined ? nonNegativeInt(ctx.flags.max, "max") : setting.max;
+        const limit = pointLimit(ctx);
+        const max = limit === undefined ? nonNegativeInt(ctx.flags.max, "max") : limit.max;
         const exceeded = value > max;
         if (exceeded) ctx.log(`counter ${name} exceeded max=${max} (value=${value})`);
         ctx.emit({
@@ -349,17 +480,92 @@ export const countersCommand: CommandSpec = {
           exceeded,
           next: (exceeded ? str(ctx.flags.exceeded) : str(ctx.flags.continue)) ?? null,
           max,
-          ask: setting !== undefined && setting.ask && !headlessRun(ctx.cwd),
+          ask: limit?.ask ?? false,
+          ...(limit === undefined ? {} : limit.out),
         });
         return exceeded ? EXIT.NO : EXIT.OK;
       },
     },
+    grant: {
+      summary:
+        "Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless).",
+      use: "workflow",
+      flags: [
+        ...VALUE_FLAGS,
+        {
+          name: "point",
+          type: "string",
+          required: true,
+          help: `the loop's ask point: ${ASK_POINTS.join(" | ")}`,
+        },
+      ],
+      output: {
+        granted: "true when an allowance-granted row was appended",
+        reason:
+          "why nothing was granted: below-limit | ask-off (ask = false, or headless); null when granted",
+        value: "the counter compared",
+        max: "the limit after the grant",
+        grants: "allowance-granted rows for the point (and --group) after the grant",
+      },
+      exitCodes: {
+        [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",
+        [EXIT_NO_OWN_ROW]: "--of=<step>:current counted 0: the step's own row is missing",
+      },
+      run: (ctx) => {
+        if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
+          throw new CommandError(EXIT.USAGE, "grant needs --file and --workflow");
+        const file = statusFile(ctx);
+        if (!fs.existsSync(file)) throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
+        const value = counterValue(ctx);
+        const limit = pointLimit(ctx)!;
+        const grants = Number(limit.out.grants);
+        const refuse = (reason: string) => {
+          ctx.log(`counter ${String(ctx.flags.name)}: no allowance granted (${reason})`);
+          ctx.emit({ granted: false, reason, value, max: limit.max, grants });
+          return EXIT.NO;
+        };
+        if (!limit.ask) return refuse("ask-off");
+        if (value < limit.max) return refuse("below-limit");
+        const group = positiveInt(ctx.flags.group, "group");
+        const row = {
+          type: ALLOWANCE_ROW,
+          workflow: String(ctx.flags.workflow),
+          at: statusTimestamp(),
+          point: limit.point,
+          ...(group === undefined ? {} : { group }),
+          value,
+        };
+        fs.appendFileSync(file, appendLine(row));
+        const max = limit.max + Number(limit.out.allowance);
+        ctx.log(
+          `counter ${String(ctx.flags.name)}: one more allowance for ${limit.point}, max=${max}`,
+        );
+        ctx.emit({ granted: true, reason: null, value, max, grants: grants + 1 });
+        return EXIT.OK;
+      },
+    },
     max: {
       summary: "The ask points' limits and ask settings: one by --point, or all.",
-      flags: [{ name: "point", type: "string", help: "ask point, e.g. debug.fix" }],
+      use: "workflow",
+      flags: [
+        { name: "point", type: "string", help: "ask point, e.g. debug.fix" },
+        {
+          ...FILE_FLAG,
+          required: false,
+          help: "status.jsonl: with --point and --workflow, the limit as the active run's workflow-started row froze it",
+        },
+        { ...WORKFLOW_FLAG, required: false, help: "workflow, with --file" },
+        GROUP_FLAG,
+      ],
       output: {
         value: "the point's limit (with --point)",
         ask: "the point's ask setting, false when headless (with --point)",
+        limitsFrom:
+          "run (the active run's workflow-started row froze the limit) | package.json (with --point)",
+        grants:
+          "with --point, --file and --workflow: allowance-granted rows for the point; value = allowance x (1 + grants)",
+        allowance:
+          "with --point, --file and --workflow: one full allowance, the point's maxAttempts",
         points: "every point's {ask, max} as set (without --point)",
       },
       run: (ctx) => {
@@ -368,17 +574,15 @@ export const countersCommand: CommandSpec = {
           ctx.emit({ points: readBkitConfig(checkoutRoot(ctx.cwd)).asks });
           return EXIT.OK;
         }
-        const setting = askSetting(ctx.cwd, askPoint(name));
-        ctx.emit({
-          value: setting.max,
-          ask: setting.ask && !headlessRun(ctx.cwd),
-        });
+        const limit = pointLimit(ctx)!;
+        ctx.emit({ value: limit.max, ask: limit.ask, ...limit.out });
         return EXIT.OK;
       },
     },
     progress: {
       summary:
         "Progress report for a fix loop in the active run: counts per round, code change, strategy, trend.",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,
@@ -425,6 +629,7 @@ export const countersCommand: CommandSpec = {
     },
     rows: {
       summary: "Count rows of one audit type in the active run (since its workflow-started row).",
+      use: "workflow",
       flags: [
         FILE_FLAG,
         WORKFLOW_FLAG,

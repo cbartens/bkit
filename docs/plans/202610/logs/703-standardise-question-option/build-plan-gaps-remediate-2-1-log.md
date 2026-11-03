@@ -1,0 +1,13 @@
+Verdict: PASS
+Strategy: STANDARD
+Fixed: 1
+
+<!-- verdict:end -->
+
+# Plan Gaps
+
+Group `2` ("The corpus states one option layout, and an audit holds it"), attempt 1. One in-scope gap: the group gate `pnpm bkit:gate:static-unit-integration` ended `FAIL` on exactly 2 failing tests in `.bkit/core/engine/audits/templates/templates.test.ts` — the dogfood mirrors `docs/templates/bkit-plan.md` and `docs/templates/bkit-audit-models.md` still held the pre-change placeholder because group 2 edited their `.bkit/core/docs/templates/*` sources and the mirrors were never re-rendered. `build-plan-verify-2-1.md` recorded `Verdict: PASS` / `Failures: 0` and classified the two reds as group-3 (TASK 5) regeneration; this step closes the gate. No `build-decision-*.md` record exists, so no owner instruction overrides the STANDARD angle. One gotcha appended: `docs/knowledge.jsonl` — `dogfood-template-mirrors-need-install-after-a-core-template-or-core-bkit-doc-edit` (ACTIVE).
+
+## Remediation Log
+
+DONE — Gap 1: group gate `pnpm bkit:gate:static-unit-integration` FAIL — 2 failing tests in `.bkit/core/engine/audits/templates/templates.test.ts` (`docs/templates/bkit-plan.md dogfood matches the template but for the managed-version stamp`, `docs/templates/bkit-audit-models.md dogfood managed block differs only by the managed-version stamp`) — re-rendered the install outputs with the repo's own dogfood install `pnpm bkit install --claude --cursor --codex --antigravity --opencode=openrouter` (never hand-edited: `.agents/rules.md` § Repo Authoring — Install to mirror); the two template mirrors now carry the lettered option shape, and the same run refreshed the rest of the install outputs group 2's prose edits had left stale (`.bkit/authoring.md`, `.bkit/workflows.md`, the 8 prompt-derived agents + 5 commands across `.claude/`, `.cursor/`, `.codex/`, `.opencode/`, `.agents/skills/`, `.agents/plugins/bkit/`) and re-pinned `.bkit/version` — 70 paths, exactly the 70 writes `bkit check` had predicted. `node dist/cli.js check` → `0 write(s) would occur`; `templates.test.ts` → 250 passed; `pnpm bkit:gate:static` → exit 0 (`format:check` clean, `All matched files use Prettier code style!` — the `build-brief-*` / `build-task-red-*` prettier fallout the recorded knowledge row warns about did NOT reproduce, so `.prettierignore` was left alone); `pnpm bkit:gate:static-unit-integration` → exit 0 (unit 6278 passed | 1 skipped of 6279; integration 46 files, 1583 passed). Files: `docs/templates/bkit-plan.md`, `docs/templates/bkit-audit-models.md`, `.bkit/authoring.md`, `.bkit/workflows.md`, `.bkit/version`, and the regenerated host mirrors.

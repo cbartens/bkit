@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, writeRecord } from "./ledgers";
-import { ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
+import { addAllButCopied, ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -69,7 +69,7 @@ describe("bkit worktrees setup — usage", () => {
     [["--workflow=build", "--fid=../x", `--month=${MONTH}`], "is not a feature id"],
     [["--workflow=build", "--fid=a/b", `--month=${MONTH}`], "is not a feature id"],
     [["--workflow=build", `--fid=${FID}`, "--month=2026-10"], "YYYYMM"],
-    [["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--branch=x"], "ship only"],
+    [["--workflow=build", `--fid=${FID}`, `--month=${MONTH}`, "--branch=x"], "ship or debug only"],
     [
       ["--workflow=ship", `--fid=${FID}`, `--month=${MONTH}`, "--branch=a..b"],
       "not a valid branch",
@@ -115,6 +115,7 @@ describe("bkit worktrees setup — adopt in place", () => {
       carriedDropped: [],
       copied: [],
       copyMissing: [],
+      bkitEnv: null,
       direnvAllowed: false,
       installed: false,
     });
@@ -174,6 +175,37 @@ describe("bkit worktrees setup — adopt in place", () => {
 });
 
 describe("bkit worktrees setup — debug", () => {
+  it("adopts a requested debug branch without mutating conflicting worktrees", async () => {
+    const cwd = repo("dev");
+    git(cwd, "branch", "fix/ci");
+    const adopted = await setup(cwd, "debug", "--branch=fix/ci", "--worktrees");
+    expect(adopted.code).toBe(0);
+    expect(adopted.json).toMatchObject({
+      branch: "fix/ci",
+      worktreePath: worktreeDir(cwd, FID),
+    });
+    expect(git(worktreeDir(cwd, FID), "branch", "--show-current")).toBe("fix/ci");
+    expect(git(cwd, "branch", "--show-current")).toBe("dev");
+
+    const conflictRoot = repo("dev");
+    git(conflictRoot, "branch", "fix/ci");
+    const conflict = linked(conflictRoot);
+    const sentinel = path.join(conflict, "owner-work.txt");
+    fs.writeFileSync(sentinel, "keep my uncommitted work\n");
+    const before = git(conflict, "rev-parse", "HEAD");
+    const refused = await setup(conflictRoot, "debug", "--branch=fix/ci", "--worktrees");
+    expect(refused.code).toBe(7);
+    expect(refused.err).toContain("fix/ci");
+    expect(git(conflict, "branch", "--show-current")).toBe(`feat/${FID}`);
+    expect(git(conflict, "rev-parse", "HEAD")).toBe(before);
+    expect(fs.readFileSync(sentinel, "utf-8")).toBe("keep my uncommitted work\n");
+    expect(git(conflictRoot, "branch", "--show-current")).toBe("dev");
+
+    const missingRoot = repo("dev");
+    expect((await setup(missingRoot, "debug", "--branch=fix/missing", "--worktrees")).code).toBe(7);
+    expect(git(missingRoot, "branch", "--list", "fix/missing")).toBe("");
+  });
+
   it("may debug in place on dev", async () => {
     const r = await setup(repo("dev"), "debug");
     expect(r.code).toBe(0);
@@ -525,6 +557,50 @@ describe("bkit worktrees setup — resume guard", () => {
     const r = await setup(cwd, "ship", "--worktrees");
     expect(r.json).toMatchObject({ copied: [], copyMissing: [] });
     expect(r.err).toContain("outside the main checkout");
+  });
+});
+
+describe("addAllButCopied", () => {
+  it("omits a copied entry git ignores instead of naming it in the exclude pathspec (#700)", () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(path.join(cwd, ".gitignore"), ".bkit/.env\n");
+    fs.mkdirSync(path.join(cwd, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".bkit/.env"), "SECRET=1\n");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "a\n");
+    git(cwd, "add", ".gitignore");
+    git(cwd, "commit", "-q", "-m", "ignore");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "changed\n");
+
+    const res = addAllButCopied(cwd, [".env", ".bkit/.env"]);
+    expect(res.ok).toBe(true);
+    git(cwd, "commit", "-q", "-m", "row");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
+  it("stages the tree when a copy entry points outside the checkout, which setup skips too", () => {
+    const cwd = repo("dev");
+    fs.writeFileSync(path.join(cwd, "a.txt"), "a\n");
+
+    const res = addAllButCopied(cwd, ["../shared/.env", "/etc/hosts", ".env"]);
+    expect(res.ok).toBe(true);
+    git(cwd, "commit", "-q", "-m", "row");
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
+
+  it("never commits an entry only the main checkout's copy list names", () => {
+    const cwd = repo("dev");
+    const wt = linked(cwd);
+    // An uncommitted edit to the main checkout's list: the worktree's package.json lacks it.
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: ["secrets.json"] } } } }),
+    );
+    fs.writeFileSync(path.join(wt, "secrets.json"), "{}\n");
+    fs.writeFileSync(path.join(wt, "a.txt"), "a\n");
+
+    expect(addAllButCopied(wt).ok).toBe(true);
+    git(wt, "commit", "-q", "-m", "step");
+    expect(git(wt, "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
   });
 });
 

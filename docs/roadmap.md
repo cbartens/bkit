@@ -1,5 +1,15 @@
 # Roadmap
 
+> [!CAUTION]
+> **Purpose:** Phase board of every bkit feature, projected from `.bkit/issues.jsonl`, plus the best-next-step analysis and your notes.
+>
+> **Rules:**
+>
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit the parts that are yours.
+> - Text above the first marker and the `## Notes` blocks are yours; bkit never overwrites them.
+> - Everything between the `bkit:roadmap-status` markers is generated: `bkit roadmap fold` rewrites it on every run, so a hand edit there is lost. Append to `.bkit/issues.jsonl` instead.
+> - Everything between the `bkit:roadmap-analysis` markers belongs to `@bkit-utility-update-roadmap`, which rewrites it on every run.
+
 <!-- bkit:roadmap-notes-pre start -->
 ## Notes
 
@@ -13,15 +23,16 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-10-23T01:49:03Z)_
-_(refreshed 2026-10-23T01:49:04Z)_
+_(refreshed 2026-11-03T12:11:01Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
+| 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
 
 ### Plan
 
@@ -29,7 +40,13 @@ _(refreshed 2026-10-23T01:49:04Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
+| 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
+| 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
+| 836-record-host-model | 836-record-host-model | 1793671481372 |
+| 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
 
 ### Build
 
@@ -47,16 +64,16 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
-| 342-injection-hardening | Prompt-injection hardening | 1787201470000 |
-| 363-widen-bkit-cloud-trigger | Widen bkit-cloud trigger to post-merge dev CI | 1785451674356 |
-| 384-ship-bookkeeping | Ship bookkeeping mutated the validated PR head | 1785303519000 |
-| completed-ship-bookkeeping-path-a-b-with-tiered-quality-carriers-38-b1b1268 | Ship bookkeeping Path A/B with tiered quality carriers — #384 | 1785283200000 |
-| 341-three-runtimes | Workflows run in all runtimes — local, GH Actions, claude.ai | 1785220571000 |
-| completed-three-runtimes-workflow-execution-341 | Three-runtimes workflow execution — #341 | 1785196800000 |
-| 58-workflow-counters | Workflow counters read decision variables from status.jsonl | 1784704423000 |
-| 234-telemetry-jsonl | Unified telemetry jsonl — stats, friction, deferrals, failures, harvest | 1784092348000 |
-| 325 | Self-hosted Renovate GitHub Actions OOM — move to Mend hosted runner | 1783234091000 |
+| 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
+| 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
+| 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
+| 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
+| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
+| 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
+| 701-engine-work-build | 701-engine-work-build | 1793191338658 |
+| 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
+| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
+| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
@@ -88,7 +105,7 @@ _Analysis refreshed 2026-10-14. Board fold 2026-10-14T03:52:45Z. Inputs: in-flig
 17. **Adopt release-PR mirror mode in bkit CI** — deferral `528-release-pr-mirror-not-adopted-in-bkit-own-ci` (`MEDIUM`). A promotion PR can reuse the dev push run. `/bkit-build`. sonnet tier.
 18. **Settle bkit-cloud concurrency** — deferrals `397-dual-agent-same-run-double-ship-when-both-secrets-set` (`MEDIUM`) and `397-ship-lane-reconciler-for-depth-1-queue-eviction` (`MEDIUM`), with tracker #397. Two set secrets launch two agents against one PR. `/bkit-design`. opus tier.
 19. **Unify the PR-based phase close** — deferral `uniform-pr-based-phase-close-all-runtimes` (`TRIAGED`, `MEDIUM`). Close behaviour still differs by runtime. `/bkit-design`. opus tier.
-20. **Bring repo protection and tracker hygiene to parity** — deferrals `pending-enable-main-branch-protection-ruleset-on-cbartens-bkit` (`MEDIUM`) and `384-required-status-checks-on-dev-via-bkit-protect-main` (`MEDIUM`), plus `create-security-github-label-for-injection-hardening`. `/bkit-build` for the protection work; the label takes the `lite:build` lite workflow. sonnet tier.
+20. **Bring repo protection and tracker hygiene to parity** — deferrals `pending-enable-main-branch-protection-ruleset-on-cbartens-bkit` (`MEDIUM`) and `384-required-status-checks-on-dev-via-bkit-protect-main` (`MEDIUM`), plus `create-security-github-label-for-injection-hardening`. `/bkit-build` for the protection work; the label takes `/bkit-build`. sonnet tier.
 21. **Write the hand-authored-agent threat model** — deferral `untrusted-input-threat-model-hand-authored-utility-agents` (`MEDIUM`). The #342 hardening covers workflow agents; utility agents hold no model. `/bkit-design`. opus tier.
 22. **Pin the capability-register determinism** — deferral `444-capability-register-gate-ubuntu-determinism` (`MEDIUM`) plus `444-capability-register-pr-time-enforcement`. The macOS-built register needs a Linux comparison before the gate blocks. `/bkit-build`. sonnet tier.
 23. **Amend the workflow scaffold follow-ons** — six `442-*` deferrals: build-challenge width, unconditional `build-plan-current`, debug and ship step counts, the scale dial, the design ideate predicates and the plan-template fallback; `442-plan-complexity-check-predicate` names a plan step that does not exist and closes. `/bkit-build`. sonnet tier.

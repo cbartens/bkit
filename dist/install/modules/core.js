@@ -4,16 +4,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
-import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, } from "../version-file.js";
-import { extractManagedBlock, stripManagedBlock } from "../managed-block.js";
+import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
+import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
+import { migrateTemplateNotes } from "../template-notes.js";
+import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
-import { ASK_POINTS, CONFIG_DEFAULTS, limitKey } from "../../shared/settings.js";
-import { getCoreRoot, getSharedRoot, getBkitDocsRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
-import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
+import { detectDepUpdater } from "../../shared/dep-updater.js";
+import { ASK_POINTS, CONFIG_DEFAULTS, ciWorkflowPath, limitKey } from "../../shared/settings.js";
+import { CI_SCRIPT_UNITS } from "../../checks/after/ci-yml.js";
+import { getCoreRoot, getSharedRoot, getBkitDocsRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../../shared/package-roots.js";
+import { getInstallManifest, BKIT_GATE_SCRIPTS, BKIT_OPTIONAL_GATES, BKIT_PUSH_GATES, BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../manifest.js";
 import { migrateLedgers } from "../../ledgers/migrate.js";
 export function listMdFiles(dir, prefix) {
     if (!fs.existsSync(dir))
@@ -191,19 +196,31 @@ function runCoreTemplates(dryRun, tokens, ws, logPrefix) {
 export const BKIT_CANONICAL_DOCS = [
     "authoring.md",
     "cloud.md",
+    "cli.md",
     "comparison.md",
     "install.md",
     "jsonl.md",
     "LICENSE.md",
-    "lite.md",
     "pipeline.md",
     "providers.md",
     "prompts.md",
+    "router.md",
     "templates.md",
     "trackers.md",
     "workflows.md",
     "README.md",
 ];
+// The token map for `.bkit/*.md` docs: only `{{BKIT_MANAGED_MARKER}}` resolves. The other
+// tokens map to themselves, so a doc that tells the consumer which token to replace in a
+// template (`templates.md`) still names the token.
+export function bkitDocTokens(tokens) {
+    return {
+        ...tokens,
+        DEFAULT_BRANCH: "{{DEFAULT_BRANCH}}",
+        PROJECT_NAME: "{{PROJECT_NAME}}",
+        REPO_SLUG: "{{REPO_SLUG}}",
+    };
+}
 // Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
 // Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). Each source carries
 // the `{{BKIT_MANAGED_MARKER}}` token. Skipped in dogfood: the consumer destination
@@ -211,6 +228,7 @@ export const BKIT_CANONICAL_DOCS = [
 export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     const tag = dryRun ? "[dry-run] " : "";
     const docsRoot = getBkitDocsRoot();
+    const docTokens = bkitDocTokens(tokens);
     // Per-doc write strategy from the manifest: markered-text docs (e.g. prompts.md,
     // which carries the consumer-owned `## Model Overrides` section below `bkit:end`)
     // are block-merged so consumer content survives; the rest are force-overwritten.
@@ -224,19 +242,70 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
         const dstPath = path.join(".bkit", name);
         const prevLen = ws.writes.length;
         if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
-            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+            writeTier2(srcPath, dstPath, docTokens, "html-comment", dryRun, ws);
         }
         else {
-            writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+            writeTier1(srcPath, dstPath, docTokens, dryRun, ws);
         }
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);
         }
     }
-    migrateShortcutsToLite(dryRun, ws, logPrefix);
+    migrateRetiredLite(dryRun, ws, logPrefix);
     migrateRetiredDevLock(dryRun, ws, logPrefix);
     migrateLedgerSchema(dryRun, ws, logPrefix);
     migrateJiraKeyName(dryRun, logPrefix);
+    migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
+    migrateTemplateNotes(dryRun, ws, logPrefix);
+    migrateContextCiWorkflow(dryRun, ws, logPrefix);
+    migrateSlopTypeSuppression(dryRun, ws, logPrefix);
+    const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
+    migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
+    migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
+    migrateValeHouseStyle(dryRun, ws, logPrefix);
+}
+// Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A
+// consumer's `## Model Overrides` row below `bkit:end` in `.bkit/prompts.md` naming an
+// old agent is renamed in place, provider and model kept, so the override keeps applying
+// (`parseModelOverrides` reports a row naming no agent as unknown and skips it). Runs
+// after the docs loop, which block-merges the file and leaves the consumer region alone.
+// A row already naming the new agent wins: the old row is then left for the unknown
+// report. Recorded in ws as an update; the canonical hash covers the managed block only.
+const PROMPTS_FILE = path.join(".bkit", "prompts.md");
+const MODEL_OVERRIDES_HEADING = "## Model Overrides";
+export const RENAMED_AGENTS = {
+    "bkit-build-plan-execute": "bkit-build-plan-tasks",
+};
+export function migrateModelOverrideAgentNames(dryRun, ws, logPrefix) {
+    if (!fs.existsSync(PROMPTS_FILE))
+        return;
+    const text = fs.readFileSync(PROMPTS_FILE, "utf-8");
+    const endIdx = findLineAnchoredMarkers(text, selectMarkers("html-comment")[1])[0];
+    if (endIdx === undefined)
+        return;
+    const headingAt = text.indexOf(MODEL_OVERRIDES_HEADING, endIdx);
+    if (headingAt === -1)
+        return;
+    const head = text.slice(0, headingAt);
+    const lines = text.slice(headingAt).split("\n");
+    // The first cell of a table row, backticks and padding aside.
+    const promptCell = (line) => /^\s*\|/.test(line) ? line.split("|")[1]?.trim().replace(/^`|`$/g, "") : undefined;
+    const named = new Set(lines.map(promptCell).filter((c) => c !== undefined));
+    const renamed = [];
+    const out = lines.map((line) => {
+        const cell = promptCell(line);
+        const to = cell === undefined ? undefined : RENAMED_AGENTS[cell];
+        if (cell === undefined || to === undefined || named.has(to))
+            return line;
+        renamed.push(`${cell} -> ${to}`);
+        return line.replace(cell, to);
+    });
+    if (renamed.length === 0)
+        return;
+    if (!dryRun)
+        fs.writeFileSync(PROMPTS_FILE, head + out.join("\n"), "utf-8");
+    ws.writes.push({ path: PROMPTS_FILE, action: "update" });
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${PROMPTS_FILE} — Model Overrides renamed: ${renamed.join(", ")}`);
 }
 // Migration (installs up to 5.5.x, `docs/migrations.md`): the Jira key was
 // `BKIT_JIRA_API_TOKEN`; the engine and the MCP configs now read `BKIT_JIRA_API_KEY`.
@@ -257,41 +326,84 @@ export function migrateJiraKeyName(dryRun, logPrefix) {
         fs.writeFileSync(ENV_FILE, text.split(OLD_JIRA_KEY).join(NEW_JIRA_KEY), "utf-8");
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: ${ENV_FILE} — ${OLD_JIRA_KEY} renamed to ${NEW_JIRA_KEY}`);
 }
-// Migration (5.1.0 – 5.2.4 installs, `docs/migrations.md`): the lite workflows lived at
-// `.agents/shortcuts.md`. The consumer's own lines below `bkit:end` (minus the seeded
-// heading) move under `.bkit/lite.md`'s consumer section; the old file is deleted. Runs
-// after the docs loop, so `.bkit/lite.md` is already written. The delete is recorded in
-// ws (as orphan-mirror deletes are) so `bkit check` fails until upgrade runs.
+// Migration (5.1.0 – 6.0.x installs, `docs/migrations.md`): the lite workflows are retired.
+// The managed block of `.bkit/lite.md` (and of its 5.1.0 – 5.2.4 predecessor
+// `.agents/shortcuts.md`) is stripped; the consumer's own lines (minus the seeded headings)
+// land in `.bkit/lite.md` under a sentinel first line, or the file is deleted when none
+// remain. A file holding the sentinel and no managed block is the already-retired stub:
+// silent, no write. A blockless or multi-block `.bkit/lite.md` is left byte-for-byte with
+// a logged fix. Writes are recorded in ws (dry-run parity; `bkit check` fails until upgrade).
+export const RETIRED_LITE_STUB_SENTINEL = "<!-- bkit:retired-lite-stub -->";
 const RETIRED_SHORTCUTS = path.join(".agents", "shortcuts.md");
 const RETIRED_SHORTCUTS_HEADING = "## Project Shortcuts";
-export function migrateShortcutsToLite(dryRun, ws, logPrefix) {
-    if (!fs.existsSync(RETIRED_SHORTCUTS))
-        return;
-    if (!fs.existsSync(path.join(getBkitDocsRoot(), "lite.md")))
-        return;
-    const tag = dryRun ? "[dry-run] " : "";
-    const dst = path.join(".bkit", "lite.md");
-    const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
-    if (extractManagedBlock(old, "html-comment") === null) {
-        console.warn(`${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${dst} below \`<!-- bkit:end -->\`, then delete it.`);
-        return;
-    }
-    const own = stripManagedBlock(old, "html-comment")
-        .split("\n")
-        .filter((line) => line.trim() !== RETIRED_SHORTCUTS_HEADING)
+const RETIRED_LITE = path.join(".bkit", "lite.md");
+const RETIRED_LITE_HEADING = "## Project Lite Workflows";
+/** The consumer lines left once the managed block and the given seeded heading are removed. */
+function consumerLines(text, heading) {
+    const lines = stripManagedBlock(text, "html-comment").split("\n");
+    return lines
+        .filter((line) => line.trim() !== heading)
         .join("\n")
         .trim();
-    if (own.length > 0) {
-        if (!dryRun) {
-            const current = fs.readFileSync(dst, "utf-8");
-            fs.writeFileSync(dst, `${current.replace(/\n*$/, "\n\n")}${own}\n`, "utf-8");
+}
+export function migrateRetiredLite(dryRun, ws, logPrefix) {
+    const hasShortcuts = fs.existsSync(RETIRED_SHORTCUTS);
+    const hasLite = fs.existsSync(RETIRED_LITE);
+    if (!hasShortcuts && !hasLite)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    let liteOwn = "";
+    let liteIsManaged = false;
+    if (hasLite) {
+        const lite = fs.readFileSync(RETIRED_LITE, "utf-8");
+        if (extractManagedBlock(lite, "html-comment") !== null) {
+            liteIsManaged = true;
+            liteOwn = consumerLines(lite, RETIRED_LITE_HEADING);
         }
-        ws.writes.push({ path: dst, action: "update" });
+        else if (lite.split("\n")[0]?.trim() === RETIRED_LITE_STUB_SENTINEL) {
+            liteOwn = lite.slice(lite.indexOf("\n") + 1).trim();
+        }
+        else {
+            console.warn(`${logPrefix} ${RETIRED_LITE} has no single bkit managed block — left in place. The lite workflows are retired: keep your own lines in it (or in your own docs) and delete any leftover bkit-managed text.`);
+            return;
+        }
     }
-    if (!dryRun)
-        fs.rmSync(RETIRED_SHORTCUTS);
-    ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
-    console.log(`${logPrefix} ${tag}core: moved ${RETIRED_SHORTCUTS} → ${dst}`);
+    let shortcutsOwn = "";
+    let shortcutsMovable = false;
+    if (hasShortcuts) {
+        const old = fs.readFileSync(RETIRED_SHORTCUTS, "utf-8");
+        if (extractManagedBlock(old, "html-comment") === null) {
+            console.warn(`${logPrefix} ${RETIRED_SHORTCUTS} has no single bkit managed block — left in place. Move your own lines into ${RETIRED_LITE}, then delete it.`);
+        }
+        else {
+            shortcutsMovable = true;
+            shortcutsOwn = consumerLines(old, RETIRED_SHORTCUTS_HEADING);
+        }
+    }
+    const own = [liteOwn, shortcutsOwn].filter((part) => part.length > 0).join("\n\n");
+    const stubText = `${RETIRED_LITE_STUB_SENTINEL}\n\n${own}\n`;
+    const liteChanges = liteIsManaged || (own.length > 0 && shortcutsOwn.length > 0);
+    if (liteChanges) {
+        if (own.length > 0) {
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(RETIRED_LITE), { recursive: true });
+                fs.writeFileSync(RETIRED_LITE, stubText, "utf-8");
+            }
+            ws.writes.push({ path: RETIRED_LITE, action: hasLite ? "update" : "write" });
+        }
+        else if (hasLite) {
+            if (!dryRun)
+                fs.rmSync(RETIRED_LITE);
+            ws.writes.push({ path: RETIRED_LITE, action: "write" });
+        }
+        console.log(`${logPrefix} ${tag}core: retired ${RETIRED_LITE}`);
+    }
+    if (shortcutsMovable) {
+        if (!dryRun)
+            fs.rmSync(RETIRED_SHORTCUTS);
+        ws.writes.push({ path: RETIRED_SHORTCUTS, action: "write" });
+        console.log(`${logPrefix} ${tag}core: retired ${RETIRED_SHORTCUTS}`);
+    }
 }
 // Migration (installs up to 5.3.x, `docs/migrations.md`): `.bkit/.dev.lock` was the
 // repo-wide dev lock. Nothing reads it now, so one a crashed run left behind is deleted.
@@ -345,10 +457,13 @@ export function seedCorePackageJsonScripts(ctx) {
     const { dryRun, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const written = [];
+    if (migrateBrandedScriptNames(dryRun, ws, logPrefix))
+        written.push("package.json");
     const gates = ensurePackageJsonScripts({ ...BKIT_GATE_SCRIPTS }, dryRun, ws);
     if (gates.added.length > 0) {
-        written.push("package.json");
-        console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}]`);
+        if (!written.includes("package.json"))
+            written.push("package.json");
+        console.log(`${logPrefix} ${tag}core: package.json scripts added [${gates.added.join(", ")}] — what a gate may run: .bkit/workflows.md § Local gate scripts`);
     }
     if (migrateLinearTeamKey(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
@@ -359,6 +474,9 @@ export function seedCorePackageJsonScripts(ctx) {
     if (migrateBkitLayout(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
+    if (pruneMinPushPaths(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
     if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
@@ -367,7 +485,8 @@ export function seedCorePackageJsonScripts(ctx) {
 /**
  * Every `bkit.*` setting, written on every install and upgrade so consumers see them all;
  * add-if-missing, nested blocks included. A key with a default gets it; a choice not made
- * yet is `""` or `[]`, which every reader treats as unset.
+ * yet is `""` or `[]`, which every reader treats as unset. `dependencies.updater` is the one
+ * choice install makes: `seedBkitDefaults` fills it from the updater config present.
  */
 export const SEEDED_BKIT_DEFAULTS = {
     tracker: {
@@ -393,16 +512,24 @@ export const SEEDED_BKIT_DEFAULTS = {
     cloud: { agent: "" },
     providers: { opencode: { default: "", installed: [] } },
     testing: {
+        // What bkit writes (ship's bookkeeping allow-list, the plans tree) is always a min push;
+        // the seed adds nothing, because a project doc can be a test's input.
+        minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
         ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
         ciCapstone: CONFIG_DEFAULTS.capstoneJob,
-        shipGate: [...CONFIG_DEFAULTS.shipGateRequiredLanes],
-        minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
+        ciRequired: [...CONFIG_DEFAULTS.ciRequired],
+        // Project docs ship's [skip ci] bookkeeping commit may carry onto the PR untested; a
+        // repo names its own (bkit's: CHANGELOG.md, README.md), so the seed is the empty choice.
+        ciSkipPaths: [...CONFIG_DEFAULTS.ciSkipPaths],
+        // CI steps whose failure bkit:generate fixes, beyond the floor bkit's own template
+        // steps form (CI_GENERATED_FLOOR); a repo names its own, so the seed is the empty choice.
+        ciGenerated: [...CONFIG_DEFAULTS.ciGenerated],
     },
     workflows: {
         minFreeGb: CONFIG_DEFAULTS.diskMinFreeGb,
         worktree: { copy: [...CONFIG_DEFAULTS.worktreeCopy], install: CONFIG_DEFAULTS.worktreeInstall },
         tasks: { ...CONFIG_DEFAULTS.tasks },
-        ...askBlocks(),
+        ...withBuildPublish(askBlocks()),
     },
     // bkit-utility-update-roadmap list length; the prompt falls back to 25 too.
     prompts: { roadmapNext: 25 },
@@ -418,6 +545,10 @@ function askBlocks() {
         (out[workflow] ??= {})[name] = { ask: d.ask, [limitKey(point)]: d.max };
     }
     return out;
+}
+/** Merge the `build.publish` choice beside the build ask blocks. */
+function withBuildPublish(blocks) {
+    return { ...blocks, build: { ...blocks.build, publish: { remote: true, local: true } } };
 }
 const plainObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 // Copy each `defaults` key missing from `target`, descending into blocks both sides hold.
@@ -450,14 +581,32 @@ export function seedBkitDefaults(dryRun, ws, logPrefix) {
     const cfg = (pkg.bkit ?? {});
     const added = [];
     addMissingKeys(cfg, SEEDED_BKIT_DEFAULTS, "bkit.", added);
-    if (added.length === 0)
+    const updater = fillDepUpdater(cfg);
+    if (added.length === 0 && !updater)
         return false;
     pkg.bkit = cfg;
     ws.writes.push({ path: pkgPath, action: "update" });
     if (!dryRun)
         writePackageJsonLike(raw, pkg);
-    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: added ${added.join(", ")} to package.json`);
+    const dry = dryRun ? "[dry-run] " : "";
+    if (added.length > 0) {
+        console.log(`${logPrefix} ${dry}core: added ${added.join(", ")} to package.json`);
+    }
+    if (updater) {
+        console.log(`${logPrefix} ${dry}core: set bkit.dependencies.updater to "${updater}" (its config is present)`);
+    }
     return true;
+}
+// An empty `dependencies.updater` takes the one updater whose config is present; a set value
+// stays. Returns the updater written, else null.
+function fillDepUpdater(cfg) {
+    const deps = cfg.dependencies;
+    if (!plainObject(deps) || deps.updater !== "")
+        return null;
+    const found = detectDepUpdater(".");
+    if (found)
+        deps.updater = found;
+    return found;
 }
 /** Rewrite package.json with `pkg`, keeping the file's indent and trailing newline. */
 function writePackageJsonLike(raw, pkg) {
@@ -465,6 +614,582 @@ function writePackageJsonLike(raw, pkg) {
     const indent = indentMatch ? indentMatch[1] : "  ";
     const trailingNewline = raw.endsWith("\n") ? "\n" : "";
     fs.writeFileSync("package.json", JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+}
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the package.json scripts bkit runs
+// carry the `bkit:` prefix. Old name -> new name. A `graph*` key moves only when its value
+// runs bkit's graph scripts; any other `graph*` script is the consumer's own.
+export const BKIT_SCRIPT_RENAMES = {
+    "lint:prose": "bkit:lint:prose",
+    "slop:delta": "bkit:slop:delta",
+    graph: "bkit:graph",
+    ...Object.fromEntries(["check", "clean", "graphml", "refresh", "rollup", "scoped", "tree", "update"].map((verb) => [
+        `graph:${verb}`,
+        `bkit:graph:${verb}`,
+    ])),
+};
+const GRAPH_VALUE_GUARD = "scripts/graphify/bkit-";
+// The pairs a migration acts on. A pair is inactive when `package.json` holds both keys, or
+// when the old key is a `graph*` script whose value is not bkit's; a pair with neither key
+// is active, so its tokens in other values and in default gate chains are rewritten.
+function activeScriptRenames(scripts, renames) {
+    const has = (k) => Object.prototype.hasOwnProperty.call(scripts, k);
+    const active = {};
+    const bothPresent = [];
+    for (const [oldName, newName] of Object.entries(renames)) {
+        if (has(oldName) && has(newName)) {
+            bothPresent.push(oldName);
+            continue;
+        }
+        const value = scripts[oldName];
+        if (has(oldName) &&
+            oldName.startsWith("graph") &&
+            !(typeof value === "string" && value.includes(GRAPH_VALUE_GUARD))) {
+            continue;
+        }
+        active[oldName] = newName;
+    }
+    return { active, bothPresent };
+}
+function isLink(p) {
+    return fs.lstatSync(p, { throwIfNoEntry: false })?.isSymbolicLink() === true;
+}
+// True when `p` or any directory above it (within the relative path) is a symlink.
+function linkedPath(p) {
+    const parts = path.normalize(p).split(path.sep);
+    for (let i = 1; i <= parts.length; i++) {
+        if (isLink(parts.slice(0, i).join(path.sep)))
+            return true;
+    }
+    return false;
+}
+// Exact v6.0.0 template bytes, also present immediately before 22d6b75f3.
+const RETIRED_SLOP_PLUGIN_HASH = "3748c27577fb384118c4754378038e3d68d087c28fb314a85b7d427f6093292d";
+// Migration (up to 6.0.x installs, docs/migrations.md): replace the shipped slop plugin
+// that reports inert skip text. The copy stays consumer-owned; edited copies need a merge.
+function migrateSlopTypeSuppression(dryRun, ws, logPrefix) {
+    const file = path.join("scripts", "slop", "bkit-slop-type-suppression.mjs");
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    const manual = (reason) => {
+        console.warn(`${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge the corrected .bkit/templates/${file} by hand to avoid false skip/focus findings in inert text`);
+    };
+    if (linkedPath(file) || !stat.isFile()) {
+        manual("the path is not a regular file or sits under a symlink");
+        return;
+    }
+    const current = fs.readFileSync(file);
+    const template = fs.readFileSync(path.join(getTemplatesRoot(), file));
+    if (current.equals(template))
+        return;
+    if (sha256(current) !== RETIRED_SLOP_PLUGIN_HASH) {
+        manual("the copy differs from the shipped version");
+        return;
+    }
+    if (!dryRun)
+        fs.writeFileSync(file, template);
+    ws.writes.push({ path: file, action: "update", unhashed: true });
+    console.log(`${logPrefix} ${tag}core: ${file} — slop plugin updated`);
+}
+// Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
+function otherWorkflows(skip) {
+    const dir = path.join(".github", "workflows");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const skipped = new Set(skip.map((f) => path.normalize(f)));
+    return fs
+        .readdirSync(dir)
+        .filter((f) => /\.ya?ml$/.test(f))
+        .map((f) => path.join(dir, f))
+        .filter((f) => !skipped.has(f) && fs.lstatSync(f).isFile());
+}
+// Every regular `action.yml` / `action.yaml` file under `.github/actions/`, at any depth.
+function compositeActions() {
+    const dir = path.join(".github", "actions");
+    if (!fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory())
+        return [];
+    const walk = (d) => fs.readdirSync(d).flatMap((f) => {
+        const p = path.join(d, f);
+        const st = fs.lstatSync(p);
+        if (st.isDirectory())
+            return walk(p);
+        return st.isFile() && /^action\.ya?ml$/.test(f) ? [p] : [];
+    });
+    return walk(dir);
+}
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+/**
+ * Rewrites `pnpm [flags] [run] [flags] <old>` to the new name, keeping the flags and `run`.
+ * Each flag is a value-less `-x` / `--x[=v]` token, except the package selectors (`-F`, `-C`,
+ * `-r`, `--recursive`, `--filter`, `--dir`, `--prefix`), which leave the call alone; `<old>` ends at a character outside
+ * `[\w:-]` or at the end of the text. Anything else (`npm run`, `echo`, `--filter web`) stays.
+ */
+export function renameScriptTokens(text, renames) {
+    const names = Object.keys(renames).sort((a, b) => b.length - a.length);
+    if (names.length === 0)
+        return text;
+    const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))--?\\w[\\w-]*(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
+    return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
+}
+/**
+ * Each old script name still in `text`, with its 1-based line. A name without `:` (`graph`) is
+ * a plain word, so it counts only after `pnpm` / `npm` / `yarn` / `bun` on the same line and
+ * before any `#`.
+ */
+export function findOldScriptNames(text, renames) {
+    const found = [];
+    const lines = text.split("\n");
+    for (const name of Object.keys(renames)) {
+        const re = name.includes(":")
+            ? new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`)
+            : new RegExp(`\\b(?:pnpm|npm|yarn|bun)\\b[^#\\n]*\\s${escapeRegExp(name)}(?![\\w:./-])`);
+        lines.forEach((l, i) => {
+            if (re.test(l))
+                found.push({ line: i + 1, name });
+        });
+    }
+    return found;
+}
+// Renames the old script keys in place (values kept), rewrites old `pnpm` tokens in every
+// script value, and warns on an old name it cannot reach. Returns true when package.json
+// changed.
+export function migrateBrandedScriptNames(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok) {
+        console.warn(`${logPrefix} core: package.json is not valid JSON; script names not migrated`);
+        return false;
+    }
+    const pkg = parsed.value;
+    if (!plainObject(pkg.scripts))
+        return false;
+    const scripts = pkg.scripts;
+    const { active, bothPresent } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+    const tag = dryRun ? "[dry-run] " : "";
+    for (const oldName of bothPresent) {
+        console.warn(`${logPrefix} ${tag}core: package.json scripts hold both "${oldName}" and "${BKIT_SCRIPT_RENAMES[oldName]}"; left "${oldName}" in place — remove it once nothing uses it`);
+    }
+    const next = {};
+    const renamed = [];
+    let changed = false;
+    for (const [key, value] of Object.entries(scripts)) {
+        const newKey = active[key];
+        if (newKey !== undefined) {
+            renamed.push(key);
+            changed = true;
+        }
+        let newValue = value;
+        if (typeof value === "string") {
+            newValue = renameScriptTokens(value, active);
+            if (newValue !== value)
+                changed = true;
+        }
+        next[newKey ?? key] = newValue;
+    }
+    if (!changed)
+        return false;
+    for (const [key, value] of Object.entries(next)) {
+        if (typeof value !== "string")
+            continue;
+        for (const { name } of findOldScriptNames(value, active)) {
+            console.warn(`${logPrefix} ${tag}core: package.json script "${key}" still runs the old name "${name}"; rename it to "${active[name]}" by hand`);
+        }
+    }
+    pkg.scripts = next;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${tag}core: package.json script names branded${renamed.length > 0 ? ` [${renamed.join(", ")}]` : ""}`);
+    return true;
+}
+function renamePathTokens(text, pathRenames) {
+    let out = text;
+    for (const { from, to } of pathRenames) {
+        out = out.replace(new RegExp(`${escapeRegExp(from)}(?![\\w.-])`, "g"), to);
+    }
+    return out;
+}
+export function migrateBrandedFileTokens(dryRun, ws, logPrefix, pathRenames = []) {
+    const tag = dryRun ? "[dry-run] " : "";
+    let scripts = {};
+    let pkgRaw;
+    let pkg;
+    if (fs.existsSync("package.json")) {
+        pkgRaw = fs.readFileSync("package.json", "utf-8");
+        const parsed = parseJson(pkgRaw);
+        if (parsed.ok && plainObject(parsed.value)) {
+            pkg = parsed.value;
+            if (plainObject(pkg.scripts))
+                scripts = pkg.scripts;
+        }
+    }
+    const { active } = activeScriptRenames(scripts, BKIT_SCRIPT_RENAMES);
+    const tokenFiles = [
+        path.join(".husky", "pre-commit"),
+        path.join(".husky", "pre-push"),
+        ciWorkflowPath("."),
+    ];
+    const files = [...new Set([...tokenFiles, path.join(".github", "workflows", "bkit-trivy.yml")])];
+    for (const file of files) {
+        if (!fs.lstatSync(file, { throwIfNoEntry: false })?.isFile())
+            continue;
+        const text = fs.readFileSync(file, "utf-8");
+        let next = tokenFiles.includes(file) ? renameScriptTokens(text, active) : text;
+        next = renamePathTokens(next, pathRenames);
+        if (tokenFiles.includes(file)) {
+            for (const { name, line } of findOldScriptNames(next, active)) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+            }
+        }
+        if (next === text)
+            continue;
+        if (!dryRun)
+            fs.writeFileSync(file, next, "utf-8");
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — branded script and path names rewritten`);
+    }
+    for (const file of otherWorkflows(files)) {
+        for (const { name, line } of findOldScriptNames(fs.readFileSync(file, "utf-8"), active)) {
+            console.warn(`${logPrefix} ${tag}core: ${file}:${line} still runs the old script name "${name}"; rename it to "${active[name]}" by hand`);
+        }
+    }
+    if (pkg === undefined || pkgRaw === undefined || pathRenames.length === 0)
+        return;
+    let changed = false;
+    const nextScripts = {};
+    for (const [key, value] of Object.entries(scripts)) {
+        const nextValue = typeof value === "string" ? renamePathTokens(value, pathRenames) : value;
+        if (nextValue !== value)
+            changed = true;
+        nextScripts[key] = nextValue;
+    }
+    if (!changed)
+        return;
+    pkg.scripts = nextScripts;
+    ws.writes.push({ path: "package.json", action: "update", unhashed: true });
+    if (!dryRun)
+        writePackageJsonLike(pkgRaw, pkg);
+    console.log(`${logPrefix} ${tag}core: package.json — branded CI script paths rewritten`);
+}
+// sha256 of every distinct release content of the CI script `.mjs` files, per old path, from
+// each `v*` tag. An unedited copy matches one of them.
+export const SHIPPED_CI_SCRIPT_HASHES = {
+    "scripts/ci/check-capstone.mjs": [
+        "3813d9fe3cfae79788990b0a7a4914d18350dde165a3c2fe5940e8348362cea6",
+        "45078e630f5ec9ff4e7704c99ac5f56fd37b9c2e94c052f084c03feddc86ef71",
+    ],
+    "scripts/ci/check-capstone.test.mjs": [
+        "0554d64652dcc32ea368a4791372e860a5e3314ecfb7084256627015333c7afb",
+        "ad58a0095528fdb3fe7310586b4091824f29fda261542df73c324c8dd574a0d6",
+    ],
+    "scripts/ci/check-dependency-audit.mjs": [
+        "b410ab27cdbeed8d659fdf523d1af9b519beb874901186bb59e2889646cdaa19",
+    ],
+    "scripts/ci/check-dependency-audit.test.mjs": [
+        "db3643ae6ef7ad01d628e6110aa2f7b47cdf2423ca07efc1a8bc6176eb98b6a2",
+    ],
+    "scripts/ci/check-accepted-divergences.mjs": [
+        "3b410c53535e66b7a65b54d574ba7f7e47139bfba58a883a60697b8ab44deef4",
+        "66e6f1f9ce22b52afe93454c268613b8f5b03c1c58b5817cac958435fefbe5b1",
+    ],
+    "scripts/ci/check-accepted-divergences.test.mjs": [
+        "743e623f0dcb118a96744d31611fb599e9041a8007a3202fb46c30d72a3e183e",
+        "f130f5784349c21c5ae4f02626243362d9c29f783b9ad4b9c158beeca9bf4107",
+    ],
+    "scripts/ci/lanes/resolve-push-base.mjs": [
+        "016c4dacf34ce6edffcc7c7f666027a0a34669ce299d755679c877540fc751e7",
+        "11930bf63081ca2b5201799e0262acfcfc148e15bce41e17ebead688a94fe8ce",
+        "84acc7ff1596234af0c614236608e2009e794da9549bf77a4cc9560c2784a8f8",
+    ],
+    "scripts/ci/lanes/resolve-push-base.test.mjs": [
+        "1ce7b5fdf1de756f56e6b9710952c1e272c633107b06c0d47780fce36b90d1ad",
+        "32e17be38751f2744d660acdd99c6a08e7f437cdeaeb7075bc876b1cd31f0237",
+        "6883deb2b20f99af68721b085fbf3e2ab14e4b58d17dd676afaf734c75195e96",
+    ],
+};
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the CI script files carry the
+// `bkit-` prefix. A unit (script, test and data file, `CI_SCRIPT_UNITS`) moves whole when each
+// present `.mjs` matches a shipped release and no `bkit-` target exists: the old files go, the
+// `.mjs` targets come from the shipped templates, the data file moves byte for byte. Any
+// other unit stays, with a warning naming the manual move (the `ci-scripts-old-names`
+// advisory lists it too). Returns the renames applied plus those already applied (old absent,
+// new present), for the path-token rewrite.
+export function migrateBrandedTemplateFiles(dryRun, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const renames = [];
+    const templates = getTemplatesRoot();
+    for (const unit of CI_SCRIPT_UNITS) {
+        const exists = (p) => fs.lstatSync(p, { throwIfNoEntry: false }) !== undefined;
+        const present = unit.filter(([from]) => exists(from));
+        const done = unit.filter(([from, to]) => !exists(from) && exists(to));
+        for (const [from, to] of done)
+            renames.push({ from, to });
+        if (present.length === 0)
+            continue;
+        const linkedTargets = present.map(([, to]) => to).filter((to) => linkedPath(to));
+        const linkedAll = [
+            ...new Set([...present.map(([from]) => from).filter((f) => linkedPath(f)), ...linkedTargets]),
+        ];
+        if (linkedAll.length > 0) {
+            console.warn(`${logPrefix} ${tag}core: ${linkedAll.join(", ")} is a symlink (or sits under one); ${present.map(([from]) => from).join(", ")} not moved to the bkit- names; move them by hand and update every reference`);
+            continue;
+        }
+        const referenced = [
+            ...otherWorkflows([ciWorkflowPath("."), path.join(".github", "workflows", "bkit-trivy.yml")]),
+            ...compositeActions(),
+        ].flatMap((file) => {
+            const lines = fs.readFileSync(file, "utf-8").split("\n");
+            return present.flatMap(([from]) => lines.flatMap((l, i) => new RegExp(`${escapeRegExp(from)}(?![\\w.-])`).test(l)
+                ? [{ file, line: i + 1, from }]
+                : []));
+        });
+        if (referenced.length > 0) {
+            for (const { file, line, from } of referenced) {
+                console.warn(`${logPrefix} ${tag}core: ${file}:${line} still names ${from}; the unit was not moved to the bkit- names — move the files by hand and update that reference`);
+            }
+            continue;
+        }
+        const edited = present.filter(([from]) => from.endsWith(".mjs") &&
+            !SHIPPED_CI_SCRIPT_HASHES[from]?.includes(sha256(fs.readFileSync(from))));
+        const taken = present.filter(([, to]) => exists(to));
+        const noTemplate = present.filter(([, to]) => to.endsWith(".mjs") && !fs.existsSync(path.join(templates, to)));
+        if (edited.length > 0 || taken.length > 0 || noTemplate.length > 0) {
+            const why = edited.length > 0
+                ? `${edited.map(([from]) => from).join(", ")} differs from every shipped release`
+                : taken.length > 0
+                    ? `${taken.map(([, to]) => to).join(", ")} already exists`
+                    : "the shipped template is missing";
+            console.warn(`${logPrefix} ${tag}core: ${present.map(([from]) => from).join(", ")} not moved to the bkit- names (${why}); move them by hand and update every reference`);
+            continue;
+        }
+        for (const [from, to] of present) {
+            if (!dryRun) {
+                fs.mkdirSync(path.dirname(to), { recursive: true });
+                if (to.endsWith(".mjs"))
+                    fs.copyFileSync(path.join(templates, to), to);
+                else
+                    fs.copyFileSync(from, to);
+                fs.rmSync(from);
+            }
+            ws.writes.push({ path: from, action: "write", unhashed: true });
+            ws.writes.push({ path: to, action: "write", unhashed: true });
+            renames.push({ from, to });
+            console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+        }
+    }
+    return renames;
+}
+// The old `bkit-stub:health` block, as shipped by every release up to 6.0.x.
+const OLD_HEALTH_STUB = [
+    "# bkit-stub:health — copy into .github/workflows/health.yml. workflow_run cannot share a file with",
+    "# push / pull_request. WHEN: you have a live URL to smoke after CI. Trigger on CI completed, default",
+    "# branch only, if the CI run succeeded. Then hit the health URL of the deployment this SHA promoted.",
+    "# e.g. poll the host until that deployment is ready, then GET /health. Not a required check.",
+    "# DROP if you have no deployed health URL.",
+].join("\n");
+// Exact old workflow `name:` lines the three shipped example workflows carried, with the
+// branded line and the check each one renames. `job` names the job whose display name the
+// workflow name branded (the job has no `name:` of its own, so its check showed the bare id).
+const BRANDED_WORKFLOWS = [
+    { file: "bkit-renovate.yml", oldName: "Renovate", newName: "bkit-renovate", job: "renovate" },
+    { file: "bkit-trivy.yml", oldName: "Trivy", newName: "bkit-trivy", job: "trivy" },
+];
+const CHECK_RENAME_FIX = "update the branch-protection required checks (and any ruleset) to the new name";
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped example workflows and
+// the health stub in the CI workflow carry bkit- check names. Only the exact shipped old
+// lines are rewritten, so a customised `name:` stays; the job `name:` is inserted only when
+// the workflow name was rewritten and the job has none. The health stub block is replaced
+// by the current one when it is byte-identical to the shipped old one. Writes are `unhashed`:
+// the files stay the consumer's. One log line per renamed check names old -> new, because
+// branch protection matches the check name.
+export function migrateBrandedCheckNames(dryRun, ws, logPrefix, defaultBranch = "main") {
+    const tag = dryRun ? "[dry-run] " : "";
+    const wfDir = path.join(".github", "workflows");
+    const finish = (file, text, next, renamed) => {
+        if (next === text)
+            return;
+        if (!dryRun)
+            fs.writeFileSync(file, next, "utf-8");
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        for (const line of renamed) {
+            console.log(`${logPrefix} ${tag}core: ${file} — check renamed ${line}; ${CHECK_RENAME_FIX}`);
+        }
+    };
+    const readFile = (file) => fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()
+        ? fs.readFileSync(file, "utf-8")
+        : undefined;
+    const cloud = path.join(wfDir, "bkit-cloud.yml");
+    const cloudText = readFile(cloud);
+    if (cloudText !== undefined) {
+        const renamed = [];
+        const next = cloudText.replace(/^( {4}name: )(context|claude|opencode)( \(\$\{\{ github\.event_name \}\}\))$/gm, (_m, pre, job, post) => {
+            renamed.push(`bkit-cloud / ${job}${post} -> bkit-cloud / bkit-cloud-${job}${post}`);
+            return `${pre}bkit-cloud-${job}${post}`;
+        });
+        finish(cloud, cloudText, next, renamed);
+    }
+    for (const { file, oldName, newName, job } of BRANDED_WORKFLOWS) {
+        const target = path.join(wfDir, file);
+        const text = readFile(target);
+        if (text === undefined)
+            continue;
+        const nameLine = new RegExp(`^name: ${escapeRegExp(oldName)}$`, "m");
+        if (!nameLine.test(text))
+            continue;
+        let next = text.replace(nameLine, `name: ${newName}`);
+        const jobStart = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+        if (jobStart !== null) {
+            const bodyStart = jobStart.index + jobStart[0].length;
+            const rest = next.slice(bodyStart);
+            const end = rest.search(/^(?: {2}[^\s#]|[^\s#])/m);
+            const body = end === -1 ? rest : rest.slice(0, end);
+            if (!/^ {4}name:/m.test(body)) {
+                next = `${next.slice(0, bodyStart)}    name: ${newName}\n${next.slice(bodyStart)}`;
+            }
+            const after = new RegExp(`^ {2}${escapeRegExp(job)}:[ \\t]*\\n`, "m").exec(next);
+            const afterRest = after === null ? "" : next.slice(after.index + after[0].length);
+            const afterEnd = afterRest.search(/^(?: {2}[^\s#]|[^\s#])/m);
+            const afterBody = afterEnd === -1 ? afterRest : afterRest.slice(0, afterEnd);
+            if ((afterBody.match(/^ {4}name:/gm) ?? []).length > 1) {
+                console.warn(`${logPrefix} ${tag}core: ${target} not renamed (a second job name: would make the workflow invalid YAML); rename by hand: name: ${oldName} -> name: ${newName} and set the ${job} job name: to ${newName}`);
+                continue;
+            }
+        }
+        finish(target, text, next, [`${oldName} / ${job} -> ${newName} / ${newName}`]);
+    }
+    const ci = ciWorkflowPath(".");
+    const ciText = readFile(ci);
+    if (ciText !== undefined && ciText.includes(OLD_HEALTH_STUB)) {
+        const template = readFile(path.join(getTemplatesRoot(), ".github", "workflows", "bkit-ci.yml"));
+        const current = template?.match(/^# bkit-stub:health[^\n]*\n(?:#[^\n]*\n)*?#[^\n]*DROP if you have no deployed health URL\./m)?.[0];
+        if (current !== undefined) {
+            const next = ciText.replace(OLD_HEALTH_STUB, () => current.replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch));
+            if (next !== ciText) {
+                if (!dryRun)
+                    fs.writeFileSync(ci, next, "utf-8");
+                ws.writes.push({ path: ci, action: "update", unhashed: true });
+                console.log(`${logPrefix} ${tag}core: ${ci} — old bkit-stub:health text replaced by the current block`);
+            }
+        }
+    }
+}
+// sha256 of every distinct release content of the four shipped `House` Vale rules, from each
+// `v*` tag, across `.agents/templates/.vale/styles/House/` and `.bkit/templates/.vale/styles/House/`.
+// An unedited copy matches one of them. Same shape as `RETIRED_DRIVER_HASHES` (write.ts).
+export const SHIPPED_HOUSE_RULE_HASHES = {
+    Filler: [
+        "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
+        "9b10438de3158a1923c51375fcba56de7a8dd2f17de97d62385407eee2a6e377",
+        "e04e9e76a4857de0d13ff106343e25000418c535a983317f5a2e1710fa68cbc7",
+    ],
+    Hedging: [
+        "7289b6bfe98f48803734c016c6ba49661071b5d8ded0f4678509b37c6ab8aff9",
+        "b7425861cb3085cc798379d8e92f01a0420aa2c40f7be1ba1bbfabd908767a37",
+        "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
+    ],
+    LLMSlop: [
+        "17a22ab44f0bd37de4d4c972fbb39a71dc256712ba0cfc39320043381f180a8e",
+        "c39313e229249786ba189bb1abe55728f83e325a54777b41b54e0a1dec47b4f7",
+        "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",
+    ],
+    Verbose: [
+        "8278791997cca85a2df63b2c93decac480e685215e0569e8472aa433e7a27ac8",
+        "bcb18beb903e7bd57780905778ea4d1a4f294589cf191375db144ecb11f4c619",
+        "f7939a5be92562803183108581538a1b4ca73c3b8a1b68ceeb2b2149ba1a4357",
+    ],
+};
+// Migration (up to 6.0.x installs, `docs/migrations.md`): the shipped Vale style is `Bkit`,
+// it was `House`. A `House/<rule>.yml` byte-identical to a shipped release moves to
+// `Bkit/<rule>.yml` when that is absent; an edited rule or a taken target stays with one
+// warning naming the manual move. In `.vale.ini`, `House.<moved>` becomes `Bkit.<moved>`;
+// `BasedOnStyles` swaps `House` for `Bkit` once `House/` is empty (the directory goes), else
+// appends `Bkit`. Own rules in `House/` stay. Writes are `unhashed`.
+export function migrateValeHouseStyle(dryRun, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const stylesDir = path.join(".vale", "styles");
+    const houseDir = path.join(stylesDir, "House");
+    const bkitDir = path.join(stylesDir, "Bkit");
+    const linkedVale = [".vale", stylesDir, houseDir, bkitDir].find((p) => isLink(p));
+    if (linkedVale === houseDir || linkedVale === ".vale" || linkedVale === stylesDir) {
+        console.warn(`${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`);
+        return;
+    }
+    if (!fs.lstatSync(houseDir, { throwIfNoEntry: false })?.isDirectory())
+        return;
+    if (linkedVale !== undefined) {
+        console.warn(`${logPrefix} ${tag}core: ${linkedVale} is a symlink; the House rules were not moved to the Bkit style — move them by hand: mv .vale/styles/House/<rule>.yml .vale/styles/Bkit/ and rename the House.<rule> toggles in .vale.ini to Bkit.<rule>`);
+        return;
+    }
+    const moved = [];
+    for (const [rule, hashes] of Object.entries(SHIPPED_HOUSE_RULE_HASHES)) {
+        const from = path.join(houseDir, `${rule}.yml`);
+        if (isLink(from)) {
+            console.warn(`${logPrefix} ${tag}core: ${from} is a symlink and was not moved to the Bkit style; move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`);
+            continue;
+        }
+        if (!fs.lstatSync(from, { throwIfNoEntry: false })?.isFile())
+            continue;
+        const to = path.join(bkitDir, `${rule}.yml`);
+        const stays = !hashes.includes(sha256(fs.readFileSync(from)))
+            ? "differs from every shipped release"
+            : fs.lstatSync(to, { throwIfNoEntry: false }) !== undefined
+                ? `${to} already exists`
+                : undefined;
+        if (stays !== undefined) {
+            console.warn(`${logPrefix} ${tag}core: ${from} not moved to the Bkit style (${stays}); move it by hand: mv .vale/styles/House/${rule}.yml .vale/styles/Bkit/ and rename the House.${rule} toggle in .vale.ini to Bkit.${rule}`);
+            continue;
+        }
+        if (!dryRun) {
+            fs.mkdirSync(bkitDir, { recursive: true });
+            fs.copyFileSync(from, to);
+            fs.rmSync(from);
+        }
+        ws.writes.push({ path: from, action: "write", unhashed: true });
+        ws.writes.push({ path: to, action: "write", unhashed: true });
+        moved.push(rule);
+        console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
+    }
+    const remaining = fs.readdirSync(houseDir).filter((f) => !moved.some((r) => f === `${r}.yml`));
+    const houseGone = remaining.length === 0;
+    if (houseGone) {
+        if (!dryRun)
+            fs.rmSync(houseDir, { recursive: true });
+        ws.writes.push({ path: houseDir, action: "write", unhashed: true });
+    }
+    if (moved.length === 0 && !houseGone)
+        return;
+    const ini = ".vale.ini";
+    if (!fs.lstatSync(ini, { throwIfNoEntry: false })?.isFile())
+        return;
+    const text = fs.readFileSync(ini, "utf-8");
+    let next = text;
+    if (moved.length > 0) {
+        next = next.replace(new RegExp(`^(\\s*)House\\.(${moved.join("|")})\\b`, "gm"), (_m, lead, rule) => `${lead}Bkit.${rule}`);
+    }
+    if (houseGone)
+        next = next.replace(/^(#.*)\bHouse rules\b/gm, "$1Bkit rules");
+    next = next.replace(/^(BasedOnStyles\s*=\s*)(.*)$/gm, (line, pre, list) => {
+        const styles = list.split(",").map((s) => s.trim());
+        if (!styles.includes("House"))
+            return line;
+        if (houseGone) {
+            const swapped = styles.map((s) => (s === "House" ? "Bkit" : s));
+            return pre + [...new Set(swapped)].join(", ");
+        }
+        return styles.includes("Bkit") ? line : `${line}, Bkit`;
+    });
+    if (next === text)
+        return;
+    if (!dryRun)
+        fs.writeFileSync(ini, next, "utf-8");
+    ws.writes.push({ path: ini, action: "update", unhashed: true });
+    console.log(`${logPrefix} ${tag}core: ${ini} — House style names rewritten to Bkit`);
 }
 // Status option ids of GitHub's Kanban and Team planning board templates; every board
 // made from one carries the same ids.
@@ -551,7 +1276,9 @@ export const BKIT_LAYOUT_MOVES = [
     ["minPushPaths", "testing.minPushPaths"],
     ["capstoneJob", "testing.ciCapstone"],
     ["ciWorkflow", "testing.ciWorkflow"],
-    ["shipGateRequiredLanes", "testing.shipGate"],
+    ["shipGateRequiredLanes", "testing.ciRequired"],
+    // 6.0.0 installs named the required-lane list `testing.shipGate`.
+    ["testing.shipGate", "testing.ciRequired"],
     ["disk.minFreeGb", "workflows.minFreeGb"],
     ["worktree", "workflows.worktree"],
     ["tasks", "workflows.tasks"],
@@ -559,6 +1286,43 @@ export const BKIT_LAYOUT_MOVES = [
     ["depUpdater", "dependencies.updater"],
     ["ignoreAdvisories", "advisories.ignore"],
 ];
+// Migration (up to 6.0.x installs, `docs/migrations.md`): `bkit.testing.minPushPaths` was the
+// whole min-push list, so installs seeded and repos restated what bkit itself writes. The
+// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`) and
+// `bkit.testing.ciSkipPaths`; the setting only adds. Entries the floor already covers are
+// dropped from the list. Returns true when package.json changed.
+export const MIN_PUSH_FLOOR_ENTRIES = [
+    "docs/plans/**",
+    "docs/*.jsonl",
+    ".bkit/*.jsonl",
+];
+export function pruneMinPushPaths(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    if (!plainObject(pkg.bkit) || !plainObject(pkg.bkit.testing))
+        return false;
+    const testing = pkg.bkit.testing;
+    if (!Array.isArray(testing.minPushPaths))
+        return false;
+    const skip = Array.isArray(testing.ciSkipPaths) ? testing.ciSkipPaths : [];
+    const covered = new Set([...MIN_PUSH_FLOOR_ENTRIES, ...skip]);
+    const kept = testing.minPushPaths.filter((p) => !covered.has(p));
+    if (kept.length === testing.minPushPaths.length)
+        return false;
+    const dropped = testing.minPushPaths.filter((p) => covered.has(p)).map(String);
+    testing.minPushPaths = kept;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: dropped [${dropped.join(", ")}] from bkit.testing.minPushPaths in package.json — bkit always allows what it writes, and ciSkipPaths counts`);
+    return true;
+}
 // Fill `into` with each `from` key it lacks, descending into blocks both sides hold.
 function mergeMissing(into, from) {
     for (const [k, v] of Object.entries(from)) {
@@ -711,10 +1475,16 @@ export function gateLeafScripts(gate, declared, seen = new Set()) {
     return leaves;
 }
 /**
+ * What a gate may run. bkit never reads a gate's value beyond its seeded default, so it
+ * cannot check this; every gate advisory restates it (`.bkit/workflows.md` § Local gate
+ * scripts).
+ */
+export const GATE_CONTENTS_NOTE = "Gate contents (`.bkit/workflows.md` § Local gate scripts): every gate but `bkit:gate:static-unit-integration-e2e` and `bkit:gate:static-unit-integration-e2e-live` runs on a push or inside `/bkit-build`, so it MUST NOT run tests that need a deployed boundary or remote service; local services (a database in Docker) are fine.";
+/**
  * Advisories for the `bkit:gate:*` scripts: the scripts a still-default gate
  * chains that package.json does not declare, the deeper test tiers the repo has
- * but no gate runs, a commit gate that repeats the push gate, and a missing
- * `bkit:test:file`. Judges the scripts as install
+ * but no gate runs, a commit gate that repeats the push gate, a missing
+ * `bkit:test:file`, and a missing `bkit:gate:changed`. Judges the scripts as install
  * leaves them (missing gate names at their seeded defaults), so install, `bkit check`
  * and `bkit upgrade` report the same set. Read-only; an absent or unparseable
  * package.json yields none.
@@ -748,7 +1518,7 @@ export function detectGateAdvisories(cwd) {
             id: "gate-missing-called-scripts",
             severity: "advisory",
             detect: `The bkit:gate scripts call scripts package.json does not declare: ${names.join(", ")}.`,
-            action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.join(", ")} to package.json (\`.bkit/templates.md\` lists the tool scripts and the devDeps they need), or edit the \`bkit:gate*\` scripts to drop what this repo does not have.`,
+            action: `Every bkit workflow runs a \`bkit:gate*\` script, so a missing link fails the whole gate. Add ${names.join(", ")} to package.json (\`.bkit/templates.md\` lists the tool scripts and the devDeps they need), or edit the \`bkit:gate*\` scripts to drop what this repo does not have.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     // A repo that HAS a deeper tier but declares no gate for it is gated at
@@ -768,7 +1538,8 @@ export function detectGateAdvisories(cwd) {
             detect: "package.json declares deeper test tiers than any `bkit:gate*` script runs, so `/bkit-build`, `/bkit-debug` and the pre-push hook gate at `bkit:gate:static-unit` and never execute them.",
             action: "Each workflow runs the DEEPEST gate you declare, and `.husky/pre-push` runs `bkit:gate:static-unit-integration` when it is declared; an undeclared one is skipped, never guessed. Add the gates you want the agent loop to run:\n\n" +
                 unwired.join("\n") +
-                "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.",
+                "\n\nOrder matters — each chains the one above it. Omit a level deliberately to keep it CI-only (E2E in the build loop costs a production build on every remediation attempt). `.bkit/templates.md` lists the tool scripts the gates chain.\n\n" +
+                GATE_CONTENTS_NOTE,
         });
     }
     // The commit gate is the fast one: a script it shares with the push gate runs on every
@@ -783,7 +1554,7 @@ export function detectGateAdvisories(cwd) {
             id: "gate-commit-repeats-push",
             severity: "advisory",
             detect: `\`bkit:gate:format\` (pre-commit) runs ${names}, which \`${pushGate}\` (pre-push) runs again.`,
-            action: `Drop ${names} from \`bkit:gate:format\`. The commit gate formats staged files and nothing else; every whole-repo check runs once, at pre-push.`,
+            action: `Drop ${names} from \`bkit:gate:format\`. The commit gate formats staged files and nothing else; every whole-repo check runs once, at pre-push.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     // /bkit-build records each task's red through this script; without it test-first is
@@ -794,6 +1565,29 @@ export function detectGateAdvisories(cwd) {
             severity: "advisory",
             detect: `package.json does not declare \`${BKIT_TEST_FILE_SCRIPT}\`, so \`/bkit-build\` cannot check that each task's tests fail before its code is written.`,
             action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\nCall the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
+        });
+    }
+    // A red recorded before the linter sees the test: a lint rewrite after it reads as an
+    // edited test, and no red can be recorded again once the task's code makes it pass.
+    if (BKIT_TEST_FILE_SCRIPT in declared && !(BKIT_LINT_FILE_SCRIPT in declared)) {
+        findings.push({
+            id: "lint-file-script-missing",
+            severity: "advisory",
+            detect: `package.json declares \`${BKIT_TEST_FILE_SCRIPT}\` but not \`${BKIT_LINT_FILE_SCRIPT}\`, so \`/bkit-build\` records a task's red before the linter sees the test; a lint fix after it pauses the build for an owner exception.`,
+            action: `Add \`${BKIT_LINT_FILE_SCRIPT}\` to package.json: it lints the ONE test file bkit appends as its argument (repo-relative path) with the rules your static gate applies, exiting 0 when clean. \`bkit tests red\` runs it before the test and records no red while it fails. Examples:\n\n    "${BKIT_LINT_FILE_SCRIPT}": "eslint --max-warnings=0"\n    "${BKIT_LINT_FILE_SCRIPT}": "ruff check"\n\nUse the same linter config as the static gate, or the gate can still demand a rewrite after the red.`,
+        });
+    }
+    // Build and debug agents check their own change through this script; without it each
+    // one runs a whole gate after every change. bkit cannot seed it: what finds the tests
+    // a file affects is the stack's.
+    const changedId = "gate-changed-script-missing";
+    if (!(BKIT_GATE_CHANGED_SCRIPT in declared) &&
+        !isAdvisorySuppressed(cwd, changedId, "advisory")) {
+        findings.push({
+            id: changedId,
+            severity: "advisory",
+            detect: `package.json does not declare \`${BKIT_GATE_CHANGED_SCRIPT}\`, so \`/bkit-build\` and \`/bkit-debug\` agents run a whole gate (\`bkit:gate:static\` or \`bkit:gate:static-unit\`) after every change instead of checking only what changed.`,
+            action: `Add \`${BKIT_GATE_CHANGED_SCRIPT}\` to package.json. \`bkit tests changed\` calls it with the changed files as its arguments (repo-relative paths: uncommitted, untracked and committed since the step began; deleted files left out) and never with none. It runs the tests that import those files, the tests that name their paths, and the static checks (lint, format, typecheck) on those files, exiting 0 when clean. Vitest + ESLint example, with \`scripts/gate-changed.sh\` holding \`vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@" && prettier --check --ignore-unknown "$@"\`:\n\n    "${BKIT_GATE_CHANGED_SCRIPT}": "sh scripts/gate-changed.sh"\n\n\`vitest related\` finds only importers; also run the tests that read a changed file by its path (a text search of the test files for each path). The orchestrator's group gate, pre-push and CI still run the whole gates. To keep the whole gate on every change, add \`${changedId}\` to \`bkit.advisories.ignore\` in package.json.\n\n${GATE_CONTENTS_NOTE}`,
         });
     }
     return findings;
@@ -831,7 +1625,8 @@ export function detectNoopGates(cwd) {
             id: "gate-noop",
             severity: "advisory",
             detect: `These bkit:gate scripts are empty or cannot fail, so they check nothing: ${noop.join(", ")}.`,
-            action: 'Every bkit workflow and the pre-push hook trust a green `bkit:gate*` script, so a no-op gate passes every agent run and push. Point each at the checks it should run (e.g. `"bkit:gate:static": "pnpm typecheck && pnpm lint"`), or delete it from package.json and run `bkit upgrade` to get bkit\'s default back.',
+            action: 'Every bkit workflow and the pre-push hook trust a green `bkit:gate*` script, so a no-op gate passes every agent run and push. Point each at the checks it should run (e.g. `"bkit:gate:static": "pnpm typecheck && pnpm lint"`), or delete it from package.json and run `bkit upgrade` to get bkit\'s default back.\n\n' +
+                GATE_CONTENTS_NOTE,
         },
     ];
 }
@@ -913,6 +1708,9 @@ export function runCoreModule(ctx) {
         // Exclude .bkit/version itself and .agents/ internal files (not consumer-facing).
         const newCanonicalEntries = {};
         for (const entry of ws.writes) {
+            // Brand-migrated copy-and-own files carry no hash.
+            if (entry.unhashed)
+                continue;
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
             if (relPath === path.join(".bkit", "version"))
@@ -965,7 +1763,7 @@ export function runCoreModule(ctx) {
                 "2. See `.bkit/install.md` for consumer setup and `.bkit/README.md` for ongoing ops.\n\n" +
                 "Note: bkit seeded the bkit:gate:* / bkit:deps:* package.json scripts every workflow\n" +
                 "runs (existing values are never touched). The tool scripts they chain (typecheck,\n" +
-                "lint, format:check, lint:prose, slop:delta) and the devDeps those need are yours to\n" +
+                "lint, format:check, bkit:lint:prose, bkit:slop:delta) and the devDeps those need are yours to\n" +
                 "add: see .bkit/templates.md.",
         });
     }

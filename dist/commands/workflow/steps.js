@@ -11,18 +11,50 @@
 // and print the step's tracker comment.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { actionKey, activeDoneSteps, allRunsDoneSteps, appendLine, ciRoundMatches, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
+import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
-import { CommandError, EXIT, git, isSharedBranch, repoRoot, runGit, } from "../lib.js";
+import { readTextFile } from "../../shared/json.js";
+import { CommandError, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, } from "../lib.js";
+import { activeRunStart, savedPointLimit } from "./counters.js";
+import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
+import { planFiles } from "./run-facts.js";
+import { mergeFindings, parseFindings } from "./challenge.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
 import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
-import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readRunsAt, statusFile, str, } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readStatusRows, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
+import { parsePlanBlocks } from "./plan-blocks.js";
+import { PLAN_TASKS_STEP, readTestFirst, touchedTests } from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
+/**
+ * An `agent-rework` friction row for a refused planned-test edit: the step reruns, so
+ * `bkit stats` counts it. Best effort — a ledger that cannot be written never changes
+ * the refusal.
+ */
+function recordTestLockFriction(top, step, named) {
+    if (!journalEnabled())
+        return;
+    const row = frictionRow({
+        workflow: "build",
+        step,
+        noun: "steps",
+        verb: "finish",
+        code: EXIT_TESTS_TOUCHED,
+        bookRoot: top,
+        parentSha: git(top, ["rev-parse", "HEAD"]) ?? undefined,
+    });
+    row["category"] = "agent-rework";
+    row["severity"] = "LOW";
+    row["summary"] = "a code step edited a planned test case";
+    row["description"] =
+        `\`bkit steps finish\` refused ${step} with exit ${EXIT_TESTS_TOUCHED}: ${named} changed after the group's red; the step reruns.`;
+    appendFrictionRow(top, row);
+}
 const VERDICT_END = "<!-- verdict:end -->";
 const DEFAULT_VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
@@ -34,6 +66,18 @@ export const EXIT_ARTIFACT = 7;
 export const EXIT_COMMIT = 8;
 /** finish --docs-only: the step staged a file outside the artifact tree. */
 export const EXIT_OUTSIDE_DOCS = 9;
+/** finish (build plan-execute / plan-gaps-remediate): a planned test case differs from the lines the group's tests step recorded. */
+export const EXIT_TESTS_TOUCHED = 11;
+/** finish: a saved artifact holds a later attempt than the one finished. */
+export const EXIT_LATER_ATTEMPT = 12;
+/** finish: the step's commit would change `bkit.workflows` in package.json. */
+export const EXIT_WORKFLOWS_CHANGED = 13;
+/** finish (build plan-tests): the tests step's commit changes a file that is not one of the group's planned tests. */
+export const EXIT_SOURCE_TOUCHED = 15;
+/** The step whose subagent writes the group's TEST FIRST tests, before any task code. */
+export const PLAN_TESTS_STEP = "build-plan-tests";
+/** The step whose subagent closes the group's verification gaps: a code step, like plan-execute. */
+export const PLAN_REMEDIATE_STEP = "build-plan-gaps-remediate";
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
 /** Where `finish` puts the first `DONE` line's description in `--message`. */
@@ -227,7 +271,8 @@ export const ROW_FIELDS = {
     "build/build-plan-convert": ["attempt"],
     "build/build-plan-current": ["attempt"],
     "build/build-install-skills": ["attempt"],
-    "build/build-plan-execute": ["attempt"],
+    "build/build-plan-tests": ["attempt"],
+    "build/build-plan-tasks": ["attempt"],
     "build/build-plan-verify": ["attempt"],
     "build/build-group-gate": ["attempt", "scope"],
     "build/build-plan-gaps-remediate": ["attempt", "strategy"],
@@ -276,6 +321,81 @@ const CORE_ROW_KEYS = new Set([
 function fidOfStatusFile(file) {
     return /(?:^|\/)docs\/plans\/[0-9]{6}\/logs\/([^/]+)\/status\.jsonl$/.exec(file.split(path.sep).join("/"))?.[1];
 }
+/** Loop budgets use the same point names as the workflow counter routes. */
+function progressPoint(workflow, step, soak) {
+    if (workflow === "build") {
+        if (["build-plan-verify", "build-group-gate", "build-plan-gaps-remediate"].includes(step))
+            return "build.verify";
+        if (step === "build-challenge")
+            return "build.challenge";
+        if (["build-run-tests", "build-failure-diagnose", "build-failure-remediate"].includes(step))
+            return "build.tests";
+    }
+    if (workflow === "debug") {
+        if (step === "debug-failure-soak" || soak)
+            return "debug.soak";
+        if (["debug-run-tests", "debug-failure-diagnose", "debug-failure-remediate"].includes(step))
+            return "debug.fix";
+    }
+    if (workflow === "ship" &&
+        ["ship-merge-pr", "ship-failure-diagnose", "ship-failure-remediate"].includes(step))
+        return "ship.merge";
+    return undefined;
+}
+/** Prepare output before a completion mutates the log; progress is never persisted. */
+function stepProgress(cwd, r, number) {
+    if (r.status === "FAILED" || !isResumable(r.workflow))
+        return undefined;
+    const entry = WORKFLOW_STEPS[r.workflow].find((s) => number === undefined ? s.step === r.step : s.number === number);
+    if (entry === undefined) {
+        if (number !== undefined)
+            throw new CommandError(EXIT.USAGE, "--progress-number is not a workflow step");
+        return undefined;
+    }
+    if (fs.existsSync(r.file) && !readTextFile(r.file).ok)
+        throw new CommandError(EXIT_NO_STATUS, `${r.file} is unreadable`);
+    const runs = fs.existsSync(r.file) ? readRuns(r.file) : [];
+    const run = runs.filter((item) => item.workflow === r.workflow).at(-1);
+    const abs = path.resolve(cwd, r.file);
+    const canonical = /^(.*)\/docs\/plans\/([0-9]{6})\/logs\/([^/]+)\/status\.jsonl$/.exec(abs.split(path.sep).join("/"));
+    let groups = [];
+    if (r.workflow === "build" && canonical !== null) {
+        const [file] = planFiles(canonical[1], canonical[2], canonical[3]);
+        if (file !== undefined) {
+            const text = readTextFile(file);
+            if (!text.ok)
+                throw new CommandError(EXIT.USAGE, `progress plan ${file} is unreadable`);
+            const plan = parsePlanBlocks(text.text);
+            if (plan.errors.length > 0 || plan.fenceOpen !== undefined)
+                throw new CommandError(EXIT.USAGE, `invalid progress plan: ${plan.errors.map((e) => e.message).join("; ") || "unclosed code fence"}`);
+            groups = plan.groups.map((g) => g.group);
+        }
+    }
+    const prior = run?.steps.filter((s) => s.status === "DONE") ?? [];
+    const same = prior.filter((s) => s.step === r.step && (r.group === undefined || s.group === r.group));
+    const soak = runOrStepField(runs, r.workflow, "debugMode") === "SOAK";
+    const point = progressPoint(r.workflow, r.step, soak);
+    const soakAttempt = Number(r.extras?.soakAttempt ?? runOrStepField(runs, r.workflow, "soakAttempt"));
+    const challengeRound = Number(r.extras?.round ?? runOrStepField(runs, r.workflow, "round"));
+    const attempt = point === "debug.soak" && Number.isSafeInteger(soakAttempt) && soakAttempt > 0
+        ? soakAttempt
+        : point === "debug.fix" && r.step === "debug-failure-remediate"
+            ? allRunsDoneSteps(runs, r.workflow, { step: r.step }).length + 1
+            : point === "build.challenge" && Number.isSafeInteger(challengeRound) && challengeRound > 0
+                ? challengeRound
+                : (r.attempt ?? same.at(-1)?.attempt);
+    return runProgress({
+        workflow: r.workflow,
+        step: r.step,
+        number,
+        groups,
+        group: r.group,
+        attempt,
+        max: point === undefined
+            ? undefined
+            : savedPointLimit(r.file, r.workflow, point, r.group, point === "debug.fix" || point === "debug.soak"),
+    }).progressLine;
+}
 /** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
 export const EXIT_NO_RECORD = 14;
 /**
@@ -291,10 +411,47 @@ export function requireRecordOnShared(cwd, workflow, rec) {
         return;
     throw new CommandError(EXIT_NO_RECORD, `no shared-checkout record for this run on ${branch} — nothing written or committed (the record is gone or belongs to another run); a plain commit here would carry work the run does not own`);
 }
+/** Throws EXIT_COMMIT when git cannot name the index, before anything is written. */
+function indexSnapshot(cwd) {
+    const res = runGit(cwd, ["rev-parse", "--path-format=absolute", "--git-path", "index"]);
+    if (!res.ok || res.stdout === "")
+        throw new CommandError(EXIT_COMMIT, `nothing written: git cannot name the index: ${res.stderr}`);
+    return {
+        file: res.stdout,
+        bytes: fs.existsSync(res.stdout) ? fs.readFileSync(res.stdout) : null,
+    };
+}
+/**
+ * Put the index back byte-for-byte as `snap` holds it, through git's own `index.lock`, so
+ * a git command holding the lock is never overwritten. A refused commit wrote nothing, so
+ * every path — staged before the attempt or by it, fully or partly — must read as it did:
+ * a row left staged rides the next pathspec-less commit. Returns why it could not, or null.
+ */
+function restoreIndex(snap) {
+    const lock = `${snap.file}.lock`;
+    try {
+        fs.writeFileSync(lock, snap.bytes ?? "", { flag: "wx" });
+    }
+    catch (err) {
+        if (err.code !== "EEXIST")
+            fs.rmSync(lock, { force: true });
+        return `${lock} could not be taken: ${err.message}`;
+    }
+    if (snap.bytes !== null) {
+        fs.renameSync(lock, snap.file);
+        return null;
+    }
+    fs.rmSync(snap.file, { force: true });
+    fs.rmSync(lock, { force: true });
+    return null;
+}
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
- * commit; `code` is EXIT_COMMIT when the row landed but the commit failed.
+ * commit; `code` is EXIT_COMMIT when the commit failed, and the appended row is
+ * rolled back, so a re-run after the human's fix writes the same attempt once.
+ * `code` is EXIT.NEEDS_HUMAN when the commit failed and the row stays in `r.file`
+ * (another writer appended after it) or the index could not be put back.
  */
 export function writeStepRow(cwd, r, log) {
     const clash = Object.keys(r.extras ?? {}).filter((k) => CORE_ROW_KEYS.has(k));
@@ -320,6 +477,7 @@ export function writeStepRow(cwd, r, log) {
         ...(r.strategy === undefined ? {} : { strategy: r.strategy }),
         ...(r.extras ?? {}),
     };
+    const progressLine = stepProgress(cwd, r);
     // An in-place run on a shared branch commits its own paths only; a refusal
     // comes before the append, so a re-run after the human's fix writes the row once.
     const fid = r.commit === "auto" ? fidOfStatusFile(r.file) : undefined;
@@ -337,10 +495,58 @@ export function writeStepRow(cwd, r, log) {
             return { row, commit: null, code: EXIT_FOREIGN_PATH };
         }
     }
+    // A plain commit stages the whole tree, so the index is kept to be put back on failure.
+    const snap = r.commit === "auto" && rec === null ? indexSnapshot(cwd) : null;
     fs.mkdirSync(path.dirname(r.file), { recursive: true });
-    fs.appendFileSync(r.file, appendLine(row));
+    const existed = fs.existsSync(r.file);
+    const line = appendLine(row);
+    fs.appendFileSync(r.file, line);
+    // A refused commit takes exactly this attempt's bytes back off `r.file`, so the step's
+    // attempt is unchanged and a re-run after the human's fix lands the same attempt once.
+    // Returns null once the row is off disk (or the file is gone), else why it stays.
+    const rollback = () => {
+        if (!fs.existsSync(r.file))
+            return null;
+        let body;
+        try {
+            body = fs.readFileSync(r.file);
+        }
+        catch (err) {
+            return `it could not be read back: ${err.message}`;
+        }
+        const mine = Buffer.from(line);
+        const tail = body.subarray(Math.max(0, body.length - mine.length));
+        if (!tail.equals(mine))
+            return "another writer appended to it after this attempt's row";
+        if (!existed && body.length === mine.length)
+            fs.rmSync(r.file, { force: true });
+        else
+            fs.truncateSync(r.file, body.length - mine.length);
+        return null;
+    };
+    // The failure reason first, then the index and the file are put back: exit `code` means
+    // nothing written, nothing committed; a row that cannot come off disk needs a human, as a
+    // re-run would write it twice.
+    const failed = (code, reason) => {
+        log(reason);
+        const index = snap === null ? null : restoreIndex(snap);
+        if (index !== null)
+            log(`the index could not be put back as it was: ${index}`);
+        const kept = rollback();
+        if (kept !== null) {
+            log(`the step-done row stays in ${r.file}: ${kept}; nothing committed — remove that row before re-running`);
+            return { row, commit: null, code: EXIT.NEEDS_HUMAN };
+        }
+        log(`no row written to ${r.file}: the row was rolled back`);
+        return { row, commit: null, code: index === null ? code : EXIT.NEEDS_HUMAN };
+    };
     if (r.commit === "none")
-        return { row, commit: null, code: EXIT.OK };
+        return {
+            row,
+            commit: null,
+            code: EXIT.OK,
+            ...(progressLine === undefined ? {} : { progressLine }),
+        };
     if (rec !== null) {
         let own;
         try {
@@ -349,22 +555,27 @@ export function writeStepRow(cwd, r, log) {
         catch (err) {
             if (!(err instanceof CommandError) || err.code !== EXIT_FOREIGN_PATH)
                 throw err;
-            log(`row written to ${r.file} but the commit was refused: ${err.message}`);
-            return { row, commit: null, code: EXIT_FOREIGN_PATH };
+            return failed(EXIT_FOREIGN_PATH, `the commit was refused: ${err.message}`);
         }
-        if (!own.ok) {
-            log(`row written to ${r.file} but the commit failed: ${own.error}`);
-            return { row, commit: null, code: EXIT_COMMIT };
-        }
-        return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+        if (!own.ok)
+            return failed(EXIT_COMMIT, `the commit failed: ${own.error}`);
+        return {
+            row,
+            commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout,
+            code: EXIT.OK,
+            ...(progressLine === undefined ? {} : { progressLine }),
+        };
     }
     const add = addAllButCopied(cwd);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
-    if (!made.ok) {
-        log(`row written to ${r.file} but the commit failed: ${made.stderr || made.stdout}`);
-        return { row, commit: null, code: EXIT_COMMIT };
-    }
-    return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+    if (!made.ok)
+        return failed(EXIT_COMMIT, `the commit failed: ${made.stderr || made.stdout}`);
+    return {
+        row,
+        commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout,
+        code: EXIT.OK,
+        ...(progressLine === undefined ? {} : { progressLine }),
+    };
 }
 /** Every mechanical gate check for one step; `ok` false names the first problem per check. */
 function gateChecks(cwd, o) {
@@ -496,6 +707,110 @@ export function doneDescription(file) {
 }
 /** Staged paths a docs-only step may not touch: anything outside the artifact tree and its ledgers. */
 const DOCS_ONLY = /^docs\/plans\/|^docs\/(deferrals|decisions|failures)\.jsonl$|^\.bkit\/(friction|stats)\.jsonl$/;
+/**
+ * Staged paths the tests step's commit may not carry: a modified or deleted file that is
+ * not a TEST FIRST file of the group's open tasks, one of `allowed` (the step's artifacts
+ * and the run's logs folder, as given) or a docs ledger; or an added file a CREATE line of
+ * the plan names. Stages everything first, as the commit would.
+ */
+function sourceTouched(cwd, o) {
+    const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+    const rel = (p) => path.relative(top, path.resolve(cwd, p)).split(path.sep).join("/");
+    const planText = fs.existsSync(o.plan) ? fs.readFileSync(o.plan, "utf-8") : "";
+    const parsed = parsePlanBlocks(planText);
+    const done = new Set(parsed.tasks.filter((t) => t.done).map((t) => t.task));
+    const tests = new Set();
+    for (const s of readTestFirst(planText, o.group))
+        if (s.kind === "test" && !done.has(s.task))
+            for (const t of s.tests)
+                tests.add(t.test);
+    const created = new Set(parsed.tasks.flatMap((t) => t.create.map((c) => c.file)));
+    const allowed = o.allowed.map(rel);
+    const under = (p) => allowed.some((a) => p === a || p.startsWith(`${a}/`));
+    const own = (p) => tests.has(p) || under(p) || DOCS_ONLY.test(p);
+    addAllButCopied(cwd);
+    const out = runGit(cwd, ["diff", "--cached", "--name-status", "-z"]).stdout.split("\0");
+    const source = [];
+    for (let i = 0; i < out.length;) {
+        const status = out[i] ?? "";
+        if (status === "")
+            break;
+        const two = status.startsWith("R") || status.startsWith("C");
+        const [a, b] = [out[i + 1] ?? "", two ? (out[i + 2] ?? "") : ""];
+        i += two ? 3 : 2;
+        const changed = status.startsWith("A") || status.startsWith("C") ? [] : [a];
+        const added = status.startsWith("A") ? [a] : two ? [b] : [];
+        for (const p of changed)
+            if (!own(p))
+                source.push(p);
+        for (const p of added)
+            if (created.has(p) && !tests.has(p))
+                source.push(p);
+    }
+    return [...new Set(source)].sort();
+}
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Saved artifacts of a later attempt than `attempt`, for each pattern whose file name
+ * holds `<attempt>`, matched with any number there. An artifact already committed at
+ * `startSha` (the active run's start) belongs to an earlier run, so it does not count.
+ */
+function laterAttempts(cwd, patterns, attempt, startSha) {
+    const later = [];
+    for (const p of patterns) {
+        const dir = path.dirname(p);
+        const base = path.basename(p);
+        if (isUrl(p) || !base.includes(ATTEMPT_TOKEN) || dir.includes(ATTEMPT_TOKEN))
+            continue;
+        const abs = path.resolve(cwd, dir);
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory())
+            continue;
+        const shape = new RegExp(`^${base.split(ATTEMPT_TOKEN).map(escapeRegex).join("([0-9]+)")}$`);
+        for (const name of fs.readdirSync(abs)) {
+            const n = (shape.exec(name)?.slice(1) ?? []).map(Number);
+            if (n.length === 0 || n.some((x) => x !== n[0]) || n[0] <= attempt)
+                continue;
+            const rel = path.join(dir, name);
+            if (startSha !== undefined && runGit(cwd, ["cat-file", "-e", `${startSha}:./${rel}`]).ok)
+                continue;
+            if (!later.some((l) => l.rel === rel))
+                later.push({ rel, n: n[0] });
+        }
+    }
+    return later.sort((a, b) => a.n - b.n || a.rel.localeCompare(b.rel)).map((l) => l.rel);
+}
+const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+/** Dotted keys whose values differ between two `bkit.workflows` objects, sorted. */
+export function changedKeys(a, b, at = "") {
+    if (isRecord(a) && isRecord(b))
+        return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+            .sort()
+            .flatMap((k) => changedKeys(a[k], b[k], at === "" ? k : `${at}.${k}`));
+    return JSON.stringify(a) === JSON.stringify(b) ? [] : [at === "" ? "bkit.workflows" : at];
+}
+/**
+ * The `bkit.workflows` keys the working tree's package.json changes from HEAD's (`git add -A`
+ * commits the working tree). Empty when either side cannot be read as JSON.
+ */
+/** True when the active shared-checkout record for `fid` holds `rel` as dirty before the run. */
+function recordedPath(cwd, fid, rel) {
+    const rec = fid === undefined ? null : activeRecord(cwd, fid);
+    return rec !== null && rec.paths.some((p) => p.path === rel);
+}
+function workflowsChange(cwd) {
+    const top = git(cwd, ["rev-parse", "--show-toplevel"]) ?? cwd;
+    const file = path.join(top, "package.json");
+    const head = runGit(top, ["cat-file", "-e", "HEAD:package.json"]).ok
+        ? parseJson(runGit(top, ["show", "HEAD:package.json"]).stdout)
+        : { ok: true, value: {} };
+    const work = fs.existsSync(file)
+        ? parseJson(fs.readFileSync(file, "utf-8"))
+        : { ok: true, value: {} };
+    if (!head.ok || !work.ok)
+        return [];
+    const workflows = (pkg) => (isRecord(pkg) && isRecord(pkg.bkit) ? pkg.bkit.workflows : undefined) ?? {};
+    return changedKeys(workflows(head.value), workflows(work.value));
+}
 /** `soakAttempt` → `Soak Attempt`, for a comment header. */
 const titleCase = (key) => key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase());
 /** `<attempt>` filled in, once the attempt is known. */
@@ -573,6 +888,9 @@ async function finish(ctx) {
                     continue;
                 if (k === "Failures")
                     failures = (failures ?? 0) + Number(v);
+                // A `true | false` field is true when any agent sets it: one reviewer's flag is never outvoted.
+                else if (v === "true" && fields[k] === "false")
+                    fields[k] = v;
                 else if (!(k in fields))
                     fields[k] = v;
             }
@@ -595,11 +913,74 @@ async function finish(ctx) {
     if (strategy !== undefined && !STRATEGIES.includes(strategy))
         throw new CommandError(EXIT.USAGE, "--strategy must be STANDARD|PIVOT|FINAL");
     delete fields.Strategy;
+    if (workflow === "build" && step === "build-challenge") {
+        try {
+            extras.challengeFindings = mergeFindings(artifacts
+                .filter((a) => !isUrl(a))
+                .map((a) => parseFindings(fs.readFileSync(path.resolve(ctx.cwd, a), "utf-8"), a, ctx.cwd)), new Set()).findings.map(({ severity, location, title }) => ({ severity, location, title }));
+        }
+        catch (error) {
+            extras.challengeFindings = null;
+            ctx.log(`challenge findings unavailable: ${String(error)}; the original verdict remains unresolved until the report is corrected`);
+        }
+    }
+    if (workflow === "debug" && step === "debug-failure-reproduce" && fields.Reproduced !== undefined)
+        extras.reproduced = fields.Reproduced;
     const clampLog = str(f.clampLog);
     if (clampLog !== undefined) {
         const [clampStep, clampAttempt] = fill(clampLog, attempt).split(":");
         const fid = path.basename(path.dirname(file));
         extras.clamped = readRecords(clampLogPath(ctx.cwd, fid, clampStep, positiveInt(clampAttempt, "clamp-log attempt")), (l) => ctx.log(`skipping a malformed clamp record: ${l}`));
+    }
+    if (workflow === "debug" && step === "debug-run-tests") {
+        const active = readRuns(file).at(-1);
+        const rows = readStatusRows(file);
+        const start = rows
+            .map((r, i) => (r.type === "workflow-started" && r.workflow === "debug" ? i : -1))
+            .filter((i) => i >= 0)
+            .at(-1) ?? -1;
+        const round = rows
+            .slice(start + 1)
+            .reverse()
+            .find((r) => r.type === "test-run" &&
+            r.workflow === workflow &&
+            r.step === step &&
+            r.attempt === attempt);
+        if (extras.source === "ci" || round?.source === "ci") {
+            const matching = active?.workflow === "debug" &&
+                active.status === "IN_PROGRESS" &&
+                round &&
+                ciRoundMatches(round, active.ciSelection, active.ciGeneration) &&
+                extras.source === "ci" &&
+                extras.ciGeneration === active.ciGeneration &&
+                verdict === "FAIL" &&
+                failures === undefined &&
+                extras.scope === round.scope &&
+                artifacts.includes(String(round.artifact));
+            if (!matching)
+                throw new CommandError(EXIT.USAGE, "CI evidence does not match the active selection");
+            const text = fs.readFileSync(path.resolve(ctx.cwd, String(round.artifact)), "utf-8");
+            const required = [
+                "Verdict: FAIL",
+                "Source: ci",
+                `Scope: ${round.scope}`,
+                `Repository: ${round.repo}`,
+                `Workflow: ${round.workflowPath} (${round.workflowId})`,
+                `Run: ${round.ciRun}`,
+                `Run attempt: ${round.runAttempt}`,
+                `CI generation: ${round.ciGeneration}`,
+                `Commit: ${round.headSha}`,
+                `URL: ${round.ciUrl}`,
+                "The local gate was not run.",
+            ];
+            if (!required.every((line) => text.split(/\r?\n/).includes(line)))
+                throw new CommandError(EXIT.USAGE, "CI evidence artifact identity mismatch");
+            delete extras.clamped;
+        }
+        else if ((clampLog !== undefined || round !== undefined) &&
+            (!Array.isArray(extras.clamped) || extras.clamped.length === 0)) {
+            throw new CommandError(EXIT.USAGE, "local test completion needs clamp evidence");
+        }
     }
     // What the gate would refuse, refused before anything is written.
     const pre = gateChecks(ctx.cwd, {
@@ -626,6 +1007,71 @@ async function finish(ctx) {
     const commit = str(f.commit) ?? "auto";
     if (!["auto", "none"].includes(commit))
         throw new CommandError(EXIT.USAGE, "--commit must be auto or none");
+    // A code step never edits a planned test case: each one's own lines must still be the
+    // lines the group's tests step recorded at its red. Every other edit to the file is
+    // ordinary code-step work the verifier reads in the diff.
+    if (workflow === "build" &&
+        (step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) &&
+        group !== undefined) {
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+        const tests = touchedTests(top, file, workflow, group);
+        if (tests.length > 0) {
+            const touched = [...new Set(tests.map((t) => t.test))];
+            const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
+            const problem = `${named} differ${tests.length === 1 ? "s" : ""} from what the group's tests step recorded at its red: a code step never edits a planned test case — put ${tests.length === 1 ? "that test" : "those tests"} back as the tests step left ${tests.length === 1 ? "it" : "them"} (other edits to the file stay), or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
+            ctx.log(problem);
+            recordTestLockFriction(top, step, named);
+            ctx.emit({
+                pass: false,
+                reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
+                problem,
+                touched,
+                tests,
+            });
+            return EXIT_TESTS_TOUCHED;
+        }
+    }
+    // The tests step writes the group's tests: its commit may change those files, its own
+    // artifacts and the run's logs only, and add files no CREATE line of the plan names.
+    if (workflow === "build" && step === PLAN_TESTS_STEP && commit === "auto") {
+        const planArg = str(f.plan);
+        if (planArg === undefined)
+            throw new CommandError(EXIT.USAGE, `--plan is required to finish ${PLAN_TESTS_STEP}`);
+        if (group === undefined)
+            throw new CommandError(EXIT.USAGE, `--group is required to finish ${PLAN_TESTS_STEP}`);
+        const source = sourceTouched(ctx.cwd, {
+            plan: path.resolve(ctx.cwd, planArg),
+            group,
+            allowed: [...artifacts, path.dirname(file)],
+        });
+        if (source.length > 0) {
+            ctx.log(`the tests step changed ${source.join(", ")}: it writes the group's TEST FIRST files only — put the rest back (nothing written)`);
+            ctx.emit({ pass: false, source });
+            return EXIT_SOURCE_TOUCHED;
+        }
+    }
+    // The attempt finished is the latest one this run saved artifacts for.
+    if (attempt !== undefined) {
+        const startSha = activeRunStart(file, workflow)?.parentSha;
+        const later = laterAttempts(ctx.cwd, [...list(f.artifact), ...list(f.optionalArtifact)], attempt, typeof startSha === "string" && startSha !== "" ? startSha : undefined);
+        if (later.length > 0) {
+            ctx.log(`attempt ${attempt} is not the latest: this run saved ${later.join(", ")} after it — finish the latest attempt (nothing written)`);
+            ctx.emit({ pass: false, attempt, later });
+            return EXIT_LATER_ATTEMPT;
+        }
+    }
+    // A run never changes its own limits: the step commit may not carry a bkit.workflows edit.
+    // With a shared-checkout record the commit carries the run's own paths only, so a
+    // package.json that was already dirty when the run started stays out of it: a recorded
+    // one the run then changed is refused as foreign by the commit itself.
+    if (commit === "auto" && !recordedPath(ctx.cwd, fidOfStatusFile(file), "package.json")) {
+        const changed = workflowsChange(ctx.cwd);
+        if (changed.length > 0) {
+            ctx.log(`the step's commit would change bkit.workflows in package.json (${changed.join(", ")}): restore HEAD's values, then finish again (nothing written)`);
+            ctx.emit({ pass: false, changed });
+            return EXIT_WORKFLOWS_CHANGED;
+        }
+    }
     if (f.docsOnly === true && commit === "auto") {
         addAllButCopied(ctx.cwd);
         const outside = runGit(ctx.cwd, ["diff", "--cached", "--name-only"])
@@ -741,6 +1187,7 @@ async function finish(ctx) {
         row: written.row,
         parentSha: written.row.parentSha,
         commit: written.commit,
+        ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
         pass,
         checks,
         comment,
@@ -785,6 +1232,7 @@ export const stepsCommand = {
     verbs: {
         done: {
             summary: "Append a step-done row and commit it (parentSha captured first).",
+            use: "workflow",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
                 WORKFLOW_FLAG,
@@ -825,12 +1273,13 @@ export const stepsCommand = {
             output: {
                 row: "the appended step-done row",
                 commit: "the new commit's sha, or null with --commit=none",
+                progressLine: "the exact chat progress line after a successful numbered completion",
             },
             textOmit: ["row"],
             exitCodes: {
                 [EXIT_NO_STATUS]: "--attempt=next could not read status.jsonl",
                 [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory",
-                [EXIT_COMMIT]: "the row was written but the commit failed",
+                [EXIT_COMMIT]: "nothing written, nothing committed: the commit failed and the row was rolled back",
                 [EXIT_FOREIGN_PATH]: "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
                 [EXIT_NO_RECORD]: "a debug run on dev/main with no shared-checkout record: nothing written or committed",
             },
@@ -882,12 +1331,17 @@ export const stepsCommand = {
                     commit: commit,
                     message: str(f.message),
                 }, ctx.log);
-                ctx.emit({ row: written.row, commit: written.commit });
+                ctx.emit({
+                    row: written.row,
+                    commit: written.commit,
+                    ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
+                });
                 return written.code;
             },
         },
         finish: {
             summary: "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment.",
+            use: "workflow",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
                 WORKFLOW_FLAG,
@@ -956,6 +1410,11 @@ export const stepsCommand = {
                     type: "boolean",
                     help: "refuse (exit 9) when the step staged anything outside docs/plans/ and the docs ledgers",
                 },
+                {
+                    name: "plan",
+                    type: "string",
+                    help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto)`,
+                },
                 ...COMMIT_FLAGS.map((c) => c.name === "message"
                     ? {
                         ...c,
@@ -1011,12 +1470,17 @@ export const stepsCommand = {
                 parentSha: "the row's parentSha: HEAD before the step's commit",
                 commit: "the new commit's sha, or null with --commit=none",
                 pass: "every gate check passed",
+                progressLine: "the exact chat progress line after a successful numbered completion",
                 checks: "[{check, ok, detail}] per gate check",
                 comment: "the step's tracker comment body (with --number), else null",
                 commentFile: COMMENT_FILE_OUTPUT,
                 tracker: TRACKER_OUTPUT,
-                reask: "verdict read failed: {agent, artifact} to re-ask (exit 4 / 5 / 6 only)",
-                problem: "why the verdict read failed (exit 4 / 5 / 6 only)",
+                reask: "verdict read failed, or a planned test was touched: {agent, artifact} to re-ask (exit 4 / 5 / 6 / 11 only)",
+                problem: "why the verdict read failed, or which planned tests the code step touched (exit 4 / 5 / 6 / 11 only)",
+                touched: "planned test files of the group that differ from the blob its tests step recorded (exit 11 only)",
+                source: "files the tests step's commit would change that are not the group's TEST FIRST files, or add although a CREATE line names them (exit 15 only)",
+                later: "artifacts of a later attempt this run saved (exit 12 only)",
+                changed: "bkit.workflows keys the commit would change, dotted (exit 13 only)",
             },
             textOmit: ["row", { key: "checks", when: (_checks, out) => out.pass === true }],
             exitCodes: {
@@ -1025,15 +1489,20 @@ export const stepsCommand = {
                 [EXIT_PENDING]: "an --agent's header still has a PENDING field — re-ask it (nothing written)",
                 [EXIT_INVALID]: "an --agent's header is invalid (no verdict:end, a value outside its set, Failures disagreeing with Verdict) — re-ask it (nothing written)",
                 [EXIT_ARTIFACT]: "an --artifact is missing, empty, or outside the working directory (nothing written)",
-                [EXIT_COMMIT]: "the row was written but the commit failed",
+                [EXIT_COMMIT]: "nothing written, nothing committed: the commit failed and the row was rolled back",
                 [EXIT_FOREIGN_PATH]: "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
                 [EXIT_NO_RECORD]: "a debug run on dev/main with no shared-checkout record: nothing written or committed",
                 [EXIT_OUTSIDE_DOCS]: "--docs-only and the step staged a file outside the artifact tree (nothing written)",
+                [EXIT_TESTS_TOUCHED]: "build plan-execute / plan-gaps-remediate: a planned test case of the group differs from the lines its tests step recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back or log the task BLOCKED; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
+                [EXIT_LATER_ATTEMPT]: "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
+                [EXIT_WORKFLOWS_CHANGED]: "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
+                [EXIT_SOURCE_TOUCHED]: "build plan-tests: the tests step changed a file no TEST FIRST line of the group's open tasks names, or added one a CREATE line of the plan names (`source`) (nothing written)",
             },
             run: finish,
         },
         verdict: {
             summary: "Read an artifact's header down to <!-- verdict:end -->.",
+            use: "by-hand",
             flags: [
                 { name: "file", type: "string", required: true, help: "the subagent's artifact" },
                 ...ALLOWED_FLAGS,
@@ -1062,6 +1531,7 @@ export const stepsCommand = {
         },
         gate: {
             summary: "Mechanical gate checks for one step: placeholders, FID, lock, artifacts, verdict, status row (with its attempt / strategy / scope where the step writes them).",
+            use: "workflow",
             flags: [
                 {
                     ...FILE_FLAG,
@@ -1076,6 +1546,11 @@ export const stepsCommand = {
                 WORKFLOW_FLAG,
                 STEP_FLAG,
                 GROUP_FLAG,
+                {
+                    name: "progress-number",
+                    type: "string",
+                    help: "render this completed numbered position without writing a status row",
+                },
                 {
                     name: "attempt",
                     type: "string",
@@ -1117,7 +1592,11 @@ export const stepsCommand = {
                     help: "the workflow lock must be held with this token (needs --fid)",
                 },
             ],
-            output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
+            output: {
+                pass: "true when every check passed",
+                checks: "[{check, ok, detail}] per check",
+                progressLine: "with --progress-number: the exact chat progress line after the gate passes",
+            },
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing (on disk, or on --ref), unreadable, or not valid NDJSON",
             },
@@ -1126,6 +1605,29 @@ export const stepsCommand = {
                 const file = str(f.file) === undefined ? undefined : statusFile(ctx);
                 const workflow = String(f.workflow);
                 const group = positiveInt(f.group, "group");
+                const progressNumber = positiveInt(f.progressNumber, "progress-number");
+                if (progressNumber !== undefined &&
+                    (!isResumable(workflow) ||
+                        !WORKFLOW_STEPS[workflow].some((s) => s.number === progressNumber)))
+                    throw new CommandError(EXIT.USAGE, "--progress-number is not a workflow step");
+                if (progressNumber !== undefined && isResumable(workflow)) {
+                    const step = String(f.step);
+                    const recordedNumber = WORKFLOW_STEPS[workflow].find((s) => s.step === step)?.number;
+                    const gateNumber = workflow === "ship" &&
+                        (step === "ship-worktree-setup" || step === "ship-regression-guard")
+                        ? 3
+                        : workflow === "ship" && step === "ship-bookkeeping-push"
+                            ? 9
+                            : recordedNumber;
+                    if (progressNumber !== recordedNumber && progressNumber !== gateNumber)
+                        throw new CommandError(EXIT.USAGE, "--progress-number does not match the gated step");
+                    if (file === undefined &&
+                        (progressNumber !== 1 ||
+                            !str(f.fid) ||
+                            !/^[0-9]{6}$/.test(str(f.month) ?? "") ||
+                            !str(f.token)))
+                        throw new CommandError(EXIT.USAGE, "gate progress needs --file, or Step 1 with --fid, --month and --token");
+                }
                 if (f.attempt !== undefined && f.attemptOf !== undefined)
                     throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
                 if (f.attemptOf !== undefined && file === undefined)
@@ -1157,12 +1659,26 @@ export const stepsCommand = {
                 const pass = checks.every((c) => c.ok);
                 for (const c of checks.filter((x) => !x.ok))
                     ctx.log(`${c.check}: ${c.detail}`);
-                ctx.emit({ pass, checks });
+                const progressFile = file ??
+                    path.resolve(ctx.cwd, "docs", "plans", str(f.month) ?? "", "logs", str(f.fid) ?? "", "status.jsonl");
+                const progressLine = pass && progressNumber !== undefined
+                    ? stepProgress(ctx.cwd, {
+                        file: progressFile,
+                        workflow,
+                        step: String(f.step),
+                        group,
+                        attempt,
+                        artifacts: [],
+                        commit: "none",
+                    }, progressNumber)
+                    : undefined;
+                ctx.emit({ pass, checks, ...(progressLine === undefined ? {} : { progressLine }) });
                 return pass ? EXIT.OK : EXIT.NO;
             },
         },
         stub: {
             summary: "Seed a versioned artifact: copy the prior version, then put a PENDING verdict header on top.",
+            use: "workflow",
             flags: [
                 { name: "from", type: "string", required: true, help: "the prior versioned artifact" },
                 { name: "to", type: "string", required: true, help: "the artifact to create" },

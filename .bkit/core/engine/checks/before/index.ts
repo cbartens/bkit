@@ -22,6 +22,7 @@ import {
   detectNoPackageJson,
   detectNotGitRepo,
   detectInvalidAskSettings,
+  detectBuildPublish,
   detectInvalidTaskCaps,
   detectTaskCapFormStale,
   detectUnmarkedPlans,
@@ -39,6 +40,7 @@ import {
   detectContextFetchMissing,
   detectContextFetchProvisionMissing,
   detectContextFetchSourceNotEnabled,
+  detectContextFetchUnbounded,
 } from "./context-fetch.js";
 import { detectExtraMcpServers, detectMissingMcpServers } from "./mcp.js";
 
@@ -136,6 +138,8 @@ export function runPreflight(
   const invalidTaskCaps = detectInvalidTaskCaps(cwd);
   if (invalidTaskCaps) advisories.push(invalidTaskCaps);
 
+  advisories.push(...detectBuildPublish(cwd));
+
   const taskCapFormStale = detectTaskCapFormStale(cwd);
   if (taskCapFormStale) advisories.push(taskCapFormStale);
 
@@ -161,6 +165,9 @@ export function runPreflight(
 
   const contextFetchProvision = detectContextFetchProvisionMissing(cwd);
   if (contextFetchProvision) advisories.push(contextFetchProvision);
+
+  const contextFetchUnbounded = detectContextFetchUnbounded(cwd);
+  if (contextFetchUnbounded) advisories.push(contextFetchUnbounded);
 
   // bkit-not-on-path advisory — suggest the shell alias for local development.
   const bkitNotOnPath = detectBkitNotOnPath();

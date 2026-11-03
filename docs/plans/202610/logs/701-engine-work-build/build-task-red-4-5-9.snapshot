@@ -1,0 +1,766 @@
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { runCommand } from "../lib";
+import { CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
+import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
+import { checkPlanText, readTestFirst } from "./tests";
+
+const MONTH = "202610";
+const FID = "682-challenge-fold";
+const PLAN = `docs/plans/${MONTH}/${FID}-plan.md`;
+const LOG = `docs/plans/${MONTH}/logs/${FID}`;
+const R1 = `${LOG}/build-challenge-1.md`;
+const R2 = `${LOG}/build-challenge-2.md`;
+
+let cwd: string;
+beforeEach(() => {
+  cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-")));
+});
+afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
+
+const write = (rel: string, body: string) => {
+  fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
+  fs.writeFileSync(path.join(cwd, rel), body);
+};
+const read = (rel: string) => fs.readFileSync(path.join(cwd, rel), "utf-8");
+
+const planTask = (n: number) =>
+  [
+    `<!-- bkit:task ${n} start -->`,
+    `- [ ] **TASK ${n}:** Step ${n}.`,
+    `  - **DONE WHEN:** step ${n} done.`,
+    "  - **TEST FIRST:**",
+    `    - \`src/s${n}.test.ts\` \`step ${n}\` fails on step ${n} missing.`,
+    `<!-- bkit:task ${n} end -->`,
+  ].join("\n");
+/** Tasks `from`..`to` in groups of three, the first numbered `group`. */
+const groups = (from: number, to: number, group = 1) =>
+  Array.from({ length: Math.ceil((to - from + 1) / 3) }, (_, g) => {
+    const first = from + g * 3;
+    const tasks = Array.from({ length: Math.min(3, to - first + 1) }, (_, k) =>
+      planTask(first + k),
+    );
+    const n = group + g;
+    return [
+      `<!-- bkit:group ${n} start -->`,
+      `### GROUP ${n}: Steps`,
+      ...tasks,
+      `<!-- bkit:group ${n} end -->`,
+    ].join("\n");
+  });
+/** A plan file with `n` tasks in groups of three, then the gate checkpoints and the verification plan. */
+const plan = (n: number) =>
+  [
+    "# Challenge Fold Implementation Plan",
+    "",
+    "## Agent Execution Runbook",
+    "",
+    ...groups(1, n),
+    "",
+    "### 🔒 Gate 2: Code Implementation Check",
+    "",
+    "- [x] Test first: every task recorded a red per test before its code.",
+    "- [x] **Gate 2 - Verified:** Every checkbox above independently verified.",
+    "",
+    "## Verification Plan",
+    "",
+    "- [ ] **Run all tests:** green.",
+    "",
+  ].join("\n");
+
+interface F {
+  sev: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  loc: string;
+  fixable?: boolean;
+  title?: string;
+  /** TEST FIRST entries; default one test guarding `loc`. */
+  tests?: string[];
+}
+/** One finding as the reviewers write it: a task block under `## Findings Log`. */
+const finding = (f: F, n = 1) =>
+  [
+    `<!-- bkit:task ${n} start -->`,
+    `- [ ] **TASK ${n}:** ${f.title ?? `Fix ${f.loc}`}`,
+    `  **Severity:** ${f.sev} · **Class:** mechanical · **Fixable:** ${f.fixable === false ? "false" : "true"} · **Location:** \`${f.loc}\``,
+    `  - **DONE WHEN:** the bug at ${f.loc} is gone`,
+    "  - **TEST FIRST:**",
+    ...(f.tests ?? [`\`src/a.test.ts\` \`guards ${f.loc}\` fails on the bug at ${f.loc}`]).map(
+      (t) => `    - ${t}`,
+    ),
+    `<!-- bkit:task ${n} end -->`,
+  ].join("\n");
+const report = (...findings: F[]) => {
+  const worst = findings.some((f) => f.sev === "CRITICAL")
+    ? "FAIL"
+    : findings.length > 0
+      ? "CONCERNS"
+      : "PASS";
+  return [
+    `Verdict: ${worst}`,
+    `Failures: ${findings.filter((f) => f.sev === "CRITICAL").length}`,
+    "",
+    "<!-- verdict:end -->",
+    "",
+    "# Build Challenge",
+    "",
+    "## Findings Log",
+    "",
+    ...findings.map((f, i) => finding(f, i + 1)),
+    "",
+    "## Notes",
+    "",
+    "None.",
+    "",
+  ].join("\n");
+};
+
+async function merge(...argv: string[]) {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runCommand(["challenge", "merge", ...argv, "--json"], [challengeCommand], {
+    classicVerbs: new Set(),
+    cwd,
+    io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+  });
+  return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+}
+const args = (reports: string[], round = 1, planPath = PLAN) => [
+  ...reports.map((r) => `--report=${r}`),
+  `--plan=${planPath}`,
+  `--log=${LOG}`,
+  `--round=${round}`,
+];
+const severities = (text: string) =>
+  [...text.matchAll(/\*\*Severity:\*\*\s*(\w+)/g)].map((m) => m[1]);
+const deferrals = () => {
+  const file = path.join(cwd, "docs", "deferrals.jsonl");
+  if (!fs.existsSync(file)) return [];
+  return fs
+    .readFileSync(file, "utf-8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
+};
+
+describe("bkit challenge merge", () => {
+  it("merges one report", async () => {
+    write(PLAN, plan(2));
+    write(
+      R2,
+      report(
+        { sev: "HIGH", loc: "src/a.ts:10" },
+        { sev: "MEDIUM", loc: "src/b.ts:4" },
+        { sev: "LOW", loc: "src/c.ts:1" },
+      ),
+    );
+    const r = await merge(...args([R2]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      route: "fix",
+      fixTasks: "3,4",
+      appended: 2,
+      deferred: 1,
+      dropped: 0,
+      plan: PLAN,
+      round: 1,
+    });
+    expect(r.json).not.toHaveProperty("newSubPlan");
+    expect(severities(read(PLAN))).toEqual(["HIGH", "MEDIUM"]);
+  });
+
+  it("keeps the worse severity", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
+    write(R2, report({ sev: "HIGH", loc: "./src/a.ts:10" }));
+    const r = await merge(...args([R1, R2]));
+    expect(r.code).toBe(0);
+    expect(r.json.appended).toBe(1);
+    expect(severities(read(PLAN))).toEqual(["HIGH"]);
+  });
+
+  it("drops an accepted finding", async () => {
+    write(PLAN, plan(2));
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Null deref in `src/a.ts:10`:** the handler reads a missing field.",
+        "Recommended: Accept — guarded upstream.",
+        "Decision: Accept — yes",
+        "",
+        "**Q2 — Retry loop in `src/b.ts:4`:** spins forever.",
+        "Recommended: Fix now — real bug.",
+        "Decision: Fix now — yes",
+        "",
+      ].join("\n"),
+    );
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "MEDIUM", loc: "src/b.ts:4" }));
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ appended: 1, dropped: 1, fixTasks: "3" });
+    expect(read(PLAN)).not.toContain("src/a.ts:10");
+    expect(read(PLAN)).toContain("src/b.ts:4");
+  });
+
+  it("numbers after the last task", async () => {
+    write(PLAN, plan(6));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "MEDIUM", loc: "src/b.ts:4" }));
+    const r = await merge(...args([R1]));
+    expect(r.json.fixTasks).toBe("7,8");
+    const tasks = readTestFirst(read(PLAN));
+    expect(tasks.map((t) => t.task)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(tasks.every((t) => t.kind === "test")).toBe(true);
+    // The new tasks sit inside the runbook, before the gate checkpoints.
+    const text = read(PLAN);
+    expect(text.indexOf("**TASK 8:**")).toBeLessThan(text.indexOf("Gate 2"));
+  });
+
+  it("writes findings as new last groups of at most 3 tasks, each a block that passes plan-check", async () => {
+    write(PLAN, plan(2));
+    write(
+      R1,
+      report(
+        ...Array.from({ length: 4 }, (_, k) => ({
+          sev: "HIGH" as const,
+          loc: `src/a.ts:${k + 1}`,
+        })),
+      ),
+    );
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json.fixTasks).toBe("3,4,5,6");
+    const blocks = parsePlanBlocks(read(PLAN));
+    expect(blocks.errors).toEqual([]);
+    expect(blocks.groups.map((g) => [g.group, g.tasks.map((t) => t.task)])).toEqual([
+      [1, [1, 2]],
+      [2, [3, 4, 5]],
+      [3, [6]],
+    ]);
+    expect(blocks.groups[1]!.title).toBe("Challenge round 1 findings");
+    expect(checkPlanText(read(PLAN)).problems).toEqual([]);
+  });
+
+  it("challenge merge writes a matrix row for each appended finding task", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "| case 2 | Unit | `src/b.test.ts` | 2 |",
+        "",
+      ].join("\n"),
+    );
+    write(
+      R1,
+      report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "MEDIUM", loc: "src/b.ts:4" }),
+    );
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json.fixTasks).toBe("3,4");
+    const merged = read(PLAN);
+    expect(derivedTestMatrix(merged)?.rows.map((row) => row.tasks)).toEqual([[3], [4]]);
+    expect(checkPlanText(merged).problems).toEqual([]);
+  });
+
+  it("leaves the plan unchanged when plan-check fails", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10", tests: [] }));
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(23);
+    expect(r.json.problems.length).toBeGreaterThan(0);
+    expect(read(PLAN)).toBe(before);
+    expect(deferrals()).toEqual([]);
+  });
+
+  it("routes unfixable HIGH to pause", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10", fixable: false }));
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "pause", appended: 1, fixTasks: "3" });
+  });
+
+  it("routes unfixable MEDIUM to pause", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10", fixable: false }));
+    const r = await merge(...args([R1]));
+    expect(r.json.route).toBe("pause");
+  });
+
+  it("routes a second round with new tasks to pause", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
+    const r = await merge(...args([R1], 2));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "pause", appended: 1, round: 2 });
+  });
+
+  it("refuses an old-format report with findings", async () => {
+    write(PLAN, plan(2));
+    write(
+      R1,
+      [
+        "Verdict: CONCERNS",
+        "Failures: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Findings Log",
+        "",
+        "1. **HIGH** · mechanical · `src/a.ts:10` — null deref",
+        "",
+      ].join("\n"),
+    );
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(22);
+    expect(read(PLAN)).toBe(before);
+  });
+
+  it("refuses a report in task-line form", async () => {
+    write(PLAN, plan(2));
+    write(
+      R1,
+      [
+        "Verdict: CONCERNS",
+        "Failures: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Findings Log",
+        "",
+        "- [ ] **Task 1:** Null deref",
+        "  **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `src/a.ts:10`",
+        "  **Done when:** guarded",
+        "  **Test first:** `src/a.test.ts` `guards` fails on the deref",
+        "",
+      ].join("\n"),
+    );
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(22);
+    expect(r.err).toContain("task-block form");
+    expect(read(PLAN)).toBe(before);
+  });
+
+  it("refuses a finding block with no Location", async () => {
+    write(PLAN, plan(2));
+    write(
+      R1,
+      report({ sev: "HIGH", loc: "src/a.ts:10" }).replace(/ · \*\*Location:\*\* `[^`]+`/, ""),
+    );
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(22);
+    expect(r.err).toContain("TASK 1 has no **Location:** path:line");
+  });
+
+  it("refuses a missing report", async () => {
+    write(PLAN, plan(2));
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(21);
+  });
+
+  it("a second run with the same reports appends nothing", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "LOW", loc: "src/c.ts:1" }));
+    const first = await merge(...args([R1]));
+    const after = read(PLAN);
+    const second = await merge(...args([R1]));
+    expect(second.code).toBe(0);
+    expect(read(PLAN)).toBe(after);
+    expect(second.json).toMatchObject({ appended: 0, route: "fix", fixTasks: first.json.fixTasks });
+    expect(deferrals()).toHaveLength(1);
+  });
+
+  it("a finding reported again in round 2 reruns its open round-1 task instead of a twin", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }));
+    const first = await merge(...args([R1], 1));
+    expect(first.json).toMatchObject({ route: "fix", fixTasks: "3", appended: 1 });
+    // Task 3 stays open (the fix group was BLOCKED); round 2 reports the same finding.
+    const second = await merge(...args([R1], 2));
+    expect(second.code).toBe(0);
+    expect(second.json).toMatchObject({ route: "pause", fixTasks: "3", appended: 0, round: 2 });
+    const text = read(PLAN);
+    expect(text.match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(1);
+    expect(parsePlanBlocks(text).tasks.map((t) => t.task)).toEqual([1, 2, 3]);
+    expect(text).toContain("**Location:** `src/a.ts:10` · **Round:** 1, 2");
+    // A re-run of round 2 changes nothing and names the same task.
+    const third = await merge(...args([R1], 2));
+    expect(third.json).toMatchObject({ fixTasks: "3", appended: 0 });
+    expect(read(PLAN)).toBe(text);
+  });
+
+  it("a finding whose round-1 task is ticked done but comes back in round 2 gets a new task", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }));
+    await merge(...args([R1], 1));
+    write(PLAN, read(PLAN).replace("- [ ] **TASK 3:**", "- [x] **TASK 3:**"));
+    // A re-run of round 1 after the fix keeps the done task: nothing to append.
+    const rerun = await merge(...args([R1], 1));
+    expect(rerun.json).toMatchObject({ route: "none", fixTasks: "", appended: 0 });
+    // Round 2 reports it again: the fix did not hold, so it is a new task.
+    const second = await merge(...args([R1], 2));
+    expect(second.json).toMatchObject({ route: "pause", fixTasks: "4", appended: 1 });
+    expect(read(PLAN).match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(2);
+    // Task 4 done, round 2 re-run: no third task.
+    write(PLAN, read(PLAN).replace("- [ ] **TASK 4:**", "- [x] **TASK 4:**"));
+    const again = await merge(...args([R1], 2));
+    expect(again.json).toMatchObject({ route: "none", fixTasks: "", appended: 0 });
+  });
+
+  it("a reopened task that is ticked done after round 2 is not appended again on a re-run", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }));
+    await merge(...args([R1], 1));
+    await merge(...args([R1], 2));
+    write(PLAN, read(PLAN).replace("- [ ] **TASK 3:**", "- [x] **TASK 3:**"));
+    const rerun = await merge(...args([R1], 2));
+    expect(rerun.json).toMatchObject({ route: "none", fixTasks: "", appended: 0 });
+  });
+
+  it("drops a finding at an accepted extensionless path", async () => {
+    write(PLAN, plan(2));
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Wrong target in `Makefile:12`:** builds twice.",
+        "Decision: Accept — yes",
+        "",
+      ].join("\n"),
+    );
+    write(R1, report({ sev: "HIGH", loc: "Makefile:12" }));
+    const r = await merge(...args([R1]));
+    expect(r.json).toMatchObject({ appended: 0, dropped: 1, route: "none" });
+  });
+
+  it("deferred counts the rows written", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "LOW", loc: "src/c.ts:1" }));
+    expect((await merge(...args([R1]))).json.deferred).toBe(1);
+    expect((await merge(...args([R1]))).json.deferred).toBe(0);
+    expect(deferrals()).toHaveLength(1);
+  });
+
+  it("7 findings give three new groups of 3, 3 and 1", async () => {
+    write(PLAN, plan(11));
+    write(
+      R1,
+      report(
+        ...Array.from({ length: 7 }, (_, k) => ({
+          sev: "HIGH" as const,
+          loc: `src/a.ts:${k + 1}`,
+        })),
+      ),
+    );
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    // A long plan grows in place: no second plan file.
+    expect(r.json).toMatchObject({ route: "fix", fixTasks: "12,13,14,15,16,17,18", plan: PLAN });
+    expect(fs.readdirSync(path.join(cwd, `docs/plans/${MONTH}`)).sort()).toEqual([
+      `${FID}-plan.md`,
+      "logs",
+    ]);
+    const blocks = parsePlanBlocks(read(PLAN));
+    expect(blocks.errors).toEqual([]);
+    expect(blocks.groups.slice(4).map((g) => [g.group, g.tasks.map((t) => t.task)])).toEqual([
+      [5, [12, 13, 14]],
+      [6, [15, 16, 17]],
+      [7, [18]],
+    ]);
+    expect(checkPlanText(read(PLAN)).problems).toEqual([]);
+  });
+
+  it("challenge merge splits groups at the configured maxPerGroup", async () => {
+    write("package.json", JSON.stringify({ bkit: { workflows: { tasks: { maxPerGroup: 4 } } } }));
+    write(PLAN, plan(11));
+    write(
+      R1,
+      report(
+        ...Array.from({ length: 13 }, (_, k) => ({
+          sev: "HIGH" as const,
+          loc: `src/a.ts:${k + 1}`,
+        })),
+      ),
+    );
+    // 13 tasks stay under four groups of 4, so the merge writes them.
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "fix", appended: 13 });
+    const blocks = parsePlanBlocks(read(PLAN));
+    expect(blocks.groups.slice(4).map((g) => g.tasks.length)).toEqual([4, 4, 4, 1]);
+  });
+
+  it("refuses a finding with 16 planned tests", async () => {
+    write(PLAN, plan(2));
+    const tests = Array.from(
+      { length: 16 },
+      (_, k) => `\`src/a.test.ts\` \`case ${k + 1}\` fails on case ${k + 1}`,
+    );
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10", tests }));
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(23);
+    expect(r.json.problems.join("\n")).toContain("TASK 3 names 16 TEST FIRST tests");
+    expect(read(PLAN)).toBe(before);
+  });
+
+  it("routes more findings than one round may add to pause and writes nothing", async () => {
+    write(PLAN, plan(11));
+    // One finding is already a task in the plan: it is not one the pause must choose from.
+    write(R2, report({ sev: "HIGH", loc: "src/a.ts:1" }));
+    await merge(...args([R2]));
+    write(
+      R1,
+      report(
+        ...Array.from({ length: 14 }, (_, k) => ({
+          sev: "HIGH" as const,
+          loc: `src/a.ts:${k + 1}`,
+        })),
+        { sev: "LOW", loc: "src/c.ts:1" },
+      ),
+    );
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      route: "pause",
+      fixTasks: "",
+      appended: 0,
+      deferred: 0,
+      overflow: 13,
+      plan: PLAN,
+    });
+    expect(read(PLAN)).toBe(before);
+    expect(deferrals()).toEqual([]);
+  });
+
+  it("LOW finding becomes a deferral row", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "LOW", loc: "src/c.ts:1" }, { sev: "LOW", loc: "src/d.ts:2" }));
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "none", appended: 0, deferred: 2, fixTasks: "" });
+    expect(read(PLAN)).toBe(before);
+    const rows = deferrals();
+    expect(rows).toHaveLength(2);
+    for (const row of rows)
+      expect(row).toMatchObject({
+        kind: "deferral",
+        severity: "LOW",
+        reason: "low-severity",
+        by: { workflow: "build", step: "build-challenge" },
+      });
+    expect(rows.map((row) => row.source)).toEqual(["src/c.ts:1", "src/d.ts:2"]);
+  });
+
+  it("a failed LOW deferral append leaves the plan unchanged; the re-run writes both", async () => {
+    const plan2 = "work/p-plan.md";
+    const log2 = `work/logs/${FID}`;
+    const r1 = `${log2}/build-challenge-1.md`;
+    const argv = [`--report=${r1}`, `--plan=${plan2}`, `--log=${log2}`, "--round=1"];
+    write(plan2, plan(2));
+    write(r1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "LOW", loc: "src/c.ts:1" }));
+    const before = read(plan2);
+    // docs/deferrals.jsonl cannot be created: docs is a file.
+    write("docs", "");
+    const failed = await merge(...argv);
+    expect(failed.code).toBe(4);
+    expect(read(plan2)).toBe(before);
+    fs.rmSync(path.join(cwd, "docs"));
+    const r = await merge(...argv);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ appended: 1, deferred: 1 });
+    expect(read(plan2)).not.toBe(before);
+    expect(deferrals()).toHaveLength(1);
+  });
+
+  it("writes LOW deferrals at the checkout root when run from a subfolder", async () => {
+    spawnSync("git", ["init", "-q"], { cwd });
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "LOW", loc: "src/c.ts:1" }));
+    fs.mkdirSync(path.join(cwd, "sub"));
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "challenge",
+        "merge",
+        `--report=../${R1}`,
+        `--plan=../${PLAN}`,
+        `--log=../${LOG}`,
+        "--round=1",
+        "--json",
+      ],
+      [challengeCommand],
+      {
+        classicVerbs: new Set(),
+        cwd: path.join(cwd, "sub"),
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    expect(JSON.parse(out.join(""))).toMatchObject({ deferred: 1 });
+    expect(deferrals()).toHaveLength(1);
+    expect(fs.existsSync(path.join(cwd, "sub", "docs"))).toBe(false);
+  });
+});
+
+describe("bkit challenge gate", () => {
+  const stat = (linesChanged: number, filesChanged: number) => ({
+    linesChanged,
+    filesChanged,
+    linesAdded: linesChanged,
+    linesDeleted: 0,
+  });
+
+  it("challenge-1 skipped below threshold", () => {
+    expect(CHALLENGE_SMALL).toEqual({ lines: 300, files: 10 });
+    const small = { size: "small", skipped: true, agents: ["bkit-build-challenge-2"] };
+    const large = {
+      size: "large",
+      skipped: false,
+      agents: ["bkit-build-challenge-1", "bkit-build-challenge-2"],
+    };
+    expect(challengeGate(stat(299, 9))).toEqual(small);
+    expect(challengeGate(stat(0, 0))).toEqual(small);
+    expect(challengeGate(stat(300, 9))).toEqual(large);
+    expect(challengeGate(stat(299, 10))).toEqual(large);
+  });
+
+  const g = (...argv: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...argv], {
+      cwd,
+      encoding: "utf-8",
+    }).stdout.trim();
+  const commitAll = (msg: string) => {
+    g("add", "-A");
+    g("commit", "-q", "-m", msg);
+  };
+  async function gate(...argv: string[]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand(["challenge", "gate", ...argv, "--json"], [challengeCommand], {
+      classicVerbs: new Set(),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+    });
+    return { code, json: out.length ? JSON.parse(out.join("")) : undefined, err: err.join("") };
+  }
+  const STATUS = `${LOG}/status.jsonl`;
+  const rows = () =>
+    read(STATUS)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  it("challenge gate writes a challenge-gate row", async () => {
+    g("init", "-q", "-b", "dev");
+    write("src/a.ts", "a\n");
+    write(STATUS, "");
+    commitAll("base");
+    g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    write("src/a.ts", "a\nb\nc\n");
+    write(PLAN, plan(40));
+    commitAll("work");
+
+    const r = await gate(`--file=${STATUS}`);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      size: "small",
+      skipped: true,
+      linesChanged: 2,
+      filesChanged: 1,
+      agents: "bkit-build-challenge-2",
+    });
+    const row = rows().at(-1)!;
+    expect(row).toMatchObject({
+      type: "challenge-gate",
+      workflow: "build",
+      range: "origin/dev...HEAD",
+      linesChanged: 2,
+      filesChanged: 1,
+      size: "small",
+      skipped: true,
+      limit: { lines: 300, files: 10 },
+    });
+    expect(typeof row.at).toBe("string");
+
+    write("src/big.ts", Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    commitAll("more");
+    const again = await gate(`--file=${STATUS}`);
+    expect(again.json).toMatchObject({ size: "large", skipped: false });
+    expect(rows().filter((x) => x.type === "challenge-gate")).toHaveLength(2);
+  });
+
+  it("challenge gate fetches origin dev first, so dev's own changes do not count", async () => {
+    const remote = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-remote-")),
+    );
+    try {
+      g("init", "-q", "-b", "dev");
+      write("src/a.ts", "a\n");
+      write(STATUS, "");
+      commitAll("base");
+      spawnSync("git", ["init", "-q", "--bare", remote]);
+      g("remote", "add", "origin", remote);
+      g("push", "-q", "origin", "dev");
+      g("fetch", "-q", "origin");
+      // dev moves on with a large change the branch then picks up by merging it.
+      g("checkout", "-q", "-b", "other");
+      write("src/big.ts", Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n") + "\n");
+      commitAll("dev work");
+      g("push", "-q", "origin", "other:dev");
+      g("update-ref", "refs/remotes/origin/dev", g("rev-parse", "dev"));
+      g("checkout", "-q", "-b", "feat", "other");
+      write("src/a.ts", "a\nb\n");
+      commitAll("work");
+
+      const r = await gate(`--file=${STATUS}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ size: "small", linesChanged: 1, filesChanged: 1 });
+    } finally {
+      fs.rmSync(remote, { recursive: true, force: true });
+    }
+  });
+
+  it("challenge gate measures against the local origin/dev when the fetch fails", async () => {
+    g("init", "-q", "-b", "dev");
+    write("src/a.ts", "a\n");
+    write(STATUS, "");
+    commitAll("base");
+    g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    write("src/a.ts", "a\nb\n");
+    commitAll("work");
+    const r = await gate(`--file=${STATUS}`);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ size: "small", linesChanged: 1 });
+    expect(r.err).toContain("git fetch origin dev failed");
+  });
+
+  it("challenge gate exits 5 when --base names no commit", async () => {
+    g("init", "-q", "-b", "dev");
+    write(STATUS, "");
+    commitAll("base");
+    const r = await gate(`--file=${STATUS}`, "--base=origin/nope");
+    expect(r.code).toBe(5);
+    expect(rows()).toEqual([]);
+  });
+});

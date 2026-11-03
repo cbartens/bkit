@@ -4,11 +4,12 @@
 // `audit` / `utility` for the agents); `bkit tips` prints the top three;
 // `.bkit/advisories.md` lists every firing tip under `Setup tips`.
 //
-// Array order is the priority: comms first (can workflows reach anything), then change
-// quality (design → build), delivery (debug → ship), running cost, nice-to-have, and
-// setup-specific plumbing last. `workflows` names where a tip matters: a workflow shows
-// its own tips first, in array order, then the rest. Comms tips name every context, so
-// they lead everywhere until fixed.
+// Array order is the priority: an outdated bkit first (every workflow runs its old text and
+// misses its fixes), then comms (can workflows reach anything), change quality (design →
+// build), delivery (debug → ship), running cost, nice-to-have, and setup-specific plumbing
+// last. `workflows` names where a tip matters: a workflow shows its own tips first, in
+// array order, then the rest. The upgrade and comms tips name every context, so they lead
+// everywhere until fixed; the upgrade tip alone cannot be silenced.
 //
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
 // never name an outside service — examples of specific services go in `steps`, which is
@@ -16,7 +17,9 @@
 // section opener and in the README's "Templates ready to adopt" row; change all three in
 // the same commit.
 //
-// Detection rules: every `fires` is local (files, settings, environment) — no network.
+// Detection rules: every `fires` is local (files, settings, environment) — no network. The
+// `cwd` it receives is the main checkout (checks/tips/index.ts `tipsBase`), never the
+// calling worktree, so a tip reflects the repo the integration branch carries.
 // Where an advisory already detects the gap, `fires` calls that detector and `advisories`
 // names its ids, so the tip and the advisory can never disagree and one
 // `bkit.advisories.ignore` entry silences both.
@@ -47,7 +50,9 @@ import {
   hasJsTestRunner,
   hasLintStagedConfig,
   hasMcpServer,
+  hasNewerBkit,
   hasTestLinter,
+  hasUnsharedFriction,
   readsBkitText,
   unlockedMcpServers,
 } from "./detect.js";
@@ -69,6 +74,8 @@ export interface SetupTip {
   ask: string;
   /** Where the agent finds the exact steps. */
   steps: string;
+  /** False when no `bkit.advisories.ignore` entry may silence the tip. */
+  silenceable?: false;
   /** Advisory ids this tip reuses the check of; a trailing `*` matches an id prefix. */
   advisories?: readonly string[];
   /** True when the gap exists. Local checks only. */
@@ -84,6 +91,21 @@ export const ALL_WORKFLOWS: readonly ComplyPhase[] = ["design", "plan", "build",
 export const EVERY_CONTEXT: readonly TipsContext[] = [...ALL_WORKFLOWS, "audit", "utility"];
 
 export const SETUP_TIPS: readonly SetupTip[] = [
+  // --- current: is bkit itself up to date ---------------------------------------------
+  {
+    id: "bkit-upgrade",
+    workflows: EVERY_CONTEXT,
+    title: "Upgrade bkit",
+    line: "A newer bkit is out, but this repo still runs an older one, so your workflows miss its fixes. Upgrade it.",
+    why: "Each release fixes problems found in earlier ones and improves the steps your workflows follow. Upgrading is one command, and it also refreshes the files bkit keeps in this repo so they match the new version.",
+    caution:
+      "Upgrading rewrites the files bkit manages in this repo. Look over what changed and commit it as one change.",
+    ask: "Upgrade bkit in this repo to the latest version: follow the paste block in .bkit/install.md § Upgrade — already installed, then show me what changed before committing.",
+    steps: "`.bkit/install.md` § Upgrade — already installed.",
+    silenceable: false,
+    fires: hasNewerBkit,
+  },
+
   // --- connect: can bkit talk to anything at all -------------------------------------
   {
     id: "tracker",
@@ -165,7 +187,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Automatic checks on every change",
     line: "Nothing checks your changes automatically before they're merged, so broken code can land unnoticed. Add bkit's check workflow.",
     why: 'This runs your tests and checks on GitHub every time something changes, and bkit\'s ship step waits for it to pass before merging. Without it, "shipped" only means "merged", not "checked".',
-    ask: "Copy .bkit/templates/.github/workflows/bkit-ci.yml to .github/workflows/<the file package.json `bkit.testing.ciWorkflow` names; default bkit-ci.yml>, replace `main` and `{{NODE_VERSION}}` in it with my default branch and Node major version, and add the `typecheck`, `lint`, `format:check`, `lint:prose`, `slop:delta` and `test` scripts to package.json as listed in .bkit/templates.md § Gate tool scripts.",
+    ask: "Copy .bkit/templates/.github/workflows/bkit-ci.yml to .github/workflows/<the file package.json `bkit.testing.ciWorkflow` names; default bkit-ci.yml>, replace `main` and `{{NODE_VERSION}}` in it with my default branch and Node major version, and add the `typecheck`, `lint`, `format:check`, `bkit:lint:prose`, `bkit:slop:delta` and `test` scripts to package.json as listed in .bkit/templates.md § Gate tool scripts.",
     steps: "`.bkit/templates.md` § CI workflow and § Gate tool scripts.",
     fires: (cwd) => !exists(cwd, `.github/workflows/${readBkitConfig(cwd).ciWorkflow}`),
   },
@@ -195,7 +217,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Catch junk code",
     line: "Nothing catches the junk code AI tends to write. Add slop-scan so new junk gets flagged before it's merged.",
     why: "Filler and dead code look fine when you skim a change, so they pile up unnoticed until the codebase is hard to trust. slop-scan flags only new problems, so it won't bury you in old ones.",
-    ask: 'Run `pnpm add -D slop-scan`, copy .bkit/templates/slop-scan.config.json to slop-scan.config.json and .bkit/templates/scripts/slop/ to scripts/slop/, and add `"lint:slop": "slop-scan scan ."` and `"slop:delta": "bkit ci slop"` to the package.json scripts.',
+    ask: 'Run `pnpm add -D slop-scan`, copy .bkit/templates/slop-scan.config.json to slop-scan.config.json and .bkit/templates/scripts/slop/ to scripts/slop/, and add `"lint:slop": "slop-scan scan ."` and `"bkit:slop:delta": "bkit ci slop"` to the package.json scripts.',
     steps: "`.bkit/templates.md` § slop-scan.",
     fires: (cwd) => !exists(cwd, "slop-scan.config.json"),
   },
@@ -215,7 +237,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Keep written docs tight",
     line: "Nothing checks the project's written docs, so they slowly fill with vague, padded wording that agents then have to read. Add Vale.",
     why: "Agents read your docs and instructions on every run. Padded writing costs time and money every time it's read, and vague rules get followed vaguely. Vale (a writing checker) flags it.",
-    ask: "Run `brew install vale`, copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/House/ to .vale/styles/House/, then run `vale sync`.",
+    ask: "Run `brew install vale`, copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/Bkit/ to .vale/styles/Bkit/, then run `vale sync`.",
     steps: "`.bkit/templates.md` § Vale.",
     fires: (cwd) => !exists(cwd, ".vale.ini"),
   },
@@ -343,7 +365,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Automatic updates",
     line: "Nothing keeps the project's libraries up to date. Add an updater so you get small, safe updates instead of one big risky one later.",
     why: "An updater opens a small pull request whenever a library you use has a new version. Skip it and updates pile up into one large upgrade that's far more likely to break something.",
-    ask: "Copy .bkit/templates/.github/dependabot.yml to .github/dependabot.yml (or .bkit/templates/.github/renovate.json5 to .github/renovate.json5 for Renovate instead) and commit it to the default branch.",
+    ask: 'Copy .bkit/templates/.github/dependabot.yml to .github/dependabot.yml (or .bkit/templates/.github/renovate.json5 to .github/renovate.json5 for Renovate instead), set `bkit.dependencies.updater` in package.json to `"dependabot"` (or `"renovate"`), and commit both to the default branch.',
     steps: "`.bkit/templates.md` § Dependabot and Renovate.",
     advisories: ["dep-updater-absent"],
     fires: (cwd) => buildDepUpdaterSetupAdvisory(cwd)?.id === "dep-updater-absent",
@@ -359,6 +381,20 @@ export const SETUP_TIPS: readonly SetupTip[] = [
       "`.bkit/templates.md` § Trivy. Accept a finding in `.trivyignore.yaml` with `statement` + `expired_at`; never drop `--include-dev-deps`.",
     fires: (cwd) =>
       exists(cwd, ".github/workflows") && !anyWorkflowMentions(cwd, "aquasecurity/trivy"),
+  },
+  {
+    id: "dependency-audit",
+    workflows: ["ship", "audit"],
+    title: "Fail on a known-vulnerable dependency",
+    line: "A library with a published security advisory can sit in the lockfile for months: the updater only offers a fix, and nothing fails the check when one is missing. Add the gate that stops a known problem before it reaches CI.",
+    why: "An updater never blocks anything, so a risk with no fix yet, or one nobody merged, stays invisible. The gate names each exception with a reason and an expiry, fails on a new one, and fails even when it cannot get an answer — so a known problem is never a silent pass.",
+    ask: "Copy .bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs and .bkit/templates/scripts/ci/bkit-accepted-advisories.json to scripts/ci/, then paste the `Dependency audit` block from .bkit/templates/.husky/pre-push into .husky/pre-push above the gates.",
+    steps:
+      "`.bkit/templates.md` § Dependency audit. Each acceptance needs a `reason` and a `YYYY-MM-DD` `expires`.",
+    fires: (cwd) =>
+      exists(cwd, ".husky/pre-push") &&
+      !exists(cwd, "scripts/ci/bkit-check-dependency-audit.mjs") &&
+      !exists(cwd, "scripts/ci/check-dependency-audit.mjs"),
   },
   {
     id: "prettier-tables",
@@ -385,12 +421,16 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     workflows: ["plan", "ship"],
     title: "Quick pushes for logs and records",
     line: "Pushing only plan logs and records still runs every test. Add the quick path for those pushes.",
-    why: "A workflow's last push is often just its logs and records. The quick path checks only formatting and wording on such a push, so it takes seconds and never waits on anything another session is using. Any other file still runs everything.",
-    ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_SHAS / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and the `bkit:gate:min` branch. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
+    why: "A workflow's last push is often just its logs and records. A successful full gate can cover the earlier code while the quick path checks the remaining bookkeeping. Any unverified code still runs the full gate.",
+    ask: 'Copy the min-push parts of .bkit/templates/.husky/pre-push into .husky/pre-push: PUSH_UPDATES / PUSH_SHARED_SHAS in the stdin loop, the `Min push` and `CI-suppressor guard on dev / main` blocks, and every `bkit ci push-gate` gate call. Wrap slow checks below the gates in `if [ "$MIN_PUSH" != "1" ]`.',
     steps: "`.bkit/templates.md` § Git hooks.",
-    fires: (cwd) =>
-      exists(cwd, ".husky/pre-push") &&
-      !fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8").includes("bkit ci min-push"),
+    fires: (cwd) => {
+      if (!exists(cwd, ".husky/pre-push")) return false;
+      const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+      return ["bkit ci min-push", "--update=", "bkit ci push-gate"].some(
+        (part) => !hook.includes(part),
+      );
+    },
   },
   {
     id: "disk-prune",
@@ -405,6 +445,17 @@ export const SETUP_TIPS: readonly SetupTip[] = [
       !exists(cwd, REPO_STEPS) &&
       !fs.existsSync(machineStepsPath()),
   },
+  {
+    id: "share-friction",
+    title: "Tell bkit what slowed you down",
+    line: "Your workflows have noted problems with bkit itself that its makers never see. Send them, with your stats, as one issue on bkit's issue page.",
+    why: "Workflows note every place bkit got in the way: a command that failed, rework, a manual step. Those notes stay in this repo, so the people who fix bkit never learn about them. One report from you is how they reach the fix list.",
+    caution:
+      "bkit's issue page is public. Your agent removes project names, paths and links first, and shows you the exact text before anything is posted.",
+    ask: "Share this repo's bkit friction and stats with bkit's makers as one new issue: follow the paste block in .bkit/README.md § Share friction with bkit, show me the exact title and text, and post only after I say yes.",
+    steps: "`.bkit/README.md` § Share friction with bkit.",
+    fires: hasUnsharedFriction,
+  },
 
   // --- setup: only some setups -----------------------------------------------------------
   {
@@ -414,7 +465,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     why: "bkit answers in short text lines by default because agents read them. A script expecting JSON gets nothing it can parse, so its step quietly does nothing.",
     ask: "Add --json to every bkit call whose output a hook, script or CI workflow parses (piped to jq, or read with JSON.parse), then rerun `bkit tips` until this tip is gone.",
     steps:
-      "`.bkit/workflows.md` § Workflow commands. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
+      "`.bkit/cli.md` § Contract. Files: `.claude/hooks/`, `.husky/`, `.github/workflows/`, `scripts/`.",
     fires: (cwd) => readsBkitText(cwd).length > 0,
   },
   {
@@ -431,7 +482,7 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Tokens for apps opened from the Dock",
     line: "On a Mac, apps opened from the Dock don't see your sign-in tokens, so they start signed out even though the same thing works in the terminal. Add bkit's loader.",
     why: "The terminal loads your tokens, but apps started from the Dock or Finder skip that step. This one-time setup gives those apps the tokens too.",
-    ask: "Copy .bkit/templates/scripts/launchd/bkit-launchd-env.sh to scripts/launchd/, .bkit/templates/scripts/launchd/launchd.env.example to ~/.config/bkit/launchd.env and .bkit/templates/scripts/launchd/ai.bkit.launchd.plist to ~/Library/LaunchAgents/ (fill in its paths), then run `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.",
+    ask: "Copy .bkit/templates/scripts/launchd/bkit-launchd-env.sh to scripts/launchd/, .bkit/templates/scripts/launchd/bkit-launchd.env.example to ~/.config/bkit/launchd.env and .bkit/templates/scripts/launchd/bkit-launchd.plist to ~/Library/LaunchAgents/ai.bkit.launchd.plist (fill in its paths), then run `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.bkit.launchd.plist`.",
     steps: "`.bkit/templates.md` § Launchd GUI environment.",
     fires: (cwd) => {
       if (process.platform !== "darwin" || isCloudOrCi()) return false;

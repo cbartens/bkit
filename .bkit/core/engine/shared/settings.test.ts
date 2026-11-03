@@ -6,8 +6,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ASK_POINTS,
+  CI_GENERATED_FLOOR,
   CONFIG_DEFAULTS,
+  ciGeneratedSteps,
   invalidAskSettings,
+  invalidBuildPublish,
   invalidTaskCaps,
   readBkitConfig,
 } from "./settings";
@@ -45,7 +48,7 @@ describe("readBkitConfig", () => {
             testing: {
               ciWorkflow: "test.yml",
               ciCapstone: "decide",
-              shipGate: ["bkit-tests-e2e", ""],
+              ciRequired: ["bkit-tests-e2e", ""],
             },
             workflows: { worktree: { copy: [".env", "apps/web/.env.preview"], install: false } },
             tracker: {
@@ -70,7 +73,7 @@ describe("readBkitConfig", () => {
         progress: "In progress",
         review: "QA",
       },
-      shipGateRequiredLanes: ["bkit-tests-e2e"],
+      ciRequired: ["bkit-tests-e2e"],
     });
   });
 
@@ -173,15 +176,16 @@ describe("readBkitConfig", () => {
     expect(cloud(true).cloudAgents).toBe(CONFIG_DEFAULTS.cloudAgents);
   });
 
-  it("opts out of the dependency-updater advisory only on the exact string none", () => {
-    const optOut = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { dependencies: { updater: v } } })))
-        .depUpdaterOptOut;
-    expect(optOut("none")).toBe(true);
-    expect(optOut("renovate")).toBe(false);
-    expect(optOut("None")).toBe(false);
-    expect(optOut(true)).toBe(false);
-    expect(readBkitConfig(root('{"bkit":{}}')).depUpdaterOptOut).toBe(false);
+  it("reads the dependency updater as renovate, dependabot or none; anything else is unset", () => {
+    const updater = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { dependencies: { updater: v } } }))).depUpdater;
+    expect(updater("renovate")).toBe("renovate");
+    expect(updater("dependabot")).toBe("dependabot");
+    expect(updater("none")).toBe("none");
+    expect(updater("")).toBeNull();
+    expect(updater("Renovate")).toBeNull();
+    expect(updater(true)).toBeNull();
+    expect(readBkitConfig(root('{"bkit":{}}')).depUpdater).toBeNull();
   });
 
   it("tells an explicitly set tracker.default and cloud.agent from an absent or empty one, whatever the value", () => {
@@ -252,22 +256,51 @@ describe("readBkitConfig", () => {
     expect(cfg).toEqual(CONFIG_DEFAULTS);
   });
 
-  it("keeps only non-empty string lanes, and reads a non-array testing.shipGate as none", () => {
+  it("keeps only non-empty string lanes, and reads a non-array testing.ciRequired as none", () => {
     const lanes = (v: unknown) =>
-      readBkitConfig(root(JSON.stringify({ bkit: { testing: { shipGate: v } } })))
-        .shipGateRequiredLanes;
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciRequired: v } } }))).ciRequired;
     expect(lanes(["bkit-tests-unit", 42, null])).toEqual(["bkit-tests-unit"]);
     expect(lanes("bkit-tests-unit")).toEqual([]);
   });
 
-  it("reads testing.minPushPaths as non-empty strings, keeps an explicit [], else the default", () => {
+  it("reads testing.minPushPaths as non-empty strings, else []: the floor is not a setting", () => {
     const book = (v: unknown) =>
       readBkitConfig(root(JSON.stringify({ bkit: { testing: { minPushPaths: v } } }))).minPushPaths;
-    expect(book(["docs/plans/**", "", 3])).toEqual(["docs/plans/**"]);
+    expect(book(["notes/**", "", 3])).toEqual(["notes/**"]);
     expect(book([])).toEqual([]);
-    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }])
-      expect(book(bad)).toEqual(CONFIG_DEFAULTS.minPushPaths);
-    expect(CONFIG_DEFAULTS.minPushPaths.some((p) => /^docs\/\*\*/.test(p))).toBe(false);
+    for (const bad of ["docs/plans/**", null, { 0: "docs/**" }]) expect(book(bad)).toEqual([]);
+    // What bkit writes is always a min push, and `docs/**` is a repo's own call.
+    expect(CONFIG_DEFAULTS.minPushPaths).toEqual([]);
+  });
+
+  it("reads testing.ciSkipPaths as non-empty strings, else []", () => {
+    const book = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciSkipPaths: v } } }))).ciSkipPaths;
+    expect(book(["CHANGELOG.md", "", 3])).toEqual(["CHANGELOG.md"]);
+    expect(book([])).toEqual([]);
+    for (const bad of ["CHANGELOG.md", null, { 0: "CHANGELOG.md" }]) expect(book(bad)).toEqual([]);
+    expect(readBkitConfig(root()).ciSkipPaths).toEqual([]);
+    expect(CONFIG_DEFAULTS.ciSkipPaths).toEqual([]);
+  });
+
+  it("reads testing.ciGenerated as non-empty strings, else []: the floor is not a setting", () => {
+    const steps = (v: unknown) =>
+      readBkitConfig(root(JSON.stringify({ bkit: { testing: { ciGenerated: v } } }))).ciGenerated;
+    expect(steps(["app/Check Client Drift", "", 3])).toEqual(["app/Check Client Drift"]);
+    expect(steps([])).toEqual([]);
+    for (const bad of ["app/Check Client Drift", null, { 0: "x/y" }])
+      expect(steps(bad)).toEqual([]);
+    expect(readBkitConfig(root()).ciGenerated).toEqual([]);
+    expect(CONFIG_DEFAULTS.ciGenerated).toEqual([]);
+  });
+
+  it("ciGeneratedSteps always holds the floor, and adds the repo's steps once each", () => {
+    expect(ciGeneratedSteps({ ciGenerated: [] })).toEqual([...CI_GENERATED_FLOOR]);
+    expect(
+      ciGeneratedSteps({
+        ciGenerated: ["app/Check Client Drift", "bkit-tests-static/Run bkit Check"],
+      }),
+    ).toEqual([...CI_GENERATED_FLOOR, "app/Check Client Drift"]);
   });
 
   it("asks at every point with 2 attempts by default, and 6 turns for the grill", () => {
@@ -310,10 +343,10 @@ describe("readBkitConfig", () => {
     expect(invalidAskSettings({})).toEqual([]);
   });
 
-  it("tasks defaults to 3, 15, 10 and 3", () => {
+  it("tasks defaults to 5, 25, 10 and 3", () => {
     const want = {
-      maxPerGroup: 3,
-      maxTestsPerGroup: 15,
+      maxPerGroup: 5,
+      maxTestsPerGroup: 25,
       maxTestsPerTask: 10,
       maxTestFilesPerTask: 3,
     };
@@ -345,6 +378,43 @@ describe("readBkitConfig", () => {
     ).toEqual(["maxPerGroup", "maxTestFilesPerTask"]);
     expect(invalidTaskCaps(undefined)).toEqual([]);
     expect(invalidTaskCaps(7)).toEqual(["tasks"]);
+  });
+
+  it("defaults build.publish to true", () => {
+    expect(CONFIG_DEFAULTS.buildPublish).toEqual({ remote: true, local: true });
+    expect(readBkitConfig(root()).buildPublish).toEqual({ remote: true, local: true });
+    expect(readBkitConfig(root(JSON.stringify({ bkit: {} }))).buildPublish).toEqual({
+      remote: true,
+      local: true,
+    });
+  });
+
+  const publish = (value: unknown) =>
+    readBkitConfig(root(JSON.stringify({ bkit: { workflows: { build: { publish: value } } } })))
+      .buildPublish;
+
+  it("reads an explicit publish.local false", () => {
+    expect(publish({ local: false })).toEqual({ remote: true, local: false });
+    expect(publish({ local: "no" })).toEqual({ remote: true, local: true });
+  });
+
+  it("coerces publish.remote false to true", () => {
+    expect(publish({ remote: false, local: false })).toEqual({ remote: true, local: false });
+  });
+
+  it("lists every invalid build.publish key", () => {
+    expect(invalidBuildPublish({ publish: { local: "no", remote: false } })).toEqual([
+      "build.publish.local",
+    ]);
+    expect(invalidBuildPublish({ publish: { local: false, remote: true } })).toEqual([]);
+    expect(invalidBuildPublish(undefined)).toEqual([]);
+    expect(invalidBuildPublish(7)).toEqual(["build"]);
+  });
+
+  it("reports a non-object publish block", () => {
+    expect(publish(false)).toEqual({ remote: true, local: true });
+    expect(invalidBuildPublish({ publish: false })).toEqual(["build.publish"]);
+    expect(invalidBuildPublish({ publish: [1] })).toEqual(["build.publish"]);
   });
 });
 

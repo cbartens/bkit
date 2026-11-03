@@ -342,10 +342,12 @@ describe("check-owned-hooks", () => {
         ".codex/hooks/bkit-gateguard.cjs",
         ".codex/hooks/bkit-guardrails.cjs",
         ".codex/hooks/bkit-readguard.cjs",
+        ".codex/hooks/bkit-rules.cjs",
       ]);
       expect(paths(["opencode"]).sort()).toEqual([
         ".opencode/plugin/bkit-gateguard.js",
         ".opencode/plugin/bkit-readguard.js",
+        ".opencode/plugin/bkit-rules.js",
       ]);
     });
 
@@ -358,6 +360,7 @@ describe("check-owned-hooks", () => {
       touch(dir, ".codex/hooks/bkit-gateguard.cjs");
       touch(dir, ".codex/hooks/bkit-guardrails.cjs");
       touch(dir, ".codex/hooks/bkit-readguard.cjs");
+      touch(dir, ".codex/hooks/bkit-rules.cjs");
       expect(paths(["codex"])).toEqual([]);
     });
 

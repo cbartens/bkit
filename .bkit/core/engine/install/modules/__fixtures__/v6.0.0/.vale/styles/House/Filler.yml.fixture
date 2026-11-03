@@ -1,0 +1,11 @@
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+extends: existence
+message: "Filler: '%s' — delete."
+level: warning
+tokens:
+  - basically
+  - essentially
+  - as mentioned
+  - it should be noted
+  - as a matter of fact

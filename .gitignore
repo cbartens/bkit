@@ -44,7 +44,7 @@ graphify-out/
 
 # <!-- bkit:start -->
 
-# <!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Worktrees, plan logs, per-run sentinels. Sentinels are written mid-run, read by
 # the same run's Failure Path, cleared at next Step 1 — never bookkeeping, so
@@ -60,6 +60,9 @@ docs/plans/*/logs/**/.rebase-failed
 # Cursor background-agent runtime marker
 .bkit/.runtime-cursor
 
+# Provision recipes that failed in this cloud environment (`bkit context provision`)
+.bkit/.unavailable
+
 .bkit/.roadmap-shortlist.json
 .bkit/.roadmap-reverse-sync.json
 
@@ -67,12 +70,13 @@ docs/plans/*/logs/**/.rebase-failed
 .claude/scheduled_tasks.lock
 
 # Cloud setup docs — `bkit install` inlines resolved .envrc secrets; never commit.
-# One per host: .claude/bkit-cloud.md (Claude Code web), .cursor/bkit-cloud.md (Cursor Background Agents)
+# One per host: .claude/bkit-cloud.md (Claude Code web), .cursor/bkit-cloud.md (Cursor Cloud Agents), .codex/bkit-cloud.md (Codex Cloud)
 .claude/bkit-cloud.md
 .cursor/bkit-cloud.md
+.codex/bkit-cloud.md
 
 # Claude native worktrees (isolation:worktree / EnterWorktree) — transient full-tree
-# copies; ignore or slop:delta double-counts the checkout
+# copies; ignore or bkit:slop:delta double-counts the checkout
 .claude/worktrees/
 
 # cursor / opencode — no project-local worktree or runtime dir to ignore.

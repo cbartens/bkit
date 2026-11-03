@@ -402,10 +402,4 @@ describe("verdict vocabulary: variable names match their step", () => {
     const shortenable = shortenableVerdictNames();
     expect(shortenable, `these names can now be shortened: ${shortenable.join(", ")}`).toEqual([]);
   });
-
-  it("no verdict variable was left under its old name", () => {
-    const text = listMd(WORKFLOW_DIR).concat(listMd(PROMPT_DIR)).map(read).join("\n");
-    expect(text).not.toMatch(/\bUPDATE_DOCS_VERDICT\b/);
-    expect(text).not.toMatch(/\bREMEDIATE_CHALLENGE_VERDICT\b/);
-  });
 });

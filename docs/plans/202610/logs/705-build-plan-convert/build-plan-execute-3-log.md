@@ -1,0 +1,30 @@
+Verdict: PASS
+
+<!-- verdict:end -->
+
+# Build Plan
+
+## Execution Log
+
+DONE — TASK 3: Record the new step in the shipped workflow catalogue and re-sync the clauses drawn from it — `.bkit/core/.bkit/workflows.md` build section now reads 16 steps: `3 — Branch Sync` holds only `branches sync --merge-docs`, new `4 — Plan Convert` holds the plan check, the `@bkit-build-plan-convert` dispatch and the re-check, rows 5-16 renumbered with every build step reference moved (Group loop Steps 7-9, Decision Pause routes, § Anchor Block Step 5, § Cross-step invariants build Steps 10/11 + group verify Step 8, § Verdict vocabulary build rows, gate/test-first step names, commit-convention + CI-dispatch `build Step 16`, the two stale `build Step 18` leftovers, "No plan" note Steps 4/5), plus the group-2 Plan Current skip wording ("skipping the judgement, no agent, no artifact, its own comment naming the skip"); `pnpm instructions:sync` rewrote only the § Cross-step invariants mirror in `.bkit/instructions.md` (1 line) and is idempotent on a second run (same sha `992c0946…`, exit 0); the hand-maintained `#### bkit-build` block is byte-identical before/after (sha `aa988b5ac8f0c05f`, 56805 bytes); red recorded as `build-task-red-3-3-1.md` against `instructions-sources.test.ts` `each Special Behaviors row and authoring section has one equal entry` (`cross-step-invariants`: text differs — run pnpm instructions:sync) because the plan-named `instructions.test.ts` `sync has nothing left to rewrite` and `instructions-coverage.test.ts` both pass on the stale store and do not observe catalogue→store drift; gates `instructions-coverage.test.ts` + `instructions.test.ts` + `instructions-sources.test.ts` → 3 files, 139 tests pass (.bkit/core/.bkit/workflows.md, .bkit/instructions.md)
+DONE — TASK 4: Regenerate the host mirrors and the built CLI — `pnpm bkit install --tracker=github` exit 0 and `pnpm build` exit 0 (dist byte-identical: no engine source changed this group; `pnpm bkit:check:dist` exit 0 after `rm -rf dist && tsc`), `pnpm bkit check` exit 0 (no managed file needing a re-render); the five host mirrors each carry one `Step 4 — Plan Convert` heading. Paths changed for the orchestrator to stage by name: `.bkit/workflows.md`, `.claude/commands/bkit-build.md`, `.cursor/commands/bkit-build.md`, `.opencode/commands/bkit-build.md`, `.agents/skills/bkit-build/SKILL.md`, `.agents/plugins/bkit/skills/bkit-build/SKILL.md`, `.bkit/version` (install's manifest hashes for those mirrors); `.bkit/pipeline.md` holds no build step and did not change; nothing committed (.bkit/workflows.md, .claude/commands/bkit-build.md, .cursor/commands/bkit-build.md, .opencode/commands/bkit-build.md, .agents/skills/bkit-build/SKILL.md, .agents/plugins/bkit/skills/bkit-build/SKILL.md, .bkit/version)
+DONE — TASK 5: Bring the testing doc and the knowledge ledger onto the new step numbers — `docs/testing.md` `workflow-shape.test.ts` row now reads "build Branch Sync merging its docs, Plan Convert checking the plan, …" with Step 7 (execute brief), Step 8 (verify diff), Step 13 (diagnose reads the committed log) and Step 11 (challenge gate); `docs/knowledge.jsonl` gains one appended line and no deletion (`git diff --numstat` 1/0) through `bkit ledgers append --ledger=knowledge`, the same key folding to 4 rows whose newest (ts 1793072007945, schema 3, status ACTIVE) carries references `.bkit/core/workflows/bkit-build.md (Step 5 — Plan Current)` and `#705` and a rootCause reading `build Step 5 — Plan Current`, with no `Step 4 — Plan Current` left in it; `pnpm lint:prose` exit 0 (147 files, 0 errors / 0 warnings / 0 suggestions) (docs/testing.md, docs/knowledge.jsonl)
+
+## Test-first audit
+
+`bkit tests green --group=3` reports 1 gap, `red-mismatch`, `testOrderOnly: true` (report `build-tests-green-3-1.md`). The plan's TASK 3 `TEST FIRST` names `instructions.test.ts` `sync has nothing left to rewrite`, which passes against the stale store — `syncClauses` / `syncStore` only cover `## Clauses`, so the catalogue edit is invisible to them, and `bkit tests red` for it returns `refused: passed`. The drift that edit does produce is observed by `instructions-sources.test.ts` `each Special Behaviors row and authoring section has one equal entry` (`cross-step-invariants`: text differs — run pnpm instructions:sync); its red is recorded as `build-task-red-3-3-1.md` and it passes after the sync. `instructions-coverage.test.ts` likewise passes on the stale store (22/22 run before the sync), so the brief's "the coverage test is the one that a stale store breaks" does not hold either. No `TEST EXCEPTION` written by this agent: the plan's `TEST FIRST` line names a test that cannot go red, and the owner settles that at the Decision Pause.
+
+## Files touched outside the task UPDATE lists
+
+- `docs/plans/202610/logs/705-build-plan-convert/build-brief-3-1.md` — `pnpm format:check` flagged the orchestrator-written brief; `prettier --write`, no content change.
+- `docs/plans/202610/logs/705-build-plan-convert/build-tests-green-3-1.md` — `bkit tests green` writes it unformatted; `prettier --write`, no content change.
+- `.bkit/version` — written by `pnpm bkit install` with the manifest hashes of the five regenerated build mirrors; no other line changed.
+
+## Verification run
+
+- `pnpm instructions:sync` → exit 0; re-runs exit 0 with the store byte-identical (`992c0946…`).
+- `npx vitest run .bkit/core/engine/tools/instructions-coverage.test.ts .bkit/core/engine/tools/instructions.test.ts .bkit/core/engine/tools/instructions-sources.test.ts` → 3 files, 139 tests pass (TASK 3 gate).
+- `pnpm bkit install --tracker=github` → exit 0; `pnpm build` → exit 0; `pnpm bkit check` → exit 0; `pnpm bkit:check:dist` → exit 0 (TASK 4 gate).
+- `pnpm lint:prose` → exit 0 (147 files, 0 findings, TASK 5 gate).
+- `npx vitest run .bkit/core/engine/audits .bkit/core/engine/tools` → 78 files, 2998 pass, 1 skipped; `ledger-integrity.test.ts` → 31 pass.
+- `pnpm bkit:gate:static` → pass (typecheck, lint, format, tables, prose, slop delta 0).

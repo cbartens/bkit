@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -8,7 +9,8 @@ import { buildTrackerSetupAdvisory } from "../after/github";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools";
 import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
 import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
-import { STAR_TIP_ID, orderForWorkflow } from "./index";
+import { STAR_TIP_ID, dropTipSilencedAdvisories, isTipSilenced, orderForWorkflow } from "./index";
+import type { PreflightFinding } from "../before/index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
 
@@ -77,6 +79,11 @@ describe("SETUP_TIPS — catalogue", () => {
     expect([...EVERY_CONTEXT]).toEqual([...TIPS_CONTEXTS]);
   });
 
+  it("the upgrade tip leads the catalogue and matters in every context", () => {
+    expect(SETUP_TIPS[0]?.id).toBe("bkit-upgrade");
+    expect([...workflowsOf(tip("bkit-upgrade"))]).toEqual([...EVERY_CONTEXT]);
+  });
+
   it("comms tips matter in every context, and every context has its own tips", () => {
     for (const id of ["tracker", "gh-mcp", "bkit-env", "direnv"]) {
       expect([...workflowsOf(tip(id))], id).toEqual([...EVERY_CONTEXT]);
@@ -101,7 +108,14 @@ describe("SETUP_TIPS — catalogue", () => {
 
   it("audit tips are the code-reading, CI and dependency-safety ones", () => {
     const audit = ownTipsFor("audit").map((t) => t.id);
-    expect(audit).toEqual(["serena", "ci-workflow", "graphify", "dependabot-renovate", "trivy"]);
+    expect(audit).toEqual([
+      "serena",
+      "ci-workflow",
+      "graphify",
+      "dependabot-renovate",
+      "trivy",
+      "dependency-audit",
+    ]);
   });
 
   it("every template path an ask names exists", () => {
@@ -243,11 +257,34 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("context-fetch").fires(cwd)).toBe(false);
   });
 
+  it("ignoring context-fetch-missing does not drop a context-fetch-unbounded finding", () => {
+    const finding = (id: string): PreflightFinding => ({
+      id,
+      severity: "advisory",
+      detect: "d",
+      action: "a",
+    });
+    pkg({ advisories: { ignore: ["context-fetch-missing"] } });
+    const kept = dropTipSilencedAdvisories(
+      [finding("context-fetch-missing"), finding("context-fetch-unbounded")],
+      cwd,
+    );
+    expect(kept.map((f) => f.id)).toEqual(["context-fetch-unbounded"]);
+    expect(isTipSilenced(tip("context-fetch"), new Set(["context-fetch-unbounded"]))).toBe(false);
+  });
+
+  it("bkit-env ask names no worktree remedy, since fires reads the main checkout", () => {
+    expect(tip("bkit-env").ask).not.toMatch(/worktree/i);
+  });
+
   it("dependabot-renovate fires exactly when dep-updater-absent does", () => {
     fs.mkdirSync(path.join(cwd, ".github", "workflows"), { recursive: true });
     expect(buildDepUpdaterSetupAdvisory(cwd)?.id).toBe("dep-updater-absent");
     expect(tip("dependabot-renovate").fires(cwd)).toBe(true);
     write(".github/dependabot.yml", "version: 2\n");
+    expect(buildDepUpdaterSetupAdvisory(cwd)?.id).toBe("dep-updater-unset");
+    expect(tip("dependabot-renovate").fires(cwd)).toBe(false);
+    write("package.json", JSON.stringify({ bkit: { dependencies: { updater: "dependabot" } } }));
     expect(buildDepUpdaterSetupAdvisory(cwd)).toBeNull();
     expect(tip("dependabot-renovate").fires(cwd)).toBe(false);
   });
@@ -364,11 +401,30 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("tmp-prune").fires(cwd)).toBe(false);
   });
 
-  it("min-push fires only once a pre-push hook exists without the min-push check", () => {
+  it("dependency-audit fires only once a pre-push hook exists without the gate script", () => {
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
+    write(".husky/pre-push");
+    expect(tip("dependency-audit").fires(cwd)).toBe(true);
+    write("scripts/ci/bkit-check-dependency-audit.mjs");
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
+  });
+
+  it("dependency-audit stays quiet for a copy under the unprefixed name", () => {
+    write(".husky/pre-push");
+    write("scripts/ci/check-dependency-audit.mjs");
+    expect(tip("dependency-audit").fires(cwd)).toBe(false);
+  });
+
+  it("min-push fires when a hook lacks update pairs or checked gate execution", () => {
     expect(tip("min-push").fires(cwd)).toBe(false);
     write(".husky/pre-push", "pnpm bkit:gate:static-unit\n");
     expect(tip("min-push").fires(cwd)).toBe(true);
     write(".husky/pre-push", "pnpm -s bkit ci min-push $REFS\n");
+    expect(tip("min-push").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      "pnpm -s bkit ci min-push --update=$OLD:$NEW\npnpm -s bkit ci push-gate --gate=bkit:gate:min\n",
+    );
     expect(tip("min-push").fires(cwd)).toBe(false);
   });
 
@@ -408,5 +464,73 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("bkit-output-json").fires(cwd)).toBe(true);
     write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
     expect(tip("bkit-output-json").fires(cwd)).toBe(false);
+  });
+
+  describe("bkit-upgrade", () => {
+    const pin = (version: string) =>
+      write(".bkit/version", JSON.stringify({ pinnedVersion: version }));
+    const cache = (latest: unknown, checkedAt = 0) =>
+      write(".git/bkit-latest-version.json", JSON.stringify({ latest, checkedAt }));
+    beforeEach(() => {
+      execFileSync("git", ["init", "-q"], { cwd });
+    });
+
+    it("fires when the cached release is newer than the pin, however old the cache", () => {
+      pin("6.0.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false); // nothing cached yet
+      cache("6.0.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+      cache("6.1.0", 1);
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(true);
+      pin("6.1.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+    });
+
+    it("stays quiet on a remembered lookup failure or a missing pin", () => {
+      cache("6.1.0");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false); // no pin
+      pin("6.0.0");
+      cache(null);
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(false);
+    });
+
+    it("the lookup opt-out does not hide a release already seen", () => {
+      pin("6.0.0");
+      cache("6.1.0");
+      vi.stubEnv("BKIT_NO_UPDATE_CHECK", "1");
+      expect(tip("bkit-upgrade").fires(cwd)).toBe(true);
+    });
+  });
+
+  describe("share-friction", () => {
+    const row = (key: string, ts: number, extra: Record<string, unknown>) =>
+      JSON.stringify({ schema: 3, ts, kind: "friction", key, severity: "LOW", ...extra });
+    const friction = (...rows: string[]) => write(".bkit/friction.jsonl", rows.join("\n") + "\n");
+
+    it("fires on an OPEN entry that is not consumer scope", () => {
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(row("a", 1, { scope: "consumer", status: "OPEN" }));
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(
+        row("a", 1, { scope: "consumer", status: "OPEN" }),
+        row("b", 2, { scope: "bkit-repo", status: "OPEN" }),
+      );
+      expect(tip("share-friction").fires(cwd)).toBe(true);
+    });
+
+    it("stops once the newest row of each entry is TRIAGED, and a new entry brings it back", () => {
+      const open = row("b", 1, { scope: "universal", status: "OPEN" });
+      const shared = row("b", 2, { scope: "universal", status: "TRIAGED" });
+      friction(open, shared);
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+      friction(open, shared, "not json", row("c", 3, { scope: "bkit-repo", status: "OPEN" }));
+      expect(tip("share-friction").fires(cwd)).toBe(true);
+    });
+
+    it("stays quiet in bkit's own repo", () => {
+      friction(row("b", 1, { scope: "bkit-repo", status: "OPEN" }));
+      write("package.json", JSON.stringify({ name: "@cbartens/bkit" }));
+      expect(tip("share-friction").fires(cwd)).toBe(false);
+    });
   });
 });

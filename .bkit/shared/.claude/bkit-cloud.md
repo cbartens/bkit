@@ -32,6 +32,7 @@ start fast.
 #!/bin/bash
 @@CLOUD_CACHE_BUST@@
 set -euo pipefail
+# bkit-toolchain:start
 
 # Every download is pinned to a version and checked against its published sha256
 # before it is unpacked or made executable. The image targets linux/amd64.
@@ -39,8 +40,8 @@ set -euo pipefail
 # `.bkit/templates/.cursor/Dockerfile`. bkit needs Node >=24 and the base image ships
 # older majors, so this one goes into /usr/local and leads PATH for every step below.
 # renovate: datasource=node-version depName=node
-NODE_VERSION="24.21.0"
-NODE_SHA256="fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6"
+NODE_VERSION="24.22.1"
+NODE_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
 if [ "$(/usr/local/bin/node --version 2>/dev/null || true)" != "v${NODE_VERSION}" ]; then
   command -v xz >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends xz-utils; }
   cd /tmp
@@ -53,8 +54,8 @@ export PATH="/usr/local/bin:$PATH"
 hash -r
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="3.9.1"
-VALE_SHA256="fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
+VALE_VERSION="3.24.0"
+VALE_SHA256="867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
   curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
@@ -64,8 +65,8 @@ if ! command -v vale >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=cli/cli
-GH_VERSION="2.102.0"
-GH_SHA256="bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386"
+GH_VERSION="2.103.0"
+GH_SHA256="fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786"
 if ! command -v gh >/dev/null 2>&1; then
   cd /tmp
   # Pinned release tarball from github.com (same host + install style as vale above),
@@ -78,8 +79,8 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=jqlang/jq extractVersion=^jq-(?<version>.+)$
-JQ_VERSION="1.7.1"
-JQ_SHA256="5942c9b0934e510ee61eb3e30273f1b3fe2590df93933a93d7c58b81d19c8ff5"
+JQ_VERSION="1.8.2"
+JQ_SHA256="b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"
 if ! command -v jq >/dev/null 2>&1; then
   # jq is a single static binary — fetched from the jqlang release (same github.com
   # host as vale/gh above) and checked against the release's sha256sum.txt before it is
@@ -91,6 +92,7 @@ if ! command -v jq >/dev/null 2>&1; then
   install -m 0755 jq-linux-amd64 /usr/local/bin/jq
   rm -f jq-linux-amd64
 fi
+# bkit-toolchain:end
 
 @@CLOUD_WORKSPACE_TRUST@@
 
@@ -100,7 +102,7 @@ fi
 
 @@CLOUD_CONTEXT_FETCH_PROVISION@@
 
-echo "cloud env ready: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)"
+echo "cloud setup done: node $(node --version), $(vale --version), $(gh --version | head -1), jq $(jq --version), pnpm $(pnpm -v)${BKIT_UNAVAILABLE:+ — UNAVAILABLE: $BKIT_UNAVAILABLE}"
 ```
 
 Keep total runtime under ~5 minutes or the snapshot won't build. `pnpm install`
@@ -124,7 +126,7 @@ per line):
 node --version && vale --version && gh --version && jq --version && pnpm -v
 ```
 
-`node --version` must print `v24.21.0`. An older version means the session `PATH`
+`node --version` must print `v24.22.1`. An older version means the session `PATH`
 puts the image's own Node ahead of `/usr/local/bin`.
 
 Then confirm workspace trust. Unset, Claude Code ignores every `permissions.allow`

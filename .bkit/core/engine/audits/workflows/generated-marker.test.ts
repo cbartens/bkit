@@ -4,9 +4,9 @@
  * `###### bkit:ignore-earlier` cut mean the same thing on both trackers.
  *
  * Stamping and filtering both live in the engine: every comment body comes from
- * `bkit issues comment` / `bkit workstreams comment`, which open it with
+ * `bkit issues comment` / `bkit plans comment`, which open it with
  * `###### bkit:generated` (pinned in commands/workflow/issues.test.ts and
- * workstreams.test.ts), and the issue text joined by `bkit workflows input` and
+ * plans.test.ts), and the issue text joined by `bkit workflows input` and
  * `bkit issues related` drops marker-carrying comments and applies the cut (pinned in
  * issues.test.ts and workflows.test.ts). What stays here is the wiring that keeps
  * those commands the ONLY place either happens:
@@ -79,15 +79,29 @@ describe("issue text is joined, filtered and cut only by the engine", () => {
   ];
 
   for (const rel of PHASES) {
+    const expectedEvidenceJoins = rel.endsWith("bkit-debug.md")
+      ? [`"{BKIT}" issues text ${ISSUE_JOIN}`]
+      : [];
     it(`${rel}: the input artifact's issue text is joined by bkit workflows input`, () => {
       const content = read(rel);
       const inputs = content.split("\n").filter((l) => l.includes('"{BKIT}" workflows input '));
       expect(inputs, "one workflows input call").toHaveLength(1);
       expect(inputs[0], "issue-text join").toContain(ISSUE_JOIN);
-      expect(content).not.toContain("issues text");
-      expect(content).not.toContain("ISSUE_TEXT");
+      const evidenceJoins = content
+        .split("\n")
+        .filter((line) => line.includes('"{BKIT}" issues text '))
+        .map((line) => line.trim());
+      expect(evidenceJoins, "current issue evidence uses the same engine join").toEqual(
+        expectedEvidenceJoins,
+      );
     });
   }
+
+  it("debug supplies the engine-joined current issue text to evidence selection", () => {
+    expect(read(".bkit/core/workflows/bkit-debug.md")).toContain(
+      '--issue-text-file="{OUTBOX}/issue-text.md"',
+    );
+  });
 
   for (const rel of SWEEPS) {
     it(`${rel}: each related-issues hit is joined by bkit issues related`, () => {
@@ -139,7 +153,6 @@ describe("comments are read by the engine, oldest first", () => {
   const CALL_SITE_RE = /method: "get_comments"|mcp__linear__list_comments|listJiraIssueComments/;
 
   const FALLBACK = "the comments oldest first as JSON to `{SESSION_DIR}/issue-comments.json`";
-  const PRESET = "`COMMENTS` oldest to newest as JSON to `{SESSION_DIR}/issue-comments.json`";
   const PHASES = WORKFLOW_FILES.filter((rel) => !rel.endsWith("bkit-auto.md"));
 
   /** Step lines (the header blocks, up to the `---` after front matter, excluded) that call a tracker's comment read. */
@@ -156,11 +169,11 @@ describe("comments are read by the engine, oldest first", () => {
   });
 
   for (const rel of PHASES) {
+    const expectedReferences = rel.endsWith("bkit-debug.md") ? 3 : 2;
     it(`${rel}: every write of the comments file is oldest first`, () => {
       const content = read(rel);
       expect(content.split(FALLBACK).length - 1, "exit-80 fallback").toBe(1);
-      expect(content.split(PRESET).length - 1, "AGENTS.md preset").toBe(1);
-      expect(content.split("issue-comments.json").length - 1).toBe(3);
+      expect(content.split("issue-comments.json").length - 1).toBe(expectedReferences);
     });
   }
 

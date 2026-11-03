@@ -97,9 +97,12 @@ function promptLines(): Line[] {
   return out;
 }
 
-/** Character ranges covered by inline code spans. */
+/** Character ranges covered by inline code spans; a span closes with as many backticks as opened it. */
 function codeSpans(text: string): Array<[number, number]> {
-  return [...text.matchAll(/`[^`]*`/g)].map((m) => [m.index!, m.index! + m[0].length]);
+  return [...text.matchAll(/(`+)(?:(?!\1)[\s\S])+?\1(?!`)/g)].map((m) => [
+    m.index!,
+    m.index! + m[0].length,
+  ]);
 }
 
 function outsideCode(text: string, at: number): boolean {

@@ -63,7 +63,39 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("## Recommended Next Step");
   });
 
-  it("a plan step's FAIL review answered by its apply step is CONCERNS, not FAIL", () => {
+  it("writes Publish: held when publish is false", () => {
+    const s = buildSummary(input({ publish: false }));
+    expect(s.markdown).toMatch(/^Publish: held$/m);
+    expect(s.markdown).not.toMatch(/^Publish: pr$/m);
+  });
+
+  it("writes Publish: pr by default", () => {
+    for (const publish of [undefined, true]) {
+      const s = buildSummary(input({ publish }));
+      expect(s.markdown).toMatch(/^Publish: pr$/m);
+      expect(s.markdown).not.toContain("Publish: held");
+    }
+  });
+
+  it("writes Docs: not synced on a held summary", () => {
+    const held = buildSummary(input({ publish: false }));
+    expect(held.markdown).toContain("Docs: not synced (ship syncs on landing)");
+    expect(buildSummary(input({ publish: true })).markdown).not.toContain("Docs:");
+    expect(buildSummary(input({})).markdown).not.toContain("Docs:");
+  });
+
+  it("keeps the verdict and next step unchanged by publish", () => {
+    const held = buildSummary(input({ publish: false }));
+    const pr = buildSummary(input({ publish: true }));
+    expect(held.markdown).toContain("Publish: held");
+    expect(pr.markdown).toContain("Publish: pr");
+    expect(held.verdict).toBe(pr.verdict);
+    expect(held.nextStep).toBe(pr.nextStep);
+    expect(held.reasons).toEqual(pr.reasons);
+    expect(held.markdown.split("\n").slice(0, 3)).toEqual(pr.markdown.split("\n").slice(0, 3));
+  });
+
+  it("a plan review resolved by its passing apply step leaves a passing summary and history", () => {
     const s = buildSummary(
       input({
         workflow: "plan",
@@ -73,11 +105,13 @@ describe("buildSummary", () => {
         ],
       }),
     );
-    expect(s.verdict).toBe("CONCERNS");
+    expect(s.verdict).toBe("PASS");
     expect(s.nextStep).toBe("/bkit-build #682");
+    expect(s.reasons).toEqual([]);
+    expect(s.markdown).toContain("plan-review FAIL, resolved by plan-apply-review");
   });
 
-  it("a build challenge FAIL answered by its fix tasks or a decision is CONCERNS; unanswered is FAIL", () => {
+  it("a build challenge cannot be cleared by unrelated fix tasks or a decision", () => {
     const challenge = {
       type: "step-done",
       step: "build-challenge",
@@ -85,16 +119,374 @@ describe("buildSummary", () => {
       failures: 1,
       attempt: 1,
     };
-    for (const answer of ["build-plan-execute", "build-decision"]) {
+    for (const answer of ["build-plan-tasks", "build-decision"]) {
       const s = buildSummary(
         input({
           rows: [challenge, { type: "step-done", step: answer, verdict: "PASS", attempt: 2 }],
         }),
       );
-      expect(s.verdict, answer).toBe("CONCERNS");
-      expect(s.markdown).toContain(`answered by ${answer}`);
+      expect(s.verdict, answer).toBe("FAIL");
     }
     expect(buildSummary(input({ rows: [challenge] })).verdict).toBe("FAIL");
+  });
+
+  it.each(["design", "plan"] as const)(
+    "%s clears only the review covered by a passing update",
+    (workflow) => {
+      const review = {
+        type: "step-done",
+        step: `${workflow}-review`,
+        verdict: "CONCERNS",
+        attempt: 1,
+      };
+      const apply = {
+        type: "step-done",
+        step: `${workflow}-apply-review`,
+        verdict: "PASS",
+        attempt: 1,
+      };
+      const s = buildSummary(input({ workflow, rows: [review, apply] }));
+      expect(s.verdict).toBe("PASS");
+      expect(s.markdown).toContain(
+        `${workflow}-review CONCERNS, resolved by ${workflow}-apply-review`,
+      );
+      for (const rows of [
+        [review],
+        [apply, review],
+        [review, { ...apply, step: `${workflow}-organise` }],
+        [review, { ...apply, verdict: "CONCERNS" }],
+        [review, { ...apply, verdict: undefined }],
+        [review, { ...apply, attempt: 2 }],
+      ])
+        expect(buildSummary(input({ workflow, rows })).verdict).toBe("CONCERNS");
+    },
+  );
+
+  it("does not inherit a previous summary verdict when recomputing resolved work", () => {
+    const rows = [
+      { type: "step-done", step: "plan-review", verdict: "CONCERNS", attempt: 1 },
+      { type: "step-done", step: "plan-summary", verdict: "CONCERNS" },
+      { type: "step-done", step: "plan-apply-review", verdict: "PASS", attempt: 1 },
+    ];
+    const original = structuredClone(rows);
+    const s = buildSummary(input({ workflow: "plan", rows }));
+    expect(s.verdict).toBe("PASS");
+    expect(s.reasons).toEqual([]);
+    expect(rows).toEqual(original);
+    expect(s.markdown).toContain("plan-summary | CONCERNS");
+  });
+
+  it("retains unrelated concerns after resolving a review", () => {
+    const s = buildSummary(
+      input({
+        workflow: "design",
+        rows: [
+          { type: "step-done", step: "design-review", verdict: "CONCERNS" },
+          { type: "step-done", step: "design-spike", verdict: "CONCERNS" },
+          { type: "step-done", step: "design-apply-review", verdict: "PASS" },
+        ],
+      }),
+    );
+    expect(s.verdict).toBe("CONCERNS");
+    expect(s.reasons).toEqual(["design-spike CONCERNS"]);
+  });
+
+  it("an update that applies critical review findings leaves only its optional concerns", () => {
+    const s = buildSummary(
+      input({
+        workflow: "plan",
+        rows: [
+          { type: "step-done", step: "plan-review", verdict: "FAIL", attempt: 1 },
+          { type: "step-done", step: "plan-apply-review", verdict: "CONCERNS", attempt: 1 },
+        ],
+      }),
+    );
+    expect(s.verdict).toBe("CONCERNS");
+    expect(s.reasons).toEqual(["plan-apply-review CONCERNS"]);
+    expect(s.markdown).toContain("remaining findings assessed by plan-apply-review");
+  });
+
+  it("a spike's disproven claims can be addressed without hiding unsettled claims", () => {
+    const rows = [
+      { type: "step-done", step: "design-spike", verdict: "FAIL", artifacts: ["spike.md"] },
+      { type: "step-done", step: "design-apply-review", verdict: "PASS" },
+    ];
+    const resolved = buildSummary(
+      input({
+        workflow: "design",
+        rows,
+        read: reader({
+          "spike.md": "## Unsettled\n\nNone\n\n## Verdict Reasoning\nDisproven assumption.",
+        }),
+      }),
+    );
+    expect(resolved.verdict).toBe("PASS");
+    const partial = buildSummary(
+      input({
+        workflow: "design",
+        rows,
+        read: reader({
+          "spike.md":
+            "## Unsettled\n\nCapacity is BLOCKED\n\n## Verdict Reasoning\nMixed findings.",
+        }),
+      }),
+    );
+    expect(partial.verdict).toBe("CONCERNS");
+    expect(partial.reasons).toContain("design-spike: unsettled claims remain");
+    expect(buildSummary(input({ workflow: "design", rows })).verdict).toBe("FAIL");
+  });
+
+  it("retains remediation warnings and unrelated group failures after a verification PASS", () => {
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-gaps-remediate", verdict: "CONCERNS", group: 1 },
+          { type: "step-done", step: "build-plan-tasks", verdict: "FAIL", group: 2 },
+          { type: "step-done", step: "build-plan-verify", verdict: "PASS", group: 1 },
+        ],
+      }),
+    );
+    expect(s.reasons).toEqual([
+      "build-plan-tasks (group 2) FAIL",
+      "build-plan-gaps-remediate (group 1) CONCERNS",
+    ]);
+  });
+
+  it("uses the latest verification and preserves earlier attempts in history", () => {
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-tasks", verdict: "FAIL", group: 1 },
+          { type: "step-done", step: "build-plan-verify", verdict: "PASS", group: 1, attempt: 1 },
+          { type: "step-done", step: "build-plan-verify", verdict: "FAIL", group: 1, attempt: 2 },
+        ],
+      }),
+    );
+    expect(s.verdict).toBe("FAIL");
+    expect(s.reasons).toContain("build-plan-tasks (group 1) FAIL");
+    expect(s.markdown).toContain("## Assessment History");
+    expect(s.markdown).toContain("build-plan-verify (group 1) | PASS");
+  });
+
+  it("resolves challenge findings only through their matching round's verified tasks", () => {
+    const finding = (n: number, severity: string, location: string) =>
+      [
+        `<!-- bkit:task ${n} start -->`,
+        `- [x] **TASK ${n}:** Fix ${location}.`,
+        `  **Severity:** ${severity} · **Fixable:** true · **Location:** \`${location}\` · **Round:** 1`,
+        "  - **DONE WHEN:** fixed.",
+        "  - **TEST FIRST:**",
+        "    - `a.test.ts` `regression` fails on bug",
+        `<!-- bkit:task ${n} end -->`,
+      ].join("\n");
+    const critical = finding(2, "CRITICAL", "a.ts:10");
+    const high = finding(3, "HIGH", "b.ts:20");
+    const plan = `<!-- bkit:group 2 start -->\n### TASK GROUP 2: Fixes\n${critical}\n${high}\n<!-- bkit:group 2 end -->`;
+    const report = `Verdict: FAIL\nFailures: 1\n<!-- verdict:end -->\n## Findings Log\n${critical}\n${high}`;
+    const challenge = {
+      type: "step-done",
+      step: "build-challenge",
+      verdict: "FAIL",
+      round: 1,
+      artifacts: ["challenge.md"],
+    };
+    const verify = {
+      type: "step-done",
+      step: "build-plan-verify",
+      verdict: "PASS",
+      group: 2,
+      artifacts: ["verify.md"],
+    };
+    const files = {
+      "challenge.md": report,
+      "verify.md": "Verdict: PASS\nTasks: 2, 3\n<!-- verdict:end -->",
+    };
+    const params = {
+      rows: [challenge, verify],
+      plans: [{ path: "p.md", text: plan }],
+      read: reader(files),
+    };
+    const s = buildSummary(input(params));
+    expect(s.verdict).toBe("PASS");
+    expect(s.markdown).toContain("a.ts:10");
+    expect(s.markdown).toContain("resolved by build-plan-verify");
+    for (const over of [
+      { rows: [challenge, { ...verify, group: 3 }] },
+      { rows: [verify, challenge] },
+      { plans: [{ path: "p.md", text: plan.replaceAll("**Round:** 1", "**Round:** 2") }] },
+      { read: reader({ ...files, "verify.md": "Verdict: PASS\nTasks: 7\n<!-- verdict:end -->" }) },
+      { read: reader({ "verify.md": files["verify.md"] }) },
+    ])
+      expect(buildSummary(input({ ...params, ...over })).verdict).toBe("FAIL");
+    const partial = buildSummary(
+      input({
+        ...params,
+        read: reader({ ...files, "verify.md": "Verdict: PASS\nTasks: 2\n<!-- verdict:end -->" }),
+      }),
+    );
+    expect(partial.verdict).toBe("CONCERNS");
+    expect(partial.reasons.join("\n")).toContain("b.ts:20");
+    expect(partial.reasons.join("\n")).not.toContain("a.ts:10");
+    const rereviewed = buildSummary(
+      input({
+        ...params,
+        rows: [challenge, verify, { ...challenge, verdict: "PASS", round: 2 }],
+        read: reader({
+          ...files,
+          "challenge.md": "Verdict: PASS\nFailures: 0\n<!-- verdict:end -->\n## Findings Log\nNone",
+        }),
+      }),
+    );
+    expect.soft(rereviewed.verdict).toBe("PASS");
+    expect(rereviewed.markdown).toContain("build-challenge | FAIL");
+    const nextConcern = buildSummary(
+      input({
+        ...params,
+        rows: [
+          {
+            ...challenge,
+            challengeFindings: [
+              { severity: "CRITICAL", location: "a.ts:10", title: "Old defect" },
+              { severity: "HIGH", location: "b.ts:20", title: "Old second defect" },
+            ],
+          },
+          verify,
+          {
+            ...challenge,
+            verdict: "CONCERNS",
+            round: 2,
+            challengeFindings: [{ severity: "HIGH", location: "new.ts:30", title: "New defect" }],
+          },
+        ],
+        read: reader({ "verify.md": files["verify.md"] }),
+      }),
+    );
+    expect.soft(nextConcern.verdict).toBe("CONCERNS");
+    expect.soft(nextConcern.reasons.join("\n")).toContain("new.ts:30");
+    expect.soft(nextConcern.reasons.join("\n")).not.toContain("a.ts:10");
+    const accepted = buildSummary(
+      input({
+        ...params,
+        rows: [challenge],
+        decisionFiles: ["decision.md"],
+        read: reader({
+          ...files,
+          "decision.md":
+            "Status: DECIDED\n\n**Q1 — Gap:** a.ts:10\nDecision: Accept — known limitation",
+        }),
+      }),
+    );
+    expect.soft(accepted.verdict).toBe("CONCERNS");
+    expect.soft(accepted.reasons.join("\n")).toContain("accepted");
+    const lowReport = `Verdict: CONCERNS\nFailures: 0\n<!-- verdict:end -->\n## Findings Log\n${finding(4, "LOW", "c.ts:30")}`;
+    const closedLow = buildSummary(
+      input({
+        ...params,
+        rows: [{ ...challenge, verdict: "CONCERNS" }],
+        read: reader({ "challenge.md": lowReport }),
+        deferrals: [
+          {
+            key: "682-summary-verb-challenge-low-c-ts-30",
+            source: "c.ts:30",
+            status: "CLOSED",
+            severity: "LOW",
+          },
+        ],
+      }),
+    );
+    expect.soft(closedLow.verdict).toBe("PASS");
+    expect.soft(closedLow.markdown).not.toContain("resolved by build-plan-verify");
+    const unrelatedClosure = buildSummary(
+      input({
+        ...params,
+        rows: [{ ...challenge, verdict: "CONCERNS" }],
+        read: reader({ "challenge.md": lowReport }),
+        deferrals: [{ key: "unrelated", source: "c.ts:30", status: "CLOSED", severity: "LOW" }],
+      }),
+    );
+    expect.soft(unrelatedClosure.verdict).toBe("CONCERNS");
+  });
+
+  it("a later verification covering the complete plan resolves its currency findings", () => {
+    const current = { type: "step-done", step: "build-plan-current", verdict: "CONCERNS" };
+    const verify = {
+      type: "step-done",
+      step: "build-plan-verify",
+      verdict: "PASS",
+      group: 1,
+      artifacts: ["verify.md"],
+    };
+    const read = reader({ "verify.md": "Verdict: PASS\nTasks: 1\n<!-- verdict:end -->" });
+    expect(buildSummary(input({ rows: [current, verify], read })).verdict).toBe("PASS");
+    expect(buildSummary(input({ rows: [current, { ...verify, group: 2 }], read })).verdict).toBe(
+      "CONCERNS",
+    );
+  });
+
+  it("a group's failed execution stays unresolved when verification still has concerns", () => {
+    const row = (step: string, group: number, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      group,
+      verdict,
+      attempt,
+    });
+    const execute = row("build-plan-tasks", 7, "FAIL");
+    // Verify FAIL → Decision Pause accepts the gap → verify re-runs with CONCERNS.
+    const s = buildSummary(
+      input({
+        rows: [
+          execute,
+          row("build-plan-verify", 7, "FAIL"),
+          { type: "step-done", step: "build-decision", attempt: 1, route: "verify" },
+          row("build-plan-verify", 7, "CONCERNS", 2),
+        ],
+      }),
+    );
+    expect(s.verdict).toBe("FAIL");
+    expect(s.reasons).toContain("build-plan-tasks (group 7) FAIL");
+    expect(s.reasons).toContain("build-plan-verify (group 7) CONCERNS");
+
+    for (const rows of [
+      [execute],
+      [execute, row("build-plan-verify", 8, "PASS")],
+      [row("build-plan-verify", 7, "PASS"), execute],
+      [execute, { type: "step-done", step: "build-decision", attempt: 1 }],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-tasks (group 7) FAIL");
+  });
+
+  it("a group's gaps fix FAIL resolved by that group's later PASS verify is historical", () => {
+    const row = (step: string, group: number, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      group,
+      verdict,
+      attempt,
+    });
+    const gaps = row("build-plan-gaps-remediate", 3, "FAIL");
+    const answered = buildSummary(
+      input({
+        rows: [
+          row("build-plan-verify", 3, "CONCERNS"),
+          gaps,
+          row("build-plan-verify", 3, "PASS", 2),
+        ],
+      }),
+    );
+    expect(answered.markdown).toContain(
+      "build-plan-gaps-remediate (group 3) FAIL, resolved by build-plan-verify",
+    );
+    expect(answered.verdict).toBe("PASS");
+
+    for (const rows of [
+      [gaps],
+      [gaps, row("build-plan-verify", 4, "PASS")],
+      [gaps, row("build-plan-verify", 3, "FAIL", 2)],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain(
+        "build-plan-gaps-remediate (group 3) FAIL",
+      );
   });
 
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
@@ -150,20 +542,69 @@ describe("buildSummary", () => {
     expect(failed.nextStep).toBe("/bkit-ship #682");
   });
 
-  it("design with two workstreams files them before /bkit-plan", () => {
+  const ws = (n: number, name: string) => ({
+    id: `WS-${n}`,
+    n,
+    name,
+    requires: [],
+    requiresText: "[]",
+  });
+  const plan = (n: number, name: string, covers: string[], requires: string[] = []) => ({
+    id: `P-${n}`,
+    n,
+    name,
+    covers,
+    requires,
+    requiresText: `[${requires.join(", ")}]`,
+  });
+
+  it("prints plans with covered workstreams", () => {
     const s = buildSummary(
       input({
         workflow: "design",
-        workstreams: [
-          { id: "WS-1", n: 1, name: "Engine", requires: [], requiresText: "None" },
-          { id: "WS-2", n: 2, name: "Docs", requires: ["WS-1"], requiresText: "WS-1" },
-        ],
+        workstreams: [ws(1, "Engine"), ws(2, "Help"), ws(3, "Docs")],
+        suggestedPlans: [plan(1, "Command", ["WS-1", "WS-2", "WS-3"])],
+      }),
+    );
+    expect(s.nextStep).toBe("/bkit-plan #682");
+    const section = s.markdown.split("## Suggested Plans\n")[1]!.split("\n## ")[0]!;
+    expect(section.trim()).toBe(
+      [
+        "### P-1: Command",
+        "",
+        "Covers: WS-1 (Engine), WS-2 (Help), WS-3 (Docs)",
+        "Requires: []",
+      ].join("\n"),
+    );
+    expect(s.markdown).not.toContain("### WS-");
+    expect(s.markdown).not.toContain("one issue each");
+  });
+
+  it("a one-workstream design shows one plan and /bkit-plan on its own ref", () => {
+    const s = buildSummary(
+      input({
+        workflow: "design",
+        workstreams: [ws(1, "Engine")],
+        suggestedPlans: [plan(1, "Engine", ["WS-1"])],
+      }),
+    );
+    expect(s.nextStep).toBe("/bkit-plan #682");
+    expect(s.markdown).toContain("### P-1: Engine\n\nCovers: WS-1 (Engine)\n");
+  });
+
+  it("two plans ask to file plan issues first", () => {
+    const s = buildSummary(
+      input({
+        workflow: "design",
+        workstreams: [ws(1, "Engine"), ws(2, "Help"), ws(3, "Docs")],
+        suggestedPlans: [plan(1, "Command", ["WS-1", "WS-2"]), plan(2, "Docs", ["WS-3"], ["P-1"])],
       }),
     );
     expect(s.nextStep).toBe(
-      "File the Suggested Workstreams issues, then /bkit-plan <first root workstream's new issue>",
+      "File the Suggested Plans issues, then /bkit-plan <first root plan's new issue>",
     );
-    expect(s.markdown).toContain("### WS-2: Docs");
+    expect(s.markdown).toContain("### P-1: Command");
+    expect(s.markdown).toContain("### P-2: Docs\n\nCovers: WS-3 (Docs)\nRequires: [P-1]\n");
   });
 
   it("copies the organised design's Risks & Open Questions under ## Open Questions", () => {
@@ -286,7 +727,7 @@ describe("buildSummary", () => {
       "<!-- bkit:group 1 end -->",
     ].join("\n");
     const files: Record<string, string> = {
-      "log/build-plan-execute-1-log.md": "DONE — Task 1\nBLOCKED — Task 2: needs a key\n",
+      "log/build-plan-tasks-1-log.md": "DONE — Task 1\nBLOCKED — Task 2: needs a key\n",
       "log/build-decision-1-1.md": "Status: DECIDED\n**Q1 — gap:** x\nDecision: Accept — fine\n",
       "log/build-decision-1-2.md": "Status: OPEN\n**Q1 — gap:** y\n",
     };
@@ -295,9 +736,9 @@ describe("buildSummary", () => {
         rows: [
           {
             type: "step-done",
-            step: "build-plan-execute",
+            step: "build-plan-tasks",
             attempt: 1,
-            artifacts: ["log/build-plan-execute-1-log.md"],
+            artifacts: ["log/build-plan-tasks-1-log.md"],
           },
           {
             type: "step-done",
@@ -314,7 +755,86 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("BLOCKED — Task 2: needs a key");
     expect(s.markdown).toContain("Decision: Accept — fine");
     expect(s.markdown).toContain("log/build-decision-1-2.md");
-    expect(s.markdown).toContain("**TEST EXCEPTION:**");
+    expect(s.markdown).toContain(
+      "- TEST EXCEPTION, task 1: `a.test.ts` `t1` — owner accepted (`docs/plans/p.md`)",
+    );
     expect(s.verdict).toBe("CONCERNS");
+  });
+
+  it.each(["Task", "Step", "Gap"])(
+    "keeps a repaired %s blocker in history rather than current action items",
+    (kind) => {
+      const log = `BLOCKED — ${kind} 1: waiting\nBLOCKED — ${kind} 2: still waiting\nDONE — ${kind} 1: fixed\n`;
+      const s = buildSummary(
+        input({
+          rows: [{ type: "step-done", step: "build-plan-tasks", artifacts: ["tasks-log.md"] }],
+          read: reader({ "tasks-log.md": log }),
+        }),
+      );
+      const risks = s.markdown.split("## Risks and Action Items")[1]!;
+      expect(risks).not.toContain(`${kind} 1: waiting`);
+      expect(risks).toContain(`${kind} 2: still waiting`);
+    },
+  );
+
+  it("lists each sub-bullet of a nested TEST EXCEPTION field with its task and reason", () => {
+    const plan = [
+      "<!-- bkit:group 1 start -->",
+      "### GROUP 1: Do",
+      "<!-- bkit:task 7 start -->",
+      "- [x] **TASK 7:** Do.",
+      "  - **DONE WHEN:** d.",
+      "  - **TEST FIRST:**",
+      "    - `a.test.ts` `t1`",
+      "    - `b.test.ts` `t2`",
+      "  - **TEST EXCEPTION:**",
+      "    - `a.test.ts` `t1` fails on x — task 6 already built it",
+      "      (owner, 2026-10-29)",
+      "    - `b.test.ts` `t2` fails on y — edited first (owner, 2026-10-29)",
+      "<!-- bkit:task 7 end -->",
+      "<!-- bkit:group 1 end -->",
+    ].join("\n");
+    const s = buildSummary(input({ plans: [{ path: "docs/plans/p.md", text: plan }] }));
+    const risks = s.markdown.split("## Risks and Action Items")[1]!.split("\n## ")[0]!;
+    expect(risks.split("\n").filter((l) => l.startsWith("- "))).toEqual([
+      "- TEST EXCEPTION, task 7: `a.test.ts` `t1` fails on x — task 6 already built it (owner, 2026-10-29) (`docs/plans/p.md`)",
+      "- TEST EXCEPTION, task 7: `b.test.ts` `t2` fails on y — edited first (owner, 2026-10-29) (`docs/plans/p.md`)",
+    ]);
+  });
+
+  it("counts a lettered Accept decision as accepted at the Decision Pause", () => {
+    const decision = [
+      "Status: ASSUMED",
+      "**Q1 — Gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: A) Accept — fine by me",
+      "",
+      "**Q2 — Other gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: A) Accept (assumed) — minor (ask:false, LOCAL, 2026-10-28)",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "build-decision",
+            attempt: 1,
+            artifacts: ["log/build-decision-1-1.md"],
+          },
+        ],
+        decisionFiles: ["log/build-decision-1-1.md"],
+        read: reader({ "log/build-decision-1-1.md": decision }),
+      }),
+    );
+    expect(s.verdict).toBe("CONCERNS");
+    expect(s.markdown).toContain("1 item(s) accepted at the Decision Pause");
+    expect(s.markdown).toContain("1 item(s) accepted without the owner");
+    expect(s.markdown).toContain(
+      "- Accepted: log/build-decision-1-1.md: Decision: Accept — fine by me",
+    );
   });
 });

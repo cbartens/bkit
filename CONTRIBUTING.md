@@ -24,7 +24,7 @@ pnpm install
 pnpm typecheck
 pnpm test
 pnpm format:check   # pnpm format rewrites files
-pnpm lint:prose
+pnpm bkit:lint:prose
 ```
 
 If you changed code under `.bkit/core/engine/`, rebuild the CLI and include the result:

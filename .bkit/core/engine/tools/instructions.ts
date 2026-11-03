@@ -22,6 +22,7 @@ import {
   checkSources,
   parseDriftItem,
   parseRuleEntries,
+  RULE_NAME,
   sectionOf,
   syncSources,
   type RuleEntry,
@@ -61,7 +62,7 @@ export interface Clause {
   position?: Position;
   /** Slotted clause only: a line holding the fixed text before the first slot must match one of the templates. */
   anchored: boolean;
-  /** `R{nn}` of the `.agents/rules.md` rule the clause carries. */
+  /** `### {name}` of the `## Rules` entry whose text the clause carries. */
   rule?: string;
   /** Rules the clause condenses, specialises, applies or cites (`- tags:`). */
   tags?: string[];
@@ -89,7 +90,7 @@ export const NEAR_COPY = 0.8;
 export const SHARED_MIN: Partial<Record<Surface, number>> = {
   prompt: 2,
   workflow: 2,
-  audit: 5,
+  audit: 2,
   doc: 2,
 };
 
@@ -192,7 +193,7 @@ export function parseClauses(md: string): Clause[] {
       } else if (key === "retired") {
         clause.fullyRetired = value === "yes";
       } else if (key === "rule") {
-        clause.rule = /^[RP]\d+/.exec(value)?.[0];
+        clause.rule = RULE_NAME.exec(value)?.[0];
       } else if (key === "tags") {
         clause.tags = value.split(",").map((t) => t.trim());
       } else if (key === "carriers" || key === "distinct-from") {
@@ -347,6 +348,29 @@ export function loadCorpus(root: string): CorpusFile[] {
  * to check or rewrite.
  */
 export function proseLineIndexes(file: CorpusFile): number[] {
+  return memoLines(proseCache, file, computeProseLineIndexes);
+}
+
+/** Line-index memo keyed by surface and content; every clause asks for the same file's lines. */
+function memoLines(
+  cache: Map<string, number[]>,
+  file: CorpusFile,
+  compute: (file: CorpusFile) => number[],
+): number[] {
+  const key = `${file.surface}\u0000${file.content}`;
+  let hit = cache.get(key);
+  if (!hit) {
+    if (cache.size > 5_000) cache.clear();
+    hit = compute(file);
+    cache.set(key, hit);
+  }
+  return hit;
+}
+
+const proseCache = new Map<string, number[]>();
+const clauseLineCache = new Map<string, number[]>();
+
+function computeProseLineIndexes(file: CorpusFile): number[] {
   const lines = file.content.split("\n");
   let from = 0;
   let to = lines.length;
@@ -384,9 +408,11 @@ export function proseLineIndexes(file: CorpusFile): number[] {
  * `**Rules:**` block, whose lines are rules.md copies the `- carry:` check owns.
  */
 export function clauseLineIndexes(file: CorpusFile): number[] {
-  const prose = proseLineIndexes(file);
-  const block = file.surface === "prompt" ? ruleBlock(file.content.split("\n")) : undefined;
-  return block ? prose.filter((i) => i < block.from || i >= block.to) : prose;
+  return memoLines(clauseLineCache, file, (f) => {
+    const prose = proseLineIndexes(f);
+    const block = f.surface === "prompt" ? ruleBlock(f.content.split("\n")) : undefined;
+    return block ? prose.filter((i) => i < block.from || i >= block.to) : prose;
+  });
 }
 
 /** Lines a clause is matched against: a `block: rules` clause also sees the prompt's `**Rules:**` block it sits in. */
@@ -488,6 +514,8 @@ interface Compiled {
   slots: string[];
   /** Fixed text before the first slot; the whole text when unslotted. */
   prefix: string;
+  /** Longest fixed segment every match contains verbatim: a substring check before the regex runs. */
+  literal: string;
   slotted: boolean;
 }
 
@@ -497,29 +525,36 @@ export function compileText(text: string): Compiled {
   const hit = compiledCache.get(text);
   if (hit) return hit;
   const slots: string[] = [];
+  const literals: string[] = [];
   let source = "";
   let last = 0;
   for (const m of text.matchAll(SLOT)) {
-    source += escapeRe(text.slice(last, m.index));
+    const segment = text.slice(last, m.index);
+    literals.push(segment);
+    source += escapeRe(segment);
     source += m[2] ? "(.*?)" : "(.+?)";
     slots.push(m[1]!);
     last = m.index! + m[0].length;
   }
   const tail = text.slice(last);
   // A closing `.` also matches `;`: the line continues the sentence with local text.
-  source += tail.endsWith(".") ? `${escapeRe(tail.slice(0, -1))}[.;]` : escapeRe(tail);
+  const tailLiteral = tail.endsWith(".") ? tail.slice(0, -1) : tail;
+  literals.push(tailLiteral);
+  source += tail.endsWith(".") ? `${escapeRe(tailLiteral)}[.;]` : escapeRe(tail);
   const first = text.search(SLOT);
   const compiled = {
     re: new RegExp(source, "g"),
     slots,
     prefix: first === -1 ? text : text.slice(0, first),
+    literal: literals.reduce((a, b) => (b.length > a.length ? b : a), ""),
     slotted: slots.length > 0,
   };
   compiledCache.set(text, compiled);
   return compiled;
 }
 
-const countIn = (line: string, c: Compiled) => [...line.matchAll(c.re)].length;
+const countIn = (line: string, c: Compiled) =>
+  line.includes(c.literal) ? [...line.matchAll(c.re)].length : 0;
 
 /** Drop the blockquote, list marker, step number, or checkbox in front of a line's text. */
 export const stripLinePrefix = (line: string) =>
@@ -653,12 +688,15 @@ function nearCopies(
         if (!canonical.startsWith("**")) window = window.replace(LABEL, "");
         // A clause can close a sentence that opens with local text (`**If** {cond} → {clause}`): also compare the tail.
         const words = window.split(/\s+/);
-        const candidates = [window];
+        const candidates: [string, string[]][] = [[window, words]];
         for (const n of [cw - 1, cw, cw + 1]) {
-          if (n > 0 && n < words.length) candidates.push(words.slice(-n).join(" "));
+          if (n > 0 && n < words.length) {
+            const tail = words.slice(-n);
+            candidates.push([tail.join(" "), tail]);
+          }
         }
-        for (const found of candidates) {
-          if (allTexts.has(found) || !nearCandidate(found.split(/\s+/), canonicalWords)) continue;
+        for (const [found, foundWords] of candidates) {
+          if (allTexts.has(found) || !nearCandidate(foundWords, canonicalWords, counts)) continue;
           const score = similarity(found, canonical);
           if (score >= NEAR_COPY && (!best || score > best.score)) best = { found, size, score };
         }
@@ -843,18 +881,21 @@ export function checkClauses(clauses: Clause[], files: CorpusFile[]): Finding[] 
 }
 
 /** Could two sentences be NEAR_COPY-similar? Cheap word-count and shared-word bounds before `similarity`. */
-function nearCandidate(a: string[], b: string[]): boolean {
+function nearCandidate(a: string[], b: string[], bCounts?: Map<string, number>): boolean {
   const longer = Math.max(a.length, b.length);
   const need = Math.ceil(NEAR_COPY * longer);
   if (Math.min(a.length, b.length) < need) return false;
-  const pool = new Map<string, number>();
-  for (const w of b) pool.set(w, (pool.get(w) ?? 0) + 1);
+  // `bCounts` is read-only (a caller's memoised counts): track the words of `b` used up so far.
+  const counts = bCounts ?? wordCounts(b);
+  const used = new Map<string, number>();
   let shared = 0;
   for (const w of a) {
-    const n = pool.get(w) ?? 0;
-    if (n > 0) {
+    const n = counts.get(w);
+    if (n === undefined) continue;
+    const u = used.get(w) ?? 0;
+    if (u < n) {
       shared++;
-      pool.set(w, n - 1);
+      used.set(w, u + 1);
     }
   }
   return shared >= need;
@@ -901,6 +942,7 @@ function sharedGroups(
   noun: string,
 ): Finding[] {
   const words = new Map([...seen.keys()].map((s) => [s, s.split(/\s+/)]));
+  const counts = new Map([...words].map(([s, w]) => [s, wordCounts(w)]));
   const reported = new Set<string>();
   const findings: Finding[] = [];
   // Seeds: every sentence, widest first, so a group is reported once under its most-copied wording.
@@ -912,7 +954,7 @@ function sharedGroups(
       (s) =>
         s !== seed &&
         !reported.has(s) &&
-        nearCandidate(words.get(seed)!, words.get(s)!) &&
+        nearCandidate(words.get(seed)!, words.get(s)!, counts.get(s)!) &&
         similarity(seed, s) >= NEAR_COPY,
     );
     const group = new Set([...ids.keys(), ...near.flatMap((s) => [...seen.get(s)!.keys()])]);
@@ -1112,7 +1154,7 @@ export interface LocalEntry {
   file?: string;
   /** `- carriers:` value (shared lines). */
   carriers?: string;
-  /** `R{nn}` / `P{nn}` of the rule the line carries. */
+  /** `### {name}` of each rule the line carries. */
   tags: string[];
   /** `fit `{target}` {score}`: the closest rule or clause the line could be reworded to. */
   fit?: string;
@@ -1123,9 +1165,9 @@ export interface LocalEntry {
   at: number;
 }
 
-const LOCAL_TAG = /^(?:[RP]\d+|fit `[^`]+` [\d.]+)$/;
+const LOCAL_TAG = /^(?:[a-z0-9][a-z0-9-]*|fit `[^`]+` [\d.]+)$/;
 
-/** `[R01; fit `x` 0.8; keep: {reason}] {text}`; a bracket holding anything but tags stays text. */
+/** `[scope-discipline; fit `x` 0.8; keep: {reason}] {text}`; a bracket holding anything but tags stays text. */
 export function parseLocalLine(line: string): Pick<LocalEntry, "tags" | "fit" | "keep" | "text"> {
   const m = /^\[([^\]]+)\] (.+)$/.exec(line);
   if (m) {
@@ -1287,7 +1329,7 @@ function ruleCarriers(
     for (const n of expandNames(c.names, ix.namesOf(surface))) {
       const file = ix.byName(surface, n);
       if (file) found.push({ relation: c.relation, file });
-      else out?.push(`${r.id} \`${r.name}\`: ${c.relation} carrier \`${n}\` is no ${surface} file`);
+      else out?.push(`\`${r.name}\`: ${c.relation} carrier \`${n}\` is no ${surface} file`);
     }
   }
   return found;
@@ -1361,6 +1403,19 @@ export function checkCoverage(store: string, corpus: CorpusFile[]): string[] {
     }
   }
 
+  // Every rule name a tag or clause cites is a rule.
+  const ruleNames = new Set(ix.rules.map((r) => r.name));
+  for (const e of ix.local) {
+    for (const t of e.tags.filter((t) => !ruleNames.has(t))) {
+      out.push(`${e.file ?? `shared (${e.carriers})`}: tag \`${t}\` names no rule: ${e.text}`);
+    }
+  }
+  for (const c of ix.clauses) {
+    for (const t of [c.rule ?? [], c.tags ?? []].flat().filter((t) => !ruleNames.has(t))) {
+      out.push(`clause \`${c.name}\`: \`${t}\` names no rule`);
+    }
+  }
+
   // Nothing extra: rule carriers.
   for (const r of ix.rules) {
     const sentences = splitSentences(r.text);
@@ -1371,8 +1426,8 @@ export function checkCoverage(store: string, corpus: CorpusFile[]): string[] {
       out,
     )) {
       const prose = ix.prose.get(file.id)!;
-      const tag = `${r.id} \`${r.name}\``;
-      const linked = ix.clauses.filter((c) => c.rule === r.id || c.name === r.clause);
+      const tag = `\`${r.name}\``;
+      const linked = ix.clauses.filter((c) => c.rule === r.name || c.name === r.clause);
       const viaClause = linked.some((c) =>
         c.texts.some((t) => prose.some((l) => plain(compileText(t).re).test(l))),
       );
@@ -1388,15 +1443,15 @@ export function checkCoverage(store: string, corpus: CorpusFile[]): string[] {
         }
         continue;
       }
-      const tagged = (localOf.get(file.id) ?? []).some((e) => e.tags.includes(r.id));
+      const tagged = (localOf.get(file.id) ?? []).some((e) => e.tags.includes(r.name));
       const viaTaggedClause = ix.clauses.some(
         (c) =>
-          c.tags?.includes(r.id) &&
+          c.tags?.includes(r.name) &&
           c.texts.some((t) => prose.some((l) => plain(compileText(t).re).test(l))),
       );
       if (!tagged && !viaClause && !viaTaggedClause) {
         out.push(
-          `${tag}: ${relation} carrier \`${file.name}\` has no local line or clause tagged ${r.id}`,
+          `${tag}: ${relation} carrier \`${file.name}\` has no local line or clause tagged \`${r.name}\``,
         );
       }
     }
@@ -1409,24 +1464,22 @@ export function checkCoverage(store: string, corpus: CorpusFile[]): string[] {
         if (
           !new RegExp(`^### ${escapeRe(entry[2]!)}$`, "m").test(sectionOf(store, heading) ?? "")
         ) {
-          out.push(`${r.id} \`${r.name}\`: drift names no \`## ${heading}\` entry \`${entry[2]}\``);
+          out.push(`\`${r.name}\`: drift names no \`## ${heading}\` entry \`${entry[2]}\``);
         }
         continue;
       }
       if (d.cites.length === 0 || d.excerpt === undefined) {
         out.push(
-          `${r.id} \`${r.name}\`: drift item needs \`{file}:{line}\` cites and a "quoted excerpt": ${d.raw}`,
+          `\`${r.name}\`: drift item needs \`{file}:{line}\` cites and a "quoted excerpt": ${d.raw}`,
         );
         continue;
       }
       for (const c of d.cites) {
         const candidates = citeFiles(ix, c.name);
         if (candidates.length === 0)
-          out.push(`${r.id} \`${r.name}\`: drift \`${c.name}:${c.line}\` names no file`);
+          out.push(`\`${r.name}\`: drift \`${c.name}:${c.line}\` names no file`);
         else if (!candidates.some((f) => lineHolds(f, c.line, d.excerpt!))) {
-          out.push(
-            `${r.id} \`${r.name}\`: drift \`${c.name}:${c.line}\` does not hold "${d.excerpt}"`,
-          );
+          out.push(`\`${r.name}\`: drift \`${c.name}:${c.line}\` does not hold "${d.excerpt}"`);
         }
       }
     }
@@ -1444,8 +1497,7 @@ export function openFits(store: string): string[] {
 /** Drift items with no `kept` reason. */
 export function openDrift(store: string): string[] {
   return [...parseRuleEntries(store, "Rules"), ...parseRuleEntries(store, "Project Rules")].flatMap(
-    (r) =>
-      r.drift.filter((d) => d.kept === undefined).map((d) => `${r.id} \`${r.name}\`: ${d.raw}`),
+    (r) => r.drift.filter((d) => d.kept === undefined).map((d) => `\`${r.name}\`: ${d.raw}`),
   );
 }
 
@@ -1483,7 +1535,7 @@ export function checkRuleCopies(store: string, corpus: CorpusFile[]): string[] {
           );
         if (rule) {
           out.push(
-            `${rule.id} \`${rule.name}\`: \`${f.id}:${i + 1}\` copies the rule in its ${BLOCK_LABEL[b]} block; it belongs in the ${RULES_BLOCK} block`,
+            `\`${rule.name}\`: \`${f.id}:${i + 1}\` copies the rule in its ${BLOCK_LABEL[b]} block; it belongs in the ${RULES_BLOCK} block`,
           );
         }
       }
@@ -1515,15 +1567,13 @@ export function checkCarry(
     for (const n of named) {
       carried.add(n);
       if (!standing.get(n)?.some((l) => l.text === r.text)) {
-        missing.push(`${r.id} \`${r.name}\`: carry \`${n}\` lacks the whole rule bullet`);
+        missing.push(`\`${r.name}\`: carry \`${n}\` lacks the whole rule bullet`);
       }
     }
     if (!bkit.includes(r)) continue;
     for (const f of prompts) {
       if (!named.has(f.name) && standing.get(f.name)!.some((l) => l.text.includes(r.text))) {
-        undeclared.push(
-          `${r.id} \`${r.name}\`: \`${f.name}\` holds the rule but no carry line names it`,
-        );
+        undeclared.push(`\`${r.name}\`: \`${f.name}\` holds the rule but no carry line names it`);
       }
     }
   }
@@ -1585,11 +1635,12 @@ export function similarEntries(store: string): string[] {
   }
   const out: string[] = [];
   const words = entries.map((e) => e.text.split(/\s+/));
+  const counts = words.map(wordCounts);
   for (let i = 0; i < entries.length; i++) {
     for (let j = i + 1; j < entries.length; j++) {
       const [a, b] = [entries[i]!, entries[j]!];
       if (a.name === b.name || a.distinct.has(b.name) || b.distinct.has(a.name)) continue;
-      if (!nearCandidate(words[i]!, words[j]!)) continue;
+      if (!nearCandidate(words[i]!, words[j]!, counts[j]!)) continue;
       const score = similarity(a.text, b.text);
       if (score >= NEAR_COPY) {
         out.push(

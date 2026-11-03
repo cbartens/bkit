@@ -12,7 +12,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 import { parseText } from "../../shared/text";
+
+useGateRunner();
 
 const DEFAULT_FID = "999-close-squash";
 const FID = DEFAULT_FID;
@@ -59,8 +62,8 @@ interface Fixture {
 // A main checkout on dev, a remote, and feat/{FID} checked out in
 // .worktrees/{FID} carrying this run's design or plan doc.
 function initFixture(
-  workflow: "design" | "plan",
-  opts: { docOnDev?: string; fid?: string; tracker?: string } = {},
+  workflow: "design" | "plan" | "build",
+  opts: { docOnDev?: string; fid?: string; tracker?: string; pushFeature?: boolean } = {},
 ): Fixture {
   const FID = opts.fid ?? DEFAULT_FID;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-close-squash-"));
@@ -77,12 +80,10 @@ function initFixture(
   write(path.join(repo, ".gitignore"), ".worktrees/\nnode_modules/\ndocs/plans/*/logs/**/.lock\n");
   write(path.join(repo, "docs/roadmap.md"), "# Roadmap\n");
   write(path.join(repo, "src/app.ts"), "export {};\n");
-  if (opts.tracker !== undefined) {
-    write(
-      path.join(repo, "package.json"),
-      JSON.stringify({ bkit: { tracker: { default: opts.tracker } } }),
-    );
-  }
+  write(
+    path.join(repo, "package.json"),
+    JSON.stringify({ ...gatePackage, bkit: { tracker: { default: opts.tracker } } }),
+  );
   const docPath = `docs/plans/${MONTH}/${FID}-${workflow}.md`;
   if (opts.docOnDev !== undefined) write(path.join(repo, docPath), opts.docOnDev);
   git(repo, "add", "-A");
@@ -99,7 +100,7 @@ function initFixture(
   );
   git(wt, "add", "-A");
   git(wt, "commit", "-q", "-m", "feature work");
-  git(wt, "push", "-q", "origin", `feat/${FID}`);
+  if (opts.pushFeature !== false) git(wt, "push", "-q", "origin", `feat/${FID}`);
   // `bkit worktrees setup` marks the worktrees it creates; close removes only those.
   const common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir");
   write(path.join(common, "bkit-outbox", FID, ".worktree-owned"), "");
@@ -269,5 +270,181 @@ describe("bkit-design.md close with no issue", () => {
     expect(printed.stage).toBe("open");
     expect(printed.body).toContain(`<!-- bkit:fid=${fid} -->`);
     expect(printed.body).not.toContain("bkit:issue=");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit-build.md held close (publish=false): Step 15's summary line, then Step 16's held fence,
+// run as written against a real repo, bare origin and worktree.
+// ---------------------------------------------------------------------------
+
+const BUILD_MD = path.resolve(".bkit/core/workflows/bkit-build.md");
+
+/** The trimmed lines of every `bash` fence in `text` that contains `needle`, in order. */
+function fenceLines(text: string, needle: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(/```bash\n([\s\S]*?)```/g)) {
+    if (m[1]!.includes(needle))
+      out.push(
+        ...m[1]!
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean),
+      );
+  }
+  return out;
+}
+
+/** Step 15's `workflows summary` line and Step 16's held close fence, placeholders unfilled. */
+function heldScript(): string[] {
+  const md = fs.readFileSync(BUILD_MD, "utf-8");
+  const step15 = md.slice(md.indexOf("## 🧠 Step 15 — Summary"), md.indexOf("### 🔒 Gate 15"));
+  const step16 = md.slice(md.indexOf("## 🤖 Step 16 — Close Workflow"));
+  const held = step16.slice(
+    step16.indexOf("**Held close:**"),
+    step16.indexOf("**Publish close:**"),
+  );
+  const summary = fenceLines(step15, '"{BKIT}" workflows summary');
+  const close = fenceLines(held, '"{BKIT}" workflows close');
+  expect(summary, "Step 15 summary line not found").toHaveLength(1);
+  expect(close.length, "held close fence not found").toBeGreaterThan(0);
+  return [...summary, ...close];
+}
+
+const refs = (bare: string) => git(bare, "for-each-ref", "--format=%(refname) %(objectname)");
+
+describe("bkit-build.md held close", () => {
+  const BUILD_FID = "999-held-build";
+
+  /** A build run opened the way Steps 1-2 open it: a lock, a `workflow-started` row. */
+  function startBuild(fx: Fixture, sessionDir: string, bin: string) {
+    const wt = path.join(fx.repo, ".worktrees", BUILD_FID);
+    const status = path.join(wt, `docs/plans/${MONTH}/logs/${BUILD_FID}/status.jsonl`);
+    fs.writeFileSync(status, "");
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "reset status");
+    const env = {
+      ...process.env,
+      BKIT_RUNTIME: "LOCAL",
+      GIT_DIR: git(wt, "rev-parse", "--absolute-git-dir"),
+      GIT_WORK_TREE: wt,
+    };
+    const run = (args: string[], cwd: string) =>
+      spawnSync(bin, args, { cwd, encoding: "utf-8", env });
+    const lock = run(
+      [
+        "locks",
+        "acquire",
+        "--kind=workflow",
+        "--workflow=build",
+        `--fid=${BUILD_FID}`,
+        `--month=${MONTH}`,
+      ],
+      fx.repo,
+    );
+    expect(lock.status, lock.stderr).toBe(0);
+    const token = /token: "?([^"\s]+)"?/.exec(lock.stdout)?.[1];
+    expect(token, lock.stdout).toBeTruthy();
+    const start = run(
+      [
+        "workflows",
+        "start",
+        "--workflow=build",
+        `--fid=${BUILD_FID}`,
+        `--month=${MONTH}`,
+        "--lock-held",
+        `--token=${token}`,
+      ],
+      wt,
+    );
+    expect(start.status, start.stderr).toBe(0);
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(path.join(sessionDir, "prompt.md"), "build it publish=false\n");
+    return { wt, status, token: token!, env };
+  }
+
+  function runHeld(fx: Fixture) {
+    const bin = path.join(fx.repo, "node_modules/.bin/bkit");
+    const sessionDir = path.join(path.dirname(fx.repo), "session");
+    const run = startBuild(fx, sessionDir, bin);
+    const script = heldScript()
+      .join("\n")
+      .replaceAll("{BKIT}", bin)
+      .replaceAll("{STATUS}", run.status)
+      .replaceAll("{WORKTREE_PATH}", run.wt)
+      .replaceAll("{FID}", BUILD_FID)
+      .replaceAll("{YYYYMM}", MONTH)
+      .replaceAll("{OWNER_REPO}", "example/example")
+      .replaceAll("{OUTBOX}", path.join(path.dirname(fx.repo), "outbox"))
+      .replaceAll("{BRANCH}", `feat/${BUILD_FID}`)
+      .replaceAll("{SESSION_DIR}", sessionDir)
+      .replaceAll("{LOCK_TOKEN}", run.token)
+      .replaceAll("{PUBLISH}", "false")
+      .replaceAll("{REF}", BUILD_FID);
+    expect(script).not.toMatch(/\{[A-Z_]+\}/);
+    const res = spawnSync("bash", ["-c", script], { cwd: run.wt, encoding: "utf-8", env: run.env });
+    return { ...run, res };
+  }
+
+  const bareOf = (fx: Fixture) => path.join(path.dirname(fx.repo), "remote.git");
+
+  it("held close leaves origin refs unchanged, keeps the branch and worktree, releases the lock", () => {
+    const fx = initFixture("build", { fid: BUILD_FID, pushFeature: false });
+    const before = refs(bareOf(fx));
+    expect(before).not.toContain(`feat/${BUILD_FID}`);
+
+    const { res } = runHeld(fx);
+
+    expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0);
+    expect(refs(bareOf(fx))).toBe(before);
+    expect(git(fx.repo, "branch", "--list", `feat/${BUILD_FID}`)).toContain(`feat/${BUILD_FID}`);
+    expect(fs.existsSync(path.join(fx.repo, ".worktrees", BUILD_FID))).toBe(true);
+    expect(fs.existsSync(path.join(fx.repo, `docs/plans/${MONTH}/logs/${BUILD_FID}/.lock`))).toBe(
+      false,
+    );
+    expect(remoteDev(fx.repo)).toBe(fx.devBefore);
+  });
+
+  it("held close records the rows, summary and worktree-only roadmap row", () => {
+    const fx = initFixture("build", { fid: BUILD_FID, pushFeature: false });
+
+    const { res, wt, status } = runHeld(fx);
+
+    expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0);
+    const rows = fs
+      .readFileSync(status, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows.find((r) => r.type === "workflow-done")).toMatchObject({
+      workflow: "build",
+      ending: "held",
+      publish: false,
+    });
+    const stats = fs
+      .readFileSync(path.join(wt, ".bkit/stats.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(stats.find((r) => r.kind === "outcome")).toMatchObject({
+      ending: "held",
+      publish: false,
+    });
+    const summary = fs.readFileSync(
+      path.join(wt, `docs/plans/${MONTH}/logs/${BUILD_FID}/build-summary.md`),
+      "utf-8",
+    );
+    expect(summary).toContain("Publish: held");
+    expect(summary).toContain("Docs: not synced");
+    expect(res.stdout).toContain("Docs: not synced");
+    const roadmap = fs
+      .readFileSync(path.join(wt, ".bkit/issues.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(roadmap.find((r) => r.kind === "feature")).toMatchObject({ key: BUILD_FID });
+    // dev carries no row: the held close never mirrors.
+    expect(git(fx.repo, "show", "origin/dev:docs/roadmap.md")).not.toContain(BUILD_FID);
+    expect(fs.existsSync(path.join(fx.repo, ".bkit/issues.jsonl"))).toBe(false);
   });
 });

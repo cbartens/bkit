@@ -10,11 +10,13 @@ import {
   EXIT_ROWS_MISSING,
   EXIT_ROW_REFUSED,
   bookPathspecs,
+  commitOwnSet,
   ledgersCommand,
   newRecord,
   readRecord,
   writeRecord,
 } from "./ledgers";
+import { NO_MARKERS_REASON } from "./plan-blocks";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -280,23 +282,72 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(staged(r)).toContain("status.jsonl");
   });
 
-  it("top-level docs/*.md is committed under scope=pr, not under scope=core or scope=full", async () => {
+  it("top-level docs/*.md and the repo's ciSkipPaths are committed under scope=pr, not under scope=core or scope=full", async () => {
     const r = repo();
+    // bkit's own package.json shape: the engine hardcodes neither file.
+    put(
+      r,
+      "package.json",
+      JSON.stringify({
+        bkit: { testing: { ciSkipPaths: ["CHANGELOG.md", "README.md"] } },
+      }),
+    );
     put(r, "docs/plans/202610/logs/452d/status.jsonl", "{}\n");
     put(r, "docs/architecture.md", "a\n");
+    put(r, "CHANGELOG.md", "a\n");
+    put(r, "README.md", "a\n");
     commitAll(r);
     add(r, "docs/architecture.md", "b\n");
+    add(r, "CHANGELOG.md", "b\n");
+    add(r, "README.md", "b\n");
     add(r, "docs/plans/202610/logs/452d/status.jsonl", '{"a":1}\n');
     git(r, "switch", "-q", "-c", "feat/452d");
     const base = ["--month=202610", "--fid=452d", "--mode=commit"];
 
     expect((await run(r, commitArgs(r, ...base, "--scope=core", "--message=core"))).code).toBe(0);
     expect(stat(r)).not.toContain("architecture.md");
+    expect(stat(r)).not.toContain("CHANGELOG.md");
     add(r, "docs/plans/202610/logs/452d/status.jsonl", '{"a":2}\n');
     expect((await run(r, commitArgs(r, ...base, "--scope=full", "--message=full"))).code).toBe(0);
     expect(stat(r)).not.toContain("architecture.md");
+    expect(stat(r)).not.toContain("CHANGELOG.md");
     expect((await run(r, commitArgs(r, ...base, "--scope=pr", "--message=pr"))).code).toBe(0);
     expect(stat(r)).toContain("docs/architecture.md");
+    expect(stat(r)).toContain("CHANGELOG.md");
+    expect(stat(r)).toContain("README.md");
+  });
+
+  it("scope=pr reaches bkit.testing.ciSkipPaths from package.json, and nothing else outside the list", async () => {
+    const r = repo();
+    put(
+      r,
+      "package.json",
+      JSON.stringify({
+        bkit: { testing: { ciSkipPaths: ["CHANGES.md", "notes/*.md"] } },
+      }),
+    );
+    put(r, "docs/plans/202610/logs/452k/status.jsonl", "{}\n");
+    put(r, "CHANGES.md", "a\n");
+    put(r, "notes/today.md", "a\n");
+    put(r, "notes/deep/old.md", "a\n");
+    put(r, "src/a.ts", "a\n");
+    commitAll(r);
+    add(r, "CHANGES.md", "b\n");
+    add(r, "notes/today.md", "b\n");
+    add(r, "notes/deep/old.md", "b\n");
+    add(r, "src/a.ts", "b\n");
+    add(r, "docs/plans/202610/logs/452k/status.jsonl", '{"a":1}\n');
+    git(r, "switch", "-q", "-c", "feat/452k");
+    const res = await run(
+      r,
+      commitArgs(r, "--month=202610", "--fid=452k", "--scope=pr", "--mode=commit", "--message=pr"),
+    );
+    expect(res.code).toBe(0);
+    expect(stat(r)).toContain("CHANGES.md");
+    expect(stat(r)).toContain("notes/today.md");
+    // `*` in a package.json glob matches one folder, as in minPushPaths.
+    expect(stat(r)).not.toContain("notes/deep/old.md");
+    expect(stat(r)).not.toContain("src/a.ts");
   });
 
   it("scope=pr does not reach nested docs (another FID's plan, docs/templates/**)", async () => {
@@ -511,6 +562,31 @@ describe("bkit ledgers commit --path", () => {
     const res = await run(r, args(r, "--mode=commit", "--path=../elsewhere.md", "--message=m"));
     expect(res.code).toBe(6);
     expect(head(r)).toBe(before);
+  });
+
+  it("refuses a --path git ignores, naming the guard instead of leaking git's message", async () => {
+    const r = planRepo();
+    put(r, ".gitignore", "secret.env\n");
+    put(r, "secret.env", "S=1\n");
+    git(r, "add", ".gitignore");
+    git(r, "commit", "-q", "-m", "ignore");
+    const before = head(r);
+    const res = await run(r, args(r, "--mode=commit", "--path=secret.env", "--message=m"));
+    expect(res.code).toBe(4);
+    expect(res.err).toContain("gitignored");
+    expect(head(r)).toBe(before);
+  });
+});
+
+describe("commitOwnSet", () => {
+  it("refuses a gitignored path in the set instead of letting git fail opaquely", () => {
+    const r = repo();
+    put(r, ".gitignore", "secret.env\n");
+    put(r, "secret.env", "S=1\n");
+    git(r, "add", ".gitignore");
+    git(r, "commit", "-q", "-m", "ignore");
+    const res = commitOwnSet(r, { plain: ["secret.env"], ledgers: [] }, "m");
+    expect(res).toEqual({ ok: false, error: expect.stringContaining("gitignored") });
   });
 });
 
@@ -882,6 +958,26 @@ describe("bkit ledgers only-bookkeeping", () => {
     expect(res.json).toEqual({ onlyBookkeeping: true, ancestor: true, outside: [] });
   });
 
+  it("a bkit.testing.ciSkipPaths file counts as bookkeeping; without the setting it does not", async () => {
+    const r = base();
+    put(r, "CHANGELOG.md", "a\n");
+    commitAll(r);
+    const from = head(r);
+    add(r, "CHANGELOG.md", "b\n");
+    commitAll(r, "book");
+    const plain = await check(r, from, head(r));
+    expect(plain.code).toBe(7);
+    expect(plain.json.outside).toEqual(["CHANGELOG.md"]);
+    put(
+      r,
+      "package.json",
+      JSON.stringify({ bkit: { testing: { ciSkipPaths: ["CHANGELOG.md"] } } }),
+    );
+    const res = await check(r, from, head(r));
+    expect(res.code).toBe(0);
+    expect(res.json).toEqual({ onlyBookkeeping: true, ancestor: true, outside: [] });
+  });
+
   it("a source file in the range: exit 7, path listed", async () => {
     const r = base();
     commitAll(r);
@@ -941,6 +1037,15 @@ describe("bookPathspecs", () => {
     expect(full.slice(0, core.length)).toEqual(core);
     expect(pr).toEqual([...full, ":(glob)docs/*.md"]);
   });
+
+  it("appends the repo's extra bookkeeping paths as :(glob) pathspecs under pr only", () => {
+    const extra = ["CHANGES.md", ":(glob)notes/*.md"];
+    expect(bookPathspecs("202610", "1-x", "full", extra)).toEqual(
+      bookPathspecs("202610", "1-x", "full"),
+    );
+    const pr = bookPathspecs("202610", "1-x", "pr", extra);
+    expect(pr.slice(-2)).toEqual([":(glob)CHANGES.md", ":(glob)notes/*.md"]);
+  });
 });
 
 // The frozen bookkeeping allow-list: every ship stage/commit resolves through
@@ -961,7 +1066,9 @@ const BOOK_PATHS_ALLOW_LIST: readonly string[] = [
   ".claude/skills",
   ".cursor/skills",
   ".opencode/skills",
-  // Top-level project docs the ship docs sync edits — `--scope=pr` only.
+  // Top-level project docs the ship docs sync edits — `--scope=pr` only. Files outside
+  // docs/ (CHANGELOG.md, README.md) are the repo's `bkit.testing.ciSkipPaths`,
+  // never the engine's.
   ":(glob)docs/*.md",
 ];
 
@@ -1031,9 +1138,11 @@ describe("bkit ledgers append", () => {
     const [a, b] = lines(r, "docs/failures.jsonl");
     expect(a.ts).toBeGreaterThanOrEqual(before);
     expect(b.ts).toBeGreaterThan(a.ts as number);
-    expect(Object.keys(a).slice(0, 7)).toEqual([
+    expect(Object.keys(a).slice(0, 9)).toEqual([
       "schema",
       "ts",
+      "firstTs",
+      "updates",
       "kind",
       "key",
       "repo",
@@ -1232,6 +1341,138 @@ describe("bkit ledgers append", () => {
     expect(res.code).toBe(0);
     expect(lines(r, ".bkit/friction.jsonl")).toHaveLength(1);
   });
+
+  it("append stamps a keyed row's first write firstTs = ts, updates = 1", async () => {
+    const r = repo();
+    expect((await append(r, "failures", [failure()])).code).toBe(0);
+    const [a] = lines(r, "docs/failures.jsonl");
+    expect(a).toMatchObject({ firstTs: a?.ts, updates: 1 });
+  });
+
+  it("append carries firstTs forward and counts updates, across calls and within one batch", async () => {
+    const r = repo();
+    await append(r, "failures", [failure()]);
+    await append(r, "failures", [failure({ status: "TRIAGED" }), failure({ status: "CLOSED" })]);
+    const [a, b, c] = lines(r, "docs/failures.jsonl");
+    expect(b).toMatchObject({ firstTs: a?.ts, updates: 2 });
+    expect(c).toMatchObject({ firstTs: a?.ts, updates: 3, status: "CLOSED" });
+  });
+
+  it("append replaces a supplied firstTs / updates with the computed values", async () => {
+    const r = repo();
+    expect((await append(r, "failures", [failure({ firstTs: 1, updates: 40 })])).code).toBe(0);
+    const [a] = lines(r, "docs/failures.jsonl");
+    expect(a).toMatchObject({ firstTs: a?.ts, updates: 1 });
+  });
+
+  it("append continues the count from a compacted winner", async () => {
+    const r = repo();
+    put(
+      r,
+      "docs/failures.jsonl",
+      `${JSON.stringify({ ...failure(), schema: 3, ts: 1_000, firstTs: 500, updates: 7, repo: "unknown/repo", bkit: { version: "x" } })}\n`,
+    );
+    await append(r, "failures", [failure({ status: "CLOSED" })]);
+    expect(lines(r, "docs/failures.jsonl")[1]).toMatchObject({ firstTs: 500, updates: 8 });
+  });
+
+  it("append leaves rows outside the five keyed-ledger kinds without firstTs / updates", async () => {
+    const r = repo();
+    const friction = {
+      kind: "friction",
+      by: { workflow: "ship", step: "ship-close-gate" },
+      key: "f",
+      summary: "s",
+      severity: "LOW",
+    };
+    expect((await append(r, "friction", [friction, friction])).code).toBe(0);
+    for (const row of lines(r, ".bkit/friction.jsonl")) {
+      expect(row).not.toHaveProperty("firstTs");
+      expect(row).not.toHaveProperty("updates");
+    }
+  });
+});
+
+describe("bkit ledgers compact", () => {
+  const row = (key: string, ts: number, o: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      schema: 3,
+      ts,
+      kind: "knowledge",
+      key,
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { step: "manual" },
+      summary: `${key} at ${ts}`,
+      ...o,
+    });
+  const ledger = (...rows: string[]) => rows.map((l) => `${l}\n`).join("");
+  const read = (r: string, rel: string) => fs.readFileSync(path.join(r, rel), "utf-8");
+
+  it("compacts every keyed ledger by default and reports per-ledger counts", async () => {
+    const r = tmp();
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    put(r, ".bkit/issues.jsonl", ledger(row("f", 1001, { kind: "feature", status: "DESIGNED" })));
+    const res = await run(r, ["compact", `--root=${r}`]);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ dryRun: false, dropped: 1 });
+    expect(res.json.ledgers.map((l: { ledger: string }) => l.ledger)).toEqual([
+      "knowledge",
+      "decisions",
+      "deferrals",
+      "failures",
+      "issues",
+    ]);
+    expect(read(r, "docs/knowledge.jsonl")).toBe(
+      `${row("k", 1002).replace('"ts":1002,', '"ts":1002,"firstTs":1001,"updates":2,')}\n`,
+    );
+    expect(read(r, ".bkit/issues.jsonl")).toContain('"firstTs":1001,"updates":1,');
+  });
+
+  it("--ledger narrows the run to one ledger", async () => {
+    const r = tmp();
+    const decisions = ledger(
+      row("d", 1001, { kind: "decision" }),
+      row("d", 1002, { kind: "decision" }),
+    );
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    put(r, "docs/decisions.jsonl", decisions);
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    expect(res.code).toBe(0);
+    expect(res.json.ledgers).toHaveLength(1);
+    expect(read(r, "docs/decisions.jsonl")).toBe(decisions);
+  });
+
+  it("--dry-run counts without writing", async () => {
+    const r = tmp();
+    const before = ledger(row("k", 1001), row("k", 1002));
+    put(r, "docs/knowledge.jsonl", before);
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge", "--dry-run"]);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ dryRun: true, dropped: 1 });
+    expect(res.json.ledgers[0]).toMatchObject({ written: false });
+    expect(read(r, "docs/knowledge.jsonl")).toBe(before);
+  });
+
+  it("a second run changes nothing", async () => {
+    const r = tmp();
+    put(r, "docs/knowledge.jsonl", ledger(row("k", 1001), row("k", 1002)));
+    await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    const once = read(r, "docs/knowledge.jsonl");
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=knowledge"]);
+    expect(res.json).toMatchObject({ dropped: 0 });
+    expect(res.json.ledgers[0]).toMatchObject({ stamped: 0, written: false });
+    expect(read(r, "docs/knowledge.jsonl")).toBe(once);
+  });
+
+  it("refuses an unknown --ledger with a usage error", async () => {
+    const r = tmp();
+    const res = await run(r, ["compact", `--root=${r}`, "--ledger=friction"]);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain(
+      "--ledger must be one of knowledge, decisions, deferrals, failures, issues, all",
+    );
+  });
 });
 
 describe("bkit ledgers check", () => {
@@ -1275,5 +1516,274 @@ describe("bkit ledgers check", () => {
   it("refuses a plan with no Ledger rows line or an unfilled one", async () => {
     expect((await check(tmp(), "No line here.")).code).toBe(EXIT_ROWS_MISSING);
     expect((await check(tmp(), "**Ledger rows:** PENDING")).code).toBe(EXIT_ROWS_MISSING);
+  });
+});
+
+describe("bkit ledgers triage", () => {
+  const PLAN = [
+    "# Plan",
+    "",
+    "## Out of Scope",
+    "",
+    "| Excluded item | Why `Exempt` | Where it belongs |",
+    "| --- | --- | --- |",
+    "| Something else entirely | declared before work | `docs/elsewhere.md` |",
+    "",
+    "## Reuse Inventory",
+    "",
+    "| Capability | File | Decision |",
+    "| --- | --- | --- |",
+    "| The other guard | `src/b.ts` | EXTEND |",
+    "",
+    "<!-- bkit:group 1 start -->",
+    "### GROUP 1: The group",
+    "",
+    "<!-- bkit:task 1 start -->",
+    "- [ ] **TASK 1:** Guard the call.",
+    "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+    "  - **DONE WHEN:** the guard runs",
+    "  - **TEST FIRST:** n/a — text only",
+    "<!-- bkit:task 1 end -->",
+    "<!-- bkit:group 1 end -->",
+  ].join("\n");
+  const PLAN_FILE = "docs/plans/202610/701-engine-work-build-plan.md";
+
+  const deferral = (over: Record<string, unknown> = {}) => ({
+    schema: 3,
+    ts: 1793000000001,
+    kind: "deferral",
+    key: "701-deferred-guard",
+    repo: "o/r",
+    bkit: { version: "6.0.0" },
+    by: { workflow: "plan", step: "plan-generate" },
+    references: ["701", "src/a.ts"],
+    type: "issue",
+    category: "correctness",
+    severity: "MEDIUM",
+    reason: "scope-declared",
+    summary: "guard a call",
+    description: "the call is unguarded",
+    remediation: "Add the check in src/a.ts beside the guard, then a test in src/a.test.ts.",
+    status: "OPEN",
+    ...over,
+  });
+
+  /** A repo holding the plan, the tree paths the readers name, and the deferral rows. */
+  function triageRepo(rows: Array<Record<string, unknown>>) {
+    const r = repo();
+    put(r, PLAN_FILE, PLAN);
+    put(r, "src/a.ts", "export const guard = 1;\n");
+    put(r, "src/b.ts", "export const other = 1;\n");
+    put(r, "docs/deferrals.jsonl", rows.map((x) => `${JSON.stringify(x)}\n`).join(""));
+    commitAll(r);
+    return r;
+  }
+
+  const triage = (cwd: string) =>
+    run(cwd, ["triage", "--fid=701-engine-work-build", `--plan=${PLAN_FILE}`]);
+
+  const lines = (root: string) =>
+    fs
+      .readFileSync(path.join(root, "docs/deferrals.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+  const held = (row: { tests: Array<{ test: string; held: boolean }> }) =>
+    row.tests.filter((t) => t.held).map((t) => t.test);
+
+  it("triage keeps a low-severity deferral exempt", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-low-finding", reason: "low-severity", severity: "LOW" }),
+    ]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-low-finding", "Exempt"],
+    ]);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage keeps an own-cycle deferral exempt", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-new-architecture", reason: "own-cycle", status: "OPEN" }),
+    ]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-new-architecture", "Exempt"],
+    ]);
+    expect(held(res.json.rows[0])).toEqual([
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage marks an unjustified deferral lazy", async () => {
+    const r = triageRepo([deferral()]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ total: 1, written: 1 });
+    expect(res.json.rows).toHaveLength(1);
+    expect(res.json.rows[0]).toMatchObject({ key: "701-deferred-guard", bucket: "Lazy" });
+    expect(held(res.json.rows[0])).toEqual([
+      "bounded-remediation",
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+  });
+
+  it("triage writes an unjustified row with a minted ts", async () => {
+    const r = triageRepo([deferral()]);
+    const res = await triage(r);
+    expect(res.json.written).toBe(1);
+    const wrote = lines(r);
+    expect(wrote).toHaveLength(2);
+    const [before, after] = wrote as [Record<string, unknown>, Record<string, unknown>];
+    expect(after["key"]).toBe(before["key"]);
+    expect(after["reason"]).toBe("unjustified");
+    expect(after["status"]).toBe("TRIAGED");
+    expect(after["severity"]).toBe("MEDIUM");
+    expect(after["type"]).toBe("issue");
+    expect(after["schema"]).toBe(3);
+    expect(after["ts"] as number).toBeGreaterThan(before["ts"] as number);
+    expect((after["ts"] as number) % 1000).not.toBe(0);
+    expect(String(after["description"])).toContain("bounded-remediation");
+    expect((after["by"] as Record<string, unknown>)["workflow"]).toBe("ship");
+  });
+
+  it("triage writes no row for a closed deferral", async () => {
+    const r = triageRepo([deferral({ status: "CLOSED" })]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Exempt"],
+    ]);
+    expect(res.json.rows[0].tests).toEqual([]);
+    expect(res.json.written).toBe(0);
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage reports an adjudicated unjustified row outside exempt", async () => {
+    const r = triageRepo([deferral({ reason: "unjustified", status: "TRIAGED" })]);
+    const once = lines(r);
+    const first = await triage(r);
+    const second = await triage(r);
+    expect([first.code, second.code]).toEqual([0, 0]);
+    expect(first.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-deferred-guard", "Lazy"],
+    ]);
+    expect(second.json.rows).toEqual(first.json.rows);
+    expect(second.json.written).toBe(0);
+    expect(lines(r)).toEqual(once);
+  });
+
+  it("triage ignores another feature's deferral rows", async () => {
+    const r = triageRepo([
+      deferral(),
+      deferral({ key: "702-other-guard", references: ["#702", "src/a.ts"] }),
+    ]);
+    const res = await triage(r);
+    expect(res.json.rows.map((x: { key: string }) => x.key)).toEqual(["701-deferred-guard"]);
+    expect(lines(r).map((x) => x["key"])).toEqual([
+      "701-deferred-guard",
+      "702-other-guard",
+      "701-deferred-guard",
+    ]);
+  });
+
+  it("triage writes nothing when the FID has no deferral row", async () => {
+    const r = triageRepo([deferral({ key: "702-other-guard", references: ["#702", "src/a.ts"] })]);
+    const res = await triage(r);
+    expect(res.code).toBe(0);
+    expect(res.json).toMatchObject({ rows: [], total: 0, written: 0 });
+    expect(lines(r)).toHaveLength(1);
+  });
+
+  it("triage refuses a plan with no task blocks", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "## Out of Scope",
+        "",
+        "| Excluded item | Why `Exempt` | Where it belongs |",
+        "| --- | --- | --- |",
+        "| Something else entirely | declared before work | `docs/elsewhere.md` |",
+        "",
+      ].join("\n"),
+    );
+    commitAll(r, "no markers");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(1);
+    expect(res.err).toContain(NO_MARKERS_REASON);
+    expect(lines(r)).toEqual(before);
+  });
+
+  it("triage refuses a plan whose task blocks do not parse", async () => {
+    const r = triageRepo([deferral()]);
+    put(
+      r,
+      PLAN_FILE,
+      [
+        "# Plan",
+        "",
+        "<!-- bkit:group 1 start -->",
+        "### GROUP 1: The group",
+        "",
+        "<!-- bkit:task 2 start -->",
+        "- [ ] **TASK 2:** Guard the second call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 2 end -->",
+        "",
+        "<!-- bkit:task 1 start -->",
+        "- [ ] **TASK 1:** Guard the call.",
+        "  - **UPDATE:** `guard` in `src/a.ts`: add the check",
+        "  - **DONE WHEN:** the guard runs",
+        "  - **TEST FIRST:** n/a — text only",
+        "<!-- bkit:task 1 end -->",
+        "<!-- bkit:group 1 end -->",
+      ].join("\n"),
+    );
+    commitAll(r, "unordered tasks");
+    const before = lines(r);
+    const res = await triage(r);
+    expect(res.code).toBe(2);
+    expect(res.err).toContain(`${PLAN_FILE}:13:`);
+    expect(res.err).toContain("TASK 1 comes after TASK 2");
+    expect(lines(r)).toEqual(before);
+  });
+
+  it("triage marks a scope-declared row whose only declaration is itself lazy", async () => {
+    const r = triageRepo([
+      deferral({ key: "701-own-declaration", references: ["701-own-declaration", "src/a.ts"] }),
+      deferral({ key: "701-declared", references: ["701", "#701 § Out of Scope", "src/a.ts"] }),
+    ]);
+    const res = await triage(r);
+    expect(res.json.rows.map((x: { key: string; bucket: string }) => [x.key, x.bucket])).toEqual([
+      ["701-own-declaration", "Lazy"],
+      ["701-declared", "Exempt"],
+    ]);
+    expect(held(res.json.rows[0])).toEqual([
+      "bounded-remediation",
+      "in-scope-surface",
+      "no-external-blocker",
+      "own-declaration",
+    ]);
+    expect(lines(r).map((x) => x["key"])).toEqual([
+      "701-own-declaration",
+      "701-declared",
+      "701-own-declaration",
+    ]);
   });
 });

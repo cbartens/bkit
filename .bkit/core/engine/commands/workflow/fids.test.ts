@@ -1241,6 +1241,17 @@ describe("bkit fids design --description-file --prompt-file", () => {
     });
   });
 
+  it("a plan issue's Workstreams line lists the workstreams the plan covers", async () => {
+    const r = await design(
+      {},
+      `**Parent design:** [40-parent-design.md](https://github.com/o/r/blob/dev/${DESIGN})\n**Workstreams:** WS-1, WS-3\n`,
+      "also WS-9 in prose",
+    );
+    expect(r).toMatchObject({ code: 0, json: { workstreams: ["WS-1", "WS-3"] } });
+    const none = await design({}, "**Parent design:** none\n");
+    expect(none.json.workstreams).toEqual([]);
+  });
+
   it("no link: the feature's own design doc", async () => {
     const r = await design({ "docs/plans/202610/50-sync-design.md": "# own\n" }, "nothing here");
     expect(r.json).toMatchObject({

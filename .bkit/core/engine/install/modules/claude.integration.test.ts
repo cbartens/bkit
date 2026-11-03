@@ -70,13 +70,13 @@ afterEach(() => {
 // written. Consumer-only keys (hooks.Stop, customKey) survive.
 // ---------------------------------------------------------------------------
 
-describe("C1 end-to-end regression: runClaudeModule applies deep-containment with JSON-format .bkit-version", () => {
-  it("runClaudeModule writes template scope and preserves consumer Stop hook (no __bkit__ in v2.0.0)", () => {
-    // Arrange: seed a JSON-format .bkit-version (confirms JSON-format read path works)
+describe("runClaudeModule preserves consumer settings through deep-containment", () => {
+  it("writes template scope and preserves the consumer Stop hook without __bkit__", () => {
+    // Arrange: seed the JSON-format .bkit/version file.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
-      pinnedVersion: "0.5.0",
+      pinnedVersion: "5.0.0",
       canonicalHashes: {},
       claudeAllowDerived: [],
     });
@@ -85,7 +85,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     const rawVersion = fs.readFileSync(versionFile, "utf-8");
     expect(rawVersion.trim()).toMatch(/^\{/);
 
-    // Arrange: seed a v2.0.0-schema-clean .claude/settings.json
+    // Arrange: seed .claude/settings.json
     // with a consumer-added Stop hook that should survive deep-containment merge.
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     const consumerSettings = {

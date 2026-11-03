@@ -50,6 +50,56 @@ function allMatches(text: string, re: RegExp): string[] {
 }
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
+  describe("sandbox recovery before the Failure Path", () => {
+    it.each(WORKFLOW_FILES)("%s continues after a verified approved retry", (file) => {
+      const text = readWorkflow(file);
+      const failures = text.match(/^- \*\*Failures:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+      const recovery = text.match(/^- \*\*Sandbox recovery:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+      const commands = text.split("\n").find((line) => line.startsWith("- **Commands:**"));
+
+      expect(failures).toMatch(/recovery routes.*before.*\*\*Failure Path\*\*/);
+      expect(failures).toMatch(
+        /^  - \*\*If\*\*.*still fails.*gate cannot pass.*\*\*Failure Path\*\*\.$/m,
+      );
+      expect(recovery).toMatch(/^- \*\*Sandbox recovery:\*\* \*\*If\*\*.*host.*sandbox.*denial:$/m);
+      expect(recovery).toMatch(
+        /^  - Retry the same operation once.*approval mechanism.*permitted\.$/m,
+      );
+      expect(recovery).toMatch(/^  - \*\*If\*\* approval is pending → pause the operation\.$/m);
+      expect(recovery).toMatch(
+        /^  - \*\*If\*\* approval is denied.*unavailable.*\*\*Failure Path\*\*\.$/m,
+      );
+      expect(recovery).toMatch(/^  - Verify the retry's exit status and required outputs\.$/m);
+      expect(recovery).toMatch(
+        /^  - \*\*If\*\* the retry succeeds:\n    - Continue from the interrupted sub-step\.\n    - Do not enter \*\*Failure Path\*\* for the recovered denial\.$/m,
+      );
+      expect(text).toMatch(/^- \*\*Recovery scope:\*\*.*test.*gate failures.*explicit.*routes\.$/m);
+      expect(commands).toMatch(/no.*Route:.*or recovery.*\*\*Failure Path\*\*/);
+    });
+  });
+
+  describe("read-only helper recovery before the Failure Path", () => {
+    it.each(WORKFLOW_FILES)("%s bounds correction to a verified read-only helper retry", (file) => {
+      const text = readWorkflow(file);
+      const recovery = text.match(/^- \*\*Read-only helper recovery:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+
+      expect(text).toMatch(/Failures:.*\*\*Read-only helper recovery\*\*.*before.*Failure Path/);
+      expect(recovery).toMatch(/agent-authored.*read-only.*helper.*logic error/);
+      expect(recovery).toMatch(/Confirm.*failed.*corrected.*operations.*only read.*stdout/);
+      expect(recovery).toMatch(/writes.*side effects.*uncertain.*Failure Path/);
+      expect(recovery).toMatch(/Correct.*helper.*retry once.*same inputs.*intended read/);
+      expect(recovery).toMatch(/Keep.*retry limit.*helper rewrites.*tool switches/);
+      expect(recovery).toMatch(/Verify.*exit status.*required output.*correctness.*completeness/);
+      expect(recovery).toMatch(/retry fails.*output.*unverified.*Failure Path/);
+      expect(recovery).toMatch(
+        /Resume.*interrupted sub-step.*after verification.*without.*Failure Path/,
+      );
+      expect(text).toMatch(
+        /Recovery scope:.*Repository.*bkit.*test.*gate failures.*explicit.*routes/,
+      );
+    });
+  });
+
   describe("(i) every runtime capability key has >=1 reader in .bkit/workflows/", () => {
     const corpus = readAllWorkflows();
 

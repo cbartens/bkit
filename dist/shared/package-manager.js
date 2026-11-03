@@ -3,6 +3,12 @@
 // bkit installs and upgrades itself with pnpm, so a consumer repo is a pnpm repo.
 // Every command that runs a package script or an install builds the command here,
 // so changing that decision is a change to this file only.
+import * as path from "node:path";
+import { getTemplatesRoot } from "./package-roots.js";
+/** Protect local macOS tests; other platforms keep their original command. */
+export const testCommand = (argv, platform = process.platform) => platform === "darwin"
+    ? [process.execPath, path.join(getTemplatesRoot(), "scripts/ci/bkit-test-awake.mjs"), ...argv]
+    : argv;
 /** The package manager that runs `package.json` scripts and installs. */
 export const PACKAGE_RUNNER = "pnpm";
 /** argv for running one `package.json` script, e.g. `bkit:gate:static-unit`. */

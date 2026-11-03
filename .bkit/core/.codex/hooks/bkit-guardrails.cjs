@@ -69,15 +69,15 @@ function decideShell(cmd, dirs) {
     case "ask":
       // Advisory on this host (Codex cannot prompt).
       return ask(
-        `bkit Codex guardrails: this is a destructive or privileged command (${v.what}) and Codex cannot prompt for confirmation. It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${c}`,
+        `bkit Codex guardrails: this destructive or privileged command (${v.what}) ran without confirmation, because Codex cannot prompt for one. It is on the PROHIBITED list in every bkit workflow.\nTell the user that you ran it.\nIf the user did not ask for this exact command, NEVER run it again.\n\`git clean\` and \`git checkout -- .\` destroy untracked files and uncommitted work, which no reflog can recover.\nCommand: ${c}`,
       );
     case "secret":
       return ask(
-        `bkit Codex guardrails: this command reads ${v.path}, an env/secrets or private-key file, and Codex cannot prompt for confirmation. Do not print secret values; prefer direnv / documented non-secret examples. Command: ${c}`,
+        `bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
     case "fetch":
       return ask(
-        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${c}`,
+        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}`,
       );
     default:
       // Shell-as-edit-channel: advisory on every host, never a block.

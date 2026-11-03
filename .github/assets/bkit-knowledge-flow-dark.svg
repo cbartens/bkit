@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 860" width="100%" height="auto" role="img" aria-labelledby="kf-t kf-d">
+<title id="kf-t">Example run: Add password reset — what each phase reads and writes</title>
+<desc id="kf-d">A walkthrough of one feature run across the five bkit phases, showing the key doc each phase writes and the key doc the next phase reads, plus the ledger rows that accompany them, with real example values.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+<path d="M0,0 L10,5 L0,10 z" fill="#9198a1"/>
+</marker>
+</defs>
+<rect x="0.5" y="0.5" width="1199" height="859" rx="18" fill="#0d1117" stroke="#3d444d"/>
+
+<text x="60" y="64" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#4493f8" letter-spacing="2.4">EXAMPLE RUN</text>
+<text x="58" y="124" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="48" font-weight="800" fill="#f0f6fc" letter-spacing="-1.2">&quot;Add password reset.&quot;</text>
+<text x="58" y="176" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="48" font-weight="800" fill="#9198a1" letter-spacing="-1.2">What each phase reads and writes.</text>
+<text x="60" y="214" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#9198a1">Issue #123 — the store serves every phase, and every phase feeds it back.</text>
+
+<rect x="60" y="238" width="1080" height="200" rx="12" fill="#151b23" stroke="#3d444d" stroke-width="1.5"/>
+<text x="80" y="279" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="12" font-weight="800" fill="#9198a1" letter-spacing="1.8">THE KNOWLEDGE STORE</text>
+
+<text x="80" y="315" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc"><tspan font-weight="700">docs/*.md</tspan>  —  architecture.md · security.md · testing.md · deployments.md · data-schema.md · observability.md · technology.md · design.md</text>
+
+<text x="80" y="345" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc"><tspan font-weight="700">docs/plans/{feature}/</tspan>  design.md · plan.md     <tspan font-weight="700">docs/audits/{YYYYMM}/</tspan>  security.md · testing.md · dead-code.md · dependencies.md · ...</text>
+
+<text x="80" y="375" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc"><tspan font-weight="700">docs/*.jsonl</tspan>  —  decisions.jsonl · knowledge.jsonl · deferrals.jsonl · failures.jsonl · .bkit/status.jsonl</text>
+
+<text x="80" y="405" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc"><tspan font-weight="700">Tracker</tspan>  (GitHub, Linear or Jira)  —  issue templates · issue comments</text>
+
+<line x1="168" y1="446" x2="168" y2="488" stroke="#9198a1" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<line x1="384" y1="446" x2="384" y2="488" stroke="#9198a1" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<line x1="600" y1="446" x2="600" y2="488" stroke="#9198a1" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<line x1="816" y1="446" x2="816" y2="488" stroke="#9198a1" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+<line x1="1032" y1="446" x2="1032" y2="488" stroke="#9198a1" stroke-width="2" marker-start="url(#ah)" marker-end="url(#ah)"/>
+
+<rect x="98" y="494" width="140" height="36" rx="18" fill="#2a1e3a" stroke="#ab7df8" stroke-width="1.5"/>
+<text x="168" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ab7df8" text-anchor="middle">/bkit-design</text>
+
+<rect x="314" y="494" width="140" height="36" rx="18" fill="#0d2a4a" stroke="#4493f8" stroke-width="1.5"/>
+<text x="384" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#4493f8" text-anchor="middle">/bkit-plan</text>
+
+<rect x="530" y="494" width="140" height="36" rx="18" fill="#0f2d1a" stroke="#3fb950" stroke-width="1.5"/>
+<text x="600" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#3fb950" text-anchor="middle">/bkit-build</text>
+
+<rect x="746" y="494" width="140" height="36" rx="18" fill="#2d1115" stroke="#f85149" stroke-width="1.5"/>
+<text x="816" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#f85149" text-anchor="middle">/bkit-debug</text>
+
+<rect x="962" y="494" width="140" height="36" rx="18" fill="#0f2a2c" stroke="#39c5cf" stroke-width="1.5"/>
+<text x="1032" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#39c5cf" text-anchor="middle">/bkit-ship</text>
+
+<line x1="242" y1="512" x2="306" y2="512" stroke="#9198a1" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="458" y1="512" x2="522" y2="512" stroke="#9198a1" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="674" y1="512" x2="738" y2="512" stroke="#9198a1" stroke-width="2" marker-end="url(#ah)"/>
+<line x1="890" y1="512" x2="954" y2="512" stroke="#9198a1" stroke-width="2" marker-end="url(#ah)"/>
+
+<text x="168" y="556" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">READS</text>
+<text x="168" y="578" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">architecture.md</text>
+<text x="168" y="594" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">current auth boundaries</text>
+<text x="168" y="614" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">decisions.jsonl</text>
+<text x="168" y="630" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">&quot;session cookies, not JWTs&quot;</text>
+
+<text x="168" y="664" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">WRITES</text>
+<text x="168" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">design.md</text>
+<text x="168" y="702" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">three approaches, one chosen</text>
+<text x="168" y="722" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">decisions.jsonl</text>
+<text x="168" y="738" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">&quot;recovery link TTL = 1 h&quot;</text>
+
+<text x="384" y="556" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">READS</text>
+<text x="384" y="578" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">design.md</text>
+<text x="384" y="594" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">the chosen approach</text>
+<text x="384" y="614" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">failures.jsonl</text>
+<text x="384" y="630" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">a known &quot;email verify race&quot;</text>
+
+<text x="384" y="664" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">WRITES</text>
+<text x="384" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">plan.md</text>
+<text x="384" y="702" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">12 tasks, task groups</text>
+<text x="384" y="722" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">tracker issue</text>
+<text x="384" y="738" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">a plan comment on #123</text>
+
+<text x="600" y="556" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">READS</text>
+<text x="600" y="578" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">plan.md (brief)</text>
+<text x="600" y="594" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">~2 KB for this task group</text>
+<text x="600" y="614" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">architecture.md</text>
+<text x="600" y="630" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">the auth boundary it touches</text>
+
+<text x="600" y="664" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">WRITES</text>
+<text x="600" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">tracker issue</text>
+<text x="600" y="702" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">a comment per closed task</text>
+<text x="600" y="722" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">.bkit/status.jsonl</text>
+<text x="600" y="738" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">task 3 of 12 complete</text>
+
+<text x="816" y="556" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">READS</text>
+<text x="816" y="578" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">knowledge.jsonl</text>
+<text x="816" y="594" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">a past &quot;timezone-aware token&quot;</text>
+<text x="816" y="614" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">failures.jsonl</text>
+<text x="816" y="630" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">open rows near &quot;auth&quot;</text>
+
+<text x="816" y="664" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">WRITES</text>
+<text x="816" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">knowledge.jsonl</text>
+<text x="816" y="702" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">&quot;tests in UTC, token in local&quot;</text>
+<text x="816" y="722" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">failures.jsonl</text>
+<text x="816" y="738" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">closes the matching row</text>
+
+<text x="1032" y="556" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">READS</text>
+<text x="1032" y="578" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">deferrals.jsonl</text>
+<text x="1032" y="594" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">open &quot;rate limit, later&quot;</text>
+<text x="1032" y="614" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">tracker issue</text>
+<text x="1032" y="630" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">what landed this cycle</text>
+
+<text x="1032" y="664" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="800" fill="#9198a1" text-anchor="middle" letter-spacing="2">WRITES</text>
+<text x="1032" y="686" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="700" fill="#f0f6fc" text-anchor="middle">security.md</text>
+<text x="1032" y="702" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">new rate-limit section</text>
+<text x="1032" y="722" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="12" fill="#f0f6fc" text-anchor="middle">deferrals.jsonl</text>
+<text x="1032" y="738" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="11" fill="#9198a1" text-anchor="middle" font-style="italic">closes the deferral</text>
+
+<text x="60" y="774" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="400" fill="#9198a1">No index to rebuild, no retrieval service to run, no embeddings — just files you can grep, blame and revert.</text>
+
+<line x1="60" y1="800" x2="1140" y2="800" stroke="#3d444d"/>
+<circle cx="836" cy="834" r="5" fill="#ab7df8"/>
+<circle cx="850" cy="834" r="5" fill="#4493f8"/>
+<circle cx="864" cy="834" r="5" fill="#3fb950"/>
+<circle cx="878" cy="834" r="5" fill="#f85149"/>
+<circle cx="892" cy="834" r="5" fill="#39c5cf"/>
+<text x="60" y="841" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1">Free and open source  ·  MIT license</text>
+<text x="908" y="842" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="24" font-weight="800" fill="#f0f6fc" letter-spacing="-0.6">bkit</text>
+<text x="1140" y="841" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="15" font-weight="400" fill="#9198a1" text-anchor="end">github.com/cbartens/bkit</text>
+</svg>

@@ -8,6 +8,7 @@ import { ciCommand } from "./ci/ci.js";
 import { setupCommand } from "./setup/setup.js";
 import { branchesCommand } from "./workflow/branches.js";
 import { challengeCommand } from "./workflow/challenge.js";
+import { completenessCommand } from "./workflow/completeness.js";
 import { contextCommand } from "./workflow/context.js";
 import { countersCommand } from "./workflow/counters.js";
 import { decisionsCommand } from "./workflow/decisions.js";
@@ -16,6 +17,7 @@ import { fidsCommand } from "./workflow/fids.js";
 import { issuesCommand } from "./workflow/issues.js";
 import { ledgersCommand } from "./workflow/ledgers.js";
 import { locksCommand } from "./workflow/locks.js";
+import { plansCommand } from "./workflow/plans.js";
 import { prsCommand } from "./workflow/prs.js";
 import { repoCommand } from "./workflow/repo.js";
 import { roadmapCommand } from "./workflow/roadmap.js";
@@ -24,14 +26,15 @@ import { runtimeCommand } from "./workflow/runtime.js";
 import { skillsCommand } from "./workflow/skills.js";
 import { statusCommand } from "./workflow/status.js";
 import { stepsCommand } from "./workflow/steps.js";
+import { tasksCommand } from "./workflow/tasks.js";
 import { testsCommand } from "./workflow/tests.js";
 import { workflowsCommand } from "./workflow/workflows.js";
-import { workstreamsCommand } from "./workflow/workstreams.js";
 import { worktreesCommand } from "./workflow/worktrees.js";
 export const COMMANDS = [
     statusCommand,
     countersCommand,
     stepsCommand,
+    tasksCommand,
     runtimeCommand,
     repoCommand,
     fidsCommand,
@@ -50,7 +53,8 @@ export const COMMANDS = [
     ledgersCommand,
     contextCommand,
     roadmapCommand,
-    workstreamsCommand,
+    plansCommand,
+    completenessCommand,
     ciCommand,
     setupCommand,
 ];

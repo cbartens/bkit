@@ -5,14 +5,11 @@
 # Technology
 
 > [!CAUTION]
-> **Purpose:** Chosen frameworks, libraries, styling systems, coding conventions. WHY a choice was made → `decisions.jsonl`.
+> **Purpose:** The project's chosen frameworks, libraries, styling systems and coding conventions. Why a choice was made goes in `decisions.jsonl`.
 >
 > **Rules:**
 >
-> - Use dense token-efficient phrasing; no filler / hedging / restating; tables > prose, bullets > paragraphs.
-> - Notation: one job per mark — `.bkit/authoring.md` § `Notation`.
-> - Describe current state / rules, not reasons / history; state what to do, not why.
-> - Check `.agents/docs.md` index first and confirm topic belongs in this doc, not another.
-> - List technology and usage; **Why** → `decisions.jsonl`.
+> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
+> - List each technology and how it is used. Put the reason for a choice in `decisions.jsonl`.
 
 <!-- bkit:end -->

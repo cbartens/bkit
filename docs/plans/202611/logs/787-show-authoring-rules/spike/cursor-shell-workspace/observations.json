@@ -1,0 +1,10 @@
+{
+  "case": "cursor-shell-workspace",
+  "hookEvents": 0,
+  "sentinel": "BEFORE\n",
+  "markerExists": false,
+  "hostEvents": [],
+  "authRequired": true,
+  "outputLimitAttempted": false,
+  "outputLimitStatus": "BLOCKED: no live advisory hook was observed"
+}

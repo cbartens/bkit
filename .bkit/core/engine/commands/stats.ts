@@ -15,7 +15,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { markdownTable } from "../shared/text.js";
-import { runAnalysis, type AnalysisReport } from "./analysis.js";
+import {
+  ROW_SOURCES,
+  runAnalysis,
+  type AnalysisReport,
+  type RowSource,
+  type RunFigures,
+} from "./analysis.js";
 import { CHALLENGE_SMALL } from "./workflow/challenge.js";
 
 /** The ledgers `bkit stats` reads, relative to the repo root. */
@@ -27,6 +33,16 @@ export const STATS_SOURCES = [
 
 /** Where `bkit stats` writes its report, relative to the repo root. */
 export const STATS_REPORT = ".bkit/stats.md";
+
+/** The rules box the report opens with, under its title. */
+const STATS_HEADER = [
+  "> [!CAUTION]",
+  `> **Purpose:** This repo's workflow statistics, computed from ${STATS_SOURCES.map((s) => `\`${s}\``).join(", ")}. Workflow closes append the rows; rows a direct chat wrote (\`utility\`) are reported apart.`,
+  ">",
+  "> **Rules:**",
+  ">",
+  "> - Generated — do not edit. `bkit stats` rewrites this file.",
+].join("\n");
 
 /** Kinds the harvest owns: never counted in a repo's own report. */
 const HARVEST_KINDS = new Set(["chat", "run"]);
@@ -44,27 +60,25 @@ function ranked(counts: Record<string, number>): [string, number][] {
   return Object.entries(counts).sort(([a, x], [b, y]) => y - x || a.localeCompare(b));
 }
 
-/**
- * The report as markdown sections under `## ` headings. `title` is the `# ` heading;
- * `scope` the sentence under it saying which rows were read.
- */
-export function renderStatsMarkdown(report: AnalysisReport, title: string, scope: string): string {
-  const { counts, elapsed, regression, complianceRates, versionCompliance, deferralDiscipline } =
-    report;
-  const out: string[] = [`# ${title}`, "", scope, ""];
+/** Each source's section heading and the sentence under it. */
+const SOURCE_SECTIONS: Record<RowSource, { heading: string; intro: string }> = {
+  workflow: {
+    heading: "Workflow runs",
+    intro: "Rows a workflow close wrote at the end of a design, plan, build, debug or ship run.",
+  },
+  utility: {
+    heading: "Direct chats (`utility`)",
+    intro:
+      "Rows a direct chat wrote outside any workflow run (`by.workflow` `utility`). They are never added to the workflow figures.",
+  },
+};
 
-  out.push("## Rows", "");
-  if (counts.total === 0) {
-    out.push("No rows yet. Workflows append them at close.", "");
-    return out.join("\n");
-  }
-  out.push(...table(["Kind", "Rows"], ranked(counts.byKind)));
-  out.push(...table(["Workflow", "Rows"], ranked(counts.byWorkflow)));
-  if (Object.keys(counts.byRepo).length > 1) {
-    out.push(...table(["Repo", "Rows"], ranked(counts.byRepo)));
-  }
+/** One source's figures under `### ` headings. */
+function runFigureSections(f: RunFigures, source: RowSource): string[] {
+  const { elapsed, regression, challengeGate, complianceRates, versionCompliance } = f;
+  const out: string[] = [];
 
-  out.push("## Run durations", "");
+  out.push("### Run durations", "");
   if (elapsed.count === 0) {
     out.push("No outcome row records a duration.", "");
   } else {
@@ -84,7 +98,7 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
     );
   }
 
-  out.push("## Change size vs failures", "");
+  out.push("### Change size vs failures", "");
   out.push(
     `A run counts as an error when it added failures. Dispatch-size threshold: ${regression.dispatchSizeThreshold} lines added.`,
     "",
@@ -102,23 +116,27 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
     "",
   );
 
-  if (report.challengeGate.runs > 0) {
-    const g = report.challengeGate;
-    out.push("## Build challenge size", "");
+  if (challengeGate.runs > 0) {
+    out.push("### Build challenge size", "");
     out.push(
       `Small changes (under ${CHALLENGE_SMALL.lines} lines and ${CHALLENGE_SMALL.files} files) run the security reviewer alone.`,
       "",
     );
     out.push(
-      ...table(["Runs", "Small (challenge-1 skipped)", "Large"], [[g.runs, g.small, g.large]]),
+      ...table(
+        ["Runs", "Small (challenge-1 skipped)", "Large"],
+        [[challengeGate.runs, challengeGate.small, challengeGate.large]],
+      ),
     );
   }
 
-  const context = report.agentContext;
-  out.push("## Agent context peaks", "");
+  const context = f.agentContext;
+  out.push("### Agent context peaks", "");
   if (context.recorded === 0) {
     out.push(
-      "No context data. A close records it from the Claude Code session that ran the workflow.",
+      source === "workflow"
+        ? "No context data. A close records it from the Claude Code session that ran the workflow."
+        : "No outcome row records context.",
       "",
     );
   } else {
@@ -135,7 +153,7 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
   }
 
   if (complianceRates.length > 0) {
-    out.push("## Compliance by rule", "");
+    out.push("### Compliance by rule", "");
     out.push(
       ...table(
         ["Rule", "Pass", "Fail", "n/a", "Pass rate"],
@@ -145,13 +163,55 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
   }
 
   if (versionCompliance.length > 0) {
-    out.push("## Compliance by bkit version", "");
+    out.push("### Compliance by bkit version", "");
     out.push(
       ...table(
         ["Version", "Runs", "Pass rate"],
         versionCompliance.map((v) => [v.version, v.totalRuns, pct(v.passRate)]),
       ),
     );
+  }
+  return out;
+}
+
+/**
+ * The report as markdown sections under `## ` headings. `title` is the `# ` heading;
+ * `header` the block under it: which rows were read, and the rules for reading the file.
+ */
+export function renderStatsMarkdown(report: AnalysisReport, title: string, header: string): string {
+  const { counts, runs, deferralDiscipline } = report;
+  const out: string[] = [`# ${title}`, "", header, ""];
+
+  out.push("## Rows", "");
+  if (counts.total === 0) {
+    out.push("No rows yet. Workflows append them at close.", "");
+    return out.join("\n");
+  }
+  out.push(
+    ...table(
+      ["Kind", "Workflow rows", "Direct-chat rows"],
+      Object.entries(counts.byKind)
+        .sort(
+          ([a, x], [b, y]) =>
+            y.workflow - x.workflow || y.utility - x.utility || a.localeCompare(b),
+        )
+        .map(([kind, n]) => [kind, n.workflow, n.utility]),
+    ),
+  );
+  out.push(...table(["Workflow", "Rows"], ranked(counts.byWorkflow)));
+  if (Object.keys(counts.byRepo).length > 1) {
+    out.push(...table(["Repo", "Rows"], ranked(counts.byRepo)));
+  }
+
+  for (const source of ROW_SOURCES) {
+    const f = runs[source];
+    const { heading, intro } = SOURCE_SECTIONS[source];
+    out.push(`## ${heading}`, "", intro, "");
+    if (source === "utility" && f.outcomes === 0 && f.compliance === 0) {
+      out.push("No outcome or compliance rows from direct chats.", "");
+      continue;
+    }
+    out.push(...runFigureSections(f, source));
   }
 
   if (deferralDiscipline.length > 0) {
@@ -181,11 +241,7 @@ export function renderStatsMarkdown(report: AnalysisReport, title: string, scope
 /** Build this repo's report from the ledgers under `root`. */
 export function buildRepoStats(root: string): string {
   const files = STATS_SOURCES.map((rel) => path.join(root, rel)).filter((p) => fs.existsSync(p));
-  return renderStatsMarkdown(
-    runAnalysis(files, HARVEST_KINDS),
-    "bkit stats",
-    `This repo only: ${STATS_SOURCES.map((s) => `\`${s}\``).join(", ")}. Written by \`bkit stats\`; workflow closes append the rows.`,
-  );
+  return renderStatsMarkdown(runAnalysis(files, HARVEST_KINDS), "bkit stats", STATS_HEADER);
 }
 
 // stats — this repo's stats report. Advisory + inform-only: exits 0.

@@ -7,22 +7,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import { PLAN_FIELDS, parsePlanBlocks, type PlanField, type PlanTaskBlock } from "./plan-blocks";
-import { BKIT_BUILD_GATES, BKIT_DEBUG_GATES, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest";
+import {
+  BKIT_BUILD_GATES,
+  BKIT_DEBUG_GATES,
+  BKIT_LINT_FILE_SCRIPT,
+  BKIT_TEST_FILE_SCRIPT,
+} from "../../install/manifest";
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import { CONFIG_DEFAULTS, type TaskCaps } from "../../shared/settings";
 import { getCoreRoot } from "../../shared/package-roots";
 import { taskCapDefaultsNamed } from "../../checks/before/repo";
 import {
+  blockHash,
   checkPlanText,
+  classifyLockExit,
   gateScope,
   judgeGreen,
   judgeRed,
-  onlyAddsLines,
   parseJunit,
   readTestFirst,
+  redEntries,
   resolveGate,
   taskSizes,
+  lineDiff,
+  testBlock,
+  testSpan,
   testsCommand,
   type JunitCase,
 } from "./tests";
@@ -43,7 +53,7 @@ const scripts = (s: Record<string, string>) => JSON.stringify({ scripts: s });
  * the script it was asked for on stdout and stderr, writes FAKE_JUNIT to
  * $BKIT_TEST_REPORT when both are set, writes FAKE_REPORT_A / FAKE_REPORT_B into
  * $BKIT_TEST_REPORT_DIR (B one folder down), prints FAKE_LINES numbered lines,
- * then exits FAKE_EXIT.
+ * then exits FAKE_EXIT. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
  */
 let cwd: string;
 let bin: string;
@@ -57,6 +67,8 @@ beforeEach(() => {
   fs.writeFileSync(
     path.join(bin, PACKAGE_RUNNER),
     '#!/bin/sh\necho "out: $1 in $(pwd)"\necho "err: $1" >&2\necho "arg: $2"\n' +
+      'printf "wait=%s who=%s\\n" "$LOCAL_STACK_LOCK_WAIT_S" "$LOCAL_STACK_LOCK_WHO"\n' +
+      'if [ "$1" = "bkit:lint:file" ]; then exit "${FAKE_LINT_EXIT:-0}"; fi\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
       'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
       'if [ -n "$FAKE_REPORT_B" ]; then mkdir -p "$BKIT_TEST_REPORT_DIR/tier" && printf "%s" "$FAKE_REPORT_B" > "$BKIT_TEST_REPORT_DIR/tier/b.xml"; fi\n' +
@@ -86,6 +98,161 @@ async function run(argv: string[], at = cwd, verb = "run") {
 
 const BUILD = [...BKIT_BUILD_GATES.map((g) => `--gate=${g}`), "--log=logs/test.md"];
 const readLog = () => fs.readFileSync(path.join(cwd, "logs/test.md"), "utf-8");
+
+function ciRoundFixture() {
+  const selection = {
+    mode: "ci",
+    provider: "github",
+    repo: "example/example",
+    runId: "123",
+    runAttempt: 2,
+    runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+    workflowId: "456",
+    workflowPath: ".github/workflows/consumer-ci.yml",
+    headBranch: "fix/ci",
+    headSha: "a".repeat(40),
+    conclusion: "failure",
+    redTiers: ["integration"],
+    via: "prompt-run",
+  };
+  const file = path.join(cwd, "status.jsonl");
+  fs.writeFileSync(
+    file,
+    [
+      { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+      {
+        type: "workflow-meta",
+        workflow: "debug",
+        at: "2026-10-01T00:00:01Z",
+        ciSelection: selection,
+        ciGeneration: 2,
+      },
+    ]
+      .map((row) => JSON.stringify(row))
+      .join("\n") + "\n",
+  );
+  const marker = path.join(cwd, "local-gate-ran");
+  fs.rmSync(marker, { force: true });
+  fs.writeFileSync(
+    path.join(bin, PACKAGE_RUNNER),
+    `#!/bin/sh\necho "$1" >> '${marker}'\nexit 0\n`,
+    { mode: 0o755 },
+  );
+  const args = [
+    ...BUILD,
+    `--file=${file}`,
+    "--workflow=debug",
+    "--step=debug-run-tests",
+    "--attempt=1",
+    "--ci-run=123",
+    `--ci-url=${selection.runUrl}`,
+    "--artifact=docs/plans/202611/logs/1-x/run-tests-1.md",
+    "--fid=1-x",
+  ];
+  const append = (row: object) => fs.appendFileSync(file, JSON.stringify(row) + "\n");
+  const fix = (generation: number, step = "debug-failure-remediate", status = "DONE") =>
+    append({
+      type: "step-done",
+      workflow: "debug",
+      step,
+      status,
+      at: "2026-10-01T00:01:00Z",
+      parentSha: selection.headSha,
+      artifacts: [],
+      ciGeneration: generation,
+    });
+  return { file, marker, selection, args, append, fix };
+}
+
+describe("CI evidence test rounds", () => {
+  it("records a CI evidence round without executing a local gate", async () => {
+    const f = ciRoundFixture();
+    const result = await run(f.args);
+    expect(result.code).toBe(1);
+    expect(result.json).toMatchObject({
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      gate: null,
+      exitCode: null,
+      failures: null,
+      runAttempt: 2,
+      ciGeneration: 2,
+    });
+    expect(result.json.row).toMatchObject({
+      type: "test-run",
+      workflow: "debug",
+      step: "debug-run-tests",
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      exitCode: null,
+      failures: null,
+      ciRun: "123",
+      runAttempt: 2,
+      ciGeneration: 2,
+    });
+    expect(fs.existsSync(f.marker)).toBe(false);
+    const artifact = fs.readFileSync(path.join(cwd, result.json.artifact), "utf-8");
+    expect(artifact).toContain(f.selection.repo);
+    expect(artifact).toContain(f.selection.workflowPath);
+    expect(artifact).toContain(f.selection.headSha);
+    expect(artifact).toContain(f.selection.runUrl);
+    expect(artifact).toMatch(/local.+(?:not run|not executed)|(?:not run|not executed).+local/i);
+    expect(result.json.clamp).toBeNull();
+  });
+
+  it("runs local gates only after current-generation remediation or soak", async () => {
+    const f = ciRoundFixture();
+    f.fix(1);
+    expect((await run(f.args)).json.source).toBe("ci");
+    expect(fs.existsSync(f.marker)).toBe(false);
+    f.fix(2, "debug-failure-remediate", "FAILED");
+    expect((await run(f.args)).json.source).toBe("ci");
+    expect(fs.existsSync(f.marker)).toBe(false);
+    f.fix(2);
+    const checked = await run(f.args);
+    expect(checked.code).toBe(0);
+    expect(checked.json).toMatchObject({
+      source: "local",
+      verdict: "PASS",
+      exitCode: 0,
+      gate: DEEP,
+    });
+    expect(fs.readFileSync(f.marker, "utf-8")).toContain(DEEP);
+    const soak = ciRoundFixture();
+    soak.fix(2, "debug-failure-soak");
+    expect((await run(soak.args)).json.source).toBe("local");
+    expect(fs.existsSync(soak.marker)).toBe(true);
+  });
+
+  it("rejects CI rounds without active matching debug selection", async () => {
+    const f = ciRoundFixture();
+    expect((await run(f.args)).code).toBe(1);
+    expect((await run(f.args.filter((arg) => !arg.startsWith("--file=")))).code).toBe(2);
+    expect(
+      (await run([...f.args.filter((arg) => !arg.startsWith("--ci-run=")), "--ci-run=999"])).code,
+    ).toBe(2);
+    expect(
+      (
+        await run([
+          ...f.args.filter((arg) => !arg.startsWith("--ci-url=")),
+          "--ci-url=https://github.com/other/repo/actions/runs/123/attempts/2",
+        ])
+      ).code,
+    ).toBe(2);
+    f.append({ type: "workflow-done", workflow: "debug", at: "2026-10-01T00:02:00Z" });
+    expect((await run(f.args)).code).toBe(2);
+    fs.writeFileSync(
+      f.file,
+      JSON.stringify({ type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" }) +
+        "\n",
+    );
+    expect((await run(f.args)).code).toBe(2);
+    expect(fs.existsSync(f.marker)).toBe(false);
+    expect(fs.readFileSync(f.file, "utf-8")).not.toContain('"type":"test-run"');
+  });
+});
 
 describe("resolveGate", () => {
   it("picks the deepest declared candidate, not the first declared in package.json", () => {
@@ -124,10 +291,84 @@ describe("resolveGate", () => {
 });
 
 describe("bkit tests run", () => {
+  it("a 75 exit is a lock wait only when the log's give-up line names the tests lock and this run", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for tests, in use by another agent — /tmp/checkout (pid 123, since 12:00:00), no earlier run\n`;
+    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("lock-wait");
+    expect(classifyLockExit({ exitCode: 75, log, who: who + " other" })).toBe("gate");
+    expect(classifyLockExit({ exitCode: 1, log, who })).toBe("gate");
+    expect(classifyLockExit({ exitCode: 75, log: "tests failed", who })).toBe("gate");
+  });
+
+  it("a gate whose nested lock gives up (exit 75, give-up line for another lock) is never exit 81", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for database, in use by another agent — /tmp/tests (pid 123, since 12:00:00), no earlier run\n`;
+    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("gate");
+  });
+
+  it("a 73 exit with a machine-lock refusal line (lock dir or perl) is could-not-run, exit 4", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ could not take the lock for tests: cannot create /tmp/cache/bkit/machine-lock\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ could not take the lock for tests: /usr/bin/perl not found\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+    expect(
+      classifyLockExit({
+        exitCode: 73,
+        log: "[machine-lock] ❌ cannot take tests while holding database: lock order is tests, other named locks, then the unnamed stack lock\n",
+        who,
+      }),
+    ).toBe("could-not-run");
+  });
+
+  it("tests run with a --lock-wait-s that is not a whole number exits 2 and runs no gate", async () => {
+    const results = await Promise.all(
+      ["-1", "1.5", "bad"].map((value) => run([...BUILD, `--lock-wait-s=${value}`])),
+    );
+    expect(results.map((result) => result.code)).toEqual([2, 2, 2]);
+    expect(results.map((result) => result.err)).toEqual([
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+    ]);
+    expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+  });
+
+  it("tests run defaults --lock-wait-s from BKIT_LOCK_WAIT_S and rejects a bad value with exit 2", async () => {
+    vi.stubEnv("BKIT_LOCK_WAIT_S", "1200");
+    const valid = await run(BUILD);
+    expect(valid.code).toBe(0);
+    expect(readLog()).toContain("wait=1200");
+    fs.rmSync(path.join(cwd, "logs/test.md"));
+    vi.stubEnv("BKIT_LOCK_WAIT_S", "bad");
+    const invalid = await run(BUILD);
+    expect(invalid.code).toBe(2);
+    expect(invalid.err).toContain("BKIT_LOCK_WAIT_S");
+    expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+  });
+
+  it("a 73 exit with a refusal line for another lock is the gate's own FAIL, never exit 4", () => {
+    const who = "bkit tests run bkit:gate:static-unit";
+    const log =
+      "[machine-lock] ❌ could not take the lock for database: cannot create /tmp/tests/cache\n";
+    expect(classifyLockExit({ exitCode: 73, log, who })).toBe("gate");
+  });
+
   it("PASS: runs the gate through the package runner, saves stdout and stderr to the log", async () => {
     const r = await run(BUILD);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({
+      source: "local",
       verdict: "PASS",
       exitCode: 0,
       gate: DEEP,
@@ -138,6 +379,8 @@ describe("bkit tests run", () => {
       logBytes: fs.statSync(path.join(cwd, "logs/test.md")).size,
       artifact: null,
       clamp: null,
+      row: null,
+      lockHolder: null,
     });
     expect(r.json.scope).toBe(`${PACKAGE_RUNNER} ${DEEP}`);
     expect(readLog()).toContain(`out: ${DEEP}`);
@@ -359,6 +602,96 @@ describe("bkit tests run --artifact", () => {
   });
 });
 
+describe("bkit tests run --file", () => {
+  const STATUS = "docs/plans/202611/logs/1-x/status.jsonl";
+  const ARGS = [
+    ...BUILD,
+    `--file=${STATUS}`,
+    "--workflow=build",
+    "--step=build-group-gate-1",
+    "--attempt=2",
+  ];
+  const rowsOf = () =>
+    fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  const startRun = () => {
+    fs.mkdirSync(path.dirname(path.join(cwd, STATUS)), { recursive: true });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+    );
+  };
+
+  it("appends one test-run row per run, pass or fail, with the step, attempt, run number and verdict", async () => {
+    startRun();
+    const pass = await run(ARGS);
+    expect(pass.code).toBe(0);
+    vi.stubEnv("FAKE_EXIT", "1");
+    const fail = await run(ARGS);
+    expect(fail.code).toBe(1);
+    vi.stubEnv("FAKE_EXIT", "127");
+    expect((await run(ARGS)).code).toBe(4);
+    const runs = rowsOf().filter((r) => r.type === "test-run");
+    expect(runs).toEqual([
+      expect.objectContaining({
+        workflow: "build",
+        step: "build-group-gate-1",
+        attempt: 2,
+        run: 1,
+        verdict: "PASS",
+        exitCode: 0,
+        failures: 0,
+        scope: gateScope(DEEP),
+        log: "logs/test.md",
+      }),
+      expect.objectContaining({ run: 2, verdict: "FAIL", exitCode: 1, failures: null }),
+      expect.objectContaining({ run: 3, verdict: null, exitCode: 127 }),
+    ]);
+    expect(runs[0]!.at).toMatch(/Z$/);
+    expect(pass.json.row).toEqual(runs[0]);
+    expect(rowsOf().some((r) => r.type === "step-done")).toBe(false);
+  });
+
+  it("numbers runs within the workflow's active run and per step", async () => {
+    startRun();
+    await run(ARGS);
+    startRun();
+    await run(ARGS);
+    await run([...BUILD, `--file=${STATUS}`, "--workflow=build", "--step=build-run-tests"]);
+    const runs = rowsOf().filter((r) => r.type === "test-run");
+    expect(runs.map((r) => `${String(r.step)}:${String(r.run)}`)).toEqual([
+      "build-group-gate-1:1",
+      "build-group-gate-1:1",
+      "build-run-tests:1",
+    ]);
+    expect(runs[2]).not.toHaveProperty("attempt");
+  });
+
+  it("without --file no row is written and the output carries row null", async () => {
+    const r = await run(BUILD);
+    expect(r.code).toBe(0);
+    expect(r.json.row).toBeNull();
+  });
+
+  it("--file needs --workflow and --step, and an existing status.jsonl, before the gate runs", async () => {
+    startRun();
+    expect((await run([...BUILD, `--file=${STATUS}`, "--step=s"])).code).toBe(2);
+    expect((await run([...BUILD, `--file=${STATUS}`, "--workflow=build"])).code).toBe(2);
+    const missing = await run([
+      ...BUILD,
+      "--file=docs/plans/202611/logs/2-y/status.jsonl",
+      "--workflow=build",
+      "--step=s",
+    ]);
+    expect(missing.code).toBe(2);
+    expect(missing.err).toContain("does not exist");
+    expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Test-first: red / green
 // ---------------------------------------------------------------------------
@@ -382,14 +715,33 @@ describe("parseJunit", () => {
       ),
     );
     expect(cases).toEqual<JunitCase[]>([
-      { name: "clamp > passes", state: "passed", message: "" },
+      { name: "clamp > passes", state: "passed", message: "", detail: "" },
       {
         name: `clamp > ${NAME}`,
         state: "failure",
         message: "expected +0 to be 5 // Object.is & co",
+        detail: "trace",
       },
-      { name: "boom", state: "error", message: "TypeError" },
-      { name: "later", state: "skipped", message: "" },
+      { name: "boom", state: "error", message: "TypeError", detail: "" },
+      { name: "later", state: "skipped", message: "", detail: "" },
+    ]);
+  });
+
+  it("keeps a failure's text as detail, CDATA as written and tags stripped", () => {
+    const cases = parseJunit(
+      junit(
+        `<testcase name="t"><failure message="m"><![CDATA[expected 12 <total> to be 0]]></failure></testcase>`,
+        `<testcase name="u"><failure>AssertionError: <b>expected 1</b>&#10;  at u.test.ts:4</failure></testcase>`,
+      ),
+    );
+    expect(cases).toEqual<JunitCase[]>([
+      { name: "t", state: "failure", message: "m", detail: "expected 12 <total> to be 0" },
+      {
+        name: "u",
+        state: "failure",
+        message: "",
+        detail: "AssertionError: expected 1\n  at u.test.ts:4",
+      },
     ]);
   });
 
@@ -414,41 +766,40 @@ describe("parseJunit", () => {
 
 describe("judgeRed / judgeGreen — the named test, never the exit code alone", () => {
   const p = (xml: string) => parseJunit(junit(xml));
+  const FILE = "src/clamp.test.ts";
 
-  it("a red is the named test failing on a non-zero exit", () => {
-    expect(judgeRed(1, p(failed(`clamp > ${NAME}`)), NAME)).toBeNull();
+  it("a red is the named test failing or erroring", () => {
+    expect(judgeRed(p(failed(`clamp > ${NAME}`)), NAME, FILE).state).toBe("red");
     expect(
-      judgeRed(1, p(`<testcase name="${NAME}"><error message="x"/></testcase>`), NAME),
-    ).toBeNull();
+      judgeRed(p(`<testcase name="${NAME}"><error message="x"/></testcase>`), NAME, FILE).state,
+    ).toBe("red");
   });
 
   it.each([
-    ["no report (misspelled path)", null, 1, "no-report", "no JUnit report"],
+    ["no report (misspelled path)", null, "no-report", "no JUnit report"],
     [
       "load error named after the file",
-      p(failed("src/clamp.test.ts", "Cannot find module")),
-      1,
-      "not-run",
-      "did not run",
+      p(failed(FILE, "Cannot find module")),
+      "red-not-loaded",
+      "did not load",
     ],
-    ["zero tests", [], 1, "not-run", "holds no tests"],
+    ["zero tests", [], "red-not-loaded", "did not load"],
     [
       "the named test passed (code written first)",
       p(passed(`clamp > ${NAME}`)),
-      0,
-      "passed",
-      "passed",
+      "vacuous",
+      "passes at its red",
     ],
-    ["the named test skipped (filter matched nothing)", p(skipped(NAME)), 0, "skipped", "skipped"],
-    ["report and exit code disagree", p(failed(NAME)), 0, "exit-mismatch", "exited 0"],
-  ])("not a red: %s", (_label, cases, exit, kind, words) => {
-    const refusal = judgeRed(exit as number, cases as JunitCase[] | null, NAME);
-    expect(refusal?.kind).toBe(kind);
-    expect(refusal?.reason).toContain(words);
+    ["the named test skipped (filter matched nothing)", p(skipped(NAME)), "missing", "skipped"],
+    ["other tests only", p(failed("other")), "missing", '"other"'],
+  ])("state: %s", (_label, cases, state, words) => {
+    const judged = judgeRed(cases as JunitCase[] | null, NAME, FILE);
+    expect(judged.state).toBe(state);
+    expect(judged.detail).toContain(words);
   });
 
   it("a name only matches whole trailing segments", () => {
-    expect(judgeRed(1, p(failed(`clamp > re${NAME}`)), NAME)?.kind).toBe("not-run");
+    expect(judgeRed(p(failed(`clamp > re${NAME}`)), NAME, FILE).state).toBe("missing");
   });
 
   it("green needs every case of the named test to pass", () => {
@@ -672,9 +1023,14 @@ function fencedText(md: string): string {
     .join("\n");
 }
 
-/** Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file, then the blocks. */
+/**
+ * Issue task blocks wrapped as a plan: a Reuse Inventory NEW row per CREATE file and a
+ * Supersession Inventory row per DELETE file, then the blocks.
+ */
 function asPlan(blocks: string): string {
-  const files = parsePlanBlocks(blocks).tasks.flatMap((t) => t.create.map((c) => c.file));
+  const parsed = parsePlanBlocks(blocks).tasks;
+  const files = parsed.flatMap((t) => t.create.map((c) => c.file));
+  const removed = parsed.flatMap((t) => t.delete.map((d) => d.file));
   return [
     "# Plan",
     "",
@@ -683,6 +1039,16 @@ function asPlan(blocks: string): string {
     "| Capability | File | Search performed | Existing candidates | Decision (EXTEND/NEW) | Justification |",
     "| --- | --- | --- | --- | --- | --- |",
     ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
+    ...(removed.length === 0
+      ? []
+      : [
+          "",
+          "## Supersession Inventory",
+          "",
+          "| Existing artifact | Replaced by | Decision | Justification |",
+          "| --- | --- | --- | --- |",
+          ...removed.map((f) => `| \`${f}\` | - | DELETE | replaced |`),
+        ]),
     "",
     blocks,
   ].join("\n");
@@ -817,12 +1183,66 @@ describe("bkit tests plan-check", () => {
       "| --- | --- | --- | --- | --- | --- |",
       ...files.map((f) => `| x | \`${f}\` | rg x | none | NEW | nothing to extend |`),
     ].join("\n");
+  /** A Derived Test Matrix table: its `cols`, then one row per `row` cell list. */
+  const matrix = (cols: string[], ...rows: string[][]) =>
+    [
+      "## Derived Test Matrix",
+      "",
+      `| ${cols.join(" | ")} |`,
+      `| ${cols.map(() => "---").join(" | ")} |`,
+      ...rows.map((r) => `| ${r.join(" | ")} |`),
+    ].join("\n");
+  /** The matrix header the reader maps rows to tasks by. */
+  const MATRIX = ["Test description", "Type", "Target file", "Task"];
+  /** A Supersession Inventory table with one DELETE row per file. */
+  const supersession = (...files: string[]) =>
+    [
+      "## Supersession Inventory",
+      "",
+      "| Existing artifact | Replaced by | Decision | Justification |",
+      "| --- | --- | --- | --- |",
+      ...files.map((f) => `| \`${f}\` | \`src/new.ts\` | DELETE | replaced |`),
+    ].join("\n");
+
+  it("reports a planned test of an open task whose name its file already carries, and never refuses for it", async () => {
+    const tf = (n: number, name: string, box = " ") =>
+      taskBlock(
+        n,
+        [
+          "  - **DONE WHEN:** passes",
+          "  - **TEST FIRST:**",
+          `    - \`src/a.test.ts\` \`${name}\` fails`,
+        ],
+        box,
+      );
+    write("plan.md", groupBlock(1, tf(1, "adds a row"), tf(2, "counts rows")));
+    fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, "src/a.test.ts"),
+      "it('adds a row', () => {\n  expect(1).toBe(1);\n});\n",
+    );
+    const r = await check("--existence=report");
+    expect(r.json.existing).toEqual([
+      {
+        line: lineOf("plan.md", "**TEST FIRST:**"),
+        task: 1,
+        test: "src/a.test.ts",
+        name: "adds a row",
+      },
+    ]);
+    expect(r.json.problems.map((p: { message: string }) => p.message).join("\n")).not.toContain(
+      "adds a row",
+    );
+    expect(report()).toContain('already holds a test named "adds a row"');
+    write("plan.md", groupBlock(1, tf(1, "adds a row", "x"), tf(2, "counts rows")));
+    expect((await check("--existence=report")).json.existing).toEqual([]);
+  });
 
   it("states the caps the template and workflows doc name", () => {
     const { maxPerGroup, maxTestsPerGroup, maxTestsPerTask, maxTestFilesPerTask } =
       CONFIG_DEFAULTS.tasks;
     expect([maxPerGroup, maxTestsPerGroup, maxTestsPerTask, maxTestFilesPerTask]).toEqual([
-      3, 15, 10, 3,
+      5, 25, 10, 3,
     ]);
   });
 
@@ -1085,29 +1505,199 @@ describe("bkit tests plan-check", () => {
     expect(r.code).toBe(0);
   });
 
-  it("plan-check refuses a group with 4 tasks", async () => {
-    write("plan.md", groupBlock(1, okTask(1), okTask(2), okTask(3), okTask(4)));
+  it("plan-check refuses an unmapped matrix row", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", ""],
+        ["case b", "Unit", "`t0.test.ts`", "1"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case a") }),
+    ]);
+    expect(report()).toContain("row maps to no task");
+  });
+
+  it("plan-check refuses a delete with no supersession row", async () => {
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.writeFileSync(path.join(cwd, "src/old.ts"), "export const oldThing = 1;\n");
+    const del = ["  - **DELETE:** `oldThing` in `src/old.ts`: gone"];
+    write("plan.md", groupBlock(1, okTask(1, 1, 1, del)));
+    let r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "supersession", line: lineOf("plan.md", "**DELETE:**") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("src/old.ts");
+    write("plan.md", supersession("src/old.ts"), groupBlock(1, okTask(1, 1, 1, del)));
+    r = await check();
+    expect(r.code).toBe(0);
+  });
+
+  it("plan-check refuses a matrix row mapped to two tasks", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t0.test.ts`", "2"],
+        ["case c", "Unit", "`t0.test.ts`", "1, 2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case c") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 1");
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check refuses a task no matrix row maps to", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({
+        kind: "matrix",
+        line: lineOf("plan.md", "<!-- bkit:task 2 start -->"),
+      }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 2");
+  });
+
+  it("plan-check accepts a matrix that maps every test-bearing task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // The same plan minus one row is refused: the acceptance is the mapping, not the section.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
+  });
+
+  it("plan-check refuses a matrix header with no Task column, naming the column to add", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["Test description", "Type", "Target file"],
+        ["case a", "Unit", "`t0.test.ts`"],
+        ["case b", "Unit", "`t1.test.ts`"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("Task");
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses a Task cell naming an undefined task", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "9"],
+      ),
+      groupBlock(1, okTask(1)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| case b") }),
+    ]);
+    expect(r.json.problems[0].message).toContain("TASK 9");
+  });
+
+  it("plan-check accepts a task whose only TEST FIRST is n/a", async () => {
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(
+        1,
+        okTask(1),
+        taskBlock(2, [
+          "  - **DONE WHEN:** the docs are updated",
+          "  - **TEST FIRST:** n/a — docs only",
+        ]),
+      ),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
+    // A task naming a test and no row is refused: only `n/a` is exempt from a row.
+    write(
+      "plan.md",
+      matrix(MATRIX, ["case a", "Unit", "`t0.test.ts`", "1"]),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const missing = await check();
+    expect(missing.code).toBe(1);
+  });
+
+  it("plan-check refuses a group with 6 tasks", async () => {
+    write(
+      "plan.md",
+      groupBlock(1, okTask(1), okTask(2), okTask(3), okTask(4), okTask(5), okTask(6)),
+    );
     const r = await check();
     expect(r.code).toBe(1);
     expect(r.json.problems).toEqual([
       expect.objectContaining({ kind: "cap", line: lineOf("plan.md", "bkit:group 1 start") }),
     ]);
-    expect(report()).toContain("GROUP 1 has 4 tasks, over the cap of 3");
+    expect(report()).toContain("GROUP 1 has 6 tasks, over the cap of 5");
   });
 
-  it("plan-check refuses a group with 16 planned tests", async () => {
-    write("plan.md", groupBlock(1, okTask(1, 8, 2), okTask(2, 8, 2)));
+  it("plan-check refuses a group with 26 planned tests", async () => {
+    write("plan.md", groupBlock(1, okTask(1, 9, 3), okTask(2, 9, 3), okTask(3, 8, 3)));
     const r = await check();
     expect(r.code).toBe(1);
-    expect(report()).toContain("GROUP 1 has 16 TEST FIRST tests, over the cap of 15");
+    expect(report()).toContain("GROUP 1 has 26 TEST FIRST tests, over the cap of 25");
   });
 
-  it("plan-check accepts 3 tasks and 15 tests in one group", async () => {
-    write("plan.md", groupBlock(1, okTask(1, 5, 3), okTask(2, 5, 3), okTask(3, 5, 3)));
+  it("plan-check accepts 5 tasks and 25 tests in one group", async () => {
+    write(
+      "plan.md",
+      groupBlock(
+        1,
+        okTask(1, 5, 3),
+        okTask(2, 5, 3),
+        okTask(3, 5, 3),
+        okTask(4, 5, 3),
+        okTask(5, 5, 3),
+      ),
+    );
     const r = await check();
     expect(r.code).toBe(0);
     expect(r.json.problems).toEqual([]);
-    expect(r.json.groups).toEqual([expect.objectContaining({ group: 1, tasks: 3, tests: 15 })]);
+    expect(r.json.groups).toEqual([expect.objectContaining({ group: 1, tasks: 5, tests: 25 })]);
   });
 
   it("plan-check report lists groups, not a verdict", async () => {
@@ -1190,38 +1780,141 @@ describe("bkit tests plan-check", () => {
   });
 });
 
-describe("onlyAddsLines", () => {
-  const before = "import { a } from 'a';\n\nit('x', () => {\n  expect(a()).toBe(1);\n});\n";
+describe("testBlock — a planned test's own lines, by name and indentation", () => {
+  const VITEST = [
+    "describe('rows', () => {",
+    "  it('adds a row', () => {",
+    "    expect(addRow()).toBe(1);",
+    "",
+    "    expect(rows()).toHaveLength(1);",
+    "  });",
+    "",
+    "  it('counts rows', () => {",
+    "    expect(count()).toBe(0);",
+    "  });",
+    "});",
+  ].join("\n");
 
-  it("passes added lines and whitespace-only changes", () => {
-    expect(onlyAddsLines(before, before)).toBe(true);
-    expect(onlyAddsLines(before, `${before}\nit('y', () => {\n  expect(a()).toBe(2);\n});\n`)).toBe(
-      true,
-    );
-    expect(onlyAddsLines(before, before.replace("  expect", "\t\texpect"))).toBe(true);
+  it("takes the named test's opening line, its deeper lines and its closer, and nothing of its neighbours", () => {
+    expect(testBlock(VITEST, "adds a row")).toBe(VITEST.split("\n").slice(1, 6).join("\n"));
+    expect(testBlock(VITEST, "counts rows")).toBe(VITEST.split("\n").slice(7, 10).join("\n"));
   });
 
-  it("fails an edited or a removed line", () => {
-    expect(onlyAddsLines(before, before.replace("{ a }", "{ a, b }"))).toBe(false);
-    expect(onlyAddsLines(before, before.replace("toBe(1)", "toBe(2)"))).toBe(false);
-    expect(onlyAddsLines(before, before.replace("  expect(a()).toBe(1);\n", ""))).toBe(false);
+  it("an edit to a neighbour leaves the hash alone; an edit to the test's own lines changes it", () => {
+    const before = blockHash(VITEST, "adds a row");
+    expect(blockHash(VITEST.replace("toBe(0)", "toBe(2)"), "adds a row")).toBe(before);
+    expect(blockHash(VITEST.replace("toBe(1)", "toBe(2)"), "adds a row")).not.toBe(before);
+  });
+
+  it("testSpan gives the 1-based first and last line of the block, and lineDiff counts the lines removed and added", () => {
+    expect(testSpan(VITEST, "counts rows")).toEqual({ start: 8, end: 10 });
+    expect(testSpan(VITEST, "no such test")).toBeNull();
+    const d = lineDiff("a\nb\nc", "a\nc\nd");
+    expect(d).toEqual({ text: " a\n-b\n c\n+d", removed: 1, added: 1 });
+    expect(lineDiff("a\nb", "a\nb")).toEqual({ text: " a\n b", removed: 0, added: 0 });
+  });
+
+  it("finds a test planned by its suite path (`suite > test`) through its last segment", () => {
+    expect(testBlock(VITEST, "rows > adds a row")).toBe(testBlock(VITEST, "adds a row"));
+    expect(testBlock(VITEST, "outer > rows > counts rows")).toBe(testBlock(VITEST, "counts rows"));
+    expect(testBlock(VITEST, "rows > no such test")).toBeNull();
+  });
+
+  it("starts at the call when the name sits on its own line under an open paren", () => {
+    const text = [
+      "it(",
+      '  "adds a row",',
+      "  () => {",
+      "    expect(addRow()).toBe(1);",
+      "  },",
+      ");",
+      "it('next', () => {});",
+    ].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text.split("\n").slice(0, 6).join("\n"));
+  });
+
+  it.each([
+    [
+      "pytest",
+      "def test_adds_a_row():\n    assert add_row() == 1\n\ndef test_other():\n    assert True\n",
+      "test_adds_a_row",
+      "def test_adds_a_row():\n    assert add_row() == 1",
+    ],
+    [
+      "go",
+      "func TestAddsARow(t *testing.T) {\n\tif addRow() != 1 {\n\t\tt.Fatal()\n\t}\n}\n\nfunc TestOther(t *testing.T) {}\n",
+      "TestAddsARow",
+      "func TestAddsARow(t *testing.T) {\n\tif addRow() != 1 {\n\t\tt.Fatal()\n\t}\n}",
+    ],
+    [
+      "rspec",
+      "it 'adds a row' do\n  expect(add_row).to eq(1)\nend\nit 'other' do\nend\n",
+      "adds a row",
+      "it 'adds a row' do\n  expect(add_row).to eq(1)\nend",
+    ],
+  ])("is stack-agnostic: %s", (_stack, text, name, block) => {
+    expect(testBlock(text, name)).toBe(block);
+  });
+
+  it("passes over a comment that quotes the name: the test, not the comment, is locked", () => {
+    const text = [
+      "// TODO: 'adds a row' should also cover retries",
+      "describe('rows', () => {",
+      "  it('adds a row', () => {",
+      "    expect(addRow()).toBe(1);",
+      "  });",
+      "});",
+    ].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text.split("\n").slice(2, 5).join("\n"));
+    expect(blockHash(text.replace("toBe(1)", "toBe(2)"), "adds a row")).not.toBe(
+      blockHash(text, "adds a row"),
+    );
+  });
+
+  it("passes over a suite titled like the test, so its neighbours stay free to change", () => {
+    const text = [
+      "describe('adds a row', () => {",
+      "  it('adds a row', () => {",
+      "    expect(addRow()).toBe(1);",
+      "  });",
+      "  it('counts rows', () => {",
+      "    expect(count()).toBe(0);",
+      "  });",
+      "});",
+    ].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text.split("\n").slice(1, 4).join("\n"));
+    expect(blockHash(text.replace("toBe(0)", "toBe(2)"), "adds a row")).toBe(
+      blockHash(text, "adds a row"),
+    );
+  });
+
+  it("falls back to a suite line when nothing else carries the name", () => {
+    const text = ["describe('adds a row', () => {", "  it('works', () => {});", "});"].join("\n");
+    expect(testBlock(text, "adds a row")).toBe(text);
+  });
+
+  it("is null when the name is not in the file, or there is no file", () => {
+    expect(testBlock(VITEST, "removes a row")).toBeNull();
+    expect(testBlock(null, "adds a row")).toBeNull();
+    expect(blockHash(VITEST, "removes a row")).toBeNull();
   });
 });
 
 describe("bkit tests red / green", () => {
   const STATUS = "logs/status.jsonl";
   const TEST = "src/clamp.test.ts";
-  const RED_LOG = "logs/build-task-red-1-1.md";
-  const red = (extra: string[] = []) =>
+  const OTHER = "src/range.test.ts";
+  const RED_LOG = "logs/build-tests-red-1-1.md";
+  const WRITER_LOG = "logs/build-plan-tests-1-log.md";
+  /** The orchestrator's group red: every planned test of group 1, one run per test file. */
+  const red = (extra: string[] = [], log = RED_LOG) =>
     run(
       [
         `--file=${STATUS}`,
         "--workflow=build",
         "--group=1",
-        "--task=1",
-        `--test=${TEST}`,
-        `--name=${NAME}`,
-        `--log=${RED_LOG}`,
+        "--plan=plan.md",
+        `--log=${log}`,
         ...extra,
       ],
       cwd,
@@ -1247,6 +1940,13 @@ describe("bkit tests red / green", () => {
       .split("\n")
       .map((l) => JSON.parse(l) as Record<string, unknown>);
   const report = () => fs.readFileSync(path.join(cwd, "logs/green.md"), "utf-8");
+  const redReport = () => fs.readFileSync(path.join(cwd, RED_LOG), "utf-8");
+  const states = (r: { json: Record<string, unknown> }) =>
+    (r.json.tests as Array<{ testName: string; state: string }>).map(
+      (t) => `${t.testName}:${t.state}`,
+    );
+  const kinds = (r: { json: Record<string, unknown> }) =>
+    (r.json.gaps as Array<{ kind: string }>).map((g) => g.kind);
   /** plan.md holding `tasks` in GROUP 1, then `after` outside every block. */
   const writePlan = (tasks: string[], after: string[] = []) =>
     fs.writeFileSync(
@@ -1262,90 +1962,477 @@ describe("bkit tests red / green", () => {
       ...extra,
     ]);
   const TASK_1 = testTask(1, [[TEST, NAME]]);
+  const GIT_ENV = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@t",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@t",
+  };
+  const baseCommit = () =>
+    spawnSync("git", ["-C", cwd, "commit", "-q", "--allow-empty", "-m", "base"], { env: GIT_ENV });
 
   beforeEach(() => {
     checkout(scripts({ [BKIT_TEST_FILE_SCRIPT]: "runner" }));
-    spawnSync("git", ["-C", cwd, "commit", "-q", "--allow-empty", "-m", "base"], {
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: "t",
-        GIT_AUTHOR_EMAIL: "t@t",
-        GIT_COMMITTER_NAME: "t",
-        GIT_COMMITTER_EMAIL: "t@t",
-      },
-    });
+    baseCommit();
     fs.mkdirSync(path.join(cwd, "src"));
     fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(5, 1, 10)).toBe(5);\n");
+    writePlan([TASK_1]);
   });
 
-  it("records a red: the named test failed; row, log and test snapshot written, path passed whole", async () => {
+  it("runs each planned test file once and writes one build-tests-red row with a state and blob per planned test", async () => {
+    writePlan([
+      testTask(1, [
+        [TEST, NAME],
+        [TEST, "second"],
+      ]),
+      testTask(2, [[OTHER, "third"]]),
+    ]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
     vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv("FAKE_JUNIT", junit(failed(`clamp > ${NAME}`)));
+    vi.stubEnv("FAKE_JUNIT", junit(failed(`clamp > ${NAME}`), failed("second"), failed("third")));
     const r = await red();
     expect(r.code).toBe(0);
-    expect(r.json.recorded).toBe(true);
+    expect(r.json).toMatchObject({ enforced: true, attempt: 1, gaps: [], log: RED_LOG });
+    expect(r.json.tests).toEqual([
+      {
+        task: 1,
+        test: TEST,
+        testName: NAME,
+        state: "red",
+        blob: expect.stringMatching(/^[0-9a-f]{40}$/),
+        block: null,
+      },
+      {
+        task: 1,
+        test: TEST,
+        testName: "second",
+        state: "red",
+        blob: expect.stringMatching(/^[0-9a-f]{40}$/),
+        block: null,
+      },
+      {
+        task: 2,
+        test: OTHER,
+        testName: "third",
+        state: "red",
+        blob: expect.stringMatching(/^[0-9a-f]{40}$/),
+        block: null,
+      },
+    ]);
     const [row] = rows();
+    expect(rows()).toHaveLength(1);
     expect(row).toMatchObject({
       type: "step-done",
       workflow: "build",
-      step: "build-task-red",
+      step: "build-tests-red",
       group: 1,
-      task: 1,
-      test: TEST,
-      testName: NAME,
-      exitCode: 1,
-      failure: "expected 0 to be 5",
-      artifacts: [RED_LOG, "logs/build-task-red-1-1.snapshot"],
+      attempt: 1,
+      enforced: true,
+      artifacts: [RED_LOG],
+      tests: r.json.tests,
     });
-    expect(row!.testBlob).toMatch(/^[0-9a-f]{40}$/);
-    expect(fs.readFileSync(path.join(cwd, RED_LOG), "utf-8")).toContain(`arg: ${TEST}`);
-    expect(fs.readFileSync(path.join(cwd, "logs/build-task-red-1-1.snapshot"), "utf-8")).toBe(
-      fs.readFileSync(path.join(cwd, TEST), "utf-8"),
-    );
+    expect(redReport()).toContain("Red: 3");
+    expect(redReport()).toContain("Gaps: 0");
+    expect(redReport().match(new RegExp(`arg: ${TEST}`, "g"))).toHaveLength(1);
+    expect(redReport().match(new RegExp(`arg: ${OTHER}`, "g"))).toHaveLength(1);
   });
 
-  it("refuses a run that is not a red: exit 1, reason printed, no row", async () => {
+  it("a planned test that passes is a vacuous gap, exit 1", async () => {
     vi.stubEnv("FAKE_EXIT", "0");
     vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
     const r = await red();
     expect(r.code).toBe(1);
-    expect(r.json).toMatchObject({ recorded: false, refused: "passed" });
-    expect(r.err).toContain("not a red (passed)");
-    expect(r.err).toContain("a red must fail before the task's code exists");
-    expect(fs.existsSync(path.join(cwd, STATUS))).toBe(false);
+    expect(r.json.gaps).toEqual([
+      {
+        task: 1,
+        test: TEST,
+        name: NAME,
+        kind: "vacuous",
+        detail: expect.stringContaining("passes at its red"),
+      },
+    ]);
+    expect(states(r)).toEqual([`${NAME}:vacuous`]);
+    expect(r.err).toContain("vacuous");
+    expect(rows()[0]!.tests).toMatchObject([{ state: "vacuous" }]);
+    expect(redReport()).toContain("Gaps: 1");
+    expect(redReport()).toContain("`vacuous`");
   });
 
-  it("a red already recorded for the unchanged test stands on resume; a changed test runs again", async () => {
+  it("a planned test absent from a loaded report is a missing gap", async () => {
     vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(failed("other")));
+    const r = await red();
+    expect(r.code).toBe(1);
+    expect(kinds(r)).toEqual(["missing"]);
+    expect(r.json.gaps[0].detail).toContain('"other"');
+    expect(states(r)).toEqual([`${NAME}:missing`]);
+  });
+
+  it("a file that fails to load is a red of kind red-not-loaded", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit());
+    let r = await red();
+    expect(r.code).toBe(0);
+    expect(states(r)).toEqual([`${NAME}:red-not-loaded`]);
+    // The file changed, so the red runs again.
+    fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(6, 1, 10)).toBe(6);\n");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(TEST, "Cannot find module './clamp'")));
+    r = await red();
+    expect(r.code).toBe(0);
+    expect(states(r)).toEqual([`${NAME}:red-not-loaded`]);
+    expect(redReport()).toContain("red-not-loaded");
+  });
+
+  it("a PASSES line in the writer's log turns a passing test into passed-accepted", async () => {
     vi.stubEnv("FAKE_EXIT", "0");
     vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-    const resumed = await red();
-    expect(resumed.code).toBe(0);
-    expect(resumed.json).toMatchObject({ recorded: true, already: true, log: RED_LOG });
-    expect(resumed.err).toContain("red already recorded");
-    expect(rows()).toHaveLength(1);
-    fs.appendFileSync(path.join(cwd, TEST), "// edited after the red\n");
-    const changed = await red();
-    expect(changed.code).toBe(1);
-    expect(changed.json).toMatchObject({ recorded: false, refused: "passed" });
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, WRITER_LOG),
+      `# Tests\n\nPASSES — TASK 1: \`${TEST}\` \`${NAME}\`: clamp already bounds its input\n`,
+    );
+    const r = await red([`--writer-log=${WRITER_LOG}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.gaps).toEqual([]);
+    expect(r.json.tests).toEqual([
+      expect.objectContaining({
+        state: "passed-accepted",
+        reason: "clamp already bounds its input",
+      }),
+    ]);
+    expect(redReport()).toContain("passed-accepted");
+    // The line names another test: the pass stays a gap (the file changed, so the test runs again).
+    fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(6, 1, 10)).toBe(6);\n");
+    fs.writeFileSync(
+      path.join(cwd, WRITER_LOG),
+      `PASSES — TASK 1: \`${TEST}\` \`other\`: already there\n`,
+    );
+    expect(kinds(await red([`--writer-log=${WRITER_LOG}`]))).toEqual(["vacuous"]);
   });
 
-  it("refuses a missing report, an undeclared script (exit 3), a path outside the repo (exit 2)", async () => {
-    vi.stubEnv("FAKE_EXIT", "1");
-    expect((await red()).err).toContain("no JUnit report");
-    expect((await red(["--test=../outside.test.ts"])).code).toBe(2);
-    expect((await red(["--test=src/nope.test.ts"])).code).toBe(2);
+  it("no bkit:test:file script exits 3 and still records the blobs with enforced false", async () => {
     checkout(scripts({ test: "x" }));
-    const undeclared = await red();
-    expect(undeclared.code).toBe(3);
-    expect(undeclared.err).toContain("BKIT_TEST_REPORT");
+    baseCommit();
+    fs.mkdirSync(path.join(cwd, "src"));
+    fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(5, 1, 10)).toBe(5);\n");
+    writePlan([TASK_1]);
+    const r = await red();
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ enforced: false, gaps: [] });
+    expect(r.json.tests).toEqual([
+      expect.objectContaining({ state: "unknown", blob: expect.stringMatching(/^[0-9a-f]{40}$/) }),
+    ]);
+    expect(rows()[0]).toMatchObject({ step: "build-tests-red", enforced: false });
+    expect(r.err).toContain("BKIT_TEST_REPORT");
+    expect(redReport()).toContain("Enforced: false");
   });
 
-  it("a script that cannot run is exit 4, not a rejected red", async () => {
+  it("a planned test file failing bkit:lint:file is a lint gap, and the file is not run", async () => {
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      scripts({ [BKIT_TEST_FILE_SCRIPT]: "runner", [BKIT_LINT_FILE_SCRIPT]: "linter" }),
+    );
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    vi.stubEnv("FAKE_LINT_EXIT", "1");
+    const linted = await red();
+    expect(linted.code).toBe(1);
+    expect(kinds(linted)).toEqual(["lint"]);
+    expect(states(linted)).toEqual([`${NAME}:lint`]);
+    expect(redReport()).toContain(`out: ${BKIT_LINT_FILE_SCRIPT}`);
+    expect(redReport()).not.toContain(`out: ${BKIT_TEST_FILE_SCRIPT}`);
+    vi.stubEnv("FAKE_LINT_EXIT", "127");
+    expect((await red()).code).toBe(4);
+    vi.stubEnv("FAKE_LINT_EXIT", "0");
+    const clean = await red();
+    expect(clean.code).toBe(0);
+    expect(redReport()).toContain(`out: ${BKIT_TEST_FILE_SCRIPT}`);
+  });
+
+  it("an undeclared bkit:lint:file is noted, and the red still runs", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    vi.stubEnv("FAKE_LINT_EXIT", "1");
+    const r = await red();
+    expect(r.code).toBe(0);
+    expect(r.err).toContain(`${BKIT_LINT_FILE_SCRIPT} is not declared`);
+  });
+
+  it("a planned test file that does not exist is a missing gap with no run; a runner that cannot run is exit 4", async () => {
+    fs.rmSync(path.join(cwd, TEST));
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    const r = await red();
+    expect(r.code).toBe(1);
+    expect(kinds(r)).toEqual(["missing"]);
+    expect(r.json.gaps[0].detail).toContain("does not exist");
+    expect(r.json.tests[0].blob).toBeNull();
+    expect(redReport()).not.toContain(`arg: ${TEST}`);
+    fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(5, 1, 10)).toBe(5);\n");
     vi.stubEnv("FAKE_EXIT", "127");
     expect((await red()).code).toBe(4);
+  });
+
+  it("a ticked task is skipped, and a plan with no task markers is refused", async () => {
+    writePlan([
+      taskBlock(
+        1,
+        [
+          "  - **DONE WHEN:** passes",
+          "  - **TEST FIRST:**",
+          `    - \`${TEST}\` \`${NAME}\` fails.`,
+        ],
+        "x",
+      ),
+      taskBlock(2, ["  - **DONE WHEN:** done", "  - **TEST FIRST:** n/a — docs."]),
+    ]);
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    const r = await red();
+    expect(r.code).toBe(0);
+    expect(r.json.tests).toEqual([]);
+    expect(redReport()).not.toContain(`arg: ${TEST}`);
+    fs.writeFileSync(path.join(cwd, "plan.md"), "# Plan\n\n- [ ] **Task 1:** Old plan.\n");
+    const old = await red();
+    expect(old.code).toBe(1);
+    expect(old.json).toMatchObject({ enforced: false });
+    expect(old.json.reason).toContain("run /bkit-build again to convert it");
+  });
+
+  it("a test an earlier row of the group proved red is not run again unless its file changed, and green reads every row", async () => {
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(`clamp > ${NAME}`), failed("third")));
+    expect((await red()).code).toBe(0);
+    // A task added to the group: only its tests run, the proven one stands.
+    writePlan([TASK_1, testTask(2, [[OTHER, "third"]])]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+    const second = await red([], "logs/build-tests-red-1-2.md");
+    expect(second.code).toBe(0);
+    expect(second.json).toMatchObject({ attempt: 2, skipped: 1, gaps: [] });
+    expect(states(second)).toEqual(["third:red"]);
+    expect(second.err).toContain("1 planned test(s) already red, not run again");
+    expect(rows().map((r) => (r.tests as unknown[]).length)).toEqual([1, 1]);
+    // Green sees both rows: neither test is no-red.
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME), passed("third")));
+    const g = await green();
+    expect(g.code).toBe(0);
+    expect(g.json.gaps).toEqual([]);
+    // The proven test's file changed: it runs again, the other stands.
+    fs.writeFileSync(path.join(cwd, TEST), "expect(clamp(50, 1, 10)).toBe(10);\n");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(`clamp > ${NAME}`), failed("third")));
+    const third = await red([], "logs/build-tests-red-1-3.md");
+    expect(third.code).toBe(0);
+    expect(third.json).toMatchObject({ attempt: 3, skipped: 1 });
+    expect(states(third)).toEqual([`${NAME}:red`]);
+  });
+
+  describe("per-test proof", () => {
+    const body = (planned: string, other: string) =>
+      [
+        "describe('clamp', () => {",
+        `  it('${NAME}', () => {`,
+        `    expect(clamp(5, 1, 10)).toBe(${planned});`,
+        "  });",
+        "",
+        "  it('second', () => {",
+        `    expect(clamp(0, 1, 10)).toBe(${other});`,
+        "  });",
+        "});",
+        "",
+      ].join("\n");
+    const commitAll = (message: string) => {
+      spawnSync("git", ["-C", cwd, "add", "-A"], { env: GIT_ENV });
+      spawnSync("git", ["-C", cwd, "commit", "-q", "-m", message], { env: GIT_ENV });
+      return spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], {
+        encoding: "utf-8",
+      }).stdout.trim();
+    };
+
+    it("records each test's own lines, and a proven red stands while they are unchanged, whatever else in the file changes", async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body("5", "1"));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(`clamp > ${NAME}`)));
+      const first = await red();
+      expect(first.code).toBe(0);
+      expect(first.json.tests[0].block).toBe(
+        blockHash(fs.readFileSync(path.join(cwd, TEST), "utf-8"), NAME),
+      );
+      // Another test of the file changed: the proven red stands, nothing runs.
+      fs.writeFileSync(path.join(cwd, TEST), body("5", "2"));
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
+      const second = await red([], "logs/build-tests-red-1-2.md");
+      expect(second.code).toBe(0);
+      expect(second.json).toMatchObject({ skipped: 1, tests: [] });
+      // Its own lines changed: it runs again.
+      fs.writeFileSync(path.join(cwd, TEST), body("6", "2"));
+      const third = await red([], "logs/build-tests-red-1-3.md");
+      expect(states(third)).toEqual([`${NAME}:vacuous`]);
+    });
+
+    it("a later unproven result never replaces a proven red of the same lines", () => {
+      const row = (state: string, block: string, attempt: number) =>
+        JSON.stringify({
+          type: "step-done",
+          workflow: "build",
+          step: "build-tests-red",
+          status: "DONE",
+          group: 1,
+          attempt,
+          tests: [{ task: 1, test: TEST, testName: NAME, state, blob: "b", block }],
+        });
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      const file = path.join(cwd, STATUS);
+      fs.writeFileSync(file, `${row("red", "x", 1)}\n${row("vacuous", "x", 2)}\n`);
+      expect([...redEntries(file, "build", 1).values()].map((t) => t.state)).toEqual(["red"]);
+      fs.writeFileSync(file, `${row("red", "x", 1)}\n${row("vacuous", "y", 2)}\n`);
+      expect([...redEntries(file, "build", 1).values()].map((t) => t.state)).toEqual(["vacuous"]);
+    });
+
+    it("an existing test the tests step changed and that passes is updated, with the group's start commit, and green lists it for the verifier", async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body("5", "1"));
+      const start = commitAll("existing tests");
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, STATUS),
+        `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-group-start", status: "DONE", group: 1, parentSha: start })}\n`,
+      );
+      // Unchanged since the group started and passing: proves nothing.
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
+      const same = await red();
+      expect(states(same)).toEqual([`${NAME}:vacuous`]);
+      // Its expectation changed by the tests step: updated, judged by its diff.
+      fs.writeFileSync(path.join(cwd, TEST), body("5).not.toBe(6", "1"));
+      const r = await red([], "logs/build-tests-red-1-2.md");
+      expect(r.code).toBe(0);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ testName: NAME, state: "updated", base: start }),
+      ]);
+      expect(r.json.gaps).toEqual([]);
+      expect(fs.readFileSync(path.join(cwd, "logs/build-tests-red-1-2.md"), "utf-8")).toContain(
+        "Updated: 1",
+      );
+      const g = await green();
+      expect(g.code).toBe(0);
+      expect(g.json.unproven).toEqual([]);
+      // The expectation's line changed: not additive, and the report carries the line diff.
+      expect(g.json.updated).toEqual([
+        {
+          task: 1,
+          test: TEST,
+          name: NAME,
+          base: start,
+          additive: false,
+          diff: [
+            `   it('${NAME}', () => {`,
+            "-    expect(clamp(5, 1, 10)).toBe(5);",
+            "+    expect(clamp(5, 1, 10)).toBe(5).not.toBe(6);",
+            "   });",
+          ].join("\n"),
+        },
+      ]);
+      const out = report();
+      expect(out).toContain("## Updated tests");
+      expect(out).toContain("not additive: a line of the test was removed or changed");
+      expect(out).toContain(
+        `  \`\`\`diff\n     it('${NAME}', () => {\n  -    expect(clamp(5, 1, 10)).toBe(5);`,
+      );
+    });
+
+    it("an update that only adds lines to the test is additive, and the report says no expectation was dropped", async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body("5", "1"));
+      const start = commitAll("existing tests");
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(cwd, STATUS),
+        `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-group-start", status: "DONE", group: 1, parentSha: start })}\n`,
+      );
+      fs.writeFileSync(
+        path.join(cwd, TEST),
+        body("5", "1").replace(
+          "    expect(clamp(5, 1, 10)).toBe(5);",
+          "    expect(clamp(5, 1, 10)).toBe(5);\n    expect(clamp(11, 1, 10)).toBe(10);",
+        ),
+      );
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
+      const r = await red();
+      expect(states(r)).toEqual([`${NAME}:updated`]);
+      const g = await green();
+      expect(g.code).toBe(0);
+      expect(g.json.updated).toEqual([
+        expect.objectContaining({
+          task: 1,
+          additive: true,
+          diff: expect.stringContaining("+    expect(clamp(11, 1, 10)).toBe(10);"),
+        }),
+      ]);
+      expect(g.json.updated[0].diff).not.toContain("\n-");
+      expect(report()).toContain("additive: no line of the test was removed");
+    });
+  });
+
+  it("green reads the group's build-tests-red rows: a planned test not passing now is not-green, and no row leaves every planned test unproven, never a gap", async () => {
+    writePlan([TASK_1, testTask(2, [[OTHER, "third"]])]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME), passed("third")));
+    let r = await green();
+    expect(r.code).toBe(0);
+    expect(r.json.gaps).toEqual([]);
+    expect(r.json.verdict).toBe("PASS");
+    expect(
+      (r.json.unproven as Array<{ task: number; name: string }>).map((u) => `${u.task}:${u.name}`),
+    ).toEqual([`1:${NAME}`, "2:third"]);
+    expect(r.json.unproven[0].detail).toContain("no tests step recorded a red");
+    expect(report()).toContain("| no row |");
+    expect(report()).toContain("Unproven: 2");
+    expect(report()).toContain("## Unproven");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("third")));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME), failed("third")));
+    r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.gaps).toEqual([
+      expect.objectContaining({ task: 2, kind: "not-green", fixable: true }),
+    ]);
+    expect(report()).toContain("| red |");
+    expect(report()).toContain("## Runner output");
+    expect(r.json.verdict).toBe("CONCERNS");
+  });
+
+  it("green: a passed-accepted test is already landed, not a gap", async () => {
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, WRITER_LOG),
+      `PASSES — TASK 1: \`${TEST}\` \`${NAME}\`: clamp already bounds its input\n`,
+    );
+    expect((await red([`--writer-log=${WRITER_LOG}`])).code).toBe(0);
+    const r = await green();
+    expect(r.code).toBe(0);
+    expect(r.json.gaps).toEqual([]);
+    expect(r.json.alreadyLanded).toEqual([
+      { task: 1, test: TEST, name: NAME, reason: "clamp already bounds its input" },
+    ]);
+    expect(report()).toContain("## Already landed");
+    expect(report()).toContain("| passed-accepted |");
+  });
+
+  it("green: a red state the tests step left as a gap is unproven, naming the state", async () => {
+    vi.stubEnv("FAKE_EXIT", "0");
+    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+    expect((await red()).code).toBe(1);
+    const r = await green();
+    expect(kinds(r)).toEqual([]);
+    expect(r.json.unproven).toEqual([expect.objectContaining({ task: 1, test: TEST, name: NAME })]);
+    expect(r.json.unproven[0].detail).toContain("vacuous");
   });
 
   it("green: not enforced (exit 0, report says why) when the test-file script is undeclared", async () => {
@@ -1384,7 +2471,7 @@ describe("bkit tests red / green", () => {
     vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
     let r = await green();
     expect(r.code).toBe(1);
-    expect(r.json).toMatchObject({ enforced: true, testOrderOnly: false });
+    expect(r.json).toMatchObject({ enforced: true });
     expect(r.json.gaps).toEqual([
       expect.objectContaining({ task: null, kind: "test-first-unread" }),
     ]);
@@ -1396,10 +2483,7 @@ describe("bkit tests red / green", () => {
     writePlan([taskBlock(1, ["  - **DONE WHEN:** done"])], ["**TEST FIRST:** `a` `b` fails."]);
     r = await green();
     expect(r.json.enforced).toBe(true);
-    expect(r.json.gaps.map((g: { kind: string }) => g.kind)).toEqual([
-      "no-test-first",
-      "test-first-unread",
-    ]);
+    expect(kinds(r)).toEqual(["no-test-first", "test-first-unread"]);
   });
 
   it("green: --group audits only that group's tasks", async () => {
@@ -1424,7 +2508,7 @@ describe("bkit tests red / green", () => {
           cwd,
           "green",
         )
-      ).json.gaps.map((g: { task: number }) => g.task);
+      ).json.unproven.map((u: { task: number }) => u.task);
     expect(await at("1")).toEqual([1]);
     expect(await at("2")).toEqual([2]);
   });
@@ -1492,29 +2576,37 @@ describe("bkit tests red / green", () => {
     vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
     const r = await green();
     expect(r.code).toBe(1);
-    expect(r.json.testOrderOnly).toBe(false);
     expect(r.json.gaps).toEqual([
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `oldGate` in `src/gate.ts` is still referenced: `src/use.ts:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/legacyShim.ts` is still referenced as `legacyShim`: `src/use.ts:2`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/still.ts`: the file still exists",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
       {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE § Old section in `docs/d.md` is still referenced: `docs/d.md:3`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
+    expect(r.json.verdict).toBe(null);
     expect(report()).toContain("- Task 1 `delete-still-referenced` — DELETE `oldGate`");
   });
 
@@ -1547,11 +2639,13 @@ describe("bkit tests red / green", () => {
         task: 1,
         kind: "delete-still-referenced",
         detail: "DELETE `src/moved.ts` is still referenced as `moved`: `src/stale.ts:1`",
+        fixable: null,
+        logLine: "TASK 1: delete-still-referenced — Fixable: null",
       },
     ]);
   });
 
-  it("green: red recorded, test unchanged, named test passing -> no gaps", async () => {
+  it("green with no gaps prints verdict PASS and an empty gaps", async () => {
     writePlan([
       TASK_1,
       taskBlock(2, ["  - **DONE WHEN:** done", "  - **TEST FIRST:** n/a — docs."]),
@@ -1563,12 +2657,34 @@ describe("bkit tests red / green", () => {
     vi.stubEnv("FAKE_JUNIT", junit(passed(`clamp > ${NAME}`)));
     const r = await green();
     expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ enforced: true, gaps: [] });
+    expect(r.json).toMatchObject({ enforced: true, gaps: [], verdict: "PASS" });
+    expect(Object.keys(r.json)).not.toContain("testOrderOnly");
+    expect(Object.keys(r.json)).not.toContain("lateRedUnchecked");
     expect(report()).toContain("Gaps: 0");
+    expect(report()).toContain("Verdict: PASS");
     expect(report()).toContain("| 1 |");
   });
 
-  it("green: lists each gap kind, with the diff for a test changed since its red", async () => {
+  it("green prints a verdict and a fixable per gap: every gap fixable is CONCERNS", async () => {
+    writePlan([TASK_1, testTask(2, [[TEST, "second"]]), testTask(3, [[OTHER, "third"]])]);
+    fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("second"), failed("third")));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), passed("second"), passed("third")));
+    const r = await green();
+    expect(r.code).toBe(1);
+    expect(r.json.verdict).toBe("CONCERNS");
+    expect(
+      (r.json.gaps as Array<{ kind: string; fixable: boolean | null }>).map(
+        (g) => `${g.kind}:${g.fixable}`,
+      ),
+    ).toEqual(["not-green:true"]);
+    expect(report()).toContain("Verdict: CONCERNS");
+    expect(report()).toContain(`TASK 1: \`${TEST}\` \`${NAME}\` — not-green — Fixable: true`);
+  });
+
+  it("green: lists each gap kind, with the runner output", async () => {
     writePlan([
       TASK_1,
       testTask(2, [[TEST, "second"]]),
@@ -1576,107 +2692,19 @@ describe("bkit tests red / green", () => {
       taskBlock(4, ["  - **DONE WHEN:** x", "  - **TEST FIRST:**", "    - `only-one`."]),
     ]);
     vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("second")));
     expect((await red()).code).toBe(0);
-    fs.writeFileSync(path.join(cwd, TEST), "expect(true).toBe(true);\n");
-    vi.stubEnv("FAKE_EXIT", "1");
     vi.stubEnv("FAKE_JUNIT", junit(passed(NAME), failed("second")));
     const r = await green();
     expect(r.code).toBe(1);
     expect(
       (r.json.gaps as Array<{ task: number; kind: string }>).map((g) => `${g.task}:${g.kind}`),
-    ).toEqual([
-      "1:test-changed",
-      "2:no-red",
-      "2:not-green",
-      "3:no-test-first",
-      "4:test-first-malformed",
-    ]);
-    expect(r.json.testOrderOnly).toBe(false);
-    expect(report()).toContain("Test order only: false");
-    expect(report()).toContain("-expect(clamp(5, 1, 10)).toBe(5);");
-    expect(report()).toContain("+expect(true).toBe(true);");
+    ).toEqual(["2:not-green", "3:no-test-first", "4:test-first-malformed"]);
     expect(report()).toContain("## Runner output");
+    expect(report()).not.toContain("Test order only");
   });
 
-  it("green: a red recorded for a different test than the plan names is a red-mismatch", async () => {
-    writePlan([testTask(1, [[TEST, "planned name"]])]);
-    vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-    expect((await red()).code).toBe(0);
-    vi.stubEnv("FAKE_EXIT", "0");
-    vi.stubEnv("FAKE_JUNIT", junit(passed("planned name")));
-    const r = await green();
-    const gaps = r.json.gaps as Array<{ kind: string; detail: string }>;
-    expect(gaps.map((g) => g.kind)).toEqual(["red-mismatch"]);
-    expect(gaps[0]!.detail).toContain(`"${NAME}" (not passing:`);
-  });
-
-  it("green: a planned test that moved is a red-mismatch saying whether the recorded test passes now", async () => {
-    writePlan([testTask(1, [["src/old/clamp.test.ts", NAME]])]);
-    vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-    expect((await red()).code).toBe(0);
-    vi.stubEnv("FAKE_EXIT", "0");
-    vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-    const gaps = (await green()).json.gaps as Array<{ kind: string; detail: string }>;
-    expect(gaps.map((g) => g.kind)).toEqual(["red-mismatch", "not-green"]);
-    expect(gaps[0]!.detail).toContain(`\`${TEST}\` "${NAME}" (passes now)`);
-    expect(gaps[1]!.detail).toContain("does not exist");
-  });
-
-  it("green: every test a task names needs its own red and its own pass", async () => {
-    const redFor = (name: string, n: number) =>
-      run(
-        [
-          `--file=${STATUS}`,
-          "--workflow=build",
-          "--group=1",
-          "--task=1",
-          `--test=${TEST}`,
-          `--name=${name}`,
-          `--log=logs/build-task-red-1-1-${n}.md`,
-        ],
-        cwd,
-        "red",
-      );
-    writePlan([
-      testTask(1, [
-        [TEST, "clamps low"],
-        [TEST, "clamps high"],
-        [TEST, "clamps nan"],
-      ]),
-    ]);
-    vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv(
-      "FAKE_JUNIT",
-      junit(failed("clamps low"), failed("clamps high"), failed("clamps nan")),
-    );
-    expect((await redFor("clamps low", 1)).code).toBe(0);
-    expect((await redFor("clamps high", 2)).code).toBe(0);
-    vi.stubEnv("FAKE_EXIT", "1");
-    vi.stubEnv(
-      "FAKE_JUNIT",
-      junit(passed("clamps low"), failed("clamps high"), passed("clamps nan")),
-    );
-    const r = await green();
-    expect(r.code).toBe(1);
-    expect((r.json.gaps as Array<{ kind: string; detail: string }>).map((g) => g.kind)).toEqual([
-      "not-green",
-      "no-red",
-    ]);
-    expect(report()).toContain('`src/clamp.test.ts` "clamps nan"');
-    expect(rows().map((row) => row.testName)).toEqual(["clamps low", "clamps high"]);
-  });
-
-  describe("test order", () => {
-    const GIT_ENV = {
-      ...process.env,
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@t",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@t",
-    };
+  describe("test exceptions", () => {
     const head = () =>
       spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf-8" }).stdout.trim();
     const commit = (message: string, paths: string[] = ["-A"]) => {
@@ -1691,109 +2719,25 @@ describe("bkit tests red / green", () => {
         `${JSON.stringify({ type: "step-done", workflow: "build", status: "DONE", at: "2026-10-22T05:00:00Z", parentSha: head(), ...row })}\n`,
       );
     };
-    /** What `steps finish` does for plan-execute: log, row, then one commit of everything. */
-    const finishExecute = (log: string) => {
-      statusRow({
-        step: "build-plan-execute",
-        artifacts: ["logs/build-plan-execute-1-log.md"],
-        group: 1,
-        attempt: 1,
-      });
-      fs.writeFileSync(path.join(cwd, "logs/build-plan-execute-1-log.md"), log);
-      return commit("chore(1-x): plan-execute group 1");
-    };
-    const kinds = (r: { json: Record<string, unknown> }) =>
-      (r.json.gaps as Array<{ kind: string }>).map((g) => g.kind);
     const EXCEPTION = `  - **TEST EXCEPTION:** \`${TEST}\` \`${NAME}\` — code landed before its test; approved by the owner.`;
 
-    it("green finds the code commit for DONE — TASK N", async () => {
-      for (const done of [
-        "DONE — TASK 1: Clamp — implemented\n",
-        "DONE — Task 1: Clamp — implemented\n",
-      ]) {
-        fs.rmSync(path.join(cwd, "logs"), { recursive: true, force: true });
-        writePlan([TASK_1]);
-        commit("plan");
-        const code = finishExecute(done);
-        vi.stubEnv("FAKE_EXIT", "1");
-        vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-        expect((await red()).code).toBe(0);
-        vi.stubEnv("FAKE_EXIT", "0");
-        vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-        const r = await green();
-        expect(r.code).toBe(1);
-        expect(kinds(r)).toEqual(["late-red"]);
-        const [gap] = r.json.gaps as Array<{ detail: string }>;
-        expect(gap!.detail).toContain(code.slice(0, 7));
-        expect(gap!.detail).toContain("plan-execute log records TASK 1 DONE");
-        expect(r.json.testOrderOnly).toBe(true);
-        expect(report()).toContain("Test order only: true");
-      }
-    });
-
-    it("a red recorded before the task's code commit stands, across a resumed execute", async () => {
-      writePlan([TASK_1]);
-      commit("plan");
-      finishExecute("BLOCKED — TASK 1: Clamp — turn cap\n");
-      vi.stubEnv("FAKE_EXIT", "1");
-      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-      expect((await red()).code).toBe(0);
-      finishExecute("DONE — TASK 1: Clamp — implemented\n");
-      vi.stubEnv("FAKE_EXIT", "0");
-      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-      const r = await green();
-      expect(r.code).toBe(0);
-      expect(r.json).toMatchObject({ gaps: [], testOrderOnly: false, lateRedUnchecked: [] });
-      expect(report()).not.toContain("## Late-red check");
-    });
-
-    it("a task with a red but no plan-execute commit recording it DONE is reported as late-red not checked", async () => {
-      writePlan([TASK_1]);
-      commit("plan");
-      vi.stubEnv("FAKE_EXIT", "1");
-      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-      expect((await red()).code).toBe(0);
-      finishExecute("- DONE — TASK 1: Clamp — implemented\n");
-      vi.stubEnv("FAKE_EXIT", "0");
-      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-      const r = await green();
-      expect(r.code).toBe(0);
-      expect(r.json).toMatchObject({ gaps: [], lateRedUnchecked: [1] });
-      expect(report()).toContain("## Late-red check");
-      expect(report()).toContain(
-        "- Task 1 — not checked: no plan-execute step commit's log records",
-      );
-    });
-
-    it("a test file that only gained lines since its red is no gap; the diff stays in the report", async () => {
-      writePlan([TASK_1]);
-      vi.stubEnv("FAKE_EXIT", "1");
-      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
-      expect((await red()).code).toBe(0);
-      fs.appendFileSync(path.join(cwd, TEST), "\nexpect(clamp(0, 1, 10)).toBe(1);\n");
-      vi.stubEnv("FAKE_EXIT", "0");
-      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
-      const r = await green();
-      expect(r.code).toBe(0);
-      expect(r.json.gaps).toEqual([]);
-      expect(report()).toContain("| added lines only |");
-      expect(report()).toContain("+expect(clamp(0, 1, 10)).toBe(1);");
-    });
-
-    it("green reads a TEST EXCEPTION field inside the block: it clears test-order gaps only from a human-made commit, never not-green", async () => {
+    it("green reads a TEST EXCEPTION field inside the block: it clears a missing red only from a human-made commit, never not-green", async () => {
+      const unproven = (r: { json: Record<string, unknown> }) =>
+        (r.json.unproven as Array<{ name: string }>).map((u) => u.name);
       writePlan([testTask(1, [[TEST, NAME]], [EXCEPTION])]);
       statusRow({ step: "build-worktree-setup", artifacts: [] });
       vi.stubEnv("FAKE_EXIT", "0");
       vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
       let r = await green();
-      expect(kinds(r)).toEqual(["no-red"]);
+      expect(kinds(r)).toEqual([]);
+      expect(unproven(r)).toEqual([NAME]);
       expect(report()).toContain("not honoured");
       expect(report()).toContain("not committed");
 
       statusRow({ step: "build-plan-verify", artifacts: [] });
       const stepCommit = commit("chore(1-x): plan-verify group 1 attempt 1");
       r = await green();
-      expect(kinds(r)).toEqual(["no-red"]);
+      expect(unproven(r)).toEqual([NAME]);
       expect(report()).toContain(stepCommit.slice(0, 7));
       expect(report()).toContain("workflow step commit");
 
@@ -1804,8 +2748,9 @@ describe("bkit tests red / green", () => {
       r = await green();
       expect(r.code).toBe(0);
       expect(r.json.gaps).toEqual([]);
+      expect(unproven(r)).toEqual([]);
       expect(report()).not.toContain("not honoured");
-      expect(report()).toMatch(/Task 1 — honoured; cleared .*no-red/);
+      expect(report()).toMatch(/Task 1 — honoured; cleared the red for/);
 
       vi.stubEnv("FAKE_EXIT", "1");
       vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
@@ -1818,14 +2763,15 @@ describe("bkit tests red / green", () => {
       "  - **TEST EXCEPTION:** a generated file; no test can fail first.",
     ]);
 
-    it("green refuses an exception-only task from a workflow step commit", async () => {
+    it("green refuses an exception-only task from a workflow step commit: exception-refused, verdict FAIL", async () => {
       writePlan([EXCEPTION_ONLY]);
       statusRow({ step: "build-plan-convert", artifacts: ["plan.md"] });
       const stepCommit = commit("chore(1-x): plan-convert attempt 1");
       const r = await green();
       expect(r.code).toBe(1);
       expect(kinds(r)).toEqual(["exception-refused"]);
-      expect(r.json.testOrderOnly).toBe(false);
+      expect(r.json.verdict).toBe("FAIL");
+      expect(r.json.gaps[0].fixable).toBe(false);
       expect(report()).toContain("- Task 1 — not honoured:");
       expect(report()).toContain(stepCommit.slice(0, 7));
       expect(report()).toContain("workflow step commit");

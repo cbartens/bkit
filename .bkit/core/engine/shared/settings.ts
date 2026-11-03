@@ -12,6 +12,7 @@ import {
   type IssueTracker,
 } from "../install/manifest.js";
 import { isOpencodeProvider } from "../render/models.js";
+import { DEP_UPDATERS, type DepUpdater } from "./dep-updater.js";
 import type { OpencodeProvider } from "./egress.js";
 import { readPackageJson } from "./package-json.js";
 
@@ -63,11 +64,19 @@ export interface JiraConfig extends TrackerStates {
   project: string | null;
 }
 
+/** `bkit.workflows.build.publish`: whether a build ends by publishing (push, PR) or holds. */
+export interface BuildPublish {
+  /** Always `true`: a non-local runtime always publishes. */
+  remote: true;
+  /** `false` holds a local build: nothing is pushed, the worktree is kept. */
+  local: boolean;
+}
+
 /** `bkit.workflows.tasks`: the plan caps `tests plan-check` and `challenge merge` enforce. */
 export interface TaskCaps {
-  /** Tasks in one plan group. */
+  /** Tasks in one task group. */
   maxPerGroup: number;
-  /** Planned TEST FIRST tests in one plan group. */
+  /** Planned TEST FIRST tests in one task group. */
   maxTestsPerGroup: number;
   /** TEST FIRST tests one task names. */
   maxTestsPerTask: number;
@@ -119,12 +128,25 @@ export interface BkitConfig {
   /** `bkit.jira`. */
   jira: JiraConfig;
   /** CI lanes whose `skipped` conclusion refuses a ship merge; empty = the capstone's green decides. */
-  shipGateRequiredLanes: string[];
+  ciRequired: string[];
   /**
-   * Globs (`:(glob)` git pathspecs) for paths a push may carry and still run only
-   * `bkit:gate:min` in `.husky/pre-push`; empty = every push runs the full hook.
+   * Globs (`:(glob)` git pathspecs) for paths a push may carry, on top of what bkit's
+   * workflows write (ship's bookkeeping allow-list, `docs/plans/**`, `ciSkipPaths`), and
+   * still run only `bkit:gate:min` in `.husky/pre-push`; empty = that floor alone.
    */
   minPushPaths: string[];
+  /**
+   * Globs (`:(glob)` git pathspecs) for the project docs ship's `[skip ci]` bookkeeping
+   * commit may carry onto the PR without a CI run, beyond the frozen allow-list
+   * (`bkit.testing.ciSkipPaths`, e.g. `CHANGELOG.md`, `README.md`); empty = none.
+   */
+  ciSkipPaths: string[];
+  /**
+   * `{job}/{step}` CI steps whose failure `bkit:generate` fixes, on top of
+   * `CI_GENERATED_FLOOR`: ship regenerates instead of failing when every failed step is
+   * on the list (`bkit.testing.ciGenerated`); empty = that floor alone.
+   */
+  ciGenerated: string[];
   /** The opencode provider recorded on install; null = absent or not a supported provider. */
   opencodeProvider: OpencodeProvider | null;
   /** Every installed opencode provider, supported ones only; empty = none recorded. */
@@ -135,13 +157,30 @@ export interface BkitConfig {
   asks: Record<AskPoint, AskSetting>;
   /** Plan caps; each key that is not an integer >= 1 takes its default. */
   tasks: TaskCaps;
-  /** `bkit.dependencies.updater` is `"none"`: silences the missing-dependency-updater advisory. */
-  depUpdaterOptOut: boolean;
+  /** Build ending; `remote` is always `true`, `local` defaults `true`. */
+  buildPublish: BuildPublish;
+  /** `bkit.dependencies.updater`: the updater the repo runs, or `none`; null = absent, `""` or unrecognised. */
+  depUpdater: DepUpdater | "none" | null;
   /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
   /** `bkit.cloud.agent` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   cloudAgentsExplicit: boolean;
 }
+
+/**
+ * The `{job}/{step}` CI steps of bkit's `bkit-ci.yml` template whose failure a
+ * `bkit:generate` fixes: the capability register and the mirror drift check. Always
+ * counted; `bkit.testing.ciGenerated` adds to it and cannot remove it.
+ */
+export const CI_GENERATED_FLOOR: readonly string[] = [
+  "bkit-tests-static/Check Capability Register",
+  "bkit-tests-static/Run bkit Check",
+];
+
+/** The CI steps ship regenerates for: the floor plus the repo's `bkit.testing.ciGenerated`. */
+export const ciGeneratedSteps = (cfg: Pick<BkitConfig, "ciGenerated">): string[] => [
+  ...new Set([...CI_GENERATED_FLOOR, ...cfg.ciGenerated]),
+];
 
 export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   ciWorkflow: "bkit-ci.yml",
@@ -155,10 +194,12 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   // `started` is a state type every Linear team has; In Review is a name a default team lacks.
   linear: { team: null, project: null, progress: "started", review: "In Review" },
   jira: { site: null, project: null, progress: "In Progress", review: "In Review" },
-  shipGateRequiredLanes: [],
-  // What bkit's workflows write: plan / design / build logs and the ledgers. Never
-  // `docs/**`: a project doc can be a test's input, so a docs edit can red a test.
-  minPushPaths: ["docs/plans/**", "docs/*.jsonl", ".bkit/*.jsonl"],
+  ciRequired: [],
+  // Nothing beyond what bkit writes. Never seed `docs/**`: a project doc can be a test's
+  // input, so a docs edit can red a test; a repo that knows its tests opts in.
+  minPushPaths: [],
+  ciSkipPaths: [],
+  ciGenerated: [],
   opencodeProvider: null,
   opencodeProviders: [],
   cloudAgents: DEFAULT_CLOUD_AGENTS,
@@ -173,8 +214,9 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
     "ship.merge": { ask: true, max: 2 },
   },
   // Plan caps, `.bkit/workflows.md` § Test-first.
-  tasks: { maxPerGroup: 3, maxTestsPerGroup: 15, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
-  depUpdaterOptOut: false,
+  tasks: { maxPerGroup: 5, maxTestsPerGroup: 25, maxTestsPerTask: 10, maxTestFilesPerTask: 3 },
+  buildPublish: { remote: true, local: true },
+  depUpdater: null,
   issueTrackerExplicit: false,
   cloudAgentsExplicit: false,
 };
@@ -194,6 +236,9 @@ function trackerStates(raw: Record<string, unknown>, defaults: TrackerStates): T
   };
 }
 
+const parseDepUpdater = (v: unknown): DepUpdater | "none" | null =>
+  v === "none" || DEP_UPDATERS.includes(v as DepUpdater) ? (v as DepUpdater | "none") : null;
+
 const TASK_CAP_KEYS = Object.keys(CONFIG_DEFAULTS.tasks) as (keyof TaskCaps)[];
 
 const validCap = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 1;
@@ -207,6 +252,32 @@ export function invalidTaskCaps(raw: unknown): string[] {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return ["tasks"];
   const set = raw as Record<string, unknown>;
   return TASK_CAP_KEYS.filter((k) => set[k] !== undefined && !validCap(set[k]));
+}
+
+/**
+ * The dotted keys of a `bkit.workflows.build` value that fall back to their default:
+ * `build` when set but not an object, `build.publish` when set but not an object,
+ * `build.publish.local` when set but not a boolean. `remote` is never listed: the
+ * preflight advisory `bkit-build-publish-remote` owns it.
+ */
+export function invalidBuildPublish(raw: unknown): string[] {
+  if (raw === undefined) return [];
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return ["build"];
+  const publish = (raw as Record<string, unknown>).publish;
+  if (publish === undefined) return [];
+  if (publish === null || typeof publish !== "object" || Array.isArray(publish))
+    return ["build.publish"];
+  const local = (publish as Record<string, unknown>).local;
+  return local !== undefined && typeof local !== "boolean" ? ["build.publish.local"] : [];
+}
+
+/** `bkit.workflows.build.publish`; `remote` always resolves `true`. */
+function buildPublish(raw: unknown): BuildPublish {
+  const { local } = record(raw);
+  return {
+    remote: true,
+    local: typeof local === "boolean" ? local : CONFIG_DEFAULTS.buildPublish.local,
+  };
 }
 
 /** `bkit.workflows.tasks` read key by key; a missing or invalid key takes its default. */
@@ -277,9 +348,11 @@ export function readBkitConfig(root: string): BkitConfig {
   const testing = record(bkit.testing);
   const workflows = record(bkit.workflows);
   const worktree = record(workflows.worktree);
+  const ciSkip = testing.ciSkipPaths;
+  const generated = testing.ciGenerated;
   const copy = worktree.copy;
   const minFreeGb = workflows.minFreeGb;
-  const lanes = testing.shipGate;
+  const lanes = testing.ciRequired;
   const book = testing.minPushPaths;
   const provider = opencode.default;
   const providers = opencode.installed;
@@ -321,11 +394,12 @@ export function readBkitConfig(root: string): BkitConfig {
       project: optionalString(jira.project),
       ...trackerStates(jira, CONFIG_DEFAULTS.jira),
     },
-    shipGateRequiredLanes: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
-    // An explicit [] is kept: it switches the min push off.
+    ciRequired: Array.isArray(lanes) ? lanes.filter(nonEmptyString) : [],
     minPushPaths: Array.isArray(book)
       ? book.filter(nonEmptyString)
       : [...CONFIG_DEFAULTS.minPushPaths],
+    ciSkipPaths: Array.isArray(ciSkip) ? ciSkip.filter(nonEmptyString) : [],
+    ciGenerated: Array.isArray(generated) ? generated.filter(nonEmptyString) : [],
     opencodeProvider:
       typeof provider === "string" && isOpencodeProvider(provider) ? provider : null,
     opencodeProviders: Array.isArray(providers)
@@ -336,7 +410,8 @@ export function readBkitConfig(root: string): BkitConfig {
     cloudAgents: parseCloudAgents(cloud.agent) ?? CONFIG_DEFAULTS.cloudAgents,
     asks: askSettings(workflows),
     tasks: taskCaps(workflows.tasks),
-    depUpdaterOptOut: record(bkit.dependencies).updater === "none",
+    buildPublish: buildPublish(record(workflows.build).publish),
+    depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
     issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
     cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
   };

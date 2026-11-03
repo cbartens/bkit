@@ -120,7 +120,7 @@ describe("antigravity guardrails.cjs — Antigravity contract", () => {
     const first = run("sed -i '' 's/a/b/' src/index.ts", conversation);
     expect(first.decision).toBe("deny");
     expect(first.reason).toContain("edits files through the shell");
-    expect(first.reason).toContain("repeat the same call to proceed");
+    expect(first.reason).toContain("Repeat the same call to proceed.");
     expect(run("sed -i '' 's/a/b/' src/index.ts", conversation)).toEqual({ decision: "allow" });
   });
 

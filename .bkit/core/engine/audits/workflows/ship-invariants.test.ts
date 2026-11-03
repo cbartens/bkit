@@ -21,6 +21,41 @@ function readShip(): string {
   return fs.readFileSync(SHIP_MD, "utf-8");
 }
 
+describe("deferred sweep — disabled-test evidence", () => {
+  const sweep = fs.readFileSync(
+    path.join(REPO_ROOT, ".bkit/core/prompts/bkit-ship-deferred-sweep.md"),
+    "utf-8",
+  );
+  const scan = sweep.slice(sweep.indexOf("8. Scan"), sweep.indexOf("9. Bucket"));
+
+  it("adjudicates every scanner hit against the diff and current coverage", () => {
+    expect(scan).toMatch(/each hit[\s\S]*base revision[\s\S]*current source/i);
+    expect(scan).toMatch(/same behaviour[\s\S]*inputs[\s\S]*failure condition/i);
+    expect(scan).toMatch(/file:line[\s\S]*test name[\s\S]*runner/i);
+    expect(scan).not.toContain("Record every entry under `Blocking Deferrals`");
+  });
+
+  it("requires scoped owner approval and current-contract evidence for retirement", () => {
+    expect(scan).toMatch(/owner-approved retirement/);
+    expect(scan).toMatch(/approval[\s\S]*source[\s\S]*date[\s\S]*retired requirement/i);
+    expect(scan).toMatch(/no current requirement[\s\S]*uncovered/i);
+  });
+
+  it("blocks scan errors, real disabling markers and unproven deletions", () => {
+    expect(scan).toMatch(/scan fails[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/disabling marker[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/neither[\s\S]*proven[\s\S]*Blocking Deferrals/);
+    expect(scan).toMatch(/Verdict.*FAIL/);
+    expect(scan).toMatch(/never[\s\S]*Exempt[\s\S]*Lazy/);
+  });
+
+  it("records each disposition and requires complete adjudication before PASS", () => {
+    expect(sweep).toContain("## Test Coverage Review");
+    expect(sweep).toMatch(/PASS.*every scanner hit is adjudicated/);
+    expect(sweep).toMatch(/FAIL.*scan error.*unresolved scanner hit/);
+  });
+});
+
 /** Inclusive range: first line matching `start`, through the next line matching `end`. */
 function section(content: string, start: RegExp, end: RegExp): string {
   const lines = content.split("\n");
@@ -173,17 +208,20 @@ describe("bkit-ship.md — staging hygiene (banned patterns)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Feature-branch pushes — three steps only, force only in B2 (conflict-resolve)
+// Feature-branch pushes — six steps only, never forced
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — push-timing invariant (feature-branch pushes before merge)", () => {
-  // Ship pushes the feature branch before the merge in exactly three places:
-  // opening a PR that does not exist yet (Step 2), the B2 conflict-resolve
-  // integration (Step 4), and the one pre-merge bookkeeping commit (Commit +
-  // Push Bookkeeping) that carries docs, summaries, ledgers and skill removals
-  // onto the PR so the merge lands them on `dev`. Only B2 may force (with
-  // lease): `bkit branches push --mode=feature` pushes a feature branch with
-  // --force-with-lease.
+  // Ship pushes the feature branch before the merge in exactly these places:
+  // opening a PR that does not exist yet (Step 2), the Path B integration (Step 4,
+  // after merging origin/dev locally),
+  // the one pre-merge bookkeeping commit (Commit + Push Bookkeeping) that carries
+  // docs, summaries, ledgers and skill removals onto the PR so the merge lands
+  // them on `dev`, the regenerate round after a red CI run (Step 10), and a
+  // Failure Remediate fix.
+  // Every one of them is plain: the merge adds commits on top of the pushed
+  // head, so nothing in ship ever needs `--force-with-lease`
+  // (`bkit branches push --mode=feature`).
   const isPush = (line: string) =>
     !/--delete\b/.test(line) &&
     (/\bgit\s+(-C\s+"[^"]+"\s+)?push\b/.test(line) || /"\{BKIT\}" branches push\b/.test(line));
@@ -194,6 +232,8 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
   const isBareForcePush = (line: string) => isPush(line) && /--force(?!-with-lease)/.test(line);
   const isBookkeepingPush = (l: { step: string; line: string }) =>
     l.step === "Commit + Push Bookkeeping" && isPush(l.line);
+  const isIntegratePush = (l: { step: string; line: string }) =>
+    l.step === "Integrate (Path B only)" && isPush(l.line);
   const stepsWhere = (pred: (line: string) => boolean) =>
     [
       ...new Set(
@@ -203,21 +243,36 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       ),
     ].sort();
 
-  it("pushes the feature branch only to open a missing PR, in Integrate (B2), in Commit + Push Bookkeeping and after a Failure Remediate fix", () => {
+  it("pushes the feature branch only to open a missing PR, in Integrate (Path B), in Commit + Push Bookkeeping, after a Merge Gate regenerate and after a Failure Remediate fix", () => {
     expect(stepsWhere(isFeaturePush)).toEqual(
       [
         "Commit + Push Bookkeeping",
         "Failure Remediate",
         "Integrate (Path B only)",
+        "Merge Gate + Merge PR",
         "Verify PR (Worktree Setup + Regression Guard)",
       ].sort(),
     );
   });
 
-  it("force-pushes only in Integrate (B2), and never a bare --force", () => {
-    expect(stepsWhere(isForcedPush)).toEqual(["Integrate (Path B only)"]);
+  it("regenerates only in the Merge Gate, after a red CI run, never up front in Base Check", () => {
+    const regenerates = fencedLinesByStep(readShip())
+      .filter((l) => /"\{BKIT\}" branches regenerate\b/.test(l.line))
+      .map((l) => l.step);
+    expect([...new Set(regenerates)]).toEqual(["Merge Gate + Merge PR"]);
+  });
+
+  it("never force-pushes, with or without lease", () => {
+    expect(stepsWhere(isForcedPush)).toEqual([]);
     const bare = fencedLinesByStep(readShip()).filter((l) => isBareForcePush(l.line));
     expect(bare).toEqual([]);
+  });
+
+  it("the Integrate push is a plain push of the locally merged branch", () => {
+    const pushes = fencedLinesByStep(readShip())
+      .filter(isIntegratePush)
+      .map((l) => l.line);
+    expect(pushes).toEqual(['"{BKIT}" branches push --mode=plain >/dev/null']);
   });
 
   it("the pre-merge bookkeeping push is a plain push — never forced", () => {
@@ -270,7 +325,7 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeGreaterThanOrEqual(0);
     expect(block!.indexOf('cd "{WORKTREE_PATH}"')).toBeLessThan(block!.indexOf("status path"));
     expect(block!).not.toMatch(/--dev-pushes/);
-    expect(step1).toContain("hold `path` as `{STATUS}`");
+    expect(step1).toContain("hold `path` as `STATUS`");
   });
 
   it("Step 1 opens the run in the worktree straight after the lock, before any tracker write", () => {
@@ -447,7 +502,7 @@ describe("bkit-ship.md — the merge is pinned to the head the gate passed", () 
     expect(gate, "bkit runs gate --pr not found").toBeGreaterThan(-1);
     expect(merge, "bkit prs merge not found").toBeGreaterThan(-1);
     expect(gate).toBeLessThan(merge);
-    expect(step).toContain("hold `mergeHead` as `{GATE_HEAD}`");
+    expect(step).toContain("hold `mergeHead` as `GATE_HEAD`");
     expect(step).toMatch(
       /"\{BKIT\}" prs merge [^\n]*--match-head="\{GATE_HEAD\}"[^\n]*--expect-merged/,
     );
@@ -492,19 +547,25 @@ describe("bkit-ship.md — dev writes live in commands", () => {
 // ---------------------------------------------------------------------------
 
 describe("bkit-ship.md — build-challenge remediation regressions", () => {
-  // B2 stages tracked modifications (`--stage-tracked-updates`, `git add -u` inside
-  // `bkit ledgers commit`) before the single commit, including the resolved source files
-  // the conflict-resolve subagent wrote.
-  it("F1: B2 conflict-resolve stages tracked source modifications before its commit and push", () => {
-    const b2 = fences(readShip()).find((f) => /"\{BKIT\}" branches push --mode=feature\b/.test(f));
-    expect(b2, "B2 conflict-resolve push block not found").toBeDefined();
-    const commit = b2!.search(
-      /"\{BKIT\}" ledgers commit [^\n]*--mode=commit --stage-tracked-updates --message="chore\(\{FID\}\): conflict-resolve bkit \[skip ci\]"/,
+  // Path B integrates through `bkit branches sync --merge`: the command carries the
+  // run's uncommitted work, merges origin/dev, unions the ledgers and commits, so the
+  // workflow itself runs no `ledgers commit`, `git commit` or forced push in Integrate.
+  it("F1: Integrate merges origin/dev through bkit branches sync --merge and commits nothing by hand", () => {
+    const integrate = fencedLinesByStep(readShip())
+      .filter((l) => l.step === "Integrate (Path B only)")
+      .map((l) => l.line);
+    const merge = integrate.filter((l) => /"\{BKIT\}" branches sync --merge\b/.test(l));
+    expect(merge).toHaveLength(1);
+    expect(merge[0]).toMatch(/--fid="\{FID\}"/);
+    expect(merge[0]).toMatch(/--file="\{STATUS\}"/);
+    expect(merge[0]).toMatch(
+      /--sentinel="docs\/plans\/\{YYYYMM\}\/logs\/\{FID\}\/\.rebase-failed"/,
     );
-    const push = b2!.indexOf('"{BKIT}" branches push --mode=feature');
-    expect(commit, "B2 does not commit tracked updates through bkit ledgers").toBeGreaterThan(-1);
-    expect(b2).not.toMatch(/\bgit commit\b/);
-    expect(commit).toBeLessThan(push);
+    expect(
+      integrate.filter((l) =>
+        /ledgers commit|\bgit (commit|rebase|merge)\b|--mode=feature/.test(l),
+      ),
+    ).toEqual([]);
   });
 
   // Finding 2 (HIGH): jq rejects a single-quoted program containing a shell
@@ -518,13 +579,12 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
     expect(programs.filter((p) => p.includes("${"))).toEqual([]);
   });
 
-  // B1 integrates through the tested command: the raw `gh pr update-branch` shell
-  // call (with its hand-written `|| { … }` guard) is gone. A 403/network/protection
-  // failure now surfaces as the command's exit 5, which the step's non-zero route
-  // sends to Failure Path; exit 80 maps to `update_pull_request_branch`.
-  it("F3: B1 integrates through `bkit prs update-branch`, never a raw gh call", () => {
+  // Integration never asks GitHub to author the merge: a server-side update-branch
+  // ignores `merge=union`, so the ledgers conflict on the server while a local merge
+  // is clean. Neither the bkit verb nor the raw gh call appears in ship.
+  it("F3: ship never requests a server-side update-branch, through bkit or raw gh", () => {
     const lines = fencedLinesByStep(readShip()).map((l) => l.line);
-    expect(lines.filter((l) => /prs update-branch\b/.test(l)).length).toBeGreaterThan(0);
+    expect(lines.filter((l) => /prs update-branch\b/.test(l))).toEqual([]);
     expect(lines.filter((l) => /gh\s+pr\s+update-branch\b/.test(l))).toEqual([]);
   });
 
@@ -631,10 +691,11 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     }
   });
 
-  it("wires bkit ledgers into exactly 3 bash regions", () => {
-    // B2 stage, Commit + Push Bookkeeping, the Failure Remediate fix commit. The Failure Path
-    // flush, the re-validate bookkeeping check and the close flush run inside commands.
-    expect(ledgersBlocks(readShip())).toHaveLength(3);
+  it("wires bkit ledgers into exactly 2 bash regions", () => {
+    // Commit + Push Bookkeeping and the Failure Remediate fix commit. The Integrate
+    // merge commit, the Failure Path flush, the re-validate bookkeeping check and the
+    // close flush run inside commands.
+    expect(ledgersBlocks(readShip())).toHaveLength(2);
   });
 
   it("every bkit ledgers stage / commit stops the step on a non-zero exit", () => {

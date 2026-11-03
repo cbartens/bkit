@@ -14,7 +14,7 @@ import { describe, expect, it } from "vitest";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const WORKFLOWS_DIR = path.join(REPO_ROOT, ".bkit/core/workflows");
-const REASONS = new Set(["decision", "grill", "draft", "loop", "assumed", "merge"]);
+const REASONS = new Set(["decision", "grill", "draft", "loop", "foreign-path", "assumed", "merge"]);
 
 const workflows = fs
   .readdirSync(WORKFLOWS_DIR)
@@ -45,7 +45,7 @@ describe("every owner wait writes owner-pause and owner-answer", () => {
 
     it(`${name}: writes owner-pause with a known reason and owner-answer`, () => {
       const pause = [
-        ...content.matchAll(/--workflow=(\w+) --type=owner-pause --field=reason=(\w+)/g),
+        ...content.matchAll(/--workflow=(\w+) --type=owner-pause --field=reason=([\w-]+)/g),
       ];
       expect(pause.length).toBeGreaterThan(0);
       for (const [, wf, reason] of pause) {

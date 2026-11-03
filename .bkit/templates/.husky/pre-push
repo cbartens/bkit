@@ -14,10 +14,40 @@
 # Revert-branch bypass: on a revert branch the unit and integration tiers are skipped; lint +
 # typecheck still run.
 #
-# Min push: every changed file matches `bkit.testing.minPushPaths` (package.json; default plan logs,
-# ledgers) → `bkit:gate:min` replaces the full gate; MIN_PUSH=1 for repo extras. Files decide,
-# never `[skip ci]`.
+# Min push: every changed file is one bkit writes or one that `bkit.testing.minPushPaths`
+# adds (package.json; .bkit/templates.md § Git hooks — Husky) → `bkit:gate:min` replaces the
+# full gate; MIN_PUSH=1 for repo extras. Files decide, never `[skip ci]`.
 set -e
+
+# Log: the hook runs itself once more with everything it prints copied to tmp/pre-push.log,
+# rewritten each push, so a reader whose output was cut short, or who pushed in the
+# background, still has the whole run. The path is printed first (tail -f it while the push
+# runs) and last, with the exit code. Git's ref list on stdin reaches the inner run unchanged,
+# and the hook exits with the inner run's code. Output goes to stderr, where git sends a
+# hook's output anyway. `git push --no-verify`, and a checkout without husky installed (a
+# linked worktree), run no hook and write no log.
+if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
+  PRE_PUSH_LOG=tmp/pre-push.log
+  PRE_PUSH_RC_FILE=$(mktemp)
+  mkdir -p tmp
+  {
+    echo "[pre-push] log: $PRE_PUSH_LOG"
+    pre_push_rc=0
+    BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 sh "$0" "$@" 2>&1 || pre_push_rc=$?
+    echo "[pre-push] log: $PRE_PUSH_LOG (exit $pre_push_rc)"
+    echo "$pre_push_rc" > "$PRE_PUSH_RC_FILE"
+  } | tee "$PRE_PUSH_LOG" >&2
+  pre_push_rc=$(cat "$PRE_PUSH_RC_FILE")
+  rm -f "$PRE_PUSH_RC_FILE"
+  exit "$pre_push_rc"
+fi
+
+# Git exports GIT_DIR to a hook and everything it starts (from a linked worktree:
+# <main>/.git/worktrees/<name>). It beats a child's cwd and -C, so a test's `git -C "$tmp" init`
+# re-initialises this repo (core.bare=true in the shared .git/config) and a fixture's
+# `git config user.email` lands here too. The hook runs from the work tree root, so git finds
+# the repo without them.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
 
 # ── delete-only push: nothing leaves this machine, so there is nothing to gate ──
 # `git push origin --delete <branch>` runs this hook too. Git feeds one line per ref on
@@ -25,23 +55,35 @@ set -e
 # all-zero local sha. When EVERY line is a delete, the push carries no commits. A push
 # mixing a delete with a real update still gates, and so does an empty ref list. Reading
 # stdin here is safe: every later command redirects from /dev/null. `[ -t 0 ]` keeps a
-# hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) for
-# repo extras that gate only dev pushes (e.g. scripts/graphify/bkit-graph-pre-push.sh),
-# PUSH_SHAS (every pushed commit) and PUSH_SHARED_SHAS (those pushed to dev / main).
+# hand-run hook from hanging. The loop also sets PUSH_DEV_SHA (commit pushed to dev) and
+# PUSH_BRANCH_SHA (commit pushed to the current branch, empty when the push does not update
+# it) for repo extras (e.g. scripts/graphify/bkit-graph-pre-push.sh), PUSH_SHAS (every pushed
+# commit), PUSH_SHARED_SHAS (those pushed to dev / main) and PUSH_BRANCH_REMOTE_SHA (the head
+# the remote holds for the current branch, empty when it holds none), which the CI-suppressor
+# guard below hands to `bkit ci bookkeeping-push`.
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 PUSH_SAW_REF=0
 PUSH_HAS_COMMITS=0
 PUSH_DEV_SHA=""
+PUSH_BRANCH_SHA=""
 PUSH_SHAS=""
+PUSH_UPDATES=""
 PUSH_SHARED_SHAS=""
+PUSH_BRANCH_REMOTE_SHA=""
 if [ ! -t 0 ]; then
-  while read -r _push_local_ref push_local_sha push_remote_ref _push_remote_sha; do
+  while read -r _push_local_ref push_local_sha push_remote_ref push_remote_sha; do
     [ -n "$push_local_sha" ] || continue
     PUSH_SAW_REF=1
     case "$push_local_sha" in
       *[!0]*)
         PUSH_HAS_COMMITS=1
         PUSH_SHAS="$PUSH_SHAS $push_local_sha"
+        PUSH_UPDATES="$PUSH_UPDATES --update=$push_remote_sha:$push_local_sha"
         [ "$push_remote_ref" = "refs/heads/dev" ] && PUSH_DEV_SHA="$push_local_sha"
+        if [ "$push_remote_ref" = "refs/heads/$BRANCH" ]; then
+          PUSH_BRANCH_SHA="$push_local_sha"
+          case "$push_remote_sha" in *[!0]*) PUSH_BRANCH_REMOTE_SHA="$push_remote_sha" ;; esac
+        fi
         case "$push_remote_ref" in
           refs/heads/dev|refs/heads/main) PUSH_SHARED_SHAS="$PUSH_SHARED_SHAS $push_local_sha" ;;
         esac
@@ -55,7 +97,6 @@ if [ "$PUSH_SAW_REF" = "1" ] && [ "$PUSH_HAS_COMMITS" = "0" ]; then
 fi
 # ── end delete-only push
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0
 case "$BRANCH" in
@@ -71,6 +112,12 @@ esac
 # -> allowed ([skip ci] pushes for mid-loop status, abort handover). dev/main exempt;
 # gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
 # the tokens GitHub honours; bkit owns that list.
+# Exception, the same one ship's merge gate makes: a push that adds only files on ship's
+# `--scope=pr` allow-list (.bkit/workflows.md § `/bkit-ship` — 14 steps) on top of the
+# head the remote already holds leaves nothing new for CI to test, so the PR's checks at
+# that head still cover the code. `bkit ci bookkeeping-push` exits 0 for exactly that
+# shape. A rewritten head (force-push) or any code file still blocks. The merge gate
+# (`bkit runs gate --validated=`) stays the authority on what merges.
 case "$BRANCH" in
   dev|main) ;;
   *)
@@ -79,9 +126,14 @@ case "$BRANCH" in
         # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
         OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
         if [ -n "$OPEN_PR" ]; then
-          echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open — its checks would stay vacuously green." >&2
-          echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
-          exit 1
+          if [ -n "$PUSH_BRANCH_REMOTE_SHA" ] &&
+            pnpm -s bkit ci bookkeeping-push --from="$PUSH_BRANCH_REMOTE_SHA" < /dev/null > /dev/null; then
+            echo "[pre-push] HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open, but every file changed since the remote head $PUSH_BRANCH_REMOTE_SHA is bookkeeping — the PR's checks at that head still cover the code; allowing." >&2
+          else
+            echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open — its checks would stay vacuously green." >&2
+            echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
+            exit 1
+          fi
         fi
       else
         echo "[pre-push] WARN: HEAD on '$BRANCH' carries a CI-suppressing token but gh is unavailable to check for an open PR; allowing. If a PR is open, ensure HEAD triggers CI." >&2
@@ -90,16 +142,13 @@ case "$BRANCH" in
     ;;
 esac
 
-# Min push: `bkit ci min-push` exits 0 only when every file changed since each pushed
-# commit left origin/dev (else origin/main) matches `bkit.testing.minPushPaths`. Anything else
-# (code, no files, unreadable range, no refs) → MIN_PUSH=0, full gate: a skip on no
-# evidence reads as a pass.
+# Min push: every outgoing ref is either bookkeeping since its integration base,
+# or a bookkeeping increment over a locally checked ancestor of its remote head.
+# Missing evidence, code or rewritten history keeps the full gate.
 MIN_PUSH=0
-if [ -n "$PUSH_SHAS" ]; then
-  MIN_PUSH_REFS=""
-  for push_sha in $PUSH_SHAS; do MIN_PUSH_REFS="$MIN_PUSH_REFS --ref=$push_sha"; done
+if [ -n "$PUSH_UPDATES" ]; then
   # shellcheck disable=SC2086 # hex SHAs only: word-splitting is the point
-  if pnpm -s bkit ci min-push $MIN_PUSH_REFS < /dev/null > /dev/null; then
+  if pnpm -s bkit ci min-push $PUSH_UPDATES < /dev/null > /dev/null; then
     MIN_PUSH=1
   fi
 fi
@@ -109,9 +158,8 @@ fi
 # the open-PR guard above (workflows push `[skip ci]` code heads mid-run).
 for push_sha in $PUSH_SHARED_SHAS; do
   if pnpm -s bkit ci skip-token --ref="$push_sha" < /dev/null > /dev/null; then
-    if [ "$MIN_PUSH" != "1" ] &&
-      ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
-      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside bkit.testing.minPushPaths — that code would land on dev / main with no CI run." >&2
+    if ! pnpm -s bkit ci min-push --ref="$push_sha" < /dev/null > /dev/null; then
+      echo "[pre-push] BLOCKED: $push_sha carries a CI-suppressing token and changes files outside the min-push paths (what bkit writes, plus bkit.testing.minPushPaths) — that code would land on dev / main with no CI run." >&2
       echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
       exit 1
     fi
@@ -129,14 +177,25 @@ done
 # Fix: `pnpm bkit install`, stage the regenerated files, commit, push.
 pnpm bkit check < /dev/null
 
+# Dependency audit — the same gate CI's static lane runs. A high or critical advisory
+# stops the push here, so a remote run is not spent on a red this machine could have
+# caught. It reads the advisory registry: the push it precedes needs the network anyway.
+# Fails closed — a blocking advisory, an unusable answer or an unreachable registry stops
+# the push, never a pass on no answer. `--unreachable=warn` relaxes only the last of those.
+# A recommendation: adopt it, and CI stops being the first place an advisory is seen.
+# Skipped until scripts/ci/ holds the script (bkit install never writes it).
+if [ -f scripts/ci/bkit-check-dependency-audit.mjs ]; then
+  node scripts/ci/bkit-check-dependency-audit.mjs < /dev/null
+fi
+
 # Slop base on a dev push — the commit CI's slop scan compares against: the head of the last
-# green CI push run on dev, else origin/dev (scripts/ci/lanes/resolve-push-base.mjs, the
+# green CI push run on dev, else origin/dev (scripts/ci/lanes/bkit-resolve-push-base.mjs, the
 # script CI's planner runs, in local mode). Exported as SLOP_BASE_REF, which `bkit ci slop`
 # reads, so a finding a red push already landed on dev fails here as it does in CI. Other
 # branches keep the merge-base default. Skipped until scripts/ci/lanes/ holds the script.
-if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/resolve-push-base.mjs ]; then
+if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/bkit-resolve-push-base.mjs ]; then
   PUSH_BASE_SOURCE_FILE=$(mktemp)
-  CI_PUSH_BASE=$(SOURCE_FILE="$PUSH_BASE_SOURCE_FILE" node scripts/ci/lanes/resolve-push-base.mjs \
+  CI_PUSH_BASE=$(SOURCE_FILE="$PUSH_BASE_SOURCE_FILE" node scripts/ci/lanes/bkit-resolve-push-base.mjs \
     --local --branch=dev --head="$PUSH_DEV_SHA" < /dev/null || echo "")
   CI_PUSH_BASE_SOURCE=$(cat "$PUSH_BASE_SOURCE_FILE" 2>/dev/null || echo "unknown")
   rm -f "$PUSH_BASE_SOURCE_FILE"
@@ -155,12 +214,13 @@ if [ -n "$PUSH_DEV_SHA" ] && [ -f scripts/ci/lanes/resolve-push-base.mjs ]; then
   fi
 fi
 
-# Capability register (graphify, .bkit/templates.md § graphify) — blocks a push to dev when
-# docs/capabilities.md is not what the pushed commit builds (~30s); warn-only on other
-# branches. Skipped until scripts/graphify/ holds the script, and on a min push: it changes
-# no source the register is built from.
+# Capability register (graphify, .bkit/templates.md § graphify) — blocks a push to dev, and a
+# push of a branch with an open PR into dev, when docs/capabilities.md is not what the pushed
+# commit builds (~30s); warn-only on other branches. Skipped until scripts/graphify/ holds the
+# script, and on a min push: it changes no source the register is built from.
 if [ "$MIN_PUSH" != "1" ] && [ -f scripts/graphify/bkit-graph-pre-push.sh ]; then
-  PUSH_DEV_SHA="$PUSH_DEV_SHA" IS_REVERT="$IS_REVERT" bash scripts/graphify/bkit-graph-pre-push.sh < /dev/null
+  PUSH_DEV_SHA="$PUSH_DEV_SHA" BRANCH="$BRANCH" PUSH_BRANCH_SHA="$PUSH_BRANCH_SHA" IS_REVERT="$IS_REVERT" \
+    bash scripts/graphify/bkit-graph-pre-push.sh < /dev/null
 fi
 
 # tmp/ prune — deletes files under tmp/ untouched for 7+ days. Not a gate: a failed
@@ -174,17 +234,17 @@ fi
 # the bkit agent workflows and prompts dispatch through. Edit the scripts, not this
 # hook. Fast repo extras go ABOVE, with `bkit check`; slow ones BELOW.
 # Min push: `bkit:gate:min` only. Revert path drops the suite only: prose
-# and slop:delta still run. Otherwise the deepest push gate package.json declares.
+# and bkit:slop:delta still run. Otherwise the deepest push gate package.json declares.
 if [ "$MIN_PUSH" = "1" ]; then
   echo "[pre-push] min push — bkit:gate:min instead of the full gate" >&2
-  pnpm bkit:gate:min < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:min < /dev/null
 elif [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — skipping the test suite"
-  pnpm bkit:gate:static < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static < /dev/null
 elif grep -q '"bkit:gate:static-unit-integration"[[:space:]]*:' package.json 2>/dev/null; then
-  pnpm bkit:gate:static-unit-integration < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static-unit-integration < /dev/null
 else
-  pnpm bkit:gate:static-unit < /dev/null
+  pnpm -s bkit ci push-gate --gate=bkit:gate:static-unit < /dev/null
 fi
 
 # Slow repo extras go here, above the disk prune. Ones that need Docker, a database or a

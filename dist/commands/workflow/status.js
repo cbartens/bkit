@@ -2,9 +2,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
+import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
+import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, statusLocation, } from "../lib.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, } from "../lib.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -30,10 +32,12 @@ export const STEP_FLAG = {
 export const GROUP_FLAG = {
     name: "group",
     type: "string",
-    help: "only rows for this plan group (positive integer)",
+    help: "only rows for this task group (positive integer)",
 };
 /** Exit code: status.jsonl missing, unreadable, or not valid NDJSON. */
 export const EXIT_NO_STATUS = 3;
+/** Exit code: the owner-pause friction row was not written; the status row is kept. */
+export const EXIT_PAUSE_FRICTION = 4;
 /** Every row of status.jsonl, whatever its type; exit 3 when the file is missing or a line is not JSON. */
 export function readStatusRows(file) {
     if (!fs.existsSync(file))
@@ -62,6 +66,14 @@ export function readStatusRowsAt(file, ref) {
         throw new CommandError(EXIT_NO_STATUS, `${spec} does not exist`);
     return parseStatusRows(text, spec);
 }
+/**
+ * Step names a row may carry from before a rename, read as the current name so a run
+ * in flight across the rename folds, resumes and counts as one (`docs/migrations.md`).
+ * The row on disk is history and is not rewritten.
+ */
+const RENAMED_STEPS = {
+    "build-plan-execute": "build-plan-tasks",
+};
 /** Parse NDJSON status text; `label` names it in errors. Malformed is an error, never "no rows". */
 function parseStatusRows(text, label) {
     return text
@@ -75,7 +87,9 @@ function parseStatusRows(text, label) {
         if (typeof parsed.value !== "object" || parsed.value === null) {
             throw new CommandError(EXIT_NO_STATUS, `${label} line ${i + 1} is not a JSON object`);
         }
-        return parsed.value;
+        const row = parsed.value;
+        const renamed = typeof row.step === "string" ? RENAMED_STEPS[row.step] : undefined;
+        return renamed === undefined ? row : { ...row, step: renamed };
     });
 }
 /** The rows as the fold reads them; the fold skips types it does not model. */
@@ -127,7 +141,14 @@ const VERDICTS = ["PASS", "CONCERNS", "FAIL"];
 const DEBUG_MODES = ["NORMAL", "SOAK"];
 const PUSH_MODES = ["PR", "LOCAL"];
 const STRATEGIES = ["STANDARD", "PIVOT", "FINAL"];
-const ROUTE_FIELDS = ["verdict", "failures", "strategy", "debugMode", "pushMode"];
+const ROUTE_FIELDS = [
+    "verdict",
+    "failures",
+    "strategy",
+    "debugMode",
+    "pushMode",
+    "publish",
+];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
 function route(runs, workflow, step, group) {
@@ -138,6 +159,8 @@ function route(runs, workflow, step, group) {
         nextStrategy: null,
         debugMode: null,
         pushMode: null,
+        publish: null,
+        publishSource: null,
         debugAttempt: 0,
         parentSha: null,
     };
@@ -185,6 +208,7 @@ function route(runs, workflow, step, group) {
             problems[field] =
                 value === "" ? `${field} not recorded` : `${field} "${value}" is not ${allowed.join("|")}`;
     }
+    problems.publish = "publish not resolved: needs --workflow=build with --prompt-file";
     const attempt = Number(lastRun(runs, workflow)?.debugAttempt ?? 0);
     out.debugAttempt = Number.isFinite(attempt) ? attempt : 0;
     return { out, problems };
@@ -205,13 +229,52 @@ export function debugStart(runs, promptText, fixMax) {
             open.steps.some((s) => s.step === "debug-failure-soak" && s.status === "DONE"));
     const fixes = allRunsDoneSteps(runs, "debug", { step: "debug-failure-remediate" }).length;
     const debugMode = promptText.includes("[soak]") || soaking || fixes >= fixMax ? "SOAK" : "NORMAL";
+    const selection = !promptText.includes("[local]") && validateCiSelection(open?.ciSelection)
+        ? open.ciSelection
+        : null;
+    const ci = selection?.mode === "ci" ? selection : null;
+    const ciGeneration = typeof open?.ciGeneration === "number" ? open.ciGeneration : 0;
+    const current = open?.steps.filter((s) => s.status === "DONE" && s.ciGeneration === ciGeneration) ?? [];
+    const defaults = promptText.includes("[live=off]")
+        ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
+        : [...BKIT_DEBUG_GATES];
+    const covering = ci && ci.redTiers.length > 0
+        ? defaults
+            .filter((g) => ci.redTiers.every((tier) => g.slice("bkit:gate:".length).split("-").includes(tier)))
+            .reverse()
+        : [];
     return {
         debugAttempt: attempt,
         debugMode,
         repro: promptText.includes("[repro]"),
-        gates: promptText.includes("[live=off]")
-            ? BKIT_DEBUG_GATES.filter((g) => !g.endsWith("-live"))
-            : [...BKIT_DEBUG_GATES],
+        gates: [...new Set([...covering, ...defaults])],
+        ciRun: ci?.runId ?? null,
+        ciGeneration,
+        redTiers: ci?.redTiers ?? [],
+        ciFixDone: ci !== null &&
+            current.some((s) => ["debug-failure-remediate", "debug-failure-soak"].includes(s.step)),
+        ciReproduced: ci !== null &&
+            current.some((s) => s.step === "debug-failure-reproduce" && s.reproduced === "YES"),
+    };
+}
+const PUBLISH_TOKEN = /(?<![\w-])publish=(true|false)(?![\w-])/;
+/**
+ * Build's ending, from the session prompt, `bkit.workflows.build.publish` and the runtime.
+ * A `publish=true|false` token wins; else LOCAL reads `publish.local` and any other runtime
+ * `publish.remote`. A non-LOCAL `false` resolves `true`. No `runtime-resolved` row throws.
+ */
+export function publishRoute(rows, promptText, config) {
+    const row = rows.filter((r) => r.type === "runtime-resolved" && r.workflow === "build").at(-1);
+    if (row === undefined)
+        throw new CommandError(EXIT_ROUTE_MISSING, "no runtime-resolved row for build: Step 2 never recorded the runtime");
+    const local = row.runtime === "LOCAL";
+    const token = PUBLISH_TOKEN.exec(promptText)?.[1];
+    const wanted = token !== undefined ? token === "true" : local ? config.local : config.remote;
+    if (!local && !wanted)
+        return { publish: true, publishSource: "coerced" };
+    return {
+        publish: wanted,
+        publishSource: token !== undefined ? "token" : local ? "local" : "remote",
     };
 }
 /** `--file`, else the debug status.jsonl `--fid` and `--month` name. */
@@ -261,6 +324,7 @@ export const statusCommand = {
     verbs: {
         path: {
             summary: "Where this workflow's status.jsonl lives.",
+            use: "by-hand",
             flags: [
                 WORKFLOW_FLAG,
                 { name: "fid", type: "string", required: true, help: "feature id" },
@@ -287,6 +351,7 @@ export const statusCommand = {
         },
         route: {
             summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions.",
+            use: "workflow",
             flags: [
                 { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
                 WORKFLOW_FLAG,
@@ -311,13 +376,18 @@ export const statusCommand = {
                 {
                     name: "prompt-file",
                     type: "string",
-                    help: "debug only: the session prompt; decides this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run)",
+                    help: "debug or build: the session prompt; debug: this run's attempt, mode, repro and gates (a missing status.jsonl is a fresh run); build: publish and publishSource",
                 },
                 { name: "fid", type: "string", help: "with --prompt-file, in place of --file: feature id" },
                 { name: "month", type: "string", help: "with --prompt-file, in place of --file: YYYYMM" },
             ],
             output: {
                 verdict: "PASS|CONCERNS|FAIL of the step's last DONE row in the active run, or null",
+                ciRun: "active saved CI run ID with --prompt-file, or null; explicit [local] clears it",
+                ciGeneration: "active saved selection generation with --prompt-file, or 0",
+                redTiers: "active selected failed tiers with --prompt-file; empty for local or unknown jobs",
+                ciFixDone: "whether the active generation has a DONE remediation or soak",
+                ciReproduced: "whether the active generation has DONE reproduction with YES",
                 failures: "its failures (absent on PASS|CONCERNS = 0, absent on FAIL = null: count unknown), or null",
                 strategy: "the step's last strategy across ALL runs, or null",
                 nextStrategy: "next rung: STANDARD, PIVOT, FINAL (null without --step)",
@@ -326,6 +396,8 @@ export const statusCommand = {
                 debugAttempt: "debugAttempt of the active run (0 when unset); with --prompt-file, this invocation's run number (a resume keeps its number)",
                 repro: "with --prompt-file: [repro] in the prompt",
                 gates: "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
+                publish: "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
+                publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
             },
             exitCodes: {
@@ -355,8 +427,8 @@ export const statusCommand = {
                     }
                 }
                 const promptFile = str(ctx.flags.promptFile);
-                if (promptFile !== undefined && ctx.flags.workflow !== "debug")
-                    throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug");
+                if (promptFile !== undefined && !["debug", "build"].includes(String(ctx.flags.workflow)))
+                    throw new CommandError(EXIT.USAGE, "--prompt-file is for --workflow=debug or build");
                 const file = routeFile(ctx);
                 let promptText = "";
                 if (promptFile !== undefined) {
@@ -369,9 +441,16 @@ export const statusCommand = {
                 const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
                 if (promptFile !== undefined) {
                     const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-                    const fixMax = readBkitConfig(root).asks["debug.fix"].max;
-                    Object.assign(out, debugStart(runs, promptText, fixMax));
-                    delete problems.debugMode;
+                    const config = readBkitConfig(root);
+                    if (ctx.flags.workflow === "debug") {
+                        Object.assign(out, debugStart(runs, promptText, config.asks["debug.fix"].max));
+                        delete problems.debugMode;
+                    }
+                    else {
+                        const rows = fs.existsSync(file) ? readStatusRows(file) : [];
+                        Object.assign(out, publishRoute(rows, promptText, config.buildPublish));
+                        delete problems.publish;
+                    }
                 }
                 ctx.emit(out);
                 const failed = required.filter((r) => problems[r] !== undefined);
@@ -386,6 +465,7 @@ export const statusCommand = {
         },
         resume: {
             summary: "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside.",
+            use: "by-hand",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl; a missing file is a run with no rows" },
                 { ...WORKFLOW_FLAG, help: `workflow name: ${Object.keys(WORKFLOW_STEPS).join(", ")}` },
@@ -395,10 +475,10 @@ export const statusCommand = {
                 number: "the step number to continue at (1 when no run is active)",
                 title: "the step heading's title",
                 after: "the DONE row that placed it, or null",
-                group: "that row's plan group, or null",
+                group: "that row's task group, or null",
                 active: "whether the latest run is this workflow, still IN_PROGRESS",
-                challengeRound: "build: the round Step 10's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
-                challengeDone: "build: true once the last allowed challenge round has merged, so Step 10 goes on to Step 11; null for other workflows",
+                challengeRound: "build: the round Step 11's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
+                challengeDone: "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
             },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
             run: (ctx) => {
@@ -416,6 +496,7 @@ export const statusCommand = {
         },
         meta: {
             summary: "Append a workflow-meta row (run-level routing state).",
+            use: "workflow",
             flags: [
                 FILE_FLAG,
                 WORKFLOW_FLAG,
@@ -427,6 +508,11 @@ export const statusCommand = {
                     help: "positive integer, or run (the active run's number)",
                 },
                 { name: "opened-pr", type: "boolean", help: "record openedPr: this run opened the PR" },
+                {
+                    name: "ci-selection-file",
+                    type: "string",
+                    help: "validated atomic debug CI or local selection JSON",
+                },
             ],
             output: { row: "the appended workflow-meta row" },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (meta never starts a log)" },
@@ -434,6 +520,22 @@ export const statusCommand = {
                 const file = statusFile(ctx);
                 const at = statusTimestamp();
                 const fields = {};
+                if (ctx.flags.ciSelectionFile !== undefined) {
+                    const parsed = parseJson(fs.readFileSync(path.resolve(ctx.cwd, String(ctx.flags.ciSelectionFile)), "utf-8"));
+                    const selection = parsed.ok ? parsed.value : null;
+                    if (!validateCiSelection(selection))
+                        throw new CommandError(EXIT.USAGE, "invalid CI selection");
+                    const active = readRuns(file).at(-1);
+                    if (ctx.flags.workflow !== "debug" ||
+                        active?.workflow !== "debug" ||
+                        active.status !== "IN_PROGRESS")
+                        throw new CommandError(EXIT.USAGE, "CI selection needs an active debug run");
+                    const same = validateCiSelection(active.ciSelection) &&
+                        ciSelectionIdentity(active.ciSelection) === ciSelectionIdentity(selection);
+                    fields.ciSelection =
+                        selection.mode === "local" ? { mode: "local", reason: selection.reason } : selection;
+                    fields.ciGeneration = (Number(active.ciGeneration) || 0) + (same ? 0 : 1);
+                }
                 for (const { key, check } of Object.values(META_FIELDS)) {
                     const v = str(ctx.flags[key]);
                     // `--debug-attempt=run`: the active run's number, read once the log is known to exist.
@@ -466,7 +568,8 @@ export const statusCommand = {
             },
         },
         row: {
-            summary: "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI).",
+            summary: "Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row.",
+            use: "workflow",
             flags: [
                 FILE_FLAG,
                 WORKFLOW_FLAG,
@@ -484,7 +587,10 @@ export const statusCommand = {
                 },
             ],
             output: { row: "the appended row" },
-            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl does not exist (a row never starts a log)" },
+            exitCodes: {
+                [EXIT_NO_STATUS]: "status.jsonl does not exist (a row never starts a log)",
+                [EXIT_PAUSE_FRICTION]: "an owner-pause row was appended but its human-confirm friction row was not written",
+            },
             run: (ctx) => {
                 const type = String(ctx.flags.type);
                 if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(type))
@@ -504,10 +610,51 @@ export const statusCommand = {
                     at: statusTimestamp(),
                     ...fields,
                 };
+                const prior = type === "owner-pause" ? fs.readFileSync(file, "utf-8") : "";
                 fs.appendFileSync(file, appendLine(row));
+                if (type === "owner-pause")
+                    recordPause(ctx.cwd, file, row, prior);
                 ctx.emit({ row });
                 return EXIT.OK;
             },
         },
     },
 };
+const pauseReason = (row) => row["reason"] === undefined ? undefined : String(row["reason"]);
+/**
+ * Log an owner pause as `human-confirm` friction in the active run's books. A
+ * follow-up wait writes nothing: `prior` (the status file before this row) holds an
+ * `owner-pause` row with the same workflow and reason and no `step-done` row after it.
+ * Nothing is written outside an active run or with `BKIT_ENGINE_JOURNAL=off`.
+ */
+function recordPause(cwd, file, row, prior) {
+    if (!journalEnabled())
+        return;
+    const reason = pauseReason(row);
+    let waiting = false;
+    for (const line of prior.split("\n")) {
+        const parsed = parseJson(line);
+        if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object")
+            continue;
+        const r = parsed.value;
+        if (r["type"] === "step-done")
+            waiting = false;
+        else if (r["type"] === "owner-pause" && r["workflow"] === row.workflow) {
+            waiting ||= pauseReason(r) === reason;
+        }
+    }
+    if (waiting)
+        return;
+    const run = resolveActiveRun({ cwd, file });
+    if (run === undefined)
+        return;
+    const wrote = appendFrictionRow(run.bookRoot, pauseFrictionRow({
+        workflow: row.workflow,
+        reason,
+        bookRoot: run.bookRoot,
+        parentSha: resolveGitSha("HEAD", run.bookRoot),
+    }));
+    if (!wrote.ok) {
+        throw new CommandError(EXIT_PAUSE_FRICTION, `owner-pause row kept; its friction row was not written: ${wrote.error}`);
+    }
+}

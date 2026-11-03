@@ -43,6 +43,79 @@ const allDispatchFences = (md: string) =>
 const dispatchFences = (md: string) => allDispatchFences(md).filter((f) => !/--sha[= ]/.test(f));
 const devDispatchFences = (md: string) => allDispatchFences(md).filter((f) => /--sha[= ]/.test(f));
 
+function debugStep(number: number): string {
+  const headings = [...debugMd.matchAll(/^## .*Step (\d+) —[^\n]*$/gm)];
+  const index = headings.findIndex((match) => Number(match[1]) === number);
+  const start = headings[index]?.index;
+  if (start === undefined) throw new Error(`Missing debug step ${number}`);
+  return debugMd.slice(start, headings[index + 1]?.index ?? debugMd.length);
+}
+
+describe("selected CI evidence routing", () => {
+  it("requires main branch selected CI proof at the held pushed commit before success", () => {
+    const close = debugStep(11);
+    expect(close).toMatch(/`BRANCH` = `dev` \*\*or\*\* `main`[^\n]*`\{PR_OPEN\}` = 0/);
+    expect(close).toMatch(/`BRANCH` = `dev` \*\*or\*\* `main`[^\n]*`TRIGGER_PR` = 0/);
+    const guard = close.match(/^7\. \*\*Run only if\*\*[^\n]+/m)?.[0];
+    expect(guard).toMatch(/\*\*or\*\* CI is selected/);
+    const push = fences(close).find((body) =>
+      /branches push --mode=feature --require-ci\s*\n/.test(body),
+    );
+    expect(push).toBeDefined();
+    expect(close.slice(0, close.indexOf("7. **Run only if**"))).toMatch(
+      /hold `sha` as `VERIFY_HEAD`/,
+    );
+    const proof = close.slice(close.indexOf("With a saved CI selection, require fail-then-pass"));
+    expect(proof).toMatch(
+      /`VERIFY_HEAD`[^\n]*(?:empty|not held|missing)[^\n]*\*\*Failure Path\*\*/,
+    );
+    expect(proof).toMatch(/runs wait --head="\{VERIFY_HEAD\}"/);
+    expect(proof).toMatch(/runs gate --head="\{VERIFY_HEAD\}"[^\n]*--ci-selection-file=/);
+    expect(proof.indexOf('runs gate --head="{VERIFY_HEAD}"')).toBeLessThan(proof.indexOf("10."));
+  });
+
+  it("routes selected evidence through context diagnosis and generation-scoped fixes", () => {
+    const setup = debugStep(1) + debugStep(2);
+    expect(setup).toMatch(/branches parse[^\n]*--workflow=debug/);
+    expect(setup).toMatch(/runs locate\b/);
+    expect(setup).toMatch(/status meta[^\n]*--ci-selection-file=/);
+    expect(debugMd.slice(0, debugMd.indexOf("## "))).toMatch(/(?:selection|evidence)[\s\S]*resum/i);
+    expect(debugStep(4)).toMatch(/context fetch[^\n]*--ci-selection-file=/);
+    expect(debugStep(3)).toContain("--ci-run");
+    expect(debugStep(3)).toContain("--ci-url");
+    expect(debugStep(3)).toMatch(/source[\s\S]*local[\s\S]*clamp|clamp[\s\S]*source[\s\S]*local/i);
+    for (const step of [6, 7, 8]) {
+      expect(debugStep(step)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
+    }
+    const gate3 = debugStep(3).split("### 🔒 Gate 3")[1];
+    expect(gate3).not.toMatch(/fail-then-pass/i);
+    expect(debugStep(11)).toMatch(/fail-then-pass/i);
+  });
+
+  it("honors CI reproduction before remediation and blocks unreproduced failures", () => {
+    expect(debugStep(4)).toMatch(/ciReproduced|CI_REPRODUCED/);
+    expect(debugStep(4)).toMatch(/REPRO[\s\S]*Step 5/);
+    expect(debugStep(5)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
+    expect(debugStep(5)).toMatch(/YES[^\n]*(?:CI|ci)[^\n]*Step (?:6|8)/);
+    expect(debugStep(5)).toMatch(/NO[^\n]*(?:CI|ci)[^\n]*(?:Failure Path|STOP|blocker)/);
+    expect(debugStep(5)).toMatch(/(?:local|LOCAL)[^\n]*Step 3/);
+    expect(debugStep(4)).not.toMatch(/(?:CI|ci)[^\n]*REPRO[^\n]*(?:false|FALSE)/);
+  });
+
+  it("retains original and verifying run identities through close and auto handoff", () => {
+    const auto = readWorkflow("bkit-auto.md");
+    const invocation = auto.split("\n").find((line) => /\/bkit-debug\s/.test(line));
+    expect(invocation).toMatch(/\{RUN_URL\}|actions\/runs\/\{RUN_ID\}/);
+    const close = debugStep(11);
+    expect(close).toContain("VERIFY_RUN_ID");
+    expect(close).toContain("VERIFY_RUN_URL");
+    expect(close).toMatch(/CI_RUN_ID|CI_RUN_URL|ciRun/);
+    expect(close).toMatch(/runs gate[^\n]*--ci-selection-file=/);
+    expect(close).toMatch(/runs gate[^\n]*--head=/);
+    expect(debugMd.slice(debugMd.indexOf("## 🤖 Step 11"))).toMatch(/original[\s\S]*verif/i);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 1. Build and debug run the gate, once each, and record its verdict locally
 // ---------------------------------------------------------------------------
@@ -105,9 +178,9 @@ describe("bkit-ship.md — no CI-Dispatch gate", () => {
 // ---------------------------------------------------------------------------
 // 3. Ship Step 9 re-validates through `bkit runs revalidate`
 //
-// Step 9 can FOLLOW a head move (Path B `bkit prs update-branch`) that already
-// fired a run at that SHA, so the command probes first and dispatches only when
-// none is present; it probes at VALIDATED_HEAD, not the PR head (ship's own
+// Step 9 can FOLLOW a head move (Path B's local merge of origin/dev, pushed
+// plain) whose `[skip ci]` commits fired no run, so the command probes first and
+// dispatches only when none is present; it probes at VALIDATED_HEAD, not the PR head (ship's own
 // `[skip ci]` bookkeeping commit never gets a run). All of that is pinned in
 // commands/workflow/runs.test.ts; here: the workflow hands it what it needs.
 // ---------------------------------------------------------------------------
@@ -185,7 +258,8 @@ describe("bkit-ship.md — Step 10 gate-refusal re-entry is a bounded poll", () 
     const blocks = fences(shipMd).filter((f) =>
       /"\{BKIT\}" counters route --name=MERGE_ATTEMPT\b/.test(f),
     );
-    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(2);
+    // Step 10: the poll re-entry, the regenerate round and the non-merged route.
+    expect(blocks.length, "MERGE_ATTEMPT routing blocks").toBe(3);
     for (const block of blocks) {
       expect(block).toContain("--of=ship-merge-pr:count --rows=ship-gate-refusal:count");
       expect(block).not.toMatch(/MERGE_ATTEMPT=|\bjq\b/);
@@ -270,7 +344,7 @@ describe("bkit-debug.md — Step 11 on dev", () => {
     expect(dev[0]!).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--sha="?\{DEV_SHA\}"?/);
     expect(dev[0]!).not.toMatch(/--pr[= ]/);
     // The sha is the push's own `sha`, never a local HEAD (an own-commit push lands copies).
-    expect(step11).toContain("hold `sha` as `{DEV_SHA}`");
+    expect(step11).toContain("hold `sha` as `DEV_SHA`");
     expect(step11).not.toContain("git rev-parse HEAD");
     expect(at(/"\{BKIT\}" branches push --mode=dev\b/)).toBeGreaterThan(-1);
   });
@@ -282,7 +356,7 @@ describe("bkit-debug.md — Step 11 on dev", () => {
     );
     expect(step11).toMatch(/exit 20 \(the run's record is gone, nothing pushed\)/);
     // A re-trigger commit lands a new sha: the wait and gate follow the dispatch's printed head.
-    expect(step11).toContain("hold the printed `head` as `{DEV_SHA}`");
+    expect(step11).toContain("hold the printed `head` as `DEV_SHA`");
     expect(step11).toContain('`--sha="{DEV_SHA}"` re-held from each printed `head`');
   });
 

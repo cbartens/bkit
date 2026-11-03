@@ -33,7 +33,7 @@
 
 // bkit:start
 
-// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
@@ -189,9 +189,16 @@ function isCovered(ranges, [start, end]) {
   return mergeRanges(ranges).some(([s, e]) => s <= start && end <= e);
 }
 
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function readStateDir() {
-  return path.join(os.tmpdir(), "bkit-readguard");
+  return path.join(
+    os.tmpdir(),
+    typeof process.getuid === "function" ? `bkit-readguard-${process.getuid()}` : "bkit-readguard",
+  );
 }
+
+// Read logs this process could not write, standing in for them for the process's life.
+const readLogsInProcess = new Map();
 
 function safeKey(value, fallback) {
   const s = typeof value === "string" ? value.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
@@ -210,6 +217,7 @@ function readLogFile(sessionId, agentId) {
 // Absent log is the normal first-read case (guarded, no throw); a corrupt one throws
 // to the host's top-level fail-open boundary and that one call no-ops.
 function loadReadLog(file) {
+  if (readLogsInProcess.has(file)) return readLogsInProcess.get(file);
   if (!fs.existsSync(file)) return { files: {} };
   const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
   return parsed && typeof parsed.files === "object" && parsed.files ? parsed : { files: {} };
@@ -232,9 +240,12 @@ function gcOldReadLogs() {
  * conversation is summarised: earlier read output is no longer in context.
  */
 function resetReadLog(sessionId) {
+  const prefix = `${safeKey(sessionId, "no-session")}.`;
+  for (const file of readLogsInProcess.keys()) {
+    if (path.basename(file).startsWith(prefix)) readLogsInProcess.delete(file);
+  }
   const dir = readStateDir();
   if (!fs.existsSync(dir)) return;
-  const prefix = `${safeKey(sessionId, "no-session")}.`;
   for (const name of fs.readdirSync(dir)) {
     if (name.startsWith(prefix)) fs.rmSync(path.join(dir, name), { force: true });
   }
@@ -251,17 +262,20 @@ function repeatReadMessage(repeats, cwd) {
       `- \`${displayPath(file, cwd)}\` lines ${range[0]}-${range[1] === OPEN_END ? "end" : range[1]}`,
   );
   return (
-    `[bkit ReadGuard] Repeat read this conversation — unchanged since your last read:\n` +
+    `[bkit ReadGuard] Repeat read in this conversation. These lines are unchanged since your last read:\n` +
     `${lines.join("\n")}\n` +
-    `Use the earlier output; do not read these lines again. Re-read ONLY if that output is no longer in your context (summarised, or read by another agent).\n` +
-    `Advisory — proceed once satisfied.`
+    `Use the earlier output instead of reading these lines again.\n` +
+    `If that output is no longer in your context (summarised, or read by another agent), re-read the lines.\n` +
+    `Advisory: proceed once satisfied.`
   );
 }
 
 /**
  * The advisory for reading `targets` again, or null when ReadGuard is off, nothing is
  * trackable, or no target repeats an earlier read of the same unchanged file by the
- * same (session, agent). Records every trackable target.
+ * same (session, agent). Records every trackable target. Fail-open: a log write error
+ * still returns the note and the process keeps the log, so a long-lived host (opencode)
+ * still sees its repeats.
  */
 function repeatReadAdvice(targets, sessionId, agentId, cwd) {
   if (process.env.BKIT_READGUARD === "off") return null;
@@ -290,11 +304,16 @@ function repeatReadAdvice(targets, sessionId, agentId, cwd) {
     changed = true;
   }
 
-  if (changed) {
-    fs.mkdirSync(readStateDir(), { recursive: true });
-    fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+  try {
+    if (changed) {
+      fs.mkdirSync(readStateDir(), { recursive: true });
+      fs.writeFileSync(logFile, JSON.stringify(log), "utf-8");
+      readLogsInProcess.delete(logFile);
+    }
+    gcOldReadLogs();
+  } catch {
+    readLogsInProcess.set(logFile, log);
   }
-  gcOldReadLogs();
 
   return repeats.length > 0 ? repeatReadMessage(repeats, cwd) : null;
 }

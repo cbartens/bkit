@@ -189,10 +189,10 @@ function shellEditTargets(cmd) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
-    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
-    "Not blocked — proceed if it is."
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
+    "Use the edit or write tool instead.\n" +
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
   );
 }
 

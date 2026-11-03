@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { callWords, stepSections } from "../../checks/status-holes";
 import { COMMANDS } from "../../commands/registry";
 import { WORKFLOW_STEPS } from "../../commands/workflow/step-table";
 import { substituteWorkflow } from "../../render/trackers";
@@ -61,28 +62,6 @@ function unclosedTrackerMarker(text: string): string | undefined {
   return lastOpen === -1 || closes ? undefined : tail.split("\n")[0];
 }
 
-/** The words of one `"{BKIT}" ...` call: shell-split, quotes kept, stopped at the first unquoted operator. */
-function callWords(rest: string): string[] {
-  const words: string[] = [];
-  let word = "";
-  let quote = "";
-  for (const ch of rest) {
-    if (quote) {
-      word += ch;
-      if (ch === quote) quote = "";
-    } else if (ch === '"' || ch === "'") {
-      word += ch;
-      quote = ch;
-    } else if ("|;&><)`".includes(ch)) break;
-    else if (/\s/.test(ch)) {
-      if (word) words.push(word);
-      word = "";
-    } else word += ch;
-  }
-  if (word) words.push(word);
-  return words;
-}
-
 /** Each `"{BKIT}" noun verb --flag` call in `text` whose verb or flag the CLI lacks. */
 function unknownCalls(text: string): string[] {
   const specs = new Map(COMMANDS.map((c) => [c.noun, c]));
@@ -125,7 +104,7 @@ describe("engine calls", () => {
 });
 
 describe("bkit lookup", () => {
-  it.each(ALL)("%s resolves the binary once, in Step 1, and holds it as {BKIT}", (name) => {
+  it.each(ALL)("%s resolves the binary once, in Step 1, and holds it as BKIT", (name) => {
     const text = workflow(name);
     expect(text).not.toContain('BKIT="$(dirname');
     expect(text).not.toContain('"$BKIT"');
@@ -134,7 +113,8 @@ describe("bkit lookup", () => {
       .filter((l) => l.trimStart().startsWith('"$(dirname "$(git rev-parse'));
     expect(lookups, name).toHaveLength(1);
     expect(lookups[0]).toContain('node_modules/.bin/bkit" repo info');
-    expect(section(text, /Step 1 — Start Workflow/)).toMatch(/[Hh]old `bkit` as `\{BKIT\}`/);
+    // The held name carries no braces; a clause-owned line may still brace it.
+    expect(section(text, /Step 1 — Start Workflow/)).toMatch(/[Hh]old `bkit` as `\{?BKIT\}?`/);
   });
 });
 
@@ -149,19 +129,20 @@ describe("gate logs", () => {
   );
 
   // `tests run --artifact` copies the log beside the run's artifacts, resets the
-  // step's clamp log and trims it in one call; no workflow does it by hand.
+  // step's clamp log and trims it in one call; no workflow does it by hand. `--file`
+  // appends the run's test-run row to status.jsonl.
   const ARTIFACTS: Array<[string, string]> = [
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-group-gate-{GROUP} --attempt={VERIFY_ATTEMPT}',
     ],
     [
       "build",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --step=build-run-tests --attempt={TEST_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=build --step=build-run-tests --attempt={TEST_ATTEMPT}',
     ],
     [
       "debug",
-      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --step=debug-run-tests --attempt={DEBUG_ATTEMPT}',
+      '--artifact="docs/plans/{YYYYMM}/logs/{FID}/context-tests-local-{DEBUG_ATTEMPT}.md" --fid={FID} --file="{STATUS}" --workflow=debug --step=debug-run-tests --attempt={NORMAL_ATTEMPT}',
     ],
   ];
 
@@ -185,7 +166,7 @@ describe("gate logs", () => {
     "%s routes the test failures on the engine's count, never a count from the log",
     (name) => {
       const text = workflow(name);
-      expect(text).toContain("`failures` as `{TEST_FAILURES}`");
+      expect(text).toContain("`failures` as `TEST_FAILURES`");
       expect(text).toContain(
         "`{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null",
       );
@@ -202,10 +183,10 @@ describe("debug Step 1 start decisions", () => {
     expect(more).toEqual([]);
     expect(line).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
     for (const held of [
-      "`debugAttempt` as `{DEBUG_ATTEMPT}`",
-      "`debugMode` as `{DEBUG_MODE}`",
-      "`repro` as `{REPRO}`",
-      "`gates` as `{GATES}`",
+      "`debugAttempt` as `DEBUG_ATTEMPT`",
+      "`debugMode` as `DEBUG_MODE`",
+      "`repro` as `REPRO`",
+      "`gates` as `GATES`",
     ])
       expect(step1()).toContain(held);
   });
@@ -238,7 +219,7 @@ describe("Step 1 FID check", () => {
       ).toBeUndefined();
       const [line] = commandLines(step1, "fids resolve");
       expect(line).toContain(`--workflow=${name}`);
-      expect(step1).toContain("**If** exit 0 → hold `fid` as `{FID}`");
+      expect(step1).toContain("**If** exit 0 → hold `fid` as `FID`");
       expect(step1).toContain("**If** exit 4 → **Failure Path** listing `fids`");
       // The chain, the suffixing and the format check all live in the engine.
       for (const gone of ["fids find", "fids free", '"{BKIT}" fids check']) {
@@ -256,10 +237,10 @@ describe("Step 1 FID check", () => {
     "%s writes the session prompt to a file and reads it with `fids parse`",
     (name) => {
       const step1 = section(workflow(name), /Step 1 — Start Workflow/);
-      expect(step1).toContain("`sessionDir` as `{SESSION_DIR}`");
+      expect(step1).toContain("`sessionDir` as `SESSION_DIR`");
       expect(step1).toContain("Write the session prompt verbatim to `{SESSION_DIR}/prompt.md`");
       expect(step1).toContain('"{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
-      expect(step1).toContain("Hold `fidNamed` as `{FID_NAMED}`");
+      expect(step1).toContain("Hold `fidNamed` as `FID_NAMED`");
       expect(step1).not.toContain("Extract from session prompt");
       expect(step1).not.toContain("tr '[:upper:]' '[:lower:]'");
     },
@@ -309,7 +290,9 @@ describe("Failure Path", () => {
     "%s always keeps its record through one `workflows handover --push` in the run's worktree",
     (name) => {
       const failure = section(workflow(name), /Failure Path/);
-      const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+      const calls = commandLines(failure, "workflows handover")
+        .map((l) => l.trim())
+        .filter((l) => l.includes("--push"));
       expect(calls, name).toEqual([
         `"{BKIT}" workflows handover --post --workflow=${name} --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"`,
       ]);
@@ -319,13 +302,45 @@ describe("Failure Path", () => {
     },
   );
 
+  it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
+    const build = workflow("build");
+    for (const part of [section(build, /Failure Path/), section(build, /Decision Pause/)]) {
+      const calls = commandLines(part, "workflows handover").map((l) => l.trim());
+      const pushing = calls.filter((l) => l.includes("--push"));
+      const local = calls.filter((l) => !l.includes("--push"));
+      expect(pushing).toHaveLength(1);
+      expect(local).toHaveLength(1);
+      const at = part.indexOf(pushing[0]!);
+      const before = part.slice(0, at);
+      expect(before).toMatch(/`PUBLISH` = false[^\n]*NEVER pass `--push`/);
+      expect(part.indexOf(local[0]!)).toBeLessThan(at);
+    }
+  });
+
+  it("bkit-build.md: a Failure Path reached before publish is resolved never pushes the feature branch", () => {
+    const failure = section(workflow("build"), /Failure Path/);
+    const calls = commandLines(failure, "workflows handover").map((l) => l.trim());
+    const pushing = calls.filter((l) => l.includes("--push"));
+    expect(pushing).toHaveLength(1);
+    const before = failure.slice(0, failure.indexOf(pushing[0]!));
+    const guard = before
+      .trimEnd()
+      .split("\n")
+      .filter((l) => l.includes("**Else**"))
+      .pop()!;
+    expect(guard).toMatch(/^\s*- \*\*Else\*\* →/);
+    expect(before).toMatch(
+      /`PUBLISH` = false \*\*or\*\* `PUBLISH` is not held yet[^\n]*NEVER pass `--push`/,
+    );
+  });
+
   it.each(["design", "plan", "build", "debug"])(
     "%s removes only files the run created by mistake, never other agents' changes",
     (name) => {
       const failure = section(workflow(name), /Failure Path/);
       expect(failure).not.toContain("remove unintended files");
       expect(failure).toContain(
-        "on a feature branch remove only the `modified` / `untracked` files this run created by mistake, never other agents' changes;",
+        "on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes;",
       );
     },
   );
@@ -343,12 +358,102 @@ describe("Failure Path", () => {
   });
 });
 
+/** The build step table's numbers carried by more than one step, each list sorted. */
+function sharedStepNumbers(): string[][] {
+  const byNumber = new Map<number, string[]>();
+  for (const row of WORKFLOW_STEPS.build.filter((s) => s.step !== undefined)) {
+    const steps = byNumber.get(row.number) ?? [];
+    steps.push(row.step!);
+    byNumber.set(row.number, steps);
+  }
+  return [...byNumber.values()]
+    .filter((steps) => steps.length > 1)
+    .map((steps) => steps.sort())
+    .sort((a, b) => a[0]!.localeCompare(b[0]!));
+}
+
+/** Finish lines in `text` posting a number or title the build step table's row does not carry. */
+function commentNumberProblems(text: string): string[] {
+  const rows = WORKFLOW_STEPS.build.filter((s) => s.step !== undefined);
+  const byStep = new Map(rows.map((s) => [s.step!, s]));
+  const byNumber = new Map<number, string[]>();
+  for (const row of rows)
+    byNumber.set(row.number, [...(byNumber.get(row.number) ?? []), row.step!]);
+  return commandLines(text, "steps finish").flatMap((line) => {
+    const step = /--step=([a-z0-9-]+)/.exec(line)?.[1];
+    // The Decision Pause writes its own row under the paused step's number.
+    if (step === undefined || step === "build-decision") return [];
+    const row = byStep.get(step);
+    if (row === undefined) return [`${step}: no row in the build step table`];
+    if (!line.includes(`--number=${row.number}`))
+      return [`${step}: posts a number other than ${row.number}`];
+    // A number two steps share lets each post under its own title.
+    if (byNumber.get(row.number)!.length > 1) return [];
+    const title = row.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`--title="?${title}"?(?=\\s)`).test(line)
+      ? []
+      : [`${step}: posts a title other than "${row.title}"`];
+  });
+}
+
+/** The `steps finish` lines in `text` running `step`. */
+function stepFinishLines(text: string, step: string): string[] {
+  return commandLines(text, "steps finish").filter((l) => l.includes(`--step=${step}`));
+}
+
+/** `lines` without the ones naming an agent. */
+function withNoAgent(lines: string[]): string[] {
+  return lines.filter((l) => !l.includes("--agent"));
+}
+
+/** A live doc naming a build step by number, and the build table row its sentence means. */
+const LIVE_DOC_CLAIMS: ReadonlyArray<{ file: string; pattern: RegExp; step: string }> = [
+  {
+    file: "docs/deployments.md",
+    pattern: /Gate sites \(2\):\*\* build Step (\d+)/,
+    step: "build-close-workflow",
+  },
+  {
+    file: "docs/deployments.md",
+    pattern: /Open-PR pre-flight \(build Step (\d+)\)/,
+    step: "build-close-workflow",
+  },
+  {
+    file: ".bkit/cloud.md",
+    pattern: /`bkit-build` Step (\d+) close-workflow/,
+    step: "build-close-workflow",
+  },
+  {
+    file: ".bkit/core/.bkit/cloud.md",
+    pattern: /`bkit-build` Step (\d+) close-workflow/,
+    step: "build-close-workflow",
+  },
+];
+
+/** Each live-doc build-step number that disagrees with the number its table row carries. */
+function staleStepRefs(
+  claims: ReadonlyArray<{ file: string; pattern: RegExp; step: string }>,
+): string[] {
+  const numbers = new Map(
+    WORKFLOW_STEPS.build.map((s): [string, number] => [s.step ?? "", s.number]),
+  );
+  return claims.flatMap(({ file, pattern, step }) => {
+    const expected = numbers.get(step);
+    const named = pattern.exec(fs.readFileSync(path.join(REPO_ROOT, file), "utf-8"))?.[1];
+    if (expected === undefined) return [`${file}: the build table carries no ${step} row`];
+    if (named === undefined) return [`${file}: no ${step} step number named`];
+    return Number(named) === expected
+      ? []
+      : [`${file}: ${step} at Step ${named}, the table carries ${expected}`];
+  });
+}
+
 describe("build", () => {
   const build = workflow("build");
 
-  it("Step 12's diagnose agent reads the committed log, not the outbox copy", () => {
-    const step12 = section(build, /Step 12 — Failure Diagnose/);
-    const read = step12.split("\n").find((l) => l.trim().startsWith("Read:"));
+  it("Step 13's diagnose agent reads the committed log, not the outbox copy", () => {
+    const step13 = section(build, /Step 13 — Failure Diagnose/);
+    const read = step13.split("\n").find((l) => l.trim().startsWith("Read:"));
     expect(read).toContain("`docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`");
     expect(read).not.toContain("{OUTBOX}");
   });
@@ -361,9 +466,9 @@ describe("build", () => {
     expect(build).not.toContain("ATTEMPT_FLAG");
   });
 
-  it("Step 10 merges the findings into the plan and routes on the merge", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const merge = commandLines(step10, "challenge merge");
+  it("Step 11 merges the findings into the plan and routes on the merge", () => {
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const merge = commandLines(step11, "challenge merge");
     expect(merge).toHaveLength(1);
     for (const flag of [
       '--report="docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md"',
@@ -374,24 +479,31 @@ describe("build", () => {
     ])
       expect(merge[0], flag).toContain(flag);
     for (const route of [
-      "`route` = `none` → Step 11",
-      "`route` = `pause`",
-      "`route` = `fix`",
+      "`MERGE_ROUTE` = `none` → Step 12",
+      "`MERGE_ROUTE` = `pause`",
+      "`MERGE_ROUTE` = `fix`",
       "exit 22",
     ])
-      expect(step10, route).toContain(route);
-    expect(step10).toContain(
-      "`PAUSE_STEP` = 10, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
+      expect(step11, route).toContain(route);
+    expect(step11).toContain(
+      "`PAUSE_STEP` = 11, `PAUSE_POINT` = `build.challenge`, `PAUSE_QUESTION` = `CHALLENGE`",
+    );
+    expect(step11).toContain("hold `route` as `MERGE_ROUTE`");
+    expect(step11, "the merge route reads the held name, never the bare field").not.toMatch(
+      /\*\*If\*\* `route` =/,
+    );
+    expect(step11).toContain(
+      "**If** `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true.",
     );
   });
 
-  it("Step 10 records its round on the challenge row and reads it back from status.jsonl", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const finish = commandLines(step10, "steps finish");
+  it("Step 11 records its round on the challenge row and reads it back from status.jsonl", () => {
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const finish = commandLines(step11, "steps finish");
     expect(finish).toHaveLength(1);
     expect(finish[0]).toContain("--field=round={CHALLENGE_ROUND}");
-    expect(commandLines(step10, "status resume")).toHaveLength(1);
-    expect(step10).toContain("`CHALLENGE_ROUND` = `challengeRound`");
+    expect(commandLines(step11, "status resume")).toHaveLength(1);
+    expect(step11).toContain("`CHALLENGE_ROUND` = `challengeRound`");
     expect(build, "the round is never searched for in plan files").not.toMatch(
       /grep -l '[^']*Round:/,
     );
@@ -400,9 +512,9 @@ describe("build", () => {
   it("a resumed challenge pause rebuilds CHALLENGE_TASKS from `challenge merge`, not the decision file", () => {
     const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
     expect(resumeLine).not.toContain("the decision file's task numbers");
-    expect(resumeLine).toContain("Step 10 sub-steps 2 and 5");
-    expect(resumeLine).toContain("`fixTasks` as `{CHALLENGE_TASKS}`");
-    expect(resumeLine).toContain("never sub-step 6");
+    expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
+    expect(resumeLine).toContain("`fixTasks` as `CHALLENGE_TASKS`");
+    expect(resumeLine).toContain("NEVER sub-step 6");
   });
 
   it("the decision row records its route, which `status resume` maps", () => {
@@ -424,30 +536,30 @@ describe("build", () => {
     expect(pause).toContain(
       "`CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true",
     );
-    expect(section(build, /Step 10 — Build Challenge/)).toContain(
+    expect(section(build, /Step 11 — Build Challenge/)).toContain(
       '"{BKIT}" counters max --point=build.challenge',
     );
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const first = step10.slice(step10.indexOf("\n1. "), step10.indexOf("\n2. "));
-    expect(first).toContain("`CHALLENGE_DONE` = true → Step 11");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const first = step11.slice(step11.indexOf("\n1. "), step11.indexOf("\n2. "));
+    expect(first).toContain("`CHALLENGE_DONE` = true → Step 12");
     expect(first).toContain("`challengeDone`");
     const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
     expect(resumeLine).toContain("`CHALLENGE_DONE` = `challengeDone`");
   });
 
   it("challenge merge exit 23 gets the same one retry as exit 22", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    expect(step10).toMatch(/exit 22 \*\*or\*\* 23/);
-    expect(step10).toContain("`problems`");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    expect(step11).toMatch(/exit 22 \*\*or\*\* 23/);
+    expect(step11).toContain("`problems`");
   });
 
   it("an execute cap stop is a handover, never a FAIL attempt", () => {
-    const step6 = stepBody(build, /Step 6 — Plan Execute/);
-    expect(step6).toContain("Hold `verdict` as `EXECUTE_VERDICT`");
-    expect(step6).toContain("`EXECUTE_VERDICT` = HANDOVER");
-    expect(step6).toContain("not a failed attempt");
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    expect(step7).toContain("Hold `verdict` as `TASKS_VERDICT`");
+    expect(step7).toContain("`TASKS_VERDICT` = HANDOVER");
+    expect(step7).toContain("not a failed attempt");
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^Verdict: PASS \| HANDOVER \| FAIL/m);
@@ -456,55 +568,136 @@ describe("build", () => {
   });
 
   it("build challenge runs the size gate first", () => {
-    const step10 = section(build, /Step 10 — Build Challenge/);
-    const gate = commandLines(step10, "challenge gate");
+    const step11 = section(build, /Step 11 — Build Challenge/);
+    const gate = commandLines(step11, "challenge gate");
     expect(gate.map((l) => l.trim())).toEqual(['"{BKIT}" challenge gate --file="{STATUS}"']);
-    expect(step10.indexOf("challenge gate")).toBeLessThan(
-      step10.indexOf("Invoke `@bkit-build-challenge-1`"),
+    expect(step11.indexOf("challenge gate")).toBeLessThan(
+      step11.indexOf("Invoke `@bkit-build-challenge-1`"),
     );
-    expect(step10).toContain("hold `size` as `{CHALLENGE_SIZE}`");
-    const small = step10.split("\n").filter((l) => l.includes("`CHALLENGE_SIZE` = small"));
+    expect(step11).toContain("hold `size` as `CHALLENGE_SIZE`");
+    const small = step11.split("\n").filter((l) => l.includes("`CHALLENGE_SIZE` = small"));
     expect(small.join("\n")).toContain("`@bkit-build-challenge-2` only");
     expect(small.join("\n")).toContain("--agent=bkit-build-challenge-1");
     expect(small.join("\n")).toContain("--report");
-    expect(commandLines(step10, "steps finish")).toHaveLength(1);
-    expect(commandLines(step10, "challenge merge")).toHaveLength(1);
-    expect(step10).toContain("Change sized (`challenge gate`)");
+    expect(commandLines(step11, "steps finish")).toHaveLength(1);
+    expect(commandLines(step11, "challenge merge")).toHaveLength(1);
+    expect(step11).toContain("Change sized (`challenge gate`)");
   });
 
-  it("names no removed challenge agent, step or limit", () => {
-    for (const gone of [
-      ...["reconcile", "remediate", "tests"].map((s) => `build-challenge-${s}`),
-      `CHALLENGE_${"REMEDIATE"}`,
-      "build-challenge.md`",
-    ])
-      expect(build, gone).not.toContain(gone);
-  });
-
-  it("Branch Sync checks the plan, converts one with no task markers, and checks again", () => {
+  it("Branch Sync merges docs and finishes as its own step", () => {
     const step3 = section(build, /Step 3 — Branch Sync/);
-    const checks = commandLines(step3, "tests plan-check");
+    expect(step3).toContain('"{BKIT}" branches sync --merge-docs');
+    expect(step3).not.toContain("tests plan-check");
+    expect(step3).not.toContain("Invoke `@bkit-build-plan-convert`");
+    const finish = commandLines(step3, "steps finish");
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toContain("--step=build-branch-sync");
+    expect(finish[0]).toContain("--number=3");
+    expect(finish[0]).toContain('--post --title="Branch Sync"');
+    // Its gate names the docs merge alone; the plan check gates Plan Convert.
+    expect(stepBody(build, /Gate 3 — Branch Sync/)).not.toContain("plan-check");
+  });
+
+  it("Plan Convert checks the plan, converts one with no task markers, and re-checks", () => {
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    const checks = commandLines(step4, "tests plan-check");
     expect(checks.length).toBeGreaterThanOrEqual(1);
     for (const line of checks) expect(line).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
-    const convert = step3.indexOf("Invoke `@bkit-build-plan-convert`");
+    const convert = step4.indexOf("Invoke `@bkit-build-plan-convert`");
     expect(convert, "no convert dispatch").toBeGreaterThan(-1);
-    expect(step3.indexOf('"{BKIT}" tests plan-check')).toBeLessThan(convert);
-    // The converted plan goes back through the same check before Step 3 finishes.
-    expect(step3.slice(convert)).toMatch(/re-run sub-step 2/);
-    expect(step3).toContain("`markers`");
+    expect(step4.indexOf('"{BKIT}" tests plan-check')).toBeLessThan(convert);
+    // The converted plan goes back through the same check before the step finishes.
+    expect(step4.slice(convert)).toMatch(/re-run sub-step 1/);
+    expect(step4).toContain("`markers`");
+  });
+
+  it("Plan Convert leaves a valid plan with no newer comments alone", () => {
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    const skip =
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.";
+    expect(step4).toContain(skip);
+    // That route skips the dispatch and writes the no-agent skip row (sub-step 4).
+    expect(step4.indexOf(skip)).toBeLessThan(step4.indexOf("Invoke `@bkit-build-plan-convert`"));
+    expect(commandLines(step4, "steps finish")).toHaveLength(2);
+    expect(step4.indexOf("--attempt-of=build-plan-convert:next")).toBeGreaterThan(
+      step4.indexOf("Invoke `@bkit-build-plan-convert`"),
+    );
+  });
+
+  it("build's comment numbers match the step table", () => {
+    // One number per step; only the pairs sharing a step heading share one.
+    expect(sharedStepNumbers()).toEqual([
+      ["build-close-workflow", "build-create-pr"],
+      ["build-group-gate", "build-plan-verify"],
+      ["build-group-start", "build-plan-tasks", "build-plan-tests"],
+    ]);
+    // Each finish line posts the number and title of its own table row.
+    expect(commentNumberProblems(build)).toEqual([]);
+  });
+
+  it("the convert step posts under Plan Convert's number and title", () => {
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish").filter(
+      (l) => l.includes("--step=build-plan-convert"),
+    );
+    expect(finish).toHaveLength(2);
+    for (const line of finish) {
+      expect(line).toContain("--number=4");
+      expect(line).toContain('--post --title="Plan Convert"');
+    }
+    expect(section(build, /Step 3 — Branch Sync/)).not.toContain("--step=build-plan-convert");
+  });
+
+  it("Plan Convert's finish carries the plan-check log as an optional artifact", () => {
+    // A plan-less run routes to the convert before the check writes its log, so the log
+    // can be absent when the finish runs; a required artifact would exit 7 there and the
+    // Plan Convert comment would never post. Optional records it whenever it exists.
+    const finish = commandLines(section(build, /Step 4 — Plan Convert/), "steps finish")
+      .filter((l) => l.includes("--step=build-plan-convert"))
+      .filter((l) => l.includes("--attempt-of="));
+    expect(finish).toHaveLength(1);
+    expect(finish[0]).toContain(
+      "--optional-artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
+    );
+    expect(finish[0]).not.toContain(
+      "--artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-check.md",
+    );
+    // The plan itself stays a required artifact: the finish only runs once it exists.
+    expect(finish[0]).toContain("--artifact=docs/plans/{YYYYMM}/{FID}-plan.md");
+  });
+
+  it("Plan Current posts a comment whether it runs or skips", () => {
+    const finish = stepFinishLines(section(build, /Step 5 — Plan Current/), "build-plan-current");
+    expect(finish).toHaveLength(2);
+    for (const line of finish) expect(line).toContain("--number=5");
+    for (const line of finish) expect(line).toContain('--post --title="Plan Current"');
+  });
+
+  it("Plan Current's skipped comment says no plan anchor", () => {
+    const step5 = section(build, /Step 5 — Plan Current/);
+    const skip = withNoAgent(stepFinishLines(step5, "build-plan-current"));
+    expect(skip).toHaveLength(1);
+    expect(skip[0]).not.toContain("--artifact");
+    expect(skip[0]).toContain('--comment-field="Status=skipped (no plan anchor)"');
+    // The skip finishes at once: after the anchor read, before any dispatch.
+    const anchor = step5.indexOf('"{BKIT}" branches anchor-read');
+    const field = step5.indexOf('--comment-field="Status=skipped (no plan anchor)"');
+    expect(anchor).toBeGreaterThan(-1);
+    expect(anchor).toBeLessThan(field);
+    expect(field).toBeLessThan(step5.indexOf("Invoke `@bkit-build-plan-current`"));
   });
 
   it("issue comments newer than a valid plan send the build through convert once", () => {
     // `workflows input` counts the comments posted after the plan's last commit; convert
     // writes them into the plan before any code, so every later agent works from it.
     expect(section(build, /Step 2 — Worktree Setup/)).toContain(
-      "Hold `newerThanPlan` as `{NEWER_COMMENTS}`.",
+      "Hold `newerThanPlan` as `NEWER_COMMENTS`.",
     );
-    const step3 = section(build, /Step 3 — Branch Sync/);
-    expect(step3).toContain(
-      "**If** exit 0 **and** (`NEWER_COMMENTS` = 0 **or** `CONVERTED` is held) → sub-step 5.",
+    const step4 = section(build, /Step 4 — Plan Convert/);
+    expect(step4).toContain(
+      "**If** exit 0 **and** `CONVERTED` is not held **and** `NEWER_COMMENTS` = 0 → sub-step 4.",
     );
-    expect(step3).toMatch(
+    expect(step4).toContain("**If** exit 0 **and** `CONVERTED` is held → Step 5.");
+    expect(step4).toMatch(
       /`CONVERTED` is not held \*\*and\*\* \(exit 0 with `NEWER_COMMENTS` > 0,/,
     );
   });
@@ -518,40 +711,66 @@ describe("build", () => {
     expect(build).not.toMatch(/sub-plan|SUB_PLAN|SUB_COUNT|NEW_SUB_PLAN/i);
   });
 
-  it("Step 6 takes the next group's brief and hands execute its path", () => {
-    const step6 = stepBody(build, /Step 6 — Plan Execute/);
-    const brief = commandLines(step6, "context brief");
-    expect(brief).toHaveLength(1);
+  it("Step 7 takes the next group's brief and hands execute its path", () => {
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    const brief = commandLines(step7, "context brief");
+    expect(brief).toHaveLength(2);
     expect(brief[0]).toContain("--next");
-    expect(brief[0]).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
-    expect(brief[0]).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
-    expect(step6).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
-    expect(step6).toContain("`{BRIEF}`");
-    expect(step6.indexOf("context brief")).toBeLessThan(
-      step6.indexOf("Invoke `@bkit-build-plan-execute`"),
+    for (const line of brief) {
+      expect(line).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+      expect(line).toContain('--note-file="{SESSION_DIR}/brief-note.md"');
+    }
+    expect(step7).toContain("drop `--note-file` when `{SESSION_DIR}/brief-note.md` does not exist");
+    expect(step7).toContain("`{BRIEF}`");
+    expect(step7.indexOf("context brief")).toBeLessThan(
+      step7.indexOf("Invoke `@bkit-build-plan-tasks`"),
     );
-    const finish = commandLines(step6, "steps finish");
-    expect(finish).toHaveLength(1);
-    expect(finish[0]).toContain("--group={GROUP}");
+    const finish = commandLines(step7, "steps finish");
+    expect(finish).toHaveLength(2);
+    for (const line of finish) expect(line).toContain("--group={GROUP}");
   });
 
-  it("Step 7 verifies a diff cut from the group's start commit", () => {
-    const step7 = stepBody(build, /Step 7 — Plan Verify/);
-    const diff = commandLines(step7, "context diff");
+  it("Step 7 writes a group's tests with their own subagent, records them red and only then invokes execute", () => {
+    const step7 = stepBody(build, /Step 7 — Plan Execute/);
+    const [, testsBrief] = commandLines(step7, "context brief");
+    expect(testsBrief).toContain("--tests-only");
+    expect(testsBrief).toContain("--group={GROUP}");
+    expect(testsBrief).toContain('--file="{STATUS}"');
+    const tests = step7.indexOf("Invoke `@bkit-build-plan-tests`");
+    const red = step7.indexOf('"{BKIT}" tests red');
+    const execute = step7.indexOf("Invoke `@bkit-build-plan-tasks`");
+    expect(tests).toBeGreaterThan(0);
+    expect(red).toBeGreaterThan(tests);
+    expect(execute).toBeGreaterThan(red);
+    const [testsFinish, executeFinish] = commandLines(step7, "steps finish");
+    expect(testsFinish).toContain("--step=build-plan-tests");
+    expect(testsFinish).toContain('--plan="docs/plans/{YYYYMM}/{FID}-plan.md"');
+    expect(executeFinish).toContain("--step=build-plan-tasks");
+    expect(step7).toContain("**If** exit 15");
+    expect(step7).toContain("**If** exit 11");
+    expect(commandLines(step7, "tests red")[0]).toContain(
+      '--log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md"',
+    );
+    expect(step7).not.toContain("--task=");
+  });
+
+  it("Step 8 verifies a diff cut from the group's start commit", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const diff = commandLines(step8, "context diff");
     expect(diff).toHaveLength(1);
     expect(diff[0]).toContain("--base={GROUP_BASE}");
-    expect(step7).toMatch(/status route --step=build-group-start --group=\{GROUP\}/);
-    expect(step7.indexOf("context diff")).toBeLessThan(
-      step7.indexOf("Invoke `@bkit-build-plan-verify`"),
+    expect(step8).toMatch(/status route --step=build-group-start --group=\{GROUP\}/);
+    expect(step8.indexOf("context diff")).toBeLessThan(
+      step8.indexOf("Invoke `@bkit-build-plan-verify`"),
     );
-    const green = commandLines(step7, "tests green");
+    const green = commandLines(step8, "tests green");
     expect(green).toHaveLength(1);
     expect(green[0]).toContain("--group={GROUP}");
   });
 
   it("the execute prompt logs `DONE — TASK {N}`, the line the brief and the commit check read", () => {
     const prompt = fs.readFileSync(
-      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-execute.md"),
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-tasks.md"),
       "utf-8",
     );
     expect(prompt).toMatch(/^DONE\s*[—–-]+\s*TASK\s+\{N\}/m);
@@ -585,7 +804,7 @@ describe("build", () => {
     expect(input).toBeDefined();
     for (const flag of ["--prompt-file=", "--description-file=", "--comments-file=", "--plan="])
       expect(input, flag).toContain(flag);
-    expect(section(build, /Step 3 — Branch Sync/)).not.toContain("workflows input");
+    expect(section(build, /Step 4 — Plan Convert/)).not.toContain("workflows input");
   });
 
   describe("convert and plan-generate prompts", () => {
@@ -596,7 +815,7 @@ describe("build", () => {
     it("convert copies an input's TEST EXCEPTION and never writes its own", () => {
       const step5 = convert.split("\n").find((l) => l.startsWith("5. "))!;
       const rule =
-        "Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.";
+        "NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.";
       expect(step5).toContain(rule);
       expect(prompt("bkit-plan-generate")).toContain(rule);
     });
@@ -612,7 +831,7 @@ describe("build", () => {
     it("convert reads the whole input file; the newer text wins where it and the plan disagree", () => {
       expect(convert).not.toContain("NEVER read or use issue text");
       expect(convert).toContain(
-        "**Same scope:** Every task traces to the input file or the existing plan; add no work they do not ask for, drop none they do.\n",
+        "**Same scope:** Every task traces to the input file or the existing plan. Add no work that they do not ask for, and drop no work that they do ask for.\n",
       );
       expect(convert).not.toContain("the plan wins");
     });
@@ -627,25 +846,13 @@ describe("build", () => {
   });
 });
 
-describe("resume", () => {
-  /** Each `Step N — Title` heading, with the text up to the next step or section heading. */
-  function stepSections(text: string): Array<{ number: number; title: string; body: string }> {
-    const lines = text.split("\n");
-    const heading = /^#{2,3} \S+ Step (\d+) — (.+)$/;
-    const out: Array<{ number: number; title: string; body: string }> = [];
-    lines.forEach((l, i) => {
-      const m = heading.exec(l);
-      if (!m) return;
-      const end = lines.findIndex((x, j) => j > i && /^#{2,3} /.test(x) && !x.startsWith("### 🔒"));
-      out.push({
-        number: Number(m[1]),
-        title: m[2]!,
-        body: lines.slice(i, end === -1 ? undefined : end).join("\n"),
-      });
-    });
-    return out;
-  }
+describe("live docs", () => {
+  it("live docs name no build step the table does not carry", () => {
+    expect(staleStepRefs(LIVE_DOC_CLAIMS)).toEqual([]);
+  });
+});
 
+describe("resume", () => {
   it.each(PHASES)("%s: the Resume line calls `status resume`", (name) => {
     const line = workflow(name)
       .split("\n")
@@ -668,6 +875,38 @@ describe("resume", () => {
       }
     },
   );
+});
+
+describe("plan convert skip row", () => {
+  it("writes a build-plan-convert row on the no-conversion route", () => {
+    const step4 = stepSections(workflow("build")).find((s) => s.number === 4)!;
+    const skip = commandLines(step4.body, "steps finish").filter((l) =>
+      l.includes("--step=build-plan-convert"),
+    );
+    expect(skip).toHaveLength(2);
+    const skipRow = skip.find((l) => l.includes("--attempt=1"))!;
+    expect(skipRow).toContain("--number=4");
+    expect(skipRow).toContain("skipped");
+    expect(skipRow).not.toContain("--attempt-of=");
+    expect(skip.filter((l) => l.includes("--attempt-of=build-plan-convert:next"))).toHaveLength(1);
+    // The pass route with nothing to convert reaches the skip row, not Step 5.
+    expect(step4.body).toMatch(
+      /exit 0 \*\*and\*\* `CONVERTED` is not held \*\*and\*\* `NEWER_COMMENTS` = 0 → sub-step 4/,
+    );
+    expect(step4.body).toMatch(/exit 0 \*\*and\*\* `CONVERTED` is held → Step 5/);
+  });
+});
+
+describe("promoted parsers", () => {
+  it("holds the workflows to the step table", () => {
+    const own = fs.readFileSync(__filename, "utf-8");
+    expect(own).not.toMatch(/^\s*function (stepSections|callWords)\(/m);
+    for (const name of PHASES)
+      expect(
+        stepSections(workflow(name)).map((s) => s.number),
+        name,
+      ).toEqual([...new Set(WORKFLOW_STEPS[name].map((s) => s.number))]);
+  });
 });
 
 describe("debug", () => {
@@ -714,16 +953,14 @@ describe("auto", () => {
   it("resolves phase, mode and the CI context with one `runs context` call", () => {
     const step1 = section(auto, /Step 1 — Start Workflow/);
     expect(step1).toContain('"{BKIT}" runs context --phase="{PHASE}" --arg="{ARG}"');
-    expect(step1).toContain("`runId` as `{RUN_ID}`");
+    expect(step1).toContain("`runId` as `RUN_ID`");
     expect(step1).not.toContain("gh run list");
     expect(step1).not.toContain("case ");
   });
 
-  it("Timeouts header line says 3600 seconds, like the phase workflows", () => {
+  it("workflows impose no blanket runtime deadline on workflows or subagents", () => {
     for (const name of ALL) {
-      expect(workflow(name), name).toContain(
-        "- **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.",
-      );
+      expect(workflow(name), name).not.toMatch(/workflow or subagent run > \d+ seconds/);
     }
   });
 });
@@ -735,10 +972,10 @@ describe("diff per reader", () => {
   const BASE_FLAG: Record<string, string> = { build: "", debug: " --base={DIFF_BASE}", ship: "" };
   const READERS: Array<[string, RegExp, string, string[]]> = [
     ["build", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
-    ["build", /Step 9 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
+    ["build", /Step 10 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
     [
       "build",
-      /Step 10 — Build Challenge/,
+      /Step 11 — Build Challenge/,
       "build-challenge",
       ["bkit-build-challenge-1", "bkit-build-challenge-2"],
     ],
@@ -769,7 +1006,7 @@ describe("diff per reader", () => {
   );
 
   it("build group verify cuts its own diff from the group's start, right before the agent", () => {
-    const text = stepBody(workflow("build"), /Step 7 — /);
+    const text = stepBody(workflow("build"), /Step 8 — /);
     const [line, ...more] = commandLines(text, "context diff");
     expect(more).toEqual([]);
     expect(line).toContain(
@@ -931,25 +1168,78 @@ describe("plan", () => {
     const writers = plan
       .split(/\n(?=## )/)
       .filter((s) => /Invoke `@bkit-plan-(generate|update)`/.test(s));
-    expect(writers.length).toBe(2);
+    expect(writers.length).toBe(3);
     for (const step of writers) {
       const heading = step.split("\n")[0];
       const lines = step.split("\n");
       const invoke = lines.findIndex((l) => /Invoke `@bkit-plan-(generate|update)`/.test(l));
-      const created = /Create: `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
+      // The close step edits the canonical plan in place (Update); the run's steps write a new version (Create).
+      const written = /(?:Create|Update): `([^`]+)`/.exec(lines.slice(invoke).join("\n"))?.[1];
       const check =
         invoke +
         1 +
         lines.slice(invoke + 1).findIndex((l) => l.includes('"{BKIT}" tests plan-check'));
       expect(check, heading).toBeGreaterThan(invoke);
-      expect(lines[check], heading).toContain(`--plan=${created}`);
+      expect(lines[check], heading).toContain(`--plan=${written}`);
       expect(lines[check], heading).toContain("--existence=refuse");
       expect(step, heading).toContain("Fix only what");
-      expect(step, heading).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
     }
+    // After close the run has landed: a failed check is reported to the owner, never routed to the Failure Path.
+    const isClose = (s: string) => /Close Workflow/.test(s.split("\n")[0]!);
+    const closeSteps = writers.filter(isClose);
+    expect(closeSteps).toHaveLength(1);
+    expect(closeSteps[0]).toMatch(/second exit 1 → tell the user/);
+    expect(closeSteps[0]).toContain("commit nothing from this round");
+    for (const step of writers.filter((s) => !isClose(s)))
+      expect(step, step.split("\n")[0]).toMatch(/second exit 1 → \*\*Failure Path\*\*/);
     expect(section(plan, /Step 4 — Fetch Context/)).not.toContain("tests plan-check");
     expect(plan).not.toContain("--children");
     expect(plan).not.toContain("--brief");
+  });
+
+  it("carries draft formatting findings through review and update, with a strict final check", () => {
+    const generate = section(plan, /Step 3 — Generate Plan/);
+    const review = section(plan, /Step 5 — Review Plan/);
+    const update = section(plan, /Step 6 — Apply Review/);
+    const close = section(plan, /Step 8 — Close Workflow/);
+    const formatRoute = generate.split("\n").find((line) => line.includes("every `kind`"));
+    expect(formatRoute).toContain("**If** exit 1");
+    expect(formatRoute).toContain("`problems` is nonempty");
+    expect(formatRoute).toContain("every `kind` is `format|stray`");
+    expect(formatRoute).toContain("`existence` is empty");
+    expect(formatRoute).toContain("→ sub-step 3");
+    expect(generate.indexOf(formatRoute!)).toBeLessThan(generate.indexOf("second exit 1"));
+    expect(review).toContain("`REVIEW_CHECK` = `plan-generate-check.md`");
+    expect(review).toContain("`REVIEW_CHECK` = `plan-update-check.md`");
+    const scopeCall = review.split("Invoke `@bkit-plan-scope-check`")[1];
+    expect(scopeCall).toContain("/{REVIEW_CHECK}`");
+    const scopePrompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-plan-scope-check.md"),
+      "utf8",
+    );
+    const updatePrompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-plan-update.md"),
+      "utf8",
+    );
+    expect(scopePrompt).toContain("`CRITICAL` plan-edit finding");
+    expect(updatePrompt).toContain(
+      "Apply the supplied plan-check findings with the review critiques",
+    );
+    expect(update).toContain(
+      "plan-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md`",
+    );
+    expect(updatePrompt).toContain(
+      "Preserve every task, requirement, dependency, acceptance criterion and planned test",
+    );
+    for (const step of [update, close]) {
+      expect(step).toContain("--existence=refuse");
+      expect(step).toContain("second exit 1");
+      expect(step).not.toContain("every `kind`");
+    }
+    expect(update).toContain("**If** exit 0 → sub-step 5.");
+    expect(close).toContain("**If** exit 0 → the commit below.");
+    expect(plan).not.toContain("PLAN_CHECK_REPAIRS");
+    expect(plan).not.toContain("PLAN_CHECK_LIMIT");
   });
 });
 
@@ -1012,6 +1302,8 @@ describe("locks", () => {
   });
 });
 
+const FINAL_RETURN_CLOSES = { design: 1, plan: 1, build: 2, debug: 1, ship: 1 } as const;
+
 describe("final return at the close", () => {
   it.each(PHASES)(
     "%s builds its final message in `workflows close` and displays it verbatim",
@@ -1021,8 +1313,9 @@ describe("final return at the close", () => {
       const close = commandLines(text, "workflows close").filter((l) =>
         l.includes("--final-return"),
       );
-      expect(close, name).toHaveLength(1);
-      expect(close[0]).toContain('--session-dir="{SESSION_DIR}"');
+      // Build closes two ways: the publish close and the held close.
+      expect(close, name).toHaveLength(FINAL_RETURN_CLOSES[name]);
+      for (const line of close) expect(line).toContain('--session-dir="{SESSION_DIR}"');
       // Setup tips are appended by the engine, never collected by the workflow.
       expect(commandLines(text, "tips"), name).toEqual([]);
       expect(text).not.toContain("{BKIT_TIPS}");
@@ -1098,7 +1391,7 @@ const ISSUE_TIED = [
   /mcp__github__projects_write\(\{BOARD\}/,
   /"\{BKIT\}" issues (?:labels|comment)\b/,
   /"\{BKIT\}" issues text --description-file="\{OUTBOX\}\/issue-description\.md"/,
-  /"\{BKIT\}" workstreams comment\b/,
+  /"\{BKIT\}" plans comment\b/,
   /\*\*Tracker\*\* status change/,
 ];
 
@@ -1269,7 +1562,10 @@ describe("issue-less runs", () => {
       '**If** the no-issue warning was emitted → add `--warning="<that warning>"`.',
     );
     expect(section(text, /Failure Path/), `${name}: Failure Path STOP`).toContain(FINAL_FIRST_LINE);
-    const failDisplay = lines.filter((l) => l.includes("`SUMMARY_VERDICT` = FAIL → display"));
+    // A failing summary is the final message at the Failure Path STOP, after the warning line.
+    const failDisplay = lines.filter((l) =>
+      /`SUMMARY_VERDICT` = FAIL → (?:display|the final message is)/.test(l),
+    );
     expect(failDisplay.length, `${name}: summary-FAIL display`).toBe(1);
     expect(failDisplay[0], `${name}: summary-FAIL display`).toContain(FINAL_FIRST_LINE);
   });
@@ -1297,7 +1593,7 @@ describe("issue-less runs", () => {
       expect(t).toContain("**If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`");
       expect(t).toContain('**If** exit 0 and `issueId` null → set `ISSUE_ID=""`');
       expect(t).toContain("→ as exit 0 with `issueId` null");
-      expect(t).toContain("never create a tracker issue");
+      expect(t).toContain("NEVER create a tracker issue");
       expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
       // A branch suffix that is not a slug stops the run before anything starts.
       const stop = t.split("\n").find((l) => l.includes("**If** exit 3"));
@@ -1322,10 +1618,8 @@ describe("issue-less runs", () => {
     const step1 = section(workflow("plan"), /Step 1 — Start Workflow/);
     expect(step1).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
     expect(step1).toContain('--description-file="{SESSION_DIR}/issue-description.md"');
-    expect(step1).toContain("Hold `auditPaths` as `{AUDIT_PATHS}`");
-    expect(step1).toContain(
-      "hold `parentFid` as `{PARENT_FID}`, `parentMonth` as `{PARENT_YYYYMM}`",
-    );
+    expect(step1).toContain("Hold `auditPaths` as `AUDIT_PATHS`");
+    expect(step1).toContain("hold `parentFid` as `PARENT_FID`, `parentMonth` as `PARENT_YYYYMM`");
   });
 
   it.each(["design", "plan"])(
@@ -1398,9 +1692,9 @@ describe("issue-less runs", () => {
     }
   });
 
-  it("build 15.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
+  it("build 16.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
     for (const [name, step] of [
-      ["build", /Step 15 — Close Workflow/],
+      ["build", /Step 16 — Close Workflow/],
       ["debug", /Step 11 — Close Workflow/],
     ] as const) {
       const lines = section(workflow(name), step).split("\n");
@@ -1429,13 +1723,22 @@ describe("issue-less runs", () => {
   });
 
   it("design Step 11 requires an issue", () => {
-    const step11 = section(workflow("design"), /Step 11 — Suggest Workstreams/);
+    const step11 = section(workflow("design"), /Step 11 — Suggest Plans/);
     const trueBlock = step11.slice(step11.indexOf("bkit:tracker true start"));
     expect(trueBlock.indexOf(SKIP_NO_ISSUE), "no Skip if line in the true block").toBeGreaterThan(
       -1,
     );
-    expect(trueBlock.indexOf(SKIP_NO_ISSUE)).toBeLessThan(trueBlock.indexOf("workstreams parse"));
+    expect(trueBlock.indexOf(SKIP_NO_ISSUE)).toBeLessThan(trueBlock.indexOf("plans parse"));
     expect(trueBlock).toMatch(/Skip if\*\* `ISSUE_ID` empty → Step 12/);
+  });
+
+  it("design Step 11 posts plans", () => {
+    const step11 = section(workflow("design"), /Step 11 — Suggest Plans/);
+    expect(step11).toContain('"{BKIT}" plans comment --artifact=');
+    expect(step11).not.toMatch(/workstreams (?:parse|comment)/);
+    expect(step11).not.toMatch(/issue per workstream/i);
+    expect(step11).toContain("NEVER create a tracker issue");
+    expect(step11).toContain("or set blockers");
   });
 
   it("debug Step 1 never probes for a PR on dev or main", () => {
@@ -1449,13 +1752,52 @@ describe("issue-less runs", () => {
 });
 
 const AGENTS_MD = fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "AGENTS.md"), "utf-8");
+const ROUTER_MD = fs.readFileSync(
+  path.join(REPO_ROOT, ".bkit", "core", ".bkit", "router.md"),
+  "utf-8",
+);
+const ROUTED = ["design", "plan", "build", "debug", "ship", "auto"];
 
-it("AGENTS.md router does not STOP on a missing issue", () => {
-  expect(AGENTS_MD).not.toContain("No issue ID provided");
-  const router = AGENTS_MD.split("\n").find((l) => l.startsWith("**If** no `ISSUE_ID`"));
-  expect(router, "no router line for a missing ISSUE_ID").toBeDefined();
-  expect(router).not.toContain("STOP");
-  expect(router).toContain("keep `ISSUE_ID` empty → Step 2");
+describe("workflow routing", () => {
+  it("AGENTS.md sends only a bkit-{command} prompt to router.md", () => {
+    const gate = AGENTS_MD.split("\n").find((l) => l.startsWith("- **Workflows:**"));
+    expect(gate, "no workflow gate in AGENTS.md").toBeDefined();
+    expect(gate).toContain("**If** the prompt contains `bkit-{command}`");
+    expect(gate).toContain("read `.bkit/router.md`");
+    expect(gate).toContain("**Else** → no workflow routing; handle the request as asked.");
+    for (const name of ROUTED) expect(gate).toContain(`\`bkit-${name}\``);
+    expect(AGENTS_MD).not.toContain("STOP");
+    expect(AGENTS_MD).not.toContain("Workflow not found");
+  });
+
+  it("router.md hands back a prompt that only mentions a workflow", () => {
+    expect(ROUTER_MD).toContain(
+      "no workflow requested; routing ends → handle the request as asked under `.agents/rules.md`",
+    );
+  });
+
+  it("router.md reads the issue through bkit verbs, never a tracker MCP tool", () => {
+    expect(ROUTER_MD).toContain('fids parse --prompt-file="{SESSION_DIR}/prompt.md"');
+    expect(ROUTER_MD).toContain('issues fetch --issue="{ISSUE_ID}"');
+    expect(ROUTER_MD).not.toContain("mcp__");
+  });
+
+  it("router.md names an existing command file for every host and command", () => {
+    const rows = ROUTER_MD.split("\n")
+      .map((l) => /^\| [^|]+ \| `([^`]*bkit-\{command\}[^`]*)` \|$/.exec(l)?.[1])
+      .filter((p): p is string => p !== undefined);
+    expect(rows).toHaveLength(5);
+    for (const row of rows)
+      for (const name of ROUTED) {
+        const file = row.replace("{command}", name);
+        expect(fs.existsSync(path.join(REPO_ROOT, file)), `${file} missing`).toBe(true);
+      }
+  });
+
+  it("phase workflows read the issue themselves, never from AGENTS.md", () => {
+    for (const name of ["design", "plan", "build", "debug", "ship"])
+      expect(workflow(name), `bkit-${name}`).not.toContain("AGENTS.md");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1470,7 +1812,7 @@ describe("debug on dev", () => {
     for (const line of commandLines(debug, "context diff"))
       expect(line).toContain("--base={DIFF_BASE}");
     const step2 = section(debug, /Step 2 — Worktree Setup/);
-    expect(step2).toContain("`startSha` as `{DIFF_BASE}`");
+    expect(step2).toContain("`startSha` as `DIFF_BASE`");
     expect(step2).toContain("`origin/dev` when null");
   });
 
@@ -1536,6 +1878,158 @@ describe("input files", () => {
     );
     expect(workflow("plan")).toContain(
       "`docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint)",
+    );
+  });
+});
+
+describe("fix loops ask only when the last round made no progress", () => {
+  it("build takes a further test round without asking unless the trend is stuck or worse", () => {
+    const step12 = section(workflow("build"), /Step 12 — Run Tests/);
+    expect(commandLines(step12, "counters progress").map((l) => l.trim())).toEqual([
+      '"{BKIT}" counters progress --file="{STATUS}" --workflow=build --check=build-run-tests --fix=build-failure-remediate',
+    ]);
+    expect(step12).toContain("**If** `TEST_TREND` = `stuck` **or** `worse` →");
+    expect(step12).toContain("`PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**");
+    expect(step12).toContain("**Else** → Step 13");
+  });
+
+  it("debug takes a further fix or soak attempt without asking unless the trend is stuck or worse", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(commandLines(loop, "counters progress").map((l) => l.trim())).toEqual([
+      '"{BKIT}" counters progress --file="{STATUS}" --workflow=debug --check=debug-run-tests --fix={LOOP_FIX}',
+    ]);
+    expect(loop).toContain(
+      "**If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` →",
+    );
+    const step3 = section(workflow("debug"), /Step 3 — Run Tests/);
+    expect(step3).toContain("`LOOP_POINT` = `fix`, `LOOP_FIX` = `debug-failure-remediate`");
+    expect(step3).toContain("`LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`");
+  });
+
+  it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
+    const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
+    expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");
+    expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Build's ending: `publish` resolved once in Step 2, the held close in Step 16.
+// ---------------------------------------------------------------------------
+
+describe("build publish ending", () => {
+  const build = workflow("build");
+  const step2 = () => section(build, /Step 2 — Worktree Setup/);
+  const step15 = () => section(build, /Step 15 — Summary/);
+  const step16 = () => section(build, /Step 16 — Close Workflow/);
+  /** The held fence and the publish path of Step 16, split at the two path labels. */
+  const paths = () => {
+    const text = step16();
+    expect(text).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → \*\*Held close\*\*\.\n\*\*Else\*\* → \*\*Publish close\*\*\./,
+    );
+    const held = text.indexOf("**Held close:**");
+    const pub = text.indexOf("**Publish close:**");
+    expect(held, "no **Held close** label").toBeGreaterThanOrEqual(0);
+    expect(pub, "no **Publish close** label").toBeGreaterThan(held);
+    return {
+      held: text.slice(held, pub),
+      publish: text.slice(pub, text.indexOf("### 🔒 Gate 16")),
+      gate: text.slice(text.indexOf("### 🔒 Gate 16")),
+    };
+  };
+
+  it("resolves publish through status route", () => {
+    const text = step2();
+    const route = commandLines(text, "status route");
+    expect(route).toHaveLength(1);
+    expect(route[0]).toContain("--workflow=build");
+    expect(route[0]).toContain('--file="{STATUS}"');
+    expect(route[0]).toContain('--prompt-file="{SESSION_DIR}/prompt.md"');
+    expect(text).toContain("`publish` as `PUBLISH`");
+    expect(text).toContain("`publishSource` as `PUBLISH_SOURCE`");
+    const assert = commandLines(text, "runtime assert");
+    expect(assert).toHaveLength(1);
+    expect(assert[0]).not.toContain("/dev/null");
+  });
+
+  it("re-derives publish on resume", () => {
+    // Steps 1-2 run again on every resume, so the only place `PUBLISH` is set is Step 2,
+    // after `runtime row`, and nothing reads it before except the Failure Path and Decision
+    // Pause, which treat an unset value as publish true.
+    const reads = build
+      .replace(section(build, /Failure Path/), "")
+      .replace(section(build, /Decision Pause/), "");
+    const first = reads.search(/`\{?PUBLISH\}?`|=\{PUBLISH\}/);
+    expect(first).toBeGreaterThan(reads.indexOf("## 🤖 Step 2 — Worktree Setup"));
+    const text = step2();
+    expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
+      text.indexOf("runtime row"),
+    );
+    expect(build).toMatch(/Steps 1-2 always run again/i);
+  });
+
+  it("warns when a non-LOCAL run resolves publish false", () => {
+    const text = step2();
+    expect(text).toContain("`PUBLISH_SOURCE` = coerced");
+    expect(text).toMatch(/Warning: publish=false[^\n]*publishes/);
+  });
+
+  it("skips push, PR and CI on a held close", () => {
+    const { held } = paths();
+    for (const verb of [
+      "branches push",
+      "prs probe",
+      "prs open",
+      "runs dispatch",
+      "branches scan-diff",
+      "branches force-build",
+    ])
+      expect(commandLines(held, verb), verb).toEqual([]);
+    const close = commandLines(held, "workflows close");
+    expect(close).toHaveLength(1);
+    expect(close[0]).toContain("--ending=held --publish=false --record-step");
+    expect(commandLines(held, "locks release")).toHaveLength(1);
+    expect(commandLines(held, "issues labels")[0]).toContain("--board=review");
+    expect(held).toContain("built locally, not published");
+  });
+
+  it("keeps the publish=true close path", () => {
+    const { publish } = paths();
+    for (const verb of ["prs probe", "branches scan-diff", "prs open", "runs dispatch"])
+      expect(commandLines(publish, verb).length, verb).toBeGreaterThan(0);
+    expect(commandLines(publish, "branches push").join("\n")).toContain("--require-ci");
+    expect(publish).toContain("Final return: display `{FINAL_RETURN}` verbatim");
+  });
+
+  it("appends the held roadmap row without roadmap mirror", () => {
+    const { held, publish } = paths();
+    const row = commandLines(held, "roadmap feature");
+    expect(row).toHaveLength(1);
+    expect(row[0]).toContain('--root="{WORKTREE_PATH}" --workflow=build --fid={FID}');
+    expect(held).not.toContain("roadmap mirror");
+    expect(commandLines(publish, "roadmap mirror")).toHaveLength(1);
+  });
+
+  it("makes Gate 15 conditional on the held path", () => {
+    const text = step15();
+    expect(commandLines(text, "workflows summary")[0]).toContain("--publish={PUBLISH}");
+    const gate = text.slice(text.indexOf("### 🔒 Gate 15"));
+    expect(gate).toMatch(/- \[ \] Open-PR probe ran before any push/);
+    expect(gate).toMatch(/- \[ \] Summary commit pushed, or kept local on a held run/);
+    const body = text.slice(0, text.indexOf("### 🔒 Gate 15"));
+    expect(body).toMatch(/\*\*If\*\* `PUBLISH` = false → sub-step 5\.\n[\s\S]*prs probe/);
+  });
+
+  it("runs only the close gate on the held path", () => {
+    const { gate } = paths();
+    const closeAt = gate.indexOf("--step=build-close-workflow");
+    const prAt = gate.indexOf("--step=build-create-pr");
+    expect(closeAt).toBeGreaterThanOrEqual(0);
+    expect(prAt).toBeGreaterThan(closeAt);
+    expect(gate.slice(closeAt, prAt)).toMatch(/\*\*If\*\* `PUBLISH` = true → also run:/);
+    expect(gate).toMatch(
+      /\*\*If\*\* `PUBLISH` = false → tick only[^\n]*\n\*\*Else\*\* → tick every item\./,
     );
   });
 });

@@ -160,12 +160,22 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "tracker.ts"),
   // The summary `workflows summary` writes: verdict rules, next step, markdown.
   path.join("commands", "workflow", "summary.ts"),
+  // Finding resolution evidence used by the workflow summary.
+  path.join("commands", "workflow", "summary-findings.ts"),
   // Each workflow's ordered steps and resume rule, read by `status resume`.
   path.join("commands", "workflow", "step-table.ts"),
   // The newest numbered draft in a run's log folder, read by `workflow promote` and run-facts.
   path.join("commands", "workflow", "plan-versions.ts"),
   // The plan's group and task blocks, read by `tests`, `challenge`, the summary and run-facts.
   path.join("commands", "workflow", "plan-blocks.ts"),
+  // Where a named test sits in its file and what it runs, read by `tests` and `branches`.
+  path.join("commands", "workflow", "test-blocks.ts"),
+  // The `tests changed` verb, registered on `bkit tests` in tests.ts.
+  path.join("commands", "workflow", "tests-changed.ts"),
+  // The pinned-checksum check behind `ci pins`.
+  path.join("commands", "ci", "pins.ts"),
+  // Committed-tree gate receipts used by `ci push-gate`.
+  path.join("commands", "ci", "push-gate.ts"),
 ]);
 
 /** Every way a command source breaks "exports a command, and each is in COMMANDS"; empty = conforms. */
@@ -254,6 +264,7 @@ describe("the convention checker rejects what it should", () => {
     verbs: {
       count: {
         summary: "Count them.",
+        use: "workflow",
         flags: [{ name: "verify-attempt", type: "string", help: "which verify attempt" }],
         output: { verifyAttempt: "echoed" },
         exitCodes: { 3: "none found" },

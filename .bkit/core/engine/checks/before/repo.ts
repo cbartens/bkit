@@ -11,6 +11,7 @@ import {
   ASK_POINTS,
   CONFIG_DEFAULTS,
   invalidAskSettings,
+  invalidBuildPublish,
   invalidTaskCaps,
   limitKey,
   readBkitConfig,
@@ -79,6 +80,45 @@ export function detectInvalidTaskCaps(cwd: string): PreflightFinding | null {
       .map((k) => `\`bkit.workflows.tasks.${k}\` (default ${caps[k as keyof typeof caps]})`)
       .join(", ")}.`,
   };
+}
+
+/**
+ * Advisory: `package.json` `bkit.workflows.build.publish` holds a refused or invalid value.
+ * `remote: false` is refused (a cloud run always publishes); a non-object block or a
+ * non-boolean `local` falls back to its default. One finding per key.
+ */
+export function detectBuildPublish(cwd: string): PreflightFinding[] {
+  const workflows = bkitWorkflows(cwd);
+  if (workflows === null) return [];
+  const out: PreflightFinding[] = [];
+  const publish = (workflows.build as { publish?: unknown } | null | undefined)?.publish;
+  if (
+    publish !== null &&
+    typeof publish === "object" &&
+    !Array.isArray(publish) &&
+    (publish as { remote?: unknown }).remote !== undefined &&
+    (publish as { remote?: unknown }).remote !== true
+  ) {
+    out.push({
+      id: "bkit-build-publish-remote",
+      severity: "advisory",
+      detect:
+        "package.json `bkit.workflows.build.publish.remote` is not `true`, so a cloud or CI run still publishes.",
+      action:
+        "Delete `bkit.workflows.build.publish.remote` or set it to `true`; hold a local build with `bkit.workflows.build.publish.local` set to `false`.",
+    });
+  }
+  const bad = invalidBuildPublish(workflows.build);
+  if (bad.length > 0) {
+    out.push({
+      id: "bkit-build-publish-invalid",
+      severity: "advisory",
+      detect: `package.json ${bad.map((k) => `\`bkit.workflows.${k}\``).join(", ")} is not ${bad[0] === "build.publish.local" ? "a boolean" : "an object"}, so the default (publish) is used instead.`,
+      action:
+        "Set `bkit.workflows.build.publish.local` to `true` or `false`, or delete the block to keep the default (`true`).",
+    });
+  }
+  return out;
 }
 
 const TASK_CAP_KEY = /`bkit\.workflows\.tasks\.(\w+)`/g;

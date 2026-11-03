@@ -2,5 +2,5 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "install": "pnpm install --frozen-lockfile && ([ ! -f .vale.ini ] || vale sync)"
+  "install": "pnpm install --frozen-lockfile && ([ ! -f .vale.ini ] || vale sync) && pnpm exec bkit context provision"
 }

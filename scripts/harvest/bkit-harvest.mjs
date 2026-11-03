@@ -81,11 +81,11 @@
  *            `workflow-done` row's, else its last close step's, else null), parentShas (every
  *            commit its status rows name)
  *   time     start, end, totalMinutes, activeMinutes, activeFrom {chats, bytes}, lastActivity
- *   ending   `done` | `close-failed` | `failed` | `decision-pause` | `stopped`
+ *   ending   `done` | `close-failed` | `failed` | `decision-pause` | `stopped` | `held`
  *   ci       one entry per close step that dispatched CI: {status, reason?, attempts}
  *   steps    total {n, totalMinutes, activeMinutes}, byStep {<step>: {n, totalMinutes,
  *            activeMinutes}}; a step's minutes run from the row before it that is not a mark row
- *            (`session`, `owner-pause`, `owner-answer`); time before the first step is in
+ *            (`session`, `owner-pause`, `owner-answer`, `test-run`); time before the first step is in
  *            time.totalMinutes only
  *   owner    waitBeforeMinutes (since the folder's previous run's last row; null for its first),
  *            total {stops, minutes}, stops [{minutes, open, reason}]: one stop per `owner-pause`
@@ -1424,7 +1424,7 @@ export function buildFacts(run, dir, isLastBuild, window) {
     gapsRemediate,
     ...(hol ? { holistic: { verdict: hol.verdict ?? null, failures: hol.failures ?? null } } : {}),
     ...(ch ? { challenge: { verdict: ch.verdict ?? null, findings } } : {}),
-    // Filled from the row's steps block: build.redTests = steps.byStep["build-task-red"].n.
+    // Filled from the row's steps block: build.redTests = the build-task-red (older runs) and build-tests-red rows.
     redTests: 0,
   };
 }
@@ -1448,9 +1448,10 @@ const joinSha = (run) =>
  * `workflow-done` and the close after it failed: its last close found CI never started
  * (`ciDispatch.outcome: "unresolved"`), or a `workflow-failed` row came after the done row with
  * no close after it. With no end row, `decision-pause` when its `build-decision-<run>-*.md` is
- * still `Status: OPEN`, else `stopped`.
+ * still `Status: OPEN`, else `stopped`. `held` when the last `workflow-done` row says `ending: held`.
  */
 export function endingOf(run, dir, ordinal) {
+  if (run.rows.findLast((r) => r.type === "workflow-done")?.ending === "held") return "held";
   // splitRuns keeps only close steps after an end row, so a done row before the last end row
   // means the work finished and anything after it is the close.
   if (run.end && run.rows.some((r) => r.type === "workflow-done")) {
@@ -1475,7 +1476,14 @@ export function endingOf(run, dir, ordinal) {
  * it that is not one of these. A copy of the engine's `MARK_ROWS`
  * (`.bkit/core/engine/commands/workflow/run-facts.ts`); a test holds the two equal.
  */
-export const MARK_ROWS = new Set(["session", "owner-pause", "owner-answer"]);
+export const MARK_ROWS = new Set([
+  "session",
+  "owner-pause",
+  "owner-answer",
+  "test-run",
+  "engine-call",
+  "completeness",
+]);
 
 /** A run row's key: `<fid fp>:<workflow>:<start>`. */
 const runKey = (slug, fid, workflow, start) =>
@@ -1656,7 +1664,8 @@ export function runRows(dir, repo, history, activity = () => null, usage = () =>
     let build;
     if (run.workflow === "build") {
       build = buildFacts(run, dir, run === lastOf("build"), window);
-      build.redTests = steps.byStep["build-task-red"]?.n ?? 0;
+      build.redTests =
+        (steps.byStep["build-task-red"]?.n ?? 0) + (steps.byStep["build-tests-red"]?.n ?? 0);
     }
     return {
       schema: SCHEMA,
@@ -2355,7 +2364,11 @@ export function validateTotals(row) {
   }
   const b = row.build;
   if (b && "redTests" in b && st?.byStep)
-    same("build.redTests", b.redTests, st.byStep["build-task-red"]?.n ?? 0);
+    same(
+      "build.redTests",
+      b.redTests,
+      (st.byStep["build-task-red"]?.n ?? 0) + (st.byStep["build-tests-red"]?.n ?? 0),
+    );
   const f = b?.challenge?.findings;
   if (f) same("build.challenge.findings.total", f.total, f.CRITICAL + f.HIGH + f.MEDIUM + f.LOW);
 
@@ -2384,21 +2397,27 @@ export const latestChats = (rows) => latestRows(rows, "chat");
  * appends the run's outcome again with the dispatch in `ci`. Newest is the larger `ts`, the later
  * row on a tie. Rows without `run.parentSha` are
  * all kept. Order follows each kept row's first appearance.
+ *
+ * Two groups, never merged: `workflow` = rows workflow closes wrote; `utility` = rows a direct chat
+ * wrote (`by.workflow` `utility`), which no run log stands behind.
+ * @returns {{workflow: object[], utility: object[]}}
  */
 export function latestOutcomes(rows) {
-  const out = [];
+  const out = { workflow: [], utility: [] };
   const at = new Map();
   for (const r of rows) {
     if (r?.kind !== "outcome") continue;
+    const workflow = r.by?.workflow ?? r.workflow;
+    const group = out[workflow === "utility" ? "utility" : "workflow"];
     const sha = r.run?.parentSha ?? r.parentSha;
     if (!sha) {
-      out.push(r);
+      group.push(r);
       continue;
     }
-    const k = [r.repo, r.by?.workflow ?? r.workflow, sha].join("\u0000");
+    const k = [r.repo, workflow, sha].join("\u0000");
     const i = at.get(k);
-    if (i === undefined) at.set(k, out.push(r) - 1);
-    else if ((r.ts ?? 0) >= (out[i].ts ?? 0)) out[i] = r;
+    if (i === undefined) at.set(k, group.push(r) - 1);
+    else if ((r.ts ?? 0) >= (group[i].ts ?? 0)) group[i] = r;
   }
   return out;
 }
@@ -3550,7 +3569,8 @@ export function chatClass(row) {
 export function linkChats(chatRows, ledgerRows) {
   const chats = chatRows.map(normalize);
   const rows = ledgerRows.filter(workflowRow).map(normalize);
-  const kept = new Set(latestOutcomes(rows));
+  const outcomes = latestOutcomes(rows);
+  const kept = new Set([...outcomes.workflow, ...outcomes.utility]);
   const others = rows.filter((r) => r.kind !== "outcome" || kept.has(r));
   const bySha = new Map();
   for (const r of others) {
@@ -4089,7 +4109,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
     (a, b) => a.time.start - b.time.start,
   );
   const wfOf = (r) => r.by?.workflow;
-  const outcomes = latestOutcomes(ledgerRows);
+  const outcomes = latestOutcomes(ledgerRows).workflow;
   const outcomeBySha = new Map(
     outcomes.filter((r) => r.run?.parentSha).map((r) => [r.run.parentSha, r]),
   );
@@ -4210,7 +4230,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
   out.push(
     "## Workflow runs, from the run logs\n\n" +
       "Every run is listed; one whose log changed within the settle window is **open**: counted here, left out of the medians. " +
-      "**Ending**: `done` / `failed` from its last end row; `close-failed` = the work wrote `workflow-done` and only the close after it failed, or its last close found CI never started (a later close that started CI → `done`); with no end row, `decision-pause` when its `build-decision-*.md` is still `Status: OPEN`, else `stopped`. **Close CI not started**: closes, counted one by one, whose `ciDispatch` found CI never started, by reason.\n",
+      "**Ending**: `done` / `failed` from its last end row; `close-failed` = the work wrote `workflow-done` and only the close after it failed, or its last close found CI never started (a later close that started CI → `done`); with no end row, `decision-pause` when its `build-decision-*.md` is still `Status: OPEN`, else `stopped`; `held` = the last `workflow-done` row says `ending: held` (a local build that published nothing). **Close CI not started**: closes, counted one by one, whose `ciDispatch` found CI never started, by reason.\n",
   );
   const wfs = uniq(runs.map(wfOf)).sort();
   /** Median of the known values, `-` when none is known; with how many runs it covers when not all. */
@@ -4220,7 +4240,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
     const m = Math.round(median(known));
     return known.length === xs.length ? m : `${m} (${known.length} of ${xs.length})`;
   };
-  const endings = ["done", "close-failed", "failed", "decision-pause", "stopped"];
+  const endings = ["done", "close-failed", "failed", "decision-pause", "stopped", "held"];
   out.push(
     table(
       [
@@ -4606,6 +4626,7 @@ export function renderReport(ledgerRows, names, now = Date.now(), logDirs = new 
 /**
  * Per repo fingerprint: runs found on both sides, outcome rows with no `run` row, and `run` rows
  * with no outcome row. Only rows that carry `run.parentSha` take part, and only settled runs.
+ * Outcome rows a direct chat wrote (`utility`) have no run log, so they take no part either.
  * @returns {Map<string, {both: number, outcomeOnly: object[], runOnly: object[]}>}
  */
 export function runCheck(rows) {
@@ -4620,7 +4641,7 @@ export function runCheck(rows) {
     runs.set(runKey(r.repo, r.run.parentSha), r);
   }
   const matched = new Set();
-  for (const o of latestOutcomes(rows)) {
+  for (const o of latestOutcomes(rows).workflow) {
     const sha = o.run?.parentSha;
     if (!sha || typeof o.repo !== "string") continue;
     const fp = o.repo.startsWith("fp:") ? o.repo : repoFp(o.repo);
@@ -4790,8 +4811,8 @@ async function main() {
         [statsFile, frictionFile].filter((f) => fs.existsSync(f)),
         new Set(["chat", "run"]),
       ),
-      "Workflow rows, all repos",
-      "The rows every repo's workflow closes wrote, as copied into `harvest/`.",
+      "Ledger rows, all repos",
+      "The rows every repo's workflow closes and direct chats wrote, as copied into `harvest/`, each group reported apart.",
     ).replace(/^#/gm, "##");
     fs.writeFileSync(
       reportFile,

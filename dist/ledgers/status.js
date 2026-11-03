@@ -18,11 +18,122 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseJson } from "../shared/json.js";
+export const CI_TIERS = ["static", "unit", "integration", "e2e", "live", "migration"];
+/** Validate the whole saved selection before any reader treats it as evidence. */
+export function validateCiSelection(value) {
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+        return false;
+    const v = value;
+    if (v.mode === "local")
+        return typeof v.reason === "string" && v.reason.trim().length > 0;
+    const stringField = (key) => (typeof v[key] === "string" ? v[key] : "");
+    const repo = stringField("repo");
+    const runId = stringField("runId");
+    const branch = stringField("headBranch");
+    return (v.mode === "ci" &&
+        v.provider === "github" &&
+        /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(repo) &&
+        /^[1-9][0-9]*$/.test(runId) &&
+        Number.isSafeInteger(v.runAttempt) &&
+        Number(v.runAttempt) > 0 &&
+        stringField("runUrl") ===
+            `https://github.com/${repo}/actions/runs/${runId}/attempts/${v.runAttempt}` &&
+        /^[1-9][0-9]*$/.test(stringField("workflowId")) &&
+        /^\.github\/workflows\/[^/]+\.ya?ml$/.test(stringField("workflowPath")) &&
+        !stringField("workflowPath").includes("..") &&
+        branch.length > 0 &&
+        !branch.startsWith("-") &&
+        !branch.startsWith("/") &&
+        !branch.endsWith("/") &&
+        !/[\s~^:?*\[\\\u0000-\u001f\u007f]/.test(branch) &&
+        !branch.includes("..") &&
+        !branch.includes("//") &&
+        !branch.includes("@{") &&
+        !branch.endsWith(".") &&
+        branch.split("/").every((part) => !part.startsWith(".") && !part.endsWith(".lock")) &&
+        /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(stringField("headSha")) &&
+        ["failure", "timed_out", "startup_failure"].includes(stringField("conclusion")) &&
+        Array.isArray(v.redTiers) &&
+        v.redTiers.every((tier) => CI_TIERS.some((known) => known === tier)) &&
+        typeof v.via === "string" &&
+        v.via.trim().length > 0);
+}
+/** Transport and wording changes preserve the identity of the evidence. */
+export function ciSelectionIdentity(selection) {
+    return JSON.stringify(selection.mode === "local"
+        ? ["local"]
+        : [
+            selection.provider,
+            selection.repo.toLowerCase(),
+            selection.workflowId,
+            selection.workflowPath,
+            selection.runId,
+            selection.runAttempt,
+            selection.headSha,
+        ]);
+}
+/** Validate the bounded CI evidence variant without relaxing local exit codes. */
+export function testRunProblem(value) {
+    if (!value || typeof value !== "object")
+        return "test-run must be an object";
+    const r = value;
+    const positive = (v) => Number.isSafeInteger(v) && Number(v) > 0;
+    if (r.source === "ci") {
+        if (r.workflow !== "debug" ||
+            r.step !== "debug-run-tests" ||
+            r.verdict !== "FAIL" ||
+            r.exitCode !== null ||
+            r.failures !== null ||
+            r.gate !== null ||
+            !positive(r.ciGeneration) ||
+            !positive(r.runAttempt) ||
+            typeof r.ciRun !== "string" ||
+            !/^[1-9][0-9]*$/.test(r.ciRun) ||
+            r.scope !== `ci:${r.ciRun}` ||
+            typeof r.artifact !== "string" ||
+            !r.artifact ||
+            typeof r.repo !== "string" ||
+            !/^[\w.-]+\/[\w.-]+$/.test(r.repo) ||
+            r.ciUrl !== `https://github.com/${r.repo}/actions/runs/${r.ciRun}/attempts/${r.runAttempt}` ||
+            typeof r.workflowId !== "string" ||
+            !/^[1-9][0-9]*$/.test(r.workflowId) ||
+            typeof r.workflowPath !== "string" ||
+            !/^\.github\/workflows\/[^/]+\.ya?ml$/.test(r.workflowPath) ||
+            typeof r.headSha !== "string" ||
+            !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(r.headSha))
+            return "invalid CI evidence round";
+        return null;
+    }
+    if (r.source !== undefined && r.source !== "local")
+        return "invalid test source";
+    if (!Number.isSafeInteger(r.exitCode) || Number(r.exitCode) < 0)
+        return "local exitCode must be a non-negative integer";
+    if (r.failures !== null && (!Number.isSafeInteger(r.failures) || Number(r.failures) < 0))
+        return "invalid failure count";
+    return null;
+}
+/** A round belongs to exactly one saved evidence generation. */
+export function ciRoundMatches(row, selection, generation) {
+    return (validateCiSelection(selection) &&
+        selection.mode === "ci" &&
+        testRunProblem(row) === null &&
+        row.source === "ci" &&
+        row.ciGeneration === generation &&
+        row.ciRun === selection.runId &&
+        row.runAttempt === selection.runAttempt &&
+        row.ciUrl === selection.runUrl &&
+        row.repo === selection.repo &&
+        row.workflowId === selection.workflowId &&
+        row.workflowPath === selection.workflowPath &&
+        row.headSha === selection.headSha);
+}
 // Identity for de-dup under union merge. `step-done` is unique per
 // (workflow, step, parentSha, at); workflow-level events per (type, workflow, at).
 function identity(e) {
     if (e.type === "step-done")
-        return `S\u0000${e.workflow}\u0000${e.step}\u0000${e.parentSha}\u0000${e.at}`;
+        return `S\u0000${e.workflow}\u0000${e.step}\u0000${e.parentSha}\u0000${e.at}${e.ciGeneration === undefined ? "" : `\u0000${e.status}\u0000${e.ciGeneration}`}`;
+    if (e.type === "workflow-meta" && e.ciSelection !== undefined)
+        return `M\u0000${e.workflow}\u0000${e.at}\u0000${e.ciGeneration}\u0000${JSON.stringify(e.ciSelection)}`;
     return `W\u0000${e.type}\u0000${e.workflow}\u0000${e.at}`;
 }
 // Index of the most-recent run matching `workflow`, or -1.
@@ -131,13 +242,12 @@ export function lastDoneStepAllRuns(runs, workflow, f) {
 }
 /**
  * Which run of `workflow` this invocation is (1-based): the count of its runs,
- * plus one unless the latest run overall is one of them still IN_PROGRESS — a
- * resume. Same answer before and after the run's `workflow-started` row lands.
+ * plus one unless the latest of them is still IN_PROGRESS — a resume, even after
+ * another workflow's run. Same answer before and after the run's `workflow-started` row lands.
  */
 export function runNumber(runs, workflow) {
     const n = runs.filter((r) => r.workflow === workflow).length;
-    const latest = runs.at(-1);
-    return latest?.workflow === workflow && latest.status === "IN_PROGRESS" ? n : n + 1;
+    return lastRun(runs, workflow)?.status === "IN_PROGRESS" ? n : n + 1;
 }
 /**
  * A run-level field of the active run (merged from `workflow-meta`) when set,

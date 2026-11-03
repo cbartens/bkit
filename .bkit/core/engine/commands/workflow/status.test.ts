@@ -3,11 +3,12 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandError, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { readRuns } from "./status";
+import { runStatusRows, stepsBlock } from "./run-facts";
+import { readRuns, readStatusEvents, readStatusRows } from "./status";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -50,6 +51,211 @@ function log(rows: object[]) {
   return file;
 }
 
+const ciStateSelection = (extra: Record<string, unknown> = {}) => ({
+  mode: "ci",
+  provider: "github",
+  repo: "example/example",
+  runId: "123",
+  runAttempt: 2,
+  runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+  workflowId: "456",
+  workflowPath: ".github/workflows/consumer-ci.yml",
+  headBranch: "fix/ci",
+  headSha: SHA,
+  conclusion: "failure",
+  redTiers: ["integration"],
+  via: "prompt-run",
+  ...extra,
+});
+const ciStateMeta = (generation = 1, extra: Record<string, unknown> = {}) => ({
+  type: "workflow-meta",
+  workflow: "debug",
+  at: "2026-10-01T00:00:01Z",
+  ciSelection: ciStateSelection(),
+  ciGeneration: generation,
+  ...extra,
+});
+const ciStateRoute = (file: string, text = "/bkit-debug 7-x", cwd = process.cwd()) => {
+  const prompt = path.join(tmp(), "prompt.md");
+  fs.writeFileSync(prompt, text);
+  return run(
+    ["status", "route", `--file=${file}`, "--workflow=debug", `--prompt-file=${prompt}`],
+    cwd,
+  );
+};
+const ciStateWrite = (file: string, selection: object) => {
+  const input = path.join(tmp(), "selection.json");
+  fs.writeFileSync(input, JSON.stringify(selection));
+  return run([
+    "status",
+    "meta",
+    `--file=${file}`,
+    "--workflow=debug",
+    `--ci-selection-file=${input}`,
+  ]);
+};
+
+describe("debug evidence state", () => {
+  it("persists atomic selections and preserves identical evidence generations", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z")]);
+    const selection = ciStateSelection();
+    const first = await ciStateWrite(file, selection);
+    expect(first.code).toBe(0);
+    expect(first.json.row).toMatchObject({ ciSelection: selection, ciGeneration: 1 });
+    const repeated = await ciStateWrite(file, { ...selection, via: "issue-run" });
+    expect(repeated.code).toBe(0);
+    expect(repeated.json.row.ciGeneration).toBe(1);
+    expect(readRuns(file).at(-1)).toMatchObject({
+      ciSelection: { mode: "ci", runId: "123" },
+      ciGeneration: 1,
+    });
+    const local = { mode: "local", reason: "explicit-local" };
+    expect((await ciStateWrite(file, local)).code).toBe(0);
+    expect(readRuns(file).at(-1)).toMatchObject({ ciSelection: local, ciGeneration: 2 });
+    expect(readRuns(file).at(-1)?.ciSelection).toEqual(local);
+    const before = fs.readFileSync(file, "utf-8");
+    expect((await ciStateWrite(file, { ...selection, runAttempt: 0 })).code).not.toBe(0);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+  });
+
+  it("resumes saved evidence and replaces it only on explicit new selection", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    const before = fs.readFileSync(file, "utf-8");
+    const resume = await ciStateRoute(file);
+    expect(resume.code).toBe(0);
+    expect(resume.json).toMatchObject({ ciRun: "123", ciGeneration: 1, redTiers: ["integration"] });
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciRun: "123", ciGeneration: 1 });
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    const next = ciStateSelection({
+      runAttempt: 3,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/3",
+    });
+    expect((await ciStateWrite(file, next)).code).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: "123",
+      ciGeneration: 2,
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+    expect(
+      (
+        await ciStateWrite(file, {
+          ...next,
+          runId: "124",
+          runUrl: "https://github.com/example/example/actions/runs/124/attempts/3",
+        })
+      ).code,
+    ).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciRun: "124", ciGeneration: 3 });
+  });
+
+  it("clears saved CI routing immediately for explicit local selection", async () => {
+    const file = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    const before = fs.readFileSync(file, "utf-8");
+    const route = await ciStateRoute(
+      file,
+      "/bkit-debug 7-x [local] https://github.com/example/example/actions/runs/999",
+    );
+    expect(route.code).toBe(0);
+    expect(route.json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect((await ciStateWrite(file, { mode: "local", reason: "explicit-local" })).code).toBe(0);
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciGeneration: 2,
+    });
+    expect(readRuns(file).at(-1)?.ciSelection).toEqual({ mode: "local", reason: "explicit-local" });
+  });
+
+  it("counts reproduction and fixes only in the active generation", async () => {
+    const file = log([
+      started("build", "2026-08-01T00:00:00Z"),
+      started("debug", "2026-09-01T00:00:00Z"),
+      done("debug", "debug-failure-remediate", "2026-09-01T00:01:00Z", { ciGeneration: 2 }),
+      done("debug", "debug-failure-reproduce", "2026-09-01T00:02:00Z", {
+        ciGeneration: 2,
+        reproduced: "YES",
+      }),
+      { type: "workflow-done", workflow: "debug", at: "2026-09-01T00:03:00Z" },
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(2),
+      done("debug", "debug-failure-remediate", "2026-10-01T00:01:00Z", { ciGeneration: 1 }),
+      done("debug", "debug-failure-reproduce", "2026-10-01T00:02:00Z", {
+        ciGeneration: 1,
+        reproduced: "YES",
+      }),
+      done("build", "debug-failure-soak", "2026-10-01T00:03:00Z", { ciGeneration: 2 }),
+    ]);
+    const root = tmp();
+    fs.writeFileSync(
+      path.join(root, "package.json"),
+      JSON.stringify({ bkit: { workflows: { debug: { fix: { maxAttempts: 2 } } } } }),
+    );
+    const noCurrent = await ciStateRoute(file, "/bkit-debug 7-x [repro]", root);
+    expect(noCurrent.json).toMatchObject({
+      ciFixDone: false,
+      ciReproduced: false,
+      debugMode: "SOAK",
+    });
+    fs.appendFileSync(
+      file,
+      JSON.stringify(
+        done("debug", "debug-failure-reproduce", "2026-10-01T00:04:00Z", {
+          ciGeneration: 2,
+          reproduced: "YES",
+        }),
+      ) + "\n",
+    );
+    fs.appendFileSync(
+      file,
+      JSON.stringify(
+        done("debug", "debug-failure-remediate", "2026-10-01T00:05:00Z", { ciGeneration: 2 }),
+      ) + "\n",
+    );
+    expect((await ciStateRoute(file)).json).toMatchObject({ ciFixDone: true, ciReproduced: true });
+    fs.appendFileSync(
+      file,
+      JSON.stringify({ type: "workflow-done", workflow: "debug", at: "2026-10-01T00:06:00Z" }) +
+        "\n",
+    );
+    expect((await ciStateRoute(file)).json).toMatchObject({
+      ciRun: null,
+      redTiers: [],
+      ciFixDone: false,
+      ciReproduced: false,
+    });
+  });
+
+  it("orders covering gates for red tiers and preserves live off", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(1, { ciSelection: ciStateSelection({ redTiers: ["unit"] }) }),
+    ]);
+    const unit = await ciStateRoute(file);
+    expect(unit.json.gates[0]).toBe("bkit:gate:static-unit");
+    expect(new Set(unit.json.gates).size).toBe(unit.json.gates.length);
+    const integrationFile = log([started("debug", "2026-10-01T00:00:00Z"), ciStateMeta()]);
+    expect((await ciStateRoute(integrationFile)).json.gates[0]).toBe(
+      "bkit:gate:static-unit-integration",
+    );
+    const off = await ciStateRoute(integrationFile, "/bkit-debug 7-x [live=off]");
+    expect(off.json.gates.some((gate: string) => gate.endsWith("-live"))).toBe(false);
+    const unknownFile = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      ciStateMeta(1, { ciSelection: ciStateSelection({ redTiers: [] }) }),
+    ]);
+    expect((await ciStateRoute(unknownFile)).json.gates[0]).toBe(
+      "bkit:gate:static-unit-integration-e2e-live",
+    );
+  });
+});
+
 describe("bkit status path", () => {
   it("returns the main checkout's path outside a worktree, and whether it exists", async () => {
     const root = tmp();
@@ -83,6 +289,39 @@ describe("the status fold", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.workflow).toBe("build");
     expect(runs[0]!.steps.map((s) => s.step)).toEqual(["build-plan-verify"]);
+  });
+
+  it("ignores a row type it does not know", () => {
+    const rows = [
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-a", "2026-10-01T00:01:00Z"),
+      {
+        type: "engine-call",
+        workflow: "build",
+        at: "2026-10-01T00:02:00Z",
+        noun: "steps",
+        verb: "finish",
+        flags: [],
+      },
+      { type: "completeness", workflow: "build", at: "2026-10-01T00:03:00Z", verdict: "complete" },
+      { type: "future-row", workflow: "build", at: "2026-10-01T00:04:00Z" },
+      done("build", "build-b", "2026-10-01T00:05:00Z"),
+    ];
+    const file = log(rows);
+    expect(readStatusRows(file)).toHaveLength(rows.length);
+    const runs = readRuns(file);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.steps.map((s) => s.step)).toEqual(["build-a", "build-b"]);
+    const kept = runStatusRows(readStatusEvents(file), "build", "2026-10-01T00:00:00Z");
+    expect(kept.map((r) => r.type)).toEqual([
+      "workflow-started",
+      "step-done",
+      "engine-call",
+      "completeness",
+      "future-row",
+      "step-done",
+    ]);
+    expect(stepsBlock(kept).total.n).toBe(2);
   });
 
   it("refuses a line that is not JSON rather than folding around it (exit 3)", () => {
@@ -140,6 +379,27 @@ describe("bkit status route", () => {
       "--group=1",
     ]);
     expect(r.json).toMatchObject({ verdict: "FAIL", failures: 2 });
+  });
+
+  it("reads a build-plan-execute row written before the step rename as build-plan-tasks", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-plan-execute", "2026-10-01T00:01:00Z", {
+        verdict: "PASS",
+        failures: 0,
+        group: 1,
+      }),
+    ]);
+    const r = await run([
+      ...base,
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-tasks",
+      "--group=1",
+    ]);
+    expect(r.json).toMatchObject({ verdict: "PASS", failures: 0, parentSha: SHA });
+    // The row on disk is history and keeps its name.
+    expect(fs.readFileSync(file, "utf-8")).toContain('"step":"build-plan-execute"');
   });
 
   it("prints the parentSha of the step's last row in the active run, per group", async () => {
@@ -505,7 +765,7 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
 
   it("refuses --prompt-file for another workflow, and a missing --file without --fid", async () => {
     const p = prompt("x");
-    const other = ["status", "route", "--workflow=build", `--prompt-file=${p}`];
+    const other = ["status", "route", "--workflow=ship", `--prompt-file=${p}`];
     expect((await run([...other, `--file=${path.join(tmp(), "s.jsonl")}`])).code).toBe(2);
     expect((await run(["status", "route", "--workflow=debug", `--prompt-file=${p}`])).code).toBe(2);
     expect((await run(["status", "route", "--workflow=debug"])).code).toBe(2);
@@ -521,6 +781,83 @@ describe("bkit status route --prompt-file (debug Step 1)", () => {
     ]);
     expect(r.code).toBe(2);
     expect(r.err).toContain("nope.md");
+  });
+});
+
+describe("bkit status route --workflow=build publish", () => {
+  const runtimeRow = (runtime: string) => ({
+    type: "runtime-resolved",
+    workflow: "build",
+    at: "2026-10-01T00:00:01Z",
+    runtime,
+    runtimeWorktrees: true,
+    runtimeDevPushes: true,
+    runtimeGithubCli: true,
+  });
+  const setup = (rows: object[], promptText: string, config?: object) => {
+    const root = tmp();
+    if (config)
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ bkit: { workflows: { build: { publish: config } } } }),
+      );
+    const file = path.join(root, "status.jsonl");
+    fs.writeFileSync(file, rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    const prompt = path.join(root, "prompt.md");
+    fs.writeFileSync(prompt, promptText);
+    return { root, file, prompt };
+  };
+  const route = (s: ReturnType<typeof setup>) =>
+    run(
+      ["status", "route", `--file=${s.file}`, "--workflow=build", `--prompt-file=${s.prompt}`],
+      s.root,
+    );
+  const rows = (runtime: string) => [started("build", "2026-10-01T00:00:00Z"), runtimeRow(runtime)];
+
+  it("lets the publish token override publish.local", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=true", { local: false }));
+    expect(r.json).toMatchObject({ publish: true, publishSource: "token" });
+    const h = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=false"));
+    expect(h.json).toMatchObject({ publish: false, publishSource: "token" });
+  });
+
+  it("reads publish.local on LOCAL without a token", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7", { local: false }));
+    expect(r.json).toMatchObject({ publish: false, publishSource: "local" });
+  });
+
+  it("coerces publish false to true on a non-LOCAL runtime", async () => {
+    const r = await route(setup(rows("CLOUD_CLAUDE"), "/bkit-build 7 publish=false"));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ publish: true, publishSource: "coerced" });
+  });
+
+  it("accepts --prompt-file with --workflow=build", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7"));
+    expect(r.code).toBe(0);
+    expect(r.json.debugMode).toBeNull();
+    expect(r.json.gates).toBeUndefined();
+  });
+
+  it("ignores publish=maybe and falls through to config", async () => {
+    const r = await route(setup(rows("LOCAL"), "/bkit-build 7 publish=maybe", { local: false }));
+    expect(r.json).toMatchObject({ publish: false, publishSource: "local" });
+  });
+
+  it("refuses publish without a runtime-resolved row", async () => {
+    const r = await route(setup([started("build", "2026-10-01T00:00:00Z")], "/bkit-build 7"));
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("Step 2");
+  });
+
+  it("prints publishSource for token, local, remote and coerced", async () => {
+    const sources = [
+      (await route(setup(rows("LOCAL"), "publish=false"))).json.publishSource,
+      (await route(setup(rows("LOCAL"), "x"))).json.publishSource,
+      (await route(setup(rows("GITHUB_ACTION"), "x"))).json.publishSource,
+      (await route(setup(rows("GITHUB_ACTION"), "publish=false"))).json.publishSource,
+    ];
+    expect(sources).toEqual(["token", "local", "remote", "coerced"]);
   });
 });
 
@@ -696,5 +1033,125 @@ describe("bkit status row", () => {
       (await run(["status", "row", `--file=${file}`, "--workflow=ship", "--type=x"])).code,
     ).toBe(3);
     expect(fs.existsSync(file)).toBe(false);
+  });
+});
+
+describe("bkit status row owner-pause friction", () => {
+  beforeEach(() => vi.stubEnv("BKIT_ENGINE_JOURNAL", "on"));
+  afterEach(() => vi.unstubAllEnvs());
+  const at = (s: number) => `2026-11-01T00:00:${String(s).padStart(2, "0")}Z`;
+
+  /** A git checkout holding one IN_PROGRESS run's status.jsonl in the docs/plans layout. */
+  function book(workflow: string) {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    const file = path.join(root, "docs/plans/202611/logs/802-x/status.jsonl");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(started(workflow, at(0)))}\n`);
+    return { root, file };
+  }
+  const friction = (root: string) => {
+    const f = path.join(root, ".bkit", "friction.jsonl");
+    if (!fs.existsSync(f)) return [];
+    return fs
+      .readFileSync(f, "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+  };
+  const row = (root: string, file: string, workflow: string, type: string, ...fields: string[]) =>
+    run(
+      [
+        "status",
+        "row",
+        `--file=${file}`,
+        `--workflow=${workflow}`,
+        `--type=${type}`,
+        ...fields.map((f) => `--field=${f}`),
+      ],
+      root,
+    );
+  const pause = (root: string, file: string, workflow: string, reason: string) =>
+    row(root, file, workflow, "owner-pause", `reason=${reason}`);
+  const stepDone = (file: string, workflow: string, step: string) =>
+    fs.appendFileSync(file, `${JSON.stringify(done(workflow, step, at(30)))}\n`);
+
+  it("status row owner-pause appends one human-confirm friction row", async () => {
+    const { root, file } = book("debug");
+    const r = await pause(root, file, "debug", "foreign-path");
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      type: "owner-pause",
+      workflow: "debug",
+      reason: "foreign-path",
+    });
+    const rows = friction(root);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      kind: "friction",
+      key: "owner-pause/debug.foreign-path",
+      category: "human-confirm",
+      by: { workflow: "debug", step: "owner-pause" },
+      recurrenceCount: 1,
+    });
+  });
+
+  it("status row owner-pause skips the friction row when no step-done follows the last owner-pause with the same reason", async () => {
+    const { root, file } = book("build");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect((await row(root, file, "build", "owner-answer")).code).toBe(0);
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    expect(friction(root)).toHaveLength(1);
+    const pauses = readStatusRows(file).filter((r) => r.type === "owner-pause");
+    expect(pauses).toHaveLength(3);
+  });
+
+  it("status row owner-pause with a new reason appends its own row with no step-done in between", async () => {
+    const { root, file } = book("design");
+    for (const reason of ["grill", "grill", "draft", "grill", "draft"]) {
+      expect((await pause(root, file, "design", reason)).code).toBe(0);
+    }
+    const rows = friction(root);
+    expect(rows.map((r) => r["key"])).toEqual([
+      "owner-pause/design.grill",
+      "owner-pause/design.draft",
+    ]);
+    expect(rows.map((r) => r["recurrenceCount"])).toEqual([1, 1]);
+  });
+
+  it("status row owner-pause in a later pause appends a same-key recurrence", async () => {
+    const { root, file } = book("build");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    stepDone(file, "build", "build-decisions");
+    expect((await pause(root, file, "build", "decision")).code).toBe(0);
+    const rows = friction(root);
+    expect(rows.map((r) => r["key"])).toEqual([
+      "owner-pause/build.decision",
+      "owner-pause/build.decision",
+    ]);
+    expect(rows.map((r) => r["recurrenceCount"])).toEqual([1, 2]);
+    expect(rows[0]).not.toHaveProperty("lastConfirmed");
+    expect(rows[1]!["lastConfirmed"]).toBe(rows[1]!["ts"]);
+  });
+
+  it("status row writes no friction row for other types or with BKIT_ENGINE_JOURNAL=off", async () => {
+    const { root, file } = book("ship");
+    expect((await row(root, file, "ship", "ship-gate-refusal", "exitCode=11")).code).toBe(0);
+    expect((await row(root, file, "ship", "owner-answer")).code).toBe(0);
+    expect(friction(root)).toHaveLength(0);
+    vi.stubEnv("BKIT_ENGINE_JOURNAL", "off");
+    expect((await pause(root, file, "ship", "merge")).code).toBe(0);
+    expect(friction(root)).toHaveLength(0);
+    expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
+  });
+
+  it("status row owner-pause keeps the status row and exits 4 when the friction row cannot be written", async () => {
+    const { root, file } = book("build");
+    fs.writeFileSync(path.join(root, ".bkit"), "not a directory");
+    const r = await pause(root, file, "build", "decision");
+    expect(r.code).toBe(4);
+    expect(r.err).toContain("friction");
+    expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
   });
 });

@@ -5,7 +5,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyAntigravityPrompt,
   applyCodexAgent,
+  clampOpencodeVariant,
   escapeTomlMultiline,
   applyT1,
   applyT2,
@@ -13,7 +15,6 @@ import {
   applyOpencodeAgent,
   applyOpencodeCommand,
   applyOpencodeToolRewrites,
-  applyAntigravityPrompt,
   applyAntigravitySkill,
   applyAntigravityToolRewrites,
   antigravityToolsBlock,
@@ -175,9 +176,9 @@ describe("T2 — command body rewrites", () => {
   });
 
   it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
-    const input = "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+    const input = "1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n";
     expect(applyT2(input)).toBe(
-      "1. **Subagent:** Invoke `/bkit-build-plan-execute` using `Task` tool:\n",
+      "1. **Subagent:** Invoke `/bkit-build-plan-tasks` using `Task` tool:\n",
     );
   });
 
@@ -380,8 +381,8 @@ describe("applyOpencodeToolRewrites", () => {
   });
 
   it("still respells @name → /name on **Subagent:** lines", () => {
-    const input = "**Subagent:** @bkit-build-plan-execute\n";
-    expect(applyOpencodeToolRewrites(input)).toBe("**Subagent:** /bkit-build-plan-execute\n");
+    const input = "**Subagent:** @bkit-build-plan-tasks\n";
+    expect(applyOpencodeToolRewrites(input)).toBe("**Subagent:** /bkit-build-plan-tasks\n");
   });
 });
 
@@ -428,12 +429,12 @@ describe("applyOpencodeCommand", () => {
 
   it("rewrites Invoke `@name` on **Subagent:** lines (real workflow shape)", () => {
     const input =
-      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n";
+      "---\ndescription: x\n---\n1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n";
     const result = applyOpencodeCommand(input);
     expect(result).toContain(
-      "**Subagent:** Invoke `/bkit-build-plan-execute` using `subagent` tool:",
+      "**Subagent:** Invoke `/bkit-build-plan-tasks` using `subagent` tool:",
     );
-    expect(result).not.toContain("`@bkit-build-plan-execute`");
+    expect(result).not.toContain("`@bkit-build-plan-tasks`");
   });
 
   it("rewrites indented list **Subagent:** Invoke `@name` lines", () => {
@@ -703,6 +704,57 @@ describe("#386: line 1 of a rendered command is a description, never the marker"
 // Antigravity — tool map, prompt frontmatter, skill, invocation rewrite
 // ---------------------------------------------------------------------------
 
+describe("workflow progress narration", () => {
+  const src = path.join(REPO_ROOT, ".bkit/core/workflows");
+  const files = fs.readdirSync(src).filter((file) => /^bkit-.*\.md$/.test(file));
+
+  for (const file of files) {
+    const raw = fs.readFileSync(path.join(src, file), "utf8");
+    const name = file.slice(0, -3);
+    const narration = raw.match(/^- \*\*Narrate:\*\* (.+)$/m)?.[1];
+    const tracked = substituteWorkflow(raw, DEFAULT_ISSUE_TRACKER).output;
+    const renderedHosts = [
+      tracked,
+      applyT2(applyT1(tracked)),
+      applyCodexSkill(raw, name, DEFAULT_ISSUE_TRACKER),
+      applyAntigravitySkill(tracked, name),
+      applyOpencodeCommand(tracked),
+    ];
+    const firstGates = renderedHosts.map((rendered) =>
+      rendered.split("\n").find((line) => /steps gate.*-start-workflow/.test(line)),
+    );
+    it(`preserves the progress contract across hosts: ${file}`, () => {
+      expect(narration).toContain("`progressLine`");
+      expect(narration).toContain("word for word");
+      expect(narration).toContain("plain text outside code blocks");
+      expect(narration).toContain("Headless");
+      for (const rendered of renderedHosts) {
+        expect(rendered).toContain(narration);
+        expect(rendered).not.toMatch(
+          /(?:steps finish --workflow=ship --step=ship-update-docs|steps done[^\n]*--step=debug-close-workflow)[^\n]*>\/dev\/null/,
+        );
+      }
+    });
+    if (name !== "bkit-auto") {
+      it(`retains explicit first-step gates: ${file}`, () => {
+        for (const gate of firstGates) expect(gate).toContain("--progress-number=1");
+      });
+    }
+    if (name === "bkit-ship") {
+      it("retains explicit rowless ship gates", () => {
+        for (const rendered of renderedHosts) {
+          expect(rendered).toContain(
+            'steps gate --workflow=ship --step=ship-regression-guard --file="{STATUS}" --progress-number=3',
+          );
+          expect(rendered).toContain(
+            'steps gate --workflow=ship --step=ship-bookkeeping-push --file="{STATUS}" --progress-number=9',
+          );
+        }
+      });
+    }
+  }
+});
+
 describe("antigravityToolsBlock", () => {
   it("maps Claude tool names to Antigravity's vocabulary, keeping list shape", () => {
     const out = antigravityToolsBlock("tools:\n  - Read\n  - Write\n  - Edit\n  - Bash");
@@ -786,12 +838,12 @@ describe("applyAntigravityToolRewrites", () => {
 
   it("resolves **Subagent:** @name to the prompt file loaded with view_file", () => {
     const out = applyAntigravityToolRewrites(
-      "1. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:\n",
+      "1. **Subagent:** Invoke `@bkit-build-plan-tasks` using `Agent` tool:\n",
     );
     expect(out).toContain(
-      "**Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-execute.md` using `view_file` tool:",
+      "**Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-build-plan-tasks.md` using `view_file` tool:",
     );
-    expect(out).not.toContain("`@bkit-build-plan-execute`");
+    expect(out).not.toContain("`@bkit-build-plan-tasks`");
   });
 
   it("leaves @name in body prose untouched", () => {
@@ -895,10 +947,110 @@ describe("autoCompactWindow — Claude-only per-agent compaction window", () => 
   const files = fs.readdirSync(src).filter((f) => f.startsWith("bkit-") && f.endsWith(".md"));
 
   it("every bkit source agent sets autoCompactWindow 300000", () => {
-    expect(files).toHaveLength(39);
+    expect(files).toHaveLength(40);
     const frontmatter = (f: string) =>
       fs.readFileSync(path.join(src, f), "utf-8").split("\n---\n")[0];
     const wrong = files.filter((f) => !/^autoCompactWindow: 300000$/m.test(frontmatter(f)));
     expect(wrong).toEqual([]);
+  });
+});
+
+describe("clampOpencodeVariant — the variant a model actually exposes on its gateway", () => {
+  it("clamps max down to the model's top rung", () => {
+    expect(clampOpencodeVariant("openrouter", "google/gemini-4-argon", "max")).toBe("high");
+    expect(clampOpencodeVariant("openrouter", "z-ai/glm-5.3-flash", "max")).toBe("max");
+    expect(clampOpencodeVariant("openrouter", "xiaomi/mimo-v2.6-pro-ultraspeed", "max")).toBeNull();
+  });
+
+  it("keeps a supported value and passes unknown models and gateways through", () => {
+    expect(clampOpencodeVariant("openrouter", "deepseek/deepseek-v4.1-flash-1017", "max")).toBe(
+      "max",
+    );
+    expect(clampOpencodeVariant("openrouter", "vendor/unlisted-model", "max")).toBe("max");
+    expect(clampOpencodeVariant("custom-gateway", "deepseek-v4.1-flash", "none")).toBe("none");
+    expect(clampOpencodeVariant("openrouter", "x/anything", null)).toBeNull();
+  });
+
+  it("raises a rung the model cannot express to its lowest", () => {
+    expect(clampOpencodeVariant("openrouter", "minimax/minimax-m3.1-flash", "none")).toBe("low");
+  });
+
+  it("clamps none to low for deepseek-v4.1-flash on opencode-zen and opencode-go", () => {
+    expect(clampOpencodeVariant("opencode-zen", "deepseek-v4.1-flash", "none")).toBe("low");
+    expect(clampOpencodeVariant("opencode-go", "deepseek-v4.1-flash", "none")).toBe("low");
+    expect(clampOpencodeVariant("openrouter", "deepseek/deepseek-v4.1-flash-1017", "none")).toBe(
+      "none",
+    );
+  });
+
+  it("reads kimi-k3's effort levels per gateway — none of them is toggle-only", () => {
+    expect(clampOpencodeVariant("openrouter", "moonshotai/kimi-k3", "none")).toBe("none");
+    expect(clampOpencodeVariant("opencode-zen", "kimi-k3", "none")).toBe("low");
+    expect(clampOpencodeVariant("opencode-go", "kimi-k3", "none")).toBe("max");
+  });
+
+  it("writes no variant for mimo-v2.6-pro on opencode-go", () => {
+    expect(clampOpencodeVariant("opencode-go", "mimo-v2.6-pro", "max")).toBeNull();
+  });
+});
+
+describe("applyOpencodeAgent — the clamp follows the gateway", () => {
+  const lowAgent = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-5-5\n---\nBody.\n`;
+
+  it("renders low effort on deepseek-v4.1-flash as variant: low on Zen and Go, none on OpenRouter", () => {
+    const gatewayLookup = new Map([["build-plan", "deepseek-v4.1-flash"]]);
+    for (const provider of ["opencode-zen", "opencode-go"]) {
+      expect(applyOpencodeAgent(lowAgent, gatewayLookup, effortMap, provider)).toContain(
+        "variant: low\n",
+      );
+    }
+    const openrouterLookup = new Map([["build-plan", "deepseek/deepseek-v4.1-flash-1017"]]);
+    expect(applyOpencodeAgent(lowAgent, openrouterLookup, effortMap, "openrouter")).toContain(
+      "variant: none\n",
+    );
+  });
+
+  const agentAt = (effort: string) =>
+    `---\nname: judge\ndescription: desc\neffort: ${effort}\nmodel: claude-opus-5-5\n---\nBody.\n`;
+
+  it("keeps the agent's own effort on a model at or above the sonnet bar", () => {
+    for (const [provider, model] of [
+      ["openrouter", "openai/gpt-6.1-sol"],
+      ["opencode-zen", "gpt-6.1-sol"],
+    ]) {
+      const lookup = new Map([["judge", model]]);
+      expect(applyOpencodeAgent(agentAt("high"), lookup, effortMap, provider)).toContain(
+        "variant: high\n",
+      );
+      expect(applyOpencodeAgent(agentAt("medium"), lookup, effortMap, provider)).toContain(
+        "variant: medium\n",
+      );
+    }
+  });
+
+  it("raises a model under the sonnet bar to its top rung", () => {
+    const lookup = new Map([["judge", "deepseek/deepseek-v4.1-flash-1017"]]);
+    expect(applyOpencodeAgent(agentAt("medium"), lookup, effortMap, "openrouter")).toContain(
+      "variant: max\n",
+    );
+  });
+});
+
+describe("applyAntigravityPrompt — effort beyond the model's ceiling", () => {
+  it("clamps max to high on gemini-4-argon and leaves other models alone", () => {
+    const map = new Map([
+      ["medium", "medium"],
+      ["high", "high"],
+      ["max", "max"],
+    ]);
+    const effortMap = new Map([["Antigravity", map]]);
+    const lookup = new Map([
+      ["a", "gemini-4-argon"],
+      ["b", "some-other-model"],
+    ]);
+    const prompt = (name: string) =>
+      `---\nname: ${name}\ndescription: x\neffort: max\ntools: Read\n---\n\nBody.\n`;
+    expect(applyAntigravityPrompt(prompt("a"), lookup, effortMap)).toContain("effort: high\n");
+    expect(applyAntigravityPrompt(prompt("b"), lookup, effortMap)).toContain("effort: max\n");
   });
 });

@@ -161,8 +161,9 @@ export function runAntigravityModule(ctx) {
                 console.log(`${logPrefix} ${tag}antigravity: ${jsonDst}`);
         }
     }
-    // --- bkit-gateguard.cjs / bkit-readguard.cjs — Tier-2 markered-text, twins of the Claude/Codex hooks ---
-    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs"]) {
+    // --- bkit-gateguard.cjs / bkit-readguard.cjs / bkit-rules.cjs — Tier-2 markered-text,
+    // twins of the Claude/Codex hooks ---
+    for (const hook of ["bkit-gateguard.cjs", "bkit-readguard.cjs", "bkit-rules.cjs"]) {
         const hookSrc = path.join(pluginHooksSrc, hook);
         const hookDst = path.join(ANTIGRAVITY_HOOKS_DIR, hook);
         if (fs.existsSync(hookSrc)) {

@@ -11,6 +11,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse as parseYamlText } from "yaml";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getPkgRoot, getTemplatesRoot } from "../../shared/package-roots";
 
@@ -177,7 +178,7 @@ const ADOPTED: Record<string, Entry> = {
           "        if: github.event_name == 'pull_request'\n" +
           "        env:\n" +
           "          BASE_SHA: ${{ github.event.pull_request.base.sha }}\n" +
-          '        run: pnpm slop:delta "$BASE_SHA"\n',
+          '        run: pnpm bkit:slop:delta "$BASE_SHA"\n',
         with:
           "      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).\n" +
           "      # Runs on every event against the planner's base — a PR's base branch, or a push's last\n" +
@@ -191,7 +192,7 @@ const ADOPTED: Record<string, Entry> = {
           '            echo "::notice::no diff base resolved — skipping slop delta"\n' +
           "            exit 0\n" +
           "          fi\n" +
-          '          pnpm slop:delta "$BASE_SHA"\n',
+          '          pnpm bkit:slop:delta "$BASE_SHA"\n',
       },
       {
         kind: "bkit-only",
@@ -200,6 +201,21 @@ const ADOPTED: Record<string, Entry> = {
           template: ["      # Unit coverage:", "      # Unit coverage:"],
           copy: ["      # Workflow-fence syntax tests run", "      # Unit coverage:"],
         },
+      },
+      {
+        kind: "bkit-only",
+        what: "pinned checksums also cover the shipped cloud setup script and Dockerfile template",
+        fill:
+          "      # Self-skips when the repo has no .cursor/Dockerfile.\n" +
+          "      - name: Check Pinned Checksums\n" +
+          "        if: hashFiles('.cursor/Dockerfile') != ''\n" +
+          "        run: pnpm bkit ci pins --file=.cursor/Dockerfile\n",
+        with:
+          "      # The bkit repo also checks the shipped cloud setup script and Dockerfile template.\n" +
+          "      - name: Check Pinned Checksums\n" +
+          "        run: >-\n" +
+          "          pnpm bkit ci pins --file=.cursor/Dockerfile --file=.bkit/templates/.cursor/Dockerfile\n" +
+          "          --file=.bkit/shared/.claude/bkit-cloud.md\n",
       },
     ],
   },
@@ -214,6 +230,10 @@ const ADOPTED: Record<string, Entry> = {
         count: 3,
       },
     ],
+  },
+  ".github/workflows/bkit-health.yml": {
+    status: "not-adopted",
+    what: "bkit deploys nothing, so it has no health URL to probe",
   },
   ".github/workflows/bkit-renovate.yml": identical,
   ".github/workflows/bkit-trivy.yml": {
@@ -276,8 +296,8 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "dist freshness and actionlint",
         region: {
-          template: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
-          copy: ["pnpm bkit check < /dev/null\n", "\n# disk prune"],
+          template: ["# Slop base on a dev push", "\n# disk prune"],
+          copy: ["# Slop base on a dev push", "\n# disk prune"],
         },
       },
     ],
@@ -310,29 +330,28 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  "scripts/ci/lanes/resolve-push-base.mjs": identical,
-  "scripts/ci/lanes/resolve-push-base.test.mjs": identical,
-  "scripts/ci/check-accepted-divergences.mjs": {
+  "scripts/ci/lanes/bkit-resolve-push-base.mjs": identical,
+  "scripts/ci/lanes/bkit-resolve-push-base.test.mjs": identical,
+  "scripts/ci/bkit-check-accepted-divergences.mjs": {
     status: "not-adopted",
     what: "the accepted-divergence guard is a consumer opt-in; bkit does not wire it into its own CI",
   },
-  "scripts/ci/check-accepted-divergences.test.mjs": {
+  "scripts/ci/bkit-check-accepted-divergences.test.mjs": {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
-  "scripts/ci/accepted-divergences.json": {
+  "scripts/ci/bkit-accepted-divergences.json": {
     status: "not-adopted",
     what: "ships with the opt-in guard",
   },
-  "scripts/ci/bkit-local-stack-lock.sh": {
-    status: "not-adopted",
-    what: "this repo starts no local service that its worktrees share",
-  },
-  "scripts/ci/check-capstone.mjs": identical,
-  "scripts/ci/check-capstone.test.mjs": identical,
-  "scripts/ci/check-dependency-audit.mjs": identical,
-  "scripts/ci/check-dependency-audit.test.mjs": identical,
-  "scripts/ci/accepted-advisories.json": {
+  "scripts/ci/bkit-machine-lock.sh": identical,
+  "scripts/ci/bkit-test-awake.mjs": identical,
+  "scripts/ci/bkit-test-awake.test.mjs": identical,
+  "scripts/ci/bkit-check-capstone.mjs": identical,
+  "scripts/ci/bkit-check-capstone.test.mjs": identical,
+  "scripts/ci/bkit-check-dependency-audit.mjs": identical,
+  "scripts/ci/bkit-check-dependency-audit.test.mjs": identical,
+  "scripts/ci/bkit-accepted-advisories.json": {
     status: "adopted",
     edits: [
       {
@@ -352,10 +371,10 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".vale/styles/House/Filler.yml": identical,
-  ".vale/styles/House/Hedging.yml": identical,
-  ".vale/styles/House/LLMSlop.yml": identical,
-  ".vale/styles/House/Verbose.yml": identical,
+  ".vale/styles/Bkit/Filler.yml": identical,
+  ".vale/styles/Bkit/Hedging.yml": identical,
+  ".vale/styles/Bkit/LLMSlop.yml": identical,
+  ".vale/styles/Bkit/Verbose.yml": identical,
   "slop-scan.config.json": {
     status: "adopted",
     edits: [
@@ -368,14 +387,14 @@ const ADOPTED: Record<string, Entry> = {
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
-        fill: '"files": [".opencode/plugin/bkit-gateguard.js", ".opencode/plugin/bkit-readguard.js"]',
-        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js"\n      ]',
+        fill: '"files": [\n        ".opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
+        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
       },
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        ".bkit/core/.claude/hooks/bkit-readguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-readguard.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".bkit/core/hooks/readguard-engine.js",\n        ".bkit/core/hooks/readguard-payload.js",\n        ".bkit/core/hooks/antigravity-hook.js",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-gateguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/hooks/gateguard-engine.js",\n        ".bkit/core/hooks/gateguard-edit-payload.js",\n        ".bkit/core/.claude/hooks/bkit-readguard.cjs",\n        ".bkit/core/.cursor/hooks/bkit-readguard.cjs",\n        ".bkit/core/.codex/hooks/bkit-readguard.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-readguard.cjs",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".bkit/core/hooks/readguard-engine.js",\n        ".bkit/core/hooks/readguard-payload.js",\n        ".bkit/core/hooks/antigravity-hook.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".bkit/core/hooks/session-rules-advisory.js",\n        ".bkit/core/.codex/hooks/bkit-rules.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-rules.cjs",\n        "**/.claude/hooks/bkit-gateguard.cjs",\n',
       },
       {
         kind: "bkit-only",
@@ -441,7 +460,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  "docs/capabilities.md": { status: "generated", what: "pnpm graph:rollup writes it" },
+  "docs/capabilities.md": { status: "generated", what: "pnpm bkit:graph:rollup writes it" },
   "scripts/graphify/bkit-graph-drift-rules.json": {
     status: "adopted",
     edits: [
@@ -509,6 +528,12 @@ const ADOPTED: Record<string, Entry> = {
       },
       {
         kind: "adapt",
+        what: "one package per .bkit/core/engine folder",
+        fill: "def by_package(p):\n",
+        with: 'def by_package(p):\n    # .bkit/core/engine: one package per top-level folder or file.\n    if p.startswith(".bkit/core/engine/"):\n        return re.sub(r"\\.[^./]+$", "", "/".join(p.split("/")[:4]))\n',
+      },
+      {
+        kind: "adapt",
         what: "one module per file in .bkit/core/engine",
         fill: "def by_module(p):\n",
         with: 'def by_module(p):\n    # .bkit/core/engine: one module per file.\n    if p.startswith(".bkit/core/engine/"):\n        return re.sub(r"\\.[^./]+$", "", p)\n',
@@ -524,9 +549,16 @@ const ADOPTED: Record<string, Entry> = {
         fill: 'MMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-12}"',
         with: '# bkit repo: one module per .bkit/core/engine file, so the default is 6.\nMMD_MIN_WEIGHT="${MMD_MIN_WEIGHT:-6}"',
       },
+      {
+        kind: "adapt",
+        what: "README carries the packages diagram",
+        fill: 'GRAPH_EMBED_DOCS=""',
+        with: 'GRAPH_EMBED_DOCS="README.md"',
+      },
     ],
   },
   "scripts/graphify/bkit-graph-eager-rules.json": identical,
+  "scripts/graphify/bkit-graph-embed.py": identical,
   "scripts/graphify/bkit-graph-pre-push.sh": identical,
   "scripts/graphify/bkit-graph-repair.py": identical,
   "scripts/graphify/bkit-graph-surface.py": {
@@ -542,8 +574,34 @@ const ADOPTED: Record<string, Entry> = {
   },
   "scripts/graphify/bkit-graphify-graphml.py": identical,
   "scripts/cleanup/bkit-disk-prune.mjs": {
-    status: "not-adopted",
-    what: "the example steps clear app build caches and agent worktrees this repo does not keep",
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "header: only the worktree step applies",
+        fill: " * paths below assume a monorepo with apps under `apps/`.",
+        with: " * this repo builds no apps and runs no Turborepo, so only the worktree step is kept.",
+      },
+      {
+        kind: "adapt",
+        what: "no build-process checks: no cache step is kept",
+        region: {
+          template: ["/** True when a process whose full command line", "/** `text` as JSON"],
+          copy: ["", null],
+        },
+      },
+      {
+        kind: "adapt",
+        what: "no Turborepo, Next.js or native build caches",
+        region: {
+          template: [
+            "  {\n    // Comes back: the next build re-runs",
+            "  {\n    // Comes back: `bkit worktrees setup`",
+          ],
+          copy: ["", null],
+        },
+      },
+    ],
   },
   "scripts/cleanup/bkit-disk-prune.machine.mjs": {
     status: "not-adopted",
@@ -593,11 +651,11 @@ const ADOPTED: Record<string, Entry> = {
   "scripts/serena/bkit-serena-mcp.sh": identical,
   "scripts/serena/bkit-serena.mcp.json": identical,
   "scripts/launchd/bkit-launchd-env.sh": identical,
-  "scripts/launchd/ai.bkit.launchd.plist": {
+  "scripts/launchd/bkit-launchd.plist": {
     status: "not-adopted",
     what: "machine-local LaunchAgent plist lives in ~/Library/LaunchAgents/",
   },
-  "scripts/launchd/launchd.env.example": {
+  "scripts/launchd/bkit-launchd.env.example": {
     status: "not-adopted",
     what: "machine-local secrets env file lives in ~/.config/bkit/launchd.env",
   },
@@ -700,7 +758,35 @@ describe("this repo adopts its own templates", () => {
     expect(fs.existsSync(copyPathOf(rel)), rel).toBe(true);
   });
 
-  it.each(entriesWith("adopted"))("%s", (rel, entry) => {
+  /** Adopted files whose copy is also pinned to carry no unprefixed `pnpm graph` hint (#748). */
+  const GRAPHIFY_BRANDED = [
+    "scripts/graphify/bkit-graphify.sh",
+    "scripts/graphify/bkit-graphify-rollup.py",
+  ];
+  const UNPREFIXED_GRAPH = /pnpm graph(?!ify)/;
+
+  /** Adopted workflows whose copy is also pinned to carry `bkit-` workflow and job display names (#748). */
+  const BRANDED_WORKFLOWS = [
+    ".github/workflows/bkit-cloud.yml",
+    ".github/workflows/bkit-renovate.yml",
+    ".github/workflows/bkit-trivy.yml",
+  ];
+
+  /** Workflow and job display names (`name`, else the job id) in a workflow text that lack `bkit-`. */
+  function unprefixedDisplayNames(text: string): string[] {
+    const doc = parseYamlText(text) as { name?: unknown; jobs?: Record<string, unknown> };
+    const bad: string[] = [];
+    if (typeof doc.name !== "string" || !doc.name.startsWith("bkit-"))
+      bad.push(`name: ${doc.name}`);
+    for (const [id, job] of Object.entries(doc.jobs ?? {})) {
+      const named = (job as { name?: unknown }).name;
+      const display = typeof named === "string" ? named : id;
+      if (!display.startsWith("bkit-")) bad.push(`job ${id}: ${display}`);
+    }
+    return bad;
+  }
+
+  function expectCopyMatchesTemplate(rel: string, entry: Extract<Entry, { status: "adopted" }>) {
     const copyPath = copyPathOf(rel);
     expect(fs.existsSync(copyPath), rel).toBe(true);
     const template = fs.readFileSync(path.join(templatesRoot, rel), "utf-8");
@@ -708,5 +794,67 @@ describe("this repo adopts its own templates", () => {
     const applied = apply(template, copy, entry.edits, rel);
     expect(applied.problems).toEqual([]);
     expect(copy).toBe(applied.text);
+    return { template, copy };
+  }
+
+  const OWN_TESTS = new Set([...GRAPHIFY_BRANDED, ...BRANDED_WORKFLOWS]);
+  it.each(entriesWith("adopted").filter(([rel]) => !OWN_TESTS.has(rel)))("%s", (rel, entry) => {
+    const { copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+  });
+
+  it("scripts/graphify/bkit-graphify.sh", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify.sh"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify.sh",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph");
+  });
+
+  it("scripts/graphify/bkit-graphify-rollup.py", () => {
+    const entry = ADOPTED["scripts/graphify/bkit-graphify-rollup.py"] as Extract<
+      Entry,
+      { status: "adopted" }
+    >;
+    const { template, copy } = expectCopyMatchesTemplate(
+      "scripts/graphify/bkit-graphify-rollup.py",
+      entry,
+    );
+    expect(template).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).not.toMatch(UNPREFIXED_GRAPH);
+    expect(copy).toContain("pnpm bkit:graph:refresh");
+  });
+
+  it(".github/workflows/bkit-cloud.yml", () => {
+    const rel = ".github/workflows/bkit-cloud.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-renovate.yml", () => {
+    const rel = ".github/workflows/bkit-renovate.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
+  });
+
+  it(".github/workflows/bkit-trivy.yml", () => {
+    const rel = ".github/workflows/bkit-trivy.yml";
+    const entry = ADOPTED[rel] as Extract<Entry, { status: "adopted" }>;
+    const { template, copy } = expectCopyMatchesTemplate(rel, entry);
+    expect(copy.length).toBeGreaterThan(0);
+    expect(unprefixedDisplayNames(template)).toEqual([]);
+    expect(unprefixedDisplayNames(copy)).toEqual([]);
   });
 });

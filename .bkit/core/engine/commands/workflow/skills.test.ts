@@ -11,6 +11,7 @@ import { SKILLS_CLI, installedSkills, listedIn, skillsCommand } from "./skills";
 const dirs: string[] = [];
 let calls = "";
 const savedPath = process.env.PATH;
+const savedToolScript = process.env.BKIT_FAKE_TOOL_SCRIPT;
 
 /**
  * The skills CLI, stubbed: records each call, deletes the skill folder like the
@@ -21,8 +22,9 @@ beforeEach(() => {
   dirs.push(stub);
   calls = path.join(stub, "calls.log");
   const bin = path.join(stub, SKILLS_CLI[0]!);
+  const script = path.join(stub, "response.sh");
   fs.writeFileSync(
-    bin,
+    script,
     [
       "#!/bin/sh",
       `echo "$*" >> "${calls}"`,
@@ -33,11 +35,14 @@ beforeEach(() => {
       "",
     ].join("\n"),
   );
-  fs.chmodSync(bin, 0o755);
+  fs.symlinkSync(path.resolve("tests/fixtures/gh/bin/gh"), bin);
+  process.env.BKIT_FAKE_TOOL_SCRIPT = script;
   process.env.PATH = `${stub}${path.delimiter}${savedPath}`;
 });
 afterEach(() => {
   process.env.PATH = savedPath;
+  if (savedToolScript === undefined) delete process.env.BKIT_FAKE_TOOL_SCRIPT;
+  else process.env.BKIT_FAKE_TOOL_SCRIPT = savedToolScript;
   delete process.env.STUB_EXIT;
   delete process.env.STUB_FAIL;
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });

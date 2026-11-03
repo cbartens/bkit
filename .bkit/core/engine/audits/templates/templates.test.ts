@@ -54,6 +54,17 @@ function listAuditTemplates(): string[] {
     .map((name) => path.posix.join("docs/templates", name));
 }
 
+/** Template names in the `.bkit/prompts.md` § Audit (Ad-hoc) catalogue table, sorted. */
+function listAuditCatalogue(): string[] {
+  const doc = fs.readFileSync(path.join(CORE_ROOT, ".bkit", "prompts.md"), "utf-8");
+  const section = doc.indexOf("\n## Audit (Ad-hoc)\n");
+  const start = doc.indexOf("Every template under `docs/templates/bkit-audit-*.md`", section);
+  const end = doc.indexOf("\n## ", section + 1);
+  return [...doc.slice(start, end).matchAll(/^\| `(bkit-audit-[a-z0-9-]+)` \|/gm)]
+    .map((m) => m[1]!)
+    .sort();
+}
+
 /**
  * Anchor refs in `- bkit block of `docs/<doc>` (…): <ref>; <ref>` lines that the shipped
  * `.bkit/shared/docs/<doc>` cannot satisfy. A ref is `§ <## or ### heading>`, `Rules`
@@ -148,7 +159,6 @@ const GROUP_A_MD_FILES: Array<[root: string, rel: string]> = [
   [CORE_ROOT, ".agents/rules.md"],
   [CORE_ROOT, ".agents/docs.md"],
   [CORE_ROOT, ".agents/skills.md"],
-  [CORE_ROOT, ".bkit/lite.md"],
   [CORE_ROOT, "docs/templates/bkit-plan.md"],
   ...listAuditTemplates().map((rel): [string, string] => [CORE_ROOT, rel]),
 ];
@@ -164,6 +174,12 @@ describe("audit templates — managed block plus consumer stub", () => {
     expect(audits.length).toBeGreaterThan(0);
     expect(audits).toContain("docs/templates/bkit-audit-repo.md");
     expect(audits).toContain("docs/templates/bkit-audit-security.md");
+  });
+
+  it("the .bkit/prompts.md § Audit (Ad-hoc) catalogue lists exactly the shipped audit templates", () => {
+    const listed = listAuditCatalogue();
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed).toEqual(audits.map((rel) => path.basename(rel, ".md")));
   });
 
   it.each(audits)("%s keeps project instructions outside the managed block", (relPath) => {
@@ -275,12 +291,27 @@ describe("Group B templates — bkit-ci.yml", () => {
 });
 
 describe("Group B templates — .vale.ini", () => {
-  it(".vale.ini sets StylesPath, Packages and MinAlertLevel and enables House on .agents/**", () => {
+  it(".vale.ini sets StylesPath, Packages and MinAlertLevel and enables Bkit on .agents/**", () => {
     const content = readTemplate(".vale.ini");
     expect(content).toContain("StylesPath");
     expect(content).toContain("Packages");
     expect(content).toContain("MinAlertLevel");
-    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = House/);
+    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = Bkit/);
+  });
+
+  it("Vale template ships the Bkit style and .vale.ini names it", () => {
+    const content = readTemplate(".vale.ini");
+    expect(content).not.toMatch(/\bHouse\b/);
+    expect(content).toMatch(/\[\.agents\/\*\*\]\nBasedOnStyles = Bkit/);
+    expect(content).toMatch(/BasedOnStyles = .*\bBkit\b/);
+    const styles = path.resolve(".bkit/templates/.vale/styles");
+    expect(fs.readdirSync(styles)).toEqual(["Bkit"]);
+    expect(fs.readdirSync(path.join(styles, "Bkit")).sort()).toEqual([
+      "Filler.yml",
+      "Hedging.yml",
+      "LLMSlop.yml",
+      "Verbose.yml",
+    ]);
   });
 });
 
@@ -373,5 +404,32 @@ describe("husky templates — no bkit markers in template content", () => {
   it(".husky/pre-commit template still invokes pnpm at the script level", () => {
     const content = readTemplate(".husky/pre-commit");
     expect(content).toContain("pnpm");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Root README workflow guidance
+// ---------------------------------------------------------------------------
+
+describe("README workflow guidance", () => {
+  const REPO_ROOT = path.resolve(".");
+  const readRepo = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
+  const README = readRepo("README.md");
+
+  it("the root README points small changes at /bkit-build", () => {
+    expect(README).toContain("/bkit-build #N publish=false");
+  });
+
+  it("the root README carries the held handoff", () => {
+    expect(README).toContain("Publish: held");
+    expect(README).toContain("Docs: not synced");
+    expect(README).toContain("/bkit-ship");
+  });
+
+  it("the root README carries the manual batch recipe with both limitations", () => {
+    expect(README).toMatch(/batch recipe/i);
+    expect(README).toMatch(/only the last (FID|feature)/i);
+    expect(README).toMatch(/never batch migrations/i);
+    expect(README).toMatch(/you own the push, the PR, the CI gate, the sweep and the docs sync/i);
   });
 });

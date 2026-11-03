@@ -84,6 +84,7 @@ describe("shipped hook templates", () => {
       ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
       ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
       ".agents/plugins/bkit/hooks/bkit-readguard.cjs",
+      ".agents/plugins/bkit/hooks/bkit-rules.cjs",
       ".claude/hooks/bkit-gateguard.cjs",
       ".claude/hooks/bkit-guardrails.cjs",
       ".claude/hooks/bkit-preflight.sh",
@@ -91,12 +92,14 @@ describe("shipped hook templates", () => {
       ".codex/hooks/bkit-gateguard.cjs",
       ".codex/hooks/bkit-guardrails.cjs",
       ".codex/hooks/bkit-readguard.cjs",
+      ".codex/hooks/bkit-rules.cjs",
       ".cursor/hooks/bkit-gateguard.cjs",
       ".cursor/hooks/bkit-guardrails.cjs",
       ".cursor/hooks/bkit-preflight.sh",
       ".cursor/hooks/bkit-readguard.cjs",
       ".opencode/plugin/bkit-gateguard.js",
       ".opencode/plugin/bkit-readguard.js",
+      ".opencode/plugin/bkit-rules.js",
     ]);
   });
 

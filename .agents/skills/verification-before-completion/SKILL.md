@@ -39,9 +39,8 @@ Skip any step = lying, not verifying
 
 ## Common Failures
 
-<!-- prettier-ignore -->
 | Claim | Requires | Not Sufficient |
-| --- | --- | --- |
+|-------|----------|----------------|
 | Tests pass | Test command output: 0 failures | Previous run, "should pass" |
 | Linter clean | Linter output: 0 errors | Partial check, extrapolation |
 | Build succeeds | Build command: exit 0 | Linter passing, logs look good |
@@ -63,9 +62,8 @@ Skip any step = lying, not verifying
 
 ## Rationalization Prevention
 
-<!-- prettier-ignore -->
 | Excuse | Reality |
-| --- | --- |
+|--------|---------|
 | "Should work now" | RUN the verification |
 | "I'm confident" | Confidence ≠ evidence |
 | "Just this once" | No exceptions |
@@ -78,35 +76,30 @@ Skip any step = lying, not verifying
 ## Key Patterns
 
 **Tests:**
-
 ```
 ✅ [Run test command] [See: 34/34 pass] "All tests pass"
 ❌ "Should pass now" / "Looks correct"
 ```
 
 **Regression tests (TDD Red-Green):**
-
 ```
 ✅ Write → Run (pass) → Revert fix → Run (MUST FAIL) → Restore → Run (pass)
 ❌ "I've written a regression test" (without red-green verification)
 ```
 
 **Build:**
-
 ```
 ✅ [Run build] [See: exit 0] "Build passes"
 ❌ "Linter passed" (linter doesn't check compilation)
 ```
 
 **Requirements:**
-
 ```
 ✅ Re-read plan → Create checklist → Verify each → Report gaps or completion
 ❌ "Tests pass, phase complete"
 ```
 
 **Agent delegation:**
-
 ```
 ✅ Agent reports success → Check VCS diff → Verify changes → Report actual state
 ❌ Trust agent report
@@ -115,7 +108,6 @@ Skip any step = lying, not verifying
 ## Why This Matters
 
 From 24 failure memories:
-
 - your human partner said "I don't believe you" - trust broken
 - Undefined functions shipped - would crash
 - Missing requirements shipped - incomplete features
@@ -125,7 +117,6 @@ From 24 failure memories:
 ## When To Apply
 
 **ALWAYS before:**
-
 - ANY variation of success/completion claims
 - ANY expression of satisfaction
 - ANY positive statement about work state
@@ -134,7 +125,6 @@ From 24 failure memories:
 - Delegating to agents
 
 **Rule applies to:**
-
 - Exact phrases
 - Paraphrases and synonyms
 - Implications of success

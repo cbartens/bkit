@@ -10,6 +10,24 @@ import { describe, expect, it } from "vitest";
 // ---------------------------------------------------------------------------
 
 describe("package.json manifest invariants (BAR-138)", () => {
+  it("bkit's root package.json wraps every test-running bkit:gate script in the tests lock", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    const prefix =
+      "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- ";
+    expect(manifest.scripts["bkit:gate:static-unit"]).toMatch(new RegExp(`^${prefix}sh -c '`));
+    expect(manifest.scripts["bkit:gate:static-unit-integration"]).toMatch(
+      new RegExp(`^${prefix}sh -c '`),
+    );
+    expect(manifest.scripts["bkit:gate:install-static-unit-build"]).toMatch(
+      new RegExp(`^${prefix}sh -c '`),
+    );
+    expect(manifest.scripts["bkit:gate:changed"]).toBe(
+      prefix + "node scripts/gate/bkit-gate-changed.mjs",
+    );
+  });
+
   const pkgPath = path.resolve("package.json");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let pkg: Record<string, any>;
@@ -47,4 +65,23 @@ describe("package.json manifest invariants (BAR-138)", () => {
     const filesArray = manifestFiles();
     expect(filesArray.filter((f: string) => f.startsWith("!"))).toEqual([]);
   });
+
+  // An override wins over the direct pin, so a Renovate bump of the pin would
+  // change the manifest but not what installs. `$name` makes the override follow it.
+  it("pnpm.overrides never shadows a direct pin", () => {
+    expect(shadowingOverrides(pkg)).toEqual([]);
+  });
 });
+
+/** `name: spec` for each pnpm override of a direct dependency that is not `$name`. */
+function shadowingOverrides(pkg: {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+  pnpm?: { overrides?: Record<string, string> };
+}): string[] {
+  const direct = { ...pkg.dependencies, ...pkg.devDependencies };
+  const overrides: Record<string, string> = pkg.pnpm?.overrides ?? {};
+  return Object.entries(overrides)
+    .filter(([name, spec]) => name in direct && spec !== `$${name}`)
+    .map(([name, spec]) => `${name}: ${spec}`);
+}

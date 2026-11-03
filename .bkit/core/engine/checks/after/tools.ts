@@ -5,7 +5,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
+import { readPackageJson } from "../../shared/package-json.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
+import {
+  DEP_UPDATER_NAMES,
+  type DepUpdater,
+  findDepUpdaterConfigs,
+} from "../../shared/dep-updater.js";
 
 /** True when `cmd --version` runs (binary on PATH, exits 0). */
 function toolVersionRuns(cmd: string): boolean {
@@ -17,11 +23,36 @@ function toolVersionRuns(cmd: string): boolean {
 }
 
 /**
+ * Detect a prose gate that cannot run here: package.json `bkit:lint:prose` calls `bkit ci prose`,
+ * which fails without vale, and vale is not on PATH. Null when the gate is not adopted.
+ */
+export function detectValeMissing(cwd: string): PreflightFinding | null {
+  const read = readPackageJson(cwd);
+  if (!read.ok) return null;
+  const scripts = read.pkg["scripts"];
+  const lintProse =
+    typeof scripts === "object" && scripts !== null
+      ? (scripts as Record<string, unknown>)["bkit:lint:prose"]
+      : undefined;
+  if (typeof lintProse !== "string" || !lintProse.includes("bkit ci prose")) return null;
+  if (toolVersionRuns("vale")) return null;
+
+  return {
+    id: "vale-not-installed",
+    severity: "advisory",
+    detect:
+      "package.json `bkit:lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `bkit:lint:prose` fails on this machine.",
+    action:
+      "Install vale, then download its styles:\n\n    brew install vale    # macOS; other platforms: https://vale.sh/docs/install\n    vale sync\n\nCI and the cloud templates install vale already; this is for local machines.",
+  };
+}
+
+/**
  * Detect whether vale is installed but write-good styles are not synced.
- * Returns null if vale is not on PATH (silent skip — not an error).
+ * Returns null if vale is not on PATH (`detectValeMissing` covers that case).
  */
 export function detectValePackageNotSynced(cwd: string): PreflightFinding | null {
-  if (!toolVersionRuns("vale")) return null; // vale not on PATH — silent skip
+  if (!toolVersionRuns("vale")) return null; // vale not on PATH — detectValeMissing
 
   if (fs.existsSync(path.join(cwd, ".vale", "styles", "write-good"))) return null;
 
@@ -33,7 +64,7 @@ export function detectValePackageNotSynced(cwd: string): PreflightFinding | null
       detect:
         "vale is on PATH but the repo has no .vale.ini and .vale/styles/write-good/ is absent — prose linting does not run.",
       action:
-        "Adopt bkit's Vale template first: copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/House/*.yml to .vale/styles/House/. Then run `vale sync` (one-time per repo) to download the write-good package the copied .vale.ini names. `vale sync` reads its package list from .vale.ini, so it cannot fetch write-good before that file exists.",
+        "Adopt bkit's Vale template first: copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/Bkit/*.yml to .vale/styles/Bkit/. Then run `vale sync` (one-time per repo) to download the write-good package the copied .vale.ini names. `vale sync` reads its package list from .vale.ini, so it cannot fetch write-good before that file exists.",
     };
   }
 
@@ -42,7 +73,7 @@ export function detectValePackageNotSynced(cwd: string): PreflightFinding | null
     severity: "advisory",
     detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
     action:
-      "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and warns loudly on stderr if it cannot — but until the package is present, prose linting does not run.",
+      "Run `vale sync` (one-time per repo) to download the write-good package. bkit:lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
   };
 }
 
@@ -129,11 +160,6 @@ const BKIT_STUBS: BkitStub[] = [
     id: "e2e",
     description:
       "Run `pnpm test:e2e` gated on `should_run_full` (the `[force full]` commit/PR tag) or `needs_e2e` (auto-force-e2e). Pairs with vercel-await for PR-time runs against the preview deployment.",
-  },
-  {
-    id: "smoke",
-    description:
-      "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
   },
   {
     id: "coverage",
@@ -226,7 +252,7 @@ const BKIT_STUBS: BkitStub[] = [
   {
     id: "health",
     description:
-      "Copy the commented workflow to .github/workflows/health.yml. workflow_run after CI succeeds on the default branch; smoke the deployment this SHA promoted. Not a required check. DROP if you have no deployed health URL.",
+      "Copy .bkit/templates/.github/workflows/bkit-health.yml to .github/workflows/bkit-health.yml, then replace {{DEFAULT_BRANCH}} and {{PRODUCTION_URL}} and swap the Vercel lookup for your host's API. It runs after every finished CI run on the default branch, green or red, probes production only when production serves that run's commit, and fails when it cannot tell. Not a required check. DROP if you have no deployed health URL.",
   },
 ];
 
@@ -314,33 +340,24 @@ const UPDATER_EXAMPLE_PATHS = [
   ".bkit/templates/.github/dependabot.yml",
 ].join("\n  ");
 
-function updaterConfigPaths(cwd: string): { renovate: string | null; dependabot: string | null } {
-  const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
-  const renovateJson = path.join(cwd, ".github", "renovate.json");
-  const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
-  const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
-  const renovate = fs.existsSync(renovateJson5)
-    ? renovateJson5
-    : fs.existsSync(renovateJson)
-      ? renovateJson
-      : null;
-  const dependabot = fs.existsSync(dependabotYml)
-    ? dependabotYml
-    : fs.existsSync(dependabotYaml)
-      ? dependabotYaml
-      : null;
-  return { renovate, dependabot };
-}
+const UPDATER_EXAMPLE: Readonly<Record<DepUpdater, string>> = {
+  renovate: ".bkit/templates/.github/renovate.json5",
+  dependabot: ".bkit/templates/.github/dependabot.yml",
+};
 
 /**
- * Read-only dependency-updater check.
+ * Read-only dependency-updater check: `bkit.dependencies.updater` against the configs present.
  *
  * - Both Renovate and Dependabot configs → they open competing PRs.
- * - No updater config, workflows exist, and the opt-out is unset → point
+ * - One config, and the setting does not name it → blocker.
+ * - The setting names an updater whose config is absent → blocker.
+ * - No updater config, workflows exist, and the setting is unset → point
  *   at the example templates.
  */
 export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | null {
-  const { renovate, dependabot } = updaterConfigPaths(cwd);
+  const configs = findDepUpdaterConfigs(cwd);
+  const { renovate, dependabot } = configs;
+  const setting = readBkitConfig(cwd).depUpdater;
 
   if (renovate && dependabot) {
     return {
@@ -353,8 +370,38 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
     };
   }
 
-  if (renovate || dependabot) return null;
-  if (readBkitConfig(cwd).depUpdaterOptOut) return null;
+  const found: DepUpdater | null = renovate ? "renovate" : dependabot ? "dependabot" : null;
+  if (found) {
+    if (setting === found) return null;
+    const name = DEP_UPDATER_NAMES[found];
+    const file = configs[found];
+    if (setting === null) {
+      return {
+        id: "dep-updater-unset",
+        severity: "blocker",
+        detect: `${name} config found (\`${file}\`), but \`bkit.dependencies.updater\` is not \`"${found}"\`.`,
+        action: `Set \`bkit.dependencies.updater\` to \`"${found}"\` in package.json. \`bkit upgrade\` sets it when the field is empty.`,
+      };
+    }
+    return {
+      id: "dep-updater-mismatch",
+      severity: "blocker",
+      detect: `\`bkit.dependencies.updater\` is \`"${setting}"\`, but the repo has a ${name} config (\`${file}\`).`,
+      action: `Set \`bkit.dependencies.updater\` to \`"${found}"\` in package.json, or delete \`${file}\` and turn ${name} off in the host UI.`,
+    };
+  }
+
+  if (setting === "renovate" || setting === "dependabot") {
+    const name = DEP_UPDATER_NAMES[setting];
+    return {
+      id: "dep-updater-mismatch",
+      severity: "blocker",
+      detect: `\`bkit.dependencies.updater\` is \`"${setting}"\`, but no ${name} config was found, so nothing bumps dependencies.`,
+      action: `Copy \`${UPDATER_EXAMPLE[setting]}\` into place and own it, or set \`bkit.dependencies.updater\` to the updater you run, or \`"none"\`. See .bkit/templates.md.`,
+    };
+  }
+
+  if (setting === "none") return null;
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
 
   return {
@@ -365,6 +412,6 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
     action:
       "Copy one example and own it:\n\n" +
       `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
-      'Use one updater, not both. To silence this advisory, set `bkit.dependencies.updater` to `"none"` in package.json. See .bkit/templates.md.',
+      'Use one updater, not both, and set `bkit.dependencies.updater` to its name (`"renovate"` or `"dependabot"`) in package.json. To silence this advisory, set it to `"none"`. See .bkit/templates.md.',
   };
 }

@@ -5,18 +5,26 @@ import * as path from "node:path";
 
 import * as prettier from "prettier";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
+import { serializeBkitVersion } from "../../install/version-file";
 import {
+  INSTALL_RECORD,
   LEDGERS,
+  REGISTERS,
   branchesCommand,
   classifyConflict,
+  disabledTestsIn,
+  embedDocs,
   readAnchor,
   replayBuild,
   stampAnchor,
 } from "./branches";
 import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
+
+useGateRunner();
 
 // `branches land` retries without waiting, three tries in all.
 vi.mock("../../shared/timeouts", async (importOriginal) => {
@@ -139,8 +147,60 @@ const inRebase = (dir: string) =>
   fs.existsSync(path.join(dir, ".git/rebase-merge")) ||
   fs.existsSync(path.join(dir, ".git/rebase-apply"));
 
+describe("bkit branches parse", () => {
+  it("parses explicit and existing branch tokens without consuming URLs", async () => {
+    const cwd = makeRepo("parse");
+    git(cwd, "branch", "fix/ci");
+    git(cwd, "update-ref", "refs/remotes/origin/fix/ci", sha(cwd));
+    const prompt = path.join(cwd, "prompt.md");
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug branch=fix/ci https://github.com/example/repo/actions/runs/123",
+    );
+    const explicit = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(explicit.code).toBe(0);
+    expect(explicit.json).toMatchObject({ branch: "fix/ci" });
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug fix/ci https://github.com/example/repo/pull/4 docs/testing.md",
+    );
+    const token = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(token.code).toBe(0);
+    expect(token.json).toMatchObject({ branch: "fix/ci" });
+    write(
+      cwd,
+      "prompt.md",
+      "bkit-debug https://github.com/example/repo/actions/runs/123 docs/testing.md",
+    );
+    const noBranch = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(noBranch.code).toBe(0);
+    expect(noBranch.json).toMatchObject({ branch: null });
+    git(cwd, "update-ref", "refs/remotes/origin/fix/remote", sha(cwd));
+    write(cwd, "prompt.md", "bkit-debug fix/remote");
+    const remoteOnly = await run(cwd, ["parse", `--prompt-file=${prompt}`]);
+    expect(remoteOnly.code).toBe(0);
+    expect(remoteOnly.json).toMatchObject({ branch: "fix/remote" });
+  });
+
+  it("rejects missing explicit and ambiguous existing branch selections", async () => {
+    const cwd = makeRepo("parse-refusals");
+    git(cwd, "branch", "fix/one");
+    git(cwd, "branch", "fix/two");
+    const prompt = path.join(cwd, "prompt.md");
+    write(cwd, "prompt.md", "bkit-debug branch=fix/missing");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(3);
+    write(cwd, "prompt.md", "bkit-debug fix/one fix/two");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(8);
+    write(cwd, "prompt.md", "bkit-debug branch=fix/one branch=fix/two");
+    expect((await run(cwd, ["parse", `--prompt-file=${prompt}`])).code).toBe(8);
+    expect(git(cwd, "branch", "--show-current").out).toBe("main");
+  });
+});
+
 /** A bare `origin` with `dev`, and a clone of it on `dev`. */
-function withOrigin(name: string): { origin: string; clone: string } {
+function withOrigin(name: string, gates = false): { origin: string; clone: string } {
   const origin = tmp(`${name}-origin`);
   git(origin, "init", "-q", "--bare", "-b", "dev");
   const seed = tmp(`${name}-seed`);
@@ -148,6 +208,7 @@ function withOrigin(name: string): { origin: string; clone: string } {
   write(seed, "docs/testing.md", "testing v0\n");
   write(seed, "docs/knowledge.jsonl", '{"key":"A","ts":1}\n');
   write(seed, "src.txt", "code v0\n");
+  if (gates) write(seed, "package.json", JSON.stringify(gatePackage));
   git(seed, "add", "-A");
   git(seed, "commit", "-q", "-m", "base");
   git(seed, "push", "-q", origin, "dev");
@@ -253,7 +314,136 @@ describe("branches rebase: classification", () => {
   ])("classifies %s (every manager bkit recognises) as the lockfile shape", (p) => {
     expect(classifyConflict(p)).toBe("lockfile");
   });
+
+  it("classifies every generated register as the register shape, and only at its exact path", () => {
+    for (const p of Object.keys(REGISTERS)) expect(classifyConflict(p), p).toBe("register");
+    expect(classifyConflict("docs/capabilities.md")).toBe("register");
+    expect(classifyConflict("apps/web/docs/capabilities.md")).toBe("refuse");
+  });
+
+  it("classifies a doc as embedding a register only when the repo's script lists it", () => {
+    const embeds = new Map([["README.md", "docs/capabilities.md"]]);
+    expect(classifyConflict("README.md", embeds)).toBe("embed");
+    expect(classifyConflict("README.md")).toBe("refuse");
+    expect(classifyConflict("docs/README.md", embeds)).toBe("refuse");
+  });
+
+  it("classifies the install record, and only at its exact path", () => {
+    expect(classifyConflict(INSTALL_RECORD)).toBe("record");
+    expect(classifyConflict("apps/web/.bkit/version")).toBe("refuse");
+  });
+
+  it("reads the embedded docs from the script's assignment, and none when it is empty or absent", () => {
+    const dir = makeRepo("embed-docs");
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS=""\n`);
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS="README.md docs/intro.md"\n`);
+    expect(embedDocs(dir)).toEqual(
+      new Map([
+        ["README.md", REGISTER],
+        ["docs/intro.md", REGISTER],
+      ]),
+    );
+  });
 });
+
+// ---------------------------------------------------------------------------
+// Generated-register fixtures
+// ---------------------------------------------------------------------------
+
+const REGISTER = "docs/capabilities.md";
+const REGISTER_SCRIPT = REGISTERS[REGISTER]!.script;
+const [OV_OPEN, OV_CLOSE] = REGISTERS[REGISTER]!.keep;
+/** A register body: a generated line, the hand-written overrides region, a generated tail. */
+const registerBody = (generated: string, overrides = "{}") =>
+  `# Capabilities\n\n${generated}\n\n${OV_OPEN}\n${overrides}\n${OV_CLOSE}\n\ntail ${generated}\n`;
+/** The stand-in rebuild: stamps the register so a test sees that it ran, or fails. */
+const REBUILD_OK = `echo "rebuilt" >> ${REGISTER}\n`;
+const REBUILD_FAILS = `echo "graphify: command not found" >&2\nexit 1\n`;
+
+/**
+ * A repo on `main` with a register (and, unless `script` is null, its rebuild script),
+ * then feat and main each rewriting it; feat checked out and rebased onto main, stopped
+ * on the register conflict.
+ */
+function divergeRegister(
+  name: string,
+  feat: string,
+  main: string,
+  script: string | null = REBUILD_OK,
+): string {
+  const dir = makeRepo(name);
+  write(dir, REGISTER, registerBody("v0"));
+  if (script !== null) write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "register");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, REGISTER, feat);
+  git(dir, "commit", "-q", "-am", "feat register");
+  git(dir, "checkout", "-q", "main");
+  write(dir, REGISTER, main);
+  git(dir, "commit", "-q", "-am", "main register");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+const EMBED_DOC = "README.md";
+const [BLOCK_OPEN, BLOCK_CLOSE] = REGISTERS[REGISTER]!.embed.block;
+/** A doc embedding the register's generated block between two hand-written paragraphs. */
+const embedBody = (block: string, intro = "intro", outro = "outro") =>
+  `# Title\n\n${intro}\n\n${BLOCK_OPEN}\n${block}\n${BLOCK_CLOSE}\n\n${outro}\n`;
+/** A rebuild script that embeds the register into README.md and stamps that doc. */
+const EMBED_REBUILD = `GRAPH_EMBED_DOCS="${EMBED_DOC}"\necho "rebuilt" >> ${EMBED_DOC}\n`;
+
+/**
+ * A repo on `main` with README.md embedding the register's block and `script` as the
+ * register's rebuild script, then feat and main each rewriting README.md; feat checked
+ * out and rebased onto main, stopped on the README.md conflict.
+ */
+function divergeEmbed(name: string, feat: string, main: string, script = EMBED_REBUILD): string {
+  const dir = makeRepo(name);
+  write(dir, EMBED_DOC, embedBody("v0"));
+  write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "readme");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, EMBED_DOC, feat);
+  git(dir, "commit", "-q", "-am", "feat readme");
+  git(dir, "checkout", "-q", "main");
+  write(dir, EMBED_DOC, main);
+  git(dir, "commit", "-q", "-am", "main readme");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+/** An install record with these fingerprints, as bkit's own writer lays it out. */
+const record = (hashes: Record<string, string>, pinnedVersion = "6.0.0") =>
+  serializeBkitVersion({ pinnedVersion, canonicalHashes: hashes, claudeAllowDerived: [] });
+const BASE_HASHES = { "docs/deployments.md": "d0", "docs/testing.md": "t0", "docs/setup.md": "s0" };
+
+/**
+ * A repo on `main` with an install record, then feat and main each rewriting it
+ * (null deletes it); feat checked out and rebased onto main, stopped on the conflict.
+ */
+function divergeRecord(name: string, feat: string | null, main: string): string {
+  const dir = makeRepo(name);
+  write(dir, INSTALL_RECORD, record(BASE_HASHES));
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "record");
+  git(dir, "checkout", "-q", "-b", "feat");
+  if (feat === null) git(dir, "rm", "-q", INSTALL_RECORD);
+  else write(dir, INSTALL_RECORD, feat);
+  git(dir, "commit", "-q", "-am", "feat record");
+  git(dir, "checkout", "-q", "main");
+  write(dir, INSTALL_RECORD, main);
+  git(dir, "commit", "-q", "-am", "main record");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
 
 // ---------------------------------------------------------------------------
 // rebase — behaviour against real git
@@ -281,6 +471,35 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(inRebase(dir)).toBe(false);
     expect(r.err).toContain("RESOLVED docs/knowledge.jsonl — union (append-only ledger)");
     expect(r.err).toContain("COMPLETE");
+  });
+
+  it("--file records the completed rebase as an engine-action row, from the old tip to the new", async () => {
+    const dir = makeRepo("ledger-record");
+    git(dir, "checkout", "-q", "-b", "feat");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' }, "feat");
+    const before = sha(dir);
+    git(dir, "checkout", "-q", "main");
+    commit(dir, { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' }, "main");
+    git(dir, "checkout", "-q", "feat");
+    git(dir, "rebase", "main");
+    const status = path.join(tmp("status"), "status.jsonl");
+    const r = await run(dir, ["rebase", `--file=${status}`]);
+    expect(r.code).toBe(0);
+    const rows = read(path.dirname(status), "status.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows).toMatchObject([
+      { type: "engine-action", action: "rebase", key: `rebase/${before}`, ref: sha(dir) },
+    ]);
+  });
+
+  it("--file records nothing for a refused rebase", async () => {
+    const dir = makeRepo("code-record");
+    diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
+    const status = path.join(tmp("status"), "status.jsonl");
+    expect((await run(dir, ["rebase", `--file=${status}`])).code).toBe(3);
+    expect(fs.existsSync(status)).toBe(false);
   });
 
   it("refuses a code conflict and aborts the rebase on the spot", async () => {
@@ -461,6 +680,194 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(dir, ["rebase"], { PATH: withBin(bin) });
     expect(r.code).toBe(3);
     expect(r.json).toMatchObject({ refused: lockfile, reason: "resolution failed" });
+  });
+
+  it("settles a generated register on the rebase target's copy, then rebuilds and commits it", async () => {
+    const dir = divergeRegister("register", registerBody("feat"), registerBody("main"));
+    const featTip = sha(dir, "feat@{1}");
+    const r = await run(dir, ["rebase", "--log-file=logs/rebase-resolve-log.md"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: true,
+    });
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(sha(dir)).not.toBe(featTip);
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain(`[bkit-rebase] REBUILT ${REGISTER}`);
+  });
+
+  it("carries the branch's edit to the hand-written region onto the target's copy", async () => {
+    const dir = divergeRegister(
+      "register-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["x"]}')}rebuilt\n`);
+  });
+
+  it("keeps the target's edit to the hand-written region when the branch left it alone", async () => {
+    const dir = divergeRegister(
+      "register-dev-overrides",
+      registerBody("feat"),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    expect((await run(dir, ["rebase"])).code).toBe(0);
+    expect(read(dir, REGISTER)).toBe(`${registerBody("main", '{"hide_nodes": ["y"]}')}rebuilt\n`);
+  });
+
+  it("refuses and aborts when both sides changed the hand-written region", async () => {
+    const dir = divergeRegister(
+      "register-both-overrides",
+      registerBody("feat", '{"hide_nodes": ["x"]}'),
+      registerBody("main", '{"hide_nodes": ["y"]}'),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: REGISTER,
+      reason: "both sides changed the hand-written region",
+      aborted: true,
+      rebuilt: null,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("keeps the target's copy unrebuilt when the repo has no rebuild script", async () => {
+    const dir = divergeRegister(
+      "register-noscript",
+      registerBody("feat"),
+      registerBody("main"),
+      null,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      resolved: [{ path: REGISTER, how: "register" }],
+      rebuilt: null,
+    });
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — ${REGISTER_SCRIPT} is absent`);
+  });
+
+  it("completes the rebase when the rebuild fails, keeping the target's copy and logging why", async () => {
+    const dir = divergeRegister(
+      "register-rebuild-fails",
+      registerBody("feat"),
+      registerBody("main"),
+      REBUILD_FAILS,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "resolved", rebuilt: false });
+    expect(inRebase(dir)).toBe(false);
+    expect(read(dir, REGISTER)).toBe(registerBody("main"));
+    expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
+    expect(r.err).toContain("graphify: command not found");
+    expect(r.err).toContain(`NOT REBUILT ${REGISTER} — it keeps dev's copy`);
+  });
+
+  it("settles a doc's generated block on the target's copy, keeps the branch's other edits, then rebuilds", async () => {
+    const dir = divergeEmbed(
+      "embed",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "intro", "main outro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      rebuilt: true,
+    });
+    expect(read(dir, EMBED_DOC)).toBe(`${embedBody("main", "feat intro", "main outro")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+  });
+
+  it("refuses and aborts when the doc also conflicts outside the generated block", async () => {
+    const dir = divergeEmbed(
+      "embed-outside",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "main intro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: EMBED_DOC,
+      reason: "it conflicts outside the generated block",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("merges the install record entry by entry, taking the target's value where both sides changed one", async () => {
+    const dir = divergeRecord(
+      "record",
+      record({
+        "docs/deployments.md": "d-feat",
+        "docs/testing.md": "t-feat",
+        "docs/setup.md": "s0",
+        "docs/new.md": "n",
+      }),
+      record({ "docs/deployments.md": "d0", "docs/testing.md": "t-main" }, "6.0.1"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      rebuilt: null,
+    });
+    // deployments: feat only. testing: both, so main's. setup: main removed it. new: feat added it.
+    expect(read(dir, INSTALL_RECORD)).toBe(
+      record(
+        { "docs/deployments.md": "d-feat", "docs/testing.md": "t-main", "docs/new.md": "n" },
+        "6.0.1",
+      ),
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses and aborts when a side deleted the install record", async () => {
+    const dir = divergeRecord(
+      "record-deleted",
+      null,
+      record({ ...BASE_HASHES, "docs/testing.md": "t-main" }),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: INSTALL_RECORD,
+      reason: "one side deleted the install record",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses a conflicted doc the repo's script does not list", async () => {
+    const dir = divergeEmbed(
+      "embed-unlisted",
+      embedBody("feat"),
+      embedBody("main"),
+      `GRAPH_EMBED_DOCS=""\n`,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ outcome: "refused", refused: EMBED_DOC, aborted: true });
+    expect(r.json?.reason).toMatch(/^not an append-only ledger/);
   });
 
   it("--sentinel and --log-file record a refusal and survive the abort", async () => {
@@ -946,10 +1353,12 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       pushed: true,
       ref: "feat/1-x",
       sha: sha(clone),
+      lockHolder: null,
       forced: true,
       skipped: null,
       prNumber: null,
       replayed: false,
+      mergedDev: false,
     });
     expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
     // A rebased (rewritten) branch still pushes: that is what the lease is for.
@@ -1036,6 +1445,58 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
     expect((await run(clone, ["push", "--mode=feature", "--require-ci"])).code).toBe(0);
   });
 
+  /** A feature branch and dev that both appended a row to a ledger outside docs/. */
+  function ledgerDiverged(name: string) {
+    const { origin, clone } = withOrigin(name);
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"A"}\n' });
+    git(clone, "pull", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { ".bkit/issues.jsonl": '{"key":"B"}\n' }, "feat(1-x): work");
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"C"}\n' }, "docs: dev row bkit [skip ci]");
+    return { origin, clone };
+  }
+
+  it("--require-ci merges dev's new ledger rows in before pushing, so GitHub sees no conflict", async () => {
+    const { origin, clone } = ledgerDiverged("push-ledger-merge");
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: true, sha: sha(clone) });
+    expect(remoteSha(origin, "feat/1-x")).toBe(sha(clone));
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
+    const keys = read(clone, ".bkit/issues.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { key: string }).key);
+    expect(keys.sort()).toEqual(["A", "B", "C"]);
+  });
+
+  it("--require-ci pushes as-is when dev has not moved", async () => {
+    const { clone } = feature("push-dev-still");
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: false, sha: before });
+  });
+
+  it("--mode=feature without --require-ci never merges dev (ship's force-push)", async () => {
+    const { clone } = ledgerDiverged("push-no-ci");
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature"]);
+    expect(r.json).toMatchObject({ pushed: true, mergedDev: false, sha: before });
+  });
+
+  it("--require-ci stops (11) and pushes nothing when dev's commits conflict outside docs/ and the ledgers", async () => {
+    const { origin, clone } = ledgerDiverged("push-code-conflict");
+    commit(clone, { "src.txt": "branch\n" }, "feat(1-x): code");
+    landOnDev(origin, { "src.txt": "dev\n" });
+    const before = sha(clone);
+    const r = await run(clone, ["push", "--mode=feature", "--require-ci"]);
+    expect(r.code).toBe(11);
+    expect(r.json).toMatchObject({ pushed: false });
+    expect(sha(clone)).toBe(before);
+    expect(fs.existsSync(path.join(clone, ".git/MERGE_HEAD"))).toBe(false);
+    expect(git(origin, "rev-parse", "--verify", "-q", "refs/heads/feat/1-x").ok).toBe(false);
+  });
+
   it("--require-ci also reads the message body, as the HEAD-Subject Assertion did", async () => {
     const { clone } = feature("push-body");
     git(clone, "commit", "-q", "--allow-empty", "-m", "chore(1-x): close", "-m", "body [skip ci]");
@@ -1057,8 +1518,10 @@ describe("branches push", { timeout: GIT_TIMEOUT }, () => {
       sha: null,
       forced: false,
       skipped: "open-pr",
+      lockHolder: null,
       prNumber: 12,
       replayed: false,
+      mergedDev: false,
     });
     expect(fs.readFileSync(log, "utf-8")).toContain(
       "pr list --head feat/1-x --state open --json number,state",
@@ -1140,7 +1603,7 @@ describe(
 
     /** A clone on dev with one foreign commit already ahead; the run starts after it. */
     function started(name: string) {
-      const { origin, clone } = withOrigin(name);
+      const { origin, clone } = withOrigin(name, true);
       commit(clone, { "foreign-before.txt": "f\n" }, "foreign: made before the run");
       writeRecord(clone, newRecord(clone, FID, "dev"));
       return { origin, clone };
@@ -1393,6 +1856,16 @@ describe("branches push --commit", { timeout: GIT_TIMEOUT }, () => {
     ]);
   });
 
+  it("the marker commit leaves out a copied-in worktree.copy entry (.env)", async () => {
+    const { origin, clone } = featureBranch("commit-copy");
+    write(clone, ".env", "SECRET=1\n");
+    const r = await run(clone, args(statusOutside()));
+    expect(r.code).toBe(0);
+    expect(git(clone, "show", "--name-only", "--format=", "HEAD").out).not.toContain(".env");
+    expect(git(origin, "show", "--name-only", "--format=", "feat/1-x").out).not.toContain(".env");
+    expect(git(clone, "status", "--porcelain").out).toBe("?? .env");
+  });
+
   it("an empty tree still gets the marker commit, without the suffix when bkit:auto is absent", async () => {
     const { clone } = featureBranch("commit-empty");
     const before = sha(clone);
@@ -1481,6 +1954,154 @@ describe("branches fast-forward", { timeout: GIT_TIMEOUT }, () => {
 });
 
 describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
+  it.each<{
+    name: string;
+    before: Record<string, string>;
+    after: Record<string, string>;
+    hits: Array<{ file: string; line: number; test: string }>;
+  }>([
+    {
+      name: "does not treat an existing skip in a renamed file as newly disabled",
+      before: {
+        "old.test.ts": "it.skip('existing skip', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      after: { "new.test.ts": "it.skip('existing skip', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [],
+    },
+    {
+      name: "still reports a new skip when its test moves files",
+      before: { "old.test.ts": "it('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it.skip('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "new.test.ts", line: 1, test: "moved" }],
+    },
+    {
+      name: "reports a skip moved onto a different test in the same file",
+      before: {
+        "a.test.ts":
+          "it('enabled', () => {\n  test.skip();\n});\nit('disabled', () => {\n  work();\n});\n",
+      },
+      after: {
+        "a.test.ts":
+          "it('enabled', () => {\n  work();\n});\nit('disabled', () => {\n  test.skip();\n});\n",
+      },
+      hits: [{ file: "a.test.ts", line: 5, test: "disabled" }],
+    },
+    {
+      name: "does not cancel a skip moved between ambiguous same-named tests",
+      before: {
+        "a.test.ts":
+          "describe('A', () => {\n  it('works', () => {\n    test.skip();\n  });\n});\ndescribe('B', () => {\n  it('works', () => {\n    work();\n  });\n});\n",
+      },
+      after: {
+        "a.test.ts":
+          "describe('A', () => {\n  it('works', () => {\n    work();\n  });\n});\ndescribe('B', () => {\n  it('works', () => {\n    test.skip();\n  });\n});\n",
+      },
+      hits: [{ file: "a.test.ts", line: 8, test: "works" }],
+    },
+    {
+      name: "does not spend an unchanged duplicate to conceal deletion",
+      before: {
+        "old.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n",
+        "kept.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      after: { "kept.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "old.test.ts", line: 2, test: "lost" }],
+    },
+    {
+      name: "recognizes a renamed test file",
+      before: { "old.test.ts": "it('keeps coverage', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it('keeps coverage', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [],
+    },
+    {
+      name: "recognizes a suite moved into a different test file",
+      before: { "old.test.ts": "it('moved', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: {
+        "new.test.mjs": "// extracted suite\nit('moved', () => {\n  expect(value).toBe(1);\n});\n",
+      },
+      hits: [],
+    },
+    {
+      name: "does not let unrelated additions hide a deleted assertion",
+      before: { "a.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "a.test.ts": "it('unrelated', () => {\n  expect(other).toBe(2);\n});\n" },
+      hits: [{ file: "a.test.ts", line: 1, test: "lost" }],
+    },
+    {
+      name: "attributes deletion to its old test instead of the following test",
+      before: {
+        "a.test.ts":
+          "it('lost', () => {\n  expect(value).toBe(1);\n});\nit('kept', () => {\n  expect(other).toBe(2);\n});\n",
+      },
+      after: { "a.test.ts": "it('kept', () => {\n  expect(other).toBe(2);\n});\n" },
+      hits: [{ file: "a.test.ts", line: 1, test: "lost" }],
+    },
+    {
+      name: "consumes each moved assertion once and identifies the missing occurrence",
+      before: {
+        "old.test.ts":
+          "it('moved', () => {\n  expect(value).toBe(1);\n  expect(value).toBe(1);\n  expect(other).toBe(2);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "it('moved', () => {\n  expect(value).toBe(1);\n  expect(other).toBe(2);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "moved" }],
+    },
+    {
+      name: "does not match identical assertions from unrelated tests across files",
+      before: { "old.test.ts": "it('lost', () => {\n  expect(value).toBe(1);\n});\n" },
+      after: { "new.test.ts": "it('unrelated', () => {\n  expect(value).toBe(1);\n});\n" },
+      hits: [{ file: "old.test.ts", line: 2, test: "lost" }],
+    },
+    {
+      name: "does not match the same leaf test name in a different suite",
+      before: {
+        "old.test.ts":
+          "describe('parser A', () => {\n  it('rejects invalid input', () => {\n    expect(result).toBe(false);\n  });\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "describe('parser B', () => {\n  it('rejects invalid input', () => {\n    expect(result).toBe(false);\n  });\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "rejects invalid input" }],
+    },
+    {
+      name: "does not match a same-named test with different setup",
+      before: {
+        "old.test.ts":
+          "it('rejects invalid input', () => {\n  const result = parseA('bad');\n  expect(result).toBe(false);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "it('rejects invalid input', () => {\n  const result = parseB('bad');\n  expect(result).toBe(false);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 3, test: "rejects invalid input" }],
+    },
+    {
+      name: "does not match a same-named test with changed shared setup",
+      before: {
+        "old.test.ts":
+          "beforeEach(() => {\n  result = parseA('bad');\n});\nit('rejects invalid input', () => {\n  expect(result).toBe(false);\n});\n",
+      },
+      after: {
+        "new.test.ts":
+          "beforeEach(() => {\n  result = parseB('bad');\n});\nit('rejects invalid input', () => {\n  expect(result).toBe(false);\n});\n",
+      },
+      hits: [{ file: "old.test.ts", line: 5, test: "rejects invalid input" }],
+    },
+  ])("scan-diff $name", async ({ before, after, hits }) => {
+    const { clone } = featureBranch("scan-moves");
+    commit(clone, before, "original coverage");
+    for (const file of Object.keys(before).filter((file) => !(file in after)))
+      git(clone, "rm", file);
+    for (const [file, text] of Object.entries(after)) write(clone, file, text);
+    commit(clone, {}, "reorganize coverage");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.json?.disabled).toEqual(hits);
+    expect(r.code).toBe(Number(hits.length > 0));
+  });
+
   it("--paths finds a changed path matching the pattern (exit 0) and names it", async () => {
     const { clone } = featureBranch("scan-paths");
     commit(clone, { "db/migrations/001.sql": "create\n" }, "feat(1-x): migrate");
@@ -1548,6 +2169,310 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
     const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--code"]);
     expect(r.code).toBe(0);
     expect(r.json).toEqual({ found: true, paths: ["src/y.ts"] });
+  });
+
+  // The fixture's skip marker is spelled in two pieces, as the slop plugin spells its own
+  // patterns: this file then carries no skip marker of its own for the scanner to find.
+  const SKIP = `${"it"}.${"skip"}`;
+  /** A test file: one passing test, then `extra` lines after it. */
+  const testFile = (...extra: string[]) =>
+    ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ...extra, ""].join("\n");
+
+  it("scan-diff finds an added skip", async () => {
+    const { clone } = featureBranch("scan-disabled");
+    write(clone, "src/a.test.ts", testFile());
+    commit(clone, {}, "test");
+    write(clone, "src/a.test.ts", testFile(`${SKIP}('keeps a', () => {});`));
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+  });
+
+  it("scan-diff ignores a skip predating the base", async () => {
+    const { clone } = featureBranch("scan-disabled-old");
+    write(clone, "src/a.test.ts", testFile(`${SKIP}('keeps a', () => {});`));
+    commit(clone, {}, "skip");
+    write(clone, "src/b.ts", "b\n");
+    commit(clone, {}, "other");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+  });
+
+  it("scan-diff reports a disabled test with its line", async () => {
+    const { clone } = featureBranch("scan-disabled-line");
+    write(clone, "src/a.test.ts", testFile());
+    commit(clone, {}, "test");
+    write(clone, "src/a.test.ts", testFile(`${SKIP}('drops b', () => {});`));
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 4, test: "drops b" }]);
+  });
+
+  it("scan-diff exits 0 on a diff that adds no disabled test", async () => {
+    const { clone } = featureBranch("scan-disabled-none");
+    write(clone, "src/a.test.ts", testFile());
+    commit(clone, {}, "test");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores a removed comment in a test file", async () => {
+    const { clone } = featureBranch("scan-disabled-comment");
+    write(clone, "src/a.test.ts", testFile("// should not be reached"));
+    commit(clone, {}, "test");
+    write(clone, "src/a.test.ts", testFile());
+    commit(clone, {}, "comment gone");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores an assertion moved within the file", async () => {
+    const { clone } = featureBranch("scan-disabled-move");
+    write(
+      clone,
+      "src/a.test.ts",
+      [
+        "it('keeps a', () => {",
+        "  expect(1).toBe(1);",
+        "});",
+        "",
+        "it('keeps b', () => {",
+        "  expect(2).toBe(2);",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      [
+        "it('keeps a', () => {",
+        "  expect(1).toBe(1);",
+        "  expect(2).toBe(2);",
+        "});",
+        "",
+        "it('keeps b', () => {",
+        "  doSomething();",
+        "});",
+        "",
+      ].join("\n"),
+    );
+    commit(clone, {}, "move");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff still reports a removed assertion", async () => {
+    const { clone } = featureBranch("scan-disabled-drop");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "  expect(2).toBe(2);", "});", ""].join(
+        "\n",
+      ),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "drop");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 3, test: "keeps a" }]);
+  });
+
+  it("scan-diff reports an assertion re-added only outside the test file", async () => {
+    const { clone } = featureBranch("scan-disabled-cross-file");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "  expect(2).toBe(2);", "});", ""].join(
+        "\n",
+      ),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    write(clone, "src/notes.md", ["# Notes", "", "  expect(2).toBe(2);", ""].join("\n"));
+    commit(clone, {}, "drop");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 3, test: "keeps a" }]);
+  });
+
+  it("scan-diff finds an added pytest mark skip", async () => {
+    const { clone } = featureBranch("scan-disabled-pytest");
+    write(clone, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n");
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "tests/test_a.py",
+      ['@pytest.mark.skip(reason="flaky")', "def test_a():", "    assert 1 == 1", ""].join("\n"),
+    );
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 1, test: "test_a" }]);
+  });
+
+  it("scan-diff finds an added unittest skip", async () => {
+    const { clone } = featureBranch("scan-disabled-unittest");
+    const body = (decorator: string[]) =>
+      [
+        "import unittest",
+        "",
+        "class A(unittest.TestCase):",
+        ...decorator,
+        "    def test_a(self):",
+        "        self.assertEqual(1, 1)",
+        "",
+      ].join("\n");
+    write(clone, "tests/test_a.py", body([]));
+    commit(clone, {}, "test");
+    write(clone, "tests/test_a.py", body(['    @unittest.skip("flaky")']));
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 4, test: "test_a" }]);
+  });
+
+  it("scan-diff finds an added bare skip call", async () => {
+    const { clone } = featureBranch("scan-disabled-pyskip");
+    write(clone, "tests/test_a.py", "def test_a():\n    assert 1 == 1\n");
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "tests/test_a.py",
+      ["def test_a():", '    pytest.skip("flaky")', "    assert 1 == 1", ""].join("\n"),
+    );
+    commit(clone, {}, "skip");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "tests/test_a.py", line: 2, test: "test_a" }]);
+  });
+
+  it("scan-diff ignores a quoted skip in a documentation file", async () => {
+    const { clone } = featureBranch("scan-disabled-doc");
+    // Spelled in pieces, as the slop plugin spells its own patterns: this file then carries
+    // no skip marker of its own for either scanner to find.
+    const quoted = `${"test"}.${"skip"}`;
+    const nested = `${"describe"}.${"skip"}`;
+    write(
+      clone,
+      "docs/guide.md",
+      [
+        "# Testing",
+        "",
+        `Never call \`${quoted}\` in a spec; a \`${nested}\` hides regressions`,
+        "",
+      ].join("\n"),
+    );
+    commit(clone, {}, "docs");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores a marker literal in a non-test source file", async () => {
+    const { clone } = featureBranch("scan-disabled-literal");
+    write(clone, "src/markers.ts", "const MARKERS = [/@Disabled\\b/];\n");
+    commit(clone, {}, "markers");
+    const r = await run(clone, ["scan-diff", "--base=origin/dev", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores an assertion whose expectation changed", async () => {
+    const { clone } = featureBranch("scan-disabled-expect");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('a', () => {", "  expect(1).toBe(2);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "tighten");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff ignores an assertion replaced by another in the same test", async () => {
+    const { clone } = featureBranch("scan-disabled-replace");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('a', () => {", "  expect(a).toEqual([]);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "test");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('a', () => {", "  expect(a).toEqual([expect.objectContaining({})]);", "});", ""].join(
+        "\n",
+      ),
+    );
+    commit(clone, {}, "replace");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.disabled).toEqual([]);
+  });
+
+  it("scan-diff reports a deleted test file", async () => {
+    const { clone } = featureBranch("scan-disabled-deleted");
+    write(
+      clone,
+      "src/a.test.ts",
+      ["it('keeps a', () => {", "  expect(1).toBe(1);", "});", ""].join("\n"),
+    );
+    commit(clone, {}, "test");
+    git(clone, "rm", "-q", "src/a.test.ts");
+    commit(clone, {}, "rm");
+    const r = await run(clone, ["scan-diff", "--base=HEAD~1", "--disabled-tests"]);
+    expect(r.code).toBe(1);
+    expect(r.json?.disabled).toEqual([{ file: "src/a.test.ts", line: 2, test: "keeps a" }]);
+  });
+
+  it("scan-diff never opens a symlinked test file's outside target", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-link-"));
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-scan-outside-"));
+    const skip = `${"test"}.${"skip"};`;
+    try {
+      fs.writeFileSync(path.join(outside, "secret"), "it('leaked secret line', () => {\n\n");
+      fs.mkdirSync(path.join(root, "src"));
+      fs.symlinkSync(path.join(outside, "secret"), path.join(root, "src", "a.test.ts"));
+      fs.writeFileSync(path.join(root, "src", "b.test.ts"), "it('in repo', () => {\n  x;\n");
+      const diff = (file: string) =>
+        [
+          `diff --git a/${file} b/${file}`,
+          `--- a/${file}`,
+          `+++ b/${file}`,
+          "@@ -1,0 +2,1 @@",
+          `+  ${skip}`,
+        ].join("\n");
+      const found = disabledTestsIn(
+        [diff("src/a.test.ts"), diff("src/b.test.ts"), ""].join("\n"),
+        root,
+      );
+      expect(found.map((d) => d.test)).toEqual([skip, "in repo"]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it("needs exactly one of --paths, --marker, --code; an unknown base exits 23", async () => {
@@ -1738,6 +2663,14 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ head: entry, basePath: "B", behind: 1, docsBehind: 0 });
   });
 
+  it("Path B once dev moved, from a clone whose fetch refspec omits dev", async () => {
+    const { origin, clone } = feature("sync-narrow");
+    git(clone, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync"]);
+    expect(r.json).toMatchObject({ basePath: "B", behind: 1 });
+  });
+
   it("--merge-docs merges dev when docs/ is behind", async () => {
     const { origin, clone } = feature("sync-merge");
     landOnDev(origin, { "docs/testing.md": "dev docs\n" });
@@ -1746,6 +2679,73 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toMatchObject({ docsBehind: 1, merged: true, resolved: [] });
     expect(read(clone, "docs/testing.md")).toBe("testing v0\ndev docs\n");
     expect(r.json?.head).toBe(sha(clone));
+    // A docs merge may carry dev's code, so its commit is a plain code commit: no [skip ci].
+    expect(subject(clone)).toBe("chore(1-x): merge dev");
+  });
+
+  it("--merge-docs merges dev when only a ledger outside docs/ moved on dev", async () => {
+    const { origin, clone } = feature("sync-ledger-only");
+    landOnDev(origin, { ".bkit/issues.jsonl": '{"key":"I1"}\n' });
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ behind: 1, docsBehind: 1, merged: true });
+    expect(read(clone, ".bkit/issues.jsonl")).toBe('{"key":"I1"}\n');
+  });
+
+  /** A feature branch declaring bkit:generate as `body`, with dev's docs/ one commit ahead. */
+  function withGenerate(name: string, body: string) {
+    const { origin, clone } = feature(name);
+    commit(
+      clone,
+      { "package.json": JSON.stringify({ name: "x", scripts: { "bkit:generate": body } }) },
+      "chore: generate script",
+    );
+    landOnDev(origin, { "docs/testing.md": "dev docs\n" });
+    return clone;
+  }
+
+  it("--merge-docs runs a declared bkit:generate after the merge and commits its output", async () => {
+    const clone = withGenerate(
+      "sync-generate",
+      "node -e \"require('fs').writeFileSync('docs/gen.md','gen\\\\n')\"",
+    );
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: true, generated: true, head: sha(clone) });
+    expect(read(clone, "docs/gen.md")).toBe("gen\n");
+    expect(git(clone, "log", "-1", "--format=%s").out).toBe(
+      "chore(1-x): regenerate after merging dev",
+    );
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge-docs commits only what bkit:generate changed; other uncommitted work stays out", async () => {
+    const clone = withGenerate(
+      "sync-generate-dirty",
+      "node -e \"require('fs').writeFileSync('docs/gen.md','gen\\\\n')\"",
+    );
+    write(clone, "notes.txt", "wip\n");
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: true, generated: true, head: sha(clone) });
+    expect(git(clone, "show", "--name-only", "--format=", "HEAD").out).toBe("docs/gen.md");
+    expect(git(clone, "status", "--porcelain").out).toBe("?? notes.txt");
+  });
+
+  it("--merge-docs exits 25 when bkit:generate fails after the merge, logging its output", async () => {
+    const clone = withGenerate("sync-generate-fail", "echo 'snapshot gen.md is stale' >&2; exit 3");
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(25);
+    expect(r.json).toMatchObject({ merged: true, generated: false });
+    expect(r.err).toContain("exited 3 after the merge");
+    expect(r.err).toContain("snapshot gen.md is stale");
+  });
+
+  it("--merge-docs skips an empty bkit:generate script", async () => {
+    const clone = withGenerate("sync-generate-empty", "");
+    const r = await run(clone, ["sync", "--merge-docs"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ merged: true, generated: null });
   });
 
   it("--merge-docs leaves the branch alone when only code moved on dev", async () => {
@@ -1803,6 +2803,314 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(sha(clone)).toBe(before);
     expect(fs.existsSync(path.join(clone, ".git/MERGE_HEAD"))).toBe(false);
     expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  // --- --merge: ship Step 4 ---
+
+  const MERGE_MSG = "chore(1-x): merge dev";
+  const SENTINEL = "docs/plans/202610/logs/1-x/.rebase-failed";
+  const subject = (cwd: string, rev = "HEAD") => git(cwd, "log", "-1", "--format=%s", rev).out;
+  const inMerge = (cwd: string) => fs.existsSync(path.join(cwd, ".git/MERGE_HEAD"));
+  const ledgerKeys = (cwd: string, rel: string) =>
+    read(cwd, rel)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => (JSON.parse(l) as { key: string }).key)
+      .sort();
+
+  it("--merge merges dev into the feature branch with a merge commit, never a rebase", async () => {
+    const { origin, clone } = feature("merge-clean");
+    const own = sha(clone);
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      basePath: "B",
+      behind: 1,
+      merged: true,
+      outcome: "merged",
+      carried: null,
+      resolved: [],
+      pending: [],
+      aborted: false,
+      sentinel: null,
+      generated: null,
+      head: sha(clone),
+    });
+    expect(subject(clone)).toBe(MERGE_MSG);
+    // The merge carries dev's code, and the pre-push hook refuses a skip-token head that
+    // carries code while the PR is open.
+    expect(git(clone, "log", "-1", "--format=%B").out).not.toMatch(/\[skip ci\]/i);
+    // A merge keeps the branch's own commit as first parent; a rebase would rewrite it.
+    expect(sha(clone, "HEAD^1")).toBe(own);
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
+    expect(read(clone, "src.txt")).toBe("code v0\nmoved\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge does nothing when origin/dev is already an ancestor, and clears a stale sentinel", async () => {
+    const { clone } = feature("merge-current");
+    const before = sha(clone);
+    write(clone, SENTINEL, "");
+    const r = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      basePath: "A",
+      merged: false,
+      outcome: "current",
+      head: before,
+      sentinel: null,
+    });
+    expect(sha(clone)).toBe(before);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(false);
+  });
+
+  it("--merge commits the run's uncommitted work first, so a ledger dev also appended to can merge", async () => {
+    // Ship keeps status.jsonl uncommitted until Step 8; a merge refuses to overwrite it.
+    const { origin, clone } = feature("merge-carry");
+    const status = "docs/plans/202610/logs/1-x/status.jsonl";
+    commit(
+      clone,
+      { [status]: '{"type":"workflow-started","workflow":"build"}\n' },
+      "build: status",
+    );
+    landOnDev(origin, { [status]: '{"type":"workflow-failed","workflow":"ship"}\n' });
+    fs.appendFileSync(path.join(clone, status), '{"type":"workflow-started","workflow":"ship"}\n');
+    write(clone, "docs/plans/202610/logs/1-x/ship-output.md", "log\n");
+    const r = await run(clone, ["sync", "--merge", "--fid=1-x"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      merged: true,
+      outcome: "merged",
+      resolved: [{ path: status, how: "union" }],
+      carried: sha(clone, "HEAD^1"),
+    });
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(subject(clone, "HEAD^1")).toBe("chore(1-x): carry uncommitted work before merging dev");
+    expect(read(clone, status).split("\n").filter(Boolean)).toHaveLength(3);
+    expect(read(clone, "docs/plans/202610/logs/1-x/ship-output.md")).toBe("log\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge regenerates a conflicted lockfile from dev's copy", async () => {
+    const lockfile = "uv.lock";
+    const tool = LOCKFILE_REGENERATE[lockfile]![0]!;
+    const bin = stubBin({ [tool]: `echo "# regenerated" >> ${lockfile}` });
+    const { origin, clone } = feature("merge-lockfile");
+    commit(clone, { [lockfile]: "feat pin\n" }, "feat: pin");
+    landOnDev(origin, { [lockfile]: "dev pin\n" });
+    const r = await run(clone, ["sync", "--merge"], { PATH: withBin(bin) });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: lockfile, how: "lockfile" }],
+    });
+    expect(read(clone, lockfile)).toBe("dev pin\n# regenerated\n");
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge leaves a code conflict for a hand resolution (24) and completes once it is staged", async () => {
+    const { origin, clone } = feature("merge-pending");
+    commit(
+      clone,
+      { "src.txt": "branch\n", "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
+      "feat: code + row",
+    );
+    landOnDev(origin, { "src.txt": "dev\n", "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' });
+    const first = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(first.code).toBe(24);
+    expect(first.json).toMatchObject({
+      outcome: "pending",
+      merged: false,
+      pending: ["src.txt"],
+      resolved: [{ path: "docs/knowledge.jsonl", how: "union" }],
+      aborted: false,
+      sentinel: null,
+    });
+    expect(inMerge(clone)).toBe(true);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(false);
+    expect(first.err).toContain("PENDING src.txt");
+    // Run again with nothing resolved: still pending, merge still in progress.
+    const again = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(again.code).toBe(24);
+    expect(again.json).toMatchObject({ outcome: "pending", pending: ["src.txt"] });
+    expect(inMerge(clone)).toBe(true);
+    // The hand resolution: fix the file, stage it, run again.
+    write(clone, "src.txt", "code v0\nbranch\ndev\n");
+    git(clone, "add", "src.txt");
+    const done = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`]);
+    expect(done.code).toBe(0);
+    expect(done.json).toMatchObject({
+      outcome: "merged",
+      merged: true,
+      pending: [],
+      head: sha(clone),
+    });
+    expect(inMerge(clone)).toBe(false);
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(read(clone, "src.txt")).toBe("code v0\nbranch\ndev\n");
+    expect(ledgerKeys(clone, "docs/knowledge.jsonl")).toEqual(["A", "B", "C"]);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge refuses (11), aborts the merge and writes the sentinel when a lockfile regenerate fails", async () => {
+    const lockfile = "uv.lock";
+    const tool = LOCKFILE_REGENERATE[lockfile]![0]!;
+    const bin = stubBin({ [tool]: "exit 1" });
+    const { origin, clone } = feature("merge-refuse");
+    commit(clone, { [lockfile]: "feat pin\n" }, "feat: pin");
+    const before = sha(clone);
+    landOnDev(origin, { [lockfile]: "dev pin\n" });
+    const r = await run(clone, ["sync", "--merge", `--sentinel=${SENTINEL}`], {
+      PATH: withBin(bin),
+    });
+    expect(r.code).toBe(11);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      merged: false,
+      aborted: true,
+      sentinel: SENTINEL,
+      head: before,
+    });
+    expect(sha(clone)).toBe(before);
+    expect(inMerge(clone)).toBe(false);
+    expect(fs.existsSync(path.join(clone, SENTINEL))).toBe(true);
+    expect(git(clone, "status", "--porcelain", "--", ".", ":(exclude)docs/plans").out).toBe("");
+  });
+
+  it("--merge runs a declared bkit:generate after the merge and commits its output", async () => {
+    const { origin, clone } = feature("merge-generate");
+    commit(
+      clone,
+      {
+        "package.json": JSON.stringify({
+          name: "x",
+          scripts: {
+            "bkit:generate": "node -e \"require('fs').writeFileSync('docs/gen.md','gen\\\\n')\"",
+          },
+        }),
+      },
+      "chore: generate script",
+    );
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ outcome: "merged", generated: true, head: sha(clone) });
+    expect(read(clone, "docs/gen.md")).toBe("gen\n");
+    expect(subject(clone)).toBe("chore(1-x): regenerate after merging dev");
+    expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge settles a conflicted register on dev's copy and rebuilds it, leaving nothing for a hand resolution", async () => {
+    const { origin, clone } = withOrigin("merge-register");
+    landOnDev(origin, { [REGISTER]: registerBody("v0"), [REGISTER_SCRIPT]: REBUILD_OK });
+    git(clone, "pull", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { [REGISTER]: "feat line\n" }, "feat: register");
+    landOnDev(origin, { [REGISTER]: "dev line\n" });
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: REGISTER, how: "register" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev`);
+    expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge merges the install record entry by entry, taking dev's value where both sides changed one", async () => {
+    const { origin, clone } = withOrigin("merge-record-file");
+    write(clone, INSTALL_RECORD, record(BASE_HASHES));
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "record");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-record-file-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, INSTALL_RECORD, record({ ...BASE_HASHES, "docs/testing.md": "t-dev" }));
+    git(other, "commit", "-q", "-am", "dev record");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(
+      clone,
+      INSTALL_RECORD,
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-feat" }),
+    );
+    git(clone, "commit", "-q", "-am", "feat record");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: INSTALL_RECORD, how: "record" }],
+      pending: [],
+    });
+    expect(read(clone, INSTALL_RECORD)).toBe(
+      record({ ...BASE_HASHES, "docs/deployments.md": "d-feat", "docs/testing.md": "t-dev" }),
+    );
+    expect(subject(clone)).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge settles a doc's generated block on dev's copy and rebuilds its register", async () => {
+    const { origin, clone } = withOrigin("merge-embed");
+    write(clone, EMBED_DOC, embedBody("v0"));
+    write(clone, REGISTER_SCRIPT, EMBED_REBUILD);
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "readme");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-embed-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, EMBED_DOC, embedBody("dev", "intro", "dev outro"));
+    git(other, "commit", "-q", "-am", "dev readme");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(clone, EMBED_DOC, embedBody("feat", "feat intro"));
+    git(clone, "commit", "-q", "-am", "feat readme");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, EMBED_DOC)).toBe(`${embedBody("dev", "feat intro", "dev outro")}rebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev`);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge --file records an engine-action row keyed on the tip it merged from", async () => {
+    const { origin, clone } = feature("merge-record");
+    const before = sha(clone);
+    landOnDev(origin, { "src.txt": "moved\n" });
+    const status = "docs/plans/202610/logs/1-x/status.jsonl";
+    const r = await run(clone, ["sync", "--merge", `--file=${status}`]);
+    expect(r.code).toBe(0);
+    const rows = read(clone, status)
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type: "engine-action",
+      action: "merge",
+      key: `merge/${before}`,
+      ref: sha(clone),
+    });
+  });
+
+  it("refuses --merge with --head or --merge-docs, on dev, and detached (5)", async () => {
+    const { clone } = feature("merge-usage");
+    expect((await run(clone, ["sync", "--merge", "--head=HEAD"])).code).toBe(2);
+    expect((await run(clone, ["sync", "--merge", "--merge-docs"])).code).toBe(2);
+    git(clone, "checkout", "-q", "dev");
+    expect((await run(clone, ["sync", "--merge"])).code).toBe(2);
+    git(clone, "checkout", "-q", "--detach");
+    expect((await run(clone, ["sync", "--merge"])).code).toBe(5);
   });
 
   it("exits 10 when the fetch fails", async () => {
@@ -1882,6 +3190,14 @@ describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
     expect(sha(clone, "dev")).toBe(local);
   });
 
+  it("fast-forwards local dev from a clone whose fetch refspec omits dev", async () => {
+    const { origin, clone } = shipped("sync-narrow");
+    git(clone, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    const r = await run(clone, ["sync-dev"]);
+    expect(r.json).toMatchObject({ devLocal: "fast-forwarded" });
+    expect(sha(clone, "dev")).toBe(git(origin, "rev-parse", "dev").out);
+  });
+
   it("exits 10 when the fetch fails", async () => {
     const { clone } = shipped("sync-nofetch");
     git(clone, "remote", "set-url", "origin", path.join(tmp("gone"), "missing"));
@@ -1904,6 +3220,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     git(repo, "config", "user.name", "t");
     write(repo, ".gitignore", "docs/plans/*/logs/**/.lock\n");
     write(repo, "docs/roadmap.md", "# Roadmap\n");
+    write(repo, "package.json", JSON.stringify(gatePackage));
     git(repo, "add", "-A");
     git(repo, "commit", "-qm", "init");
     git(repo, "remote", "add", "origin", remote);
@@ -2054,6 +3371,45 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.err).toContain("close staged non-doc files");
   });
 
+  it("local: names unpushed dev as the cause when the branch carries it", async () => {
+    const { repo } = fixture();
+    // The branch's own base is an unpushed dev commit: the squash carries its paths.
+    git(repo, "checkout", "-q", "dev");
+    write(repo, "src/app.ts", "export {};\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "unpushed dev work");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    git(repo, "rebase", "-q", "dev");
+
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("close staged non-doc files");
+    expect(r.err).toContain("src/app.ts");
+    expect(r.err).toContain("all of them are local dev's content");
+    expect(r.err).toContain("1 commit(s) ahead of origin/dev");
+    expect(r.err).toContain("publish dev (git push origin dev)");
+    expect(git(repo, "log", "--format=%s", "origin/dev")).not.toContain(DONE);
+  });
+
+  it("local: separates this run's own non-doc file from the unpushed dev work it inherited", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    write(repo, "src/app.ts", "export {};\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "unpushed dev work");
+    git(repo, "checkout", "-q", `feat/${FID}`);
+    write(repo, "src/mine.ts", "export const mine = 1;\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-qm", "code this run made");
+    git(repo, "rebase", "-q", "dev");
+
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(17);
+    expect(r.err).toContain("src/app.ts");
+    expect(r.err).toContain("src/mine.ts");
+    expect(r.err).toContain("1 of them are local dev's content");
+  });
+
   it("PR shape: dev refuses the push → pushes the roadmap commit, then hands PR creation to MCP (80, stage open) without gh", async () => {
     const { repo, remote } = fixture();
     protectDev(remote);
@@ -2136,7 +3492,11 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
       landedSha: merged,
       pushAttempts: 0,
     });
-    expect(read(gh.base, "updates")).toBe("update\n");
+    // The retry merged dev in locally and pushed; GitHub was never asked to update the branch.
+    expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
+    expect(git(repo, "merge-base", "--is-ancestor", "origin/dev", `origin/feat/${FID}`).ok).toBe(
+      true,
+    );
   });
 
   /** `.worktrees/12-x` holding feat/12-x, owned by a workflow (so the close would remove it). */
@@ -2195,7 +3555,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ shape: "pr", landedSha: merged });
     // Try 1 lost to the failed read, try 2 to the refused merge, try 3 merges.
-    expect(read(gh.base, "updates")).toBe("update\nupdate\n");
+    expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
   });
 
   it("PR merge refused on every try: stops (17) after LAND_ATTEMPTS, PR left open", async () => {
@@ -2218,7 +3578,7 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     );
     expect(r.code).toBe(17);
     expect(r.err).toContain("PR 5 still not merged after 3 tries — left open");
-    expect(read(base, "updates")).toBe("update\nupdate\n");
+    expect(fs.existsSync(path.join(base, "updates"))).toBe(false);
     expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(true);
   });
 
@@ -2246,6 +3606,76 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
       '{"id":"dev"}',
       '{"id":"branch"}',
     ]);
+  });
+
+  it("land removes the worktree when only the copied .env is untracked", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    write(wt, ".env", "TOKEN=x\n");
+    write(wt, ".bkit/.env", "BKIT_TOKEN=x\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ worktree: { removed: true } });
+    expect(fs.existsSync(wt)).toBe(false);
+    expect(git(repo, "rev-parse", "-q", "--verify", `refs/heads/feat/${FID}`).ok).toBe(false);
+  });
+
+  it("land keeps the worktree for real leftovers and names only them, not the copied .env", async () => {
+    const { repo } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    write(wt, ".env", "TOKEN=x\n");
+    write(wt, `docs/plans/${M}/logs/${FID}/notes.md`, "never committed\n");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      worktree: {
+        removed: false,
+        reason: "uncommitted",
+        files: [`?? docs/plans/${M}/logs/${FID}/notes.md`],
+      },
+    });
+  });
+
+  it("local: lands and audits from a clone whose fetch refspec omits dev", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    git(repo, "config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main");
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL" });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-1", "--format=%s", "dev").out).toBe(DONE);
+    expect(sha(repo, "origin/dev")).toBe(sha(remote, "dev"));
+    expect(r.json).toMatchObject({ localDev: "fast-forwarded" });
+  });
+
+  it("a concurrent landing already moved local dev past this close: localDev is current, no publish advice", async () => {
+    const { repo, remote } = fixture();
+    git(repo, "checkout", "-q", "dev");
+    // Right after this close's push lands, a second close lands on top of it and
+    // fast-forwards the main checkout's dev, before this close's own fast-forward.
+    const base = tmp("race-after");
+    const bin = stubBin({
+      git: [
+        `case "$*" in *"push origin HEAD:dev"*)`,
+        `  "${REAL_GIT}" "$@"; rc=$?`,
+        `  if [ $rc -eq 0 ] && [ ! -f "${base}/raced" ]; then`,
+        `    : > "${base}/raced"; d="${base}/c$$"`,
+        `    "${REAL_GIT}" clone -q "${remote}" "$d" && (cd "$d" && "${REAL_GIT}" -c user.email=t@t -c user.name=t commit -q --allow-empty -m "second close" && "${REAL_GIT}" push -q origin HEAD:dev)`,
+        `    "${REAL_GIT}" -C "${repo}" fetch -q origin +refs/heads/dev:refs/remotes/origin/dev`,
+        `    "${REAL_GIT}" -C "${repo}" merge -q --ff-only origin/dev`,
+        `  fi`,
+        `  exit $rc ;;`,
+        `esac`,
+        `exec "${REAL_GIT}" "$@"`,
+      ].join("\n"),
+    });
+    const r = await land(repo, { BKIT_RUNTIME: "LOCAL", PATH: withBin(bin) });
+    expect(r.code).toBe(0);
+    expect(git(remote, "log", "-2", "--format=%s", "dev").out).toBe(`second close\n${DONE}`);
+    expect(r.json).toMatchObject({ localDev: "current" });
+    expect(r.err).not.toContain("git pull --rebase origin dev && git push origin dev");
+    expect(sha(repo, "dev")).toBe(sha(remote, "dev"));
   });
 
   it("local: a locked throwaway checkout left by a killed close is removed, then the close lands", async () => {
@@ -2320,5 +3750,133 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     expect(r.code).toBe(17);
     expect(r.err).toContain("did not reach MERGED (state=CLOSED)");
     expect(fs.existsSync(path.join(gh.base, "updates"))).toBe(false);
+  });
+});
+
+describe("branches regenerate", { timeout: GIT_TIMEOUT }, () => {
+  const STATUS = "docs/plans/202611/logs/1-x/status.jsonl";
+  /** A feature branch declaring bkit:generate as `body`, with the run's status.jsonl left uncommitted. */
+  function withGenerate(
+    name: string,
+    body: string | undefined,
+    files: Record<string, string> = {},
+  ) {
+    const { clone } = featureBranch(name);
+    const scripts = body === undefined ? {} : { "bkit:generate": body };
+    commit(
+      clone,
+      { "package.json": JSON.stringify({ name: "x", scripts }), [STATUS]: "", ...files },
+      "chore: generate script",
+    );
+    write(clone, STATUS, '{"type":"step-done"}\n');
+    return clone;
+  }
+  const node = (js: string) => `node -e "${js}"`;
+  const subject = (cwd: string) => git(cwd, "log", "-1", "--format=%s").out;
+  const committedFiles = (clone: string) =>
+    git(clone, "show", "--name-only", "--format=", "HEAD").out.split("\n").filter(Boolean);
+
+  it("commits only what bkit:generate changed; the run's status.jsonl stays uncommitted", async () => {
+    const clone = withGenerate(
+      "regen-commit",
+      node("require('fs').writeFileSync('docs/capabilities.md','fresh\\\\n')"),
+    );
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate", "--fid=1-x", `--file=${STATUS}`]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({
+      outcome: "committed",
+      head: sha(clone),
+      paths: ["docs/capabilities.md"],
+    });
+    expect(subject(clone)).toBe("chore(1-x): regenerate before re-validating");
+    expect(committedFiles(clone)).toEqual(["docs/capabilities.md"]);
+    expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+    const rows = read(clone, STATUS)
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows.at(-1)).toMatchObject({
+      type: "engine-action",
+      action: "regenerate",
+      key: `regenerate/${before}`,
+      ref: sha(clone),
+    });
+  });
+
+  it("--attempt names the merge round in a fix commit", async () => {
+    const clone = withGenerate(
+      "regen-attempt",
+      node("require('fs').writeFileSync('docs/capabilities.md','fresh\\\\n')"),
+    );
+    const r = await run(clone, ["regenerate", "--attempt=2"]);
+    expect(r.code).toBe(0);
+    expect(subject(clone)).toBe("fix(1-x): regenerate attempt 2");
+  });
+
+  it("commits a rewritten and a deleted tracked file", async () => {
+    const clone = withGenerate(
+      "regen-tracked",
+      node(
+        "const fs=require('fs');fs.writeFileSync('dist/a.js','new\\\\n');fs.rmSync('dist/old.js')",
+      ),
+      { "dist/a.js": "old\n", "dist/old.js": "gone\n" },
+    );
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json?.paths).toEqual(["dist/a.js", "dist/old.js"]);
+    expect(committedFiles(clone)).toEqual(["dist/a.js", "dist/old.js"]);
+    expect(git(clone, "status", "--porcelain").out).toBe(`M ${STATUS}`);
+  });
+
+  it("reports unchanged and commits nothing when bkit:generate changed nothing", async () => {
+    const clone = withGenerate("regen-unchanged", "true");
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ outcome: "unchanged", head: before, paths: [] });
+    expect(sha(clone)).toBe(before);
+  });
+
+  it.each([
+    ["no scripts", undefined],
+    ["an empty script", ""],
+  ])("reports undeclared and runs nothing with %s", async (_label, body) => {
+    const clone = withGenerate("regen-undeclared", body);
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ outcome: "undeclared", head: before, paths: [] });
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("exits 25 when bkit:generate fails, logging its output, and commits nothing", async () => {
+    const clone = withGenerate("regen-fail", "echo 'graph build broke' >&2; exit 3");
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(25);
+    expect(r.err).toContain("exited 3 on the branch");
+    expect(r.err).toContain("graph build broke");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("exits 25 and commits nothing when bkit:generate rewrites a path that was already changed", async () => {
+    const clone = withGenerate(
+      "regen-dirty",
+      node(`require('fs').appendFileSync('${STATUS}','{}\\\\n')`),
+    );
+    const before = sha(clone);
+    const r = await run(clone, ["regenerate"]);
+    expect(r.code).toBe(25);
+    expect(r.err).toContain(STATUS);
+    expect(r.err).toContain("already held uncommitted changes");
+    expect(sha(clone)).toBe(before);
+  });
+
+  it("refuses dev, and an --attempt that is not a whole number >= 1", async () => {
+    const clone = withGenerate("regen-usage", "true");
+    expect((await run(clone, ["regenerate", "--attempt=0"])).code).toBe(2);
+    git(clone, "checkout", "-q", "-B", "dev");
+    expect((await run(clone, ["regenerate"])).code).toBe(2);
   });
 });

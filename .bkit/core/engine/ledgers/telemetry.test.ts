@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  AGED_KINDS,
   ANY_WRITER,
   APPEND_LEDGERS,
   DEFERRAL_REASONS,
@@ -14,6 +15,8 @@ import {
   SCHEMA,
   SEVERITY_KINDS,
   TRIAGE_STATUSES,
+  OUTCOME_ENDINGS,
+  RUN_ENDINGS,
   UNJUSTIFIED_REASON,
   VALID_KINDS,
   VALID_SEVERITIES,
@@ -27,17 +30,80 @@ import {
   foldFrom,
   gitEnv,
   identity,
+  lineage,
   mintTs,
   normalize,
   normalizeEvent,
   parse,
+  placeLineage,
   totalsProblem,
   validate,
+  withLineage,
   writerProblem,
   type KindWriters,
   type TelemetryEvent,
 } from "./telemetry";
 import { getBkitDocsRoot } from "../shared/package-roots";
+import { testRunProblem } from "./status";
+
+describe("test-run status row validation", () => {
+  it("accepts bounded CI evidence rows while preserving local exit validation", () => {
+    const ci = {
+      type: "test-run",
+      workflow: "debug",
+      step: "debug-run-tests",
+      at: "2026-10-01T00:00:00Z",
+      attempt: 1,
+      run: 1,
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      gate: null,
+      exitCode: null,
+      failures: null,
+      ciRun: "123",
+      ciUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      runAttempt: 2,
+      ciGeneration: 1,
+      repo: "example/example",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headSha: "a".repeat(40),
+      log: "logs/run-tests-1.md",
+      artifact: "docs/plans/202611/logs/1-x/run-tests-1.md",
+    };
+    expect(testRunProblem(ci)).toBeNull();
+    expect(testRunProblem({ ...ci, workflow: "build" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, exitCode: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, failures: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, verdict: "PASS" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, gate: "bkit:gate:static-unit" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, ciGeneration: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, runAttempt: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, scope: "ci:999" })).not.toBeNull();
+    expect(testRunProblem({ ...ci, artifact: undefined })).not.toBeNull();
+    const local = {
+      type: "test-run",
+      workflow: "build",
+      step: "build-run-tests",
+      at: ci.at,
+      attempt: 1,
+      run: 1,
+      source: "local",
+      verdict: "PASS",
+      exitCode: 0,
+      failures: 0,
+      scope: "pnpm bkit:gate:static-unit",
+      log: "logs/tests.log",
+    };
+    expect(testRunProblem(local)).toBeNull();
+    expect(testRunProblem({ ...local, source: undefined })).toBeNull();
+    expect(testRunProblem({ ...local, exitCode: null })).not.toBeNull();
+    expect(testRunProblem({ ...local, exitCode: "0" })).not.toBeNull();
+    expect(testRunProblem({ ...local, exitCode: 0.5 })).not.toBeNull();
+    expect(testRunProblem({ ...local, failures: -1 })).not.toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1209,6 +1275,125 @@ describe("fold — composite-identity dedup", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Lineage — firstTs / updates on keyed rows (#710)
+// ---------------------------------------------------------------------------
+
+describe("lineage — firstTs / updates on keyed rows", () => {
+  it("AGED_KINDS names the five keyed ledger kinds", () => {
+    expect([...AGED_KINDS].sort()).toEqual([
+      "decision",
+      "deferral",
+      "failure",
+      "feature",
+      "knowledge",
+    ]);
+  });
+
+  it("validate accepts firstTs <= ts and a positive-integer updates on every aged kind", () => {
+    const lineageFields = { firstTs: 1_600_000_000_000, updates: 3 };
+    for (const e of [
+      deferralEvent("d", lineageFields),
+      failureEvent("f", lineageFields),
+      decisionEvent("c", lineageFields),
+      knowledgeEvent("k", lineageFields),
+      featureEvent("x", lineageFields),
+    ]) {
+      expect(validate(e)).toEqual({ ok: true });
+    }
+  });
+
+  it("validate rejects a firstTs later than ts, or not a number", () => {
+    expect(validate(failureEvent("f", { firstTs: 1_800_000_000_000 })).reason).toMatch(/firstTs/);
+    expect(validate(failureEvent("f", { firstTs: "yesterday" })).reason).toMatch(/firstTs/);
+  });
+
+  it("validate rejects updates that is zero, negative or fractional", () => {
+    for (const updates of [0, -1, 1.5, "2"]) {
+      expect(validate(failureEvent("f", { updates })).reason).toMatch(/updates/);
+    }
+  });
+
+  it("validate rejects firstTs / updates on kinds outside AGED_KINDS", () => {
+    expect(validate(frictionEvent("k", { updates: 1 } as Partial<TelemetryEvent>)).reason).toMatch(
+      /do not carry updates/,
+    );
+    expect(validate(complianceEvent({ firstTs: 1 })).reason).toMatch(/do not carry firstTs/);
+  });
+
+  it("lineage counts rows and takes the earliest ts", () => {
+    expect(lineage([{ ts: 30 }, { ts: 10 }, { ts: 20 }])).toEqual({ firstTs: 10, updates: 3 });
+  });
+
+  it("lineage continues a stamped row's count and keeps its firstTs", () => {
+    expect(lineage([{ ts: 20, firstTs: 5, updates: 4 }, { ts: 30 }])).toEqual({
+      firstTs: 5,
+      updates: 5,
+    });
+  });
+
+  it("lineage counts same-ts rows once, keeping the larger stamped count", () => {
+    expect(lineage([{ ts: 10 }, { ts: 20 }, { ts: 20 }])).toEqual({ firstTs: 10, updates: 2 });
+    expect(
+      lineage([
+        { ts: 20, updates: 4 },
+        { ts: 20, updates: 2 },
+      ]),
+    ).toEqual({ firstTs: 20, updates: 4 });
+  });
+
+  it("lineage leaves firstTs out when no row carries a numeric ts", () => {
+    expect(lineage([{ ts: "never" }])).toEqual({ updates: 1 });
+  });
+
+  it("placeLineage puts firstTs + updates right after ts, replacing stale values", () => {
+    const row = { schema: 3, ts: 9, updates: 1, kind: "failure", firstTs: 9 };
+    expect(Object.entries(placeLineage(row, { firstTs: 2, updates: 4 }))).toEqual([
+      ["schema", 3],
+      ["ts", 9],
+      ["firstTs", 2],
+      ["updates", 4],
+      ["kind", "failure"],
+    ]);
+    expect(placeLineage({ kind: "failure" }, { updates: 1 })).toEqual({
+      kind: "failure",
+      updates: 1,
+    });
+  });
+
+  it("withLineage stamps a first row firstTs = ts, updates = 1", () => {
+    const row = withLineage([], { ...failureEvent("f") });
+    expect(row).toMatchObject({ ts: 1_700_000_000_000, firstTs: 1_700_000_000_000, updates: 1 });
+  });
+
+  it("withLineage carries forward from same-identity prior rows only", () => {
+    const prior = [
+      failureEvent("f", { ts: 1_000 }),
+      failureEvent("f", { ts: 2_000, firstTs: 500, updates: 2 }),
+      failureEvent("other", { ts: 100 }),
+      deferralEvent("f", { ts: 50 }),
+    ];
+    expect(withLineage(prior, { ...failureEvent("f", { ts: 3_000 }) })).toMatchObject({
+      firstTs: 500,
+      updates: 3,
+    });
+  });
+
+  it("withLineage replaces caller-supplied firstTs / updates", () => {
+    const row = withLineage([failureEvent("f", { ts: 1_000 })], {
+      ...failureEvent("f", { ts: 2_000, firstTs: 1, updates: 99 }),
+    });
+    expect(row).toMatchObject({ firstTs: 1_000, updates: 2 });
+  });
+
+  it("withLineage passes keyless and non-aged rows through untouched", () => {
+    const friction = { ...frictionEvent("k") } as Record<string, unknown>;
+    expect(withLineage([friction], friction)).toBe(friction);
+    const keyless = { ...failureEvent("") } as Record<string, unknown>;
+    expect(withLineage([], keyless)).toBe(keyless);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parse() — tolerant reader (per-line try/catch, never throws)
 // ---------------------------------------------------------------------------
 
@@ -1310,6 +1495,28 @@ describe("outcome — shape and inline-jq parity", () => {
       expect(bad.ok).toBe(false);
       expect(bad.reason).toBe(`outcome plan.source must be file|converted (got: ${source})`);
     }
+  });
+
+  it("accepts held in outcome and run endings", () => {
+    expect(validate(outcomeEvent({ ending: "held" }))).toEqual({ ok: true });
+    expect(OUTCOME_ENDINGS.has("held")).toBe(true);
+    expect(RUN_ENDINGS.has("held")).toBe(true);
+    expect(validate(runEvent("fp:x:build:1", { ending: "held" })).ok).toBe(true);
+    expect(validate(outcomeEvent({ ending: "paused" })).reason).toBe(
+      `outcome ending must be ${[...OUTCOME_ENDINGS].join("|")} (got: paused)`,
+    );
+  });
+
+  it("keeps publish false on the outcome row", () => {
+    const e = outcomeEvent({ ending: "held", publish: false });
+    expect(validate(e)).toEqual({ ok: true });
+    expect(parse(JSON.stringify(e)).events[0]).toMatchObject({ ending: "held", publish: false });
+  });
+
+  it("rejects a non-boolean publish", () => {
+    const bad = validate(outcomeEvent({ ending: "held", publish: "false" }));
+    expect(bad.ok).toBe(false);
+    expect(bad.reason).toBe("outcome publish must be a boolean (got: false)");
   });
 
   it("folds outcome by (repo, run.pr)", () => {
@@ -1570,6 +1777,12 @@ describe("workflowTelemetry — this-run vs med·5 baseline", () => {
     );
     expect(file.lines.find((l) => l.startsWith("| time.totalMinutes "))).toContain("10 (10m)");
     expect(file.lines.join("\n")).not.toContain("brief");
+  });
+
+  it("shows an ending row for a held close", () => {
+    const run = outcomeEvent({ run: { parentSha: "held-sha" }, ending: "held", publish: false });
+    const s = workflowTelemetry(foldFrom([writeStats([run])]), "build");
+    expect(s.lines.some((l) => l.startsWith("| ending | held "))).toBe(true);
   });
 
   it("prints — for the baseline until at least 3 prior runs exist", () => {
@@ -1872,14 +2085,60 @@ describe("writerProblem", () => {
   it("admits a listed subagent and the listed orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-generate", model: "m" }))).toBeUndefined();
     expect(writerProblem(row({}))).toBeUndefined();
+    expect(writerProblem(row({ workflow: "design" }))).toBeUndefined();
   });
+
+  it("admits a direct chat (utility) on decision rows", () => {
+    expect(writerProblem(row({ workflow: "utility", step: "manual" }))).toBeUndefined();
+  });
+
+  it("admits a direct chat (utility) on deferral rows", () => {
+    expect(
+      writerProblem({ kind: "deferral", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it("admits a direct chat (utility) on knowledge rows", () => {
+    expect(
+      writerProblem({ kind: "knowledge", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it("accepts a knowledge row written by bkit-build-plan-tests", () => {
+    expect(
+      writerProblem({
+        kind: "knowledge",
+        by: { workflow: "build", subagent: "bkit-build-plan-tests", model: "m" },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("admits a direct chat (utility) on friction rows", () => {
+    expect(
+      writerProblem({ kind: "friction", by: { workflow: "utility", step: "manual" } }),
+    ).toBeUndefined();
+  });
+
+  it.each(["compliance", "counter", "outcome"])(
+    "admits a direct chat (utility) on %s rows",
+    (kind) => {
+      expect(writerProblem({ kind, by: { workflow: "utility", step: "manual" } })).toBeUndefined();
+    },
+  );
 
   it("refuses an unlisted subagent or orchestrator", () => {
     expect(writerProblem(row({ subagent: "bkit-plan-review-1", model: "m" }))).toContain(
       "does not write decision rows",
     );
     expect(writerProblem(row({ workflow: "debug" }))).toContain(
-      "the debug orchestrator does not write decision rows (orchestrators: build, plan, ship)",
+      "the debug orchestrator does not write decision rows (orchestrators: design, build, plan, ship, utility)",
+    );
+  });
+
+  it("admits the auto orchestrator on friction rows", () => {
+    expect(writerProblem({ kind: "friction", by: { workflow: "auto" } })).toBeUndefined();
+    expect(writerProblem({ kind: "friction", by: { workflow: "audit" } })).toContain(
+      "the audit orchestrator does not write friction rows",
     );
   });
 
@@ -1950,8 +2209,8 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
   }
 
   // The stats rows are written by the CLI at each workflow's close, so their doc rows
-  // name the close, not "the X orchestrator"; the writers are the closing workflows,
-  // never a subagent.
+  // name the close, not "the X orchestrator"; the writers are the closing workflows plus
+  // a direct chat (utility), never a subagent.
   for (const { ledger, file, kind } of ledgerKinds.filter((l) => l.ledger === "stats")) {
     it(`${ledger} / ${kind}: the doc row names ${file}, a close-step writer and no subagent`, () => {
       const text = cell(kind);
@@ -1960,12 +2219,14 @@ describe("writer sets in telemetry.ts match the jsonl.md table", () => {
       expect(docSubagents(text)).toEqual([]);
       expect(listed(subagents)).toEqual([]);
       expect(text).toMatch(/close/);
+      expect(namedAsOrchestrator(text, "utility")).toBe(true);
       expect([...orchestratorNames(orchestrators)].sort()).toEqual([
         "build",
         "debug",
         "design",
         "plan",
         "ship",
+        "utility",
       ]);
     });
   }
@@ -2117,7 +2378,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       main: { turns: 3, ...tokens(6, 12, 18), ctxPeak: 900, compactions: 1, mix },
       subagents: 1,
       agents: {
-        "bkit-build-plan-execute": {
+        "bkit-build-plan-tasks": {
           n: 1,
           turns: 1,
           ...tokens(4, 8, 12),
@@ -2180,7 +2441,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       agents: {
         total: { n: 1, errors: 2 },
         byAgent: {
-          "bkit-build-plan-execute": {
+          "bkit-build-plan-tasks": {
             n: 1,
             errors: 2,
             instances: [{ turns: 1, contextPeak: 500 }],
@@ -2220,7 +2481,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       parentShas: ["deadbeef"],
       closeCi: [{ outcome: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
       steps: {
-        "build-task-red": { n: 2, minutes: 3.04, active: 1 },
+        "build-tests-red": { n: 2, minutes: 3.04, active: 1 },
         "build-plan-verify": { n: 1, minutes: 4.04, active: 2 },
       },
       lines: {
@@ -2237,7 +2498,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
         testFilesPerTask: [1, null],
         complexity: { verdict: "OK", tasksChecked: 2, reasons: [] },
       },
-      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0, testOrderGaps: 0 }],
+      verify: [{ subPlan: 1, attempt: 1, verdict: "PASS", failures: 0 }],
       holistic: { verdict: "PASS", failures: 0 },
       challenge: { verdict: "CONCERNS", findings: { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 0 } },
       redTests: 2,
@@ -2257,7 +2518,7 @@ describe("normalize — schema-1 rows to schema 2", () => {
       ci: [{ status: "unresolved", reason: "ci-declared-no-run", attempts: 2 }],
       steps: {
         total: { n: 3, totalMinutes: 7.1, activeMinutes: 3 },
-        byStep: { "build-task-red": { n: 2, totalMinutes: 3.04, activeMinutes: 1 } },
+        byStep: { "build-tests-red": { n: 2, totalMinutes: 3.04, activeMinutes: 1 } },
       },
       lines: { total: { added: 16, deleted: 1, changed: 17, files: 4 }, merges: 0 },
       plan: {
@@ -2617,10 +2878,10 @@ describe("totals — validate refuses a total that does not match its parts", ()
     expect(totalsOf(plan(3), plan(2))).toEqual(refused("plan.total.tasks"));
   });
 
-  it('build.redTests = steps.byStep["build-task-red"].n', () => {
+  it('build.redTests = steps.byStep["build-tests-red"].n', () => {
     const steps = {
       total: { n: 2, totalMinutes: 1 },
-      byStep: { "build-task-red": { n: 2, totalMinutes: 1 } },
+      byStep: { "build-tests-red": { n: 2, totalMinutes: 1 } },
     };
     expect(totalsOf({ steps, build: { redTests: 2 } }, { steps, build: { redTests: 3 } })).toEqual(
       refused("build.redTests"),

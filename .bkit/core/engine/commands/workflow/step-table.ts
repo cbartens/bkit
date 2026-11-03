@@ -51,55 +51,62 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
     { step: "design-apply-review", number: 8, title: "Apply Review" },
     { step: "design-organise", number: 9, title: "Design Organise" },
     { step: "design-summary", number: 10, title: "Summary" },
-    { step: "design-workstream-suggest", number: 11, title: "Suggest Workstreams" },
+    { step: "design-workstream-suggest", number: 11, title: "Suggest Plans" },
     { step: "design-close-workflow", number: 12, title: "Close Workflow" },
   ],
   build: [
     { step: "build-start-workflow", number: 1, title: "Start Workflow", setup: true },
     { step: "build-worktree-setup", number: 2, title: "Worktree Setup", setup: true },
-    // A converted plan is checked again: Step 3 runs its plan check once more.
-    { step: "build-plan-convert", number: 3, title: "Branch Sync", resumeAt: "build-branch-sync" },
     { step: "build-branch-sync", number: 3, title: "Branch Sync" },
-    { step: "build-plan-current", number: 4, title: "Plan Current" },
-    { step: "build-install-skills", number: 5, title: "Install Skills" },
-    // A group's start commit is recorded before its execute runs: Step 6 again.
+    // A converted plan is checked again: Step 4 runs its plan check once more.
+    {
+      step: "build-plan-convert",
+      number: 4,
+      title: "Plan Convert",
+      resumeAt: "build-plan-convert",
+    },
+    { step: "build-plan-current", number: 5, title: "Plan Current" },
+    { step: "build-install-skills", number: 6, title: "Install Skills" },
+    // A group's start commit is recorded before its execute runs: Step 7 again.
     {
       step: "build-group-start",
-      number: 6,
+      number: 7,
       title: "Plan Execute",
-      resumeAt: "build-plan-execute",
+      resumeAt: "build-plan-tasks",
     },
-    // A handover stops a group part-done: Step 6 runs again with a fresh brief.
+    // The group's tests are written before its code: Step 7 resumes at the tests step.
+    { step: "build-plan-tests", number: 7, title: "Plan Execute", resumeAt: "build-plan-tests" },
+    // A handover stops a group part-done: Step 7 runs again with a fresh brief.
     {
-      step: "build-plan-execute",
-      number: 6,
+      step: "build-plan-tasks",
+      number: 7,
       title: "Plan Execute",
-      resumeOnVerdict: { HANDOVER: "build-plan-execute" },
+      resumeOnVerdict: { HANDOVER: "build-plan-tasks" },
     },
-    // Verify, its group gate and the gaps fix route on the verify verdict: Step 7 again.
-    { step: "build-plan-verify", number: 7, title: "Plan Verify", resumeAt: "build-plan-verify" },
-    { step: "build-group-gate", number: 7, title: "Plan Verify", resumeAt: "build-plan-verify" },
+    // Verify, its group gate and the gaps fix route on the verify verdict: Step 8 again.
+    { step: "build-plan-verify", number: 8, title: "Plan Verify", resumeAt: "build-plan-verify" },
+    { step: "build-group-gate", number: 8, title: "Plan Verify", resumeAt: "build-plan-verify" },
     {
       step: "build-plan-gaps-remediate",
-      number: 8,
+      number: 9,
       title: "Plan Gaps Remediate",
       resumeAt: "build-plan-verify",
     },
-    { step: "build-plan-verify-holistic", number: 9, title: "Plan Verify Holistic" },
-    // The reports are written: Step 10 continues at `bkit challenge merge`.
-    { step: "build-challenge", number: 10, title: "Build Challenge", resumeAt: "build-challenge" },
+    { step: "build-plan-verify-holistic", number: 10, title: "Plan Verify Holistic" },
+    // The reports are written: Step 11 continues at `bkit challenge merge`.
+    { step: "build-challenge", number: 11, title: "Build Challenge", resumeAt: "build-challenge" },
     // Run Tests routes on its own verdict, and a fix loops back to it.
-    { step: "build-run-tests", number: 11, title: "Run Tests", resumeAt: "build-run-tests" },
-    { step: "build-failure-diagnose", number: 12, title: "Failure Diagnose" },
+    { step: "build-run-tests", number: 12, title: "Run Tests", resumeAt: "build-run-tests" },
+    { step: "build-failure-diagnose", number: 13, title: "Failure Diagnose" },
     {
       step: "build-failure-remediate",
-      number: 13,
+      number: 14,
       title: "Failure Remediate",
       resumeAt: "build-run-tests",
     },
-    { step: "build-summary", number: 14, title: "Summary" },
-    { step: "build-create-pr", number: 15, title: "Close Workflow & Create PR" },
-    { step: "build-close-workflow", number: 15, title: "Close Workflow & Create PR" },
+    { step: "build-summary", number: 15, title: "Summary" },
+    { step: "build-create-pr", number: 16, title: "Close Workflow & Create PR" },
+    { step: "build-close-workflow", number: 16, title: "Close Workflow & Create PR" },
   ],
   debug: [
     { step: "debug-start-workflow", number: 1, title: "Start Workflow", setup: true },
@@ -206,10 +213,10 @@ export const DECISION_ROUTES: Readonly<
   build: {
     step: "build-decision",
     routes: {
-      fix: "build-plan-execute",
+      fix: "build-plan-tasks",
       verify: "build-plan-verify",
       tests: "build-run-tests",
-      // Try again: a verify loop goes on to its gaps fix (Step 8), a tests loop to Step 12.
+      // Try again: a verify loop goes on to its gaps fix (Step 9), a tests loop to Step 13.
       retry: {
         "build-plan-verify": "build-plan-gaps-remediate",
         "build-group-gate": "build-plan-gaps-remediate",
@@ -221,6 +228,41 @@ export const DECISION_ROUTES: Readonly<
 
 export const isResumable = (w: string): w is ResumableWorkflow => w in WORKFLOW_STEPS;
 
+/** A completed numbered position, with build groups expanded in plan order. */
+export function runProgress(input: {
+  workflow: ResumableWorkflow;
+  step?: string;
+  number?: number;
+  groups?: number[];
+  group?: number;
+  attempt?: number;
+  max?: number;
+}): { percent: number; progressLine: string } {
+  const table = WORKFLOW_STEPS[input.workflow];
+  const entry = table.find((s) =>
+    input.number === undefined ? s.step === input.step : s.number === input.number,
+  );
+  if (entry === undefined) throw new Error("unknown workflow progress position");
+  const steps = new Set(table.map((s) => s.number)).size;
+  const groups = input.groups?.length ? input.groups : [1];
+  const ordinal = Math.max(1, groups.indexOf(input.group ?? groups[0]!) + 1);
+  const grouped = input.workflow === "build" && entry.number >= 7 && entry.number <= 9;
+  const total = input.workflow === "build" ? 13 + 3 * groups.length : steps;
+  const position =
+    input.workflow !== "build" || entry.number < 7
+      ? entry.number
+      : grouped
+        ? 6 + 3 * (ordinal - 1) + entry.number - 6
+        : 6 + 3 * groups.length + entry.number - 9;
+  const percent = entry.number === steps ? 100 : Math.min(99, Math.round((100 * position) / total));
+  const filled = Math.min(10, Math.max(0, Math.round(percent / 10)));
+  let progressLine = `Progress: ${"█".repeat(filled)}${"░".repeat(10 - filled)} ${percent}% · Step ${entry.number}/${steps} ${entry.title}`;
+  if (grouped) progressLine += ` · Group ${ordinal} of ${groups.length}`;
+  if (input.attempt !== undefined && input.attempt > 1)
+    progressLine += ` · Attempt ${input.attempt}${input.max === undefined ? "" : ` of ${input.max}`}`;
+  return { percent, progressLine };
+}
+
 export interface ResumePoint {
   /** The step to continue at: its row name (null for a step that writes no row), number and title. */
   step: string | null;
@@ -228,17 +270,17 @@ export interface ResumePoint {
   title: string;
   /** The DONE row that placed the point, or null when none did (resume at Step 1). */
   after: string | null;
-  /** That row's plan group, or null. */
+  /** That row's task group, or null. */
   group: number | null;
   /** Whether the latest run is this workflow, still IN_PROGRESS. */
   active: boolean;
-  /** Build only (null otherwise): the round Step 10's challenge runs as — see `challengeRound`. */
+  /** Build only (null otherwise): the round Step 11's challenge runs as — see `challengeRound`. */
   challengeRound: number | null;
-  /** Build only (null otherwise): the last allowed round has merged, so Step 10 goes on to Step 11. */
+  /** Build only (null otherwise): the last allowed round has merged, so Step 11 goes on to Step 12. */
   challengeDone: boolean | null;
 }
 
-const CHALLENGE_ROUTES = new Set(["build-plan-execute", "build-decision", "build-run-tests"]);
+const CHALLENGE_ROUTES = new Set(["build-plan-tasks", "build-decision", "build-run-tests"]);
 const roundOf = (s: WorkflowRun["steps"][number]): number => {
   const round = Number((s as { round?: unknown }).round);
   return Number.isInteger(round) && round >= 1 ? round : 1;
@@ -261,7 +303,7 @@ function challengeDone(steps: WorkflowRun["steps"], max: number): boolean {
 /**
  * The build challenge's round, read from the run's `build-challenge` rows (each carries the
  * `round` it ran as; a row without one counts as round 1) and the step row after each: the
- * next of `build-plan-execute` (route fix), `build-decision` (route pause) or
+ * next of `build-plan-tasks` (route fix), `build-decision` (route pause) or
  * `build-run-tests` (route none). A challenge row with no such row after it has not merged
  * yet, so the run keeps that row's round. Otherwise one past the highest round whose merge
  * wrote tasks (route fix or pause), or that ran past round 1; at most `max`
@@ -327,7 +369,7 @@ export function resumePoint(
     return at(byStep.get(routed)!, last.step, prior?.group ?? prior?.subPlan ?? null);
   }
   const group = last.group ?? last.subPlan ?? null;
-  const verdict = String((last as { verdict?: unknown }).verdict);
+  const verdict = String(last.verdict);
   const target =
     retired[last.step] ??
     byStep.get(last.step)!.resumeOnVerdict?.[verdict] ??

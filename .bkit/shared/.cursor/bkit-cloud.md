@@ -50,15 +50,15 @@ Add **each** line below as a secret (Name = the key, Value = the value). Set the
 ## 3 · Toolchain (in-repo — nothing to paste)
 
 The base image bakes the **same tools at the same versions as the Claude setup
-script** — vale 3.9.1, gh, jq, python3, corepack-pinned pnpm — so both clouds run an
+script** — vale 3.24.0, gh, jq, python3, corepack-pinned pnpm — so both clouds run an
 identical bkit toolchain:
 
 - `.cursor/Dockerfile` — image build, your copy of the template (keep its
   `bkit toolchain` section as shipped; set Node major / Playwright / extra apt deps
   outside it).
 - `.cursor/environment.json` — per-snapshot `install` (`pnpm install
-  --frozen-lockfile` + `vale sync`), the analogue of Claude's
-  `.claude/hooks/bkit-cloud-bootstrap.sh`. (`install` / `start` / `terminals` are the
+  --frozen-lockfile` + `vale sync` + `pnpm exec bkit context provision`), the analogue
+  of Claude's `.claude/hooks/bkit-cloud-bootstrap.sh`. (`install` / `start` / `terminals` are the
   environment.json fields Cursor runs.)
 
 After changing either, run `pnpm bkit install` and commit — the first session

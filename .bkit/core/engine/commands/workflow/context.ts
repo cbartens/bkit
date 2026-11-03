@@ -1,6 +1,6 @@
-// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise —
+// bkit context clamp|clamp-log|ledger-scan|diff|brief|list-blocks|run-block|finalise|provision —
 // size-bound context artifacts, write the run's diff and a build group's brief,
-// and fetch the consumer's evidence.
+// fetch the consumer's evidence, and run its cloud provision recipes.
 //
 // clamp is a runaway backstop, NOT a routine cap: a normal run never fires it.
 // Every removal is marked in place and footered. Profiles:
@@ -11,6 +11,12 @@
 //                   plus every line matching the signal pattern with 2 lines of
 //                   context. Lines over 2000 bytes are shortened in place. Hard
 //                   ceiling 12000 lines / 1.5 MB.
+//   ci / e2e /      the debug-evidence algorithm with their context's own section
+//   runtime         headers added to the signal pattern, so a header naming a kept
+//                   block's owner survives without a signal word (`===== job …
+//                   =====`, `===== file: … =====`, `===== step: …`, `===== vercel
+//                   …`). `context fetch` picks the profile of the block's
+//                   `context=`; any other context clamps as debug-evidence.
 //
 // Bytes are counted as raw bytes (as `LC_ALL=C awk` counts them), never as
 // characters, so a multi-byte line is measured by what it costs on disk.
@@ -27,9 +33,13 @@ import {
   CONTEXT_FETCH_CONTEXTS,
   parseContextFetchStart,
 } from "../../checks/before/context-fetch.js";
-import { extractContextFetchProvisionRecipes } from "../../install/cloud-env.js";
+import {
+  UNAVAILABLE_RELPATH,
+  extractContextFetchProvisionRecipes,
+  renderCloudContextFetchProvision,
+} from "../../install/cloud-env.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
-import { lastRun } from "../../ledgers/status.js";
+import { lastRun, validateCiSelection, type CiSelection } from "../../ledgers/status.js";
 import {
   CommandError,
   EXIT,
@@ -45,15 +55,16 @@ import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
 import { buildComment } from "./issues.js";
 import {
+  derivedTestMatrix,
   parsePlanBlocks,
   reuseInventory,
   type PlanGroup,
   type PlanTaskBlock,
 } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
-import { EXIT_NO_STATUS, positiveInt, readRuns, str } from "./status.js";
+import { EXIT_NO_STATUS, FILE_FLAG, positiveInt, readRuns, str } from "./status.js";
 import { EXIT_COMMIT, writeStepRow } from "./steps.js";
-import { doneTasks, redRows } from "./tests.js";
+import { RED_PROVEN, doneTasks, redEntries, redKey, testSpan } from "./tests.js";
 
 /** Exit code: the artifact to clamp is missing, unreadable, or could not be replaced. */
 export const EXIT_ARTIFACT = 4;
@@ -168,13 +179,16 @@ const EVIDENCE = {
   hardLines: 12000,
   hardBytes: 1572864,
 };
-export const CLAMP_PROFILES = ["ledger", "debug-evidence"] as const;
+export const CLAMP_PROFILES = ["ledger", "debug-evidence", "ci", "e2e", "runtime"] as const;
 
 /**
  * Lowercase substrings matched against a lowercased line. Broad: `error` also covers
- * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching.
+ * `##[error]`, `fail` covers `FAILED`; the ceiling bounds over-matching. Every profile keeps
+ * `===== TRUNCATED: … =====`, the line `.agents/context.md` asks every block to print when
+ * it stops short of its window, so a partial read never looks complete.
  */
 const SIGNALS = [
+  "===== truncated: ",
   "error",
   "fail",
   "exception",
@@ -190,6 +204,57 @@ const SIGNALS = [
   "×",
 ].map((s) => Buffer.from(s));
 
+/**
+ * Section-header markers a context's shipped blocks print, lowercased like them. A profile
+ * named for the context adds them, so a header that names a kept block's owner survives
+ * without a signal word. Sourced from `.bkit/templates/context/`: `github` (`ci`);
+ * `playwright` + `maestro` + `expo-workflows` (`e2e`); every runtime block that prints a
+ * banner — `vercel`, `cloudrun`, `supabase`, `inngest`, `resend`, `stripe`, `expo`
+ * (`runtime`). `sentry` prints no banner. A context with no entry clamps as
+ * `debug-evidence`.
+ */
+const CONTEXT_MARKERS: Record<string, readonly string[]> = {
+  ci: ["===== job ", "===== run "],
+  e2e: [
+    "===== file: ",
+    "===== step: ",
+    "===== maestro job ",
+    "===== playwright report ",
+    // `expo-workflows` (`context=e2e`).
+    "===== eas workflow runs",
+    "===== failing steps",
+    "===== screen-hierarchy dumps",
+    "===== app js console per flow",
+    "===== distinct app messages",
+    "===== junit ",
+  ],
+  runtime: [
+    "===== vercel ",
+    "===== cloud run ",
+    "===== supabase ",
+    "===== inngest ",
+    "===== resend ",
+    "===== stripe ",
+    "===== webhook deliveries failed",
+    "===== eas builds",
+  ],
+};
+
+/** Each context profile's signal set: {@link SIGNALS} plus that context's markers. */
+const PROFILE_SIGNALS: Record<string, readonly Buffer[]> = Object.fromEntries(
+  Object.entries(CONTEXT_MARKERS).map(([profile, markers]) => [
+    profile,
+    [...SIGNALS, ...markers.map((m) => Buffer.from(m))],
+  ]),
+);
+
+/** The signals a profile matches; a profile with no markers of its own is the base set. */
+const signalsFor = (profile: string): readonly Buffer[] => PROFILE_SIGNALS[profile] ?? SIGNALS;
+
+/** The clamp profile a block's context selects; any context without its own profile is `debug-evidence`. */
+const contextProfile = (context: string): string =>
+  CONTEXT_MARKERS[context] === undefined ? "debug-evidence" : context;
+
 /** awk records: a final line with no newline is one, a trailing newline does not start another. */
 function records(buf: Buffer): Buffer[] {
   const out: Buffer[] = [];
@@ -204,10 +269,10 @@ function records(buf: Buffer): Buffer[] {
   return out;
 }
 
-function hasSignal(line: Buffer): boolean {
+function hasSignal(line: Buffer, signals: readonly Buffer[]): boolean {
   const lower = Buffer.from(line);
   for (let i = 0; i < lower.length; i++) if (lower[i]! >= 65 && lower[i]! <= 90) lower[i]! += 32;
-  return SIGNALS.some((s) => lower.includes(s));
+  return signals.some((s) => lower.includes(s));
 }
 
 /** awk's human size: B, rounded KB, or MB to one decimal (ties to even, as printf). */
@@ -257,7 +322,7 @@ function selectLedger(buf: Buffer): Selection | null {
   };
 }
 
-function selectEvidence(buf: Buffer): Selection {
+function selectEvidence(buf: Buffer, signals: readonly Buffer[]): Selection {
   const p = EVIDENCE;
   const raw = records(buf);
   const n = raw.length;
@@ -299,7 +364,7 @@ function selectEvidence(buf: Buffer): Selection {
   // otherwise lose its immunity.
   let ceiling = false;
   for (let i = 0; i < n; i++) {
-    if (!hasSignal(raw[i]!)) continue;
+    if (!hasSignal(raw[i]!, signals)) continue;
     const a = Math.max(0, i - p.context);
     const b = Math.min(n - 1, i + p.context);
     let cl = 0;
@@ -388,7 +453,7 @@ export function clampFile(
     throw new CommandError(EXIT_ARTIFACT, `cannot read artifact '${artifact}': ${read.problem}`);
   }
   const buf = read.buf;
-  const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf);
+  const sel = profile === "ledger" ? selectLedger(buf) : selectEvidence(buf, signalsFor(profile));
   const source = keep?.source ?? null;
   const fetchedAt = keep?.fetchedAt ?? (source === null ? null : utcNow());
   const untouched = (s: Selection | null): ClampRecord => ({
@@ -475,6 +540,61 @@ function replaceFile(file: string, tmp: string, content: Buffer): string | undef
 }
 
 // ---------------------------------------------------------------------------
+// Clamp summary — the saving, per context, for the context-fetch status row
+// ---------------------------------------------------------------------------
+
+/** One context's clamp totals: what its blocks wrote, and how much of it survived. */
+export interface ClampSummary {
+  /** Artifacts written for this context. */
+  artifacts: number;
+  /** Lines fetched / kept. */
+  origLines: number;
+  keptLines: number;
+  /** Bytes fetched / kept. */
+  origBytes: number;
+  keptBytes: number;
+  /** Artifacts written as a markdown table / as printed (`render`; a record without one counts as neither). */
+  table: number;
+  raw: number;
+}
+
+/** The context-fetch context a clamp record belongs to, from its `context-<context>-…` artifact basename. */
+function contextOfArtifact(artifact: string): string | undefined {
+  const context = /^context-([a-z0-9]+)-/.exec(path.basename(artifact))?.[1];
+  return context !== undefined && CONTEXT_FETCH_CONTEXTS.includes(context) ? context : undefined;
+}
+
+const numberOr0 = (v: unknown): number => (typeof v === "number" ? v : 0);
+
+/** The context-fetch clamp records totalled per context; a record naming no context is skipped. */
+export function summariseRecords(records: readonly unknown[]): Record<string, ClampSummary> {
+  const summary: Record<string, ClampSummary> = {};
+  for (const value of records) {
+    const r = value as Partial<ClampRecord> | null;
+    if (r === null || typeof r.artifact !== "string") continue;
+    const context = contextOfArtifact(r.artifact);
+    if (context === undefined) continue;
+    const s = (summary[context] ??= {
+      artifacts: 0,
+      origLines: 0,
+      keptLines: 0,
+      origBytes: 0,
+      keptBytes: 0,
+      table: 0,
+      raw: 0,
+    });
+    s.artifacts++;
+    s.origLines += numberOr0(r.origLines);
+    s.keptLines += numberOr0(r.keptLines);
+    s.origBytes += numberOr0(r.origBytes);
+    s.keptBytes += numberOr0(r.keptBytes);
+    if (r.render === "table") s.table++;
+    else if (r.render === "raw") s.raw++;
+  }
+  return summary;
+}
+
+// ---------------------------------------------------------------------------
 // Clamp log — records cross the gap between the block that writes an artifact
 // and the block that records the step's status row.
 // ---------------------------------------------------------------------------
@@ -518,6 +638,7 @@ const RECORD_OUTPUT: Record<string, string> = {
   raw: "the untouched original in the outbox ({name}.raw.{ext}), or null when nothing was cut",
   source: "the command that produced the file (--source), or null",
   fetchedAt: "when the source ran (UTC; the clamp time with --source), or null",
+  render: "context fetch only: table when the output was rendered as a table, else raw",
 };
 
 /** Say so when a cut had nowhere to keep its original. */
@@ -908,7 +1029,9 @@ export const BRIEF_WORK_WARN_BYTES = 8 * 1024;
 const BRIEF_SECTIONS = ["Context & Goals", "Narrative", "Success Criteria", "Out of Scope"];
 
 /** The plan-execute logs whose `DONE — TASK N` lines mark a task done. */
-const EXECUTE_LOG = /^build-plan-execute-.+-log\.md$/;
+// `build-plan-execute-*` is the log's name from before the step rename: a run in flight
+// across the rename keeps its DONE lines (`docs/migrations.md`).
+const TASKS_LOG = /^build-plan-(?:tasks|execute)-.+-log\.md$/;
 
 /** A heading's text without leading emoji and marks. */
 const headingText = (text: string) => text.replace(/^[^A-Za-z0-9]+/, "").trim();
@@ -939,7 +1062,7 @@ function planSection(lines: string[], name: string): string | undefined {
 function loggedDone(dir: string): Set<number> {
   const done = new Set<number>();
   if (!fs.existsSync(dir)) return done;
-  for (const f of fs.readdirSync(dir).filter((f) => EXECUTE_LOG.test(f)))
+  for (const f of fs.readdirSync(dir).filter((f) => TASKS_LOG.test(f)))
     for (const n of doneTasks(fs.readFileSync(path.join(dir, f), "utf-8"))) done.add(n);
   return done;
 }
@@ -984,14 +1107,18 @@ function architectureEntries(lines: string[], files: Set<string>): string[] {
   });
 }
 
-/** The next free `build-brief-{group}-{n}.md` in `dir`. */
-function nextBriefPath(dir: string, group: number): string {
-  const re = new RegExp(`^build-brief-${group}-([0-9]+)\\.md$`);
+/** The next free `{prefix}-{group}-{n}.md` in `dir`: the code briefs and the tests briefs count apart. */
+function nextBriefPath(dir: string, group: number, prefix = "build-brief"): string {
+  const re = new RegExp(`^${prefix}-${group}-([0-9]+)\\.md$`);
   const taken = fs.existsSync(dir)
     ? fs.readdirSync(dir).map((f) => Number(re.exec(f)?.[1] ?? 0))
     : [];
-  return path.join(dir, `build-brief-${group}-${Math.max(0, ...taken) + 1}.md`);
+  return path.join(dir, `${prefix}-${group}-${Math.max(0, ...taken) + 1}.md`);
 }
+
+/** The TEST FIRST tests of `tasks`, in plan order. */
+export const plannedTests = (tasks: PlanTaskBlock[]) =>
+  tasks.flatMap((t) => (t.testFirst?.tests ?? []).map((x) => ({ task: t.task, ...x })));
 
 export interface BriefInput {
   plan: string;
@@ -1000,15 +1127,47 @@ export interface BriefInput {
   group: PlanGroup;
   groups: PlanGroup[];
   isDone: (t: PlanTaskBlock) => boolean;
-  reds: Array<Record<string, unknown>>;
+  /** The tests step's brief: the Derived Test Matrix rows for the group's tests replace the Reuse Inventory rows and Architecture entries. */
+  testsOnly?: boolean;
+  /** Tests-only: the planned tests a test in their file already carries, with the line that test starts on. */
+  existing?: ExistingTest[];
   note?: string;
+}
+
+/** A planned test whose file already holds a test of that name, at `line` (1-based). */
+export interface ExistingTest {
+  task: number;
+  test: string;
+  name: string;
+  line: number;
+}
+
+/**
+ * The planned tests of `open` that already exist in the tree under `top`: the tests step
+ * updates each one in place (adding expectations, never removing or loosening one) rather
+ * than writing a second test of that name.
+ */
+export function existingPlannedTests(top: string, open: PlanTaskBlock[]): ExistingTest[] {
+  const out: ExistingTest[] = [];
+  for (const t of plannedTests(open)) {
+    const abs = path.join(top, t.test);
+    if (!fs.existsSync(abs)) continue;
+    const span = testSpan(fs.readFileSync(abs, "utf-8"), t.name);
+    if (span !== null) out.push({ task: t.task, test: t.test, name: t.name, line: span.start });
+  }
+  return out;
 }
 
 /** The brief's text and its work section's size in bytes. */
 export function briefText(o: BriefInput): { text: string; workBytes: number } {
   const lines = o.plan.split("\n");
   const title = lines.find((l) => /^#\s/.test(l))?.replace(/^#\s+/, "") ?? "Plan";
-  const out = [`# Brief: group ${o.group.group} — ${o.group.title}`, "", `Plan: ${title}`, ""];
+  const out = [
+    `# Brief: group ${o.group.group} — ${o.group.title}${o.testsOnly ? " (tests)" : ""}`,
+    "",
+    `Plan: ${title}`,
+    "",
+  ];
 
   out.push("## Why and what", "");
   for (const name of BRIEF_SECTIONS) {
@@ -1039,16 +1198,6 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
   const open = o.group.tasks.filter((t) => !o.isDone(t));
   const work = ["## The work", ""];
   for (const t of open) work.push(t.text.trim(), "");
-  const openNums = new Set(open.map((t) => t.task));
-  const reds = o.reds.filter((r) => openNums.has(Number(r.task)));
-  if (reds.length > 0) {
-    work.push("### Reds already recorded", "");
-    for (const r of reds)
-      work.push(
-        `- TASK ${Number(r.task)}: red already recorded for \`${String(r.test)}\` \`${String(r.testName)}\` — test written and seen failing; code may be partly done in the files it names`,
-      );
-    work.push("");
-  }
   const deps = [...new Set(open.flatMap((t) => t.dependsOn))]
     .filter((n) => !o.group.tasks.some((t) => t.task === n))
     .sort((a, b) => a - b)
@@ -1065,7 +1214,18 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
     }
     work.push("");
   }
-  work.push(...planEntries(lines, open, work, o.planFile));
+  if (o.testsOnly) {
+    work.push(...matrixRows(o.plan, open));
+    const existing = (o.existing ?? []).filter((e) => open.some((t) => t.task === e.task));
+    if (existing.length > 0) {
+      work.push("### Planned tests that already exist", "");
+      for (const e of existing)
+        work.push(
+          `- TASK ${e.task} \`${e.test}\` \`${e.name}\` — exists at \`${e.test}:${e.line}\`; update that test in place: add expectations, never remove or loosen one`,
+        );
+      work.push("");
+    }
+  } else work.push(...planEntries(lines, open, work, o.planFile));
   out.push(...work);
 
   if (o.note !== undefined) out.push("## Deviations", "", o.note.trim(), "");
@@ -1073,6 +1233,19 @@ export function briefText(o: BriefInput): { text: string; workBytes: number } {
     text: out.join("\n"),
     workBytes: Buffer.byteLength(work.join("\n")),
   };
+}
+
+/** The Derived Test Matrix rows naming a TEST FIRST file of `open`, under the table's header. */
+function matrixRows(plan: string, open: PlanTaskBlock[]): string[] {
+  const matrix = derivedTestMatrix(plan);
+  if (matrix === null) return [];
+  const files = new Set(plannedTests(open).map((t) => path.posix.normalize(t.test)));
+  const rows = matrix.rows.filter((r) =>
+    [...r.line.matchAll(/`([^`]+)`/g)].some((m) => files.has(path.posix.normalize(m[1]!))),
+  );
+  return rows.length === 0
+    ? []
+    : ["### Derived Test Matrix rows", "", ...matrix.head, ...rows.map((r) => r.line), ""];
 }
 
 /**
@@ -1142,10 +1315,16 @@ const RUN_BLOCK_FLAGS: FlagSpec[] = [
   FID_FLAG,
   MONTH_FLAG,
   ...ATTEMPT_FLAGS,
+  {
+    name: "ci-selection-file",
+    type: "string",
+    help: "validated CI selection JSON; pin child evidence reads and require a matching complete CI receipt",
+  },
 ];
 
 const RUN_BLOCK_OUTPUT: Record<string, string> = {
-  outcome: "checked (data written) | self-skipped (skip line written) | silent (nothing) | not-run",
+  outcome:
+    "checked (validated data written) | unchecked (selected CI evidence invalid) | self-skipped (skip line written) | silent (nothing) | not-run",
   artifact: "the artifact path, or null when nothing was written",
   skip: "the block's [context-fetch:<name>] stderr line, or null",
   clamp: "the payload's clamp record, or null",
@@ -1159,9 +1338,10 @@ export const contextCommand: CommandSpec = {
   verbs: {
     clamp: {
       summary: "Clamp an artifact to a size profile in place (a backstop, not a routine cap).",
+      use: "workflow",
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to clamp" },
-        { name: "profile", type: "string", required: true, help: "ledger | debug-evidence" },
+        { name: "profile", type: "string", required: true, help: CLAMP_PROFILES.join(" | ") },
         {
           name: "source",
           type: "string",
@@ -1197,6 +1377,7 @@ export const contextCommand: CommandSpec = {
     },
     "clamp-log": {
       summary: "Read a step's clamp records (the status row's clamped array), or reset the log.",
+      use: "workflow",
       flags: [
         ...LOG_FLAGS,
         { name: "reset", type: "boolean", help: "empty the log first (the step's first writer)" },
@@ -1220,6 +1401,7 @@ export const contextCommand: CommandSpec = {
     "ledger-scan": {
       summary:
         "Write a ledger's lines matching query terms, strongest first, then clamp (ledger profile).",
+      use: "workflow",
       flags: [
         { name: "terms", type: "string", required: true, help: "space-separated query terms" },
         {
@@ -1274,6 +1456,7 @@ export const contextCommand: CommandSpec = {
     diff: {
       summary:
         "Write the run's diff ({base}...HEAD, docs/plans/** excluded) as one artifact — whole, or a per-file budget past the guard — and print its numbers.",
+      use: "workflow",
       flags: [
         { name: "artifact", type: "string", required: true, help: "file to write" },
         {
@@ -1355,7 +1538,8 @@ export const contextCommand: CommandSpec = {
     },
     brief: {
       summary:
-        "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes.",
+        "Write one group's brief (why and what, where it fits, its open task blocks, the earlier tasks they depend on, the Reuse Inventory rows and Architecture entries for their files, deviations) as build-brief-{group}-{n}.md, and print only its path and sizes; --tests-only writes the tests step's brief as build-brief-tests-{group}-{n}.md, with the Derived Test Matrix rows for the group's tests in place of the inventory and architecture entries.",
+      use: "workflow",
       flags: [
         { name: "plan", type: "string", required: true, help: "the plan file" },
         { name: "group", type: "string", help: "the group to brief" },
@@ -1368,12 +1552,17 @@ export const contextCommand: CommandSpec = {
           name: "dir",
           type: "string",
           required: true,
-          help: "the run's logs folder: the brief is written there, and its build-plan-execute-*-log.md DONE lines mark tasks done",
+          help: "the run's logs folder: the brief is written there, and its build-plan-tasks-*-log.md DONE lines mark tasks done",
         },
         {
-          name: "file",
-          type: "string",
-          help: "status.jsonl, to name the reds already recorded for open tasks",
+          name: "tests-only",
+          type: "boolean",
+          help: "the tests step's brief: build-brief-tests-{group}-{n}.md (a group with no planned test writes nothing, tests 0)",
+        },
+        {
+          ...FILE_FLAG,
+          required: false,
+          help: "with --tests-only: the run's status.jsonl; a planned test a build-tests-red row of the group already proved red is left out, and a task with no test left is not briefed",
         },
         {
           name: "note-file",
@@ -1386,12 +1575,12 @@ export const contextCommand: CommandSpec = {
         bytes: "the brief's size in bytes",
         group: "the group briefed (null when --next finds no open group)",
         tasks: "the open task numbers the brief carries",
+        tests: "the TEST FIRST tests of those tasks (0 when --next finds no open group)",
         workBytes: "the work section's size in bytes (0 when --next finds no open group)",
         workCap: `the work section's cap in bytes (${BRIEF_WORK_WARN_BYTES}): Reuse Inventory rows and Architecture entries past it are left out and counted; task blocks over it warn on stderr`,
       },
       exitCodes: {
         [EXIT_ARTIFACT]: "the plan or note file is missing, or the plan's blocks do not parse",
-        [EXIT_NO_STATUS]: "--file names a missing or malformed status.jsonl",
       },
       run: (ctx) => {
         const groupFlag = positiveInt(ctx.flags.group, "group");
@@ -1424,6 +1613,32 @@ export const contextCommand: CommandSpec = {
             bytes: 0,
             group: null,
             tasks: [],
+            tests: 0,
+            workBytes: 0,
+            workCap: BRIEF_WORK_WARN_BYTES,
+          });
+          return EXIT.OK;
+        }
+        const testsOnly = ctx.flags.testsOnly === true;
+        const statusArg = str(ctx.flags.file);
+        const proven =
+          testsOnly && statusArg !== undefined
+            ? redEntries(path.resolve(ctx.cwd, statusArg), "build", group.group)
+            : new Map<string, never>();
+        const left = (t: PlanTaskBlock) =>
+          plannedTests([t]).filter((x) => {
+            const red = proven.get(redKey(x.task, x.test, x.name));
+            return red === undefined || !RED_PROVEN.has(red.state);
+          });
+        const open = group.tasks.filter((t) => !isDone(t) && (!testsOnly || left(t).length > 0));
+        const tests = testsOnly ? open.flatMap(left).length : plannedTests(open).length;
+        if (testsOnly && tests === 0) {
+          ctx.emit({
+            artifact: null,
+            bytes: 0,
+            group: group.group,
+            tasks: open.map((t) => t.task),
+            tests,
             workBytes: 0,
             workCap: BRIEF_WORK_WARN_BYTES,
           });
@@ -1433,17 +1648,19 @@ export const contextCommand: CommandSpec = {
         const noteFile = noteFlag === undefined ? undefined : path.resolve(ctx.cwd, noteFlag);
         if (noteFile !== undefined && !fs.existsSync(noteFile))
           throw new CommandError(EXIT_ARTIFACT, `${noteFlag} does not exist`);
-        const status = str(ctx.flags.file);
         const { text, workBytes } = briefText({
           plan,
           planFile: String(ctx.flags.plan),
           group,
           groups: blocks.groups,
-          isDone,
-          reds: status === undefined ? [] : redRows(path.resolve(ctx.cwd, status), "build"),
+          isDone: (t) => isDone(t) || (group.tasks.includes(t) && !open.includes(t)),
+          testsOnly,
+          existing: testsOnly
+            ? existingPlannedTests(git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd, open)
+            : undefined,
           note: noteFile === undefined ? undefined : fs.readFileSync(noteFile, "utf-8"),
         });
-        const out = nextBriefPath(dir, group.group);
+        const out = nextBriefPath(dir, group.group, testsOnly ? "build-brief-tests" : undefined);
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(out, text);
         if (workBytes > BRIEF_WORK_WARN_BYTES) {
@@ -1456,7 +1673,8 @@ export const contextCommand: CommandSpec = {
           artifact,
           bytes: Buffer.byteLength(text),
           group: group.group,
-          tasks: group.tasks.filter((t) => !isDone(t)).map((t) => t.task),
+          tasks: open.map((t) => t.task),
+          tests,
           workBytes,
           workCap: BRIEF_WORK_WARN_BYTES,
         });
@@ -1465,13 +1683,13 @@ export const contextCommand: CommandSpec = {
     },
     "list-blocks": {
       summary: "Enumerate the consumer's context-fetch blocks and narrate coverage per context.",
+      use: "by-hand",
       flags: [],
       output: {
         blocks: "[{idx, context, name, known, prefix, suffix, body}] in file order",
         coverage: "blocks per context (runtime, ci, diff, e2e, web)",
         contextsConfigured: "contexts with at least one block, in narration order",
-        provision:
-          "bash body of each context-fetch:provision block below bkit:end, in file order (bkit-cloud-bootstrap.sh runs them)",
+        provision: "bash body of each context-fetch:provision block below bkit:end, in file order",
       },
       run: (ctx) => {
         const blocks = fetchBlocks(consumerSection(readContextMd(ctx) ?? ""));
@@ -1504,9 +1722,22 @@ export const contextCommand: CommandSpec = {
         return EXIT.OK;
       },
     },
+    provision: {
+      summary:
+        "Run each context-fetch:provision recipe below bkit:end on its own and list the failed ones in .bkit/.unavailable.",
+      use: "by-hand",
+      flags: [],
+      output: {
+        recipes: "recipes run",
+        unavailable: "[{name, reason}] for each failed recipe, in file order",
+        file: "the failure list's path from the repo root; null when none failed",
+      },
+      run: (ctx) => runProvision(ctx),
+    },
     "run-block": {
       summary:
         "Run one customised block; write its output fenced (clamped first), its skip line, or nothing.",
+      use: "workflow",
       flags: RUN_BLOCK_FLAGS,
       output: RUN_BLOCK_OUTPUT,
       textOmit: ["clamp"],
@@ -1519,6 +1750,7 @@ export const contextCommand: CommandSpec = {
     fetch: {
       summary:
         "run-block, with a JSON array of flat objects written as a markdown table; the raw output stays in the outbox.",
+      use: "workflow",
       flags: [
         ...RUN_BLOCK_FLAGS,
         {
@@ -1546,6 +1778,7 @@ export const contextCommand: CommandSpec = {
     finalise: {
       summary:
         "The context-fetch status row's fields: verdict, artifacts, contexts configured, clamped; --record writes and commits the row and prints the step comment.",
+      use: "workflow",
       flags: [
         FID_FLAG,
         MONTH_FLAG,
@@ -1570,15 +1803,20 @@ export const contextCommand: CommandSpec = {
         artifacts: "those artifacts, relative to the working directory",
         contextsConfigured: "contexts with at least one block",
         clamped: "this attempt's clamp records",
+        clampSummary:
+          "those records totalled per context: artifacts written, lines and bytes fetched -> kept, and how many were written as a table vs raw",
         row: "--record: the step-done row written, else null",
         commit: "--record: the new commit's sha, else null",
+        progressLine:
+          "--record: the exact chat progress line after a successful numbered completion",
         comment:
           "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
         commentFile: COMMENT_FILE_OUTPUT,
       },
       exitCodes: {
         [EXIT_NO_STATUS]: "--file: status.jsonl missing, unreadable, or not valid NDJSON",
-        [EXIT_COMMIT]: "--record: the row was written but the commit failed",
+        [EXIT_COMMIT]:
+          "--record: nothing written, nothing committed: the commit failed and the row was rolled back",
       },
       run: (ctx) => {
         const attempt = debugAttempt(ctx);
@@ -1601,8 +1839,9 @@ export const contextCommand: CommandSpec = {
         const clamped = readRecords(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), (l) =>
           ctx.log(`skipping a malformed clamp record: ${l}`),
         );
+        const clampSummary = summariseRecords(clamped);
         const verdict = artifacts.length > 0 ? "PASS" : "FAIL";
-        let written: { row: Record<string, unknown>; commit: string | null; code: number } = {
+        let written: ReturnType<typeof writeStepRow> = {
           row: {},
           commit: null,
           code: EXIT.OK,
@@ -1611,6 +1850,7 @@ export const contextCommand: CommandSpec = {
         if (record) {
           const file = str(ctx.flags.file);
           if (file === undefined) throw new CommandError(EXIT.USAGE, "--record needs --file");
+          const active = lastRun(readRuns(path.resolve(ctx.cwd, file)), "debug");
           written = writeStepRow(
             ctx.cwd,
             {
@@ -1620,7 +1860,16 @@ export const contextCommand: CommandSpec = {
               verdict,
               attempt,
               artifacts,
-              extras: { contextsConfigured, clamped },
+              extras: {
+                contextsConfigured,
+                clamped,
+                clampSummary,
+                ...(active &&
+                validateCiSelection(active.ciSelection) &&
+                active.ciSelection.mode === "ci"
+                  ? { ciGeneration: active.ciGeneration }
+                  : {}),
+              },
               commit: "auto",
               message: str(ctx.flags.message),
             },
@@ -1654,8 +1903,10 @@ export const contextCommand: CommandSpec = {
           artifacts,
           contextsConfigured,
           clamped,
+          clampSummary,
           row: record ? written.row : null,
           commit: written.commit,
+          ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
           comment,
           commentFile: commentFileOf(ctx.cwd, comment),
         });
@@ -1671,6 +1922,44 @@ function tableOf(stdout: Buffer): { text: string } | { reason: string } {
   if (!parsed.ok) return { reason: "not JSON" };
   const table = checkedTable(parsed.value);
   return table.ok ? { text: table.text } : { reason: table.reason };
+}
+
+/** Selected CI evidence is usable only with one complete receipt and actual logs. */
+function ciEvidenceProblem(
+  stdout: Buffer,
+  selection: Extract<CiSelection, { mode: "ci" }>,
+): string | null {
+  const lines = stdout.toString("utf-8").split("\n");
+  const receipts = lines.filter((line) => line.startsWith("bkit-ci-evidence: "));
+  if (receipts.length !== 1) return "selected CI evidence needs exactly one identity receipt";
+  const parsed = parseJson(receipts[0]!.slice("bkit-ci-evidence: ".length));
+  if (
+    !parsed.ok ||
+    parsed.value === null ||
+    typeof parsed.value !== "object" ||
+    Array.isArray(parsed.value)
+  )
+    return "selected CI evidence receipt is malformed";
+  const receipt = parsed.value as Record<string, unknown>;
+  for (const field of [
+    "provider",
+    "repo",
+    "runId",
+    "runAttempt",
+    "headSha",
+    "workflowId",
+  ] as const) {
+    if (receipt[field] !== selection[field]) return `selected CI evidence ${field} does not match`;
+  }
+  if (receipt.complete !== true) return "selected CI evidence is incomplete";
+  const logs = lines
+    .filter((line) => !line.startsWith("bkit-ci-evidence: "))
+    .join("\n")
+    .trim();
+  if (logs === "") return "selected CI evidence contains no logs";
+  if (/\[context-fetch:[^\n]*skipped|===== TRUNCATED:/i.test(logs))
+    return "selected CI evidence is skipped or partial";
+  return null;
 }
 
 /**
@@ -1705,11 +1994,35 @@ function runBlock(ctx: RunContext, render?: Render): number {
 
   const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
   const fetchedAt = utcNow();
+  const selectionFile = str(ctx.flags.ciSelectionFile);
+  let selection: CiSelection | undefined;
+  if (selectionFile !== undefined) {
+    const file = path.resolve(ctx.cwd, selectionFile);
+    if (!fs.existsSync(file))
+      throw new CommandError(EXIT.USAGE, `--ci-selection-file ${selectionFile} does not exist`);
+    const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+    if (!parsed.ok || !validateCiSelection(parsed.value))
+      throw new CommandError(
+        EXIT.USAGE,
+        "--ci-selection-file must contain a validated CI or local selection",
+      );
+    selection = parsed.value;
+  }
+  const childEnv: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of ["BKIT_CI_RUN_ID", "BKIT_CI_RUN_ATTEMPT", "BKIT_CI_REPO", "BKIT_CI_HEAD_SHA"])
+    delete childEnv[key];
+  if (selection?.mode === "ci")
+    Object.assign(childEnv, {
+      BKIT_CI_RUN_ID: selection.runId,
+      BKIT_CI_RUN_ATTEMPT: String(selection.runAttempt),
+      BKIT_CI_REPO: selection.repo,
+      BKIT_CI_HEAD_SHA: selection.headSha,
+    });
   // The inline block ran inside the step's shell, so these were in scope for it.
   const res = spawnSync("bash", [script], {
     cwd: ctx.cwd,
     env: {
-      ...process.env,
+      ...childEnv,
       REPO_ROOT: repoRoot,
       CONTEXT: block.context,
       NAME: block.name,
@@ -1729,6 +2042,12 @@ function runBlock(ctx: RunContext, render?: Render): number {
   );
   const out = path.resolve(ctx.cwd, artifact);
   const shown = `context-fetch context=${block.context} name=${block.name || "default"}`;
+  const evidenceProblem =
+    selection?.mode === "ci" && block.context === "ci"
+      ? res.status !== 0 || skip !== undefined
+        ? "selected CI evidence command failed or self-skipped"
+        : ciEvidenceProblem(stdout, selection)
+      : null;
 
   if (stdout.some((b) => b !== 0x0a && b !== 0)) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -1737,7 +2056,8 @@ function runBlock(ctx: RunContext, render?: Render): number {
       source: fs.readFileSync(script, "utf-8"),
       fetchedAt,
     };
-    let payload = asCaptured(stdout);
+    const printed = asCaptured(stdout);
+    let payload = printed;
     let written: Render | null = null;
     if (render !== undefined) {
       const table = render === "table" ? tableOf(stdout) : null;
@@ -1752,17 +2072,34 @@ function runBlock(ctx: RunContext, render?: Render): number {
       }
     }
     fs.writeFileSync(out, payload);
-    let clamp = clampFile(out, "debug-evidence", artifact, keep);
+    let clamp = clampFile(out, contextProfile(block.context), artifact, keep);
     warnNoRaw(ctx, clamp, keep);
     if (written !== null) {
       const raw = clamp.raw ?? (keep.original ? outboxRel(path.dirname(out), keep.original) : null);
       clamp = { ...clamp, raw, render: written };
     }
+    // Fetched is what the block printed; the table is only what the artifact keeps.
+    if (written === "table") {
+      clamp = { ...clamp, origLines: records(printed).length, origBytes: printed.length };
+    }
     appendRecord(clampLogPath(ctx.cwd, fid, "context-fetch", attempt), clamp);
     fs.writeFileSync(out, fenced(fs.readFileSync(out)));
-    ctx.log(`${shown} CHECKED — data returned`);
+    ctx.log(
+      evidenceProblem === null
+        ? `${shown} CHECKED — data returned`
+        : `${shown} UNCHECKED — ${evidenceProblem}`,
+    );
     ctx.emit(
-      shape({ outcome: "checked", artifact, skip: skip ?? null, clamp, reason: null }, written),
+      shape(
+        {
+          outcome: evidenceProblem === null ? "checked" : "unchecked",
+          artifact,
+          skip: skip ?? null,
+          clamp,
+          reason: evidenceProblem,
+        },
+        written,
+      ),
     );
     return EXIT.OK;
   }
@@ -1781,5 +2118,46 @@ function runBlock(ctx: RunContext, render?: Render): number {
   ctx.emit(
     shape({ outcome: "silent", artifact: null, skip: null, clamp: null, reason: null }, null),
   );
+  return EXIT.OK;
+}
+
+/**
+ * Run the consumer's provision recipes through the same region the cloud setup scripts
+ * inline, with `REPO_ROOT` set so the region rewrites the failure list there. Recipe
+ * output goes to stderr; stdout carries only this command's report. Never fails on a
+ * recipe: a failure is reported, not raised.
+ */
+function runProvision(ctx: RunContext): number {
+  const repoRoot = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+  const file = path.join(repoRoot, UNAVAILABLE_RELPATH);
+  const region = renderCloudContextFetchProvision(ctx.cwd);
+  const recipes = region === "" ? 0 : (region.match(/^bkit_provision '/gm) ?? []).length;
+  if (region === "") {
+    fs.rmSync(file, { force: true });
+  } else {
+    const res = spawnSync("bash", ["-c", `set -uo pipefail\n${region}`], {
+      cwd: ctx.cwd,
+      env: { ...process.env, REPO_ROOT: repoRoot },
+      stdio: ["ignore", 2, 2],
+    });
+    if (res.error) throw new CommandError(EXIT.USAGE, `bash did not run: ${res.error.message}`);
+  }
+  const unavailable = fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => {
+          const at = l.indexOf(": ");
+          return at === -1
+            ? { name: l, reason: "" }
+            : { name: l.slice(0, at), reason: l.slice(at + 2) };
+        })
+    : [];
+  ctx.emit({
+    recipes,
+    unavailable,
+    file: unavailable.length === 0 ? null : UNAVAILABLE_RELPATH,
+  });
   return EXIT.OK;
 }

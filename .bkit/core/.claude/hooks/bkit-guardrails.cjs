@@ -57,9 +57,9 @@ function bkitGuardrails(payload) {
   if (usesFetch(c) && !curlWgetHostAllowed(c, hookDirs(payload))) {
     notes.push(
       "bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist " +
-        "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). Not blocked — " +
-        "confirm the destination is intended before relying on the result, and add the host to " +
-        "allowed-domains if it is a standing dependency.",
+        "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). The command is allowed.\n" +
+        "Confirm the destination is intended before you rely on the result.\n" +
+        "If the host is a standing dependency, add it to allowed-domains.",
     );
   }
   const edits = shellEditTargets(c);

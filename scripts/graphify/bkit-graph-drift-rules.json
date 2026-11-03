@@ -31,7 +31,9 @@
       "lane": "Providers",
       "owner": ".bkit/core/engine/shared/egress.ts",
       "pattern": "api.cursor.com",
-      "note": "Model catalog probes go through the registry."
+      "note": "Model catalog probes go through the registry.",
+      "_comment": "Disabled: rename _budgets to budgets to settle this row. scripts/secrets/bkit-secrets.mjs is a copy-and-own script that imports only Node built-ins, so it calls Cursor's secrets API directly; egress.ts is a host allowlist with no client to route through.",
+      "_budgets": { "scripts/secrets/": 1 }
     }
   ]
 }

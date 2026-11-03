@@ -7,11 +7,31 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import { ownershipMarker, worktreesCommand } from "./worktrees";
+
+/**
+ * Filesystem refusals on demand: `symlink` refuses every symlink (Windows without
+ * Developer Mode), `bkitEnvCopy` fails a copy onto `.bkit/.env`. Off, both pass through.
+ */
+const fsFaults = vi.hoisted(() => ({ symlink: false, bkitEnvCopy: false }));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const refused = (what: string) =>
+    Object.assign(new Error(`EPERM: operation not permitted, ${what}`), { code: "EPERM" });
+  const symlinkSync = (...args: Parameters<typeof real.symlinkSync>) => {
+    if (fsFaults.symlink) throw refused("symlink");
+    return real.symlinkSync(...args);
+  };
+  const cpSync = (...args: Parameters<typeof real.cpSync>) => {
+    if (fsFaults.bkitEnvCopy && String(args[1]).endsWith("/.bkit/.env")) throw refused("copyfile");
+    return real.cpSync(...args);
+  };
+  return { ...real, default: { ...real, symlinkSync, cpSync }, symlinkSync, cpSync };
+});
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -43,6 +63,8 @@ beforeEach(() => {
   delete process.env.DIRENV_EXIT;
 });
 afterEach(() => {
+  fsFaults.symlink = false;
+  fsFaults.bkitEnvCopy = false;
   process.env.PATH = savedPath;
   delete process.env.STUB_EXIT;
   delete process.env.DIRENV_EXIT;
@@ -79,7 +101,8 @@ beforeAll(() => {
   git(template, "init", "-q", "--bare", "-b", "dev", t.origin);
   git(template, "clone", "-q", t.origin, t.seed);
   fs.writeFileSync(path.join(t.seed, "a.txt"), "base\n");
-  git(t.seed, "add", "a.txt");
+  fs.writeFileSync(path.join(t.seed, "package.json"), '{"private":true}\n');
+  git(t.seed, "add", "a.txt", "package.json");
   git(t.seed, "commit", "-q", "-m", "init");
   git(t.seed, "push", "-q", "origin", "HEAD:dev");
   git(template, "clone", "-q", t.origin, t.repo);
@@ -156,17 +179,33 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
 
-  it("cuts feat/{fid} off local dev when it is ahead of origin/dev, and says so", async () => {
+  it("cuts feat/{fid} off origin/dev for design and plan, even while local dev is ahead", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const tip = git(f.repo, "rev-parse", "origin/dev");
+
+    const r = await setup(f.repo, "plan", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", baseRef: "origin/dev", baseSha: tip });
+    expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(tip);
+    expect(fs.existsSync(path.join(wtOf(f), "held.txt"))).toBe(false);
+    expect(r.err).toContain("basing this plan branch on origin/dev");
+  });
+
+  it("cuts feat/{fid} off local dev for build while it is ahead of origin/dev, and says so", async () => {
     const f = fixture();
     fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
     git(f.repo, "add", "held.txt");
     git(f.repo, "commit", "-q", "-m", "held on local dev");
     const local = git(f.repo, "rev-parse", "dev");
 
-    const r = await setup(f.repo, "plan", "--worktrees");
+    const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "created", baseRef: "dev", baseSha: local });
     expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(local);
+    expect(fs.existsSync(path.join(wtOf(f), "held.txt"))).toBe(true);
     expect(r.err).toContain("local dev is 1 commit(s) ahead of origin/dev");
   });
 
@@ -249,6 +288,29 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(installCalls()).toBe("");
   });
 
+  it("links bkit's own .bkit/.env to the main checkout's, so the worktree can sign in", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bkitEnv: "linked" });
+    const env = path.join(wtOf(f), ".bkit/.env");
+    expect(fs.lstatSync(env).isSymbolicLink()).toBe(true);
+    expect(fs.readlinkSync(env)).toBe(path.join(f.repo, ".bkit/.env"));
+    expect(fs.readFileSync(env, "utf-8")).toBe("BKIT_GH_TOKEN=tok\n");
+  });
+
+  it("creates no .bkit/.env and reports none when the main checkout has none", async () => {
+    const f = fixture();
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ bkitEnv: "none" });
+    expect(fs.existsSync(path.join(wtOf(f), ".bkit/.env"))).toBe(false);
+  });
+
   it.each(["design", "plan"])("%s installs dependencies like build and debug", async (workflow) => {
     const f = fixture();
     const r = await setup(f.repo, workflow, "--worktrees");
@@ -326,11 +388,21 @@ describe("bkit worktrees setup — mint (resume)", () => {
     const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
     fs.writeFileSync(path.join(logDir, ".rebase-failed"), "");
     const tip = advanceDev(f, "b.txt", "new\n");
+    const before = git(wtOf(f), "rev-parse", "HEAD");
 
     const r = await setup(f.repo, "build", "--worktrees");
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ mode: "resumed", sentinel: null, rebaseConflict: false });
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+    // The rewrite is on the record: one engine-action row from the old tip to the new.
+    const rebases = fs
+      .readFileSync(path.join(logDir, "status.jsonl"), "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"type":"engine-action"'))
+      .map((l) => JSON.parse(l) as { action: string; key: string; ref: string });
+    expect(rebases).toMatchObject([
+      { action: "rebase", key: `rebase/${before}`, ref: git(wtOf(f), "rev-parse", "HEAD") },
+    ]);
     expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
     expect(installCalls()).toBe(`${wtOf(f)} install --frozen-lockfile`);
   });
@@ -385,6 +457,27 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(local);
   });
 
+  it("refuses a resumed design / plan worktree whose branch carries unpushed dev work", async () => {
+    const f = await minted("plan");
+    fs.writeFileSync(path.join(f.repo, "held.txt"), "unpushed\n");
+    git(f.repo, "add", "held.txt");
+    git(f.repo, "commit", "-q", "-m", "held on local dev");
+    const tip = git(f.repo, "rev-parse", "--short", "dev");
+    git(wtOf(f), "rebase", "-q", "dev");
+
+    const r = await setup(f.repo, "plan", "--worktrees");
+    expect(r.code).toBe(7);
+    expect(r.err).toContain("1 commit(s) of unpushed dev");
+    expect(r.err).toContain(`tip ${tip}`);
+    expect(r.err).toContain("this branch cannot land");
+    expect(r.err).toContain("git push origin dev");
+
+    // The same worktree resumes for build, whose PR carries dev's work by design.
+    const build = await setup(f.repo, "build", "--worktrees");
+    expect(build.code).toBe(0);
+    expect(build.json).toMatchObject({ mode: "resumed" });
+  });
+
   it.each(["debug", "build"])(
     "%s: commits a failed ship's leftovers, drops the logs dev already holds, then rebases",
     async (workflow) => {
@@ -415,12 +508,74 @@ describe("bkit worktrees setup — mint (resume)", () => {
       );
       expect(r.json.carriedSha).toBe(git(wtOf(f), "rev-parse", "HEAD"));
       expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
-      // Only the .env setup copied in stays out of the commit.
-      expect(git(wtOf(f), "status", "--porcelain")).toBe("?? .env");
+      // Only the .env setup copied in and the rebase's engine-action row stay out of the commit.
+      expect(git(wtOf(f), "status", "--porcelain")).toBe(`M ${rel}/status.jsonl\n?? .env`);
+      expect(fs.readFileSync(path.join(logDir, "status.jsonl"), "utf-8")).toContain(
+        '"action":"rebase"',
+      );
       expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
       expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf-8")).toBe("ship doc edit\n");
     },
   );
+
+  it("keeps a dropped log that differs from dev's copy outside the tree, and removes an identical one", async () => {
+    const f = await minted();
+    const rel = `docs/plans/${MONTH}/logs/${FID}`;
+    const logDir = path.join(wtOf(f), rel);
+    fs.writeFileSync(path.join(logDir, "ship-summary.md"), "worktree copy\n");
+    fs.writeFileSync(path.join(logDir, "same.md"), "same\n");
+    fs.mkdirSync(path.join(f.seed, rel), { recursive: true });
+    fs.writeFileSync(path.join(f.seed, rel, "same.md"), "same\n");
+    git(f.seed, "add", `${rel}/same.md`);
+    advanceDev(f, `${rel}/ship-summary.md`, "landed copy\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedDropped).toEqual([`${rel}/same.md`, `${rel}/ship-summary.md`]);
+    expect(fs.readFileSync(path.join(logDir, "ship-summary.md"), "utf-8")).toBe("landed copy\n");
+    const kept = /moved .*ship-summary\.md.* to (\S+ship-summary\.md)/.exec(r.err)?.[1];
+    expect(kept).toBeDefined();
+    expect(kept!.startsWith(path.join(f.repo, ".git", "bkit-outbox", FID))).toBe(true);
+    expect(fs.readFileSync(kept!, "utf-8")).toBe("worktree copy\n");
+    expect(r.err).not.toMatch(/moved .*same\.md/);
+  });
+
+  it("resumes when a tracked .env in the copy list differs from the main checkout's, and never commits it", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".env"), "SECRET=placeholder\n");
+    git(f.seed, "add", ".env");
+    git(f.seed, "commit", "-q", "-m", "env placeholder");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    fs.rmSync(path.join(f.repo, ".env"));
+    git(f.repo, "pull", "-q", "origin", "dev");
+    fs.writeFileSync(path.join(f.repo, ".env"), "SECRET=1\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    expect(git(wtOf(f), "status", "--porcelain")).toBe("M .env");
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "resumed", sentinel: null });
+    expect(git(wtOf(f), "rev-parse", "HEAD~1")).toBe(tip);
+    expect(git(wtOf(f), "log", "--format=", "--name-only", `${tip}..HEAD`)).toBe("a.txt");
+    expect(fs.readFileSync(path.join(wtOf(f), ".env"), "utf-8")).toBe("SECRET=1\n");
+  });
+
+  it("commits leftovers when a copy entry points outside the checkout", async () => {
+    const f = await minted();
+    fs.writeFileSync(
+      path.join(f.repo, "package.json"),
+      JSON.stringify({ bkit: { workflows: { worktree: { copy: ["../shared/.env", ".env"] } } } }),
+    );
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+  });
 
   it("never commits the entries setup copies in from the main checkout", async () => {
     const f = await minted();
@@ -433,6 +588,90 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
   });
 
+  it("never commits bkit's own .bkit/.env, even where .gitignore lost its line", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.writeFileSync(path.join(wtOf(f), "a.txt"), "left behind\n");
+    advanceDev(f, "b.txt", "new\n");
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(git(wtOf(f), "show", "--name-only", "--format=", "HEAD")).toBe("a.txt");
+    expect(git(wtOf(f), "ls-files", ".bkit")).toBe("");
+    expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isSymbolicLink()).toBe(true);
+  });
+
+  it("re-links bkit's own .bkit/.env on resume, so a worktree made earlier heals itself", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.rmSync(path.join(wtOf(f), ".bkit/.env"));
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "linked" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=tok\n");
+  });
+
+  it("leaves a worktree .bkit/.env that differs from the main checkout's, and says so", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".gitignore"), ".bkit/.env\n");
+    git(f.seed, "add", ".gitignore");
+    git(f.seed, "commit", "-q", "-m", "gitignore");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    git(f.repo, "pull", "-q", "origin", "dev");
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    fs.rmSync(path.join(wtOf(f), ".bkit/.env"));
+    fs.writeFileSync(path.join(wtOf(f), ".bkit/.env"), "BKIT_GH_TOKEN=hand\n");
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "differs" });
+    expect(again.err).toContain("differs from the main checkout's");
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=hand\n");
+  });
+
+  it("refreshes a bkit-made .bkit/.env copy after the main checkout's token changes", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=old\n");
+    fsFaults.symlink = true;
+    const first = await setup(f.repo, "build", "--worktrees");
+    expect(first.json).toMatchObject({ bkitEnv: "copied" });
+    expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isFile()).toBe(true);
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=new\n");
+
+    const again = await setup(f.repo, "build", "--worktrees");
+    expect(again.code).toBe(0);
+    expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "copied" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=new\n");
+
+    // A hand edit to the copy is still left for a human to read.
+    fs.writeFileSync(path.join(wtOf(f), ".bkit/.env"), "BKIT_GH_TOKEN=hand\n");
+    const edited = await setup(f.repo, "build", "--worktrees");
+    expect(edited.json).toMatchObject({ bkitEnv: "differs" });
+    expect(fs.readFileSync(path.join(wtOf(f), ".bkit/.env"), "utf-8")).toBe("BKIT_GH_TOKEN=hand\n");
+  });
+
+  it("reports a .bkit/.env it could neither link nor copy, instead of throwing", async () => {
+    const f = fixture();
+    fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(f.repo, ".bkit/.env"), "BKIT_GH_TOKEN=tok\n");
+    fsFaults.symlink = true;
+    fsFaults.bkitEnvCopy = true;
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ mode: "created", bkitEnv: "failed" });
+    expect(r.err).toContain("could not link or copy");
+    expect(fs.existsSync(path.join(wtOf(f), ".bkit/.env"))).toBe(false);
+  });
+
   it("leaves a clean worktree's history alone", async () => {
     const f = await minted();
     git(wtOf(f), "commit", "-q", "--allow-empty", "-m", "feature");
@@ -441,6 +680,8 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ carriedSha: null, carriedDropped: [] });
     expect(git(wtOf(f), "log", "-1", "--format=%s")).toBe("feature");
+    // The untracked .env setup copied in is not left-over work.
+    expect(r.err).not.toContain("could not commit");
   });
 
   it("a rebase that cannot start (the leftovers' commit refused) writes the sentinel with its own exit code", async () => {
@@ -457,6 +698,127 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(r.json.rebaseConflict).toBe(false);
     expect(r.json.carriedSha).toBe(null);
     expect(r.err).toContain("could not commit what an earlier run left");
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
+  /**
+   * A resumed worktree whose committed `status.jsonl` a pre-commit hook appends a `type`
+   * row to (after the commit snapshotted), with a leftover for the carry commit and dev moved.
+   */
+  async function hookDirtiedResume(type: string) {
+    const f = await minted();
+    const status = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID, "status.jsonl");
+    const started = { type: "workflow-started", workflow: "build", at: "2026-10-29T10:00:00Z" };
+    fs.writeFileSync(status, `${JSON.stringify(started)}\n`);
+    git(wtOf(f), "add", status);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = {
+      type,
+      workflow: "build",
+      at: "2026-10-29T10:05:00Z",
+      noun: "disk",
+      verb: "prune",
+    };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${status}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, status, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past engine-call rows the carry commit's hook appended to the status file, and puts them back", async () => {
+    const { f, status, row, tip, r } = await hookDirtiedResume("engine-call");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(status, "utf-8").trim().split("\n");
+    // The rebase's own `engine-action` row follows the row put back.
+    expect(lines.slice(-2).map((l) => JSON.parse(l))).toMatchObject([
+      row,
+      { type: "engine-action", action: "rebase" },
+    ]);
+    expect(git(wtOf(f), "status", "--porcelain", "--", status)).not.toBe("");
+  });
+
+  it("still refuses a status file the carry commit's hook dirtied with any other row: exit 9", async () => {
+    const { r } = await hookDirtiedResume("step-done");
+    expect(r.code).toBe(9);
+    expect(r.json.carriedSha).not.toBeNull();
+    expect(fs.existsSync(r.json.sentinel)).toBe(true);
+  });
+
+  /**
+   * A resumed worktree whose committed `.bkit/friction.jsonl` a pre-commit hook appends a
+   * `kind` row to (a hook-launched command's unexpected exit), with a leftover and dev moved.
+   */
+  async function hookDirtiedFriction(kind: string) {
+    const f = await minted();
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    fs.mkdirSync(path.dirname(friction), { recursive: true });
+    fs.writeFileSync(friction, `${JSON.stringify({ kind: "friction", key: "earlier" })}\n`);
+    git(wtOf(f), "add", friction);
+    git(wtOf(f), "commit", "-q", "-m", "record");
+    const row = { kind, key: "disk-prune/disk-prune", category: "tool-failure" };
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify(row)}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const tip = advanceDev(f, "b.txt", "new\n");
+    return { f, friction, row, tip, r: await setup(f.repo, "build", "--worktrees") };
+  }
+
+  it("rebases past friction rows the carry commit's hook appended, and puts them back", async () => {
+    const { f, friction, row, tip, r } = await hookDirtiedFriction("friction");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    const lines = fs.readFileSync(friction, "utf-8").trim().split("\n");
+    expect(JSON.parse(lines.at(-1)!)).toEqual(row);
+  });
+
+  it("puts friction rows back after a rebase onto a dev that appended to the same file", async () => {
+    const f = fixture();
+    const earlier = JSON.stringify({ kind: "friction", key: "earlier" });
+    fs.mkdirSync(path.join(f.seed, ".bkit"), { recursive: true });
+    advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n`);
+    expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+    const friction = path.join(wtOf(f), ".bkit", "friction.jsonl");
+    const row = JSON.stringify({ kind: "friction", key: "disk-prune/disk-prune" });
+    const hooks = path.join(f.repo, "hooks");
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(
+      path.join(hooks, "pre-commit"),
+      `#!/bin/sh\nprintf '%s\\n' '${row}' >> "${friction}"\n`,
+    );
+    fs.chmodSync(path.join(hooks, "pre-commit"), 0o755);
+    git(f.repo, "config", "core.hooksPath", hooks);
+    fs.writeFileSync(path.join(wtOf(f), "left.txt"), "uncommitted\n");
+    const onDev = JSON.stringify({ kind: "friction", key: "on-dev" });
+    const tip = advanceDev(f, ".bkit/friction.jsonl", `${earlier}\n${onDev}\n`);
+
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ sentinel: null, rebaseConflict: false });
+    expect(g(wtOf(f), "merge-base", "--is-ancestor", tip, "HEAD").status).toBe(0);
+    expect(fs.readFileSync(friction, "utf-8")).toBe(`${earlier}\n${onDev}\n${row}\n`);
+    expect(git(wtOf(f), "stash", "list")).toBe("");
+  });
+
+  it("still refuses a friction file the carry commit's hook dirtied with another kind: exit 9", async () => {
+    const { r } = await hookDirtiedFriction("failure");
+    expect(r.code).toBe(9);
     expect(fs.existsSync(r.json.sentinel)).toBe(true);
   });
 

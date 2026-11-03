@@ -3,10 +3,14 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
+import { resolveRepoSlug } from "../../ledgers/telemetry";
 import { runCommand } from "../lib";
-import { MARKERS, project, RELATED_UTILITIES, roadmapCommand } from "./roadmap";
+import { MARKERS, project, RELATED_UTILITIES, roadmapCommand, SEEDED_HEAD } from "./roadmap";
+
+useGateRunner();
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -82,6 +86,7 @@ describe("bkit roadmap fold (tests/roadmap-fold.bats)", () => {
     ]) {
       expect(b).toContain(m);
     }
+    expect(b.startsWith(`${SEEDED_HEAD}\n`)).toBe(true);
     expect(b).not.toContain("## Backlog / Ideas");
     expect(lineOf(b, MARKERS.analysisEnd, true)).toBeLessThan(lineOf(b, MARKERS.notesPostStart));
     expect(res.err).toContain("[bkit-roadmap] bootstrapping docs/roadmap.md");
@@ -510,6 +515,18 @@ describe("bkit roadmap fold (tests/roadmap-fold.bats)", () => {
     expect(b).toContain(`${MARKERS.notesPostStart}\nP\n\nafter\n${MARKERS.notesPostEnd}\n`);
     expect(b.endsWith(`${MARKERS.notesPostEnd}\n`)).toBe(true);
   });
+
+  it("a union merge's second refresh line is gone after the next fold", async () => {
+    const r = root();
+    await fold(r);
+    const merged = board(r).replace(
+      /^_\(refreshed .*$/m,
+      "_(refreshed 2026-11-01T05:19:09Z)_\n_(refreshed 2026-11-01T05:19:10Z)_",
+    );
+    fs.writeFileSync(path.join(r, "docs/roadmap.md"), merged);
+    await fold(r);
+    expect(board(r).match(/^_\(refreshed /gm)).toHaveLength(1);
+  });
 });
 
 describe("project", () => {
@@ -563,9 +580,11 @@ describe("bkit roadmap feature", () => {
     expect(res.code).toBe(0);
     expect(res.json).toMatchObject({ appended: true, written: true });
     expect(rows(r)).toEqual([res.json.row]);
-    expect(Object.keys(res.json.row).slice(0, 7)).toEqual([
+    expect(Object.keys(res.json.row).slice(0, 9)).toEqual([
       "schema",
       "ts",
+      "firstTs",
+      "updates",
       "kind",
       "key",
       "repo",
@@ -596,6 +615,16 @@ describe("bkit roadmap feature", () => {
     const copy = await feat(b, `--row=${JSON.stringify(first.json.row)}`);
     expect(copy.code).toBe(0);
     expect(rows(b)).toEqual([first.json.row]);
+  });
+
+  it("carries firstTs forward and counts updates from the feature's earlier rows", async () => {
+    const r = root();
+    const repo = { repo: "unknown/repo" };
+    ledger(r, feature(1001, "9-z", "DESIGNED", repo), feature(1002, "9-z", "DESIGNED"));
+    const res = await feat(r, "--workflow=build", "--fid=9-z");
+    expect(res.code).toBe(0);
+    expect(res.json.row).toMatchObject({ firstTs: 1001, updates: 2, status: "BUILT" });
+    expect(rows(r).at(-1)).toEqual(res.json.row);
   });
 
   it("refuses a missing fid, an unknown workflow without --status, and an invalid row", async () => {
@@ -655,6 +684,7 @@ describe("bkit roadmap mirror", () => {
     git(main, "config", "user.name", "t");
     fs.writeFileSync(path.join(main, ".gitignore"), ".worktrees/\n");
     fs.writeFileSync(path.join(main, "docs/roadmap.md"), "# Roadmap\n");
+    fs.writeFileSync(path.join(main, "package.json"), JSON.stringify(gatePackage));
     git(main, "add", "-A");
     git(main, "commit", "-qm", "init");
     git(main, "remote", "add", "origin", remote);
@@ -678,6 +708,38 @@ describe("bkit roadmap mirror", () => {
     expect(git(remote, "show", "dev:.bkit/issues.jsonl")).toContain('"status":"BUILT"');
     expect(git(main, "branch", "--show-current")).toBe("dev");
     expect(fs.existsSync(path.join(main, ".worktrees", "_land-12-csv"))).toBe(false);
+  });
+
+  it("lands the same docs/roadmap.md bytes on dev as it writes on the branch, a second apart", async () => {
+    const { remote, wt } = fixture();
+    const iso = Date.prototype.toISOString;
+    const base = Date.UTC(2026, 10, 1, 5, 19, 9);
+    let tick = 0;
+    const clock = vi
+      .spyOn(Date.prototype, "toISOString")
+      .mockImplementation(() => iso.call(new Date(base + 1000 * tick++)));
+    let r: Awaited<ReturnType<typeof mirror>>;
+    try {
+      r = await mirror(wt, "--workflow=build", "--fid=12-csv");
+    } finally {
+      clock.mockRestore();
+    }
+    expect(r.json).toMatchObject({ mirrored: true, skipped: null });
+    const onBranch = fs.readFileSync(path.join(wt, "docs/roadmap.md"), "utf-8");
+    expect(onBranch).toContain("_(refreshed 2026-11-01T05:19:09Z)_");
+    expect(sh(remote, "show", "dev:docs/roadmap.md").stdout).toBe(onBranch);
+  });
+
+  it("appends the branch's row byte for byte on dev when dev lacks the feature's earlier rows", async () => {
+    const { remote, wt } = fixture();
+    fs.mkdirSync(path.join(wt, ".bkit"), { recursive: true });
+    ledger(wt, feature(1001, "12-csv", "PLANNED", { repo: resolveRepoSlug(wt) }));
+    const r = await mirror(wt, "--workflow=build", "--fid=12-csv");
+    expect(r.json).toMatchObject({ mirrored: true, skipped: null });
+    expect(r.json.row).toMatchObject({ firstTs: 1001, updates: 2 });
+    const last = (text: string) => text.trim().split("\n").at(-1);
+    const onBranch = last(fs.readFileSync(path.join(wt, ".bkit/issues.jsonl"), "utf-8"));
+    expect(last(sh(remote, "show", "dev:.bkit/issues.jsonl").stdout)).toBe(onBranch);
   });
 
   it("never touches the main checkout and never pushes its local dev commits", async () => {

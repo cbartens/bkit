@@ -4,13 +4,13 @@
  *
  * Sources:
  *   - `prompts.md` § Models: the model each agent runs on, one column per provider.
- *   - `providers.md` § Agentic-coding parity board: each model's LiveBench Agentic Coding score.
+ *   - `providers.md` § LiveBench 2.0 board: each model's Long Agentic score.
  *   - `providers.md` § Per-tier lineup across providers: the Claude bar for each tier.
  *
  * The README has one row per § Models provider column and one column per Claude tier. A tier
- * is the set of agents pinned to one Claude model; the Claude Code row names that model. Each
+ * is the set of agents pinned to one Claude model; the Claude row names that model. Each
  * cell lists every model its provider pins for that tier, each with its board score, or
- * `not measured` when the board has no row for it. The Claude Code row carries the bars.
+ * `not measured` when the board has no row for it. The Claude row carries the bars.
  */
 
 import * as fs from "node:fs";
@@ -26,19 +26,25 @@ const PROVIDERS_MD = fs.readFileSync(path.join(getBkitDocsRoot(), "providers.md"
 
 /** README row label → § Models provider column. */
 const README_ROWS: Record<string, string> = {
-  "Claude Code": "Anthropic",
-  Cursor: "Cursor",
-  "opencode + OpenRouter": "OpenRouter",
-  "opencode + Ollama": "Ollama",
-  "opencode + OpenCode Zen": "OpenCode Zen",
-  "opencode + OpenCode Go": "OpenCode Go",
+  Claude: "Anthropic",
   Codex: "OpenAI",
-  "Google Antigravity": "Google",
+  Antigravity: "Google",
+  Cursor: "Cursor",
+  "OpenCode + OpenRouter": "OpenRouter",
+  "OpenCode + Ollama": "Ollama",
+  "OpenCode + OpenCode Zen": "OpenCode Zen",
+  "OpenCode + OpenCode Go": "OpenCode Go",
 };
 
-/** Catalog id → the name the parity board lists the model under. */
+/**
+ * Catalog id → the name the parity board lists the model under, where a catalog spells the
+ * same model differently (Ollama's `…:1017` for the board's `…-1017`). The board scores one
+ * snapshot per row: an undated slug that serves a different snapshot (Zen and Go's
+ * `deepseek-v4.1-flash` is the 2026-09-10 one) maps to no dated row and reads `not measured`.
+ */
 const BOARD_NAME: Record<string, string> = {
   "cursor-grok-4.5-high": "grok-4.5",
+  "deepseek-v4.1-flash:1017": "deepseek-v4.1-flash-1017",
 };
 
 /** Cells of the first markdown table after `heading`; header row first, separator row dropped. */
@@ -83,8 +89,8 @@ function entries(cell: string): Entry[] {
 
 const readmeTable = tableAfter(README, "## Which model does each job");
 const readmeBody = readmeTable.slice(1);
-const claudeRow = readmeBody.find((r) => r[0] === "Claude Code");
-if (!claudeRow) throw new Error("README models table has no Claude Code row");
+const claudeRow = readmeBody.find((r) => r[0] === "Claude");
+if (!claudeRow) throw new Error("README models table has no Claude row");
 /** README column index → the Claude model that defines its tier. */
 const tierByColumn = claudeRow.slice(1).map((cell) => entries(cell)[0]?.model ?? "");
 
@@ -104,9 +110,9 @@ function pinned(column: string, tier: string): string[] {
   return [...new Set(models)].map(String).sort();
 }
 
-/** Parity board: model name → score, bold and dagger stripped. */
+/** Parity board: model name → Long Agentic score, bold and dagger stripped. */
 const boardScores = new Map(
-  tableAfter(PROVIDERS_MD, "### Agentic-coding parity board")
+  tableAfter(PROVIDERS_MD, "### LiveBench 2.0 board — 2026-10-25")
     .slice(1)
     .filter((r) => /^`[^`]+`$/.test(r[0]))
     .map((r) => [unquote(r[0]), r[1].replace(/\*\*/g, "").replace(/\s*†$/, "")]),
@@ -133,7 +139,7 @@ function tierCells(fromPins: boolean): Record<string, string[]> {
   return out;
 }
 
-/** README score as written: `bar N` on the Claude Code row, `N` or `not measured` elsewhere. */
+/** README score as written: `bar N` on the Claude row, `N` or `not measured` elsewhere. */
 const written = (e: Entry): string => (e.isBar ? `bar ${e.score}` : e.score);
 
 const claudeEntries = claudeRow.slice(1).map((cell) => entries(cell)[0]);
@@ -180,9 +186,15 @@ describe("README § Which model does each job", () => {
     expect(tierCells(false)).toEqual(tierCells(true));
   });
 
-  it("gives the Claude Code row the lineup's bar for each tier", () => {
+  it("gives the Claude row the lineup's bar for each tier", () => {
     expect(tierBars.size).toBeGreaterThan(0);
     expect(claudeBars(false)).toEqual(claudeBars(true));
+  });
+
+  it("an undated slug documented as a different snapshot does not inherit a dated board row", () => {
+    expect(boardName("deepseek-v4.1-flash")).toBe("deepseek-v4.1-flash");
+    expect(boardScores.has("deepseek-v4.1-flash")).toBe(false);
+    expect(boardName("deepseek-v4.1-flash:1017")).toBe("deepseek-v4.1-flash-1017");
   });
 
   it("gives every other model its parity-board score, or `not measured` when the board has none", () => {

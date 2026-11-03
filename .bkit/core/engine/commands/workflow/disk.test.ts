@@ -1,5 +1,6 @@
 // bkit disk prune: which step files load, which steps run, the daily and hourly limits
-// of `--auto`, the one-sweep lock, the notes `bkit tips` shows, and the worktree low-disk
+// of `--auto` (the machine's for machine steps, each checkout's for its repo steps), the
+// one-sweep lock, the notes `bkit tips` shows, and the worktree low-disk
 // check. Every step writes a
 // marker file in a temp repo; nothing outside the temp folders is touched.
 
@@ -10,9 +11,29 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+/** `after` runs once, right after `readFileSync` of `file` returns: a second sweep between read and removal. */
+const readHook = vi.hoisted(() => ({
+  file: "",
+  after: undefined as (() => void) | undefined,
+}));
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const readFileSync = ((...args: Parameters<typeof real.readFileSync>) => {
+    const out = real.readFileSync(...args);
+    if (String(args[0]) === readHook.file) {
+      const after = readHook.after;
+      readHook.after = undefined;
+      after?.();
+    }
+    return out;
+  }) as typeof real.readFileSync;
+  return { ...real, default: { ...real, readFileSync }, readFileSync };
+});
+
 import { runCommand } from "../lib";
 import { runTipsCommand } from "../tips";
 import {
+  detachedArgs,
   diskCommand,
   ensureDiskSpace,
   formatNotes,
@@ -20,7 +41,9 @@ import {
   readNotes,
   REPO_STEPS,
   schedule,
+  sweep,
   type Mode,
+  type Scope,
 } from "./disk";
 
 const dirs: string[] = [];
@@ -91,6 +114,13 @@ describe("bkit disk prune — usage", () => {
     expect(r.code).toBe(2);
     expect(r.err).toContain("not both");
   });
+
+  it("refuses a scope other than repo or machine, and --scope with --auto", async () => {
+    expect((await prune(repo(), "--mode=min", "--scope=all")).code).toBe(2);
+    const r = await prune(repo(), "--mode=min", "--auto", "--scope=repo");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("not both");
+  });
 });
 
 describe("bkit disk prune — step files", () => {
@@ -127,6 +157,17 @@ describe("bkit disk prune — step files", () => {
       ["repo", cwd],
       ["machine", os.homedir()],
     ]);
+  });
+
+  it("--scope runs only that file's steps", async () => {
+    const cwd = repo(marks(["r", "min"]));
+    machineSteps(
+      'export default [{ name: "m", mode: "min", run: () => { globalThis.diskMachineRan = true; } }];\n',
+    );
+    const r = await prune(cwd, "--mode=min", "--scope=repo");
+    expect(r.json.files.map((f: { scope: string }) => f.scope)).toEqual(["repo"]);
+    expect(order(cwd)).toEqual(["r"]);
+    expect((globalThis as { diskMachineRan?: boolean }).diskMachineRan).toBeUndefined();
   });
 
   it("a failing or throwing step is reported and the next step still runs", async () => {
@@ -227,6 +268,106 @@ describe("bkit disk prune — lock", () => {
     expect(fs.existsSync(lock())).toBe(true);
   });
 
+  it("with --wait, waits for the running sweep to end, then runs", async () => {
+    holdLock(process.pid);
+    const cwd = repo(marks(["a", "min"]));
+    const logs: string[] = [];
+    const running = sweep({
+      cwd,
+      mode: "min",
+      dryRun: false,
+      wait: true,
+      pollMs: 10,
+      log: (m) => logs.push(m),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(order(cwd)).toEqual([]);
+    fs.rmSync(lock());
+    expect((await running).reason).toBeNull();
+    expect(order(cwd)).toEqual(["a"]);
+    expect(logs[0]).toContain("waiting for it to end");
+    expect(fs.existsSync(lock())).toBe(false);
+  });
+
+  it("renews its lock while a long step runs, so a waiter never takes it over", async () => {
+    // The step runs until the test writes `go`, so the sweep holds its lock for every check.
+    const cwd = repo(
+      `export default [{ name: "slow", mode: "min", run: "for i in $(seq 1 1000); do [ -f go ] && break; sleep 0.01; done; echo slow >> order" }];\n`,
+    );
+    const running = sweep({ cwd, mode: "min", dryRun: false, renewMs: 20, log: () => {} });
+    const wait = { timeout: 10_000, interval: 10 };
+    await vi.waitFor(() => expect(fs.existsSync(lock())).toBe(true), wait);
+    const stale = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
+    fs.utimesSync(lock(), stale, stale);
+    await vi.waitFor(
+      () => expect(Date.now() - fs.statSync(lock()).mtimeMs).toBeLessThan(60 * 1000),
+      wait,
+    );
+    expect((await prune(cwd, "--mode=min")).json.reason).toBe("locked");
+    fs.writeFileSync(path.join(cwd, "go"), "");
+    expect((await running).reason).toBeNull();
+    expect(order(cwd)).toEqual(["slow"]);
+    expect(fs.existsSync(lock())).toBe(false);
+  });
+
+  it("the sweep --auto starts waits its turn, for only the due scopes", () => {
+    expect(detachedArgs("min", ["repo"])).toEqual([
+      "disk",
+      "prune",
+      "--mode=min",
+      "--scope=repo",
+      "--wait",
+    ]);
+    expect(detachedArgs("max", ["repo", "machine"])).toEqual([
+      "disk",
+      "prune",
+      "--mode=max",
+      "--wait",
+    ]);
+  });
+
+  it("worktree setup's low-disk sweep waits for a running sweep", async () => {
+    holdLock(process.pid);
+    const cwd = repo(marks(["a", "max"]));
+    const check = ensureDiskSpace({ cwd, minFreeGb: 1e9, log: () => {}, pollMs: 10 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fs.rmSync(lock());
+    expect(await check).toContain("still under bkit.workflows.minFreeGb");
+    expect(order(cwd)).toEqual(["a"]);
+  });
+
+  it("worktree setup's low-disk sweep stops waiting after maxWaitMs while a live sweep holds the lock", async () => {
+    holdLock(process.pid);
+    const cwd = repo(marks(["a", "max"]));
+    const why = await ensureDiskSpace({
+      cwd,
+      minFreeGb: 1e9,
+      pollMs: 10,
+      maxWaitMs: 100,
+      log: () => {},
+    });
+    expect(why).toContain("another sweep");
+    expect(order(cwd)).toEqual([]);
+  }, 5_000);
+
+  it("refuses --wait with --auto", async () => {
+    const r = await prune(repo(), "--mode=min", "--auto", "--wait");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("not both");
+  });
+
+  it("never removes a lock created after the stale check", async () => {
+    const dead = spawnSync("sh", ["-c", "echo $$"], { encoding: "utf-8" });
+    holdLock(Number(dead.stdout.trim()), 0);
+    readHook.file = lock();
+    readHook.after = () => holdLock(process.pid);
+    const cwd = repo(marks(["a", "min"]));
+    const r = await prune(cwd, "--mode=min");
+    expect(r.json.reason).toBe("locked");
+    expect(order(cwd)).toEqual([]);
+    expect(fs.readFileSync(lock(), "utf-8")).toContain(` ${process.pid}`);
+  });
+
   it("replaces a lock whose process is gone, or that is an hour old, and releases it", async () => {
     const dead = spawnSync("sh", ["-c", "echo $$"], { encoding: "utf-8" });
     for (const [pid, age] of [
@@ -246,12 +387,27 @@ describe("bkit disk prune --auto", () => {
   const HOUR = 60 * 60 * 1000;
   const plan = (cwd: string, mode: Mode, minFreeGb: number, now = Date.now()) => {
     const started: Mode[] = [];
-    const r = schedule({ cwd, mode, minFreeGb, now, start: (m) => started.push(m) });
-    return { ...r, calls: started };
+    const scopes: Scope[][] = [];
+    const r = schedule({
+      cwd,
+      mode,
+      minFreeGb,
+      now,
+      start: (m, _cwd, s) => {
+        started.push(m);
+        scopes.push([...s]);
+      },
+    });
+    return { ...r, calls: started, scopes: scopes[0] ?? [] };
   };
 
   it("starts nothing without step files", () => {
-    expect(plan(repo(), "min", 0)).toEqual({ started: null, reason: "no-steps", calls: [] });
+    expect(plan(repo(), "min", 0)).toEqual({
+      started: null,
+      reason: "no-steps",
+      calls: [],
+      scopes: [],
+    });
   });
 
   it("starts a mode at most once a day; max also counts as that day's min", () => {
@@ -261,6 +417,40 @@ describe("bkit disk prune --auto", () => {
     expect(plan(cwd, "max", 0)).toMatchObject({ started: "max", reason: "due" });
     expect(plan(cwd, "max", 0).reason).toBe("not-due");
     expect(plan(cwd, "min", 0, Date.now() + 25 * HOUR).started).toBe("min");
+  });
+
+  it("each checkout's repo steps keep their own day; machine steps share one", () => {
+    machineSteps(marks(["m", "min"]));
+    const a = repo(marks(["a", "min"]));
+    const b = repo(marks(["b", "min"]));
+    expect(plan(a, "min", 0)).toMatchObject({ started: "min", scopes: ["repo", "machine"] });
+    // Another repo's sweep used the machine's day, not this checkout's.
+    expect(plan(b, "min", 0)).toMatchObject({ started: "min", scopes: ["repo"] });
+    expect(plan(a, "min", 0).reason).toBe("not-due");
+    expect(plan(b, "min", 0).reason).toBe("not-due");
+    expect(plan(b, "min", 0, Date.now() + 25 * HOUR).scopes).toEqual(["repo", "machine"]);
+  });
+
+  it("under the threshold, each checkout's repo steps keep their own hour", () => {
+    machineSteps(marks(["m", "min"]));
+    const a = repo(marks(["a", "min"]));
+    const b = repo(marks(["b", "min"]));
+    expect(plan(a, "min", 1e9)).toMatchObject({ started: "max", scopes: ["repo", "machine"] });
+    expect(plan(b, "min", 1e9)).toMatchObject({ started: "max", scopes: ["repo"] });
+    expect(plan(b, "min", 1e9).reason).toBe("not-due");
+  });
+
+  it("drops a checkout's stamps once no hook has renewed them in 7 days", () => {
+    const gone = repo(marks(["g", "min"]));
+    plan(gone, "min", 0);
+    const dir = path.join(cache, "bkit");
+    const stamps = () => fs.readdirSync(dir).filter((f) => /-[0-9a-f]{12}\.stamp$/.test(f));
+    expect(stamps()).toHaveLength(1);
+    const old = new Date(Date.now() - 8 * 24 * HOUR);
+    for (const f of stamps()) fs.utimesSync(path.join(dir, f), old, old);
+    plan(repo(marks(["n", "min"])), "min", 0);
+    expect(stamps()).toHaveLength(1);
+    expect(plan(gone, "min", 0).started).toBe("min");
   });
 
   it("starts max at most hourly while free disk is under the threshold", () => {

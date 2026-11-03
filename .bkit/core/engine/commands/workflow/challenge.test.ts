@@ -6,8 +6,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
-import { parsePlanBlocks } from "./plan-blocks";
+import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
+import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
 const MONTH = "202610";
@@ -20,6 +20,11 @@ const R2 = `${LOG}/build-challenge-2.md`;
 let cwd: string;
 beforeEach(() => {
   cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-")));
+  // The group arithmetic below assumes a cap of 3 tasks, so the cap is pinned here and does not move with the defaults.
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify({ bkit: { workflows: { tasks: { maxPerGroup: 3 } } } }),
+  );
 });
 afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
@@ -247,6 +252,71 @@ describe("bkit challenge merge", () => {
     expect(checkPlanText(read(PLAN)).problems).toEqual([]);
   });
 
+  it("appends findings as TASK GROUP headings", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:1" }));
+    expect((await merge(...args([R1]))).code).toBe(0);
+    const headings = read(PLAN)
+      .split("\n")
+      .filter((l) => /^### .*GROUP/.test(l));
+    expect(headings.at(-1)).toBe("### TASK GROUP 2: Challenge round 1 findings");
+  });
+
+  it("challenge merge writes a matrix row for each appended finding task", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "| case 2 | Unit | `src/b.test.ts` | 2 |",
+        "",
+      ].join("\n"),
+    );
+    write(R1, report({ sev: "HIGH", loc: "src/a.ts:10" }, { sev: "MEDIUM", loc: "src/b.ts:4" }));
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(0);
+    expect(r.json.fixTasks).toBe("3,4");
+    const merged = read(PLAN);
+    expect(derivedTestMatrix(merged)?.rows.map((row) => row.tasks)).toEqual([[1], [2], [3], [4]]);
+    expect(checkPlanText(merged).problems).toEqual([]);
+  });
+
+  it("challenge merge refuses a matrix row a pipe in the test name would break", async () => {
+    write(
+      PLAN,
+      [
+        plan(2),
+        "",
+        "## Derived Test Matrix",
+        "",
+        "<!-- prettier-ignore -->",
+        "| Test description | Type | Target file | Task |",
+        "| --- | --- | --- | --- |",
+        "| case 1 | Unit | `src/a.test.ts` | 1 |",
+        "",
+      ].join("\n"),
+    );
+    write(
+      R1,
+      report({
+        sev: "HIGH",
+        loc: "src/a.ts:10",
+        tests: ["`src/a.test.ts` `splits | 9` fails on the bug"],
+      }),
+    );
+    const before = read(PLAN);
+    const r = await merge(...args([R1]));
+    expect(r.code).toBe(23);
+    expect(r.json.problems.join("\n")).toMatch(/TASK 3 \(src\/a\.ts:10\).*\|/);
+    expect(read(PLAN)).toBe(before);
+  });
+
   it("leaves the plan unchanged when plan-check fails", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "HIGH", loc: "src/a.ts:10", tests: [] }));
@@ -273,12 +343,45 @@ describe("bkit challenge merge", () => {
     expect(r.json.route).toBe("pause");
   });
 
-  it("routes a second round with new tasks to pause", async () => {
+  it("routes a fixable task in the last round to fix", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
     const r = await merge(...args([R1], 2));
     expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "fix", appended: 1, fixTasks: "3", round: 2 });
+  });
+
+  it("routes an unfixable task in the last round to pause", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10", fixable: false }));
+    const r = await merge(...args([R1], 2));
     expect(r.json).toMatchObject({ route: "pause", appended: 1, round: 2 });
+  });
+
+  it("refuses a round over the limit, and takes it once the owner granted one more allowance", async () => {
+    write(PLAN, plan(2));
+    write(R1, report({ sev: "MEDIUM", loc: "src/a.ts:10" }));
+    const refused = await merge(...args([R1], 3));
+    expect(refused.code).toBe(2);
+    expect(refused.err).toContain("--round must be 1 to 2");
+    write(
+      `${LOG}/status.jsonl`,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-11-02T00:00:00Z" },
+        {
+          type: "allowance-granted",
+          workflow: "build",
+          at: "2026-11-02T00:01:00Z",
+          point: "build.challenge",
+          value: 2,
+        },
+      ]
+        .map((r) => JSON.stringify(r))
+        .join("\n") + "\n",
+    );
+    const r = await merge(...args([R1], 3));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "fix", round: 3 });
   });
 
   it("refuses an old-format report with findings", async () => {
@@ -366,7 +469,7 @@ describe("bkit challenge merge", () => {
     // Task 3 stays open (the fix group was BLOCKED); round 2 reports the same finding.
     const second = await merge(...args([R1], 2));
     expect(second.code).toBe(0);
-    expect(second.json).toMatchObject({ route: "pause", fixTasks: "3", appended: 0, round: 2 });
+    expect(second.json).toMatchObject({ route: "fix", fixTasks: "3", appended: 0, round: 2 });
     const text = read(PLAN);
     expect(text.match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(1);
     expect(parsePlanBlocks(text).tasks.map((t) => t.task)).toEqual([1, 2, 3]);
@@ -387,7 +490,7 @@ describe("bkit challenge merge", () => {
     expect(rerun.json).toMatchObject({ route: "none", fixTasks: "", appended: 0 });
     // Round 2 reports it again: the fix did not hold, so it is a new task.
     const second = await merge(...args([R1], 2));
-    expect(second.json).toMatchObject({ route: "pause", fixTasks: "4", appended: 1 });
+    expect(second.json).toMatchObject({ route: "fix", fixTasks: "4", appended: 1 });
     expect(read(PLAN).match(/\*\*Location:\*\* `src\/a\.ts:10`/g)).toHaveLength(2);
     // Task 4 done, round 2 re-run: no third task.
     write(PLAN, read(PLAN).replace("- [ ] **TASK 4:**", "- [x] **TASK 4:**"));
@@ -421,6 +524,36 @@ describe("bkit challenge merge", () => {
     write(R1, report({ sev: "HIGH", loc: "Makefile:12" }));
     const r = await merge(...args([R1]));
     expect(r.json).toMatchObject({ appended: 0, dropped: 1, route: "none" });
+  });
+
+  it("acceptedLocations counts a lettered Decision: A) Accept line", () => {
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Null deref in `src/a.ts:10`:** the handler reads a missing field.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — guarded upstream",
+        "Decision: A) Accept — fine by me",
+        "",
+        "**Q2 — Retry loop in `src/b.ts:4`:** spins forever.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real bug",
+        "Decision: B",
+        "",
+        "**Q3 — Stale cache in `src/c.ts:7`:** serves old data.",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real bug",
+        "Decision: A",
+        "",
+      ].join("\n"),
+    );
+    expect([...acceptedLocations(path.join(cwd, LOG), cwd)].sort()).toEqual([
+      "src/a.ts:10",
+      "src/c.ts:7",
+    ]);
   });
 
   it("deferred counts the rows written", async () => {

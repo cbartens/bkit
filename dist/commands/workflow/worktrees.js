@@ -13,13 +13,15 @@
 // a human, so local dev is routinely ahead, and a worktree without those commits
 // builds against superseded work.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { lastRun } from "../../ledgers/status.js";
-import { gitEnv } from "../../ledgers/telemetry.js";
+import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
+import { APPEND_LEDGERS, gitEnv } from "../../ledgers/telemetry.js";
+import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
-import { CommandError, DEV, EXIT, git, isSharedBranch, MAIN, repoRoot, runGit, } from "../lib.js";
+import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
 import { listRecords, newRecord, readRecord, removeRecord, withSetupGuard, writeRecord, } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
@@ -152,12 +154,54 @@ export function devBase(cwd, log) {
     }
     return ORIGIN_DEV;
 }
+/** Workflows whose close lands docs and ledgers only: their branch may carry no unpushed dev work. */
+const DOCS_ONLY_WORKFLOWS = ["design", "plan"];
+/**
+ * The ref a feature branch starts from and rebases onto. A docs-only workflow
+ * (design, plan) always starts from `origin/dev`: its close lands docs and
+ * ledgers on `origin/dev` and may carry nothing else, so a branch holding
+ * unpushed `dev` commits could never land (issue #639). Every other workflow
+ * keeps `devBase`'s choice — local `dev` while it is a fast-forward of `origin/dev`.
+ */
+export function worktreeBase(cwd, workflow, log) {
+    if (!DOCS_ONLY_WORKFLOWS.includes(workflow))
+        return devBase(cwd, log);
+    const local = git(cwd, ["rev-parse", "-q", "--verify", `refs/heads/${DEV}`]);
+    const remote = git(cwd, ["rev-parse", "-q", "--verify", `refs/remotes/${ORIGIN_DEV}`]);
+    if (local !== null &&
+        remote !== null &&
+        local !== remote &&
+        runGit(cwd, ["merge-base", "--is-ancestor", remote, local]).ok) {
+        const count = git(cwd, ["rev-list", "--count", `${remote}..${local}`]) ?? "?";
+        log?.(`local ${DEV} is ${count} commit(s) ahead of ${ORIGIN_DEV} — basing this ${workflow} branch on ${ORIGIN_DEV}: its close lands docs and ledgers only`);
+    }
+    return ORIGIN_DEV;
+}
+/**
+ * The commits `branch` carries that local `dev` holds and `origin/dev` does not:
+ * work inherited from unpushed `dev`. A docs-only close lands on `origin/dev` and
+ * may bring docs and ledgers only, so such a branch can never land.
+ */
+function inheritedDevCommits(root, branch) {
+    const unpushed = new Set((git(root, ["rev-list", `${ORIGIN_DEV}..${DEV}`]) ?? "").split("\n").filter(Boolean));
+    if (unpushed.size === 0)
+        return [];
+    return (git(root, ["rev-list", branch, "--not", ORIGIN_DEV]) ?? "")
+        .split("\n")
+        .filter((c) => unpushed.has(c));
+}
+/** Why a docs-only branch carrying unpushed `dev` cannot land, and what unblocks it. */
+function inheritedDevRefusal(root, target, workflow, count) {
+    const ahead = git(root, ["rev-list", "--count", `${ORIGIN_DEV}..${DEV}`]) ?? "?";
+    const tip = git(root, ["rev-parse", "--short", DEV]) ?? DEV;
+    return `${target} carries ${count} commit(s) of unpushed ${DEV} (tip ${tip}, ${ahead} commit(s) ahead of ${ORIGIN_DEV}), and a ${workflow} close lands docs and ledgers only — this branch cannot land. Publish ${DEV} (git push origin ${DEV}), then re-run.`;
+}
 /**
  * `git worktree add` for `branch`: the local branch, else a tracking branch off
- * `origin`, else (when `mayCreate`) a new branch off `devBase` after a fresh
+ * `origin`, else (when `mayCreate`) a new branch off `worktreeBase` after a fresh
  * fetch. Returns false when there was nothing to add and `mayCreate` is off.
  */
-function addWorktree(root, wt, branch, mayCreate, log) {
+function addWorktree(root, wt, branch, mayCreate, workflow, log) {
     let args;
     if (hasLocal(root, branch)) {
         args = [wt, branch];
@@ -173,7 +217,7 @@ function addWorktree(root, wt, branch, mayCreate, log) {
         }
         else if (mayCreate) {
             fetchBranch(root, DEV);
-            args = [wt, "-b", branch, devBase(root, log)];
+            args = [wt, "-b", branch, worktreeBase(root, workflow, log)];
         }
         else {
             return false;
@@ -184,6 +228,20 @@ function addWorktree(root, wt, branch, mayCreate, log) {
         throw new CommandError(EXIT_WORKTREE_ADD, `git worktree add failed: ${res.stderr}`);
     return true;
 }
+/**
+ * An engine-action row for a rebase that rewrote the branch, keyed on the tip it
+ * replaced, so the run's record shows the rewrite. Nothing when HEAD did not move.
+ */
+export function recordRebase(statusFile, before, after) {
+    if (before === null || after === null || before === after)
+        return;
+    recordAction(statusFile, {
+        action: "rebase",
+        key: actionKey("rebase", before),
+        hash: actionHash(`${before}..${after}`),
+        ref: after,
+    });
+}
 function rebaseInProgress(wt) {
     return ["rebase-merge", "rebase-apply"].some((p) => {
         const dir = git(wt, ["rev-parse", "--path-format=absolute", "--git-path", p]);
@@ -191,42 +249,154 @@ function rebaseInProgress(wt) {
     });
 }
 /**
- * `git add -A` in `tree`, leaving out the `bkit.workflows.worktree.copy` entries setup
- * copies in from the main checkout (`.env` and the like): no bkit commit may
- * carry them, gitignored or not.
+ * bkit's own worktree copy entry, excluded from every bkit commit beside
+ * `bkit.workflows.worktree.copy`: it holds the sign-in tokens, and a consumer whose
+ * `.gitignore` lost bkit's `.bkit/.env` line would otherwise commit a link to them.
  */
-export function addAllButCopied(tree, copied = readBkitConfig(tree).worktreeCopy) {
-    const keep = copied.map((e) => `:(exclude)${path.normalize(e)}`);
-    return runGit(tree, ["add", "-A", "--", ".", ...keep]);
+export const BKIT_OWN_COPY = [".bkit/.env"];
+/** A normalized copy entry inside the checkout: neither absolute nor climbing out with `..`. */
+const insideCheckout = (rel) => !path.isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${path.sep}`);
+/**
+ * Every `bkit.workflows.worktree.copy` entry setup may have copied into `tree`: the
+ * tree's own `package.json` list and the main checkout's, which setup copies by and
+ * which an uncommitted edit or the feature branch can make differ.
+ */
+function worktreeCopyLists(tree) {
+    const main = mainCheckoutRoot(tree) ?? tree;
+    return [...new Set([...readBkitConfig(tree).worktreeCopy, ...readBkitConfig(main).worktreeCopy])];
+}
+/**
+ * `:(exclude)` pathspecs for the entries setup copies into `tree` (`copied`, default
+ * every list that may name one) and `BKIT_OWN_COPY`. An entry outside the tree is left
+ * out: git refuses it as a pathspec (exit 128) and setup never copies it. So is one git
+ * already ignores: naming it in a `:(exclude)` pathspec trips git's ignored-paths guard
+ * and fails the whole `add`, and `git add -A` skips an ignored file anyway.
+ */
+export function copyExcludes(tree, copied = worktreeCopyLists(tree)) {
+    return [...copied, ...BKIT_OWN_COPY]
+        .map((e) => path.normalize(e))
+        .filter((e) => insideCheckout(e) && !isIgnoredPath(tree, e))
+        .map((e) => `:(exclude)${e}`);
+}
+/**
+ * `git add -A` in `tree`, leaving out the entries setup copies in from the main
+ * checkout (`.env` and the like) and `BKIT_OWN_COPY` (`copyExcludes`): no bkit commit
+ * may carry them, gitignored or not.
+ */
+export function addAllButCopied(tree, copied) {
+    return runGit(tree, ["add", "-A", "--", ".", ...copyExcludes(tree, copied)]);
+}
+/** Whether `wt` holds changes beyond the entries setup copies in (`copyExcludes`). */
+export const hasLeftovers = (wt) => (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+    "") !== "";
+/**
+ * The rows the dispatch seam appended after the last commit, by tracked path, when they
+ * are the only changes in `wt`: `engine-call` rows at the end of `statusFile`, and
+ * `friction` rows at the end of `.bkit/friction.jsonl` (a hook-launched command's
+ * unexpected exit). Null when anything else changed.
+ */
+function journalRowsAppended(wt, statusFile) {
+    const allowed = new Map([
+        [path.relative(wt, statusFile), (row) => row["type"] === "engine-call"],
+        [APPEND_LEDGERS.friction.file, (row) => row["kind"] === "friction"],
+    ]);
+    const changed = (git(wt, ["status", "--porcelain", "--untracked-files=all", "--", ".", ...copyExcludes(wt)]) ??
+        "")
+        .split("\n")
+        .filter((l) => l !== "");
+    if (changed.length === 0)
+        return null;
+    const out = new Map();
+    for (const line of changed) {
+        const rel = [...allowed.keys()].find((r) => line.endsWith(` ${r}`));
+        const appended = rel === undefined ? null : appendedRows(wt, rel, allowed.get(rel));
+        if (rel === undefined || appended === null)
+            return null;
+        out.set(rel, appended);
+    }
+    return out;
+}
+/** `rel` as its committed text plus one or more appended rows `accepts` takes; null otherwise. */
+function appendedRows(wt, rel, accepts) {
+    const committed = git(wt, ["cat-file", "blob", `HEAD:${rel}`]);
+    const file = path.join(wt, rel);
+    if (committed === null || !fs.existsSync(file))
+        return null;
+    const text = fs.readFileSync(file, "utf-8");
+    if (!text.startsWith(committed))
+        return null;
+    // `git` trims its output: the committed text's own last newline comes back with it.
+    const rest = text.slice(committed.length);
+    const lead = rest.startsWith("\n") ? "\n" : "";
+    const rows = rest.slice(lead.length);
+    const added = rows.split("\n").filter((l) => l.trim() !== "");
+    const ok = added.length > 0 &&
+        added.every((l) => {
+            const parsed = parseJson(l);
+            return (parsed.ok &&
+                parsed.value !== null &&
+                typeof parsed.value === "object" &&
+                !Array.isArray(parsed.value) &&
+                accepts(parsed.value));
+        });
+    return ok ? { committed: text.slice(0, committed.length) + lead, rows } : null;
+}
+/**
+ * Appends the rows `journalRowsAppended` set aside back onto their files and returns "".
+ * A rebase that stopped part-way cannot continue past unstaged rows, so then nothing is
+ * appended and the rows come back as text for the rebase log.
+ */
+function putJournalRowsBack(wt, journal) {
+    if (rebaseInProgress(wt)) {
+        return [...journal]
+            .map(([rel, a]) => `rows set aside from ${rel}; append them once the rebase finishes:\n${a.rows}`)
+            .join("");
+    }
+    for (const [rel, a] of journal) {
+        const file = path.join(wt, rel);
+        const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+        fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${a.rows}`);
+    }
+    return "";
 }
 /**
  * Commit what an earlier run left uncommitted in a resumed worktree, so the
  * resume rebase can start: a failed ship's flush lands its record on dev and
  * leaves the worktree as it was, for whatever runs next. An untracked file in a
  * log folder of this feature that `onto` already holds is dropped first: dev's
- * copy, landed by that flush, wins, and a second copy would stop the rebase.
- * The `worktreeCopy` entries setup copies in are never committed. Clean tree →
- * null; a failed commit is narrated and leaves the tree for the rebase to refuse.
+ * copy, landed by that flush, wins, and a second copy would stop the rebase. One
+ * whose content differs from `onto`'s is moved to the feature's outbox folder
+ * (`dropped-logs/{time}/`), never deleted. The entries setup copies in are never
+ * committed and alone do not count as leftovers. No leftovers → null; a failed
+ * commit is narrated and leaves the tree for the rebase to refuse.
  */
 function carryLeftovers(wt, o, log) {
-    const dirty = () => (git(wt, ["status", "--porcelain", "--untracked-files=all"]) ?? "") !== "";
-    if (!dirty())
+    if (!hasLeftovers(wt))
         return null;
     const logs = new RegExp(`^docs/plans/[^/]+/logs/${o.fid.replace(/\./g, "\\.")}/`);
     const dropped = (git(wt, ["ls-files", "--others", "--exclude-standard"]) ?? "")
         .split("\n")
         .filter((f) => logs.test(f) && runGit(wt, ["cat-file", "-e", `${o.onto}:${f}`]).ok);
-    for (const f of dropped)
-        fs.rmSync(path.join(wt, f));
+    const keepDir = path.join(path.dirname(ownershipMarker(wt, o.fid)), "dropped-logs", new Date().toISOString().replace(/[:.]/g, "-"));
+    for (const f of dropped) {
+        const file = path.join(wt, f);
+        if (git(wt, ["hash-object", "--", f]) !== git(wt, ["rev-parse", `${o.onto}:${f}`])) {
+            const kept = path.join(keepDir, f);
+            fs.mkdirSync(path.dirname(kept), { recursive: true });
+            fs.cpSync(file, kept);
+            log(`moved ${f} to ${kept}: it differs from ${o.onto}'s copy, which wins in the worktree`);
+        }
+        fs.rmSync(file);
+    }
     if (dropped.length > 0)
         log(`dropped ${dropped.length} untracked log(s) ${o.onto} already holds: ${dropped.join(", ")}`);
-    if (!dirty())
+    if (!hasLeftovers(wt))
         return { sha: null, dropped };
     const prior = fs.existsSync(o.statusFile) ? readRuns(o.statusFile).at(-1) : undefined;
     const what = prior === undefined
         ? "uncommitted work left in the worktree"
         : `the ${prior.status === "FAILED" ? "failed " : ""}${prior.workflow} record left uncommitted`;
-    addAllButCopied(wt, o.copied);
+    addAllButCopied(wt);
     const made = runGit(wt, ["commit", "-m", `chore(${o.fid}): carry ${what} bkit`]);
     if (!made.ok) {
         log(`could not commit what an earlier run left in ${wt}: ${made.stderr || made.stdout}`);
@@ -244,7 +414,7 @@ function copyListed(root, wt, entries, log) {
     const copyMissing = [];
     for (const entry of entries) {
         const rel = path.normalize(entry);
-        if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        if (!insideCheckout(rel)) {
             log(`worktree copy: ${entry} is outside the main checkout — skipped`);
             continue;
         }
@@ -260,6 +430,61 @@ function copyListed(root, wt, entries, log) {
         copied.push(rel);
     }
     return { copied, copyMissing };
+}
+const sha256 = (content) => createHash("sha256").update(content).digest("hex");
+/**
+ * bkit's own token file, `.bkit/.env`, in a worktree. `copyListed` covers the app env
+ * files a repo configures; this one is bkit's, and it is gitignored — so a fresh
+ * checkout has none, `.envrc`'s `dotenv_if_exists .bkit/.env` loads nothing and says
+ * nothing, and every sign-in here fails with nothing looking wrong.
+ *
+ * Link to the main checkout's copy: one source of truth, so rotating a token needs no
+ * second edit and no copy goes stale. Fall back to a copy where the filesystem refuses
+ * a symlink, recording its hash in the feature's outbox folder (`.bkit-env-copy`): a
+ * copy bkit made is replaced on the next setup, so a rotated token reaches it too. Any
+ * other regular file that differs from the main checkout's is left for a human to read,
+ * like a differing `.envrc`; `none` means the main checkout holds no `.bkit/.env` to
+ * bring in, which the tip and the advisory then report; `failed` means neither the link
+ * nor the copy could be written, narrated.
+ */
+function linkBkitEnv(root, wt, fid, log) {
+    const main = path.join(root, ".bkit", ".env");
+    if (!fs.existsSync(main))
+        return "none";
+    const dest = path.join(wt, ".bkit", ".env");
+    const record = path.join(path.dirname(ownershipMarker(root, fid)), ".bkit-env-copy");
+    // lstat, so a dangling link is seen (and replaced) rather than followed and missed.
+    const stat = fs.lstatSync(dest, { throwIfNoEntry: false });
+    if (stat?.isSymbolicLink() && fs.existsSync(dest))
+        return "unchanged";
+    if (stat?.isFile()) {
+        const here = fs.readFileSync(dest);
+        const bkitMade = fs.existsSync(record) && fs.readFileSync(record, "utf-8") === sha256(here);
+        if (!bkitMade && !here.equals(fs.readFileSync(main))) {
+            log(`bkit-env: ${dest} differs from the main checkout's — left as it is; delete it to link the main checkout's copy`);
+            return "differs";
+        }
+    }
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.rmSync(dest, { recursive: true, force: true });
+    try {
+        fs.symlinkSync(main, dest);
+        fs.rmSync(record, { force: true });
+        return "linked";
+    }
+    catch (err) {
+        try {
+            fs.cpSync(main, dest);
+        }
+        catch (copyErr) {
+            log(`bkit-env: could not link or copy the main checkout's .bkit/.env to ${dest} (${err.message}; ${copyErr.message}) — sign-ins in this worktree fail until it is there`);
+            return "failed";
+        }
+        fs.mkdirSync(path.dirname(record), { recursive: true });
+        fs.writeFileSync(record, sha256(fs.readFileSync(dest)));
+        log(`bkit-env: symlink failed (${err.message}) — copied the main checkout's .bkit/.env`);
+        return "copied";
+    }
 }
 /**
  * `direnv allow` the worktree's `.envrc` when it matches the main checkout's
@@ -402,6 +627,7 @@ export const worktreesCommand = {
     verbs: {
         setup: {
             summary: "Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup).",
+            use: "workflow",
             flags: [
                 WORKFLOW_FLAG,
                 FID_FLAG,
@@ -419,7 +645,7 @@ export const worktreesCommand = {
                 {
                     name: "branch",
                     type: "string",
-                    help: "ship only: the branch the session prompt names (default: feat/{fid} when it exists, else the session branch)",
+                    help: "ship or debug: an existing branch the session prompt names; debug refuses a conflicting checkout",
                 },
                 {
                     name: "issue",
@@ -440,9 +666,10 @@ export const worktreesCommand = {
                 baseRef: "dev when local dev is a fast-forward of origin/dev (unpushed commits), else origin/dev",
                 baseSha: "git merge-base baseRef HEAD at worktreePath, or null",
                 carriedSha: "resume: the commit holding what an earlier run left uncommitted (a failed ship's record), made before the rebase; else null",
-                carriedDropped: "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins)",
+                carriedDropped: "resume: untracked logs of this feature dropped because baseRef already holds them (dev's copy wins); one whose content differs is first moved to the feature's outbox folder (dropped-logs/), named in the log",
                 copied: "worktree copy entries copied from the main checkout",
                 copyMissing: "worktree copy entries absent from the main checkout",
+                bkitEnv: "bkit's own .bkit/.env: linked to the main checkout's copy, or copied where a symlink is refused (a copy bkit made is refreshed on the next setup); unchanged when already linked, differs when a differing file was left to read, none when the main checkout holds none, failed when neither the link nor the copy could be written, null in adopt mode",
                 direnvAllowed: "direnv allow ran on the worktree's .envrc (present and identical to the main checkout's)",
                 installed: "dependencies were installed",
                 startSha: "in place on dev (debug): HEAD when the run started, recorded in the shared-checkout record; absent otherwise",
@@ -453,7 +680,7 @@ export const worktreesCommand = {
                 [EXIT_FETCH]: "could not fetch from origin",
                 [EXIT_INSTALL]: "dependency install failed",
                 [EXIT_INSTALL_COULD_NOT_RUN]: "the package manager could not run (exit 126 / 127)",
-                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, or ship could not switch to its branch (a missing feat/{fid} is named)",
+                [EXIT_REFUSED]: "refused: main as the working branch (dev too, except debug in place), ship of dev / main, detached HEAD, ship could not switch to its branch (a missing feat/{fid} is named), or a design / plan branch carrying unpushed dev commits (publish dev, then re-run)",
                 [EXIT_WORKTREE_ADD]: "git worktree add failed",
                 [EXIT_REBASE_NOT_STARTED]: "resume rebase could not start, even after committing what an earlier run left (e.g. a commit hook refused that commit)",
                 [EXIT_NOT_A_WORKTREE]: ".worktrees/{fid} exists but is not a registered git worktree",
@@ -471,8 +698,8 @@ export const worktreesCommand = {
                 if (!/^[0-9]{6}$/.test(month))
                     throw new CommandError(EXIT.USAGE, "--month must be YYYYMM");
                 const named = f.branch === undefined ? undefined : String(f.branch);
-                if (named !== undefined && workflow !== "ship") {
-                    throw new CommandError(EXIT.USAGE, "--branch is ship only");
+                if (named !== undefined && workflow !== "ship" && workflow !== "debug") {
+                    throw new CommandError(EXIT.USAGE, "--branch is ship or debug only");
                 }
                 if (f.issue !== undefined && workflow !== "ship") {
                     throw new CommandError(EXIT.USAGE, "--issue is ship only");
@@ -486,11 +713,21 @@ export const worktreesCommand = {
                 if (workflow === "debug" && session === "") {
                     throw new CommandError(EXIT_REFUSED, "detached HEAD — check out a branch before debugging");
                 }
-                const target = workflow === "ship" ? shipBranch(root, fid, named, session) : `feat/${fid}`;
-                if (isSharedBranch(target)) {
+                const target = workflow === "ship"
+                    ? shipBranch(root, fid, named, session)
+                    : workflow === "debug" && named
+                        ? named
+                        : `feat/${fid}`;
+                if (isSharedBranch(target) && !(workflow === "debug" && target === DEV)) {
                     throw new CommandError(EXIT_REFUSED, workflow === "ship"
                         ? `refusing to ship ${target}: /bkit-ship ships a feature branch into ${DEV} only; it never opens a PR from ${DEV} into ${MAIN} or merges into ${MAIN}, releases stay manual. Name the feature branch to ship.`
                         : `refusing to ship ${target} as a feature branch`);
+                }
+                if (workflow === "debug" &&
+                    named &&
+                    !hasLocal(root, target) &&
+                    !runGit(root, ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${target}`]).ok) {
+                    throw new CommandError(EXIT_REFUSED, `${target} does not exist — debug adopts an existing branch`);
                 }
                 // Ship mints only when the session is not already on the branch it ships:
                 // that branch cannot be checked out in two places.
@@ -517,11 +754,16 @@ export const worktreesCommand = {
                         if (real(git(wtDir, ["rev-parse", "--show-toplevel"]) ?? "") !== real(wtDir)) {
                             throw new CommandError(EXIT_NOT_A_WORKTREE, `${wtDir} is not a registered git worktree`);
                         }
+                        if (workflow === "debug" &&
+                            named &&
+                            git(wtDir, ["branch", "--show-current"]) !== target) {
+                            throw new CommandError(EXIT_REFUSED, `${wtDir} is on another branch; requested ${target} — leave its work intact and use the matching checkout`);
+                        }
                         mode = "resumed";
                     }
                     else if (workflow !== "debug" || session !== target) {
                         // Debug adopts an existing feat/{fid}; it never mints a branch of its own.
-                        if (addWorktree(root, wtDir, target, workflow !== "debug", ctx.log))
+                        if (addWorktree(root, wtDir, target, workflow !== "debug", workflow, ctx.log))
                             mode = "created";
                     }
                 }
@@ -529,6 +771,9 @@ export const worktreesCommand = {
                 const logDir = logDirOf(wt, month, fid);
                 const marker = ownershipMarker(root, fid);
                 if (mode === "adopted") {
+                    if (workflow === "debug" && named && git(root, ["branch", "--show-current"]) !== target) {
+                        throw new CommandError(EXIT_REFUSED, `adopt mode: checkout does not hold requested ${target}; use its existing checkout or enable worktrees`);
+                    }
                     if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
                         const sw = runGit(root, ["switch", target]);
                         if (!sw.ok) {
@@ -555,6 +800,16 @@ export const worktreesCommand = {
                 let sentinel = null;
                 let carried = null;
                 const sentinelPath = path.join(logDir, ".rebase-failed");
+                // A docs-only branch cannot land while it carries unpushed dev work: refuse
+                // now, not after the whole phase. Checked before the resume rebase, which
+                // replays such commits under new SHAs this commit-by-commit check no longer
+                // knows; the close itself names them then.
+                if (DOCS_ONLY_WORKFLOWS.includes(workflow) && mode !== "adopted") {
+                    const inherited = inheritedDevCommits(root, target);
+                    if (inherited.length > 0) {
+                        throw new CommandError(EXIT_REFUSED, inheritedDevRefusal(root, target, workflow, inherited.length));
+                    }
+                }
                 if (mode === "resumed" && workflow !== "ship") {
                     // Cleared before every attempt: a sentinel left by an earlier run would
                     // send this one to the Failure Path after a clean rebase.
@@ -564,26 +819,36 @@ export const worktreesCommand = {
                         failure = {
                             conflict: true,
                             detail: "a rebase is already in progress",
-                            onto: devBase(wt),
+                            onto: worktreeBase(wt, workflow),
                         };
                     }
                     else {
                         fetchBranch(wt, DEV);
-                        const onto = devBase(wt, ctx.log);
-                        carried = carryLeftovers(wt, {
-                            fid,
-                            onto,
-                            statusFile: path.join(logDir, "status.jsonl"),
-                            copied: config.worktreeCopy,
-                        }, ctx.log);
-                        const rb = runGit(wt, ["rebase", "--rebase-merges", onto]);
+                        const onto = worktreeBase(wt, workflow, ctx.log);
+                        const statusFile = path.join(logDir, "status.jsonl");
+                        carried = carryLeftovers(wt, { fid, onto, statusFile }, ctx.log);
+                        // Journal rows a hook appended after the carry commit go aside by hand and
+                        // back after the rebase, never through `--autostash`: a dev that appended to
+                        // the same file makes the autostash pop conflict, and git still exits 0.
+                        const journal = hasLeftovers(wt) ? journalRowsAppended(wt, statusFile) : null;
+                        for (const [rel, a] of journal ?? [])
+                            fs.writeFileSync(path.join(wt, rel), a.committed);
+                        // A tracked copy entry setup copied over (a committed placeholder `.env`) is
+                        // never committed, so the rebase sets it aside and puts it back. Only when
+                        // nothing else is left: a refused carry commit still stops the rebase.
+                        const aside = hasLeftovers(wt) ? [] : ["--autostash"];
+                        const before = git(wt, ["rev-parse", "HEAD"]);
+                        const rb = runGit(wt, ["rebase", "--rebase-merges", ...aside, onto]);
+                        const unput = journal === null ? "" : putJournalRowsBack(wt, journal);
                         // The rebase replays the carry commit on top: report the replayed one.
                         if (rb.ok && carried?.sha)
                             carried.sha = git(wt, ["rev-parse", "HEAD"]);
+                        if (rb.ok)
+                            recordRebase(path.join(logDir, "status.jsonl"), before, git(wt, ["rev-parse", "HEAD"]));
                         if (!rb.ok) {
                             failure = {
                                 conflict: rebaseInProgress(wt),
-                                detail: [rb.stdout, rb.stderr].filter(Boolean).join("\n"),
+                                detail: [rb.stdout, rb.stderr, unput].filter(Boolean).join("\n"),
                                 onto,
                             };
                         }
@@ -606,10 +871,11 @@ export const worktreesCommand = {
                 const { copied, copyMissing } = done
                     ? copyListed(root, wt, config.worktreeCopy, ctx.log)
                     : { copied: [], copyMissing: [] };
+                const bkitEnv = done ? linkBkitEnv(root, wt, fid, ctx.log) : null;
                 const direnvAllowed = done && allowDirenv(root, wt, ctx.log);
-                const wantInstall = done && config.worktreeInstall;
+                const wantInstall = done && config.worktreeInstall && fs.existsSync(path.join(wt, "package.json"));
                 const installStatus = wantInstall ? install(wt, ctx.log) : 0;
-                const baseRef = devBase(wt);
+                const baseRef = worktreeBase(wt, workflow);
                 const branch = git(wt, ["branch", "--show-current"]) ?? "";
                 const branchWarning = workflow === "ship"
                     ? shipBranchWarning(branch, fid, f.issue === undefined ? undefined : String(f.issue))
@@ -632,6 +898,7 @@ export const worktreesCommand = {
                     carriedDropped: carried?.dropped ?? [],
                     copied,
                     copyMissing,
+                    bkitEnv,
                     direnvAllowed,
                     installed: wantInstall && installStatus === 0,
                     ...(shared === undefined
@@ -653,6 +920,7 @@ export const worktreesCommand = {
         },
         remove: {
             summary: "Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch.",
+            use: "workflow",
             flags: [
                 FID_FLAG,
                 {

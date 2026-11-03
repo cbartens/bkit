@@ -32,8 +32,10 @@ import {
   runOrStepField,
   statusTimestamp,
   type StatusEvent,
+  type StatusRow,
 } from "../../ledgers/status.js";
 import {
+  compareTs,
   foldFrom,
   normalize,
   resolveRepoSlug,
@@ -41,9 +43,17 @@ import {
   type CoverageStats,
   type OutcomePayload,
 } from "../../ledgers/telemetry.js";
-import { readBkitConfig } from "../../shared/settings.js";
+import {
+  check as checkCompleteness,
+  deriveContract,
+  parseRows,
+  readCompleteness,
+  type StatusRow as HoleRow,
+} from "../../checks/status-holes.js";
+import { getWorkflowsRoot } from "../../shared/package-roots.js";
+import { ASK_POINTS, readBkitConfig } from "../../shared/settings.js";
 import { gradeCompliance } from "../comply.js";
-import { landDir, pushToDev, type DevPush } from "../land.js";
+import { fetchDev, landDir, pushToDev, type DevPush } from "../land.js";
 import {
   CommandError,
   DEV,
@@ -102,7 +112,7 @@ import {
   timeBlock,
 } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS, type SummaryWorkflow } from "./summary.js";
-import { parseWorkstreams } from "./workstreams.js";
+import { parsePlans, parseWorkstreams } from "./plans.js";
 import {
   EXIT_REMOVE_FAILED,
   EXIT_SPLIT_BUCKET,
@@ -304,17 +314,23 @@ function checkHeldLock(file: string, who: { workflow: string; fid: string; token
 // ---------------------------------------------------------------------------
 
 /**
- * Abort a rebase left in progress in `tree`. `git rev-parse --git-path X` always
- * exits 0 (it only computes the path), so the directory's existence is the test.
+ * Abort a rebase or a merge left in progress in `tree` (ship Step 4 leaves a merge
+ * of origin/dev in progress for a hand resolution). `git rev-parse --git-path X`
+ * always exits 0 (it only computes the path), so the path's existence is the test.
  */
 function abortRebase(tree: string, log: (m: string) => void): boolean {
-  const inProgress = ["rebase-merge", "rebase-apply"].some((name) => {
+  const present = (name: string) => {
     const p = git(tree, ["rev-parse", "--path-format=absolute", "--git-path", name]);
     return p !== null && fs.existsSync(p);
-  });
-  if (!inProgress) return false;
-  const res = runGit(tree, ["rebase", "--abort"]);
-  if (!res.ok) log(`git rebase --abort failed in ${tree}: ${res.stderr}`);
+  };
+  const op = ["rebase-merge", "rebase-apply"].some(present)
+    ? "rebase"
+    : present("MERGE_HEAD")
+      ? "merge"
+      : null;
+  if (op === null) return false;
+  const res = runGit(tree, [op, "--abort"]);
+  if (!res.ok) log(`git ${op} --abort failed in ${tree}: ${res.stderr}`);
   return res.ok;
 }
 
@@ -871,7 +887,8 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
     ref = r.ref;
     skipped = r.skipped;
   } else if (push) {
-    addAllButCopied(tree);
+    const added = addAllButCopied(tree);
+    if (!added.ok) ctx.log(`abort commit: git add failed: ${added.stderr}`);
     const made = runGit(tree, ["commit", "-m", `docs(${fid}): ${workflow} aborted bkit [skip ci]`]);
     if (!made.ok) ctx.log(`abort commit: ${made.stderr || made.stdout}`);
     const r = await pushBranch(tree, { mode: "abort", openPr: str(ctx.flags.openPr) }, ctx.log);
@@ -1033,6 +1050,100 @@ function appendStats(tree: string, rows: Array<Record<string, unknown>>, log: (m
   }
 }
 
+/**
+ * The rows of `workflow`'s `nth` run in `file` (the last when omitted), in time order;
+ * unreadable lines skipped. Runs split as `fold` splits them: rows ordered by `at`, file
+ * order on a tie, each new `workflow-started` opening a run, so a previous run's rows in
+ * the same second as this run's start stay with the previous run.
+ */
+function runRowsOf(file: string, workflow: string, nth = -1): HoleRow[] {
+  const at = (r: HoleRow) => (typeof r["at"] === "string" ? r["at"] : "");
+  const ordered = parseRows(fs.readFileSync(file, "utf-8"))
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => r.workflow === workflow)
+    .sort((a, b) => (at(a.r) < at(b.r) ? -1 : at(a.r) > at(b.r) ? 1 : a.i - b.i))
+    .map(({ r }) => r);
+  const runs: HoleRow[][] = [];
+  const starts = new Set<string>();
+  for (const r of ordered) {
+    if (r.type === "workflow-started" && !starts.has(at(r))) {
+      starts.add(at(r));
+      runs.push([]);
+    } else if (runs.length === 0 && r.type === "step-done") {
+      runs.push([]);
+    }
+    runs.at(-1)?.push(r);
+  }
+  return runs.at(nth) ?? [];
+}
+
+/** The contract of `workflow`, derived from its shipped markdown rendered for the tracker `cwd` is configured with. */
+const contractOf = (workflow: string, cwd: string) =>
+  deriveContract(
+    fs.readFileSync(path.join(getWorkflowsRoot(), `bkit-${workflow}.md`), "utf-8"),
+    workflow,
+    readIssueTracker(cwd),
+  );
+
+/**
+ * Appends the close's `completeness` row for `workflow`'s last run. Advisory:
+ * a failure of the check or of the write is logged in one line and never fails the close.
+ * `journalSuspect` is set here only: the closing engine journals itself.
+ */
+function writeCompletenessRow(
+  file: string,
+  workflow: string,
+  parentSha: string,
+  log: (m: string) => void,
+): void {
+  try {
+    const verdict = checkCompleteness(
+      runRowsOf(file, workflow),
+      contractOf(workflow, path.dirname(file)),
+      {
+        journalSuspect: true,
+      },
+    );
+    const row: StatusRow = { type: "completeness", ...verdict, at: statusTimestamp(), parentSha };
+    fs.appendFileSync(file, appendLine(row));
+    if (verdict.journalSuspect) {
+      log(
+        "[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted",
+      );
+    }
+  } catch (err) {
+    // The check is advisory: report the failure and close without the row.
+    log(`[bkit-telemetry] completeness row not written: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * The warning line for the run before the one being started (or resumed) when that run
+ * was holey; `null` when it is clean, absent or unreadable. Never throws.
+ */
+function previousRunWarning(file: string, resumed: boolean): string | null {
+  try {
+    const events = readStatusEvents(file);
+    const runs = fold(events);
+    const at = runs.length - (resumed ? 2 : 1);
+    const prev = runs[at];
+    if (prev === undefined) return null;
+    const number = runs.slice(0, at + 1).filter((r) => r.workflow === prev.workflow).length;
+    const own = runRowsOf(file, prev.workflow, number - 1);
+    const { verdict } = readCompleteness(own, contractOf(prev.workflow, path.dirname(file)));
+    if (!verdict.holey) return null;
+    const closed = own.filter((e) => e.type === "workflow-done").at(-1)?.["at"] ?? "never";
+    return (
+      `[bkit-workflows] previous run (${prev.workflow} run ${number}, closed ${closed}) was incomplete: ` +
+      `${verdict.evidenceHoles.length} evidence hole(s), ${verdict.stepHoles.length} step hole(s); ` +
+      `see: bkit completeness check --workflow=${prev.workflow} --file=${path.relative(process.cwd(), file) || file}`
+    );
+  } catch {
+    // Advisory: an unreadable run or checker failure degrades to no warning.
+    return null;
+  }
+}
+
 /** Markdown link per feature doc and per log of this workflow, as on `ref`. */
 export function artifactLinks(
   root: string,
@@ -1085,6 +1196,20 @@ function closeComment(
   });
 }
 
+/** `--ending` / `--publish` of the close verb, validated. */
+function closeEnding(f: Record<string, FlagValue>): Pick<CloseInput, "ending" | "publish"> {
+  const ending = str(f.ending);
+  if (ending !== undefined && ending !== "done" && ending !== "held")
+    throw new CommandError(EXIT.USAGE, `--ending must be done or held, got ${ending}`);
+  const publish = str(f.publish);
+  if (publish !== undefined && publish !== "true" && publish !== "false")
+    throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publish}`);
+  return {
+    ...(ending === undefined ? {} : { ending }),
+    ...(publish === undefined ? {} : { publish: publish === "true" }),
+  };
+}
+
 export interface CloseInput {
   workflow: string;
   fid: string;
@@ -1102,6 +1227,10 @@ export interface CloseInput {
   number?: string;
   title?: string;
   tree?: string;
+  /** `held` = a local build that published nothing; default `done`. */
+  ending?: "done" | "held";
+  /** The resolved publish value of a build; absent when unset. */
+  publish?: boolean;
 }
 
 /**
@@ -1134,15 +1263,26 @@ export function closeWorkflow(
   // Graded first, so the report below carries this run's grade.
   const violations = gradeCompliance(where.tree, workflow, log, o.squashSha, { parentSha, step });
 
+  let progressLine: string | undefined;
   if (o.recordStep === true) {
-    writeStepRow(
+    const written = writeStepRow(
       where.tree,
       { file: where.status, workflow, step, artifacts: [], commit: "none" },
       log,
     );
+    progressLine = written.progressLine;
   }
+  writeCompletenessRow(where.status, workflow, parentSha, log);
   const endAt = statusTimestamp();
-  const row = { type: "workflow-done" as const, workflow, at: endAt, parentSha };
+  const ending = o.ending ?? "done";
+  const row = {
+    type: "workflow-done" as const,
+    workflow,
+    at: endAt,
+    parentSha,
+    ending,
+    ...(o.publish === undefined ? {} : { publish: o.publish }),
+  };
   fs.appendFileSync(where.status, appendLine(row));
 
   const repo = resolveRepoSlug(where.root) || "unknown/repo";
@@ -1159,7 +1299,6 @@ export function closeWorkflow(
   const startedRows = new Set(
     events.filter((e) => e.type === "workflow-started" && e.workflow === workflow).map((e) => e.at),
   ).size;
-  const logDir = path.join(where.tree, logDirRel(where.month, o.fid));
   const by = { workflow, step };
 
   const counterRow = {
@@ -1199,7 +1338,8 @@ export function closeWorkflow(
     by,
     run: { parentSha, ...(o.prNumber === undefined ? {} : { pr: o.prNumber }) },
     time: startKnown === undefined ? null : timeBlock(startKnown, Math.max(startKnown, endMs)),
-    ending: "done",
+    ending,
+    ...(o.publish === undefined ? {} : { publish: o.publish }),
     lines,
     ...(runRowsOf.length > 0 ? { steps: stepsBlock(runRowsOf) } : {}),
     ...(ci.length > 0 ? { ci } : {}),
@@ -1207,12 +1347,7 @@ export function closeWorkflow(
     ...(plan === undefined ? {} : { plan }),
     ...(workflow === "build"
       ? {
-          build: buildBlock(
-            runRowsOf,
-            logDir,
-            planFiles(where.tree, where.month, o.fid),
-            runDeferrals(),
-          ),
+          build: buildBlock(runRowsOf, planFiles(where.tree, where.month, o.fid), runDeferrals()),
         }
       : {}),
     ...(context === undefined ? {} : { context }),
@@ -1296,6 +1431,7 @@ export function closeWorkflow(
     comment,
     roadmapFoldNeeded: true,
     featureStatus: FEATURE_STATUS[workflow],
+    ...(progressLine === undefined ? {} : { progressLine }),
   };
 }
 
@@ -1343,8 +1479,8 @@ function closePr(
  * checkout): the close rows there, then ONE `docs({fid}): ship DONE bkit [skip ci]`
  * commit built in a throwaway origin/dev checkout carrying the run's book and
  * landed on dev — a refused push publishes it through a `ship-close/{fid}` PR.
- * Only a close that landed (or opened its PR) releases the workflow lock; once
- * the close is on dev, the feature worktree and `branch` are removed. A close
+ * Once the close is on dev, the feature worktree and `branch` are removed; then
+ * a close that landed (or opened its PR) releases the workflow lock. A close
  * that did not land keeps the lock for the Failure Path.
  */
 async function shipClose(
@@ -1420,22 +1556,13 @@ async function shipClose(
       return { code: EXIT_FLUSH_FAILED, out: null };
   }
 
-  const released = releaseLock(workflowLockPath(root, month, o.fid), {
-    workflow: "ship",
-    fid: o.fid,
-    token,
-  });
-  if (released.removeFailed) {
-    ctx.log("Lock removal failed");
-    return { code: EXIT_FLUSH_FAILED, out: null };
-  }
-
-  // The book is on dev only once the close landed or its PR merged.
+  // The book is on dev only once the close landed or its PR merged. The worktree
+  // goes while the lock is still held, so no run of this FID resumes into it.
   let worktree: RemoveResult | null = null;
   if (landed.via === "close-pr-open") {
     ctx.log(`close PR not merged — ${kept} until it is`);
   } else {
-    if (landed.via === "close-pr" && !runGit(root, ["fetch", "origin", DEV]).ok)
+    if (landed.via === "close-pr" && !fetchDev(root).ok)
       ctx.log(
         `fetch of dev after the close PR failed — origin/${DEV} is stale until the next fetch`,
       );
@@ -1444,6 +1571,16 @@ async function shipClose(
     } catch (err) {
       ctx.log(`${(err as Error).message} — remove ${book} by hand`);
     }
+  }
+
+  const released = releaseLock(workflowLockPath(root, month, o.fid), {
+    workflow: "ship",
+    fid: o.fid,
+    token,
+  });
+  if (released.removeFailed) {
+    ctx.log("Lock removal failed");
+    return { code: EXIT_FLUSH_FAILED, out: null };
   }
   return { code: EXIT.OK, out: { ...out, landed, worktree } };
 }
@@ -1583,24 +1720,38 @@ function summaryVerb(ctx: RunContext): number {
     const abs = path.resolve(tree, r);
     return fs.existsSync(abs) && fs.statSync(abs).isFile() ? fs.readFileSync(abs, "utf-8") : null;
   };
-  const deferrals = ledgerRows(path.join(tree, "docs", "deferrals.jsonl"))
-    .map((r) => normalize(r))
-    .filter((r) => byWorkflow(r) === workflow && Number(r.ts) >= startMs);
+  const deferralHistory = ledgerRows(path.join(tree, "docs", "deferrals.jsonl")).map((r) =>
+    normalize(r),
+  );
+  const runDeferralKeys = new Set(
+    deferralHistory
+      .filter((r) => isRunsOwnRow(r, { fid, workflow, startMs }, new Set()))
+      .map((r) => r.key),
+  );
+  const currentDeferrals = new Map(
+    deferralHistory.sort((a, b) => compareTs({ ts: a.ts }, { ts: b.ts })).map((r) => [r.key, r]),
+  );
+  const deferrals = [...currentDeferrals.values()].filter((r) => runDeferralKeys.has(r.key));
   const organisedPath = path.join(logDir, "design-v3-organised.md");
   const organised =
     workflow === "design" && fs.existsSync(organisedPath)
       ? fs.readFileSync(organisedPath, "utf-8")
       : undefined;
   const prNumber = positiveInt(ctx.flags.pr, "pr");
+  const publishFlag = str(ctx.flags.publish);
+  if (publishFlag !== undefined && publishFlag !== "true" && publishFlag !== "false")
+    throw new CommandError(EXIT.USAGE, `--publish must be true or false, got ${publishFlag}`);
 
   const summary = buildSummary({
+    root: tree,
+    publish: publishFlag === undefined ? undefined : publishFlag === "true",
     workflow: workflow as SummaryWorkflow,
     fid,
     ref: refOf(fid, readIssueTracker(tree)),
     rows,
     plans: plans.map((p) => ({ path: rel(p), text: fs.readFileSync(p, "utf-8") })),
     deferrals,
-    deferralsAdded: ledgerCounts(tree, workflow, startMs).deferrals.added ?? 0,
+    deferralsAdded: deferrals.filter((r) => r.status !== "CLOSED").length,
     decisionFiles:
       (workflow === "build" || workflow === "ship") && fs.existsSync(logDir)
         ? fs
@@ -1611,6 +1762,7 @@ function summaryVerb(ctx: RunContext): number {
         : [],
     read,
     workstreams: organised === undefined ? undefined : parseWorkstreams(organised),
+    suggestedPlans: organised === undefined ? undefined : parsePlans(organised),
     organised,
     pr:
       workflow === "ship" && prNumber !== undefined
@@ -1901,6 +2053,7 @@ export const workflowsCommand: CommandSpec = {
   verbs: {
     start: {
       summary: "Take the feature lock and open a run (workflow-started unless resuming).",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -1922,7 +2075,7 @@ export const workflowsCommand: CommandSpec = {
         lock: "{path, month, token, reclaimed} of the lock taken, or {path} with --lock-held",
         file: "absolute path to status.jsonl",
         resumed: "the latest run was this workflow, IN_PROGRESS: no new row",
-        row: "the appended workflow-started row, or null when resuming",
+        row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
@@ -1986,15 +2139,22 @@ export const workflowsCommand: CommandSpec = {
           }
         }
 
-        const latest = fold(readStatusEvents(file)).at(-1);
-        const resumed = latest?.workflow === workflow && latest.status === "IN_PROGRESS";
+        const resumed = lastRun(fold(readStatusEvents(file)), workflow)?.status === "IN_PROGRESS";
+        const holeyWarning = previousRunWarning(file, resumed);
+        if (holeyWarning !== null) ctx.log(holeyWarning);
         let row: Record<string, unknown> | null = null;
         if (!resumed) {
+          // The run's limits, frozen here: `counters route` reads them for the whole run.
+          const asks = readBkitConfig(where.tree).asks;
+          const limits = Object.fromEntries(
+            ASK_POINTS.filter((p) => p.startsWith(`${workflow}.`)).map((p) => [p, asks[p]]),
+          );
           row = {
             type: "workflow-started",
             workflow,
             at: statusTimestamp(),
             parentSha: headSha(path.dirname(file)),
+            ...(Object.keys(limits).length === 0 ? {} : { limits }),
           };
           fs.appendFileSync(file, appendLine(row as StatusEvent));
         }
@@ -2019,6 +2179,7 @@ export const workflowsCommand: CommandSpec = {
     fail: {
       summary:
         "Failure Path: workflow-failed row, abort rebase, release lock, clear sentinels (with --token); the bkit:failed labels and the failure comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         { ...FID_FLAG, required: false, help: "feature id (needed with --token)" },
@@ -2075,7 +2236,7 @@ export const workflowsCommand: CommandSpec = {
       ],
       output: {
         row: "the appended workflow-failed row, or null (no --token, or no status.jsonl)",
-        rebaseAborted: "an in-progress rebase was found and aborted",
+        rebaseAborted: "an in-progress rebase or merge was found and aborted",
         lock: "{path, existed, released, heldBy}: heldBy is another owner's lock line, left in place; null without --token",
         sentinels: "[{name, path}] sentinels that existed before this call removed them",
         handoverNeeded:
@@ -2103,6 +2264,7 @@ export const workflowsCommand: CommandSpec = {
     handover: {
       summary:
         "Keep a failed run's record: commit and push it on the feature branch, or land its logs and ledgers on dev (--push from dev / main, ship's --flush); print the handover comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2163,6 +2325,7 @@ export const workflowsCommand: CommandSpec = {
     close: {
       summary:
         "Grade compliance, workflow-done row, counter + outcome telemetry, report, artifact links; --flush lands ship's close on dev.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2212,6 +2375,16 @@ export const workflowsCommand: CommandSpec = {
         },
         ...COMMENT_FLAGS,
         { name: "tree", type: "string", help: "the close comment links the tree of this ref" },
+        {
+          name: "ending",
+          type: "string",
+          help: "done|held (default done); held = a local build that published nothing",
+        },
+        {
+          name: "publish",
+          type: "string",
+          help: "build: true|false, the resolved publish value; recorded on the workflow-done and outcome rows",
+        },
         {
           name: "flush",
           type: "boolean",
@@ -2278,6 +2451,8 @@ export const workflowsCommand: CommandSpec = {
         roadmapFoldNeeded:
           "always true: append the feature row and re-render the board (not run here)",
         featureStatus: "roadmap status this close moves the feature to",
+        progressLine:
+          "--record-step: the exact chat progress line after a numbered completion is recorded",
         landed: "--flush: {ref, via: head-push | close-pr | close-pr-open}",
         worktree:
           "--flush: the `bkit worktrees remove` result once the close is on dev; null while the close PR is unmerged or the removal failed",
@@ -2316,6 +2491,7 @@ export const workflowsCommand: CommandSpec = {
           number: str(f.number),
           title: str(f.title),
           tree: str(f.tree),
+          ...closeEnding(f),
         };
         const finalParts = finalReturnParts(ctx, input.fid);
         if (f.flush === true) {
@@ -2341,6 +2517,7 @@ export const workflowsCommand: CommandSpec = {
     input: {
       summary:
         "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2391,6 +2568,7 @@ export const workflowsCommand: CommandSpec = {
     promote: {
       summary:
         "Design / plan close: the highest versioned draft becomes the canonical doc (anchor stamped, a changed canonical archived).",
+      use: "workflow",
       flags: [
         { ...WORKFLOW_FLAG, help: "design | plan" },
         FID_FLAG,
@@ -2422,6 +2600,7 @@ export const workflowsCommand: CommandSpec = {
     links: {
       summary:
         "The feature's docs and this workflow's logs on a ref as markdown links; optionally the close comment.",
+      use: "workflow",
       flags: [
         WORKFLOW_FLAG,
         FID_FLAG,
@@ -2487,6 +2666,7 @@ export const workflowsCommand: CommandSpec = {
     summary: {
       summary:
         "The Summary step: write {workflow}-summary.md next to --file with the run's verdict, reasons and next command.",
+      use: "workflow",
       flags: [
         { ...WORKFLOW_FLAG, help: "plan | design | build | debug | ship" },
         {
@@ -2505,6 +2685,11 @@ export const workflowsCommand: CommandSpec = {
           name: "pr",
           type: "string",
           help: "ship: the PR number; its size comes from gh pr view (left out when gh cannot answer)",
+        },
+        {
+          name: "publish",
+          type: "string",
+          help: "build: true|false, the resolved ending; false writes `Publish: held` and `Docs: not synced` (default true)",
         },
       ],
       output: {

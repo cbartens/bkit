@@ -9,10 +9,11 @@
 // unique. A finding at the location and severity of an earlier task that is still open
 // reruns that task (its Round value gains this round) rather than adding a twin; one whose
 // earlier task is done from an earlier round is a new task. It then names the route:
-// `fix` (run the tasks), `pause` (ask the owner) or `none`. More than `maxChallengeTasks`
-// new tasks in one merge writes nothing and pauses. The plan is checked in memory before
-// it is written, so a refused merge leaves every file as it was. A re-run with the same
-// reports appends nothing.
+// `fix` (run the tasks: every one is fixable, in any round), `pause` (a task is not
+// fixable: ask the owner) or `none`. More than `maxChallengeTasks` new tasks in one merge
+// writes nothing and pauses. The plan is checked in memory before it is written, so a
+// refused merge leaves every file as it was. A re-run with the same reports appends
+// nothing.
 //
 // bkit challenge gate — size the run's diff before the reviewers start. A small change
 // (under CHALLENGE_SMALL lines and files, `docs/plans/**` excluded) runs the security
@@ -24,9 +25,11 @@ import * as path from "node:path";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, DEV, EXIT, git, runGit } from "../lib.js";
 import { DIFF_BASE, EXIT_BASE, diffNumstat } from "./context.js";
+import { parseDecisionItems } from "./decisions.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
-import { parsePlanBlocks } from "./plan-blocks.js";
+import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
+import { grantCount } from "./counters.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
 import { ledgerRows } from "./workflows.js";
 /**
@@ -103,7 +106,7 @@ function findingsLog(text) {
     return { body: lines.slice(start + 1, end < 0 ? undefined : end).join("\n"), line: start + 2 };
 }
 /** The group wrapper a Findings Log gets when the reviewer wrote task blocks only. */
-const WRAP = ["<!-- bkit:group 1 start -->", "### GROUP 1: Findings"];
+const WRAP = ["<!-- bkit:group 1 start -->", "### TASK GROUP 1: Findings"];
 /**
  * One report's findings: each task block under `## Findings Log` (read through
  * `parsePlanBlocks`; a log with no group marker is read as one group) with its
@@ -173,7 +176,8 @@ export function mergeFindings(reports, accepted) {
     return { findings, dropped: all.length - findings.length };
 }
 /**
- * Locations named in a `Decision: Accept` item of any `build-decision-*.md` in `logDir`. An
+ * Locations named in a `Decision: Accept` item of any `build-decision-*.md` in `logDir`, the
+ * decision read by `parseDecisionItems` (so `Decision: A) Accept …` counts). An
  * `Accept (assumed)` counts too, so the next round does not raise it again; the build summary
  * and ship report it as assumed.
  */
@@ -183,12 +187,12 @@ export function acceptedLocations(logDir, cwd) {
         ? fs.readdirSync(logDir).filter((f) => /^build-decision-.*\.md$/.test(f))
         : [];
     for (const file of files) {
-        const items = fs.readFileSync(path.join(logDir, file), "utf-8").split(/^(?=\*\*Q\d+)/m);
-        for (const item of items.slice(1)) {
-            if (!/^Decision:\s*Accept\b/m.test(item))
+        const items = parseDecisionItems(fs.readFileSync(path.join(logDir, file), "utf-8"));
+        for (const item of items) {
+            if (!/^Accept\b/.test(item.decision ?? ""))
                 continue;
             // `path:line`, the path with or without an extension (`src/a.ts:10`, `Makefile:12`).
-            for (const m of item.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)) {
+            for (const m of item.text.matchAll(/(?<![\w@./-])[\w@./-]*[A-Za-z_][\w@./-]*:\d+/g)) {
                 const loc = normalizeLocation(m[0], cwd);
                 if (loc !== null)
                     out.add(loc);
@@ -207,6 +211,29 @@ const taskBlock = (n, f, round) => [
     ...f.tests.map((e) => `    - ${e}`),
     `<!-- bkit:task ${n} end -->`,
 ];
+/** The test tier `docs/testing.md` records for a test file's name. */
+const testTier = (file) => /\.integration\.test\./.test(file)
+    ? "Integration"
+    : /\.live\.test\./.test(file)
+        ? "@live (golden)"
+        : "Unit";
+/**
+ * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
+ * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.
+ * A file or name holding a `|` would split the row's cells, so it is refused, not written.
+ */
+function matrixRows(findings, firstTask) {
+    const refused = [];
+    const rows = findings.flatMap((f, i) => f.tests.map((entry) => {
+        const spans = [...entry.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim());
+        const file = spans[0] ?? "";
+        const name = spans[1] ?? entry.replace(/[`|]/g, "").trim();
+        if (file.includes("|") || name.includes("|"))
+            refused.push(`TASK ${firstTask + i} (${f.location}): its TEST FIRST test file or name holds a \`|\`, which breaks the Derived Test Matrix row`);
+        return `| ${name} | ${testTier(file)} | \`${file}\` | ${firstTask + i} |`;
+    }));
+    return { rows, refused };
+}
 /**
  * The findings as groups of task blocks, numbered from `firstTask` and `firstGroup`: a
  * group closes at `caps.maxPerGroup` tasks, or before a task that would take it past
@@ -234,7 +261,7 @@ function findingGroups(findings, firstTask, firstGroup, round, caps) {
     const lines = chunks.flatMap((chunk, g) => [
         ...(g === 0 ? [] : [""]),
         `<!-- bkit:group ${firstGroup + g} start -->`,
-        `### GROUP ${firstGroup + g}: Challenge round ${round} findings`,
+        `### TASK GROUP ${firstGroup + g}: Challenge round ${round} findings`,
         ...chunk.flatMap((f) => taskBlock(next++, f, round)),
         `<!-- bkit:group ${firstGroup + g} end -->`,
     ]);
@@ -242,36 +269,60 @@ function findingGroups(findings, firstTask, firstGroup, round, caps) {
 }
 /**
  * `plan` with the findings written as new groups after its last group (at the end when
- * it has none), tasks numbered from `firstTask`, grouped within `caps`.
+ * it has none), tasks numbered from `firstTask`, grouped within `caps`. A plan that
+ * carries a `Derived Test Matrix` gains a row per finding test, so the matrix check holds
+ * over the appended tasks too.
  */
 export function appendTasks(plan, findings, round, firstTask, caps) {
     const blocks = parsePlanBlocks(plan);
     const firstGroup = Math.max(0, ...blocks.groups.map((g) => g.group)) + 1;
     const { lines: block, tasks } = findingGroups(findings, firstTask, firstGroup, round, caps);
+    const matrix = derivedTestMatrix(plan);
+    const { rows, refused } = matrix === null ? { rows: [], refused: [] } : matrixRows(findings, firstTask);
+    // The matrix table's last row, or its separator line when it holds none: 0-based index.
+    const matrixAt = matrix === null ? -1 : (matrix.rows.at(-1)?.number ?? matrix.line + 1);
+    const lines = plan.split("\n");
+    if (matrixAt >= 0)
+        lines.splice(matrixAt, 0, ...rows);
+    const rowLines = matrixAt >= 0 && rows.length > 0
+        ? { from: matrixAt + 1, to: matrixAt + rows.length }
+        : undefined;
     const last = blocks.groups.at(-1);
     if (last === undefined) {
-        const body = plan.replace(/\n*$/, "");
+        const body = lines.join("\n").replace(/\n*$/, "");
         const from = body.split("\n").length + 2;
         return {
             text: `${body}\n\n${block.join("\n")}\n`,
             tasks,
-            written: { from, to: from + block.length - 1 },
+            written: { from, to: from + block.length - 1, rows: rowLines, refused },
         };
     }
-    const lines = plan.split("\n");
-    lines.splice(last.end, 0, "", ...block);
-    const from = last.end + 2;
-    return { text: lines.join("\n"), tasks, written: { from, to: from + block.length - 1 } };
+    const shift = matrixAt >= 0 && matrixAt <= last.end ? rows.length : 0;
+    lines.splice(last.end + shift, 0, "", ...block);
+    const from = last.end + shift + 2;
+    // Matrix rows below the last group move down by the block and its blank line.
+    const moved = rowLines !== undefined && shift === 0
+        ? { from: rowLines.from + block.length + 1, to: rowLines.to + block.length + 1 }
+        : rowLines;
+    return {
+        text: lines.join("\n"),
+        tasks,
+        written: { from, to: from + block.length - 1, rows: moved, refused },
+    };
 }
 /**
- * Why the merged `text` may not be written: a plan-check problem on the lines the merge
- * wrote (a malformed block, a group or task over its cap), or a written task whose
- * TEST FIRST names no test.
+ * Why the merged `text` may not be written: a refused matrix row, a plan-check problem on
+ * the lines the merge wrote (a malformed block, a group or task over its cap, a broken
+ * matrix row), or a written task whose TEST FIRST names no test.
  */
 function planProblems(text, written, added, caps) {
-    const problems = checkPlanText(text, caps)
-        .problems.filter((p) => p.line >= written.from && p.line <= written.to)
-        .map((p) => `line ${p.line}: ${p.message}`);
+    const at = (line, r) => r !== undefined && line >= r.from && line <= r.to;
+    const problems = [
+        ...written.refused,
+        ...checkPlanText(text, caps)
+            .problems.filter((p) => at(p.line, written) || at(p.line, written.rows))
+            .map((p) => `line ${p.line}: ${p.message}`),
+    ];
     const kinds = readTestFirst(text);
     for (const n of added) {
         const kind = kinds.find((s) => s.task === n)?.kind ?? "missing";
@@ -280,13 +331,15 @@ function planProblems(text, written, added, caps) {
     }
     return problems;
 }
+/** Stable identity shared by the challenge writer and its resolution reader. */
+export const lowDeferralKey = (fid, location) => `${fid}-challenge-low-${location.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.toLowerCase();
 /** LOW findings as `docs/deferrals.jsonl` rows, keyed by FID and location. */
 export function lowDeferrals(fid, findings) {
     return findings
         .filter((f) => f.severity === "LOW")
         .map((f) => ({
         kind: "deferral",
-        key: `${fid}-challenge-low-${f.location.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "")}`.toLowerCase(),
+        key: lowDeferralKey(fid, f.location),
         type: "issue",
         category: "correctness",
         severity: "LOW",
@@ -341,6 +394,7 @@ export const challengeCommand = {
     verbs: {
         gate: {
             summary: "Size the run's diff ({base}...HEAD, docs/plans/** excluded) and name the reviewers: small runs challenge-2 alone, large runs both. Writes a challenge-gate status row.",
+            use: "workflow",
             flags: [
                 {
                     name: "file",
@@ -402,6 +456,7 @@ export const challengeCommand = {
         },
         merge: {
             summary: "Merge the challenge reports' findings into the plan as tasks (LOW → deferral rows); prints the route: fix | pause | none.",
+            use: "workflow",
             flags: [
                 {
                     name: "report",
@@ -426,11 +481,11 @@ export const challengeCommand = {
                     name: "round",
                     type: "string",
                     required: true,
-                    help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts; any task from the last round routes to pause",
+                    help: "challenge round, 1 up to bkit.workflows.build.challenge.maxAttempts, one more full set per allowance-granted row for build.challenge in the log folder's status.jsonl",
                 },
             ],
             output: {
-                route: "fix (tasks to run), pause (a task is not fixable, the last round left tasks, or more than 4 x `bkit.workflows.tasks.maxPerGroup` new tasks) or none (nothing to run)",
+                route: "fix (tasks to run, every one fixable), pause (a task is not fixable, or more than 4 x `bkit.workflows.tasks.maxPerGroup` new tasks) or none (nothing to run)",
                 fixTasks: "comma-separated task numbers in `plan` this round runs: every task reopened, then every task appended; empty when none",
                 appended: "how many tasks this run wrote",
                 reopened: "comma-separated numbers of open earlier tasks a finding reported again (same location and severity); this round is added to their **Round:** value; empty when none",
@@ -451,14 +506,16 @@ export const challengeCommand = {
             run: (ctx) => {
                 const round = String(ctx.flags.round);
                 const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-                const maxRounds = readBkitConfig(top).asks["build.challenge"].max;
-                if (!/^[1-9][0-9]*$/.test(round) || Number(round) > maxRounds)
-                    throw new CommandError(EXIT.USAGE, `--round must be 1 to ${maxRounds} (bkit.workflows.build.challenge.maxAttempts), got "${round}"`);
-                const roundN = Number(round);
                 const abs = (p) => path.resolve(ctx.cwd, p);
                 const rel = (p) => path.relative(ctx.cwd, p).split(path.sep).join("/");
                 const planArg = String(ctx.flags.plan);
                 const logDir = abs(String(ctx.flags.log));
+                // Each allowance the owner granted at the used-up limit adds one full set of rounds.
+                const grants = grantCount(path.join(logDir, "status.jsonl"), "build", "build.challenge", undefined, false);
+                const maxRounds = readBkitConfig(top).asks["build.challenge"].max * (1 + grants);
+                if (!/^[1-9][0-9]*$/.test(round) || Number(round) > maxRounds)
+                    throw new CommandError(EXIT.USAGE, `--round must be 1 to ${maxRounds} (bkit.workflows.build.challenge.maxAttempts x (1 + ${grants} allowance(s) granted)), got "${round}"`);
+                const roundN = Number(round);
                 const fid = path.basename(logDir);
                 const reports = ctx.flags.report.map((r) => {
                     if (!fs.existsSync(abs(r)))
@@ -533,11 +590,7 @@ export const challengeCommand = {
                 if (after !== before)
                     writeAtomic(planAbs, after);
                 const running = [...fresh, ...open.map((x) => x.f)];
-                const route = fixTasks.length === 0
-                    ? "none"
-                    : roundN >= maxRounds || running.some((f) => !f.fixable)
-                        ? "pause"
-                        : "fix";
+                const route = fixTasks.length === 0 ? "none" : running.some((f) => !f.fixable) ? "pause" : "fix";
                 ctx.emit({
                     route,
                     fixTasks: fixTasks.join(","),

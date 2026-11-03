@@ -35,11 +35,12 @@
 
 // bkit:start
 
-// bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 // --- Shell detection: identical in every host's guardrails hook (bkit renders it from
 // one source). Needs `fs` and `path` in scope; the host's own code above declares them.
@@ -232,10 +233,10 @@ function shellEditTargets(cmd) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(hits) {
   return (
-    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). ` +
-    "Pre-edit gates only see edit/write tools, so a shell rewrite bypasses every one of them. " +
-    "Use the edit/write tool instead unless this is one of the sanctioned exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file). " +
-    "Not blocked — proceed if it is."
+    `bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. ` +
+    "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.\n" +
+    "Use the edit or write tool instead.\n" +
+    "If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed."
   );
 }
 
@@ -441,7 +442,7 @@ function gitDenyRule(g) {
   if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
     return {
       what: "git force-push",
-      fix: "Do not force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
+      fix: "NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
     };
   }
   return null;
@@ -496,13 +497,13 @@ function denyRule(c) {
   ) {
     return {
       what: "recursive delete of a filesystem root",
-      fix: "Do not run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
+      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
     };
   }
   if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
     return {
       what: "chmod -R 777 on the filesystem root",
-      fix: "Do not world-writable-chmod the filesystem root.",
+      fix: "NEVER make the filesystem root world-writable.",
     };
   }
   return null;
@@ -647,8 +648,8 @@ function classifyRead(filePath) {
 }
 
 // --- Antigravity hook contract: identical in bkit's three Antigravity hooks (bkit renders
-// it from one source). Needs `fs`, `os` and `path` in scope; the host's own code above
-// declares them.
+// it from one source). Needs `fs`, `os`, `path` and `crypto` in scope; the host's own code
+// above declares them.
 //
 // Live-verified on the agy CLI: PreToolUse stdin is `{ conversationId, toolCall: { name,
 // args }, workspacePaths, stepIdx, ... }` — no tool_name / tool_input / session_id / cwd.
@@ -689,29 +690,44 @@ function agCallSignature(toolName, input) {
 }
 
 // One record per (hook, conversation): two hooks on the same call each let its retry through.
+// Per user: on a temp dir users share (Linux `/tmp`) another user's copy cannot be written.
 function agRetryFile(hook, sessionId) {
   const safe =
     typeof sessionId === "string" ? sessionId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128) : "";
-  return path.join(os.tmpdir(), "bkit-antigravity-retry", `${hook}.${safe || "no-session"}.json`);
+  const user = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(
+    os.tmpdir(),
+    `bkit-antigravity-retry${user}`,
+    `${hook}.${safe || "no-session"}.json`,
+  );
 }
 
 /**
  * Delivers an advisory the only way Antigravity shows one to the model: deny the call
  * with the advisory as the reason, once. The identical call right after is the agent's
- * retry and is allowed.
+ * retry and is allowed. Fail-open: a retry-store error allows the call — each call is
+ * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
-  const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-  if (last === signature) {
-    fs.rmSync(file, { force: true });
+  // One-way digest of the call signature: the retry store is world-readable and has no
+  // TTL, so no tool argument (a shell command line with an inline secret, a file path)
+  // may rest on disk in cleartext.
+  const digest = crypto.createHash("sha256").update(signature).digest("hex");
+  try {
+    const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+    if (last === digest) {
+      fs.rmSync(file, { force: true });
+      return { decision: "allow" };
+    }
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, digest, "utf-8");
+  } catch {
     return { decision: "allow" };
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, signature, "utf-8");
   return {
     decision: "deny",
-    reason: `${advisory}\nBlocked once so you see this; repeat the same call to proceed.`,
+    reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
   };
 }
 
@@ -734,12 +750,12 @@ function decideRead(filePath) {
   if (v.tier === "deny") {
     return {
       decision: "deny",
-      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied. Do not read ${v.path}. Ask the user to supply needed material out-of-band.`,
+      reason: `Blocked by bkit Antigravity guardrails: reading private-key material is denied.\nNEVER read ${v.path}.\nAsk the user to supply what you need without putting the key in this conversation.`,
     };
   }
   return {
     decision: "ask",
-    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv / documented non-secret examples.`,
+    reason: `bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv or documented non-secret examples.`,
   };
 }
 
@@ -772,18 +788,18 @@ function bkitGuardrails(payload) {
   if (tier.tier === "ask") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. Do not run it unless the user asked for this exact command. Note that git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}`,
     };
   }
   if (tier.tier === "secret") {
     return {
       decision: "ask",
-      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env/secrets or private-key file, which may expose secrets. Prefer direnv / documented non-secret examples. Command: ${cmd}`,
+      reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
     };
   }
   const advisory =
     tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist. Confirm the destination is intended before relying on the result. Command: ${cmd}`
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
       : shellEditAdvisory(tier.edits);
   return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
 }

@@ -3,29 +3,35 @@
 
 # Google Cloud Run — container logs
 
-Fits: services running on Google Cloud Run. `context=runtime`: `gcloud logging read` on `cloud_run_revision` — `severity>=ERROR` plus the platform's `Memory limit … exceeded` lines. Those are container kills (503 / SIGKILL exit 137) the app itself never logs and an error tracker never sees: the container dies before its SDK flushes.
+Fits: services running on Google Cloud Run. The `context=runtime` block runs `gcloud logging read` on `cloud_run_revision` and returns the `severity>=ERROR` lines plus the platform's `Memory limit … exceeded` lines. Those lines are container kills (503 / SIGKILL exit 137). The app itself never logs them, and an error tracker never sees them, because the container dies before its SDK flushes.
 
-- Secret: none locally after `gcloud auth login`. Headless (cloud agents): `GCP_CLIENT_EMAIL` + `GCP_PRIVATE_KEY` of a service account with `roles/logging.viewer`; the block activates it only when the gcloud login cannot mint a token (none, or a stale one), in a throwaway gcloud config it deletes on exit, so your own gcloud config is never switched.
-- Non-secret: `GCP_PROJECT_ID` — uncomment the line in the block so cloud agents inherit it. Separate dev / prod projects: use the id whose logs you want. Optional `GCP_SERVICE` narrows to one service; `SINCE`, `GCP_N`, `GCP_FILTER`.
-- CLI: `gcloud`; the provision block installs it in cloud (GitHub-hosted Ubuntu runners already ship it). Uses `node` to build the key file.
+- Secret: none locally after `gcloud auth login`.
+- Secret in headless runs (cloud agents): `GCP_CLIENT_EMAIL` and `GCP_PRIVATE_KEY` of a service account with `roles/logging.viewer`. The block activates the service account only when the gcloud login cannot mint a token (no login, or a stale one). It does so in a throwaway gcloud config that it deletes on exit, so your own gcloud config is never switched.
+- Non-secret: `GCP_PROJECT_ID`. Uncomment its line in the block so cloud agents inherit it.
+- **If** dev and prod are separate projects → use the `GCP_PROJECT_ID` whose logs you want.
+- Optional non-secret: `GCP_SERVICE` narrows the read to one service. The other knobs are `SINCE`, `GCP_N` and `GCP_FILTER`.
+- CLI: `gcloud`. The provision block installs it in cloud, and GitHub-hosted Ubuntu runners already ship it. The block also uses `node` to build the key file.
 
 Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`.
 
 <!-- context-fetch:start cloudrun context=runtime -->
 
 ```bash
-# GCP Cloud Run CONTAINER logs — platform / container errors (read-only), incl. OOM kills
+# GCP Cloud Run container logs (read-only): platform and container errors, including OOM kills
 # ("Memory limit of NNNN MiB exceeded" → 503 / SIGKILL exit 137) that never reach the app's own
 # logs or its error tracker.
-# GCP_PROJECT_ID is non-secret — uncomment + set the line below so cloud agents inherit it.
-# Optional GCP_SERVICE narrows to one service; unset = every cloud_run_revision in the project:
+# GCP_PROJECT_ID is non-secret. Uncomment and set the line below so cloud agents inherit it.
+# Optional GCP_SERVICE narrows the read to one service. Unset, the block reads every
+# cloud_run_revision in the project:
 # GCP_PROJECT_ID="your-gcp-project-id"
 # GCP_SERVICE="your-service-name"
-# Headless auth: active gcloud login used ONLY when `print-access-token` works; a stale user
-# login lists ACTIVE yet fails every read with reauth. No working login → service account from
-# GCP_CLIENT_EMAIL + GCP_PRIVATE_KEY (`\n`-escaped PEM un-escaped) in a throwaway CLOUDSDK_CONFIG;
-# operator's gcloud config untouched. Locally: `gcloud auth login` once, skip both. Failed
-# `gcloud logging read` → `skipped`. PII-safe: scalar / id fields only, never the raw payload.
+# Headless auth: the block uses the active gcloud login only when `print-access-token` works. A
+# stale user login still lists as ACTIVE, yet fails every read with reauth. With no working
+# login, the block uses a service account built from GCP_CLIENT_EMAIL and GCP_PRIVATE_KEY (the
+# `\n`-escaped PEM, un-escaped) in a throwaway CLOUDSDK_CONFIG, and leaves the operator's gcloud
+# config untouched. Locally, run `gcloud auth login` once and skip both variables.
+# A failed `gcloud logging read` → `skipped`.
+# PII-safe: the block prints scalar and id fields only, never the raw payload.
 # Customise: GCP_SERVICE; SINCE freshness; GCP_N; GCP_FILTER (add textPayload:"<prefix>" for app stdout). Positive control (suggested): run once with GCP_FILTER widened to a known log line; nothing back = reader broken, not clean.
 command -v gcloud >/dev/null 2>&1 \
   || { echo "[context-fetch:cloudrun] skipped — gcloud CLI missing" >&2; exit 0; }
@@ -76,9 +82,11 @@ jq '[.[] | {timestamp, severity,
 <!-- context-fetch:provision cloudrun -->
 
 ```bash
-# Install the gcloud CLI in cloud if absent (self-guarded; no-op when present).
-# The install script needs no root or apt; --disable-prompts writes the SDK to $HOME and appends
-# it to the shell profile, so later context-fetch shells (profile-sourced) find it.
+# Install the gcloud CLI in cloud if it is absent. The block guards itself and does nothing when
+# the CLI is present.
+# The install script needs no root and no apt. With --disable-prompts it writes the SDK to $HOME
+# and appends it to the shell profile, so later context-fetch shells, which source the profile,
+# find it.
 command -v gcloud >/dev/null 2>&1 \
   || curl -sSL https://sdk.cloud.google.com | bash -s -- --disable-prompts >/dev/null 2>&1
 ```
