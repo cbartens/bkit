@@ -2,7 +2,12 @@ import * as path from "node:path";
 
 import { defineConfig } from "vitest/config";
 
-import { unitTimeouts } from "./vitest.timeout-budget.ts";
+import { planUnitLoad, unitTimeouts } from "./vitest.timeout-budget.ts";
+
+// The 1-minute load average lags the load this run's workers are about to make, so the first
+// test files would get a budget for a quiet machine. Declare that load before any worker
+// starts; every budget read below and in vitest.setup.ts takes it as a floor.
+planUnitLoad();
 
 // `bkit tests run` hands every gate a folder in BKIT_TEST_REPORT_DIR and counts the
 // failing test cases in the JUnit files written there. One file per vitest process,

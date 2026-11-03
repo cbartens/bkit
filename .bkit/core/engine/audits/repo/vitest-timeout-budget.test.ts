@@ -9,6 +9,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { loadFactor, planUnitLoad, plannedLoadPerCore } from "../../../../../vitest.timeout-budget";
+
 const ROOT = process.cwd();
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf-8");
 // Whole-line `//` and block comments only, so a mention in prose cannot satisfy a code
@@ -35,10 +37,46 @@ describe("the test budget is load-scaled, capped, and CI-pinned", () => {
   });
 });
 
+describe("the run declares the load it is about to add", () => {
+  it("projects the load now plus one core per worker, over the cores", () => {
+    expect(plannedLoadPerCore(9, 3, 10)).toBeCloseTo(1.2);
+    expect(plannedLoadPerCore(9, 25, 10)).toBeCloseTo(3.4);
+  });
+
+  it("raises the factor above a quiet reading", () => {
+    expect(loadFactor(3, 10, { UNIT_PLANNED_LOAD_PER_CORE: "3.40" })).toBeCloseTo(3.4);
+  });
+
+  it("sets the planned load from vitest's default of a worker per core but one", () => {
+    const env: NodeJS.ProcessEnv = {};
+    expect(planUnitLoad(env, 25, 10)).toBe("3.40");
+    expect(env.UNIT_PLANNED_LOAD_PER_CORE).toBe("3.40");
+  });
+
+  it("keeps a planned load a caller already set", () => {
+    const env: NodeJS.ProcessEnv = { UNIT_PLANNED_LOAD_PER_CORE: "2.00" };
+    expect(planUnitLoad(env, 25, 10)).toBe("2.00");
+    expect(env.UNIT_PLANNED_LOAD_PER_CORE).toBe("2.00");
+  });
+
+  it("vitest.config.ts plans the load before it reads the budget", () => {
+    const config = code("vitest.config.ts");
+    expect(config).toMatch(/planUnitLoad\(\);/);
+    expect(config.indexOf("planUnitLoad();")).toBeLessThan(config.indexOf("...unitTimeouts()"));
+  });
+
+  it("CONTROL — a config that never plans the load is caught", () => {
+    const bad = `import { defineConfig } from "vitest/config";\nexport default defineConfig({ test: { ...unitTimeouts() } });\n`;
+    expect(/planUnitLoad\(\);/.test(bad)).toBe(false);
+  });
+});
+
 describe("the runners re-read the budget per test file", () => {
   it("vitest.config.ts spreads the load-scaled unit budget", () => {
     const config = code("vitest.config.ts");
-    expect(config).toMatch(/import \{ unitTimeouts \} from "\.\/vitest\.timeout-budget\.ts"/);
+    expect(config).toMatch(
+      /import \{[^}]*\bunitTimeouts\b[^}]*\} from "\.\/vitest\.timeout-budget\.ts"/,
+    );
     expect(config).toMatch(/\.\.\.unitTimeouts\(\)/);
   });
 
