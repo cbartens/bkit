@@ -202,3 +202,7 @@
 {"type":"owner-answer","workflow":"build","at":"2026-11-02T07:35:10Z"}
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:35:29Z","noun":"workflows","verb":"handover","flags":["list-stray","workflow","fid","month","worktree"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-02T07:35:44Z","noun":"workflows","verb":"handover","flags":["post","workflow","fid","month","push","worktree"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-02T07:39:58Z","noun":"locks","verb":"release","flags":["kind","workflow","fid","month","token"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:15:28Z","noun":"steps","verb":"gate","flags":["workflow","step","fid","month","token","issue","placeholder"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:15:36Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:15:37Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
