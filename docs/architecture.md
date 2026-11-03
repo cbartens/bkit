@@ -83,6 +83,7 @@ cbartens/bkit (this repo)
 │                           #   bkit-test-file.mjs (`bkit:test:file`: runner picked by test file type)
 ├── scripts/gate/           # bkit-repo-only bkit-gate-changed.mjs (`bkit:gate:changed`: checks on
 │                           #   the changed files bkit passes it)
+├── vitest.*.ts             # Root test-runner configurations and shared test helpers
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/core/             # Payload bkit writes and keeps current: engine/, workflows/,
 │                           #   prompts/, docs/templates/, the hooks, AGENTS.md and .agents/*.md,
