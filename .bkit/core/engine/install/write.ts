@@ -610,6 +610,11 @@ export function ensurePackageJsonScripts(
 export interface WriteEntry {
   path: string;
   action: "write" | "update" | "append";
+  /**
+   * A copy-and-own file a brand migration rewrote (`docs/migrations.md`). It stays in the
+   * write set for dry-run parity and `bkit check`, and never gets a canonical hash.
+   */
+  unhashed?: true;
 }
 
 export interface WriteSet {

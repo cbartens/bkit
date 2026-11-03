@@ -23,7 +23,7 @@ function toolVersionRuns(cmd: string): boolean {
 }
 
 /**
- * Detect a prose gate that cannot run here: package.json `lint:prose` calls `bkit ci prose`,
+ * Detect a prose gate that cannot run here: package.json `bkit:lint:prose` calls `bkit ci prose`,
  * which fails without vale, and vale is not on PATH. Null when the gate is not adopted.
  */
 export function detectValeMissing(cwd: string): PreflightFinding | null {
@@ -32,7 +32,7 @@ export function detectValeMissing(cwd: string): PreflightFinding | null {
   const scripts = read.pkg["scripts"];
   const lintProse =
     typeof scripts === "object" && scripts !== null
-      ? (scripts as Record<string, unknown>)["lint:prose"]
+      ? (scripts as Record<string, unknown>)["bkit:lint:prose"]
       : undefined;
   if (typeof lintProse !== "string" || !lintProse.includes("bkit ci prose")) return null;
   if (toolVersionRuns("vale")) return null;
@@ -41,7 +41,7 @@ export function detectValeMissing(cwd: string): PreflightFinding | null {
     id: "vale-not-installed",
     severity: "advisory",
     detect:
-      "package.json `lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `lint:prose` fails on this machine.",
+      "package.json `bkit:lint:prose` runs `bkit ci prose`, but vale is not on PATH — the prose gate fails, so every pre-push gate that runs `bkit:lint:prose` fails on this machine.",
     action:
       "Install vale, then download its styles:\n\n    brew install vale    # macOS; other platforms: https://vale.sh/docs/install\n    vale sync\n\nCI and the cloud templates install vale already; this is for local machines.",
   };
@@ -64,7 +64,7 @@ export function detectValePackageNotSynced(cwd: string): PreflightFinding | null
       detect:
         "vale is on PATH but the repo has no .vale.ini and .vale/styles/write-good/ is absent — prose linting does not run.",
       action:
-        "Adopt bkit's Vale template first: copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/House/*.yml to .vale/styles/House/. Then run `vale sync` (one-time per repo) to download the write-good package the copied .vale.ini names. `vale sync` reads its package list from .vale.ini, so it cannot fetch write-good before that file exists.",
+        "Adopt bkit's Vale template first: copy .bkit/templates/.vale.ini to .vale.ini and .bkit/templates/.vale/styles/Bkit/*.yml to .vale/styles/Bkit/. Then run `vale sync` (one-time per repo) to download the write-good package the copied .vale.ini names. `vale sync` reads its package list from .vale.ini, so it cannot fetch write-good before that file exists.",
     };
   }
 
@@ -73,7 +73,7 @@ export function detectValePackageNotSynced(cwd: string): PreflightFinding | null
     severity: "advisory",
     detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
     action:
-      "Run `vale sync` (one-time per repo) to download the write-good package. lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
+      "Run `vale sync` (one-time per repo) to download the write-good package. bkit:lint:prose tries to self-heal this (copy from the main worktree, then `vale sync`) and fails if it cannot.",
   };
 }
 

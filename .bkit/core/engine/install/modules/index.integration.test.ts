@@ -87,7 +87,7 @@ afterEach(() => {
 // Templates are the consumer's: install leaves an adopted copy alone
 // ---------------------------------------------------------------------------
 
-describe("install never writes or flags an adopted template copy", () => {
+describe("install never writes or flags an adopted template copy outside the exact-shipped-text brand migrations", () => {
   const ALL = new Set<import("../../cli").ModuleFlag>(["core", "claude", "cursor", "cloud"]);
   // The cursor module renders agents, so it needs the real model catalog.
   const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");

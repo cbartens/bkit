@@ -127,7 +127,7 @@
 - **One runner, two callers:** One script is the only definition of each test tier, and CI calls the same file. Do not inline tier commands into CI workflows or add a second local copy.
 - **Tests move with code:** Update every test that exercises changed source in the same commit.
 - **Debug on demand:** When an E2E / `@live` failure is still unexplained after `Local tests first` and `Existing evidence first`, re-run the failing tests against the deployed boundary, not only locally.
-- **Slop gate:** When the gate runs `slop:delta`, fix only net-new findings, not the baseline. Do not delete, move or merge files, or rewire callers, to clear structural findings.
+- **Slop gate:** When the gate runs `bkit:slop:delta`, fix only net-new findings, not the baseline. Do not delete, move or merge files, or rewire callers, to clear structural findings.
 - **Check secrets first:** Before asking for a secret, token or env var, probe direnv for its presence with `direnv exec . sh -c '[ -n "${VAR}" ] && echo set || echo unset'`, and ask only when it prints `unset`. Report names, NEVER values (`Secrets in output`).
 - **New worktree:** `bkit worktrees setup` prepares a new worktree. In a worktree made without it, before the first test, verify or build command, run `direnv allow`, because `git worktree add` does not carry direnv trust, then bring in the gitignored inputs (env files, installed dependencies, build outputs, tool assets): copy the `package.json` `bkit.workflows.worktree.copy` entries, link read-only inputs, and copy or reinstall written ones. A red result from a missing input is a setup problem, not a failure of the change under test. Remove the links before `git worktree remove`, and NEVER `--force` the removal of a worktree that holds real work.
 - **Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
@@ -182,6 +182,7 @@
 #### Naming Conventions
 
 - **Tests:** Name Vitest unit tests `*.test.ts` and Vitest integration tests `*.integration.test.ts`.
+- **Branding:** Give every file, `package.json` script, CI check (workflow `name:` and job display name) and style name that a consumer or their agent runs or sees in a consumer repo the prefix `bkit-` (scripts `bkit:`). Engine and hook internals never carry it, and neither do names a third-party tool fixes (`.oxlintrc.json`, `dependabot.yml`, `.vale.ini`, `.husky/*`) or generic stack scripts (`typecheck`, `lint`, `test`). `.bkit/core/engine/audits/templates/branding.test.ts` enforces it.
 
 #### Repo Authoring
 

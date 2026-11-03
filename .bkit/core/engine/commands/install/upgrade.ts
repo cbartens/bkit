@@ -1025,12 +1025,14 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   // exit), so feed those writes into canonicalHashes — keeping install/upgrade `.bkit/version`
   // parity.
   if (!upgradeFlags.dryRun) {
-    const renderedDocPaths = renderWs.writes.map((w) =>
-      path.relative(
-        process.cwd(),
-        path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path),
-      ),
-    );
+    const renderedDocPaths = renderWs.writes
+      .filter((w) => !w.unhashed)
+      .map((w) =>
+        path.relative(
+          process.cwd(),
+          path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path),
+        ),
+      );
     updateCanonicalHashesAfterUpgrade(
       {
         updated: [

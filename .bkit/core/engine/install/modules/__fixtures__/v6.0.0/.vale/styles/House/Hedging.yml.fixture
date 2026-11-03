@@ -1,0 +1,12 @@
+# Example. Copy into the repo and own it.
+# bkit install does not write this file and does not overwrite a copy.
+extends: existence
+message: "Hedging: '%s' — remove or commit to a position."
+level: warning
+tokens:
+  - it seems like
+  - perhaps
+  - might be
+  - arguably
+  - it's worth noting
+  - it could be argued

@@ -442,7 +442,7 @@ This matters most in elevated-permission workflows (`packages: write`, `id-token
 | Updater | Copy | When |
 | --- | --- | --- |
 | Renovate (rules) | `.bkit/templates/.github/renovate.json5` → `.github/renovate.json5` | Default. Grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. |
-| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/bkit-renovate.yml` → `.github/workflows/bkit-renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
+| Renovate (self-hosted runner) | `.bkit/templates/.github/workflows/bkit-renovate.yml` → `.github/workflows/bkit-renovate.yml` | Mend's 3 GB runner OOMs (`kernel-out-of-memory`) on a large pnpm dependency graph. `ubuntu-latest` is ~16 GB. Edit `runs-on` in the copy. |
 | Dependabot | `.bkit/templates/.github/dependabot.yml` → `.github/dependabot.yml` | First-party GitHub. No App. One PR per package. No lockfile-maintenance job. |
 
 Use one, because both open PRs for the same packages. Record your choice in `bkit.dependencies.updater`: `"renovate"`, `"dependabot"`, or `"none"` to run no updater. `bkit install` / `bkit upgrade` fill an empty value from the one config present. `bkit check` blocks when the value and the configs disagree: a config the value does not name (`dep-updater-unset`, `dep-updater-mismatch`), or a named updater with no config (`dep-updater-mismatch`). Renovate config is found at every location Renovate reads (`renovate.json*`, `.github/` and `.gitlab/` `renovate.json*`, `.renovaterc*`, a `package.json` `renovate` block). Dependabot config is found at `.github/dependabot.yml` / `.yaml`.

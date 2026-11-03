@@ -169,7 +169,7 @@ const CLAUDE_MANIFEST = [
 // Seeded by core on every install and upgrade (seedCorePackageJsonScripts,
 // install/modules/index.ts): add-if-missing, so a name already present is never touched,
 // and uninstall leaves every name in place. The tool scripts the defaults chain
-// (typecheck, lint, format:check, lint:prose, slop:delta, lint-staged) are the
+// (typecheck, lint, format:check, bkit:lint:prose, bkit:slop:delta, lint-staged) are the
 // consumer's to add — `.bkit/templates.md` lists them; the
 // `gate-missing-called-scripts` advisory names any that are missing.
 //
@@ -178,7 +178,7 @@ const CLAUDE_MANIFEST = [
 // directly, one step each.
 //
 // `lint:slop` is in no gate: `slop-scan scan` is report-only and never fails. The gate
-// that fails on new findings is `slop:delta`.
+// that fails on new findings is `bkit:slop:delta`.
 //
 // NOT SEEDED: the three deeper gates (…-integration, …-integration-e2e,
 // …-integration-e2e-live) are absent unless the consumer writes them. Each is one line
@@ -192,12 +192,12 @@ export const BKIT_GATE_SCRIPTS = {
     "bkit:gate:format": "pnpm lint-staged",
     // `.husky/pre-push` on a min push (every file is one bkit writes or `bkit.testing.minPushPaths` adds): no code, so
     // no typecheck, lint or tests. Off the chain. Add any test that reads a min-push file.
-    "bkit:gate:min": "pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:min": "pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta",
     // Everything that needs no test runner. Every part has a matching step in the
     // bkit-tests-static CI job; audits/templates/template-ci-yml.test.ts fails when one is missing.
     // Callers: build's plan-execute loop between tasks, and the `.husky/pre-push` revert
     // path.
-    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm lint:prose && pnpm slop:delta",
+    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta",
     // The default local gate: `.husky/pre-push` (when no `…-integration` gate is declared),
     // build Steps 8 and 12, the remediates. `pnpm test` is the unit tier only: a test file the
     // integration gate also runs must not match it.

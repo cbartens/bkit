@@ -154,7 +154,7 @@ describe("release.yml structural assertions (BAR-138)", () => {
       "pnpm typecheck",
       "pnpm test",
       "pnpm format:check",
-      "pnpm lint:prose",
+      "pnpm bkit:lint:prose",
       "pnpm lint:slop",
     ]) {
       expect(content, step).not.toContain(step);

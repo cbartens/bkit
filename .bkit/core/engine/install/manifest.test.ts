@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  BKIT_GATE_SCRIPTS,
   getInstallManifest,
   getModuleManifest,
   CLOUD_MANIFEST_CLAUDE,
@@ -394,7 +395,7 @@ describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .op
 });
 
 // ---------------------------------------------------------------------------
-// lint:prose — shipped prose-gate contract
+// bkit:lint:prose — shipped prose-gate contract
 //
 // The value `.bkit/templates.md` § Gate tool scripts hands consumers; it runs in their
 // pre-push hooks. The behaviour (unavailable vale, write-good restore, vale exit) lives in
@@ -408,16 +409,27 @@ const GATE_TOOL_SCRIPTS = ((): Record<string, string> => {
 })();
 
 describe("gate tool script template values", () => {
-  it("lint:prose and slop:delta call their bkit ci gates", () => {
-    expect(GATE_TOOL_SCRIPTS["lint:prose"]).toBe("bkit ci prose");
-    expect(GATE_TOOL_SCRIPTS["slop:delta"]).toBe("bkit ci slop");
+  it("bkit:lint:prose and bkit:slop:delta call their bkit ci gates", () => {
+    expect(GATE_TOOL_SCRIPTS["bkit:lint:prose"]).toBe("bkit ci prose");
+    expect(GATE_TOOL_SCRIPTS["bkit:slop:delta"]).toBe("bkit ci slop");
   });
 
-  it("this repo's lint:prose calls the same gate", () => {
+  it("this repo's bkit:lint:prose calls the same gate", () => {
     const pkg = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
       scripts: Record<string, string>;
     };
-    expect(pkg.scripts["lint:prose"]).toMatch(/^bkit ci prose(?: --glob='[^']+')+$/);
+    expect(pkg.scripts["bkit:lint:prose"]).toMatch(/^bkit ci prose(?: --glob='[^']+')+$/);
+  });
+});
+
+describe("gate chains", () => {
+  it("gate chains call bkit:lint:prose and bkit:slop:delta", () => {
+    const chains = [BKIT_GATE_SCRIPTS["bkit:gate:min"], BKIT_GATE_SCRIPTS["bkit:gate:static"]];
+    for (const chain of chains) {
+      expect(chain).toContain("pnpm bkit:lint:prose");
+      expect(chain).toContain("pnpm bkit:slop:delta");
+      expect(chain).not.toMatch(/pnpm (lint:prose|slop:delta)/);
+    }
   });
 });
 

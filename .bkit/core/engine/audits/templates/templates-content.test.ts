@@ -746,8 +746,8 @@ describe("templates", () => {
 
 describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
   const SCRIPT = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd-env.sh");
-  const PLIST = path.resolve(".bkit/templates/scripts/launchd/ai.bkit.launchd.plist");
-  const ENV_EXAMPLE = path.resolve(".bkit/templates/scripts/launchd/launchd.env.example");
+  const PLIST = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd.plist");
+  const ENV_EXAMPLE = path.resolve(".bkit/templates/scripts/launchd/bkit-launchd.env.example");
 
   it("ships the loader, the LaunchAgent plist and the env example", () => {
     expect(fs.existsSync(SCRIPT)).toBe(true);
@@ -785,7 +785,7 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
     });
   });
 
-  describe("ai.bkit.launchd.plist", () => {
+  describe("bkit-launchd.plist", () => {
     const content = fs.readFileSync(PLIST, "utf-8");
 
     it("is a LaunchAgent that loads at login and re-runs on env-file writes", () => {
@@ -802,7 +802,7 @@ describe("launchd GUI-env templates (.bkit/templates/scripts/launchd/)", () => {
     });
   });
 
-  describe("launchd.env.example", () => {
+  describe("bkit-launchd.env.example", () => {
     const content = fs.readFileSync(ENV_EXAMPLE, "utf-8");
 
     it("ships example BKIT_ token keys with empty values", () => {
@@ -819,8 +819,19 @@ describe(".bkit/templates.md gate tool scripts (consumers copy and run them)", (
   const block = /```json\n([\s\S]*?)\n```/.exec(section);
   const scripts = JSON.parse(block?.[1] ?? "{}") as Record<string, string>;
 
-  it("lists slop:delta as the bkit ci slop verb", () => {
-    expect(scripts["slop:delta"]).toBe("bkit ci slop");
+  it("lists bkit:slop:delta as the bkit ci slop verb", () => {
+    expect(scripts["bkit:slop:delta"]).toBe("bkit ci slop");
+  });
+
+  const graphSection = doc.slice(doc.indexOf("## graphify"));
+  const graphBlock = /```json\n([\s\S]*?)\n```/.exec(graphSection);
+  const graphScripts = JSON.parse(graphBlock?.[1] ?? "{}") as Record<string, string>;
+
+  it("lists the graphify scripts under bkit:graph names", () => {
+    const names = Object.keys(graphScripts).filter((k) => /^(bkit:)?graph(:|$)/.test(k));
+    expect(names).toContain("bkit:graph");
+    expect(names).toContain("bkit:graph:check");
+    expect(names.filter((k) => !k.startsWith("bkit:"))).toEqual([]);
   });
 
   it("lists a lint value that runs Oxlint type-aware with the shipped config and fails on any hit", () => {

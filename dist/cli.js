@@ -642,7 +642,7 @@ Core (implicit — no flag; installed/upgraded on every install):
   .gitattributes managed blocks, docs/, .bkit/*.md, .bkit/version, the template copies in
   .bkit/templates/, and the bkit:gate:* / bkit:deps:* package.json scripts every workflow
   runs (added when missing, never overwritten, left by uninstall). The tool scripts those
-  gates chain (typecheck, lint, format:check, lint:prose, slop:delta) and their devDeps are
+  gates chain (typecheck, lint, format:check, bkit:lint:prose, bkit:slop:delta) and their devDeps are
   yours to add: see .bkit/templates.md.
 
 Module flags (composable; symmetric install ↔ uninstall):

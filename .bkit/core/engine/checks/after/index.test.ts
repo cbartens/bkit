@@ -178,9 +178,9 @@ describe("renderAdvisoriesMarkdown", () => {
     expect(md).not.toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose", () => {
+  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer bkit:lint:prose", () => {
     // Empty and populated render paths must both lead with the marker, since the
-    // gitignored artifact is linted on-disk by the shipped lint:prose glob.
+    // gitignored artifact is linted on-disk by the shipped bkit:lint:prose glob.
     const empty = renderAdvisoriesMarkdown([], {
       mode: "check",
       version: "2.8.2",

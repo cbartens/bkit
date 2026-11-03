@@ -60,7 +60,7 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
           if [ -n "$CAP_UNKNOWN" ]; then
             echo "[pre-push] WARNING: $CAP_DOC was NOT checked — $CAP_UNKNOWN, so whether '$CAP_BRANCH' has an open PR is unknown." >&2
             echo "[pre-push]    If a PR is open, CI's Check Capability Register fails it on a stale register; run" >&2
-            echo "[pre-push]    pnpm graph:refresh, commit, and push again." >&2
+            echo "[pre-push]    pnpm bkit:graph:refresh, commit, and push again." >&2
           fi
         fi
         ;;
@@ -70,11 +70,11 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
     if ! command -v graphify >/dev/null 2>&1; then
       echo "[pre-push] WARNING: $CAP_DOC was NOT checked — graphify is not installed." >&2
       echo "[pre-push]    CI's Check Capability Register checks it for $CAP_GATE_WHAT; if it reds there, run" >&2
-      echo "[pre-push]    pnpm graph:refresh, commit, and push again. Install graphify to check before pushing:" >&2
+      echo "[pre-push]    pnpm bkit:graph:refresh, commit, and push again. Install graphify to check before pushing:" >&2
       echo "[pre-push]    brew install uv && uv tool install '$(bash scripts/graphify/bkit-graphify.sh spec)'" >&2
     elif ! bash scripts/graphify/bkit-graphify.sh check-at "$CAP_GATE_SHA" < /dev/null; then
       echo "[pre-push] BLOCKED: $CAP_DOC is not what the pushed commit builds (diff above); CI fails $CAP_GATE_WHAT on it." >&2
-      echo "[pre-push] Fix: pnpm graph:refresh, git add the files it rewrote, git commit, then push again." >&2
+      echo "[pre-push] Fix: pnpm bkit:graph:refresh, git add the files it rewrote, git commit, then push again." >&2
       exit 1
     fi
   else
@@ -85,7 +85,7 @@ if [ -f scripts/graphify/bkit-graphify.sh ] && [ -f "$CAP_DOC" ]; then
       CAP_CHANGED=$(git diff --name-only "$CAP_SHA..HEAD" -- '*.ts' '*.tsx' 2>/dev/null | wc -l | tr -d ' ')
       if [ "${CAP_CHANGED:-0}" -gt 0 ]; then
         echo "[pre-push] NOTE: $CAP_DOC diagrams were built at $CAP_SHA; $CAP_CHANGED source files changed since." >&2
-        echo "[pre-push]       Refresh when convenient:  pnpm graph:refresh" >&2
+        echo "[pre-push]       Refresh when convenient:  pnpm bkit:graph:refresh" >&2
         echo "[pre-push]       Not a gate on this branch until it has an open PR into dev; a push to dev is blocked until it is current." >&2
       fi
     fi

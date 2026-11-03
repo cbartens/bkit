@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as os from "node:os";
-import { guardCoreRoot, listMdFiles, removeOrphans } from "./core";
+import { guardCoreRoot, listMdFiles, removeOrphans, renameScriptTokens } from "./core";
 import { CODEX_SKILLS_DIR } from "./codex";
 import { ANTIGRAVITY_AGENTS_DIR, ANTIGRAVITY_SKILLS_DIR } from "./antigravity";
 
@@ -254,5 +254,75 @@ describe("removeOrphans — prune stale bkit mirror files, allowlisted dirs only
       removeOrphans(".codex/agents", new Set(), true, "bkit-", { extension: ".toml" }),
     ).toEqual(["bkit-stale.toml"]);
     expect(fs.existsSync(".codex/agents/bkit-stale.toml")).toBe(true);
+  });
+});
+
+describe("renameScriptTokens", () => {
+  const renames = {
+    "lint:prose": "bkit:lint:prose",
+    "slop:delta": "bkit:slop:delta",
+    "graph:update": "bkit:graph:update",
+  };
+
+  it("renameScriptTokens rewrites whole pnpm tokens only", () => {
+    expect(renameScriptTokens("pnpm lint:prose", renames)).toBe("pnpm bkit:lint:prose");
+    expect(renameScriptTokens("pnpm run slop:delta && pnpm graph:update", renames)).toBe(
+      "pnpm run bkit:slop:delta && pnpm bkit:graph:update",
+    );
+    expect(renameScriptTokens("pnpm graph:update-all", renames)).toBe("pnpm graph:update-all");
+    expect(renameScriptTokens("pnpm lint:prose:fix", renames)).toBe("pnpm lint:prose:fix");
+    expect(renameScriptTokens("npm run lint:prose", renames)).toBe("npm run lint:prose");
+    expect(renameScriptTokens("echo lint:prose", renames)).toBe("echo lint:prose");
+  });
+
+  it("renameScriptTokens rewrites tokens after pnpm flags", () => {
+    expect(renameScriptTokens("pnpm -s lint:prose", renames)).toBe("pnpm -s bkit:lint:prose");
+    expect(renameScriptTokens("pnpm run --silent slop:delta", renames)).toBe(
+      "pnpm run --silent bkit:slop:delta",
+    );
+    expect(renameScriptTokens("pnpm --reporter=silent run -s lint:prose", renames)).toBe(
+      "pnpm --reporter=silent run -s bkit:lint:prose",
+    );
+  });
+
+  it("renameScriptTokens leaves package-selecting flag forms alone", () => {
+    for (const call of [
+      "pnpm --filter=web lint:prose",
+      "pnpm -Fweb lint:prose",
+      "pnpm --dir=pkg lint:prose",
+      "pnpm -Cpkg lint:prose",
+      "pnpm --prefix=pkg lint:prose",
+      "pnpm --filter web lint:prose",
+    ]) {
+      expect(renameScriptTokens(call, renames)).toBe(call);
+    }
+    expect(renameScriptTokens("pnpm lint:prose", renames)).toBe("pnpm bkit:lint:prose");
+  });
+
+  it("renameScriptTokens leaves recursive flag forms alone", () => {
+    for (const call of [
+      "pnpm -r lint:prose",
+      "pnpm --recursive slop:delta",
+      "pnpm -r run graph:update",
+    ]) {
+      expect(renameScriptTokens(call, renames)).toBe(call);
+    }
+    expect(renameScriptTokens("pnpm -w lint:prose", renames)).toBe("pnpm -w bkit:lint:prose");
+    expect(renameScriptTokens("pnpm --workspace-root slop:delta", renames)).toBe(
+      "pnpm --workspace-root bkit:slop:delta",
+    );
+  });
+
+  it("renameScriptTokens returns a many-flag line in bounded time", () => {
+    const flags = Array.from(
+      { length: 30 },
+      (_, i) => `--${String.fromCharCode(97 + (i % 26))}${i}`,
+    );
+    const line = `pnpm ${flags.join(" ")}`;
+    const start = performance.now();
+    const out = renameScriptTokens(line, renames);
+    const elapsed = performance.now() - start;
+    expect(out).toBe(line);
+    expect(elapsed).toBeLessThan(500);
   });
 });

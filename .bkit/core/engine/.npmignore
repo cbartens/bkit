@@ -2,3 +2,4 @@
 # package.json `files` carries no `!` negations: pnpm ignores them.
 *.test.ts
 __snapshots__
+__fixtures__

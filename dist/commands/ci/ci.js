@@ -1,6 +1,6 @@
 // bkit ci — the gates CI and the git hooks run.
 //
-// `slop` — the enforcing slop gate (`slop:delta`). `lint:slop` (`slop-scan scan`) only
+// `slop` — the enforcing slop gate (`bkit:slop:delta`). `lint:slop` (`slop-scan scan`) only
 // reports. This gate checks the base ref out as a detached worktree, runs
 // `slop-scan delta` against the working tree, and fails when the change makes the repo
 // worse on NET: more findings, or a higher score. It gates on the net figures, not on
@@ -9,7 +9,7 @@
 // zero. The pre-existing baseline is never the change's to fix. On failure it names each
 // net-new or worsened finding (`path:line`, rule, message), with line shifts dropped.
 //
-// `prose` — the prose gate (`lint:prose`): Vale over the markdown files the globs
+// `prose` — the prose gate (`bkit:lint:prose`): Vale over the markdown files the globs
 // select. Restores the gitignored write-good package from the main worktree (else
 // `vale sync`) when it is missing, and fails when vale or write-good is unavailable.
 //
