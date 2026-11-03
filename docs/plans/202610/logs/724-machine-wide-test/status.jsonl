@@ -406,3 +406,21 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:21:01Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-plan-tests/6/1/comment","hash":"1e402fdd53c5c9bf1dbbfad80b93b883e3d17d12e9576fb29400a77362f3b0db","ref":"https://github.com/cbartens/bkit/issues/724#issuecomment-6594596609","at":"2026-11-03T03:21:04Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-03T03:21:04Z","parentSha":"9fdc6df92157e1ee7d626ddb2037fdbd08211e8f","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-plan-tests-6-log.md"],"verdict":"PASS","attempt":1,"group":6}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:21:30Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:21:36Z","noun":"tests","verb":"red","flags":["file","workflow","group","plan","log","writer-log"]}
+{"type":"step-done","workflow":"build","step":"build-tests-red","status":"DONE","at":"2026-11-03T03:23:23Z","parentSha":"73f1a02a506db8f39e0c1c359078727b3f407957","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-tests-red-6-1.md"],"attempt":1,"group":6,"enforced":true,"tests":[{"task":13,"test":".bkit/core/engine/audits/templates/machine-lock.integration.test.ts","testName":"terminating a run wrapper stops its gate before another run acquires the tests lock","state":"red","blob":"2b9c5c208866da6c9ffe93695a36b5ebed0334ff","block":"b7ed49980fab1aa7074b9912d73e3924d5a7d118"},{"task":14,"test":".bkit/core/engine/audits/workflows/local-gate-audit.test.ts","testName":"a build close push retry does not repeat workflow close or lose its outputs","state":"red","blob":"407cbd03ddaa3c79b47cb8c1fbaaabe94092a1c0","block":"5cccd263f1b804f333ba89e190281adad4f8648a"}]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:31:39Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:39:08Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:39:16Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T06:05:53Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T06:08:39Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T06:08:53Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:52:48Z","noun":"repo","verb":"info","flags":["fetch"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:05Z","noun":"fids","verb":"parse","flags":["prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:07Z","noun":"issues","verb":"fetch","flags":["issue","session-dir"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:16Z","noun":"issues","verb":"blocked-by","flags":["issue"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:17Z","noun":"fids","verb":"resolve","flags":["prompt-file","issue","title-file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:20Z","noun":"locks","verb":"acquire","flags":["kind","workflow","fid"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:36Z","noun":"issues","verb":"labels","flags":["write","phase","board","issue","owner-repo","label"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:40Z","noun":"issues","verb":"comment","flags":["post","issue","workflow","workflow-heading","step-number","step-title","owner-repo","tree"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:42Z","noun":"steps","verb":"gate","flags":["workflow","step","fid","month","token","issue","placeholder"]}

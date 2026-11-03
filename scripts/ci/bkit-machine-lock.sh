@@ -16,6 +16,8 @@
 # run ["<who>"] [--lock <name>] -- <command> exits with the command's status:
 # 2 usage, 73 the lock could not be taken, 75 the wait gave up.
 # The run name defaults to LOCAL_STACK_LOCK_WHO, npm_lifecycle_event, then run.
+# TERM, INT and HUP defer cancellation until the foreground command ends, keeping
+# its lock held throughout; the wrapper then returns the signal's exit status.
 #
 # Named locks live in ${XDG_CACHE_HOME:-$HOME/.cache}/bkit/machine-lock/ with no
 # repository prefix. The unnamed stack lock keeps its local-stack-lock/ path and
@@ -367,8 +369,19 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   shift
   [ "$#" -gt 0 ] || _lsl_run_usage
   take_local_stack_lock "$_lsl_run_who" "$_lsl_run_name" || exit "$_LOCAL_STACK_LOCK_EXIT"
+  _lsl_run_signal_status=0
+  _lsl_run_cancel() {
+    _lsl_run_signal_status="$1"
+    echo "[machine-lock] cancellation requested; waiting for $_lsl_run_who to finish before releasing its lock" >&2
+  }
+  # Bash runs these traps after its foreground command ends. Keeping this owner
+  # alive also keeps the Perl holder alive while that command finishes naturally.
+  trap '_lsl_run_cancel 143' TERM
+  trap '_lsl_run_cancel 130' INT
+  trap '_lsl_run_cancel 129' HUP
   "$@"
   _lsl_run_status=$?
   release_local_stack_lock "$_lsl_run_name"
+  [ "$_lsl_run_signal_status" -eq 0 ] || _lsl_run_status="$_lsl_run_signal_status"
   exit "$_lsl_run_status"
 fi

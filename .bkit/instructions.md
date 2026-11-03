@@ -9860,7 +9860,7 @@ Open-PR probe ran
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
 Scan the branch for migrations:
 **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
-[commits] Re-read the labels, then close the run with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. It then pushes with the HEAD-Subject Assertion and releases the lock. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
+[commits] Re-read the labels, then close the run once with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. Retain its outputs before the push so a push retry preserves the original final return. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
 Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
 [prs] Call `create_pull_request` with the printed `title`, `body`, `base` and `head`.
 Hold its URL as `PR_URL` and its number as `PR_NUMBER`.

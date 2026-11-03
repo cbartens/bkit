@@ -1098,7 +1098,7 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **If** exit 0 → `FORCE_BUILD` = true → sub-step 3.
    - **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
    - **Else** → **Failure Path**.
-3. Re-read the labels, then close the run with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. It then pushes with the HEAD-Subject Assertion and releases the lock. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
+3. Re-read the labels, then close the run once with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. Retain its outputs before the push so a push retry preserves the original final return. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
    
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
@@ -1112,8 +1112,18 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    ```bash
    "{BKIT}" roadmap mirror --workflow=build --fid={FID} >/dev/null || exit 1
    "{BKIT}" workflows close --workflow=build --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" {LABEL_FLAGS} --number=16 --post --title="Close Workflow & Create PR" --tree={BRANCH} --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/build-summary.md" --session-dir="{SESSION_DIR}" --line="CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug." || exit 1
+   ```
+
+   Route:
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
+
+   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE`, `tracker` as `CLOSE_TRACKER`, `finalReturn` as `FINAL_RETURN`.
+
+   Push with the HEAD-Subject Assertion:
+
+   ```bash
    "{BKIT}" branches push --mode=feature --require-ci >/dev/null || exit "$?"
-   "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null
    ```
 
    Route:
@@ -1121,7 +1131,15 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **If** exit 0 → continue with the next instruction.
    - **Else** → **Failure Path**.
 
-   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE`, `tracker` as `CLOSE_TRACKER`, `finalReturn` as `FINAL_RETURN`.
+   Release the workflow lock after the push succeeds:
+
+   ```bash
+   "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null
+   ```
+
+   Route:
+   - **If** exit 0 → sub-step 4.
+   - **Else** → **Failure Path**.
 
 4. Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
 
