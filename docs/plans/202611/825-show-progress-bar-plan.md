@@ -104,6 +104,9 @@ The engine works out the line and the agent shows it word for word, so the agent
 | Registered command output metadata declares `progressLine` for every emitting verb. | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 2 |
 | All six workflow sources carry the narration clause and provider renders retain it without swallowed command output. | Static | `.bkit/core/engine/render/hosts.test.ts` | 3 |
 | The Claude app renders the prefix without a break at 375px, with plain text and a wrapping suffix. | E2E | `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` | 4 |
+| progress normal debug attempts span runs | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
+| progress reuses saved soak counter on later completions | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
+| progress challenge budget follows round rather than report attempt | Integration | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | 5 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -325,7 +328,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Work out a run's progress line from its status rows, its group count and its attempt budget
+- [x] **TASK 1:** Work out a run's progress line from its status rows, its group count and its attempt budget
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.ts`: add the pure `runProgress` helper beside the existing workflow table, with the precise unit formulas, suffix ordering and rounding described above; preserve resume behavior.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.test.ts`: add the derived calculation cases and repair any existing test this logic changes.
   - **READ:** `parsePlanBlocks` in `.bkit/core/engine/commands/workflow/plan-blocks.ts`: use its task-group contract as the supplied group-count source.
@@ -347,7 +350,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Print the line from every call that writes a numbered step-done row and support gate-only completions
+- [x] **TASK 2:** Print the line from every call that writes a numbered step-done row and support gate-only completions
   - **UPDATE:** `writeStepRow` in `.bkit/core/engine/commands/workflow/steps.ts`: resolve and validate fallible progress inputs before completion append/commit, prepare the line from the prospective row, and expose it only after the existing write/commit succeeds, without persisting it in the row.
   - **UPDATE:** `finish` in `.bkit/core/engine/commands/workflow/steps.ts`: emit `progressLine` alongside existing output keys.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: make `steps done` emit `progressLine`; add explicit validated `--progress-number` to `steps gate` and declare the output metadata.
@@ -385,7 +388,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Tell every workflow to show the printed line word for word after each step, as plain text and not in a code block
+- [x] **TASK 3:** Tell every workflow to show the printed line word for word after each step, as plain text and not in a code block
   - **UPDATE:** `.bkit/instructions.md`: extend the canonical `workflow-narrate` clause without removing its existing wording, then run `pnpm instructions:sync`.
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: synchronized narration and explicit Step 1 progress gate; expose any sole completion output hidden by redirection.
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: synchronized narration and explicit Step 1 progress gate; keep deferred Step 1 bookkeeping from duplicating chat output.
@@ -403,7 +406,7 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Update the docs that describe narration and step endings
+- [x] **TASK 4:** Update the docs that describe narration and step endings
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: describe the final progress contract, formulas, loop backtracking, gate-only numeric positions and plain-text narration.
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: explain the generated progress output and additive gate option outside the generated command-spec region where appropriate.
   - **UPDATE:** `docs/testing.md`: in § Key test files below `<!-- bkit:end -->`, record focused progress calculation/command coverage and the owner-run phone procedure in this project-owned region.
@@ -416,6 +419,23 @@ One implementation PR may carry all groups. Group 1 supplies the engine behavior
 <!-- bkit:task 4 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 5 start -->
+
+- [x] **TASK 5:** Resuming debug or retrying challenge formatting displays an incorrect budget attempt
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:481` · **Round:** 1
+  - **DONE WHEN:** Progress derives the attempt and allowance from the same workflow counter: normal debug remediation uses its cross-run remediation count, saved soak attempts survive later completions, and build challenge uses its challenge round rather than its report invocation count. This preserves the counter scopes documented in `.bkit/core/.bkit/workflows.md` under Counters and Progress Lines and the plan's requirement to use normal/soak/challenge counter contexts.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress normal debug attempts span runs` fails when one remediation in a completed debug run followed by the first remediation in a new run with a frozen maximum of three emits no `Attempt 2 of 3` suffix.
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress reuses saved soak counter on later completions` fails when a saved `soakAttempt: 4`, a maximum of three and one grant are followed by `debug-run-tests --attempt=2`, producing `Attempt 2 of 6` instead of `Attempt 4 of 6`.
+    - `.bkit/core/engine/commands/workflow/progress.integration.test.ts` `progress challenge budget follows round rather than report attempt` fails when `build-challenge --attempt=2 --field=round=1` follows the first report in round one and incorrectly prints `Attempt 2 of 2`, although the challenge remains in its first budget round.
+
+<!-- bkit:task 5 end -->
+<!-- bkit:group 3 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

@@ -1,0 +1,12 @@
+Verdict: PASS
+
+<!-- verdict:end -->
+
+# Build Plan
+
+## Execution Log
+DONE — TASK 3: Tell every workflow to show the printed line — synchronized all six narration clauses; added numeric Step 1 and ship Step 3/9 gates, preserved actual regression-guard validation, exposed sole hidden completions; 140 focused renderer/integration tests pass. Additional regression-guard alias test failed before the one-condition adapter extension and passed after it; existing alias remains supported. Instructions synchronization exits 0. (.bkit/core/workflows/, .bkit/core/engine/render/hosts.test.ts)
+DONE — Pre-flight: brief, plan currency, reuse inventory, authoring and relevant domain docs read; prior group verified; Node v24.16.0 and pnpm10.34.7 satisfy declared tooling. bkit:deps:outdated exits1 for existing oxlint-tsgolint7.0.2004→7.0.2005, @types/node24.19.2→26.6.5 and vite6.4.5→8.3.5; no new dependency or runtime mismatch. No new credentials, database, service or app UI required. Phone layout remains an owner-run external observation.
+DONE — TASK 4: Update narration and step-ending docs — canonical workflow/CLI docs, changelog and project testing coverage match the implementation; phone-verification.md records the 375px Claude procedure with Outcome: not run, so external phone layout remains unverified and must be carried into build summary/handover. Final bkit:generate passed build, CLI/instruction sync, upgrade, renderer baselines and graph refresh; built bkit check and generated CLI drift checks exit0. (docs/plans/202611/logs/825-show-progress-bar/phone-verification.md)
+DONE — Verification: focused Unit/Integration hosts+progress run146/146 passed; targeted type-aware lint and test typecheck pass; git diff --check passes. Fresh built-CLI scratch install exits0 for all five hosts; inspected each generated progress clause and ship3/9 gates. Actual regression-guard gate emits Step3/14 Base Check21%, while status has no persisted progressLine. (tmp/progress-group2-install.log, tmp/progress-group2-mirror-check.log)
+DONE — Check ownership: required tests changed was started, then stopped at the orchestrator instruction to avoid redundant broad related-suite work before final workflow gates. Only its verified process tree in this worktree was terminated (exit143); no passing result is claimed for that stopped check. The caller owns final static/unit/integration gates. (tmp/progress-group2-changed.log)

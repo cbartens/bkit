@@ -228,6 +228,41 @@ export const DECISION_ROUTES: Readonly<
 
 export const isResumable = (w: string): w is ResumableWorkflow => w in WORKFLOW_STEPS;
 
+/** A completed numbered position, with build groups expanded in plan order. */
+export function runProgress(input: {
+  workflow: ResumableWorkflow;
+  step?: string;
+  number?: number;
+  groups?: number[];
+  group?: number;
+  attempt?: number;
+  max?: number;
+}): { percent: number; progressLine: string } {
+  const table = WORKFLOW_STEPS[input.workflow];
+  const entry = table.find((s) =>
+    input.number === undefined ? s.step === input.step : s.number === input.number,
+  );
+  if (entry === undefined) throw new Error("unknown workflow progress position");
+  const steps = new Set(table.map((s) => s.number)).size;
+  const groups = input.groups?.length ? input.groups : [1];
+  const ordinal = Math.max(1, groups.indexOf(input.group ?? groups[0]!) + 1);
+  const grouped = input.workflow === "build" && entry.number >= 7 && entry.number <= 9;
+  const total = input.workflow === "build" ? 13 + 3 * groups.length : steps;
+  const position =
+    input.workflow !== "build" || entry.number < 7
+      ? entry.number
+      : grouped
+        ? 6 + 3 * (ordinal - 1) + entry.number - 6
+        : 6 + 3 * groups.length + entry.number - 9;
+  const percent = entry.number === steps ? 100 : Math.min(99, Math.round((100 * position) / total));
+  const filled = Math.min(10, Math.max(0, Math.round(percent / 10)));
+  let progressLine = `Progress: ${"█".repeat(filled)}${"░".repeat(10 - filled)} ${percent}% · Step ${entry.number}/${steps} ${entry.title}`;
+  if (grouped) progressLine += ` · Group ${ordinal} of ${groups.length}`;
+  if (input.attempt !== undefined && input.attempt > 1)
+    progressLine += ` · Attempt ${input.attempt}${input.max === undefined ? "" : ` of ${input.max}`}`;
+  return { percent, progressLine };
+}
+
 export interface ResumePoint {
   /** The step to continue at: its row name (null for a step that writes no row), number and title. */
   step: string | null;

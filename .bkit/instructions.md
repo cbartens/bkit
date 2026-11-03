@@ -2593,10 +2593,11 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all
 
 ```text
-**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 ```
 
 ```retired
+**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 ```
 
@@ -9278,7 +9279,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Rules file** | Protocol | all 6 | Read `.agents/rules.md` → follow all rules. First Protocol bullet (`rules-orchestrator`). |
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
 | **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
-| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot, blocker; Auto-apply does not mean silent. |
+| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot and blocker; after each numbered completion, show the engine's `progressLine` word for word as plain text outside code blocks. Delayed bookkeeping and repeated validation gates add no duplicate. Auto forwards its delegated workflow's lines; headless runs show them without acknowledgement. |
 | **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |
 | **Commands** | Protocol | all 6 | Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info` (before it, the lookup expression); stdout is `key: value` text (see `.bkit/cli.md`); exit non-zero with no `Route:` → **Failure Path**; exit 80 → mapped MCP tool (auto: **Failure Path**); exit 81 → end turn, re-run block; a flag still holding a literal `{PLACEHOLDER}` exits 2. |

@@ -12,7 +12,7 @@ Design Feature — Autonomous design phase
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
-- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
@@ -131,7 +131,7 @@ Design Feature — Autonomous design phase
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=design --step=design-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
+"{BKIT}" steps gate --workflow=design --step=design-start-workflow --progress-number=1 --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=REPO_ROOT={REPO_ROOT}
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)

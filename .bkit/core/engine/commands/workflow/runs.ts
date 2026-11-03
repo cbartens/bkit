@@ -1831,11 +1831,12 @@ async function runDispatch(ctx: RunContext): Promise<number> {
   if ((file === undefined) !== (step === undefined))
     throw new CommandError(EXIT.USAGE, "--file and --step go together");
   let row: Record<string, unknown> | null = null;
+  let progressLine: string | undefined;
   let transport: Record<string, unknown> | null = null;
   const code = dispatchCode(r, pr, scanResult, ctx.log);
   if (file !== undefined && r.ciDispatch !== null) {
     const status = path.resolve(ctx.cwd, file);
-    row = writeStepRow(
+    const written = writeStepRow(
       ctx.cwd,
       {
         file: status,
@@ -1849,7 +1850,9 @@ async function runDispatch(ctx: RunContext): Promise<number> {
         commit: "none",
       },
       ctx.log,
-    ).row;
+    );
+    row = written.row;
+    progressLine = written.progressLine;
     if (/-close-workflow$/.test(step!)) {
       const tree = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
       restateOutcome(tree, status, String(f.workflow ?? "build"), { ...r.ciDispatch }, ctx.log);
@@ -1869,6 +1872,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
           ciWorkflow: r.ciWorkflow,
           row,
           transport,
+          ...(progressLine === undefined ? {} : { progressLine }),
         });
         return EXIT.NO;
       }
@@ -1890,6 +1894,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
     ciWorkflow: r.ciWorkflow,
     row,
     transport,
+    ...(progressLine === undefined ? {} : { progressLine }),
   });
   return code;
 }
@@ -2685,6 +2690,8 @@ export const runsCommand: CommandSpec = {
         ciWorkflow: "the CI workflow file the no-ci check looked for",
         row: "--file: the step-done row written (null on a hand-off)",
         transport: "--file: the close-transport row written for a passed verdict, else null",
+        progressLine:
+          "--file: the exact chat progress line after a numbered completion is recorded",
       },
       exitCodes: {
         [EXIT_SKIP_TOKEN]: "the pushed head's body carries a CI-suppression token",

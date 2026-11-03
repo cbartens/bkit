@@ -16,8 +16,11 @@ import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
 import { resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
+import { readTextFile } from "../../shared/json.js";
 import { CommandError, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, } from "../lib.js";
-import { activeRunStart } from "./counters.js";
+import { activeRunStart, savedPointLimit } from "./counters.js";
+import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
+import { planFiles } from "./run-facts.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { buildComment } from "./issues.js";
 import { EXIT_FOREIGN_PATH, activeRecord, ownPathCommit, ownSet, } from "./ledgers.js";
@@ -317,6 +320,81 @@ const CORE_ROW_KEYS = new Set([
 function fidOfStatusFile(file) {
     return /(?:^|\/)docs\/plans\/[0-9]{6}\/logs\/([^/]+)\/status\.jsonl$/.exec(file.split(path.sep).join("/"))?.[1];
 }
+/** Loop budgets use the same point names as the workflow counter routes. */
+function progressPoint(workflow, step, soak) {
+    if (workflow === "build") {
+        if (["build-plan-verify", "build-group-gate", "build-plan-gaps-remediate"].includes(step))
+            return "build.verify";
+        if (step === "build-challenge")
+            return "build.challenge";
+        if (["build-run-tests", "build-failure-diagnose", "build-failure-remediate"].includes(step))
+            return "build.tests";
+    }
+    if (workflow === "debug") {
+        if (step === "debug-failure-soak" || soak)
+            return "debug.soak";
+        if (["debug-run-tests", "debug-failure-diagnose", "debug-failure-remediate"].includes(step))
+            return "debug.fix";
+    }
+    if (workflow === "ship" &&
+        ["ship-merge-pr", "ship-failure-diagnose", "ship-failure-remediate"].includes(step))
+        return "ship.merge";
+    return undefined;
+}
+/** Prepare output before a completion mutates the log; progress is never persisted. */
+function stepProgress(cwd, r, number) {
+    if (r.status === "FAILED" || !isResumable(r.workflow))
+        return undefined;
+    const entry = WORKFLOW_STEPS[r.workflow].find((s) => number === undefined ? s.step === r.step : s.number === number);
+    if (entry === undefined) {
+        if (number !== undefined)
+            throw new CommandError(EXIT.USAGE, "--progress-number is not a workflow step");
+        return undefined;
+    }
+    if (fs.existsSync(r.file) && !readTextFile(r.file).ok)
+        throw new CommandError(EXIT_NO_STATUS, `${r.file} is unreadable`);
+    const runs = fs.existsSync(r.file) ? readRuns(r.file) : [];
+    const run = runs.filter((item) => item.workflow === r.workflow).at(-1);
+    const abs = path.resolve(cwd, r.file);
+    const canonical = /^(.*)\/docs\/plans\/([0-9]{6})\/logs\/([^/]+)\/status\.jsonl$/.exec(abs.split(path.sep).join("/"));
+    let groups = [];
+    if (r.workflow === "build" && canonical !== null) {
+        const [file] = planFiles(canonical[1], canonical[2], canonical[3]);
+        if (file !== undefined) {
+            const text = readTextFile(file);
+            if (!text.ok)
+                throw new CommandError(EXIT.USAGE, `progress plan ${file} is unreadable`);
+            const plan = parsePlanBlocks(text.text);
+            if (plan.errors.length > 0 || plan.fenceOpen !== undefined)
+                throw new CommandError(EXIT.USAGE, `invalid progress plan: ${plan.errors.map((e) => e.message).join("; ") || "unclosed code fence"}`);
+            groups = plan.groups.map((g) => g.group);
+        }
+    }
+    const prior = run?.steps.filter((s) => s.status === "DONE") ?? [];
+    const same = prior.filter((s) => s.step === r.step && (r.group === undefined || s.group === r.group));
+    const soak = runOrStepField(runs, r.workflow, "debugMode") === "SOAK";
+    const point = progressPoint(r.workflow, r.step, soak);
+    const soakAttempt = Number(r.extras?.soakAttempt ?? runOrStepField(runs, r.workflow, "soakAttempt"));
+    const challengeRound = Number(r.extras?.round ?? runOrStepField(runs, r.workflow, "round"));
+    const attempt = point === "debug.soak" && Number.isSafeInteger(soakAttempt) && soakAttempt > 0
+        ? soakAttempt
+        : point === "debug.fix" && r.step === "debug-failure-remediate"
+            ? allRunsDoneSteps(runs, r.workflow, { step: r.step }).length + 1
+            : point === "build.challenge" && Number.isSafeInteger(challengeRound) && challengeRound > 0
+                ? challengeRound
+                : (r.attempt ?? same.at(-1)?.attempt);
+    return runProgress({
+        workflow: r.workflow,
+        step: r.step,
+        number,
+        groups,
+        group: r.group,
+        attempt,
+        max: point === undefined
+            ? undefined
+            : savedPointLimit(r.file, r.workflow, point, r.group, point === "debug.fix" || point === "debug.soak"),
+    }).progressLine;
+}
 /** Exit code: a debug run on a shared branch has no shared-checkout record, so nothing was written or committed. */
 export const EXIT_NO_RECORD = 14;
 /**
@@ -398,6 +476,7 @@ export function writeStepRow(cwd, r, log) {
         ...(r.strategy === undefined ? {} : { strategy: r.strategy }),
         ...(r.extras ?? {}),
     };
+    const progressLine = stepProgress(cwd, r);
     // An in-place run on a shared branch commits its own paths only; a refusal
     // comes before the append, so a re-run after the human's fix writes the row once.
     const fid = r.commit === "auto" ? fidOfStatusFile(r.file) : undefined;
@@ -461,7 +540,12 @@ export function writeStepRow(cwd, r, log) {
         return { row, commit: null, code: index === null ? code : EXIT.NEEDS_HUMAN };
     };
     if (r.commit === "none")
-        return { row, commit: null, code: EXIT.OK };
+        return {
+            row,
+            commit: null,
+            code: EXIT.OK,
+            ...(progressLine === undefined ? {} : { progressLine }),
+        };
     if (rec !== null) {
         let own;
         try {
@@ -474,13 +558,23 @@ export function writeStepRow(cwd, r, log) {
         }
         if (!own.ok)
             return failed(EXIT_COMMIT, `the commit failed: ${own.error}`);
-        return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+        return {
+            row,
+            commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout,
+            code: EXIT.OK,
+            ...(progressLine === undefined ? {} : { progressLine }),
+        };
     }
     const add = addAllButCopied(cwd);
     const made = add.ok ? runGit(cwd, ["commit", "--allow-empty", "-m", r.message]) : add;
     if (!made.ok)
         return failed(EXIT_COMMIT, `the commit failed: ${made.stderr || made.stdout}`);
-    return { row, commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout, code: EXIT.OK };
+    return {
+        row,
+        commit: runGit(cwd, ["rev-parse", "HEAD"]).stdout,
+        code: EXIT.OK,
+        ...(progressLine === undefined ? {} : { progressLine }),
+    };
 }
 /** Every mechanical gate check for one step; `ok` false names the first problem per check. */
 function gateChecks(cwd, o) {
@@ -1081,6 +1175,7 @@ async function finish(ctx) {
         row: written.row,
         parentSha: written.row.parentSha,
         commit: written.commit,
+        ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
         pass,
         checks,
         comment,
@@ -1166,6 +1261,7 @@ export const stepsCommand = {
             output: {
                 row: "the appended step-done row",
                 commit: "the new commit's sha, or null with --commit=none",
+                progressLine: "the exact chat progress line after a successful numbered completion",
             },
             textOmit: ["row"],
             exitCodes: {
@@ -1223,7 +1319,11 @@ export const stepsCommand = {
                     commit: commit,
                     message: str(f.message),
                 }, ctx.log);
-                ctx.emit({ row: written.row, commit: written.commit });
+                ctx.emit({
+                    row: written.row,
+                    commit: written.commit,
+                    ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
+                });
                 return written.code;
             },
         },
@@ -1358,6 +1458,7 @@ export const stepsCommand = {
                 parentSha: "the row's parentSha: HEAD before the step's commit",
                 commit: "the new commit's sha, or null with --commit=none",
                 pass: "every gate check passed",
+                progressLine: "the exact chat progress line after a successful numbered completion",
                 checks: "[{check, ok, detail}] per gate check",
                 comment: "the step's tracker comment body (with --number), else null",
                 commentFile: COMMENT_FILE_OUTPUT,
@@ -1434,6 +1535,11 @@ export const stepsCommand = {
                 STEP_FLAG,
                 GROUP_FLAG,
                 {
+                    name: "progress-number",
+                    type: "string",
+                    help: "render this completed numbered position without writing a status row",
+                },
+                {
                     name: "attempt",
                     type: "string",
                     help: "the row must carry this attempt (non-negative integer)",
@@ -1474,7 +1580,11 @@ export const stepsCommand = {
                     help: "the workflow lock must be held with this token (needs --fid)",
                 },
             ],
-            output: { pass: "true when every check passed", checks: "[{check, ok, detail}] per check" },
+            output: {
+                pass: "true when every check passed",
+                checks: "[{check, ok, detail}] per check",
+                progressLine: "with --progress-number: the exact chat progress line after the gate passes",
+            },
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing (on disk, or on --ref), unreadable, or not valid NDJSON",
             },
@@ -1483,6 +1593,29 @@ export const stepsCommand = {
                 const file = str(f.file) === undefined ? undefined : statusFile(ctx);
                 const workflow = String(f.workflow);
                 const group = positiveInt(f.group, "group");
+                const progressNumber = positiveInt(f.progressNumber, "progress-number");
+                if (progressNumber !== undefined &&
+                    (!isResumable(workflow) ||
+                        !WORKFLOW_STEPS[workflow].some((s) => s.number === progressNumber)))
+                    throw new CommandError(EXIT.USAGE, "--progress-number is not a workflow step");
+                if (progressNumber !== undefined && isResumable(workflow)) {
+                    const step = String(f.step);
+                    const recordedNumber = WORKFLOW_STEPS[workflow].find((s) => s.step === step)?.number;
+                    const gateNumber = workflow === "ship" &&
+                        (step === "ship-worktree-setup" || step === "ship-regression-guard")
+                        ? 3
+                        : workflow === "ship" && step === "ship-bookkeeping-push"
+                            ? 9
+                            : recordedNumber;
+                    if (progressNumber !== recordedNumber && progressNumber !== gateNumber)
+                        throw new CommandError(EXIT.USAGE, "--progress-number does not match the gated step");
+                    if (file === undefined &&
+                        (progressNumber !== 1 ||
+                            !str(f.fid) ||
+                            !/^[0-9]{6}$/.test(str(f.month) ?? "") ||
+                            !str(f.token)))
+                        throw new CommandError(EXIT.USAGE, "gate progress needs --file, or Step 1 with --fid, --month and --token");
+                }
                 if (f.attempt !== undefined && f.attemptOf !== undefined)
                     throw new CommandError(EXIT.USAGE, "give --attempt or --attempt-of, not both");
                 if (f.attemptOf !== undefined && file === undefined)
@@ -1514,7 +1647,20 @@ export const stepsCommand = {
                 const pass = checks.every((c) => c.ok);
                 for (const c of checks.filter((x) => !x.ok))
                     ctx.log(`${c.check}: ${c.detail}`);
-                ctx.emit({ pass, checks });
+                const progressFile = file ??
+                    path.resolve(ctx.cwd, "docs", "plans", str(f.month) ?? "", "logs", str(f.fid) ?? "", "status.jsonl");
+                const progressLine = pass && progressNumber !== undefined
+                    ? stepProgress(ctx.cwd, {
+                        file: progressFile,
+                        workflow,
+                        step: String(f.step),
+                        group,
+                        attempt,
+                        artifacts: [],
+                        commit: "none",
+                    }, progressNumber)
+                    : undefined;
+                ctx.emit({ pass, checks, ...(progressLine === undefined ? {} : { progressLine }) });
                 return pass ? EXIT.OK : EXIT.NO;
             },
         },

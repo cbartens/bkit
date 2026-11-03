@@ -676,9 +676,14 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 
 ## Key test files
 
+Workflow progress has focused Unit coverage for position math and command output, Integration coverage for real saved status/plan files and completion producers, and renderer coverage for each supported host. The external Claude app's 375px layout is an owner-run check: `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` records its procedure, screenshots and explicit outcome. A character-count assertion does not verify app typography.
+
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
+| `.bkit/core/engine/commands/workflow/step-table.test.ts` | Unit | Exact progress strings across all five workflow tables, build groups and sparse markers, changing group totals, loop backtracking, retry suffixes, ten-cell width and final-only 100%. |
+| `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | Integration | Fresh plan reads, saved-run isolation and frozen allowances, cross-run soak attempts/grants, specialized completion producers, numeric gates preserving validation and command journaling, invalid inputs and refused commits without false completion. |
+| `.bkit/core/engine/render/hosts.test.ts` | Unit | Progress narration and explicit gate numbers survive Claude, Cursor, Codex, Antigravity and opencode rendering; sole completion output remains observable. |
 | `.bkit/core/engine/commands/install/doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 and Phase 1 and Phase 3 advisory replay. |
 | `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` | Integration | design / plan close `branches land` line run verbatim (local runtime) against a real remote + worktree: a conflict-dropped doc keeps `feat/{FID}` and leaves `dev` unmoved; another session's uncommitted edit, staged doc, local-only `dev` commit or other checked-out branch never blocks the close and is left as it was (local `dev` fast-forwards only when it can); clean close lands the branch copy, then deletes the branch. The `bkit-build.md` held close, run verbatim: origin refs unchanged, branch and worktree kept, lock released; the rows, summary and worktree-only roadmap row recorded. |
 | `.bkit/core/engine/commands/install/uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`; `docs/*.md` block strip (managed marker included, consumer content kept) and `docs/templates/bkit-*.md` deletion on a full uninstall only; a managed `.bkit/lite.md` block stripped with the consumer section kept. |
