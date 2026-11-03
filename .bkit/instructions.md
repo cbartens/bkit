@@ -5552,7 +5552,7 @@ Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issu
 ### workflow-tests-lock-wait
 
 - workflow: repeatable
-- carriers: workflow `bkit-build`, `bkit-debug`, `bkit-ship`
+- carriers: workflow all except `bkit-auto`
 
 ```text
 **If** exit 81 → end turn, re-run this block.
@@ -9559,7 +9559,7 @@ Same text in 2+ files. `- carriers:` names them per surface; `pnpm instructions:
   Finish:
   ```
 
-- carriers: workflow `bkit-build`, `bkit-plan`
+- carriers: workflow `bkit-build`, `bkit-design`, `bkit-plan`
 
   ```text
   Route — first match wins:
