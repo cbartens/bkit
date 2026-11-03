@@ -38,10 +38,10 @@ cbartens/bkit (this repo)
 │   │   ├── install/doctor.ts    # `bkit doctor` + `bkit status` verbs
 │   │   ├── install/upgrade.ts   # `bkit upgrade` diff engine + canonicalHashes drift detection
 │   │   ├── install/uninstall.ts # `bkit uninstall` orchestrator — surgical format-aware removal
-│   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env — #279/#280)
-│   │   ├── comply.ts            # Compliance grader (#234 WS-2) — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
+│   │   ├── launch.ts            # `bkit cursor` / `bkit opencode` launcher verbs — merges .bkit/.env over process.env and exec's the app binary directly (`open -a` routes via launchd, which DROPS the env)
+│   │   ├── comply.ts            # Compliance grader — no-mirror-edit + skip-ci-not-head rules; emits kind:"compliance" rows; `bkit comply --phase <p>` (fail-open)
 │   │   ├── stats.ts             # `bkit stats` — this repo's .bkit/stats.jsonl + friction + deferrals → .bkit/stats.md (committed, no timestamp); never reads harvest/ or chats; chat/run rows not counted; fail-open
-│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, #183 size-vs-outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows; each figure computed apart for workflow rows and `utility` (direct-chat) rows, never one total
+│   │   ├── analysis.ts          # Computations behind `bkit stats` and the harvest report — counts/rates/elapsed, size-vs-outcome regression, dispatch-size threshold, counter.source trust labelling, per-rule compliance rate over kind:"compliance" rows; each figure computed apart for workflow rows and `utility` (direct-chat) rows, never one total
 │   │   └── workflow/ ci/ setup/ # `bkit <noun> <verb>` workflow commands
 │   ├── install/                 # what gets written into a consumer repo, and how
 │   │   ├── modules/index.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
@@ -66,7 +66,7 @@ cbartens/bkit (this repo)
 │   │   ├── journal.ts           # Dispatch-seam row primitives (leaf: no `commands/**` import): `engine-call` status row, `tool-failure` friction row, `human-confirm` owner-pause friction row (`commands/workflow/status.ts` `status row` writes it), dedup key, `BKIT_ENGINE_JOURNAL` kill switch, git-launched (hook) check, paused-rebase check; `commands/lib.ts` `runCommand` calls it
 │   │   ├── migrate.ts           # Install / upgrade rewrite of ledger rows without `schema` into the current shape via `normalize`; `isSchemaLedger` keeps ledgers out of canonicalHashes
 │   │   ├── status.ts            # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in commands/install/doctor.ts)
-│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine (#234 WS-1)
+│   │   └── telemetry.ts         # Unified JSONL telemetry codec — TelemetryEvent union, normalize/parse/fold/foldFrom/validate/totalsProblem/appendLine
 │   ├── shared/                  # helpers every folder uses
 │   │   ├── dep-updater.ts       # Which dependency updater a repo runs (Renovate / Dependabot), from the config files the updater reads; install fills `bkit.dependencies.updater` from it, `bkit check` compares against it
 │   │   ├── json.ts              # `parseJson` / `readJsonFile`: the only place a failed JSON parse is caught; `audits/repo/json-parse-owner.test.ts` fails on a `JSON.parse` inside a `try` anywhere else
@@ -94,7 +94,7 @@ cbartens/bkit (this repo)
 │                           #   .env.example, settings/hooks/mcp JSON, bkit-cloud.md, docs/*.md blocks
 └── .bkit/templates/        # Copy-and-own templates: copied raw to the consumer's
                             #   .bkit/templates/, never applied
-├── harvest/                # Central store for `pnpm harvest` — every repo's stats/friction rows + chat/run scan (#343, #683)
+├── harvest/                # Central store for `pnpm harvest` — every repo's stats/friction rows + chat/run scan
 │                           # + consumers.md (maintainer-local consumer checkout paths, one per line).
 │                           # bkit-repo only; deliberately OUTSIDE .bkit/ (that is bkit's managed
 │                           # install surface; harvested consumer data is neither managed nor shipped).
@@ -145,11 +145,11 @@ CLI verbs:
 - `pnpm bkit doctor` — Phase 1 + Phase 3 detection; writes only `.bkit/advisories.md` and exits 0.
 - `pnpm bkit status` — read-only; installed hosts + configured provider.
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
-- `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
-- `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
-- `pnpm bkit stats` (#683) — this repo's ledgers only → `.bkit/stats.md` (committed); size-vs-outcome regression, per-rule compliance; exit 0.
-- `pnpm harvest` (#683, bkit repo only, unshipped: `scripts/harvest/`) — copies every repo's `stats.jsonl` + `friction.jsonl` into `harvest/` and prunes friction + `chat`/`run` rows from them; count-only `docs/{deferrals,failures}.jsonl`; scans chats + run logs → `harvest/stats.jsonl`; run check; `harvest/stats.md`. Never commits. `docs/observability.md` § Harvest.
-- `pnpm bkit telemetry summary [--phase=<workflow>]` (#234 WS-5) — per-workflow telemetry report against the median of the previous 5 runs; read-only.
+- `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
+- `pnpm bkit comply --phase <p>` — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
+- `pnpm bkit stats` — this repo's ledgers only → `.bkit/stats.md` (committed); size-vs-outcome regression, per-rule compliance; exit 0.
+- `pnpm harvest` (bkit repo only, unshipped: `scripts/harvest/`) — copies every repo's `stats.jsonl` + `friction.jsonl` into `harvest/` and prunes friction + `chat`/`run` rows from them; count-only `docs/{deferrals,failures}.jsonl`; scans chats + run logs → `harvest/stats.jsonl`; run check; `harvest/stats.md`. Never commits. `docs/observability.md` § Harvest.
+- `pnpm bkit telemetry summary [--phase=<workflow>]` — per-workflow telemetry report against the median of the previous 5 runs; read-only.
 - `pnpm bkit cursor` / `pnpm bkit opencode` — launch host with `.bkit/.env` merged (macOS GUI apps skip login-shell / direnv env).
 
 ## Consumer Integration Model
@@ -186,7 +186,7 @@ Workflow / prompt sources not shipped into consumer `.agents/`; live in installe
 
 Every non-JSON file bkit writes or refreshes carries the managed-version marker, one text in the file's comment syntax: `<!-- bkit:managed vX.Y.Z … -->` (markdown), `# <!-- bkit:managed vX.Y.Z … -->` (shell, `.gitignore`, `.gitattributes`, `.env.example`, codex TOML), `// bkit:managed vX.Y.Z …` (JS hooks, `.mjs`). The full MIT text and copyright notice travel at `.bkit/LICENSE.md` (`runBkitDocs`). Rendered agents / commands / skills are stamped by `stampManagedVersion`; every other file carries `{{BKIT_MANAGED_MARKER}}` in its source, resolved by `applyTokens`. The stamped version, the `.bkit/version` pin and the staleness check all read `readInstallingVersion()`; a damaged package stops the command instead of stamping a guessed version. The marker sits on the first line inside the `bkit:start` block, or below the first heading of a whole file. `listStampedFiles` (`.bkit/core/engine/install/modules/index.ts`) derives the set from the core templates, the manifest and the rendered mirrors; marker drift on any of them → `bkit check` emits `bkit-managed-stale` (never consumer plans). **Branch-scoped** (`isOnProtectedBranch`): blocker on `main` / `dev` (or PR into them via `GITHUB_BASE_REF`); advisory on feature branches (listed in the checklist, does not block push).
 
-## Compliance Grader Subsystem (#234 WS-2)
+## Compliance Grader Subsystem
 
 Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"compliance"` rows in `.bkit/stats.jsonl`.
 
@@ -195,13 +195,13 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 - `.bkit/core/engine/commands/comply.ts` — pure grader (`ruleNoMirrorEdit`, `ruleSkipCiNotHead`, `runGrader`, `buildComplianceRows`); no side effects, no `process.exit`.
 - `.bkit/core/engine/shared/protected-paths.ts` — IDE mirror prefix table (`MIRROR_PATH_PREFIXES`, `isMirrorPath`) used by the grader.
 - `.bkit/core/hooks/gateguard-engine.js` — the only gate-config list (`GATE_CONFIG_PATTERNS`, `isGateConfig`); inlined into every host's `bkit-gateguard` hook. Asserted by `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`.
-- `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch (DE-34).
+- `.bkit/core/engine/cli.ts` — `comply` verb + `--phase` dispatch.
 
-**Crash isolation (DE-34):** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
+**Crash isolation:** `comply` dispatch try/catch; crash → `[bkit-comply] internal error: …`, exit 0. Workflow wiring: `|| echo "[bkit-comply] grader unavailable, skipping"` silences non-zero.
 
 **Wiring:** every phase workflow (design, plan, build, debug, ship) runs `bkit comply --phase=<p>`.
 
-## Knowledge / Decisions JSONL Ledgers (#234 WS-5)
+## Knowledge / Decisions JSONL Ledgers
 
 `docs/knowledge.jsonl` (`kind:"knowledge"`) + `docs/decisions.jsonl` (`kind:"decision"`) = NDJSON ledgers. Consumer-inherited (`.gitattributes` managed block, `merge=union`).
 
