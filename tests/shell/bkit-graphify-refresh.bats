@@ -1,14 +1,14 @@
 #!/usr/bin/env bats
-# tests/graphify-refresh.bats — scripts/graphify/bkit-graphify.sh refresh against a stub `graphify`.
+# tests/shell/bkit-graphify-refresh.bats — scripts/graphify/bkit-graphify.sh refresh against a stub `graphify`.
 #
 # refresh runs the build in a throwaway checkout. The scratch repo stages its own stand-in
 # scripts/graphify/bkit-graphify.sh, which that checkout runs: `build` does nothing, and
 # `register` writes src.txt into docs/capabilities.md as its packages diagram, so the register
 # shows which tree was built. The real bkit-graph-embed.py then copies that diagram into the
 # README, the one doc bkit's GRAPH_EMBED_DOCS lists.
-# Run: bats tests/graphify-refresh.bats
+# Run: bats tests/shell/bkit-graphify-refresh.bats
 
-GRAPHIFY="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)/scripts/graphify/bkit-graphify.sh"
+GRAPHIFY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)/scripts/graphify/bkit-graphify.sh"
 EMBED="$(dirname "$GRAPHIFY")/bkit-graph-embed.py"
 
 setup() {

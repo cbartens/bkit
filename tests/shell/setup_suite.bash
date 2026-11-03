@@ -1,4 +1,4 @@
-# tests/setup_suite.bash — runs once around every bats run: `bats tests/*.bats` picks it up
+# tests/shell/setup_suite.bash — runs once around every bats run: `bats tests/shell/*.bats` picks it up
 # from the directory of the test files.
 #
 # `.husky/pre-push` runs this tier, and a git hook exports GIT_DIR to every process it starts.

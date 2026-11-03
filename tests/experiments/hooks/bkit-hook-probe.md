@@ -9,14 +9,16 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files when editing this experiment.
 > - Report observed behavior for the tested client, model and version. Do not infer support from a generated hook response alone.
 
-This kit extends the earlier `live-transport.mjs` experiment into a user-run protocol. The earlier files remain the record of the original blocked spike. This kit does not launch an agent, load credentials, contact a service or modify production hooks. The user opens the synthetic workspace in their chosen host, which processes that workspace through its normal account and permissions.
+This kit extends the earlier [live transport experiment](../../../docs/plans/202611/logs/787-show-authoring-rules/spike/live-transport.mjs) into a user-run protocol. The earlier files remain the record of the original blocked spike. This kit does not launch an agent, load credentials, contact a service or modify production hooks. The user opens the synthetic workspace in their chosen host, which processes that workspace through its normal account and permissions.
+
+The [2026-11-03 report](reports/bkit-hook-probe-report-2026-11-03.md) links the preserved results for all five hosts. This manual compatibility experiment is outside normal CI; the local integration checks below validate only the collector.
 
 ## Run it
 
 From the bkit checkout, generate a new workspace for a host:
 
 ```sh
-node docs/plans/202611/logs/787-show-authoring-rules/spike/host-kit.mjs setup codex tmp/authoring-probe-codex
+node tests/experiments/hooks/bkit-hook-probe.mjs setup codex tmp/authoring-probe-codex
 ```
 
 Replace `codex` in both positions with `cursor`, `claude`, `antigravity` or `opencode`. Node 24 and Git are needed; no package installation is needed. Each destination must be absent. The generator initializes an empty Git repository with no templates, so the host sees a separate project root rather than the parent checkout. It creates no commit or remote. Repeating a run requires a new destination, so earlier evidence is preserved. Generated hook commands contain local absolute paths: regenerate rather than move a workspace to another computer.
@@ -72,10 +74,10 @@ The sizes are character counts, not exact token boundaries. Filler tokenization,
 ## Local verification
 
 ```sh
-node --test docs/plans/202611/logs/787-show-authoring-rules/spike/host-kit.test.mjs
+node --test tests/experiments/hooks/bkit-hook-probe.test.mjs
 ```
 
-The local integration checks exercise real scratch files, CLI calls, host payload shapes and the OpenCode plugin callbacks. They verify the collector, not live host delivery. No live host result is claimed until the user runs a generated workspace.
+The local integration checks exercise real scratch files, CLI calls, host payload shapes and the OpenCode plugin callbacks. They verify the collector, not live host delivery. Live observations are recorded separately in the dated report.
 
 ## Sources checked
 

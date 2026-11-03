@@ -1178,9 +1178,6 @@ Clause section lines:
 - workflow:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
-- drift:
-  - `bkit-ship:395`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
-    - kept: a push trigger would validate nothing a run has not already validated on `dev`; Step 9 `runs revalidate` dispatches CI at the merged head itself, so the code is validated by a run the workflow starts
 
 ```text
 **Docs commits:** Append `bkit [skip ci]` ONLY to a commit that carries no code.
@@ -10186,7 +10183,7 @@ Determine whether `origin/dev` is an ancestor of the PR head:
 **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
 **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
 Ancestor verdict determined
-Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. No commit the block makes carries a skip token, so the sub-step 3 push starts CI at the merged head and Step 9 waits on that run:
 **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
 **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
 **If** exit 24 → the merge is still in progress with the `PENDING` paths conflicted → sub-step 2.

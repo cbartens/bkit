@@ -1610,7 +1610,7 @@ function context(t) {
 }
 
 // ---------- Token use (why compression saves so little) ----------
-// Source: tests/compression/bkit-caveman-headroom-compression-proxy-comparison.md (T3, T4, T5, T7).
+// Source: tests/experiments/compression/reports/bkit-caveman-headroom-compression-proxy-comparison.md (T3, T4, T5, T7).
 // The two greys are the part no compressor can touch; each segment is labelled, so they need no hue.
 function tokens(t) {
   const W = 1200,

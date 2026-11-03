@@ -1839,6 +1839,47 @@ describe("migrateBrandedFileTokens (via runBkitDocs)", () => {
       vi.restoreAllMocks();
     }
   });
+
+  it("warns on the old graph name only where a package manager runs it", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          scripts: { "bkit:graph": "bash scripts/graphify/bkit-graphify.sh build" },
+          bkit: { testing: { ciWorkflow: "ci.yml" } },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    put(
+      ".github/workflows/ci.yml",
+      [
+        "name: CI",
+        "# The graph is FLAT AND WIDE: scope fans out, capstone joins.",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      # rebuild the graph with graphify",
+        "      - run: npm run graph",
+        "",
+      ].join("\n"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      run();
+      const lines = warn.mock.calls
+        .map((c) => String(c[0]))
+        .filter((l) => l.includes('old script name "graph"'));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(".github/workflows/ci.yml:7");
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe("migrateBrandedTemplateFiles (via runBkitDocs)", () => {
@@ -2233,6 +2274,21 @@ describe("migrateValeHouseStyle (via runBkitDocs)", () => {
     const text = captured.join("\n");
     expect(text).toContain("Hedging");
     expect(text).toContain("mv .vale/styles/House/Hedging.yml .vale/styles/Bkit/");
+  });
+
+  it("keeps House and an own entry named like a moved rule without .yml", () => {
+    seed(RULES);
+    put(path.join(HOUSE, "Filler", "Mine.yml"), "extends: existence\nmessage: own\ntokens: [x]\n");
+    run();
+
+    expect(fs.existsSync(path.join(HOUSE, "Filler.yml"))).toBe(false);
+    expect(fs.readFileSync(path.join(BKIT, "Filler.yml"), "utf-8")).toBe(oldRule("Filler"));
+    expect(fs.existsSync(path.join(HOUSE, "Filler", "Mine.yml"))).toBe(true);
+    const based = fs
+      .readFileSync(".vale.ini", "utf-8")
+      .split("\n")
+      .filter((l) => l.startsWith("BasedOnStyles"));
+    for (const l of based) expect(l).toMatch(/\bHouse\b/);
   });
 
   it("names Bkit rules in .vale.ini and lists both styles while House keeps files", () => {

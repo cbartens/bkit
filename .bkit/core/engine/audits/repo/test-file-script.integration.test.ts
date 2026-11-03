@@ -45,7 +45,7 @@ function pnpm(env: NodeJS.ProcessEnv, ...args: string[]) {
 const FILES = [
   {
     kind: "bats",
-    file: "tests/gh-stub-smoke.bats",
+    file: "tests/shell/bkit-gh-stub.bats",
     test: "stub: gh api runs?head_sha=green-capstone returns the captured workflow_runs list",
   },
   {

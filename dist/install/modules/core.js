@@ -703,12 +703,18 @@ export function renameScriptTokens(text, renames) {
     const re = new RegExp(`\\bpnpm((?:\\s+(?:run|(?!-(?:F|C|r|-filter|-dir|-prefix|-recursive))--?\\w[\\w-]*(?:=\\S*)?))*)(\\s+)(${names.map(escapeRegExp).join("|")})(?![\\w:-])`, "g");
     return text.replace(re, (_m, flags, gap, old) => `pnpm${flags}${gap}${renames[old]}`);
 }
-/** Each old script name still in `text`, with its 1-based line. */
+/**
+ * Each old script name still in `text`, with its 1-based line. A name without `:` (`graph`) is
+ * a plain word, so it counts only after `pnpm` / `npm` / `yarn` / `bun` on the same line and
+ * before any `#`.
+ */
 export function findOldScriptNames(text, renames) {
     const found = [];
     const lines = text.split("\n");
     for (const name of Object.keys(renames)) {
-        const re = new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`);
+        const re = name.includes(":")
+            ? new RegExp(`(?<![\\w:./-])${escapeRegExp(name)}(?![\\w:-])`)
+            : new RegExp(`\\b(?:pnpm|npm|yarn|bun)\\b[^#\\n]*\\s${escapeRegExp(name)}(?![\\w:./-])`);
         lines.forEach((l, i) => {
             if (re.test(l))
                 found.push({ line: i + 1, name });
@@ -1118,9 +1124,7 @@ export function migrateValeHouseStyle(dryRun, ws, logPrefix) {
         moved.push(rule);
         console.log(`${logPrefix} ${tag}core: ${from} moved to ${to}`);
     }
-    const remaining = fs
-        .readdirSync(houseDir)
-        .filter((f) => !moved.includes(f.replace(/\.yml$/, "")));
+    const remaining = fs.readdirSync(houseDir).filter((f) => !moved.some((r) => f === `${r}.yml`));
     const houseGone = remaining.length === 0;
     if (houseGone) {
         if (!dryRun)

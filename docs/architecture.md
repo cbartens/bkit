@@ -100,6 +100,12 @@ cbartens/bkit (this repo)
 │                           # public repo. Holds every distinct row ever harvested; readers fold it by
 │                           # identity. Accumulates across runs and is never cleared — once harvest
 │                           # prunes a repo's friction or chat/run row, this local store is the only copy.
+├── tests/
+│   ├── shell/             # Automated Bats tests and the runner-required setup_suite.bash
+│   ├── fixtures/          # Reusable sample inputs and external-command stand-ins
+│   └── experiments/       # Manual experiments, outside the normal CI test suites
+│       ├── compression/   # Scripts, reports/ and assets/
+│       └── hooks/         # Collector, local checks, guide, reports/ and dated results/
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
