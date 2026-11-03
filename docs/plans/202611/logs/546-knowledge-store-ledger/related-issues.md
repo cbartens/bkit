@@ -2,54 +2,212 @@
 
 ### Problem
 
-`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl` and `docs/failures.jsonl` are one ledger split four ways by `kind`. In code they are already one: `foldFrom(paths)` merges them, and identity is `(kind, repo, key)`, so the file boundary carries no meaning. The split costs:
+`docs/knowledge.jsonl`, `docs/decisions.jsonl`, `docs/deferrals.jsonl` and `docs/failures.jsonl` are one ledger split four ways by `kind`. In code they are already one (`foldFrom(paths)` merges them), so the file boundary carries no meaning. The split costs:
 
-- Agents check gotchas before coding but not decisions, only because the knowledge file was small enough to read whole and the decisions file was not.
-- Each of the four `bkit-utility-update-*` agents sweeps its file and then searches the other three for pointers (`Cross-Ledger Impact`).
-- The same fact lives in two files under two keys as it changes kind: a failure becomes a gotcha after the fix, a `needs-decision` deferral becomes a decision.
-- `supersedes` and `dependsOn` links (sibling issue) need a four-file search or a kind qualifier, because a `key` may legally exist in two kinds.
+- Agents check gotchas before coding but not decisions, only because the knowledge file was small enough to read whole.
+- Each of the four `bkit-utility-update-*` agents sweeps its file and then searches the other three by hand (`Cross-Ledger Impact`).
+- The same fact lives in two files under two keys as it changes kind (a failure becomes a gotcha after the fix).
+- Typed links between rows (#792 — Typed supersedes and dependsOn links plus a dead-premise check, https://github.com/cbartens/bkit/issues/792) need a four-file search.
 
-### Outcome
+### Deliverable
 
-One committed file, `docs/brain.jsonl`, holds every row of the kinds `knowledge`, `decision`, `deferral` and `failure` (and `assumption`, if the parent's design adds it). Every reader and writer uses it. Existing consumer repos are migrated by `bkit upgrade` with no row lost.
+This issue is plan P-1 of the parent design, and it also delivers #792.
 
-### Success criteria
+`bkit upgrade` merges the four ledgers into `docs/brain.jsonl` with no line lost. The old files are left as zero-byte `merge=union` stubs only while an unmerged branch or worktree still touches them, and are deleted otherwise. The row envelope (`status`, `summary`, `links`), the new `assumption`, `summary` and `rejection` kinds, `KIND_TRANSITIONS`, the `supersedes` / `dependsOn` / `relatedTo` links and `bkit brain append|check|list|compact` ship. Once `docs/brain.jsonl` exists, `bkit ledgers append --ledger=<knowledge|decisions|deferrals|failures>` is refused (exit 8) and points at `bkit brain append`; there is no alias. Every engine reader, workflow, prompt, template and doc reads the brain through a kind filter, the `.bkit/stats.md` and `docs/roadmap.md` renders are byte-identical before and after, and the old-path audit is green.
 
-- `bkit ledgers append --ledger=brain` takes the merged kinds; `KIND_WRITERS` and the writer check are unchanged per kind.
-- `bkit upgrade` runs a registered migration in `docs/migrations.md`: concatenate the four files into `docs/brain.jsonl`, keep every line byte-for-byte including malformed ones, delete the four files, replace the four `merge=union` lines in the managed block of `.gitattributes` with one, and prove the fold over the new file returns the same winners as the fold over the four.
-- Every path reference in the shipped surface is updated: `.bkit/jsonl.md`, `.bkit/workflows.md` § Telemetry Ledgers, `.bkit/prompts.md`, `.bkit/instructions.md` entries and the rendered prompts, `.agents/rules.md`, `.bkit/cli.md`, the CI and pre-push templates, the compaction and union commands, and the harvest script's per-file selection, which becomes per-kind.
-- `.bkit/friction.jsonl` and `.bkit/stats.jsonl` stay separate: friction is a drained queue that cannot be union-merged, and stats is machine telemetry.
-- The PR diff of a workflow run still shows which kind was recorded: `kind` stays in the first line of every row.
-- Measured on this repo after the migration: the fold winners, the `bkit stats` figures and the `docs/roadmap.md` render are unchanged.
+**Parent design:** [546-knowledge-store-ledger-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202611/546-knowledge-store-ledger-design.md)
 
-### Constraints and non-goals
+**Workstreams:** WS-1, WS-2, WS-3, WS-4, WS-5, WS-6
 
-- Reads go through `bkit ledgers context` and `bkit ledgers search` (sibling issues); a whole-file read of the merged ledger is never the instruction in any prompt.
-- `merge=union` and same-`key` append semantics unchanged.
-- No binary in git.
-- `.bkit/issues.jsonl` (`feature` rows) is out of scope for the first version; it rides PRs through ship Step 6 and has its own union path.
+- WS-1 Codec and Envelope: one `brain` entry in `APPEND_LEDGERS`, identity `(repo, key)` for the six brain kinds, envelope validation, status vocabularies, `KIND_TRANSITIONS`.
+- WS-2 Brain Module Core and Path Registries: `.bkit/core/engine/ledgers/brain.ts` (`readBrain`, `linkIndex`, `checkFindings`), path registries.
+- WS-3 Merge Migration and Install / Upgrade Integration: `mergeIntoBrain`, write order, the stub-or-delete check, `bkit check` drift, `docs/migrations.md` row, the real-`git merge` stub tests.
+- WS-4 `bkit brain` CLI Noun and Logging Contract: `append` (prints dependents), `check` (exit 0, findings with fix lines), `list`, `compact`; the old `--ledger` names refused.
+- WS-5 Engine and Script Readers Moved to Kind-Filtered Reads, with the stats and roadmap parity pins.
+- WS-6 Shipped-Text Path Sweep, Doc Indexes and Old-Path Audit.
 
-### Decisions already made
+### Settled at design
 
-- `docs/decisions.jsonl` key `546-jsonl-ledgers-stay-the-store-memory-tools-index-only`: JSONL in git stays the store. This issue changes how many files, not the store.
-- Assessment on the parent: one file beats four on merits, on the condition that reads go through a tool.
-
-### Open questions
-
-- Does `kind` stay part of identity? If identity becomes `(repo, key)` and `kind` a field a same-`key` append can change, an entry can carry its lifecycle (raised as a failure, closed as knowledge), and a careless append can flip a decision into a deferral. The guard would be a closed list of allowed kind transitions, enforced beside `KIND_WRITERS`.
-- File name: the parent thread proposed `docs/brain.jsonl`; bkit names files by what they hold, which would make it `docs/ledger.jsonl`. Settle at design.
-- Does any reader of `docs/decisions.jsonl` assume every row is a `decision`? Find them before the merge.
-- Order against the sibling issues: the link resolver (typed links issue) is simpler written once against one file, so this should land before or with it.
-- Does `.bkit/issues.jsonl` join in a second step?
+- Identity: `(repo, key)` for the brain kinds; a kind change is allowed only along `KIND_TRANSITIONS` (`docs/decisions.jsonl` keys from the design's Decisions table).
+- File name: `docs/brain.jsonl`.
+- Per-kind fields stay flat beside the envelope: key `546-brain-per-kind-fields-stay-flat-beside-envelope`.
+- No legacy `--ledger` alias: key `546-brain-row-verbs-under-bkit-brain-no-legacy-alias`.
+- Stubs only while a branch touches the old files: key `546-brain-old-ledger-stubs-only-while-branches-touch-them`.
+- Backfilled links ride the migration rewrite and are `relatedTo`: keys `546-brain-backfilled-links-ride-the-envelope-rewrite`, `546-brain-backfilled-links-are-relatedto`.
+- `.bkit/issues.jsonl` (`feature` rows), `.bkit/friction.jsonl` and `.bkit/stats.jsonl` stay separate; recorded as deferrals by WS-6.
 
 ### References
 
-- #546 — Knowledge store ledger upgrade
-- `.bkit/jsonl.md` § Ledgers & Writers, § Compaction, § Versioning
-- `.gitattributes` (managed block)
-- `.bkit/core/engine/ledgers/telemetry.ts` (`foldFrom`, `identity`, `KIND_WRITERS`)
+- #546 — Knowledge store ledger upgrade — https://github.com/cbartens/bkit/issues/546
+- #792 — Typed supersedes and dependsOn links plus a dead-premise check — https://github.com/cbartens/bkit/issues/792
+- `docs/plans/202611/546-knowledge-store-ledger-design.md` § Suggested Plans
+- `docs/decisions.jsonl` key `546-jsonl-ledgers-stay-the-store-memory-tools-index-only`
+- `.bkit/jsonl.md` § Ledgers & Writers
+- `.bkit/core/engine/ledgers/telemetry.ts`
 - `.bkit/core/engine/ledgers/migrate.ts`
 - `docs/migrations.md`
+
+Body rewritten to match the design: this issue is now plan P-1 (WS-1 to WS-6) and also delivers #792 — Typed supersedes and dependsOn links plus a dead-premise check (https://github.com/cbartens/bkit/issues/792). The open questions are replaced by the settled answers and their decision keys: old files become stubs only while a branch touches them, old `--ledger` names are refused with no alias, backfilled links are `relatedTo`. Label `next:design` → `next:plan`, board size L → XL. Next step: `/bkit-plan #795`.
+
+#792 — Typed supersedes and dependsOn links plus a dead-premise check (https://github.com/cbartens/bkit/issues/792) is folded into this issue and closed as not planned. Its scope (envelope links, the `relatedTo` backfill, `bkit brain check`, dependents printed on append) is delivered here, in P-1 WS-1 to WS-4.
+
+## #793 — bkit brain search: keyword search over the current brain rows (open)
+
+### Problem
+
+An agent that needs a decision or gotcha not tied to the files it touches can only grep the ledgers for words it guesses. A miss costs a whole-file read, and a hit depends on the agent's wording matching the row's.
+
+### Deliverable
+
+This issue is plan P-3 of the parent design.
+
+`bkit brain search "<text>" [--kind=…] [--all] [--json]` passes the current fold winners (all rows with `--all`) to the existing `ledgerScan` in `context.ts` unchanged, which returns the strongest 40 with its truncation notice. Each returned key is written to the recall log. The plan and ship lookups at `bkit-plan.md:293-294` and `bkit-ship.md:481` switch to `bkit brain search "<terms>" --kind=deferral` / `--kind=failure`, and each returns the rows it returned before the merge.
+
+There is no index. The design dropped the FTS5 index (spike C6): `ledgerScan` over the folded rows is fast enough at today's size, and an index adds a rebuild trigger and a gitignored file to keep right. FTS5 comes back only if a recorded lookup shows a ranking gap; WS-6 records that as a deferral with the spike notes.
+
+**Parent design:** [546-knowledge-store-ledger-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202611/546-knowledge-store-ledger-design.md)
+
+**Workstreams:** WS-9
+
+### Settled at design
+
+- No index, so the earlier questions on index location and tokenizer no longer apply.
+- `bkit brain context` does not fall back to search; its output names `bkit brain search` for the keys it dropped.
+
+###### bkit:blocked-by start
+- #795
+- #791
+###### bkit:blocked-by end
+
+### References
+
+- #546 — Knowledge store ledger upgrade — https://github.com/cbartens/bkit/issues/546
+- #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration — https://github.com/cbartens/bkit/issues/795
+- #791 — bkit brain context: load only the rows that touch the task's files — https://github.com/cbartens/bkit/issues/791
+- `docs/plans/202611/546-knowledge-store-ledger-design.md` § Suggested Plans
+- `docs/decisions.jsonl` key `546-jsonl-ledgers-stay-the-store-memory-tools-index-only`
+
+Body and title rewritten to match the design: `bkit brain search` feeds the current rows to the existing `ledgerScan`, with no FTS5 index (spike C6; FTS5 is recorded as a deferral until a lookup shows a ranking gap). This issue is plan P-3 (WS-9), blocked by #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (https://github.com/cbartens/bkit/issues/795) and #791 — bkit brain context: load only the rows that touch the task's files (https://github.com/cbartens/bkit/issues/791).
+
+## #797 — bkit brain update: update, cleanup, compaction, and fading (open)
+
+### Problem
+
+Four `bkit-utility-update-{knowledge,decisions,deferrals,failures}` agents each sweep one ledger and search the other three by hand. Once the ledgers are one file (#795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration, https://github.com/cbartens/bkit/issues/795), one pass can tidy the whole brain: move stub stragglers in, compact, record which rows are still being read, fade rows nobody has used, and propose link and summary fixes for the owner to approve.
+
+### Deliverable
+
+This issue is plan P-4 of the parent design.
+
+`bkit brain update` runs the cleanup (straggler moves, the stub-or-delete check, compaction, recall roll-up into `lastRecalled`, rejection pruning), writes a candidate packet and a dispatch plan, and with `--apply=<report> --approve=… --reject=…` writes the approved rows through `bkit brain append` and the rejected ones to `.bkit/brain-rejections.jsonl`. Each run leaves a report under `docs/audits/{YYYYMM}/` with a `Suggested Changes` table and an undo line per row. `bkit.brain.update.ask` (default `true`) controls whether a chat run asks before applying; a headless run never applies inferred changes. The `proposal.basedOn` fold rank and suggestion ids keep two runs from applying the same change twice. Rows nobody has recalled in 180 days are proposed as `FADED`. One `bkit-utility-update-brain` prompt and `.bkit/brain.md` § Brain Update replace the four updater prompts. The opt-in scheduled `bkit-brain-update` job in `bkit-cloud.yml` commits its cleanup and report to `dev` and pushes; on a rejected push it merges `origin/dev` and retries once, and it never force-pushes.
+
+**Parent design:** [546-knowledge-store-ledger-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202611/546-knowledge-store-ledger-design.md)
+
+**Workstreams:** WS-10, WS-11, WS-12, WS-13
+
+- WS-10 Fold Rank, Recall Date and Suggestion Identity.
+- WS-11 `bkit brain update` Engine Verb, Reports and Rejections.
+- WS-12 Brain Update Prompt and Procedure Doc.
+- WS-13 Scheduled Brain Update Job Template.
+
+### Settled at design
+
+- The procedure is a doc (`.bkit/brain.md` § Brain Update), not a workflow: key `546-brain-update-procedure-doc-not-a-workflow`.
+- The scheduled run pushes to `dev`: key `546-scheduled-brain-update-pushes-to-dev`.
+- Fade after 180 days unrecalled; `lastRecalled` rewritten only once more than 90 days stale: key `546-brain-rows-fade-after-180-days-unrecalled`.
+
+###### bkit:blocked-by start
+- #795
+- #791
+###### bkit:blocked-by end
+
+### References
+
+- #546 — Knowledge store ledger upgrade — https://github.com/cbartens/bkit/issues/546
+- #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration — https://github.com/cbartens/bkit/issues/795
+- #791 — bkit brain context: load only the rows that touch the task's files — https://github.com/cbartens/bkit/issues/791
+- `docs/plans/202611/546-knowledge-store-ledger-design.md` § Suggested Plans
+
+## #794 — qmd template: opt-in search by meaning over the brain rows (open)
+
+### Problem
+
+Keyword search misses a row when the wording differs: "401 after token rotation" does not match a query for "auth expired". It is the minority case, but the one where a gotcha is most expensive to miss, because the agent believes it searched.
+
+### Deliverable
+
+This issue is plan P-5 of the parent design.
+
+An opt-in copy-and-own template that indexes the current brain rows with [qmd](https://github.com/tobi/qmd) on the user's machine, off by default, with nothing binary committed:
+
+- `.bkit/templates/scripts/qmd/bkit-qmd-export.mjs` writes one gitignored markdown file per current brain row (front matter: key, kind, status, links) under `tmp/bkit-brain/qmd/`.
+- `.qmd/index.yml` points qmd at that folder.
+- Install steps pin `@tobilu/qmd` to an exact version and always add a `.qmd/` line to `.gitignore`.
+- A README section in `.bkit/templates.md` says up front that qmd downloads about 2 GB of models and needs Homebrew SQLite on macOS.
+
+Core never depends on it. Agents open a hit through the shipped `bkit brain` read commands rather than trusting the chunk.
+
+**Parent design:** [546-knowledge-store-ledger-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202611/546-knowledge-store-ledger-design.md)
+
+**Workstreams:** WS-14
+
+### Settled at design
+
+- The export lives in `tmp/bkit-brain/qmd/`.
+- `.qmd/` is always gitignored, because spike C9 could not run the qmd binary to see where it writes its index; key `546-qmd-template-gitignores-dot-qmd-unconditionally`.
+- Brain rows only in the first version.
+- Not verified: whether qmd's keyword-only `search` runs without the model download. The plan states the download cost up front either way.
+
+###### bkit:blocked-by start
+- #795
+###### bkit:blocked-by end
+
+### References
+
+- #546 — Knowledge store ledger upgrade — https://github.com/cbartens/bkit/issues/546
+- #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration — https://github.com/cbartens/bkit/issues/795
+- #793 — bkit brain search: keyword search over the current brain rows — https://github.com/cbartens/bkit/issues/793
+- `docs/plans/202611/546-knowledge-store-ledger-design.md` § Suggested Plans
+- `docs/decisions.jsonl` key `546-jsonl-ledgers-stay-the-store-memory-tools-index-only`
+- `.bkit/templates.md` § graphify, § Serena
+- https://github.com/tobi/qmd
+
+Body and title rewritten to match the design: plan P-5 (WS-14). The export goes to `tmp/bkit-brain/qmd/` via `bkit-qmd-export.mjs`, `.qmd/` is always gitignored (key `546-qmd-template-gitignores-dot-qmd-unconditionally`), and it covers brain rows only. Label `next:design` → `next:plan`. Still blocked by #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (https://github.com/cbartens/bkit/issues/795).
+
+## #792 — Typed supersedes and dependsOn links plus a dead-premise check (closed)
+
+### Problem
+
+45 current rows are `SUPERSEDED` and none names the row that replaced it. A row that rests on another row points at it only through an untyped `references` entry, mixed in with paths, commits and issue numbers. When the row a decision rests on is superseded or closed, nothing lists the decisions that rested on it. The four ledger updaters search "the other three" ledgers by hand for pointers (`Cross-Ledger Impact`).
+
+### Delivered by #795
+
+The parent design plans this work together with the ledger merge, as plan P-1 on #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (https://github.com/cbartens/bkit/issues/795). Plan and build it there, not here. This issue stays open to track the outcome and closes when #795 ships.
+
+What the design settled for the links:
+
+- Links live in the row envelope as `links.supersedes`, `links.dependsOn` and `links.relatedTo`, each an array of key strings, on every brain kind (WS-1).
+- Existing key-shaped `references` entries are backfilled as `links.relatedTo` in the same migration rewrite that adds the envelope (WS-3); keys `546-brain-backfilled-links-ride-the-envelope-rewrite`, `546-brain-backfilled-links-are-relatedto`.
+- Keys are unique across the brain kinds (identity `(repo, key)`), so a link needs no kind qualifier.
+- `bkit brain check` lists dead premises, dangling keys, `dependsOn` cycles and `SUPERSEDED` rows without a successor link, each with its fix line, and always exits 0 (WS-2, WS-4). `bkit brain append` prints the rows that depend on the row it just wrote.
+- The four `bkit-utility-update-*` prompts are replaced by one `bkit-utility-update-brain` in the Brain Update plan.
+
+**Parent design:** [546-knowledge-store-ledger-design.md](https://github.com/cbartens/bkit/blob/dev/docs/plans/202611/546-knowledge-store-ledger-design.md)
+
+###### bkit:blocked-by start
+- #795
+###### bkit:blocked-by end
+
+### References
+
+- #546 — Knowledge store ledger upgrade — https://github.com/cbartens/bkit/issues/546
+- #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration — https://github.com/cbartens/bkit/issues/795
+- `docs/plans/202611/546-knowledge-store-ledger-design.md` § Suggested Plans
+- `docs/decisions.jsonl` key `546-ledger-rows-carry-supersedes-and-dependson-links`
+
+Body rewritten: the design plans this work inside P-1 on #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (https://github.com/cbartens/bkit/issues/795). Links move into the envelope as `links.supersedes` / `links.dependsOn` / `links.relatedTo`, the backfill is `relatedTo` in the migration, and `bkit brain check` (exit 0) replaces the earlier `bkit ledgers check` exit 1. Plan and build it on #795; this issue stays open to track and closes when #795 ships.
+
+Folded into #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (https://github.com/cbartens/bkit/issues/795) and closed as not planned here, on the owner's call. All of this issue's scope (envelope links, the `relatedTo` backfill, `bkit brain check`, dependents printed on append) is in #795's plan P-1, WS-1 to WS-4. This replaces the earlier note that this issue stays open until #795 ships.
 
 ## #710 — Ledger compaction: drop superseded rows, preserve age (closed)
 
@@ -118,8 +276,7 @@ The idea holds up and every file and function referenced exists. Four gaps shoul
 | `docs/failures.jsonl` | 206 → 104 | ~37% |
 | `.bkit/issues.jsonl` | 136 → 58 | ~30% |
 
-None of them has keyless or malformed lines today.
-
+  None of them has keyless or malformed lines today.
 - `firstTs` fixes a problem that exists now. `.bkit/jsonl.md` says "`ts` ages" and "rank by oldest `ts`". But the folded winner's `ts` is the date of the last update, not the date the entry was opened. So today's "age" is really "time since last touched".
 
 **Gaps**
@@ -143,7 +300,6 @@ None of them has keyless or malformed lines today.
 `bkit ledgers compact [--root] [--ledger=<knowledge|decisions|deferrals|failures|issues|all>] [--dry-run]` now exists. It rewrites the five keyed ledgers so each entry keeps only its winning row: the one with the highest `ts`, and on a tie the later line, the same as `fold`. The winning row stays where it was in the file. It gets two new fields: `firstTs` (when the entry was first seen) and `updates` (how many rows the entry has had).
 
 ### What changed
-
 - **Engine:** the new `.bkit/core/engine/ledgers/compact.ts` holds the compaction logic. `.bkit/core/engine/ledgers/telemetry.ts` gains the two optional fields, which are only allowed on `deferral` / `failure` / `knowledge` / `decision` / `feature` rows, and the rule for computing them.
 - **CLI:** `bkit ledgers compact` is added to `.bkit/core/engine/commands/workflow/ledgers.ts`. It writes a temp file and then renames it over the ledger, and it only writes when something changed. `--dry-run` only counts.
 - **Append carries the fields forward:** `bkit ledgers append` and `bkit roadmap feature` fill `firstTs` and `updates` from the entry's earlier rows, so new rows keep the entry's age and count.
@@ -154,21 +310,18 @@ None of them has keyless or malformed lines today.
 - **Audit templates:** `bkit-audit-failures` and `bkit-audit-deferrals` now measure age from `firstTs`, falling back to `ts`. The flake count is now the winning row's `updates`.
 
 ### Review gaps from the issue, all covered
-
 - **Fold equality ignoring the two new fields:** tested in `compact.test.ts`. It was also checked on copies of the real ledgers.
 - **Append carries the fields forward:** tested across separate calls, within one batch, and after a compaction.
 - **Who owns `.bkit/issues.jsonl`:** the roadmap updater's rule was "never append ledger rows". It now has an explicit exception allowing it to compact `.bkit/issues.jsonl`.
 - **"NEVER edit or delete" in jsonl.md:** compaction is now listed as the allowed exception, next to the schema migration.
 
 ### Where this goes beyond the issue's wording
-
 - **Counts are recomputed, not trusted.** Compaction works out `updates` again instead of keeping the stamped value. If two branches each wrote N+1 for the same entry, the merged entry ends up with N+2.
 - **Stamping alone counts as a change.** Compaction rewrites a file even when it drops nothing but stamps rows, so older entries get the two fields the first time it runs.
 - **Append overwrites supplied values.** If a caller supplies `firstTs` / `updates`, append replaces them with the computed values rather than rejecting the row.
 - **`updates` counts every row**, including appends that only change status. So the failures audit's flake count now includes triage and close appends.
 
 ### Verification
-
 - The targeted test suites pass: ledgers, the `ledgers` and `roadmap` commands, audits and render. That is 3696 tests. oxlint, prettier and `tsc` are clean.
 - I ran the command from source on copies of the real ledgers in a throwaway repo:
   - The dry run reported 950 superseded rows and wrote nothing.

@@ -23,14 +23,13 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T04:45:46Z)_
+_(refreshed 2026-11-03T06:34:24Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793515836097 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793609906429 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
@@ -41,6 +40,7 @@ _(refreshed 2026-11-03T04:45:46Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 504-example-project | 504-example-project | 1791870640742 |
+| 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793239890768 |
