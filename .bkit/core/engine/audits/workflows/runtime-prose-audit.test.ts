@@ -50,6 +50,36 @@ function allMatches(text: string, re: RegExp): string[] {
 }
 
 describe("bkit-runtime-prose-audit (presence, NOT behaviour)", () => {
+  describe("sandbox recovery before the Failure Path", () => {
+    it.each(WORKFLOW_FILES)("%s continues after a verified approved retry", (file) => {
+      const text = readWorkflow(file);
+      const failures = text.match(/^- \*\*Failures:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+      const recovery = text.match(/^- \*\*Sandbox recovery:\*\*.*(?:\n {2,}.*)*/m)?.[0];
+      const commands = text.split("\n").find((line) => line.startsWith("- **Commands:**"));
+
+      expect(failures).toMatch(/recovery routes.*before.*\*\*Failure Path\*\*/);
+      expect(failures).toMatch(
+        /^  - \*\*If\*\*.*still fails.*gate cannot pass.*\*\*Failure Path\*\*\.$/m,
+      );
+      expect(recovery).toMatch(/^- \*\*Sandbox recovery:\*\* \*\*If\*\*.*host.*sandbox.*denial:$/m);
+      expect(recovery).toMatch(
+        /^  - Retry the same operation once.*approval mechanism.*permitted\.$/m,
+      );
+      expect(recovery).toMatch(/^  - \*\*If\*\* approval is pending → pause the operation\.$/m);
+      expect(recovery).toMatch(
+        /^  - \*\*If\*\* approval is denied.*unavailable.*\*\*Failure Path\*\*\.$/m,
+      );
+      expect(recovery).toMatch(/^  - Verify the retry's exit status and required outputs\.$/m);
+      expect(recovery).toMatch(
+        /^  - \*\*If\*\* the retry succeeds:\n    - Continue from the interrupted sub-step\.\n    - Do not enter \*\*Failure Path\*\* for the recovered denial\.$/m,
+      );
+      expect(text).toMatch(
+        /^- \*\*Recovery scope:\*\*.*does not cover.*command.*test.*gate failures\.$/m,
+      );
+      expect(commands).toMatch(/no.*Route:.*or recovery.*\*\*Failure Path\*\*/);
+    });
+  });
+
   describe("(i) every runtime capability key has >=1 reader in .bkit/workflows/", () => {
     const corpus = readAllWorkflows();
 
