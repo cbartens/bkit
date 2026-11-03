@@ -907,7 +907,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** bkit's root `package.json` wraps its test-running gates in the tests lock (`bkit:gate:changed` included, per the owner's answer A to Open Question 13)
+- [x] **TASK 6:** bkit's root `package.json` wraps its test-running gates in the tests lock (`bkit:gate:changed` included, per the owner's answer A to Open Question 13)
   - **UPDATE:** `package.json`: `bkit:gate:static-unit`, `bkit:gate:static-unit-integration` and `bkit:gate:install-static-unit-build` (lines 59-61) each become `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c '<current command>'`; `bkit:gate:changed` (line 65) becomes `bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node scripts/gate/bkit-gate-changed.mjs`, with no `sh -c`, so the file arguments `bkit tests changed` appends reach the script; nested gates (`static-unit-integration` → `static-unit`, `install-static-unit-build` → `static-unit`) and the vitest runs inside `bkit-gate-changed.mjs` never self-deadlock: the inner wrap or global setup sees the live `LOCAL_STACK_LOCK_OWNER_tests` and runs unlocked; `bkit:gate:min` / `static` / `format` unchanged (no test suite)
   - **UPDATE:** `.bkit/core/engine/audits/repo/package-json.test.ts`: the guard test below, listing the four wrapped gates
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the nested-gate test below — a stub outer gate calling a stub inner gate, both wrapped with the prefix read from bkit's own `bkit:gate:static-unit-integration` / `bkit:gate:static-unit` values, run through `bkit tests run`
@@ -921,7 +921,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 6 end -->
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Workflows route exit 81 from the test gates back to the turn loop
+- [x] **TASK 7:** Workflows route exit 81 from the test gates back to the turn loop
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 8 — Plan Verify sub-step 8 (group gate) `Route:` (lines 651-653) and Step 12 — Run Tests sub-step 2 `Decide` (lines 866-869) gain `**If** exit 81 → end turn, re-run this block.` before `**Else**` (read `.bkit/authoring.md` § Prompts and Workflows + § Workflows Only first; `pnpm instructions:show --file bkit-build.md` before editing sentences)
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: Step 3 — Run Tests sub-step 1 `Decide` (lines 319-322) gains the same route (`pnpm instructions:show --file bkit-debug.md` first)
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md`: Process step 9, which runs the `Group gate` command that `bkit-build.md` Step 9 — Plan Gaps Remediate sub-step 2 puts in the subagent's `Context:` (line 711), gains a sub-bullet: **If** the group gate exits 81 → another run holds the machine-wide tests lock; run the same command again, and count the wait as no gap and no reason to edit code (`pnpm instructions:show --file bkit-build-plan-gaps-remediate.md` first). This site sits in a `Context:` line, not a fenced block, so the block guard cannot see it; the second test below covers it
@@ -939,7 +939,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 7 end -->
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** `bkit branches push` carries the lock wait to the pre-push hook and maps its give-up to exit 81 (owner answer A to Open Question 15)
+- [x] **TASK 11:** `bkit branches push` carries the lock wait to the pre-push hook and maps its give-up to exit 81 (owner answer A to Open Question 15)
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: the `git push` call's env gains `LOCAL_STACK_LOCK_WAIT_S` = `BKIT_LOCK_WAIT_S` else `60` (`wholeNumber` from `../lib.js`; a bad variable value → `CommandError(EXIT.USAGE)` naming the variable) and `LOCAL_STACK_LOCK_WHO` = `bkit branches push <branch>`; the push's combined output goes through `classifyLockExit` (TASK 4) with `who` = that run name: `lock-wait` → exit `EXIT.AGENT_WAIT` (81), output field `lockHolder` (the holder line), nothing reported as pushed; `could-not-run` → exit 4; else today's mapping. Verb summary names `81 tests lock held`
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: every fenced `branches push` block gains the exit-81 retry route before `Else`; preserve exit 81 in any chained push block
   - **UPDATE:** `.bkit/core/workflows/bkit-plan.md`: every fenced `branches push` block gains the exit-81 retry route before `Else`; preserve exit 81 in any chained push block
