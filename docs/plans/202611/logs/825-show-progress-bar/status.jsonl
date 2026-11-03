@@ -272,3 +272,5 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-02T23:11:53Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-11-02T23:11:53Z"}
 {"type":"engine-action","action":"comment","key":"build/1/failure/13/3/comment","hash":"578543a819c78a3158b491cdcecfb7a48787fb6e607a8e0d8d498542d8a9c2ad","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6590855341","at":"2026-11-02T23:11:54Z"}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-03T01:17:32Z"}
+{"type":"engine-action","action":"comment","key":"build/1/failure/2/2/comment","hash":"ab7195c9b089866fa3946b7a2128f54ded6b114a13c04348feb425eb2a27f9f4","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6592819802","at":"2026-11-03T01:17:33Z"}
