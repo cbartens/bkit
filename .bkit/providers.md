@@ -1,6 +1,6 @@
 # IDE / Host Differences
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** The authoritative inventory of how the IDE hosts differ, and the source of truth for what changes between each host's version of the commands and subagents. The install script's transform rules follow it.

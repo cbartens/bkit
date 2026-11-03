@@ -1,6 +1,6 @@
 # CLI
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every `bkit` command — the ones people run (`bkit install`, `bkit check`) and the `bkit <noun> <verb>` commands workflow steps run — with the contract they share. Flags, output keys and exit codes per verb: `bkit help`, `bkit <noun> --help`, `bkit <noun> <verb> --help`.

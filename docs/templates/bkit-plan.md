@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 <!-- Note: @bkit-plan-generate fills this template. The plan lives at `docs/plans/{YYYYMM}/{FID}-plan.md`, the canonical month bucket, where `{YYYYMM}` is the month the first workflow run for `{FID}` created it, set once. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/`, and may be deleted. The canonical copy is stamped with a `bkit:anchor` block that records the base commit (`baseSha`), its ref (`baseRef`) and the design it targets (`designPath`, `designBaseSha`). NEVER write or edit that block by hand. -->
 

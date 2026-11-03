@@ -11,10 +11,11 @@
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Keep the tiers strictly separate: Static · Unit · Integration · E2E · @live · Smoke.
-> - Pre-push runs one gate script, then `bkit check`:
+> - Pre-push runs `bkit check`, then selects one gate script in this order:
+>   - **If** `bkit ci min-push` accepts every outgoing ref → pre-push runs `pnpm bkit:gate:min`.
+>   - **If** the branch or commit is a revert → pre-push runs `pnpm bkit:gate:static`.
 >   - **If** `pnpm bkit:gate:static-unit-integration` is declared → pre-push runs it.
 >   - **Else** → pre-push runs `pnpm bkit:gate:static-unit`.
-> - On revert branches and revert commits, the `.husky/pre-push` template runs `bkit:gate:static`, which runs no tests.
 > - Gate scripts are consumer-owned. bkit's default is typecheck + lint + format:check + bkit:lint:prose + bkit:slop:delta + `pnpm test` (unit tier only).
 > - Integration runs at pre-push once its gate is declared. Local services, such as a Docker database, are fine there.
 > - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).

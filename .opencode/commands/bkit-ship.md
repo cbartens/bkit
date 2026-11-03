@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Ship Feature (Workflow 5/5)
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge the feature's PR into the default integration branch.

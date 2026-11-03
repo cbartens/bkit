@@ -12,7 +12,7 @@ tools:
   write: true
   edit: true
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 **Scope:** The input and the Read / Update / Create section set the scope.

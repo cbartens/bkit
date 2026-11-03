@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Agent Prompts Index
 
@@ -130,13 +130,13 @@ Subscription hosts keep the eager mapping, because on a plan you already paid fo
 - Cursor passes the entry through verbatim and ignores `tools:`, so a wired server is reachable regardless (probed Cursor CLI 2026.10.01; with the template `.serena/project.yml`, `--context ide` offers lookups only).
 - OpenCode respells `mcp__<server>__<tool>` as `<server>_<tool>` (its MCP tool ids) in its `tools` map → `serena_*`.
 
-**Maintainer-local release agents.** `utility-new-release` and `utility-pre-release-check` live only in the bkit repo's `.claude/agents/` and `.opencode/agents/`. They are hand-authored, have no `.bkit/core/prompts/` source and are not shipped in the package. They are intentionally absent from this catalog and from the Models / tool tables.
+**Maintainer-local release agents.** `utility-new-release` and `utility-pre-release-check` live only in the bkit repo's `.claude/agents/`, `.codex/agents/` and `.opencode/agents/`. They are hand-authored, have no `.bkit/core/prompts/` source and are not shipped in the package. They are intentionally absent from this catalog and from the Models / tool tables.
 
 ### `maxTurns` calibration
 
-`maxTurns` = the maximum number of **agent turns** (assistant messages). Each turn may emit several parallel tool calls. It is a runaway-loop safety cap, not a workload budget. The universal 3600s step timeout bounds runtime (`workflows.md` § Execution Protocol).
+`maxTurns` = the maximum number of agent turns (assistant messages). Each turn may emit several parallel tool calls. It is a runaway-loop safety cap, not a workload or runtime budget. bkit sets no universal workflow-step deadline; a command's own bounded wait and the host's execution limits still apply (`.bkit/providers.md` § Long-running shell commands).
 
-**Same philosophy as timeout:** 3600s is ~2x the typical 30 min runtime, so hitting it means something is wrong. The `maxTurns` tiers are S=50 / M=100 / L=200 / XL=400, assigned per agent in § Models:
+The `maxTurns` tiers are S=50 / M=100 / L=200 / XL=400, assigned per agent in § Models:
 
 <!-- prettier-ignore -->
 | Tier | Cap | Typical work | Use for | Examples |

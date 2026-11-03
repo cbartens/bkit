@@ -1,6 +1,6 @@
 # bkit — Comparison with Other Frameworks & Agentic Design Patterns
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** A reference for human readers: bkit compared with other AI development frameworks, and with Antonio Gulli's _Agentic Design Patterns_. It serves evaluation and outreach, and is not part of the agent workflow doc-matrix. The five-phase pipeline, every subagent and every audit template are in `.bkit/pipeline.md`.
@@ -25,7 +25,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 39 single-purpose subagents and 35 audit templates, with the same pipeline on Claude, Codex, Antigravity, Cursor and OpenCode. Every subagent in execution order, and every audit template, is listed in [`.bkit/pipeline.md`](pipeline.md).
+bkit turns a single coding-agent request into gated, peer-reviewed engineering: five commands (`/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`), 40 single-purpose subagents and 35 audit templates, with the same pipeline on Claude, Codex, Antigravity, Cursor and OpenCode. Every subagent in execution order, and every audit template, is listed in [`.bkit/pipeline.md`](pipeline.md).
 
 This doc compares bkit with 10 other AI development frameworks (one table, then agents and CI in detail), and then with Gulli's agentic patterns.
 
@@ -131,9 +131,9 @@ Of the 22 patterns assessed, 13 are fully implemented, 7 are partial (scoped to 
 | Reflection (producer-critic) | Already does | Build execute → verify → remediate loop; plan and design generate → review → update. |
 | Tool Use | Already does | Per-role minimum-capability tool allowlists — stricter than the book's additive model. |
 | Planning | Already does | `/bkit-plan` is a first-class artifact with a template and durable checkbox state. |
-| Multi-Agent Collaboration | Already does | 39 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
+| Multi-Agent Collaboration | Already does | 40 subagents, orchestrator-as-coordinator; subagents are leaves (no nested orchestration). |
 | Model Context Protocol (MCP) | Already does | Tracker MCP held at the workflow layer only — cleaner separation than the book's examples. |
-| Exception Handling & Recovery | Already does | Universal failure path, bounded retries (3), 3600s timeouts, runaway-turn caps, human handover. |
+| Exception Handling & Recovery | Already does | Universal failure path, configured attempt limits, bounded command waits, runaway-turn caps and human handover. |
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
 | Resource-Aware Optimization | Already does | Effort-to-model tiering with explicit per-agent pins. |
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern; consumer `context-fetch` blocks add CI, diff, e2e, runtime and web signal in debug. |

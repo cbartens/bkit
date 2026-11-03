@@ -1,6 +1,6 @@
 # Router
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** The workflow router. `AGENTS.md` sends a prompt here when the prompt names a `bkit-{command}` workflow. The router picks the workflow, then runs that workflow's command file for the current host. The workflow's steps live in that command file, not here.

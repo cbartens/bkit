@@ -1,7 +1,7 @@
 ---
 description: "Auto — Phase-routed dispatch of any bkit phase"
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Auto
 

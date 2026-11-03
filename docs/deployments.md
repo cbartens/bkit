@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -544,14 +544,14 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs against `dev` imm
 
 ### Pre-push checklist
 
-Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces mechanically; `--no-verify` is a violation. Order matches `bkit-tests-static` (gates 1-2, 4-9) + `bkit-tests-unit` and `bkit-tests-integration` (gate 3). The hook calls `bkit:gate:static-unit-integration`, which chains `bkit:gate:static-unit`:
+The full pre-push gate checks the same static, unit and integration tiers as CI. `.husky/pre-push` runs `bkit check` first, then calls `bkit ci push-gate` with `bkit:gate:static-unit-integration`, which chains `bkit:gate:static-unit`. Revert and minimum-gate selection are described below. The table groups checks by purpose; it is not their execution order.
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
 | --- | --- | --- | --- | --- |
 | 1 | Typecheck | `pnpm typecheck` | template, via `bkit:gate:static-unit` | TS error → fix source. In this repo `typecheck` also runs `bkit:typecheck:tests` (`tsconfig.test.json`: the engine's `*.test.ts` under Vitest's bundler resolution), so a test-file type error fails the gate and the CI static lane. |
 | 2 | Lint | `pnpm lint` | template, via `bkit:gate:static-unit` | Lint finding → fix source. Mirrors CI step "Run Lint"; `audits/templates/template-ci-yml.test.ts` fails when `bkit:gate:static` and the template's `bkit-tests-static` steps diverge. |
-| 3 | Unit tests, then integration tests | `pnpm test:coverage:unit`, then `pnpm test:integration` | unit: template, via `bkit:gate:static-unit`; integration: template, via `bkit:gate:static-unit-integration` when declared | Test failure → fix code, never delete the test. Each tier runs once. The unit run carries the branch-coverage floor (`vitest.unit.config.ts`). Integration runs here because these tests need no network, database or deployed URL. |
+| 3 | Unit, shell and integration tests | `pnpm test:coverage:unit`, `pnpm bkit:test:bats`, `pnpm bkit:test:awake`, then `pnpm test:integration` | unit / shell: `bkit:gate:static-unit`; integration: `bkit:gate:static-unit-integration` | Test failure → fix code, never delete the test. Each suite runs once. The unit run carries the 80% branch-coverage floor (`vitest.unit.config.ts`). These integration tests need no network, database or deployed URL. |
 | 4 | Prettier format check | `pnpm format:check` | template, via `bkit:gate:static-unit` | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier"; without this gate, formatting failures only surface in CI after push. |
 | 5 | Prose lint | `pnpm bkit:lint:prose` | template, via `bkit:gate:static-unit` | Vale warning → fix the prose. `bkit ci prose` (what `pnpm bkit:lint:prose` runs) fails when vale is absent (install vale locally), restores a missing write-good from the main worktree else `vale sync`, and fails when both fail; CI installs vale. |
 | 6 | Slop delta | `pnpm bkit:slop:delta` | template, via `bkit:gate:static-unit` | A finding this push adds or worsens the repo on net → fix it (the pre-existing baseline is never yours to fix on the way out). `bkit ci slop` (what `pnpm bkit:slop:delta [base-sha]` runs) materialises the base ref as a worktree and gates on slop-scan's **net** delta (`netFindingCount` / `netRepoScore`), not raw `--fail-on added`: a pure line-shift of an existing finding (slop-scan 0.3.0's position-keyed delta reports it as resolved+added at net zero) must not fail the gate. A failure logs each net-new / worsened finding as `path:line  rule  message`. Note `lint:slop` (`slop-scan scan`) is report-only and is not a gate. |
@@ -568,7 +568,7 @@ Every feature-branch push must pass same gates as CI. `.husky/pre-push` enforces
 - **If** no PR is open → allowed. Workflows push `[skip ci]` heads for mid-loop status and the abort handover.
 - **If** `gh` is unavailable → warn and allow. This is the manual-push backstop, and the workflows' CI-Dispatch Gate covers the close push.
 
-**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of `pnpm bkit:gate:static-unit`, dropping the unit lane only. Gates 5-9 still run — prose unaffected; bkit:slop:delta reports removals as `resolved`. Rollback trees intentionally inconsistent; surviving tests may reference deleted files. Non-revert: all applicable gates.
+**Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of the full gate, dropping the test suites. Gates 5-9 still run unless the push qualifies for the minimum gate. Rollback trees can be temporarily inconsistent, and surviving tests may reference deleted files.
 
 **Min push:** every changed file is one bkit writes (`.bkit/templates.md` § Git hooks — Husky) or one `bkit.testing.minPushPaths` adds (bkit's own `package.json`: `docs/**`) → `bkit:gate:min` only (format, tables, prose, bkit:slop:delta, ledger-integrity); `bkit:check:dist` + actionlint skipped. The hook classifies every outgoing old/new pair, including bookkeeping increments over a locally checked ancestor. `bkit ci push-gate` executes the chosen script and records successful full checks; the receipt and fallback contract lives in `.bkit/templates.md` § Git hooks. Files and evidence decide, never a commit subject. The `dev` / `main` skip-CI guard remains based on the complete branch diff, independently of the local minimum-gate decision.
 
@@ -682,21 +682,21 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 
 ### Release test runs
 
-The full suite runs before every push to `dev`, in CI on every `dev` push, and in CI on the push to `main`. `utility-pre-release-check` and `utility-new-release` run the local gate before reading CI; every other release step reuses one of those results.
+Code pushes to `dev` run the full local gate. An eligible bookkeeping push runs the minimum gate (§ Pre-push checklist). CI runs the full suite on non-skipped pushes to `dev` and `main`. `utility-pre-release-check` and `utility-new-release` each run the local full gate and require a successful `dev` push run at the candidate commit.
 
 <!-- prettier-ignore -->
 | Release step | Suite | Reuses |
 | --- | --- | --- |
-| Push to `dev` (version bump, backmerge) | full — `.husky/pre-push` | — |
-| CI on every `dev` push | full | — |
+| Push to `dev` (version bump, backmerge) | selected local gate — full for code, minimum for eligible bookkeeping | local full-gate evidence only when the minimum-gate contract permits it |
+| CI on a non-skipped `dev` push | full | — |
 | `utility-pre-release-check` step 6, `utility-new-release` step 5 | local — `pnpm bkit:gate:static-unit-integration` | `bkit-ci` push run on `dev` at `HEAD`; waits up to 30 min while it runs, STOP / `CRITICAL` when absent, timed out or red |
 | `release/X` push | none — the bkit-only `.husky/pre-push` block skips a non-`dev` / `main` branch whose tree equals the tree of `origin/dev` or `origin/main` | the `dev` push gates |
 | Release PR CI | none — mirror mode | `dev` push run at the PR head (§ One CI run per dev commit) |
-| CI on the push to `main` | full | — |
+| CI on a non-skipped push to `main` | full | — |
 | Tag push | none — the same pre-push block skips tags on commits a remote branch holds | — |
-| Release workflow | none — asserts tag on `main`, `dist/` fresh, `CHANGELOG.md` block present | `main` push run |
+| Release workflow | no tests — asserts tag on `main`, `dist/` fresh, `CHANGELOG.md` block present | the protected PR merge; it does not read or wait for the `main` push run |
 
-- **A push to `dev` or `main` always gates**, in the hook and in CI, even when its files match a tested tree. The skips cover branch-other-than-`dev`/`main` and tag pushes only.
+- **A push to `dev` or `main` runs its selected local gate.** A tested-tree shortcut never bypasses both gates on those branches. Minimum-gate selection and CI skip-token validation are separate decisions (§ Pre-push checklist).
 - **The agents run the local gate, then read the `dev` push run.** A red local gate, or a red or missing `dev` push run, is fixed on `dev` and pushed again.
 - **This repo's CI runs mirror mode** (§ One CI run per dev commit). `Decide Release Mirror` accepts `dev` and `release/*`. `Decide Run Level` resolves every `dev` push to `full`, and only a push to another branch resolves `light`, so precondition 1 holds. The capstone's `Mirror Push Run` runs `bkit runs mirror --head="$PR_HEAD_SHA" --branch=dev --max-minutes=170`.
 

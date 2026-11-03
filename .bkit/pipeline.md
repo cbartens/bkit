@@ -1,6 +1,6 @@
 # bkit — Pipeline Reference
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** A reference for people: the five-phase pipeline, every subagent (the phases in the order they run, then the audit and the utilities) and every audit template. It serves evaluation and onboarding, and it is not one of the docs agents load during a workflow. How bkit compares with other frameworks and with _Agentic Design Patterns_ is in `.bkit/comparison.md`.
@@ -23,7 +23,7 @@
 
 ## What this is
 
-bkit turns a single coding-agent request into gated, peer-reviewed engineering. Each of its five commands, `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`, fans out to specialised single-purpose subagents: 39 in total, counting the phases, the audit and the utilities. Many run in parallel under different lenses, such as bug review and security review, so the output gets an independent review before a person sees it. The same pipeline runs on five hosts: Claude, Codex, Antigravity, Cursor and OpenCode.
+bkit turns a single coding-agent request into gated, peer-reviewed engineering. Each of its five commands, `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`, fans out to specialised single-purpose subagents: 40 in total, counting the phases, the audit and the utilities. Many run in parallel under different lenses, such as bug review and security review, so the output gets an independent review before a person sees it. The same pipeline runs on five hosts: Claude, Codex, Antigravity, Cursor and OpenCode.
 
 Beside those commands, 35 read-only audit templates live at `docs/templates/bkit-audit-*.md`. `@bkit-audit-generate` runs one and writes `docs/audits/{YYYYMM}/{slug}.md`. `/bkit-plan` takes a design, one or more of those reports, or both.
 
@@ -81,10 +81,10 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
   3. install-skills
   ┌ per task group, in order ─────────────────────────────────────────────
   │ 4. brief             (engine: the group's open tasks + plan context)
-  │ 5. execute group     (producer — implement the group's tasks, reds first;
-  │                       turn cap near → HANDOVER, re-run once)
+  │ 5. tests, then code  (one agent writes planned tests, engine proves reds,
+  │                       another implements; either may hand over once)
   │ 6. verify group      (critic — the group's own diff; passes satisfied task numbers, engine ticks)
-  │                       ↶ producer-critic loop, capped 3 attempts;
+  │                       ↶ producer-critic loop, configured verify limit;
   │                         unfixable gaps / no progress → Decision Pause (human, in session)
   │ 7. gaps-remediate    (fix verifier gaps, re-verify)
   └ group gate between groups (static + unit) ─────────────────────────────
@@ -96,50 +96,45 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
                          a repeated finding reopens its open task; LOW → deferred;
                          fixable → back to the group loop, a last-round fix not
                          challenged again; unfixable → Decision Pause; two rounds at most)
-  11. run tests          (local tier: lint + typecheck + unit + bkit:slop:delta + bkit check;
-                         no integration / e2e / @live — those run in CI)
+  11. run tests          (deepest declared local gate, plus bkit check;
+                         includes integration when declared, excludes @live)
     ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
   12. summary            (engine-written from status rows + plan tasks, tracker-facing;
                          no plan file or an unticked task → FAIL)
-  → PR opened; CI runs the full multi-tier scaffold (see "CI test scaffold" below)
+  → publish=true: PR opened; CI runs the adopted scaffold below
+    publish=false on a local run: worktree retained, no push or PR
 
 /bkit-debug ─── side-rail, invoked on test/CI failure ────────────────────────
-  1. run tests          (broader tier than build: lint + typecheck + unit
-                        + integration + e2e + optional @live canary —
-                        reproduces against the deployed boundary)
-  2. fetch context       (only if tests FAIL; CI: failed jobs/steps + error
-                         annotations + failed-step logs; e2e test reports; local
-                         test output; diff vs last-passing CI; runtime logs via
-                         context-fetch blocks; tracker: related issues by error
-                         signature → feeds diagnose below)
-  [repro] (first run passes — bug not reproduced yet):
-  2. fetch context, then reproduce (tests that fail on the reported
-                        symptoms → back to 1; can't reproduce → summary)
+  1. select failure     (validated selected CI evidence first when available;
+                        otherwise declared local gates + optional live tier)
+  2. fetch context      (CI, diff, E2E, runtime, web and related-issue evidence)
+  [repro]: reproduce reported symptoms before remediation;
+           unresolved CI reproduction blocks resolution
   Normal mode (localisable failure):
   3. diagnose           (reads docs/knowledge.jsonl for prior failures;
                         Standard → Pivot → Final strategy escalation)
   4. remediate          (apply diagnosis fix)
   5. re-run tests
   6. summary            (engine-written from status rows)
-    ↳ if diagnose can't localise, or loop exhausts 3 strategies → Soak mode
+    ↳ if diagnose can't localise, or configured fix limit is used → Soak mode
   Soak mode (non-localisable / runtime-only failure):
   1. soak loop          (one accumulating context per iteration:
                         instrument OR smallest evidence-backed fix;
-                        strips all scaffolding before declaring a fix)
+                        strips all scaffolding before declaring a fix;
+                        configured soak limit applies across feature runs)
+  CI-only failure: exact pushed-head CI proof required before close
   Escape hatch:
   abort-handover       (unrecoverable failure → human handover doc + stop)
 
 /bkit-ship ─── output: squash-merged PR, hard stop before main ──────────────
-  1. conflict-resolve    (only if rebase sentinels exist)
+  1. integrate dev      (local merge when behind; resolve remaining conflicts)
   2. deferred-sweep      (pre-merge completeness gate; FAIL blocks merge)
-  3. run tests           (wait for CI on squash-merge SHA; bkit-tests-check
-                         must be green — every planned tier ran and passed;
-                         a planned bkit-tests-live-web failure reds it)
-  4. merge               (orchestrator-only guarded git op)
+  3. docs + summary     (update docs, assess unresolved findings, prune skills)
+  4. merge              (push bookkeeping, validate CI at the covered head,
+                        guarded squash-merge; generated-only red may regenerate)
     ↳ on post-merge failure → /bkit-debug (diagnose + remediate)
-  5. update-docs, then summary (engine-written, with PR size)
-  6. prune skills + update local dev + close  (orchestrator-only;
-                         close removes the worktree)
+  5. verify merge CI    (a failed merge run is recorded before Failure Path)
+  6. close              (land the record on dev, then remove the worktree)
 ```
 
 <a id="ci-scaffold"></a>
@@ -210,7 +205,7 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 | `bkit-build-install-skills` | Setup | Installs the skills the plan needs for this build. |
 | `bkit-build-plan-tests` | Test writer | Writes one task group's planned tests from its tests brief, touching test files only; the engine then records each one failing. |
 | `bkit-build-plan-tasks` | Producer | Implements one task group's tasks from its brief against the tests already recorded failing, touching no planned test. Iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`), and the group re-runs once. |
-| `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff. Passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. Producer-critic loop, capped at 3 attempts per group. |
+| `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff. Passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. The producer-critic loop uses `bkit.workflows.build.verify.maxAttempts` for its limit. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
 | `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`). A small change runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute and verify fix them. |
@@ -222,12 +217,12 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 
 ## Phase 4 — `/bkit-debug`
 
-Output: a remediated commit on the feature branch. The phase has two modes:
+Output: a remediated commit on the adopted branch, which may be `dev`. The phase has two modes:
 
 - Normal mode diagnoses a failure that can be localised, then remediates it.
 - Soak mode runs one accumulating-context instrument-or-fix loop for failures that cannot be localised or that appear only at runtime.
 
-Normal mode escalates to soak when diagnose cannot localise the failure, or when the normal loop exhausts three strategies. Soak mode adds observation logging (`[DEBUG-OBSERVE]`), and strips it before the fix ships.
+Normal mode escalates to soak when diagnose cannot localise the failure, or when the configured fix-attempt limit is used. Fix and soak limits are counted across the feature's debug runs. Soak mode adds observation logging (`[DEBUG-OBSERVE]`), and strips it before the fix ships.
 
 **Context fetch.** On each failed attempt, `/bkit-debug` runs each `context-fetch` bash block below `<!-- bkit:end -->` in `.agents/context.md`. The contexts are failing CI logs, the diff since the last green run, end-to-end reports, runtime errors (Sentry, Vercel, Supabase, Stripe and more) and web search (Tavily). It writes one artifact per context, and narrates `CHECKED` / `SELF-SKIPPED` / `NOT CONFIGURED` before fetching. The fetch is fail-soft and driven by the blocks: bkit hardcodes no CI host, workflow filename or test framework, and a context with no block is never read as a clean result.
 
@@ -236,7 +231,7 @@ Normal mode escalates to soak when diagnose cannot localise the failure, or when
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Nothing fails yet → writes tests that fail on the reported symptoms, never a fix. In soak mode, the tests repeat the scenario. Not reproduced → the tests are removed, and the run ends at Summary. Reproduced, but the re-run passes with no fix → Summary. |
+| `bkit-debug-failure-reproduce` | Reproducer (`[repro]` only) | Writes tests that fail on the reported symptoms, never a fix. On selected CI evidence, a successful reproduction is required for the current generation; failure to reproduce blocks resolution. On the local path, a successful reproduction returns to Run Tests, while failure to reproduce proceeds to Summary. |
 | `bkit-debug-failure-diagnose` | Diagnostician | Reproduces and diagnoses. Accumulates per-attempt context; escalates Standard → Pivot → Final. |
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced, with a test loop. |
 
@@ -263,11 +258,11 @@ Output: a squash-merged PR, updated docs, pruned skills and a torn-down worktree
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-ship-conflict-resolve` | Conflict resolver | Resolves merge conflicts against the integration branch, then runs the tests. |
+| `bkit-ship-conflict-resolve` | Conflict resolver | Resolves the remaining integration-branch merge conflicts and re-runs the merge block to commit them. |
 | `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from the plan's `Acceptance Scenario` sections and `DONE WHEN` fields. FAILs the merge if it finds any unplanned gap (a silent `TODO`, a skipped test). Declared deferrals are resurfaced, never blocking. Gates only what the repo can prove: plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process and never gated, and no plan precondition or merge condition blocks, however a log or summary restates it. |
-| `bkit-debug-failure-diagnose` | Diagnostician | When post-merge checks fail, diagnoses the regression. Shared with debug. |
-| `bkit-debug-failure-remediate` | Fixer | When post-merge checks fail, applies the fix. |
-| `bkit-ship-update-docs` | Docs | Updates knowledge / decisions / completed docs. |
+| `bkit-ship-update-docs` | Docs | Syncs the cataloged docs before the merge, excluding the knowledge and decision ledgers. |
+| `bkit-debug-failure-diagnose` | Diagnostician | Diagnoses a refused merge before a bounded fix attempt. Shared with debug. |
+| `bkit-debug-failure-remediate` | Fixer | Applies the diagnosed fix before merge re-validation. |
 
 Orchestrator-only ship steps: regression guard, merge, skill pruning, update local dev (`bkit branches sync-dev`, which never checks out `dev`) and close (which removes the worktree). The orchestrator performs the guarded git and tracker operations itself, not through subagents.
 

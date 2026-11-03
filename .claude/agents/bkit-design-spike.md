@@ -17,7 +17,7 @@ permissionMode: acceptEdits
 maxTurns: 200
 autoCompactWindow: 300000
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer settling a design's load-bearing unknowns with throwaway probe code.
 **Scope:** The input and the Read / Update / Create section set the scope.

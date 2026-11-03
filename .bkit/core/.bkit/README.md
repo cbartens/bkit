@@ -22,19 +22,19 @@ Here is a typical cycle for `ISSUE-123` "Add feature X":
 
 1. **Tracker issue** — the issue has the `bkit:auto` label and a non-terminal state (`Backlog`, `In Progress`).
 2. **Trigger** — a tracker comment (`@cursor /bkit-plan ISSUE-123`) or a slash command (`/bkit-plan ISSUE-123`) starts the workflow.
-3. **Workflow Step 1** — the preflight checks for `bkit:auto`, takes the `.lock`, sets `bkit:plan` and `In Progress`, and creates the workflow comment.
+3. **Workflow Step 1** — the workflow reads the issue, resolves the feature id, takes the `.lock`, sets `bkit:plan` and `In Progress`, and posts its start comment.
 4. **Step 2 — worktree** — the workflow creates a git worktree at `.worktrees/issue-123-add-feature/` on `feat/issue-123-add-feature`. It cuts the branch from `origin/dev`, or from local `dev` when that branch holds unpushed commits on top. Then it:
    - Copies each `bkit.workflows.worktree.copy` path from the main checkout. This `package.json` setting defaults to `.env`, `.env.local`. Paths are exact, and folders copy recursively. A missing path is logged, and is never fatal.
    - Links `.bkit/.env` (bkit's own token file) to the main checkout's copy, so the worktree can sign in.
    - Runs `direnv allow` when the worktree's `.envrc` matches the main checkout's.
    - Runs `pnpm install --frozen-lockfile`, unless `bkit.workflows.worktree.install: false`.
-5. **Phase steps** — the workflow dispatches subagents: `@bkit-plan-generate`, then `@bkit-plan-review-1`, `-2` and `@bkit-plan-scope-check` in parallel, and so on. Each one writes to `docs/plans/{YYYYMM}/logs/{FID}/` and appends a fenced section to the tracker comment. `{YYYYMM}` is the canonical month bucket, taken at design start.
+5. **Phase steps** — the workflow dispatches subagents: `@bkit-plan-generate`, then `@bkit-plan-review-1`, `-2` and `@bkit-plan-scope-check` in parallel, and so on. Each one writes to `docs/plans/{YYYYMM}/logs/{FID}/`. The orchestrator posts each completed step as a new tracker comment. `{YYYYMM}` is the canonical month bucket, taken at design start.
 6. **Phase summary** — `bkit workflows summary` writes the summary from the run's status rows, with a verdict (`PASS` / `CONCERNS` / `FAIL`). The workflow commits it as `chore(issue-123-…): summary bkit [skip ci]` for design / plan, or as `chore(issue-123-…): summary` for build/debug/ship, and then pushes.
 7. **Close Workflow** — the tracker issue moves to `In Review`, and the phase label stays. `/bkit-design` / `/bkit-plan` prune the worktree and delete `feat/issue-123-…`, which is merged into `dev`. `/bkit-build` / `/bkit-debug` keep the worktree.
 8. **Human review** — the design / plan sits at its canonical path, `docs/plans/{YYYYMM}/{FID}-{design,plan}.md`. The reviewer re-triggers the workflow or moves on to `/bkit-build`.
-9. **`/bkit-build`** — re-creates the worktree and executes the plan test-first: each task's tests fail before its code exists, then pass. It runs lint, typecheck and unit tests, and opens a PR to `dev`.
+9. **`/bkit-build`** — re-creates the worktree and executes the plan test-first: a tests agent writes each group's planned tests, the engine proves them failing, and a separate code agent makes them pass. It runs the deepest declared local gate, including integration when declared, and opens a PR to `dev`.
 10. **CI** — runs on the PR. Red → `/bkit-debug`, in PR mode (`gh run view --log-failed`). Green → `/bkit-ship`.
-11. **`/bkit-ship`** — squash-merges the PR, runs `@bkit-ship-update-docs` and then the ship summary on `dev`, prunes the worktree, and moves the issue to `In Review` with `bkit:merged`. bkit never closes an issue automatically. Plans stay at `docs/plans/{YYYYMM}/`, with no archive move.
+11. **`/bkit-ship`** — updates docs and writes the ship summary in the feature worktree, prunes skills, pushes bookkeeping and validates the covered CI head before squash-merging the PR. It verifies merge CI, lands the close record on `dev`, removes the worktree, and moves the issue to `In Review` with `bkit:merged`. bkit never closes an issue automatically. Plans stay at `docs/plans/{YYYYMM}/`, with no archive move.
 
 Throughout the run, the workflow holds `.lock`, writes `status.jsonl` (the source of truth for resuming) and owns the tracker MCP calls. Subagents are leaves: they have no tracker access, and their `tools:` allowlist scopes their writes.
 

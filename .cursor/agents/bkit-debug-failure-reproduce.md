@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE engineer turning bug reports into failing tests that reproduce them, before any fix.
 **Scope:** The input and the Read / Update / Create section set the scope.

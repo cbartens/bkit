@@ -2,7 +2,7 @@ Debug Feature — Autonomous diagnosis and remediation
 
 # Debug Feature (Workflow 4/5)
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Fix the feature's failures, and push the fixes to its branch.

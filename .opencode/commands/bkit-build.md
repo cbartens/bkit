@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Build Feature (Workflow 3/5)
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Build the feature and open a PR to the default integration branch.

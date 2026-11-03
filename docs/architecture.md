@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -19,7 +19,7 @@
 
 bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on npmjs):
 
-1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/core/engine`), mirrors (`.bkit/workflows`, `.bkit/prompts`), authoring docs (`.bkit/docs`), consumer templates (`.bkit/templates`).
+1. **Producer repo (this repo):** canonical `.bkit/` payload — engine (`.bkit/core/engine`), workflow and prompt sources (`.bkit/core/workflows`, `.bkit/core/prompts`), authoring docs (`.bkit/core/.bkit`), shared payload (`.bkit/shared`) and consumer templates (`.bkit/templates`).
 2. **Consumer repos:** devDependency; `pnpm bkit install` regenerates IDE mirrors + bkit-managed blocks. Mirror sources + authoring docs read package-relative from installed `.bkit/` — not copied into consumer `.agents/`.
 
 No server, database, or network service. Build-time / DX tool only.
@@ -83,7 +83,6 @@ cbartens/bkit (this repo)
 │                           #   bkit-test-file.mjs (`bkit:test:file`: runner picked by test file type)
 ├── scripts/gate/           # bkit-repo-only bkit-gate-changed.mjs (`bkit:gate:changed`: checks on
 │                           #   the changed files bkit passes it)
-├── vitest.*.ts             # Root test-runner configurations and shared test helpers
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── vitest.*.ts             # Repo-only test configuration and shared fixture support;
 │                           # gate-fixture runs consumer scripts with local dependencies.
@@ -136,15 +135,15 @@ pnpm bkit install [--module-flags] [--auto-revert]
         ├─ Vale package sync check
         ├─ Render unified advisory checklist
         ├─ Phase 3 blockers → exit 1 with recovery line; --auto-revert calls runUninstall first
-        └─ Write .bkit-version JSON (pinnedVersion + canonicalHashes from this run's WriteSet)
+        └─ Write .bkit/version JSON (pinnedVersion + canonicalHashes from this run's WriteSet)
 ```
 
 CLI verbs:
 
 - `pnpm bkit install` — all three phases. Requires >=1 module flag or `--tracker=` (re-renders every installed host); bare `bkit install` errors.
-- `pnpm bkit check` — Phase 1 + Phase 3 read-only; exit 1 on Tier-1 / Tier-2 drift, no writes.
-- `pnpm bkit doctor` — Phase 1 + Phase 3 detection; never writes; always exit 0.
-- `pnpm bkit status` — read-only; installed host (claude / cursor / OpenCode) + configured provider.
+- `pnpm bkit check` — Phase 1 + Phase 3 detection; exit 1 on Tier-1 / Tier-2 drift. Writes only `.bkit/advisories.md`.
+- `pnpm bkit doctor` — Phase 1 + Phase 3 detection; writes only `.bkit/advisories.md` and exits 0.
+- `pnpm bkit status` — read-only; installed hosts + configured provider.
 - `pnpm bkit uninstall` — surgical format-aware removal: fully-managed delete / markered-text strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--yes`. package.json scripts and devDeps are never removed (the `bkit` install-state block goes on a full uninstall).
 - `pnpm bkit upgrade` — diff engine vs `canonicalHashes`; non-conflicts auto-apply, conflicts stderr (`--auto-apply` non-zero on conflict). Conflicts come only from the payload walk's whole files; `renderManagedOutputs` outputs (agents, commands, skills, `.bkit/*.md`) always re-render, and `bkit check` flags an edit to one. Module-scoped. Re-renders at **installed** version (offline). `--to=<version>` / `--latest` (#296) bump `@cbartens/bkit` (`pnpm add`) → re-exec fresh binary → re-render + re-pin atomically, so version bump cannot drift mirrors; bare `pnpm add` does not re-render.
 - `pnpm bkit comply --phase <p>` (#234 WS-2) — grader over `git diff parentSha..HEAD`; advisory-only, fail-open.
@@ -157,7 +156,7 @@ CLI verbs:
 
 ```
 Consumer repo
-├── package.json            # devDependencies: { "@cbartens/bkit": "^5.1.0" }
+├── package.json            # devDependencies: { "@cbartens/bkit": "6.1.0" }
 ├── .claude/settings.json   # json format — deep-containment (template scope within consumer)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment
 ├── .agents/                # Cross-IDE agent runtime, populated by `pnpm bkit install`

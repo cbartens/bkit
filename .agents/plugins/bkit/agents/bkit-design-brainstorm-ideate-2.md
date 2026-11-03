@@ -10,7 +10,7 @@ tools:
   - mcp__serena__*
   - write_to_file
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 long-term design approaches with explicit trade-offs.
 **Scope:** The input and the Read / Update / Create section set the scope.

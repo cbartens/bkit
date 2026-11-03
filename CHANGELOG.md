@@ -6,7 +6,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [6.1.0] — 2026-11-04
 
 ### Breaking Changes
 
@@ -14,6 +14,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Added
 
+- **Local tests and gates keep a Mac awake while they run.** Engine test commands hold a `caffeinate -is` assertion, and the copy-and-own `scripts/ci/bkit-test-awake.mjs` wrapper covers direct runner commands and complete gate chains. Cancellation reaches the test process and releases the assertion. Other platforms run the original command, and test timeouts stay unchanged. See `.bkit/templates.md` § Local test sleep prevention.
 - **Workflow steps show an engine-derived progress line.** Each numbered completion returns an exact ten-cell bar, percentage and step title for the agent to show as plain text. Build lines reflect current task groups, retries show the saved attempt allowance, and resuming recomputes the same position from the run's status and plan. Explicit gate-only completions use the same format without adding status rows. `bkit upgrade` installs the narration on every supported host.
 - **`bkit branches push` hands pre-push tests-lock waits back to the agent.** It passes the host's lock wait budget and its run name to Git, and exits 81 with `lockHolder` when the hook's gate gives up waiting. Build, debug and ship re-run their push blocks on 81.
 
@@ -34,6 +35,9 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Changed
 
+- **Permanent skills are checked for each configured host, and activate for the task that needs them.** The registry checks the skill file, installer lock and host discovery together. A skill's demand to activate in every session does not override the owner's request, the repository's workflow or its test rules. Missing installations are repaired through the skills CLI, while owner approvals and existing work are preserved.
+- **Bookkeeping increments can reuse a successful local full gate.** The pre-push hook sends every outgoing old/new commit pair to `bkit ci min-push`. It selects `bkit:gate:min` when the changes after a locally checked ancestor contain only allowed bookkeeping files and the recorded script definitions still match. Missing or invalid evidence, a failed full check, rewritten history or new code keeps the full gate. This does not let code skip CI.
+- **Workflow steps have no universal runtime deadline.** Attempt limits, subagent turn caps, command wait budgets and host execution limits still apply.
 - **Prompts and workflows name a section by its bare title, and keep the `#` marks only for a line the agent writes or matches.** `.bkit/authoring.md` § All Agent-Read Files adds the **Section names** rule: "the design's `Acceptance Scenario`" names a section to read, "append `## Project Instructions`" names a line to write, and a fixed line the agent recognises a file by (the `## Owner answers` heading) or a program prints or parses (`## bkit Tips`, `###### bkit:blocked-by`) keeps its marks. The challenge, plan-convert and plan prompts, the build, design and plan workflows, and the shared prompt and workflow docs now follow it.
 - **`bkit.testing.shipGate` is `bkit.testing.ciRequired`, and `bkit upgrade` renames it for you.** The list of CI lanes whose `skipped` conclusion refuses a ship merge now sits with the other CI keys as `ciRequired`, in the order `minPushPaths`, `ciWorkflow`, `ciCapstone`, `ciRequired`, `ciSkipPaths`. A `testing.shipGate` in `package.json` moves to `testing.ciRequired` on the next install or upgrade; a `ciRequired` already set wins. `bkit runs gate` reads only the new key. #699
 - **A min push is what bkit writes plus what `bkit.testing.minPushPaths` adds, so the setting no longer restates bkit's own files.** `bkit ci min-push` now starts from ship's `--scope=pr` bookkeeping allow-list (ledgers, logs, `docs/*.md`, skill removals, the repo's `bkit.testing.ciSkipPaths`) plus `docs/plans/**`, the same list the ship gate and the pre-push `[skip ci]` guard accept untested, and `minPushPaths` only adds to it; `[]` means that floor alone, not off. Installs seed `[]` instead of `docs/plans/**`, `docs/*.jsonl`, `.bkit/*.jsonl`, and `bkit upgrade` drops those three and anything already in `ciSkipPaths` from a repo's list. #699
@@ -72,6 +76,7 @@ Format: `## [version] — YYYY-MM-DD`
 
 ### Fixed
 
+- **Workflow summaries judge the findings that remain unresolved.** Later passing work clears only the findings its contract covers; accepted limitations remain concerns, and missing evidence stays unresolved. The original verdicts remain in the assessment history, while current action items reflect the latest result for each task or remediation step.
 - **The slop check ignores skip and focus markers inside literal test data.** Strings, template text and regular expressions containing examples such as `it.skip` no longer count as disabled tests when a valid syntax tree is available; executable markers still count, and an unavailable or invalid syntax tree keeps the conservative text scan. `bkit upgrade` automatically refreshes `scripts/slop/bkit-slop-type-suppression.mjs` only when it is byte-identical to the copy shipped in v6.0.0. Customized copies and symlinked paths stay unchanged, with a visible warning to merge `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` by hand. Dry run reports the update without writing, and a second upgrade changes nothing. See `docs/migrations.md` § Migrations.
 - **Ship reviews removed assertions against their actual surviving coverage.** `bkit branches scan-diff --disabled-tests` recognizes moved assertions once per added occurrence, requires unchanged test context for moves across files, pairs rewrites only within the same file and test, and attributes removals to their original test. Unrelated additions cannot hide a removal. The deferred-work sweep requires concrete evidence of enabled equivalent coverage or an owner-approved retirement that leaves no requirement uncovered; missing or inconclusive coverage stays blocking.
 

@@ -1,6 +1,6 @@
 # Trackers
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Reference for the inline tracker blocks in `.bkit/core/workflows/bkit-*.md` and `.bkit/core/prompts/bkit-*.md`. The installer does not consume this file: there is no `trackers.md` substitution. The per-tracker call bodies (`github` / `linear` / `jira`, plus `false` for no tracker) live inline at each workflow call site. This file documents the marker contract, the per-tracker conventions shared across call sites, and the issue shapes workflows read (§ Issue shapes).

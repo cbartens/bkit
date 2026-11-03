@@ -1,6 +1,6 @@
 # Install, upgrade, and operate bkit
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** This file covers first-time install and upgrade, the install lifecycle, uninstall and recovery. It ships in the package at `node_modules/@cbartens/bkit/.bkit/core/.bkit/install.md` and is mirrored into the consumer repo at `.bkit/install.md`. Ongoing ops and triggering workflows are in `.bkit/README.md`.

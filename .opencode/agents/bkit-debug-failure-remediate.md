@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
 **Scope:** The input and the Read / Update / Create section set the scope.

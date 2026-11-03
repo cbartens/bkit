@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v6.0.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
 
 # Technology
 
@@ -79,7 +79,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Prettier | `3.x`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
 | Vale | `3.24.0`, system-installed locally; CI installs a sha256-verified pinned tarball | Prose linting of `.agents/`, `.bkit/`, `docs/` and root markdown (`pnpm bkit:lint:prose` → `bkit ci prose --glob=…`). Fails when the vale binary is absent; a missing `.vale/styles/write-good` (gitignored, so absent in fresh checkouts and worktrees) self-heals by copying from the main worktree, else `vale sync`, and fails if neither works. CI installs both |
 | actionlint | `1.7.12`, downloaded in-lane on the static and unit lanes (SHA-pinned script) | GitHub-Actions-aware lint of `.github/workflows/*` — expression syntax + shellcheck on `run:` bodies. `pnpm bkit:lint:workflows` guard-skips locally when absent |
-| Oxlint + oxlint-tsgolint | `1.87.0` + `7.0.2004` (exact), `.oxlintrc.json` | Test-file linter; adopted copy of `.bkit/templates/.oxlintrc.json` (bkit-only edits: `*.test.ts` glob, `expectExit`); only these rules enabled (`pnpm lint` → `oxlint --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine`; part of `bkit:gate:static` and the CI static lane). Scope: `**/*.test.ts` (covers `*.integration.test.ts`). Rules, all `error`: `vitest/expect-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `vitest/valid-expect` (`maxArgs: 2`), `typescript/no-floating-promises` (type-aware via oxlint-tsgolint, built on TypeScript 7; typescript-eslint supports only TypeScript `<6.1`) |
+| Oxlint + oxlint-tsgolint | `1.89.0` + `7.0.2004` (exact), `.oxlintrc.json` | Test-file linter; adopted copy of `.bkit/templates/.oxlintrc.json` (bkit-only edits: `*.test.ts` glob, `expectExit`); only these rules enabled (`pnpm lint` → `oxlint --type-aware --tsconfig tsconfig.test.json --deny-warnings .bkit/core/engine`; part of `bkit:gate:static` and the CI static lane). Scope: `**/*.test.ts` (covers `*.integration.test.ts`). Rules, all `error`: `vitest/expect-expect`, `vitest/no-conditional-in-test`, `vitest/no-conditional-expect`, `vitest/valid-expect` (`maxArgs: 2`), `typescript/no-floating-promises` (type-aware via oxlint-tsgolint, built on TypeScript 7; typescript-eslint supports only TypeScript `<6.1`) |
 | slop-scan | `0.3.x`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm bkit:slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks
@@ -88,7 +88,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit:gate:static-unit-integration` (or `bkit:gate:static` on `revert-*`) + `pnpm bkit check` before push — the same gate scripts the agent workflows dispatch through, so a human push and an agent run enforce one set. Both copies call `bkit:gate:static-unit-integration` when package.json declares it, else `bkit:gate:static-unit`. Source-repo copy additionally runs `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; consumer template does not. Neither copy runs `pnpm build`. |
+| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
 
 ## CI/CD
 
