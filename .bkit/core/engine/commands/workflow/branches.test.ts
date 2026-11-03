@@ -14,6 +14,7 @@ import {
   branchesCommand,
   classifyConflict,
   disabledTestsIn,
+  embedDocs,
   readAnchor,
   replayBuild,
   stampAnchor,
@@ -261,6 +262,27 @@ describe("branches rebase: classification", () => {
     expect(classifyConflict("docs/capabilities.md")).toBe("register");
     expect(classifyConflict("apps/web/docs/capabilities.md")).toBe("refuse");
   });
+
+  it("classifies a doc as embedding a register only when the repo's script lists it", () => {
+    const embeds = new Map([["README.md", "docs/capabilities.md"]]);
+    expect(classifyConflict("README.md", embeds)).toBe("embed");
+    expect(classifyConflict("README.md")).toBe("refuse");
+    expect(classifyConflict("docs/README.md", embeds)).toBe("refuse");
+  });
+
+  it("reads the embedded docs from the script's assignment, and none when it is empty or absent", () => {
+    const dir = makeRepo("embed-docs");
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS=""\n`);
+    expect(embedDocs(dir)).toEqual(new Map());
+    write(dir, REGISTER_SCRIPT, `GRAPH_EMBED_DOCS="README.md docs/intro.md"\n`);
+    expect(embedDocs(dir)).toEqual(
+      new Map([
+        ["README.md", REGISTER],
+        ["docs/intro.md", REGISTER],
+      ]),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -299,6 +321,36 @@ function divergeRegister(
   git(dir, "checkout", "-q", "main");
   write(dir, REGISTER, main);
   git(dir, "commit", "-q", "-am", "main register");
+  git(dir, "checkout", "-q", "feat");
+  git(dir, "rebase", "main");
+  return dir;
+}
+
+const EMBED_DOC = "README.md";
+const [BLOCK_OPEN, BLOCK_CLOSE] = REGISTERS[REGISTER]!.embed.block;
+/** A doc embedding the register's generated block between two hand-written paragraphs. */
+const embedBody = (block: string, intro = "intro", outro = "outro") =>
+  `# Title\n\n${intro}\n\n${BLOCK_OPEN}\n${block}\n${BLOCK_CLOSE}\n\n${outro}\n`;
+/** A rebuild script that embeds the register into README.md and stamps that doc. */
+const EMBED_REBUILD = `GRAPH_EMBED_DOCS="${EMBED_DOC}"\necho "rebuilt" >> ${EMBED_DOC}\n`;
+
+/**
+ * A repo on `main` with README.md embedding the register's block and `script` as the
+ * register's rebuild script, then feat and main each rewriting README.md; feat checked
+ * out and rebased onto main, stopped on the README.md conflict.
+ */
+function divergeEmbed(name: string, feat: string, main: string, script = EMBED_REBUILD): string {
+  const dir = makeRepo(name);
+  write(dir, EMBED_DOC, embedBody("v0"));
+  write(dir, REGISTER_SCRIPT, script);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "readme");
+  git(dir, "checkout", "-q", "-b", "feat");
+  write(dir, EMBED_DOC, feat);
+  git(dir, "commit", "-q", "-am", "feat readme");
+  git(dir, "checkout", "-q", "main");
+  write(dir, EMBED_DOC, main);
+  git(dir, "commit", "-q", "-am", "main readme");
   git(dir, "checkout", "-q", "feat");
   git(dir, "rebase", "main");
   return dir;
@@ -631,6 +683,56 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(git(dir, "status", "--porcelain", "--", REGISTER).out).toBe("");
     expect(r.err).toContain("graphify: command not found");
     expect(r.err).toContain(`NOT REBUILT ${REGISTER} — it keeps dev's copy`);
+  });
+
+  it("settles a doc's generated block on the target's copy, keeps the branch's other edits, then rebuilds", async () => {
+    const dir = divergeEmbed(
+      "embed",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "intro", "main outro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "resolved",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      rebuilt: true,
+    });
+    expect(read(dir, EMBED_DOC)).toBe(`${embedBody("main", "feat intro", "main outro")}rebuilt\n`);
+    expect(git(dir, "log", "-1", "--format=%s").out).toBe(
+      `chore(feat): rebuild ${REGISTER} after the rebase`,
+    );
+    expect(git(dir, "status", "--porcelain").out).toBe("");
+  });
+
+  it("refuses and aborts when the doc also conflicts outside the generated block", async () => {
+    const dir = divergeEmbed(
+      "embed-outside",
+      embedBody("feat", "feat intro"),
+      embedBody("main", "main intro"),
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({
+      outcome: "refused",
+      refused: EMBED_DOC,
+      reason: "it conflicts outside the generated block",
+      aborted: true,
+    });
+    expect(inRebase(dir)).toBe(false);
+  });
+
+  it("refuses a conflicted doc the repo's script does not list", async () => {
+    const dir = divergeEmbed(
+      "embed-unlisted",
+      embedBody("feat"),
+      embedBody("main"),
+      `GRAPH_EMBED_DOCS=""\n`,
+    );
+    const r = await run(dir, ["rebase"]);
+    expect(r.code).toBe(3);
+    expect(r.json).toMatchObject({ outcome: "refused", refused: EMBED_DOC, aborted: true });
+    expect(r.json.reason).toMatch(/^not an append-only ledger/);
   });
 
   it("--sentinel and --log-file record a refusal and survive the abort", async () => {
@@ -2619,6 +2721,34 @@ describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
     expect(read(clone, REGISTER)).toBe(`${registerBody("v0")}dev line\nrebuilt\n`);
     expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
     expect(subject(clone, "HEAD^")).toBe(MERGE_MSG);
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("--merge settles a doc's generated block on dev's copy and rebuilds its register", async () => {
+    const { origin, clone } = withOrigin("merge-embed");
+    write(clone, EMBED_DOC, embedBody("v0"));
+    write(clone, REGISTER_SCRIPT, EMBED_REBUILD);
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "readme");
+    git(clone, "push", "-q", "origin", "dev");
+    const other = tmp("merge-embed-other");
+    git(other, "clone", "-q", "-b", "dev", origin, ".");
+    write(other, EMBED_DOC, embedBody("dev", "intro", "dev outro"));
+    git(other, "commit", "-q", "-am", "dev readme");
+    git(other, "push", "-q", "origin", "dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    write(clone, EMBED_DOC, embedBody("feat", "feat intro"));
+    git(clone, "commit", "-q", "-am", "feat readme");
+    const r = await run(clone, ["sync", "--merge"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      outcome: "merged",
+      resolved: [{ path: EMBED_DOC, how: "embed" }],
+      pending: [],
+      rebuilt: true,
+    });
+    expect(read(clone, EMBED_DOC)).toBe(`${embedBody("dev", "feat intro", "dev outro")}rebuilt\n`);
+    expect(subject(clone)).toBe(`chore(1-x): rebuild ${REGISTER} after merging dev bkit [skip ci]`);
     expect(git(clone, "status", "--porcelain").out).toBe("");
   });
 

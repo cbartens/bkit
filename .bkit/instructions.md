@@ -10161,7 +10161,7 @@ Regenerate, because no merge runs `bkit:generate` on Path A. A hand merge of `de
 **If** exit 0 **and** `REGEN_OUTCOME` = unchanged **or** undeclared → Step 5. Nothing was committed.
 Ancestor verdict determined
 Path A regenerated (`branches regenerate`), a commit pushed plain
-Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
 **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
 **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
 **If** exit 24 → the merge is still in progress with the `PENDING` paths conflicted → sub-step 2.
@@ -11145,11 +11145,11 @@ Run `git rev-parse -q --verify MERGE_HEAD`.
 **If** it prints nothing → no merge of `origin/dev` is in progress, so there is no conflict here to resolve:
 Go straight to setting `Verdict`.
 Append a log entry.
-Run the auto-resolver before any hand-classification. It resolves every append-only ledger, the dependency lockfile and a generated register, commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
+Run the auto-resolver before any hand-classification. It resolves every append-only ledger, the dependency lockfile, a generated register and the generated block of an embedding doc (a doc the register's script copies that block into), commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
 Append a log entry with what it printed and its `resolved` and `pending` paths.
 **If** it printed `MERGE_COMPLETE` → the merge is committed. Skip to the verify gate.
 **If** it printed `HAND_RESOLVE` → the merge is still in progress, and the paths in its `pending` list are still conflicted. Continue to classification.
-**Else** → the resolver could not go on. Either it aborted the merge, because a ledger, lockfile or register resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
+**Else** → the resolver could not go on. Either it aborted the merge, because a ledger, lockfile, register or embedding-doc resolution, the merge commit or `bkit:generate` failed, or it found no merge in progress. Name which in the log entry:
 Set `Verdict` = `FAIL` with `Edit`.
 Go straight to setting `Verdict`.
 Classify the conflicts:
@@ -11162,7 +11162,7 @@ Formatting-only drift (whitespace, trailing newline, prettier output) → take `
 A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
 Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
 `Refused resolutions`:
-An append-only ledger, the dependency lockfile or a generated register that is still conflicted. The auto-resolver resolves those, so one left conflicted is a resolution that failed.
+An append-only ledger, the dependency lockfile, a generated register or an embedding doc that is still conflicted. The auto-resolver resolves those, so one left conflicted is a resolution that failed.
 The same function or method body edited on both sides.
 The same JSON key with different values, except the one-sided bumps above.
 The same line edited on both sides with different content.

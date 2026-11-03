@@ -129,19 +129,47 @@ const LEDGER_PATTERNS = LEDGERS.map(globToRegExp);
  * the whole file, so neither side's text is worth a hand merge, and running `script`
  * with `args` after the rebase or merge makes dev's copy current. `keep` brackets the
  * one hand-written region, which the rebuild reads back and re-emits, so a branch's
- * edit to it is carried onto dev's copy.
+ * edit to it is carried onto dev's copy. `embed` names the variable in `script` that
+ * lists the hand-written docs the rebuild copies a generated block into, and the
+ * markers around that block.
  */
 export const REGISTERS = {
     "docs/capabilities.md": {
         script: "scripts/graphify/bkit-graphify.sh",
         args: ["refresh"],
         keep: ["<!-- overrides:start -->", "<!-- overrides:end -->"],
+        embed: {
+            variable: "GRAPH_EMBED_DOCS",
+            block: ["<!-- graph:packages:start -->", "<!-- graph:packages:end -->"],
+        },
     },
 };
-/** How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate runs there. */
-export function classifyConflict(file) {
+/**
+ * Each doc a register's script in `top` embeds a generated block into, mapped to that
+ * register. Read from the script's own `embed.variable` assignment, so a repo whose
+ * script lists no docs, or that has no script, gets an empty map.
+ */
+export function embedDocs(top) {
+    const out = new Map();
+    for (const [register, entry] of Object.entries(REGISTERS)) {
+        const script = path.join(top, entry.script);
+        if (!fs.existsSync(script))
+            continue;
+        const assigned = new RegExp(`^${entry.embed.variable}="([^"]*)"`, "m").exec(fs.readFileSync(script, "utf-8"));
+        for (const doc of (assigned?.[1] ?? "").split(/\s+/).filter(Boolean))
+            out.set(doc, register);
+    }
+    return out;
+}
+/**
+ * How a conflicted path may be resolved. Only repo-root lockfiles count: the regenerate
+ * runs there. `embeds` is the repo's `embedDocs`.
+ */
+export function classifyConflict(file, embeds = new Map()) {
     if (Object.hasOwn(REGISTERS, file))
         return "register";
+    if (embeds.has(file))
+        return "embed";
     if (Object.hasOwn(LOCKFILE_REGENERATE, file))
         return "lockfile";
     if (LEDGER_PATTERNS.some((re) => re.test(file)))
@@ -259,6 +287,62 @@ export function registerResolve(top, file, dev) {
     return { ok: true };
 }
 /**
+ * Settle a conflicted doc that embeds a register's generated block: give all three
+ * stages dev's copy of the block, then merge the rest of the doc as git would. Refuses
+ * when a side lacks the block, or when the doc still conflicts outside it: that needs a
+ * hand merge. The register's rebuild rewrites the block afterwards.
+ */
+export function embedResolve(top, file, register, dev) {
+    const entry = REGISTERS[register];
+    if (entry === undefined)
+        return { ok: false, problem: "not a generated register" };
+    const stages = { base: 1, ours: 2, theirs: 3 };
+    const texts = { base: "", ours: "", theirs: "" };
+    for (const [name, stage] of Object.entries(stages)) {
+        const bytes = stageBytes(top, stage, file);
+        if (bytes === null)
+            return { ok: false, problem: `git show :${stage}:${file} failed` };
+        texts[name] = bytes.toString("utf-8");
+    }
+    const devBlock = keptRegion(texts[dev], entry.embed.block);
+    if (devBlock === null)
+        return { ok: false, problem: "a side lacks the generated block" };
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-embed-"));
+    try {
+        for (const name of Object.keys(stages)) {
+            const block = keptRegion(texts[name], entry.embed.block);
+            if (block === null)
+                return { ok: false, problem: "a side lacks the generated block" };
+            fs.writeFileSync(path.join(tmp, name), texts[name].replace(block, () => devBlock));
+        }
+        const merged = spawnSync("git", [
+            "merge-file",
+            "-p",
+            path.join(tmp, "ours"),
+            path.join(tmp, "base"),
+            path.join(tmp, "theirs"),
+        ], { cwd: top, env: gitEnv(), maxBuffer: OUTPUT_LIMIT });
+        // Exit status = conflicts left, capped at 127; above that it failed.
+        if (merged.error || merged.status === null || merged.status > 127)
+            return { ok: false, problem: "git merge-file failed" };
+        if (merged.status > 0)
+            return { ok: false, problem: "it conflicts outside the generated block" };
+        fs.writeFileSync(path.join(top, file), merged.stdout);
+        return { ok: true };
+    }
+    finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+    }
+}
+const NOT_RESOLVABLE = "not an append-only ledger, a recognised lockfile, a generated register or a doc embedding one";
+/** How a rebase settled each kind of conflict, for its log. */
+const REBASE_HOW = {
+    union: "union (append-only ledger)",
+    lockfile: "took rebase target + regenerated",
+    register: "took rebase target's copy of a generated register",
+    embed: "took rebase target's copy of the generated block, merged the rest",
+};
+/**
  * Drive an in-progress rebase to completion, auto-resolving each stop. Loops
  * because `--continue` replays the next commit, which can conflict in turn; the
  * bound is a runaway guard. Never aborts: on refusal the rebase is left in
@@ -284,35 +368,34 @@ export function resolveRebase(top, onLog = () => undefined) {
         result.reason = reason;
         return result;
     };
+    const embeds = embedDocs(top);
     while (result.rounds < 100) {
         result.rounds++;
         const conflicts = unmergedPaths(top);
         if (conflicts.length > 0) {
             // Classify the whole set before resolving any of it, so a refused path
             // never leaves half the set rewritten.
-            const refused = conflicts.find((f) => classifyConflict(f) === "refuse");
+            const refused = conflicts.find((f) => classifyConflict(f, embeds) === "refuse");
             if (refused !== undefined) {
-                return refuse(`REFUSE ${refused} — not an append-only ledger, a recognised lockfile or a generated register; routing to Failure Path`, refused, "not an append-only ledger, a recognised lockfile or a generated register");
+                return refuse(`REFUSE ${refused} — ${NOT_RESOLVABLE}; routing to Failure Path`, refused, NOT_RESOLVABLE);
             }
             for (const f of conflicts) {
-                const kind = classifyConflict(f);
-                if (kind === "register") {
-                    const settled = registerResolve(top, f, "ours");
-                    if (!settled.ok)
-                        return refuse(`REFUSE ${f} — ${settled.problem}`, f, settled.problem);
-                }
-                const ok = kind === "register" ||
+                const kind = classifyConflict(f, embeds);
+                const settled = kind === "register"
+                    ? registerResolve(top, f, "ours")
+                    : kind === "embed"
+                        ? embedResolve(top, f, embeds.get(f), "ours")
+                        : null;
+                if (settled !== null && !settled.ok)
+                    return refuse(`REFUSE ${f} — ${settled.problem}`, f, settled.problem);
+                const ok = settled !== null ||
                     (kind === "ledger" ? unionResolve(top, f).ok : lockfileResolve(top, f));
                 if (!ok || !runGit(top, ["add", "--", f]).ok) {
                     return refuse(`REFUSE ${f} — resolution failed`, f, "resolution failed");
                 }
-                const how = kind === "ledger" ? "union" : kind === "register" ? "register" : "lockfile";
+                const how = kind === "ledger" ? "union" : kind === "register" || kind === "embed" ? kind : "lockfile";
                 result.resolved.push({ path: f, how });
-                log(how === "union"
-                    ? `RESOLVED ${f} — union (append-only ledger)`
-                    : how === "register"
-                        ? `RESOLVED ${f} — took rebase target's copy of a generated register`
-                        : `RESOLVED ${f} — took rebase target + regenerated`);
+                log(`RESOLVED ${f} — ${REBASE_HOW[how]}`);
             }
         }
         // A resolution can empty the commit (both sides appended the same rows);
@@ -1431,14 +1514,21 @@ function commitPaths(top, paths, message) {
         quietGit(top, ["commit", "-q", "-m", message, "--", ...paths]).ok);
 }
 /**
- * Rebuild each register a conflict settled on dev's copy (`REGISTERS`) and commit only
- * the paths the rebuild changed. null when none was settled, or no settled register's
- * script exists in the repo; false when a rebuild failed, or changed a path that already
- * held uncommitted changes. A register not rebuilt keeps dev's copy: the pre-push gate,
- * CI and ship's `bkit:generate` still judge it.
+ * Rebuild each register a conflict settled on dev's copy (`REGISTERS`), or whose
+ * generated block a conflicted doc took from dev, and commit only the paths the rebuild
+ * changed. null when none was settled, or no settled register's script exists in the
+ * repo; false when a rebuild failed, or changed a path that already held uncommitted
+ * changes. A register not rebuilt keeps dev's copy: the pre-push gate, CI and ship's
+ * `bkit:generate` still judge it.
  */
 function rebuildRegisters(top, resolved, commitMessage, log) {
-    const settled = resolved.filter((r) => r.how === "register").map((r) => r.path);
+    const embeds = embedDocs(top);
+    const settled = [
+        ...new Set(resolved.flatMap((r) => {
+            const register = r.how === "register" ? r.path : r.how === "embed" ? embeds.get(r.path) : undefined;
+            return register === undefined ? [] : [register];
+        })),
+    ];
     const due = settled.filter((f) => fs.existsSync(path.join(top, REGISTERS[f].script)));
     for (const f of settled)
         if (!due.includes(f))
@@ -1564,8 +1654,8 @@ function mergeInProgress(top) {
     return p !== null && fs.existsSync(p);
 }
 /** Settle one conflicted path under `policy`, staging it when it is resolved. */
-function resolvePath(top, file, policy) {
-    const kind = classifyConflict(file);
+function resolvePath(top, file, policy, embeds) {
+    const kind = classifyConflict(file, embeds);
     if (kind === "ledger") {
         const union = unionResolve(top, file);
         if (!union.ok)
@@ -1577,6 +1667,12 @@ function resolvePath(top, file, policy) {
         if (!settled.ok)
             return { refused: settled.problem };
         return runGit(top, ["add", "--", file]).ok ? "register" : { refused: "git add failed" };
+    }
+    if (kind === "embed") {
+        const settled = embedResolve(top, file, embeds.get(file), "theirs");
+        if (!settled.ok)
+            return { refused: settled.problem };
+        return runGit(top, ["add", "--", file]).ok ? "embed" : { refused: "git add failed" };
     }
     if (policy === "docs") {
         if (!file.startsWith("docs/"))
@@ -1601,6 +1697,7 @@ const RESOLVED_HOW = {
     dev: `took ${DEV}`,
     lockfile: `lockfile regenerated from ${DEV}'s copy`,
     register: `took ${DEV}'s copy of a generated register`,
+    embed: `took ${DEV}'s copy of the generated block, merged the rest`,
 };
 /**
  * Merge origin/dev (already fetched) into the checked-out feature branch under
@@ -1661,8 +1758,9 @@ function mergeDev(top, o, log) {
         }
     }
     if (mergeInProgress(top)) {
+        const embeds = embedDocs(top);
         for (const f of unmergedPaths(top)) {
-            const r = resolvePath(top, f, o.policy);
+            const r = resolvePath(top, f, o.policy, embeds);
             if (typeof r === "object")
                 return refuse(`${f}: ${r.refused}`);
             if (r === "pending") {
@@ -2397,12 +2495,12 @@ export const branchesCommand = {
                 {
                     name: "merge",
                     type: "boolean",
-                    help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
+                    help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, a doc embedding the register's generated block takes ${DEV}'s block and merges the rest, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
                 },
                 {
                     name: "merge-docs",
                     type: "boolean",
-                    help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
+                    help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, a doc embedding its generated block takes ${DEV}'s block and merges the rest, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
                 },
                 {
                     name: "fid",
@@ -2427,8 +2525,8 @@ export const branchesCommand = {
                 behind: `commits on ${UPSTREAM} not in head`,
                 docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,
                 merged: `true when --merge or --merge-docs merged ${UPSTREAM}`,
-                resolved: "conflicts the merge resolved: [{path, how: union|lockfile|register|dev}]",
-                rebuilt: "a generated register the merge settled on dev's copy, rebuilt after the merge: true (rebuilt; output committed), false (failed: it keeps dev's copy), null (not run: none settled, its script absent, or no merge)",
+                resolved: "conflicts the merge resolved: [{path, how: union|lockfile|register|embed|dev}]",
+                rebuilt: "a generated register the merge settled on dev's copy, or whose generated block a doc took from dev, rebuilt after the merge: true (rebuilt; output committed), false (failed: it keeps dev's copy), null (not run: none settled, its script absent, or no merge)",
                 generated: "bkit:generate after the merge: true (ran; output committed), false (failed, exit 25), null (not run: no merge, undeclared, or the tree was dirty)",
                 outcome: `--merge: merged | current (${UPSTREAM} already an ancestor; nothing done) | pending (conflicts left for a hand resolution, merge in progress) | refused (merge aborted)`,
                 carried: "--merge: the commit that carried the uncommitted work before the merge (null when the tree was clean)",
@@ -2441,7 +2539,7 @@ export const branchesCommand = {
                 [EXIT_DETACHED]: "--merge / --merge-docs with no branch checked out",
                 [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,
                 [EXIT_MERGE_CONFLICT]: `the merge conflicted where it may not (--merge-docs: outside docs/ and the ledgers; --merge: a ledger union, lockfile regenerate or register resolution failed), could not be committed, or (--merge) ${UPSTREAM} could not be merged at all; merge aborted`,
-                [EXIT_HAND_RESOLVE]: "--merge: conflicts outside the ledgers, lockfiles and generated registers are left in the tree with the merge in progress; resolve them, git add, run again",
+                [EXIT_HAND_RESOLVE]: "--merge: conflicts outside the ledgers, lockfiles, generated registers and their generated blocks are left in the tree with the merge in progress; resolve them, git add, run again",
                 [EXIT_GENERATE_FAILED]: "bkit:generate failed after the merge, or its output could not be committed; the merge commit stays",
             },
             run: syncVerb,
@@ -2663,7 +2761,7 @@ export const branchesCommand = {
             run: forceBuildVerb,
         },
         rebase: {
-            summary: "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate) and generated-register (take the target's copy, rebuild after) conflicts; refuse and abort on anything else.",
+            summary: "Drive a rebase to completion, auto-resolving ledger (union), lockfile (regenerate), generated-register (take the target's copy, rebuild after) and embedded generated-block (take the target's block, merge the rest, rebuild after) conflicts; refuse and abort on anything else.",
             use: "workflow",
             flags: [
                 {
@@ -2684,8 +2782,8 @@ export const branchesCommand = {
             ],
             output: {
                 outcome: "resolved | refused (a refused rebase is aborted)",
-                resolved: "conflicts resolved: [{path, how: union|lockfile|register}]",
-                rebuilt: "a generated register settled on the rebase target's copy, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
+                resolved: "conflicts resolved: [{path, how: union|lockfile|register|embed}]",
+                rebuilt: "a generated register settled on the rebase target's copy, or whose generated block a doc took from the target, rebuilt after the rebase: true (rebuilt; output committed), false (failed: it keeps the target's copy), null (not run: none settled, or its script absent)",
                 skippedCommits: "commits skipped because resolution emptied them",
                 rounds: "resolve rounds run",
                 refused: "the path that stopped resolution (null when none, or not path-specific)",
