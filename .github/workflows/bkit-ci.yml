@@ -631,7 +631,7 @@ jobs:
 
       # bkit repo only: bats over the shipped hook scripts and the gh stub harness.
       - name: Run Shell Tests (bats)
-        run: pnpm exec bats tests/*.bats
+        run: pnpm bkit:test:bats
 
       # A distinct name: keys each sticky comment so the two do not collide.
       # Runs on every event, including a red unit run (reportOnFailure keeps the summary), and

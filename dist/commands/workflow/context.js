@@ -1525,6 +1525,7 @@ export const contextCommand = {
                 clampSummary: "those records totalled per context: artifacts written, lines and bytes fetched -> kept, and how many were written as a table vs raw",
                 row: "--record: the step-done row written, else null",
                 commit: "--record: the new commit's sha, else null",
+                progressLine: "--record: the exact chat progress line after a successful numbered completion",
                 comment: "the step comment (with --number): verdict, contexts, artifact links, a NOT CONFIGURED line per context with no block; else null",
                 commentFile: COMMENT_FILE_OUTPUT,
             },
@@ -1610,6 +1611,7 @@ export const contextCommand = {
                     clampSummary,
                     row: record ? written.row : null,
                     commit: written.commit,
+                    ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
                     comment,
                     commentFile: commentFileOf(ctx.cwd, comment),
                 });

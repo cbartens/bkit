@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { WORKFLOW_STEPS, type ResumableWorkflow } from "./step-table";
+import { WORKFLOW_STEPS, runProgress, type ResumableWorkflow } from "./step-table";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -56,6 +56,127 @@ const setUp = (workflow: ResumableWorkflow) => [
   started(workflow),
   ...WORKFLOW_STEPS[workflow].filter((s) => s.setup).map((s) => done(workflow, s.step!)),
 ];
+
+describe("workflow progress", () => {
+  it("runProgress flat workflow", () => {
+    expect(runProgress({ workflow: "ship", step: "ship-merge-pr" })).toMatchObject({
+      percent: 71,
+      progressLine: "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR",
+    });
+  });
+
+  it("runProgress build groups", () => {
+    expect(
+      runProgress({ workflow: "build", step: "build-plan-verify", groups: [1, 2, 3], group: 2 })
+        .progressLine,
+    ).toBe("Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 2 of 3");
+    expect(
+      runProgress({ workflow: "build", step: "build-plan-verify", groups: [1, 5], group: 5 })
+        .progressLine,
+    ).toBe("Progress: ██████░░░░ 58% · Step 8/16 Plan Verify · Group 2 of 2");
+  });
+
+  it("runProgress groups added", () => {
+    const before = runProgress({ workflow: "build", step: "build-challenge", groups: [1] });
+    const after = runProgress({ workflow: "build", step: "build-challenge", groups: [1, 2, 3] });
+    expect(before.percent).toBe(69);
+    expect(after.percent).toBe(77);
+    expect(after.progressLine).toBe("Progress: ████████░░ 77% · Step 11/16 Build Challenge");
+  });
+
+  it("runProgress loop back", () => {
+    const before = runProgress({
+      workflow: "build",
+      step: "build-plan-gaps-remediate",
+      groups: [1, 2],
+      group: 1,
+    });
+    const after = runProgress({
+      workflow: "build",
+      step: "build-plan-verify",
+      groups: [1, 2],
+      group: 1,
+      attempt: 2,
+      max: 3,
+    });
+    expect(after.percent).toBeLessThan(before.percent);
+    expect(after.progressLine).toBe(
+      "Progress: ████░░░░░░ 42% · Step 8/16 Plan Verify · Group 1 of 2 · Attempt 2 of 3",
+    );
+  });
+
+  it("runProgress bar width", () => {
+    for (const workflow of Object.keys(WORKFLOW_STEPS) as ResumableWorkflow[]) {
+      for (const position of WORKFLOW_STEPS[workflow]) {
+        const { progressLine } = runProgress({ workflow, number: position.number });
+        const prefix = progressLine.split(" · ")[0]!;
+        expect(prefix).toMatch(/^Progress: [█░]{10} \d{1,3}%$/);
+        expect(prefix.length).toBeLessThanOrEqual(25);
+      }
+    }
+  });
+
+  it("runProgress all workflow numbers", () => {
+    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 14 };
+    for (const workflow of Object.keys(totals) as ResumableWorkflow[]) {
+      for (const position of WORKFLOW_STEPS[workflow]) {
+        const result = runProgress({ workflow, number: position.number });
+        expect(result.percent).toBe(Math.round((100 * position.number) / totals[workflow]));
+        expect(result.progressLine).toContain(
+          `Step ${position.number}/${totals[workflow]} ${position.title}`,
+        );
+      }
+    }
+    expect(runProgress({ workflow: "ship", number: 3 }).progressLine).toBe(
+      "Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check",
+    );
+    expect(runProgress({ workflow: "ship", number: 9 }).progressLine).toBe(
+      "Progress: ██████░░░░ 64% · Step 9/14 Re-validate",
+    );
+    expect(runProgress({ workflow: "build", step: "build-plan-tests" }).percent).toBe(
+      runProgress({ workflow: "build", step: "build-plan-tasks" }).percent,
+    );
+  });
+
+  it("runProgress missing plan fallback", () => {
+    const missing = runProgress({ workflow: "build", step: "build-plan-verify", group: 1 });
+    const empty = runProgress({
+      workflow: "build",
+      step: "build-plan-verify",
+      groups: [],
+      group: 1,
+    });
+    expect(missing.progressLine).toBe(
+      "Progress: █████░░░░░ 50% · Step 8/16 Plan Verify · Group 1 of 1",
+    );
+    expect(empty).toEqual(missing);
+  });
+
+  it("runProgress attempt suffix", () => {
+    expect(
+      runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 1, max: 3 }).progressLine,
+    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR");
+    expect(
+      runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2, max: 3 }).progressLine,
+    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2 of 3");
+    expect(runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2 }).progressLine).toBe(
+      "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2",
+    );
+  });
+
+  it("runProgress final completion only", () => {
+    const groups = Array.from({ length: 1000 }, (_, index) => index + 1);
+    const nonfinal = runProgress({ workflow: "build", step: "build-summary", groups });
+    expect(nonfinal.percent).toBe(99);
+    expect(nonfinal.progressLine).not.toContain("100%");
+    for (const workflow of Object.keys(WORKFLOW_STEPS) as ResumableWorkflow[]) {
+      const final = WORKFLOW_STEPS[workflow].at(-1)!;
+      expect(runProgress({ workflow, number: final.number, groups }).progressLine).toBe(
+        `Progress: ██████████ 100% · Step ${final.number}/${final.number} ${final.title}`,
+      );
+    }
+  });
+});
 
 describe("bkit status resume", () => {
   it("a build stopped after build-challenge resumes at the challenge merge (Step 11)", async () => {

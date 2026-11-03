@@ -1,5 +1,5 @@
-// audits/repo/bats-setup-suite.integration.test.ts — tests/setup_suite.bash, which bats runs
-// around every `bats tests/*.bats` run, keeps the shell tier off the repo it runs from.
+// audits/repo/bats-setup-suite.integration.test.ts — tests/shell/setup_suite.bash, which bats runs
+// around every `bats tests/shell/*.bats` run, keeps the shell tier off the repo it runs from.
 //
 // The pre-push hook runs the bats tier. From a linked worktree it exports
 // GIT_DIR=<main>/.git/worktrees/<name>, which beats a test's `-C` and cwd, so
@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const BATS = path.join(ROOT, "node_modules", ".bin", "bats");
-const SETUP_SUITE = path.join(ROOT, "tests", "setup_suite.bash");
+const SETUP_SUITE = path.join(ROOT, "tests", "shell", "setup_suite.bash");
 
 const temps: string[] = [];
 
@@ -76,7 +76,7 @@ function runProbe(body: string, suite = true): Run {
   };
 }
 
-describe("tests/setup_suite.bash", () => {
+describe("tests/shell/setup_suite.bash", () => {
   it("CONTROL — without it, a temp repo's `git -C` init under the hook's GIT_DIR flips core.bare", () => {
     const run = runProbe('git -C "$BATS_TEST_TMPDIR" init -q', false);
     expect(run.status, run.output).toBe(0);

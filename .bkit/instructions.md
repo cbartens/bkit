@@ -1178,9 +1178,6 @@ Clause section lines:
 - workflow:
   - specialised: `bkit-ship`
   - applies: `bkit-plan`, `bkit-ship`
-- drift:
-  - `bkit-ship:395`: "Each commit the block makes carries `bkit [skip ci]`" The Step 4 merge commit brings `dev`'s code onto the branch under `[skip ci]`; `docs-commits` says the tag goes ONLY on a commit that carries no code
-    - kept: a push trigger would validate nothing a run has not already validated on `dev`; Step 9 `runs revalidate` dispatches CI at the merged head itself, so the code is validated by a run the workflow starts
 
 ```text
 **Docs commits:** Append `bkit [skip ci]` ONLY to a commit that carries no code.
@@ -2596,10 +2593,11 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all
 
 ```text
-**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 ```
 
 ```retired
+**Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
 **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 ```
 
@@ -9281,7 +9279,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Rules file** | Protocol | all 6 | Read `.agents/rules.md` → follow all rules. First Protocol bullet (`rules-orchestrator`). |
 | **Order** | Protocol | all 6 | Execute steps sequentially unless stated otherwise. The `order` clause shared with every prompt. |
 | **No improv** | Protocol | all 6 | Skip no step, and add no step of your own; how deeply you investigate within a step is your call. The `no-improv` clause shared with every prompt; `Scope discipline` in `.agents/rules.md` covers scope. |
-| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot, blocker; Auto-apply does not mean silent. |
+| **Narrate** | Protocol | all 6 | User-visible lines at step start, subagent return, pivot and blocker; after each numbered completion, show the engine's `progressLine` word for word as plain text outside code blocks. Delayed bookkeeping and repeated validation gates add no duplicate. Auto forwards its delegated workflow's lines; headless runs show them without acknowledgement. |
 | **Failures** | Protocol | all 6 | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Placeholders** | Protocol | all 6 | Assert required `{PLACEHOLDERS}` non-empty before tool calls → else **Failure Path**. auto and plan name their own placeholders; auto derives `{OWNER}` / `{REPO}` from `{OWNER_REPO}` at Step 1. |
 | **Commands** | Protocol | all 6 | Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info` (before it, the lookup expression); stdout is `key: value` text (see `.bkit/cli.md`); exit non-zero with no `Route:` → **Failure Path**; exit 80 → mapped MCP tool (auto: **Failure Path**); exit 81 → end turn, re-run block; a flag still holding a literal `{PLACEHOLDER}` exits 2. |
@@ -10185,7 +10183,7 @@ Determine whether `origin/dev` is an ancestor of the PR head:
 **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
 **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
 Ancestor verdict determined
-Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. No commit the block makes carries a skip token, so the sub-step 3 push starts CI at the merged head and Step 9 waits on that run:
 **If** exit 0 **and** `MERGE_OUTCOME` = merged → sub-step 3.
 **If** exit 0 **and** `MERGE_OUTCOME` = current → Step 5. `dev` has not moved since Step 3.
 **If** exit 24 → the merge is still in progress with the `PENDING` paths conflicted → sub-step 2.

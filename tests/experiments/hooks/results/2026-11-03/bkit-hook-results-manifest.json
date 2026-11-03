@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-03",
+  "source": "User-run synthetic workspaces; all report fields and values preserved with repository formatting.",
+  "reports": [
+    {
+      "host": "codex",
+      "file": "bkit-hook-results-codex.json",
+      "collectorSha256": "4cbbac38592c0938ba7783442f5cd150590e789a02030af393656bba3b919bbe",
+      "originalSha256": "c4c98b2527f9f5a34ca3d35d8d99e1999049f31c185687828fffcbef2ebc06e6",
+      "archivedSha256": "bf73aee899c2da7b6442ae18e6b15c054440b31de7171a420e9c5ea9ad8ea6ad"
+    },
+    {
+      "host": "claude",
+      "file": "bkit-hook-results-claude.json",
+      "collectorSha256": "4cbbac38592c0938ba7783442f5cd150590e789a02030af393656bba3b919bbe",
+      "originalSha256": "886343ef543d3f1f9b4b0e44bc9accc4da9be2b14ca9264e8c54270cc03a8806",
+      "archivedSha256": "b1f6c348984635b23e03d1343b11f61f9cb84e1e40565ea1bac07dd033cd1376"
+    },
+    {
+      "host": "cursor",
+      "file": "bkit-hook-results-cursor.json",
+      "collectorSha256": "4cbbac38592c0938ba7783442f5cd150590e789a02030af393656bba3b919bbe",
+      "originalSha256": "73d1cd0f23af5c92289f71aed795e35c95872382adba1bf63295a62df31b4a50",
+      "archivedSha256": "ebf842235070477ac63cd4b265d87e8e074f94772ea1836609bbf36afdebf383"
+    },
+    {
+      "host": "antigravity",
+      "file": "bkit-hook-results-antigravity.json",
+      "collectorSha256": "4cbbac38592c0938ba7783442f5cd150590e789a02030af393656bba3b919bbe",
+      "originalSha256": "f98c583e784ce7bef9600b19dbbf59e7e81c056c05f49c2010fb8b484eaea365",
+      "archivedSha256": "4357304ee5bab79f9d4181411c808f0bd8baa6ac5f62d4e1b4852c95c3463076"
+    },
+    {
+      "host": "opencode",
+      "file": "bkit-hook-results-opencode.json",
+      "collectorSha256": "4cbbac38592c0938ba7783442f5cd150590e789a02030af393656bba3b919bbe",
+      "originalSha256": "e818bdc4bb1ede93d5a0137afbb637d3076e0a8c7f2e8fa20b4558a9c41c1f95",
+      "archivedSha256": "80f50129f178349fbf85000d6a1953137143e188e264be7fd7a08bee10f70376"
+    }
+  ]
+}

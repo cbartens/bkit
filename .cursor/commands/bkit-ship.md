@@ -12,7 +12,7 @@ Ship Feature — Autonomous merge and archive
 - **Rules file:** Read `.agents/rules.md` → follow all rules.
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
-- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does not mean silent.
+- **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
 - **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
@@ -183,7 +183,7 @@ Ship Feature — Autonomous merge and archive
 ### 🔒 Gate 1 — Start Workflow
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
+"{BKIT}" steps gate --workflow=ship --step=ship-start-workflow --progress-number=1 --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} --issue="{ISSUE_ID}" --placeholder=OWNER_REPO={OWNER_REPO} --placeholder=BRANCH={BRANCH} --placeholder=RUNTIME_WORKTREES={RUNTIME_WORKTREES}
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
@@ -335,7 +335,7 @@ Ship Feature — Autonomous merge and archive
 ### 🔒 Gate 3 — Base Check
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-regression-guard --placeholder=BASE_PATH={BASE_PATH}
+"{BKIT}" steps gate --workflow=ship --step=ship-regression-guard --file="{STATUS}" --progress-number=3 --placeholder=BASE_PATH={BASE_PATH}
 ```
 
 - [ ] Ancestor verdict determined
@@ -346,7 +346,7 @@ Ship Feature — Autonomous merge and archive
 
 **Run only if** `BASE_PATH` = B.
 
-1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. Each commit the block makes carries `bkit [skip ci]`; Step 9 re-validates the merged head:
+1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. No commit the block makes carries a skip token, so the sub-step 3 push starts CI at the merged head and Step 9 waits on that run:
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    ```
@@ -442,7 +442,7 @@ Ship Feature — Autonomous merge and archive
 3. Wait for the subagent to complete. Then append the `SHIPPED` row to the worktree ledger, re-render the mechanical `roadmap-status` board from it, and finish the step (bookkeeping to `$BOOK_ROOT`). The block exits 1 when the row did not land:
    ```bash
    "{BKIT}" roadmap feature --root="{WORKTREE_PATH}" --workflow=ship --fid="{FID}" --step=ship-update-docs --strict >/dev/null || exit 1
-   "{BKIT}" steps finish --workflow=ship --step=ship-update-docs --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md" --commit=none >/dev/null || exit 1
+   "{BKIT}" steps finish --workflow=ship --step=ship-update-docs --file="{STATUS}" --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-update-docs.md" --commit=none || exit 1
    ```
 4. Write `ship-summary.md` from this run's status rows and the PR's size:
    ```bash
@@ -519,7 +519,7 @@ Ship Feature — Autonomous merge and archive
 ### 🔒 Gate 9 — Re-validate
 
 ```bash
-"{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
+"{BKIT}" steps gate --workflow=ship --step=ship-bookkeeping-push --file="{STATUS}" --progress-number=9 --placeholder=VALIDATED_HEAD={VALIDATED_HEAD}
 ```
 
 - [ ] Validated head resolved
