@@ -380,7 +380,8 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" branches push --mode=feature
    ```
-5. Route:
+5. Route — first match wins:
+   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 8.
    - **Else** → **Failure Path**.
 

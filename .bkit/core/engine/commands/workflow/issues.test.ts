@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
@@ -803,6 +803,9 @@ describe("issues reaches the tracker only through tracker.ts", () => {
 describe("bkit issues comment --post", () => {
   const STEP = ["issues", "comment", "--step-number=3", "--step-title=Plan Verify"];
   const saved = process.env.BKIT_LINEAR_API_KEY;
+  beforeEach(() => {
+    delete process.env.BKIT_LINEAR_API_KEY;
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     if (saved === undefined) delete process.env.BKIT_LINEAR_API_KEY;

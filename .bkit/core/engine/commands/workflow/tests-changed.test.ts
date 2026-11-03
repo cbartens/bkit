@@ -116,6 +116,23 @@ describe("changedFiles", () => {
 });
 
 describe("tests changed", () => {
+  it("tests changed with a --lock-wait-s that is not a whole number exits 2 and runs no gate", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x", [STATIC]: "y" });
+    write("src/a.ts", "changed\n");
+    const results = await Promise.all(
+      ["-1", "1.5", "bad"].map((value) =>
+        changed([`--lock-wait-s=${value}`, `--fallback=${STATIC}`]),
+      ),
+    );
+    expect(results.map((result) => result.code)).toEqual([2, 2, 2]);
+    expect(results.map((result) => result.err)).toEqual([
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+      expect.stringContaining("--lock-wait-s takes a whole number >= 0"),
+    ]);
+    expect(ranWith()).toBeNull();
+  });
+
   it("runs bkit:gate:changed with the changed files as its arguments", async () => {
     checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x", [STATIC]: "y" });
     write("src/a.ts", "changed\n");

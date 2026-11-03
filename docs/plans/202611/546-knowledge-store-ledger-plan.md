@@ -19,16 +19,18 @@ Verdict: PASS
 
 Implement the whole parent design, WS-1 through WS-14. The JSONL files are the project’s record of truth; the brain is one append-only file whose entries can be found by file, text, kind and typed links. The design’s five delivery stages remain the build order: merge/envelope/links → file context → keyword search → brain update → optional qmd template. No prerequisite plan outside this run is required; later groups depend on earlier groups rather than on separate tracker issues.
 
+**Execution:** Run one `bkit-build #546` against this plan, following all eight task groups in order. Implementation, verification and shipping belong to the parent issue. The six child issues are closed as not planned separately; their scope remains in the tasks below. Do not dispatch separate child plan/build runs or treat their closed state as evidence that their behavior is implemented.
+
 **Related Issues:**
 
-- #546 — Knowledge store ledger upgrade (open)
-- #795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration (open)
-- #792 — Typed supersedes and dependsOn links plus a dead-premise check (closed)
-- #791 — Load ledger rows by path overlap (open)
-- #793 — bkit brain search: keyword search over the current brain rows (open)
-- #794 — qmd template for search by meaning (open)
-- #797 — Brain Update (open)
-- #710 — Ledger compaction: drop superseded rows, preserve age (closed)
+- [#546 — Knowledge store ledger upgrade](https://github.com/cbartens/bkit/issues/546) (open; owns Tasks 1–28).
+- [#795 — Merge the four docs/ ledgers into docs/brain.jsonl with a migration](https://github.com/cbartens/bkit/issues/795) (closed, not planned separately; Tasks 1–12).
+- [#792 — Typed supersedes and dependsOn links plus a dead-premise check](https://github.com/cbartens/bkit/issues/792) (closed, not planned separately; included in the envelope, graph and migration work in Tasks 3–10).
+- [#791 — bkit brain context: load only the rows that touch the task's files](https://github.com/cbartens/bkit/issues/791) (closed, not planned separately; Tasks 13–16).
+- [#793 — bkit brain search: keyword search over the current brain rows](https://github.com/cbartens/bkit/issues/793) (closed, not planned separately; Tasks 17–18).
+- [#794 — qmd template: opt-in search by meaning over the brain rows](https://github.com/cbartens/bkit/issues/794) (closed, not planned separately; Task 26).
+- [#797 — bkit brain update: update, cleanup, compaction, and fading](https://github.com/cbartens/bkit/issues/797) (closed, not planned separately; Tasks 19–25).
+- [#710 — Ledger compaction: drop superseded rows, preserve age](https://github.com/cbartens/bkit/issues/710) (closed).
 
 These references locate related work; their bodies add no scope beyond the parent design.
 
@@ -104,6 +106,7 @@ Each row names the task that lands its test. `Unit` includes a single module aga
 | Merge mapping is line-preserving and deterministic, including collision stragglers and crash recovery | Unit | `.bkit/core/engine/ledgers/migrate.test.ts` | 8 |
 | Shared write-lock primitives enforce bounded refusal without writes, live/unknown-owner protection, nested ownership and stale-token publication/release refusal against real files/processes | Unit | `.bkit/core/engine/ledgers/brain.test.ts` | 8 |
 | Upgrade/check dry run, stub-or-delete, one-way migration and partial-state diagnostics exercise the actual install path | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 9 |
+| Source cleanup requires fresh explicit maintenance confirmation; absent confirmation, generic auto-apply and active Git operations preserve source bytes | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 9 |
 | Brain append/list/check/compact and old-name refusal reach the real CLI and files | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 10 |
 | Stats/roadmap full output and reader-kind parity survive the merge and kind transitions | Integration | `.bkit/core/engine/commands/workflow/brain.integration.test.ts` | 11 |
 | No live engine, workflow bash or template reader retains a forbidden old-path read | Unit | `.bkit/core/engine/audits/repo/ledger-integrity.test.ts` | 12 |
@@ -213,7 +216,6 @@ Every row is Exempt because the parent design explicitly excludes it and no acce
 | Friction identity and destructive-prune repair | `699-friction-key-truncation-class-fix` in related deferrals | Telemetry and harvest owners touched by Task 11 | Keep the separate fix and its existing-data migration; friction remains outside the brain. |
 | Friction/stats convergence | `546-friction-stats-stay-separate` in related deferrals | Codec and count-only readers | Keep these process ledgers separate under the design's non-goal. |
 | Transcript recall | `546-transcript-recall-outside-brain` in related deferrals | Retrieval concepts | Keep personal transcript recall outside intentional project knowledge. |
-| Refresh related implementation issue descriptions | Supplied #795 and #797 bodies retain older contracts | Migration and proposal summaries | Ordinary tracker maintenance should align them with the amended parent design. Their work is covered by this plan's groups; they add no separate prerequisite or runbook task. |
 
 The related subissues are covered by the parent design’s workstreams, so they add no separate backlog. The retained failure-context evidence contains a closed finding that adds no scope; the artifact explicitly omits four of five matching lines, which were not read and establish no absence claim.
 
@@ -321,6 +323,16 @@ Design decisions reuse the existing keys, including the owner's revised lock, re
 - Matching identity/timestamp never proves content equivalence. Owner-approved resolutions use resolves full-content fingerprints with exact current variant-set validation under lock. Read representatives never authorize deleting alternatives.
 - Dedicated bkit brain undo --applied=<fingerprint> validates owner authority and retained immutable evidence, refuses changed/ambiguous targets, sanitizes metadata, mints fresh provenance, permits only verified inverse kind restoration and withdraws creations via WITHDRAWN.
 - Brain noun dispatch lives in a sibling command module. Keep ledgers.ts free of direct/indirect context.ts/tests.ts/steps.ts imports. The sibling reuses existing context helpers only after checking there is no back-edge to itself; built CLI startup is tested in the introducing group.
+
+### Evidence required before old-source cleanup
+
+Quiescence means that incompatible ledger writers and Git operations that can change the affected files have stopped for the entire destructive transaction.
+
+- Default to copying and verifying the brain while retaining every old source file byte-for-byte. Normalize old rows in memory when source rewriting is not authorized.
+- Add a per-invocation `--confirm-writers-stopped` acknowledgement to `bkit install`, `bkit upgrade` and `bkit brain update`. The operator supplies it only after stopping old engines, direct-file writers, background agents and Git mutations affecting the checkout, and keeping them stopped until the command exits. The acknowledgement is an operator assertion, not automatic proof about arbitrary external processes.
+- Acquire the common write lock and reject destructive cleanup when Git reports an in-progress merge, rebase or cherry-pick, or an existing index lock. A clear scan, branch inventory, stale lock age, prior successful run, `--yes` or `--auto-apply` does not replace the current invocation's explicit acknowledgement.
+- Keep the acknowledgement in memory for that invocation only. Do not persist it in configuration or infer it from another process's lock ownership. The scheduled headless job does not supply it and retains old sources.
+- Without both the acknowledgement and the local checks, retain full sources and print the reason plus the command to rerun after the operator has stopped writers. With both, hold the write lock through fresh reads, durable destination verification and the branch-based stub/delete decision. An interruption requires a fresh acknowledgement on restart.
 
 ### Database Migrations
 
@@ -446,6 +458,7 @@ Edit canonical payload sources and regenerate their managed mirrors. The final d
 | --- | --- |
 | `.bkit/core/.bkit/jsonl.md` → `.bkit/jsonl.md` | Envelope, six kinds, transition/writer tables, proposal/recall fold, rejection rows, brain write idiom and local-state contract. |
 | `.bkit/core/.bkit/cli.md` → `.bkit/cli.md` | Regenerate all eight brain verb specs, including undo, exits, mode/output and old-name refusal. |
+| `.bkit/core/.bkit/install.md` → `.bkit/install.md` | Explain the per-invocation maintenance acknowledgement, source-retaining default and safe cleanup retry for install/upgrade. |
 | `.bkit/core/.bkit/workflows.md` → `.bkit/workflows.md` | Kind-filtered reads, context dispatch and search calls; no sixth phase. |
 | `.bkit/core/.bkit/prompts.md` → `.bkit/prompts.md` | Unified updater description/tools/model columns and retirement of four rows. |
 | `.bkit/instructions.md` | Shared writer/read clauses and current brain command; inspect with instructions:show before edits and sync shared text. |
@@ -617,20 +630,23 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 <!-- bkit:task 9 start -->
 
 - [ ] **TASK 9:** Wire branch-aware migration into install, upgrade and check.
-  - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: acquire/reuse the lock before migrateLedgers through mergeIntoBrain and require quiescence before either destructive rewrite; merge after migrateLedgers, writeset-aware dry run and data-first write order.
-  - **UPDATE:** `.bkit/core/engine/ledgers/migrate.ts`: branch/remote/worktree enumeration, stub-or-delete and partial-state lines.
+  - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: acquire/reuse the lock before migrateLedgers through mergeIntoBrain and apply Evidence required before old-source cleanup before either destructive rewrite; merge after migrateLedgers, writeset-aware dry run and data-first write order.
+  - **UPDATE:** `.bkit/core/engine/cli.ts`: accept and pass the per-invocation --confirm-writers-stopped acknowledgement for install/upgrade, without treating generic approval flags as that acknowledgement.
+  - **UPDATE:** `.bkit/core/engine/ledgers/migrate.ts`: branch/remote/worktree enumeration, current-invocation maintenance checks, stub-or-delete and partial-state lines.
   - **UPDATE:** `.bkit/core/engine/checks/after/index.ts`: inline-fix advisory for populated old files beside the brain where the existing post-check path owns advisories.
   - **UPDATE:** `.bkit/shared/.gitattributes`: brain/rejection union entries, retaining the four old paths.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: actual install/upgrade/check scenarios.
-  - **UPDATE:** `docs/migrations.md`: supported prior-release range, one-way note and recovery.
+  - **UPDATE:** `.bkit/core/.bkit/install.md`: document --confirm-writers-stopped, the required maintenance window and the default that preserves old sources.
+  - **UPDATE:** `docs/migrations.md`: supported prior-release range, one-way note, operator maintenance acknowledgement, default source retention and recovery.
   - **DEPENDS ON:** 2, 8
-  - **DONE WHEN:** fresh locked reads and destination flush/publication/full-content verification precede source removal; incompatible writers retain full sources; restart recovers every publication boundary; brain rename precedes attributes and stub cleanup; unmerged local/remote/worktree touches retain stubs and no touches delete them; dry run predicts the same paths without writes; old nonempty/no-brain layout is drift exit 1 while filled stub/brain is advisory exit 0 with inline recovery.
+  - **DONE WHEN:** fresh locked reads and destination flush/publication/full-content verification precede source removal; absent acknowledgement or active Git operations preserve full source bytes with an inline rerun command; restart requires fresh acknowledgement and recovers every publication boundary; brain rename precedes attributes and authorized stub cleanup; after the maintenance checks pass, unmerged local/remote/worktree touches retain stubs and no touches delete them; dry run predicts the same paths for the same acknowledgement without writes; old nonempty/no-brain layout is drift exit 1 while filled stub/brain is advisory exit 0 with inline recovery.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `upgrades old consumers twice with identical brain bytes` fails on lost lines or different second-run bytes.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `keeps stubs for local remote and worktree changes but deletes unused old paths` fails on an in-flight branch losing its absorption path or unused files remaining.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `predicts the migration writeset without changing files in dry run` fails on dry-run writes or omitted actual write/delete paths.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `distinguishes pending merge drift from readable straggler advisory` fails on a silent unmerged layout or a filled stub wrongly blocking check.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `recovers every publication boundary and retains sources with incompatible writers` fails on source loss or cleanup without proven writer quiescence.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `requires fresh maintenance acknowledgement before destructive old-source cleanup` fails on source rewriting without explicit acknowledgement, generic approval authorizing cleanup, persisted acknowledgement surviving restart, or an active Git operation permitting deletion; exercise confirmed and unconfirmed invocations through the real install/upgrade CLI.
 
 <!-- bkit:task 9 end -->
 
@@ -843,14 +859,14 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
 <!-- bkit:task 21 start -->
 
 - [ ] **TASK 21:** Wire deterministic cleanup and bounded clustered dispatch packets.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: update handler coordinating stragglers, stub check, compact, recall rollup, rejections and packet writes.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: update handler coordinating stragglers, stub check, compact, recall rollup, rejections and packet writes; pass its per-invocation --confirm-writers-stopped acknowledgement through the same maintenance checks as install/upgrade.
   - **UPDATE:** `.bkit/core/engine/ledgers/brain.ts`: shared-root update paths, unseen archived assumption sections, path clusters and report destination.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: real files and coordinated subprocess/race fixtures.
   - **DEPENDS ON:** 2, 3, 5, 10, 20
   - **DONE WHEN:** cleanup runs under either ask mode; stdout prints run/batches(cluster,packet)/report; each packet has findings, fades, relevant rows and unseen plan assumptions; all shared state survives worktree deletion; all writes hold the common lock from authoritative read through durable publication; bounded contention writes nothing; incompatible writers leave full sources intact.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `moves stragglers compacts recalls and emits the actual cluster dispatch plan` fails on missing rows or dispatch paths not pointing at written packets.
-    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `serializes cleanup publication and a concurrent append preserving both changes` fails on a lost append, publication outside ownership or unbounded contention.
+    - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `serializes cleanup publication and a concurrent append preserving both changes` fails on a lost append, publication outside ownership, unbounded contention or old-source deletion without the same fresh maintenance acknowledgement and Git checks enforced by install/upgrade.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `keeps concurrent cleanup idempotent across shared worktree state` fails on duplicate rows or scratch deletion losing the common update state.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `includes unseen archived assumptions without rereading completed plan sections` fails on missing claims or repeated already-seen input sections.
     - `.bkit/core/engine/commands/workflow/brain.integration.test.ts` `applies one identical proposal once at a coordinated subprocess barrier` fails on two processes recording the same logical application.
@@ -882,7 +898,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.ts`: seven brain-update counters after apply/headless completion with post-commit parentSha and best-effort error reporting.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/brain.integration.test.ts`: exact diagnostics, committed-report age and counter attribution.
   - **UPDATE:** `docs/observability.md`: all stderr patterns, seven counters, exits and scheduled provenance.
-  - **UPDATE:** `.bkit/core/.bkit/cli.md`: update/apply/approval/rejection modes.
+  - **UPDATE:** `.bkit/core/.bkit/cli.md`: update/apply/approval/rejection modes and the per-invocation maintenance acknowledgement for old-source cleanup.
   - **DEPENDS ON:** 2, 3, 5, 10, 22
   - **DONE WHEN:** malformed/oldshape/stub/recall/concurrency/counter diagnostics stay on stderr; stdout retains one structured result; seven counters use utility, shell-bus and post-commit HEAD; counter failures warn without rejecting success; check finds missing/30-day-old committed reports and stale proposals; scheduled report header includes run URL.
   - **TEST FIRST:**
@@ -929,7 +945,7 @@ Each task owns its logic and any existing tests it breaks. Runbook DONE WHEN fie
   - **DEPENDS ON:** 24
   - **DONE WHEN:** disabled-by-default schedule can be enabled without an issue; the job never routes through auto, commits cleanup/report only to dev, merges origin/dev then retries one rejected push, fails after a second rejection and prints the failed step/reason/run id; existing phase jobs and credential isolation still pass their audits; a bounded owner-authorized disposable-repository execution records actual CI run identity, provider boot and cleanup/report-only commit, with no inference mutation. Exercise each supported credential-selection route or report it explicitly unverified; YAML/local fixtures cannot establish that runtime claim.
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/templates/brain-schedule.test.ts` `keeps the weekly brain job opt in issue less and headless` fails on automatic enablement, mandatory issue input or inferred apply permission.
+    - `.bkit/core/engine/audits/templates/brain-schedule.test.ts` `keeps the weekly brain job opt in issue less and headless` fails on automatic enablement, mandatory issue input, inferred apply permission or a scheduled command supplying the operator's maintenance acknowledgement.
     - `.bkit/core/engine/audits/templates/brain-schedule.test.ts` `merges dev and retries a rejected push exactly once` fails on lost cleanup/report data, a second retry or force push.
     - `.bkit/core/engine/audits/templates/brain-schedule.test.ts` `fails a broken scheduled step with its CI run identity` fails on a swallowed command failure or missing run id.
 

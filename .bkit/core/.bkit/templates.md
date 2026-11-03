@@ -13,7 +13,7 @@
 
 ## What each template is for
 
-The adoption order is the `bkit tips` order. The local stack lock has no tip, because nothing in a repo shows a stack that every worktree shares, so adopt it once a second worktree touches that stack. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
+The adoption order is the `bkit tips` order. The machine lock has no tip, so adopt it when test gates or local services need to run one at a time across checkouts. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
@@ -38,7 +38,7 @@ The adoption order is the `bkit tips` order. The local stack lock has no tip, be
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
 | tmp/ prune | Each push deletes scratch files agents left in `tmp/` untouched for a week. | `tmp/` keeps growing; old logs and scratch files are never cleared. |
 | Disk prune | Your own cleanup steps (build caches, Docker, simulators) run on commit, on push, and before a worktree is made on a low disk. bkit deletes nothing itself. | Caches fill the disk until no worktree can be made; every workflow stops. |
-| Local stack lock | One run at a time on local services every worktree shares (Docker database, emulator); a second run waits and names the run holding them. | A reset or stop from one worktree wipes the stack under another worktree's test run; the failures look like real bugs. |
+| Machine lock | Named locks run one gate at a time across repositories; the unnamed lock protects local services every worktree shares. A second run waits and names the holder. | Test gates compete for CPU, or a reset stops the stack under another worktree's test run. |
 | Cursor editor + cloud agent | Format-on-save, recommended extensions, Cursor cloud-agent image. | Cursor edits miss project formatting; no Cursor cloud agent. |
 | Launchd GUI env | macOS apps opened from the Dock get the same tokens as the terminal. | Dock-launched editors start signed out. |
 
@@ -71,7 +71,7 @@ The adoption order is the `bkit tips` order. The local stack lock has no tip, be
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
-| Local stack lock | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` | `scripts/ci/` | that file |
+| Machine lock | `.bkit/templates/scripts/ci/bkit-machine-lock.sh` | `scripts/ci/` | that file |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -884,32 +884,41 @@ cp .bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs ~/.config/bkit/di
 - In CI / cloud, nothing runs.
 - Hand run: `pnpm bkit disk prune --mode=max --dry-run` prints each step and its `paths` size. Without `--dry-run`, it runs now. `--scope=repo` or `--scope=machine` runs only that file's steps. Exit 1 means a step failed or a step file did not load.
 
-## Local stack lock — one run at a time on a shared stack
+## Machine lock
 
-Every worktree of a repo uses the same local services when their names and ports come from the repo's config (a Docker database, an emulator). A run that starts, resets or stops the stack, or tests against it, takes a machine-wide lock first. A second run waits, and prints who holds it. It needs bash and `/usr/bin/perl`, and no dependencies.
+The machine lock queues test gates across repositories and protects shared local services across worktrees. Copy the script and wire it into the commands that need the lock. An unwired repository takes no lock. The script requires Bash 3.2+ and `/usr/bin/perl`.
 
 ```bash
 mkdir -p scripts/ci
-cp .bkit/templates/scripts/ci/bkit-local-stack-lock.sh scripts/ci/
+cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
 ```
 
 <!-- prettier-ignore -->
 | Wire into | How | Holds the lock |
 | --- | --- | --- |
-| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-local-stack-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
-| local runners that test against the stack | `. scripts/ci/bkit-local-stack-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
+| every test-running `bkit:gate:*` script in `package.json` | `"bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command>"` | for the whole gate, across repositories on this machine |
+| a gate that chains commands | `"bkit:gate:static-unit": "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static && pnpm test'"` | for the complete chain |
+| `package.json` scripts that start / reset / stop the stack | `"db:reset": "bash scripts/ci/bkit-machine-lock.sh run db:reset -- <reset command>"` | for the command; its exit status passes on |
+| local runners that test against the stack | `. scripts/ci/bkit-machine-lock.sh`, then `take_local_stack_lock "<who>"` before the first stack command; non-zero → exit | until the runner exits or calls `release_local_stack_lock` |
 
-- Functions (all safe under `set -e`):
-  - `take_local_stack_lock` waits.
-  - `try_local_stack_lock` returns 1 at once while another run holds the lock.
-  - `release_local_stack_lock` frees it early.
-  - `local_stack_lock_holder` prints the holder.
-- Name: `BKIT_LOCAL_STACK` when set, else the main checkout's folder name (`git rev-parse --git-common-dir`), so every worktree finds the same lock.
-  - A throwaway stack with its own names and ports sets its own `BKIT_LOCAL_STACK`, and never waits on the shared one.
-  - **If** it runs outside a git checkout with no `BKIT_LOCAL_STACK` → it refuses, with exit 1.
-- Lock file: `~/.cache/bkit/local-stack-lock/<name>.lock` (`$XDG_CACHE_HOME/bkit/` when set), outside every checkout.
-- The lock is never stale, because a small perl process holds it (flock) and exits within a second of its caller, however the caller ends.
-- Wait: up to `LOCAL_STACK_LOCK_WAIT_S` seconds (default 3600), with a note naming the holder once a minute, then exit 1 naming it.
-  - A runner started by the holder (`LOCAL_STACK_LOCK_OWNER`) does not wait.
-  - `CI=true` / `CI=1` makes it a no-op.
+- API (all functions are safe under `set -e`):
+  - `take_local_stack_lock "<who>" [name]` waits; every refusal returns 1.
+  - `try_local_stack_lock "<who>" [name]` returns 1 at once while busy.
+  - `release_local_stack_lock [name]` frees the lock early.
+  - `local_stack_lock_holder [name]` prints the holder, or every holder of `tests` slots.
+  - `local_stack_lock_file [name]` prints the lock file path.
+- `run ["<who>"] [--lock <name>] -- <command> [args…]` passes the command's exit status on. Exit 2 means usage, 73 means the lock could not be taken (including lock order), and 75 means the wait gave up. Omit `<who>` to use `LOCAL_STACK_LOCK_WHO`, else `npm_lifecycle_event`, else `run`.
+- Named locks use `~/.cache/bkit/machine-lock/<name>.lock`, with no repository prefix. The holder line identifies the caller's checkout. A child inherits `LOCAL_STACK_LOCK_OWNER_<key>` and reuses only that named lock while its owner is alive.
+- The `tests` lock has `BKIT_TEST_SLOTS` slots (whole number >= 1, default 1; an invalid value falls back to 1 with one note). Slot 1 uses `tests.lock`; later slots use `tests.<k>.lock`. The waiting note names every holder.
+- Taking `tests` exports `BKIT_TEST_WORKERS` = max(1, floor(cores / slots) - 1). Pass it to your runner, for example `vitest run --maxWorkers="$BKIT_TEST_WORKERS"` inside the wrapped command. Cores come from `getconf _NPROCESSORS_ONLN`, else `nproc`, else `sysctl -n hw.ncpu`, else 1.
+- Take locks in this order: `tests`, other named locks, then the unnamed stack lock. A request for `tests` while this shell or a live parent holds another lock is refused. A request for a named lock while holding the stack lock is also refused.
+- The unnamed stack lock keeps `~/.cache/bkit/local-stack-lock/<stack>.lock` and `LOCAL_STACK_LOCK_OWNER` / `LOCAL_STACK_LOCK_PID`. A consumer's adopted copy keeps working and excludes this copy on the same stack.
+  - `<stack>` is `BKIT_LOCAL_STACK`, else the main checkout's folder name, so every worktree finds the same lock.
+  - A throwaway stack with its own names and ports sets its own `BKIT_LOCAL_STACK`.
+  - Outside a git checkout with no `BKIT_LOCAL_STACK`, the functions refuse with exit 1; `run` exits 73.
+- Lock paths use `$XDG_CACHE_HOME/bkit/` when set. A small Perl process holds the file lock and exits within a second of its caller, however the caller ends.
+- Wait: `LOCAL_STACK_LOCK_WAIT_S` when set, else 60 seconds without a TTY, else 3600 seconds. Waiting notes name the budget and holders once a minute; the give-up line names the holder again.
+- A named release records held seconds by checkout in `<name>.last`, with one tab-separated line per checkout. A waiting note and give-up line name the current holder's `last run took <N>m<N>s`, or `no earlier run`.
+- `CI=true` / `CI=1` makes every lock a no-op.
+- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` and their run name to a wrapped gate; a tests-lock give-up of this run maps 75 → 81 with `lockHolder`, and a tests-lock refusal maps 73 → 4. A lock wait writes no `test-run` status row. Light runs (`red`, `green`, `bkit:test:file`) take no tests lock. Nested wraps reuse their live parent's tests lock. See `docs/testing.md` § Tests lock for host wait budgets.
 - Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`), because the raw command skips the lock. See `.agents/rules.md` § Shared local stack.

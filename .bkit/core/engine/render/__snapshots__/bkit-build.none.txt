@@ -610,6 +610,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```
    Route:
    - **If** exit 0 **or** 1 → hold `verdict` as `GATE_VERDICT` and `scope` as `TEST_SCOPE` → sub-step 9.
+   - **If** exit 81 → end turn, re-run this block.
    - **Else** → **Failure Path**.
 9. Finish:
    ```bash
@@ -852,6 +853,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    Decide `TEST_VERDICT`:
    - **If** exit 0 → `TEST_VERDICT` = PASS.
    - **If** exit 1 → `TEST_VERDICT` = FAIL.
+   - **If** exit 81 → end turn, re-run this block.
    - **Else** → **Failure Path**.
 3. Finish — `{FAILURES_FLAG}` = `--failures={TEST_FAILURES}`, empty when `TEST_FAILURES` = null (count unknown):
    ```bash
@@ -985,6 +987,7 @@ This step runs once, after the last group. Challenge fix groups pass through it 
    "{BKIT}" branches push --mode=feature --set-upstream
    ```
 5. Route:
+   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 16.
    - **Else** → **Failure Path**.
 
@@ -1040,14 +1043,40 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **If** exit 0 → `FORCE_BUILD` = true → sub-step 3.
    - **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
    - **Else** → **Failure Path**.
-3. Re-read the labels, then close the run with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. It then pushes with the HEAD-Subject Assertion and releases the lock. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
+3. Re-read the labels, then close the run once with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. Retain its outputs before the push so a push retry preserves the original final return. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
+
    ```bash
    "{BKIT}" roadmap mirror --workflow=build --fid={FID} >/dev/null || exit 1
    "{BKIT}" workflows close --workflow=build --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" {LABEL_FLAGS} --number=16 --post --title="Close Workflow & Create PR" --tree={BRANCH} --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/build-summary.md" --session-dir="{SESSION_DIR}" --line="CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug." || exit 1
-   "{BKIT}" branches push --mode=feature --require-ci >/dev/null || exit 1
+   ```
+
+   Route:
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
+
+   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE`, `tracker` as `CLOSE_TRACKER`, `finalReturn` as `FINAL_RETURN`.
+
+   Push with the HEAD-Subject Assertion:
+
+   ```bash
+   "{BKIT}" branches push --mode=feature --require-ci >/dev/null || exit "$?"
+   ```
+
+   Route:
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
+
+   Release the workflow lock after the push succeeds:
+
+   ```bash
    "{BKIT}" locks release --kind=workflow --workflow=build --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null
    ```
-   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE`, `tracker` as `CLOSE_TRACKER`, `finalReturn` as `FINAL_RETURN`.
+
+   Route:
+   - **If** exit 0 → sub-step 4.
+   - **Else** → **Failure Path**.
+
 4. Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
 
    ```bash

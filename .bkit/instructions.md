@@ -1368,7 +1368,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:574`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1667,7 +1667,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:559`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:574`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1866,18 +1866,18 @@ Clause section lines:
 - rule: Universal Rules › Testing & Debugging
 - carry: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tests`
 - refs:
-  - `.bkit/templates.md` § Local stack lock — one run at a time on a shared stack
+  - `.bkit/templates.md` § Machine lock
 
 - prompt:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`
 
 ```text
-**Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
+**Shared local stack:** Worktrees share every local service with a fixed name or port (Docker database, emulator), so start, reset, stop and test against those services only through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
 ```
 
 ```retired
-**Shared local stack:** Worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
-**Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Local stack lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
+**Shared local stack:** Worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`). A fix hint that prints a raw command is a bug.
+**Shared local stack:** worktrees share every local service with fixed names / ports (Docker database, emulator) → start / reset / stop / test against them ONLY through the repo's locked scripts (`.bkit/templates.md` § Machine lock); NEVER run the raw CLI (e.g. `supabase db reset`, `docker compose down`); a fix hint printing a raw command = bug.
 ```
 
 ### tests-discriminate
@@ -4096,6 +4096,16 @@ Run `pnpm bkit:gate:static-unit` — all local tests MUST pass.
 Run `pnpm bkit:gate:static-unit`. Every local test must pass.
 ```
 
+### tests-changed-lock-wait
+
+- prompt: where-used
+- tags: local-tests-first
+- carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`
+
+```text
+**If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
+```
+
 ### remediate-verdict-fail
 
 - prompt: where-used
@@ -5537,6 +5547,15 @@ A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that l
 
 ```text
 Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issue and the `FID` it names:
+```
+
+### workflow-tests-lock-wait
+
+- workflow: repeatable
+- carriers: workflow all except `bkit-auto`
+
+```text
+**If** exit 81 → end turn, re-run this block.
 ```
 
 ### workflow-fid-named-held
@@ -9540,7 +9559,7 @@ Same text in 2+ files. `- carriers:` names them per surface; `pnpm instructions:
   Finish:
   ```
 
-- carriers: workflow `bkit-build`, `bkit-plan`
+- carriers: workflow `bkit-build`, `bkit-design`, `bkit-plan`
 
   ```text
   Route — first match wins:
@@ -9841,7 +9860,7 @@ Open-PR probe ran
 Before creating the PR, probe for an open PR that already exists on `{BRANCH}`:
 Scan the branch for migrations:
 **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
-[commits] Re-read the labels, then close the run with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. It then pushes with the HEAD-Subject Assertion and releases the lock. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
+[commits] Re-read the labels, then close the run once with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. Retain its outputs before the push so a push retry preserves the original final return. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
 Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
 [prs] Call `create_pull_request` with the printed `title`, `body`, `base` and `head`.
 Hold its URL as `PR_URL` and its number as `PR_NUMBER`.
@@ -10150,7 +10169,6 @@ Find the branch's PR — open first, then merged:
 [prs] **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
 **If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
 **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
-**If** any other non-zero exit → **Failure Path**.
 Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
 **If** `state` = MERGED → record the resume marker → Step 13:
 **Else** → next sub-step.
@@ -10563,6 +10581,7 @@ Apply a targeted fix by editing or creating source.
 **If** the gap suggests missing tests → implement them.
 Check that the gap's acceptance criteria hold.
 Append the gap's `DONE` or `BLOCKED` line before you take the next gap.
+**If** the group gate exits 81 → another run holds the machine-wide tests lock: run the same command again. Count the wait as no gap and no reason to edit code.
 The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
 Before you fix a failure, search for every other test and source file built on the same failing assumption.
 Fix those files in the same pass as the failure.
@@ -11238,9 +11257,16 @@ Move them to `Blocking Deferrals`, and append their test details with source evi
 Mark them `Lazy`, and move them to `Lazy Deferrals`.
 For each of them, look for a deferral row of the FID in your Context that already defers the item:
 **If** one exists → append nothing. The triage below tests that row and writes its `unjustified` / `TRIAGED` row, so a row of your own would record the item twice.
-Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds each hit's `file:line` and test name.
-**If** it exits 1:
-Record every entry under `Blocking Deferrals` with its source evidence (`file:line`, test name).
+Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds candidates, including removed assertions, with each hit's `file:line` and test name.
+**If** the scan fails to return a complete result (including an error, missing base or unreadable output) → record the failure under `Blocking Deferrals`.
+For each hit, read the diff, its base revision and the current source to identify the affected test and assertion. The reported test name is a locator, not proof of lost coverage.
+Record each hit under `Test Coverage Review`, applying the first matching case:
+An added disabling marker that skips a test → `Blocked`, and record it under `Blocking Deferrals`.
+A removed assertion with surviving coverage → `Preserved` only when an enabled test covers the same behaviour, inputs and failure condition. Cite its current `file:line`, test name, assertion and runner entry point, including any caller of a standalone suite.
+A removed assertion covered by an owner-approved retirement → `Retired` only when the approval's source and date identify the retired requirement, and current source proves no current requirement is left uncovered.
+A hit for which neither preserved coverage nor approved retirement is proven → `Blocked`, and record the missing or inconclusive evidence under `Blocking Deferrals`.
+Keep scan errors and `Blocked` hits blocking, never `Exempt` or `Lazy`; a general cleanup plan, a renamed file or a green suite alone proves neither preservation nor retirement.
+**If** the scan added any `Blocking Deferrals` → in **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 Bucket the plan-related deferral rows of the FID in your Context:
 [finish-over-deferrals; deferred-work] **Else** → run `bkit ledgers triage --fid=` the FID in your Context `--plan=` the plan file. The verb applies the deferral tests and writes the `unjustified` / `TRIAGED` row for each row they find lazy, so append none of your own here. Each of its `rows` carries the row's `key`, its `bucket` and the test result. Bucket the rows:
 **If** `bucket` = `Exempt` → record the row under `Exempt Deferrals`, or move it there. The row stands as written.
@@ -11249,8 +11275,8 @@ Bucket the plan-related deferral rows of the FID in your Context:
 Set the counts in **Create** with `Edit`:
 `Failures` = the number of `Blocking Deferrals` entries.
 `Lazy` = the number of `Lazy Deferrals` entries.
-`PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, and there are no `Blocking Deferrals`.
-`FAIL` = any intended deliverable is `Blocked`, **or** the run's diff disabled any test, **or** there are any `Blocking Deferrals`.
+`PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, every scanner hit is adjudicated, and there are no `Blocking Deferrals`.
+`FAIL` = any intended deliverable is `Blocked`, **or** there is a scan error or unresolved scanner hit, **or** there are any `Blocking Deferrals`.
 ```
 
 #### bkit-ship-update-docs
@@ -14417,7 +14443,7 @@ Visual and accessibility snapshots (e.g., Playwright `toHaveScreenshot` / `toMat
 Test-smell catalogue (e.g., xUnit Test Patterns, Meszaros 2007).
 Test lint (e.g., `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 Network mock that fails closed (e.g., MSW); record the major read.
-bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § Tests lock; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
 Build the should-test list: promises, never-events, platforms, roles, failure paths, and data that outlives the request.
 Check that each item is tested at the right tier, not only at some tier.
 Check that database rules and boundary contracts have tests, not only the guards in front of them.

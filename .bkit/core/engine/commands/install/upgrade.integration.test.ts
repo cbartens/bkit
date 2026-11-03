@@ -1,21 +1,4 @@
-// commands/install/upgrade.integration.test.ts — Integration test: 0.4.x → 0.5.x customised hooks scenario.
-//
-// Tests: "Upgrade integration (customised hooks scenario)"
-//
-// Fixture: tests/fixtures/heavy-customised-consumer/
-//
-// Scenario:
-//   A consumer had bkit@0.4.x installed with a customised .cursor/hooks.json:
-//   - Consumer added `failClosed: true` and `loop_limit: 5` (consumer drift).
-//   - bkit@0.5.x ships an updated hooks.json template.
-//
-//   `bkit upgrade` against this consumer must:
-//   - NOT silently overwrite the consumer's `failClosed` and `loop_limit` fields.
-//   - Report the conflict to stderr.
-//   - Exit non-zero in --non-interactive mode.
-//
-// This test exercises the full runUpgrade function at the integration level,
-// wiring the heavy-customised-consumer fixture to simulate a real upgrade path.
+// commands/install/upgrade.integration.test.ts — Upgrade conflict detection and consumer preservation.
 
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -85,9 +68,8 @@ function seedCursorHooksFromFixture(): void {
 }
 
 function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
-  fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
   const v: BkitVersion = {
-    pinnedVersion: "0.4.0",
+    pinnedVersion: "5.0.0",
     canonicalHashes,
     claudeAllowDerived: [],
   };
@@ -95,20 +77,15 @@ function writeVersionFile(canonicalHashes: Record<string, string> = {}): void {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 1: Consumer has customised .cursor/hooks.json
-//   - bkit@0.4.x installed: hooks.json had only SessionStart (bkit default)
-//   - Consumer added failClosed + loop_limit → drift
-//   - bkit@0.5.x ships new hooks.json template
-//   - bkit upgrade must: detect conflict, NOT overwrite, report to stderr
+// Consumer changes conflict with a new template; unchanged files can still upgrade.
 // ---------------------------------------------------------------------------
 
-describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", () => {
+describe("upgrade integration: consumer customizations", () => {
   it("detects conflict on customised .cursor/hooks.json (failClosed, loop_limit preserved)", () => {
     seedCursorHooksFromFixture();
 
-    // Simulate what bkit@0.4.x would have written as the canonical content:
-    // A minimal hooks.json with just SessionStart (no consumer additions)
-    const bkit04CanonicalContent =
+    // The recorded template has no consumer additions.
+    const canonicalContent =
       JSON.stringify(
         {
           hooks: {
@@ -124,10 +101,10 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
         2,
       ) + "\n";
 
-    // Record the 0.4.x canonical hash — disk content differs (consumer drift)
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    // Disk content differs from the recorded hash: consumer drift.
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
-    // bkit@0.5.x template: updated hooks.json (adds a new hook event)
+    // The new template adds another hook event.
     const newTemplateContent =
       JSON.stringify(
         {
@@ -169,8 +146,8 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("does not silently overwrite consumer drift in --non-interactive mode", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    const canonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
     const newTemplateContent =
       JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
@@ -196,8 +173,8 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("conflict list has relPath and both content versions for AI-actionable diff", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
-    writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
+    const canonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    writeVersionFile({ ".cursor/hooks.json": sha256(canonicalContent) });
 
     const newTemplateContent =
       JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
@@ -223,8 +200,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
   it("upgrades non-conflicting file while preserving conflicting consumer file", () => {
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalHooksContent =
-      JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    const canonicalHooksContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
     const oldAgentContent = "old agent content\n";
 
     // Two files: .cursor/hooks.json (conflict) + .claude/agents/bkit-test.md (clean update)
@@ -236,7 +212,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     );
 
     writeVersionFile({
-      ".cursor/hooks.json": sha256(bkit04CanonicalHooksContent),
+      ".cursor/hooks.json": sha256(canonicalHooksContent),
       ".claude/agents/bkit-test.md": sha256(oldAgentContent), // no consumer drift
     });
 
@@ -728,7 +704,7 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
     const version = readInstallingVersion();
     const written = writtenFiles();
 
-    // Simulate an install made by an older bkit: every marker reads 4.0.0, and the
+    // Simulate an install made by an older bkit: every marker reads 5.0.0, and the
     // recorded hashes and pin are what that older bkit wrote.
     const versionFile = path.join(tmpDir, ".bkit", "version");
     const recorded = readBkitVersion(versionFile)!;
@@ -737,19 +713,19 @@ describe("#489 — managed-version marker on every file bkit writes", () => {
         rel,
         fs
           .readFileSync(path.join(tmpDir, rel), "utf-8")
-          .replaceAll(`bkit:managed v${version} `, "bkit:managed v4.0.0 "),
+          .replaceAll(`bkit:managed v${version} `, "bkit:managed v5.0.0 "),
       ]),
     );
     for (const [rel, content] of aged) fs.writeFileSync(path.join(tmpDir, rel), content, "utf-8");
     for (const rel of written.filter((r) => r in recorded.canonicalHashes)) {
       recorded.canonicalHashes[rel] = sha256(aged.get(rel)!);
     }
-    writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "4.0.0" });
+    writeBkitVersion(versionFile, { ...recorded, pinnedVersion: "5.0.0" });
 
     const stale = runCli(["check"]);
     expect(stale.out).toContain("bkit-managed-stale");
     expect(stale.out).toContain(`${written.length} of ${written.length} bkit-managed file(s)`);
-    expect(stale.out).toContain("(v4.0.0)");
+    expect(stale.out).toContain("(v5.0.0)");
 
     const upgrade = runCli(["upgrade", "--auto-apply"]);
     expect(upgrade.status, upgrade.out).toBe(0);
@@ -964,6 +940,47 @@ describe("#255 — upgrade does not force-create uninstalled host/tooling module
     const check = runCli(["check"]);
     expect(check.status, `${check.stdout}\n${check.stderr}`).toBe(0);
     expect(check.stdout).toContain("0 write(s) would occur");
+  });
+
+  it("slop plugin migration upgrades old bytes, stays idempotent, and preserves customization", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync("package.json", JSON.stringify({ name: "consumer", version: "0.0.0" }));
+    const install = runCli(["install", "--claude"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    const plugin = "scripts/slop/bkit-slop-type-suppression.mjs";
+    const fixture = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../../../../tests/fixtures/slop-6.0.0/bkit-slop-type-suppression.mjs.txt",
+    );
+    const oldPlugin = fs.readFileSync(fixture);
+    const currentPlugin = fs.readFileSync(path.join(getTemplatesRoot(), plugin));
+    expect(fs.existsSync(plugin)).toBe(false);
+    fs.mkdirSync(path.dirname(plugin), { recursive: true });
+    fs.writeFileSync(plugin, oldPlugin);
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(oldPlugin);
+    expect(combinedOutput(dry)).toContain(`core: ${plugin} — slop plugin updated`);
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status, combinedOutput(upgrade)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
+
+    const second = runCli(["upgrade", "--auto-apply"]);
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(currentPlugin);
+    expect(combinedOutput(second)).not.toContain(`core: ${plugin}`);
+
+    const custom = Buffer.concat([oldPlugin, Buffer.from("\n// consumer customization\n")]);
+    fs.writeFileSync(plugin, custom);
+    const customized = runCli(["upgrade", "--auto-apply"]);
+    expect(customized.status, combinedOutput(customized)).toBe(0);
+    expect(fs.readFileSync(plugin)).toEqual(custom);
+    expect(combinedOutput(customized)).toContain(`.bkit/templates/${plugin}`);
+    expect(combinedOutput(customized)).toContain("by hand");
+    expect(readBkitVersion(".bkit/version")?.canonicalHashes[plugin]).toBeUndefined();
   });
 
   it("branded script migration is idempotent and dry-run writes nothing", () => {
@@ -1479,7 +1496,7 @@ describe("upgrade-preservation", () => {
   }
 
   function seedVersion(canonicalHashes: Record<string, string> = {}): void {
-    const v: BkitVersion = { pinnedVersion: "2.4.0", canonicalHashes, claudeAllowDerived: [] };
+    const v: BkitVersion = { pinnedVersion: "5.0.0", canonicalHashes, claudeAllowDerived: [] };
     writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
   }
 

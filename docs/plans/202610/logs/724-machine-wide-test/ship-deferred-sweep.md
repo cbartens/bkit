@@ -1,5 +1,5 @@
-Verdict: FAIL
-Failures: 107
+Verdict: PASS
+Failures: 0
 Lazy: 0
 
 <!-- verdict:end -->
@@ -8,11 +8,12 @@ Lazy: 0
 
 ## Planned vs Delivered
 
-The plan is `docs/plans/202610/724-machine-wide-test-plan.md`. Its Acceptance Scenario sections (from line 67), task DONE WHEN criteria (lines 749–1032), and newer owner answers in `ship-input-1.md` define the intended outcomes. The newer owner answers govern worker arithmetic, cancellation, adoption, and push retry behavior. Review date: 2026-11-03. No design file was present.
+The plan is `docs/plans/202610/724-machine-wide-test-plan.md`. Its Acceptance Scenario sections (from line 67), task DONE WHEN criteria (lines 749–1032), and newer owner answers in `ship-input-2.md` define the intended outcomes. The newer owner answers govern worker arithmetic, cancellation, adoption, and push retry behavior. Review date: 2026-11-03. No design file was present.
 
+<!-- prettier-ignore -->
 | Intended deliverable and plan source | Status | Source evidence and assessment |
 | --- | --- | --- |
-| Task 1: general named machine lock, rename, preserved unnamed stack compatibility; DONE WHEN line 749 | Delivered | `.bkit/templates/scripts/ci/bkit-machine-lock.sh`, functions `bkit_lock_file`, holder reporting and unnamed compatibility branch; adopted `scripts/ci/bkit-machine-lock.sh`. Fresh `/bin/bash -n` and template/adopted `cmp` both exited 0. The legacy compatibility scenarios survive in `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`; Group 1 verification attempt 3 passed. The scanner separately treats the old test path deletion as blocking below. |
+| Task 1: general named machine lock, rename, preserved unnamed stack compatibility; DONE WHEN line 749 | Delivered | `.bkit/templates/scripts/ci/bkit-machine-lock.sh`, functions `bkit_lock_file`, holder reporting and unnamed compatibility branch; adopted `scripts/ci/bkit-machine-lock.sh`. Fresh `/bin/bash -n` and template/adopted `cmp` both exited 0. The legacy compatibility scenarios survive in `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`; Group 1 verification attempt 3 passed. The carried assertions are individually preserved below. |
 | Task 12: caller checkout controls unnamed lock resolution; line 768 | Delivered | Template lock resolution uses the caller's current directory when resolving git checkout; the Group 1 attempt 3 verification records the cwd regression and compatibility fixture passing. |
 | Task 2: bounded slots, safe workers, ordering, holder reporting, history and non-TTY waits; line 787 | Delivered | Lock template `bkit_lock_slots`, `bkit_lock_workers`, main acquire flow and Perl flock/history implementation. Workers follow the newer owner formula max(1, floor(cores/slots) − 1), default slot count is one, and non-TTY raw acquisition is bounded. Holder enumeration includes numbered slots even without a primary slot; the earlier Group 2 concern was resolved in later holistic verification. |
 | Task 3: active references, catalogs and host mirrors use renamed lock; line 812 | Delivered | `.bkit/templates.md` machine-lock catalog, `docs/testing.md` tests-lock guidance, source prompts and generated workflows reference the new script. Older name occurrences in historical records and compatibility fixtures explain retained references. Group 1 attempt 3 and Group 4 verification passed. |
@@ -21,158 +22,174 @@ The plan is `docs/plans/202610/724-machine-wide-test-plan.md`. Its Acceptance Sc
 | Task 10: changed-tests verb follows the same wait/no-row contract and retry guidance; line 895 | Delivered | `.bkit/core/engine/commands/workflow/tests-changed.ts:128` parses wait; its gate environment and classification around lines 182–192 return the structured wait result. Build and debug source workflow retries cover the changed-tests path. Group 3 attempt 2 and Group 4 verification passed. |
 | Task 6: four root gates opt in and pass worker limits; line 918 | Delivered | `package.json:59`, lines 60–61 and line 65 wrap the static, unit, Bats and integration gates with the adopted tests lock. The targeted single-file gate remains unwrapped as specified. Group 4 verification passed. |
 | Task 7: workflows retry structured waits without treating them as test failures; line 936 | Delivered | `.bkit/workflows/bkit-build.md` and sibling source workflows contain bounded wait/retry branches; generated host workflow coverage was checked by Group 4 verification. Build status records a later successful actual run rather than a wait being counted as passing tests. |
-| Task 11: push plumbing propagates effective wait, recognizes hook waits and retries the push; line 966 | Delivered | `.bkit/core/engine/commands/branches.ts:871` `runPush`, environment at line 875 and hook classification at line 885; callers check `notPushed` before replay. Final Group 6 verification records the corrected inventory of 14 push blocks after the dev merge. |
+| Task 11: push plumbing propagates effective wait, recognizes hook waits and retries the push; line 966 | Delivered | `.bkit/core/engine/commands/workflow/branches.ts:871` `runPush`, environment at line 875 and hook classification at line 885; callers check `notPushed` before replay. Final Group 6 verification records the corrected inventory of 14 push blocks after the dev merge. |
 | Task 8: pure Vitest decision and worker helpers; line 986 | Delivered | `vitest.test-lock.ts:14` `testLockDecision` and line 30 `testWorkers` cover CI, existing-file filters including line suffixes, watch mode and live nested ownership; worker parsing requires positive safe integers. Group 5 verification passed. |
 | Task 9: heavy raw Vitest setup acquires and releases the adopted lock; line 1006 | Delivered | `vitest.test-lock.ts:46` setup uses actual config filters, checks existing filenames and live owner status, waits for readiness, preserves owner/wait variables and releases through teardown. `vitest.config.ts:35` installs global setup and line 36 workers. Group 5 verification passed. |
 | Task 13: cancellation keeps the lock until foreground work finishes; line 1023 | Delivered | The lock template's `bkit_lock_run` traps termination after acquisition, runs the foreground command, releases afterwards and returns the signal-derived status. This matches the latest owner answer; Group 6 verification passed. |
 | Task 14: successful tests are closed once before a separate push retry fence; line 1032 | Delivered | `.bkit/workflows/bkit-build.md:1160` closes the test fence, retains result fields around line 1170, opens the push fence at line 1176 and retries it at line 1180. Group 6 verification passed. |
 
-Evidence boundaries: supplied `tmp/bkit-diff-724-machine-wide-test.md` is explicitly partial: the full diff has 16,747 lines across 175 files and exceeds its collection guard. This sweep inspected the relevant source surfaces and representative scanner diffs, not every line of that full diff. Earlier verification/challenge reports and `status.jsonl` are historical execution evidence; they are not represented as fresh executions by this sweep. The recorded build test attempt 3 passed on 2026-11-03, and final Group 6 verification closed the earlier decision-ledger concerns. Fresh checks here were shell syntax, adopted-template byte parity, the required disabled-test scan and deferral triage. No complete test suite was rerun by this reviewer.
+Review: ship run 2, 2026-11-03, HEAD `3128229addc436e1c7ff91f00ea8b94b15a6b18b`, refreshed `origin/dev` `3d1b8f1e8ee7b1833edd5ecba33da2dfa47280e8`. The supplied diff has **partial diff coverage**: 18,427 lines across 186 files exceed its collection guard. This review supplements it with the full diffs of every scanner candidate and current coverage owners. It is not an audit of every line in the full branch diff.
+
+The current reconciliation request also requires restoring lost historical guards and correcting scanner attribution. The five restored files are byte-identical to their `origin/dev` versions; their twelve prior candidates disappear from the fresh scan. The corrected scanner identifies the actual removed test names, while its candidates remain subject to source review. The updated sweep contract is the current source prompt, not an older installed role.
+
+Earlier group, holistic, challenge and build-summary reports were read as historical evidence. The holistic decision-ledger concern is closed by the later Group 6 verification. Both latest challenge reports have zero findings. The build summary retains historical concerns and is not treated as a fresh clean test run. The caller reports the later install/static/unit/Bats/build gate passed with 7,132 unit tests, two skipped, and 40 Bats tests, followed by a passing pre-push gate. This reviewer did not rerun full suites. Fresh checks here were the complete scan, source/base comparisons, five restored-file byte comparisons, Bash syntax, adopted-template byte parity and deferral triage.
 
 ## Blocking Deferrals
 
-All entries below are **Blocked** under Process 8. The exact required command was:
+None.
 
-`/Users/christian/Documents/GitHub/bkit/node_modules/.bin/bkit branches scan-diff --disabled-tests --base=origin/dev`
+## Test Coverage Review
 
-It exited 1 and returned 107 disabled-test hits in 12 files. The first attempt could not write fetch state in the sandbox; an escalated retry fetched successfully and still exited 1 with the same findings. The FAIL verdict was set immediately. Each table row is one returned hit, including repeated identical source coordinates; counts therefore preserve scanner multiplicity.
+The required command was `node /Users/christian/Documents/GitHub/bkit/.worktrees/724-machine-wide-test/dist/cli.js branches scan-diff --disabled-tests --base=origin/dev`. Its first invocation could not refresh the ref because the sandbox denied FETCH_HEAD; the permitted rerun refreshed the ref and returned the complete candidate table with no fetch or scan error. Exit 1 means candidates were found, not an incomplete scan. There are **95 candidates: 95 Preserved, 0 Retired, 0 Blocked**. No added disabling marker is present among these hits.
 
-These are scanner findings, not 107 independently established runtime regressions. The scanner also detects assertion deletion during a file rename and can associate a removed assertion with an adjacent test name. In particular, the legacy stack-lock test file was renamed and its compatibility scenarios are present in the machine-lock suite. Representative diffs also show deletion of the resolve-push-base test file, removal of accepted-divergence tests from ci-scripts, and removal of workflow-shape checks. The prescribed rule does not authorize waiving these returned entries based on relocation or attribution concerns.
+The previous reconciliation called B105 retired. Direct inspection establishes the earlier matching case, Preserved: the fixture directory remains in active use, and the enabled upgrade test fails when it is missing. The owner-approved cleanup plan, recorded in `docs/plans/202611/844-migration-test-cleanup-plan.md:9`, Tasks 1–2, and commit `1d458933f4bbfd6714509ff7e1ff753aa9fa5c78` dated 2026-11-03, concerns an unused manifest and redundant existence check; this report does not infer retirement of the live fixture directory.
 
-| ID | Source evidence reported by scan | Test name or assertion reported by scan |
-| --- | --- | --- |
-| B001 | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts:450` | ${host}: an edit payload with no file path is ignored |
-| B002 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:58` | uses the last green run's head, not event.before, so a cancelled push stays in scope |
-| B003 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:63` | falls back to event.before when there is no green run on the branch |
-| B004 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:72` | falls back to event.before when the last green head is not an ancestor (force-push) |
-| B005 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:73` | falls back to event.before when the last green head is not an ancestor (force-push) |
-| B006 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:78` | returns an empty base when there is nothing at all (planner run-to-be-safe path) |
-| B007 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:87` | picks the newest run by run number, whatever order the API lists them in |
-| B008 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:97` | names a run list that could not be read in the source |
-| B009 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:107` | names origin/<branch> as the fallback in local mode |
-| B010 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:111` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B011 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:112` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B012 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:113` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B013 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:114` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B014 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:115` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B015 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:116` | reads owner/repo from https, ssh and scp-style remote URLs |
-| B016 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:120` | reads --local, --branch and --head from argv |
-| B017 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:125` | reads --local, --branch and --head from argv |
-| B018 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:129` | returns an empty sha for a missing or malformed run list |
-| B019 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:130` | returns an empty sha for a missing or malformed run list |
-| B020 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:131` | returns an empty sha for a missing or malformed run list |
-| B021 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:167` | falls back to event.before when git fails unexpectedly |
-| B022 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:168` | falls back to event.before when git fails unexpectedly |
-| B023 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:169` | falls back to event.before when git fails unexpectedly |
-| B024 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:174` | falls back to event.before when gh prints unparseable output |
-| B025 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:175` | falls back to event.before when gh prints unparseable output |
-| B026 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:176` | falls back to event.before when gh prints unparseable output |
-| B027 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:181` | reports last-green-run as the source when the green head is an ancestor |
-| B028 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:186` | CI mode: falls back to event.before and says so when the run list is unreadable |
-| B029 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:187` | CI mode: falls back to event.before and says so when the run list is unreadable |
-| B030 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:206` | uses the last green run when it is an ancestor of --head, looked up on origin's repo |
-| B031 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:207` | uses the last green run when it is an ancestor of --head, looked up on origin's repo |
-| B032 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:208` | uses the last green run when it is an ancestor of --head, looked up on origin's repo |
-| B033 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:213` | tests ancestry against --head, not HEAD |
-| B034 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:214` | tests ancestry against --head, not HEAD |
-| B035 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:219` | falls back to origin/dev with the reason on stderr when gh fails |
-| B036 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:220` | falls back to origin/dev with the reason on stderr when gh fails |
-| B037 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:221` | falls back to origin/dev with the reason on stderr when gh fails |
-| B038 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:222` | falls back to origin/dev with the reason on stderr when gh fails |
-| B039 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("bkit-tests-static#Check Default Branch Lags Dev#github.event_name"); |
-| B040 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("bkit-tests-static#Check Default Branch Lags Dev#github.ref"); |
-| B041 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(collectSites(dir)).toHaveLength(2); |
-| B042 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("(workflow)#concurrency#github.event_name"); |
-| B043 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("(workflow)#concurrency#github.ref"); |
-| B044 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("j#Named After Id#github.ref_name"); |
-| B045 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("j#step-2#github.base_ref"); |
-| B046 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toContain("j#actions/checkout@v4#github.head_ref"); |
-| B047 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(keys).toHaveLength(5); |
-| B048 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(r.missing).toHaveLength(1); |
-| B049 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(r.stale).toHaveLength(0); |
-| B050 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(r.stale).toHaveLength(1); |
-| B051 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(r.badDecision).toHaveLength(1); |
-| B052 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | expect(r).toEqual({ missing: [], stale: [], badDecision: [] }); |
-| B053 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:83` | expect(r.status, \`git ${args.join(" ")}: ${r.stderr}\`).toBe(0); |
-| B054 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:92` | a second run cannot take the lock while the first holds it, and is told who holds it |
-| B055 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:93` | a second run cannot take the lock while the first holds it, and is told who holds it |
-| B056 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:94` | a second run cannot take the lock while the first holds it, and is told who holds it |
-| B057 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:104` | a killed holder leaves no stale lock |
-| B058 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:105` | a killed holder leaves no stale lock |
-| B059 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:106` | a killed holder leaves no stale lock |
-| B060 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:115` | a waiting run starts as soon as the holder finishes, having said who it waits for |
-| B061 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:116` | a waiting run starts as soon as the holder finishes, having said who it waits for |
-| B062 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:117` | a waiting run starts as soon as the holder finishes, having said who it waits for |
-| B063 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:118` | a waiting run starts as soon as the holder finishes, having said who it waits for |
-| B064 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:129` | the wait gives up at LOCAL_STACK_LOCK_WAIT_S, naming the holder |
-| B065 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:130` | the wait gives up at LOCAL_STACK_LOCK_WAIT_S, naming the holder |
-| B066 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:141` | release frees the lock before the caller exits |
-| B067 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:142` | release frees the lock before the caller exits |
-| B068 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:150` | a caller under \`set -e\` survives a refused try |
-| B069 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:158` | a caller under \`set -e\` survives releasing a holder that is already gone |
-| B070 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:167` | a runner started by the holder does not wait on its parent |
-| B071 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:168` | a runner started by the holder does not wait on its parent |
-| B072 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:179` | a stack named by BKIT_LOCAL_STACK never waits on the shared one |
-| B073 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:180` | a stack named by BKIT_LOCAL_STACK never waits on the shared one |
-| B074 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:199` | every worktree of one repo resolves the main checkout's lock, and waits on it |
-| B075 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:200` | every worktree of one repo resolves the main checkout's lock, and waits on it |
-| B076 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:205` | every worktree of one repo resolves the main checkout's lock, and waits on it |
-| B077 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:206` | every worktree of one repo resolves the main checkout's lock, and waits on it |
-| B078 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:218` | outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why |
-| B079 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:219` | outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why |
-| B080 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:220` | outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why |
-| B081 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:226` | a holder that stops before it answers fails the take at once instead of hanging |
-| B082 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:229` | a holder that stops before it answers fails the take at once instead of hanging |
-| B083 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:230` | a holder that stops before it answers fails the take at once instead of hanging |
-| B084 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:231` | a holder that stops before it answers fails the take at once instead of hanging |
-| B085 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:236` | a holder that stops before it answers fails the take at once instead of hanging |
-| B086 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:237` | a holder that stops before it answers fails the take at once instead of hanging |
-| B087 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:238` | a holder that stops before it answers fails the take at once instead of hanging |
-| B088 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:255` | \`run\` holds the lock for the command and passes its exit status on |
-| B089 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:256` | \`run\` holds the lock for the command and passes its exit status on |
-| B090 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:261` | \`run\` with no arguments prints usage and exits 2 |
-| B091 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:262` | \`run\` with no arguments prints usage and exits 2 |
-| B092 | `.bkit/core/engine/audits/templates/templates-content.test.ts:97` | still contains token placeholders {{DEFAULT_BRANCH}} and {{NODE_VERSION}} |
-| B093 | `.bkit/core/engine/audits/templates/templates.test.ts:419` | the root README points small changes at /bkit-build |
-| B094 | `.bkit/core/engine/audits/templates/templates.test.ts:419` | the root README points small changes at /bkit-build |
-| B095 | `.bkit/core/engine/audits/templates/templates.test.ts:419` | the root README points small changes at /bkit-build |
-| B096 | `.bkit/core/engine/audits/templates/templates.test.ts:419` | the root README points small changes at /bkit-build |
-| B097 | `.bkit/core/engine/audits/templates/templates.test.ts:420` | the root README points small changes at /bkit-build |
-| B098 | `.bkit/core/engine/audits/workflows/catalog-parity.test.ts:56` | every .bkit/prompts/*.md agent is referenced in the prompts.md catalog |
-| B099 | `.bkit/core/engine/audits/workflows/verdict-vocabulary.test.ts:405` | every multi-word verdict name has no conflict-free shortening |
-| B100 | `.bkit/core/engine/audits/workflows/verdict-vocabulary.test.ts:405` | every multi-word verdict name has no conflict-free shortening |
-| B101 | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:587` | Branch Sync merges docs and finishes as its own step |
-| B102 | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts:1086` | plan caps |
-| B103 | `.bkit/core/engine/commands/workflow/steps.test.ts:918` | ledger writer references |
-| B104 | `.bkit/core/engine/commands/workflow/steps.test.ts:929` | every configured writer has a prompt file |
-| B105 | `.bkit/core/engine/install/write.integration.test.ts:44` | consumer customizations — contained write |
-| B106 | `.bkit/core/engine/tools/instructions-sources.test.ts:174` | Hook Text |
-| B107 | `.bkit/core/engine/tools/instructions-sources.test.ts:174` | Hook Text |
+All test owners below are enabled and discovered by `vitest.config.ts:26` through its engine test globs. Unit suites run through the root unit gate and integration suites through `test:integration`. The standalone P and A suites are additionally called by C's `%s passes when run on its own` at lines 130–135, which requires their real Node process to exit zero. P and A throw on false assertions and exit 1 for any failed case. D requires the adopted push-base implementation and test suite to be identical to the shipped files. The P cases retain the same SHA values, URL variants, argv, fake git/gh results and expected failure conditions. A retains the same workflow fields and registry states; incidental fixture filenames differ, while missing/stale/unknown-decision/clean outcomes remain checked. The M cases retain every old assertion and scenario; explicit caller directories implement the approved caller-cwd contract.
+
+All paths are relative to this worktree. A shorthand followed by a colon gives the current source line or range.
+
+<!-- prettier-ignore -->
+| Key | Source |
+| --- | --- |
+| P | `.bkit/templates/scripts/ci/lanes/bkit-resolve-push-base.test.mjs` |
+| A | `.bkit/templates/scripts/ci/bkit-check-accepted-divergences.test.mjs` |
+| C | `.bkit/core/engine/audits/templates/ci-scripts.test.ts` |
+| D | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` |
+| M | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` |
+| H | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` |
+| HC | `.bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts` |
+| HU | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` |
+| HO | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` |
+| T | `.bkit/core/engine/audits/templates/templates-content.test.ts` |
+| T2 | `.bkit/core/engine/audits/templates/templates.test.ts` |
+| K | `.bkit/core/engine/audits/workflows/catalog-parity.test.ts` |
+| V | `.bkit/core/engine/audits/workflows/verdict-vocabulary.test.ts` |
+| W | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` |
+| S | `.bkit/core/engine/commands/workflow/steps.test.ts` |
+| I | `.bkit/core/engine/install/write.integration.test.ts` |
+
+C:121–135 enumerates and executes every shipped standalone test file as a real Node child process and requires exit zero. P executes 17 cases and A executes six, using throwing assertions and a nonzero failure exit. D:333–334 enforces byte parity for the adopted push-base implementation and its standalone tests. Consequently, removing the duplicate Vitest wrappers does not stop these behaviors from running in the normal suite.
+
+Original IDs are retained for reconciliation. The assertion column identifies the removed behavior; the evidence column identifies its enabled current owner, line and test name.
+
+<!-- prettier-ignore -->
+| ID | Original reported source | Disposition | Removed assertion or behavior | Current coverage evidence |
+| --- | --- | --- | --- | --- |
+| B001 | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts:450` | Preserved | Ordinary package.json edit emits GateGuard; removed name claimed subagents but supplied no subagent marker. | H:225–230 repeats the identical five-host input and advisory assertion; actual marked subagents remain in HC:225, HU:156, HO:488. Current test: first edit to an existing file gets the investigation checklist. |
+| B002 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:58` | Preserved | green head and source | P:87–88; executed by C:130–135; adopted script and test parity D:333–334. Current test: a cancelled push's changes stay in scope: base is the last green run, not event.before. |
+| B003 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:63` | Preserved | no-green before head and source | P:93–94; executed by C:130–135; adopted script and test parity D:333–334. Current test: no green run on the branch yet → event.before. |
+| B004 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:72` | Preserved | force-push fallback head | P:103; executed by C:130–135; adopted script and test parity D:333–334. Current test: a force-push rewrote the branch (last green head not an ancestor) → event.before. |
+| B005 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:73` | Preserved | force-push fallback source | P:104; executed by C:130–135; adopted script and test parity D:333–334. Current test: a force-push rewrote the branch (last green head not an ancestor) → event.before. |
+| B006 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:78` | Preserved | no base gives empty string | P:109; executed by C:130–135; adopted script and test parity D:333–334. Current test: nothing at all → empty base (the planner's run-to-be-safe path). |
+| B007 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:87` | Preserved | newest run number wins | P:118; executed by C:130–135; adopted script and test parity D:333–334. Current test: the newest green run wins by run number, whatever order the API lists them in. |
+| B008 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:97` | Preserved | lookup failure base and source | P:156–157; executed by C:130–135; adopted script and test parity D:333–334. Current test: a run list that could not be read is named in the source. |
+| B009 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:107` | Preserved | local fallback source names origin/dev | P:167; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode names origin/<branch> as the fallback. |
+| B010 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:111` | Preserved | HTTPS .git URL | P:171; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B011 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:112` | Preserved | HTTPS URL | P:172; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B012 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:113` | Preserved | SCP URL and newline | P:173; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B013 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:114` | Preserved | SSH URL | P:174; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B014 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:115` | Preserved | empty URL | P:175; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B015 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:116` | Preserved | undefined URL | P:176; executed by C:130–135; adopted script and test parity D:333–334. Current test: owner/repo comes out of https, ssh and scp-style remote URLs. |
+| B016 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:120` | Preserved | explicit local/branch/head arguments | P:181; executed by C:130–135; adopted script and test parity D:333–334. Current test: --local, --branch and --head are read from argv. |
+| B017 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:125` | Preserved | default arguments | P:183; executed by C:130–135; adopted script and test parity D:333–334. Current test: --local, --branch and --head are read from argv. |
+| B018 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:129` | Preserved | empty run list | P:122; executed by C:130–135; adopted script and test parity D:333–334. Current test: no usable run → empty sha (the caller falls back to event.before). |
+| B019 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:130` | Preserved | undefined run list | P:123; executed by C:130–135; adopted script and test parity D:333–334. Current test: no usable run → empty sha (the caller falls back to event.before). |
+| B020 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:131` | Preserved | malformed run entries | P:124; executed by C:130–135; adopted script and test parity D:333–334. Current test: no usable run → empty sha (the caller falls back to event.before). |
+| B021 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:167` | Preserved | git failure exits zero | P:131; executed by C:130–135; adopted script and test parity D:333–334. Current test: a git failure while testing ancestry exits 0 with event.before. |
+| B022 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:168` | Preserved | git failure prints before SHA | P:132; executed by C:130–135; adopted script and test parity D:333–334. Current test: a git failure while testing ancestry exits 0 with event.before. |
+| B023 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:169` | Preserved | git failure source | P:133; executed by C:130–135; adopted script and test parity D:333–334. Current test: a git failure while testing ancestry exits 0 with event.before. |
+| B024 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:174` | Preserved | bad gh JSON exits zero | P:138; executed by C:130–135; adopted script and test parity D:333–334. Current test: unparseable gh output exits 0 with event.before. |
+| B025 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:175` | Preserved | bad gh JSON prints before SHA | P:139; executed by C:130–135; adopted script and test parity D:333–334. Current test: unparseable gh output exits 0 with event.before. |
+| B026 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:176` | Preserved | bad gh JSON source | P:140; executed by C:130–135; adopted script and test parity D:333–334. Current test: unparseable gh output exits 0 with event.before. |
+| B027 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:181` | Preserved | green ancestor status/head/source | P:145–146; executed by C:130–135; adopted script and test parity D:333–334. Current test: a green ancestor run reports last-green-run as the source. |
+| B028 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:186` | Preserved | unreadable CI run status/head | P:188; executed by C:130–135; adopted script and test parity D:333–334. Current test: CI mode: an unreadable run list falls back to event.before and says so. |
+| B029 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:187` | Preserved | unreadable CI run source | P:189; executed by C:130–135; adopted script and test parity D:333–334. Current test: CI mode: an unreadable run list falls back to event.before and says so. |
+| B030 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:206` | Preserved | local green ancestor status/head/source | P:207–208; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: last green run is an ancestor of --head → that run's head. |
+| B031 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:207` | Preserved | local query uses origin repository | P:209; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: last green run is an ancestor of --head → that run's head. |
+| B032 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:208` | Preserved | local query branch/event/status | P:210; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: last green run is an ancestor of --head → that run's head. |
+| B033 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:213` | Preserved | ancestry checks requested head and returns origin SHA | P:219; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: ancestry is tested against --head, not HEAD. |
+| B034 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:214` | Preserved | wrong-head fallback source | P:220; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: ancestry is tested against --head, not HEAD. |
+| B035 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:219` | Preserved | local gh failure status/head | P:230; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: gh fails → origin/dev, the reason on stderr, env REPO / BEFORE_SHA unused. |
+| B036 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:220` | Preserved | local gh failure source | P:231; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: gh fails → origin/dev, the reason on stderr, env REPO / BEFORE_SHA unused. |
+| B037 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:221` | Preserved | local gh failure stderr reason | P:232; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: gh fails → origin/dev, the reason on stderr, env REPO / BEFORE_SHA unused. |
+| B038 | `.bkit/core/engine/audits/repo/resolve-push-base.test.ts:222` | Preserved | local gh failure queries origin repository | P:233; executed by C:130–135; adopted script and test parity D:333–334. Current test: local mode: gh fails → origin/dev, the reason on stderr, env REPO / BEFORE_SHA unused. |
+| B039 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | event_name site key | A:66–69; executed by C:130–135. Current test: collects every event-keyed site with its job and step. |
+| B040 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | ref site key | A:70–73; executed by C:130–135. Current test: collects every event-keyed site with its job and step. |
+| B041 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | exactly two sites | A:74; executed by C:130–135. Current test: collects every event-keyed site with its job and step. |
+| B042 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | workflow concurrency event_name key | A:99–106; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B043 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | workflow concurrency ref key | A:99–106; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B044 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | step named after id | A:99–106; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B045 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | unnamed step base_ref key | A:99–106; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B046 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | uses fallback step head_ref key | A:99–106; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B047 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | exactly five sites | A:108; executed by C:130–135. Current test: collects the workflow-level concurrency block and steps whose first key is not name/uses. |
+| B048 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | one missing site | A:117; executed by C:130–135. Current test: an unregistered site is reported missing. |
+| B049 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | zero stale sites | A:118; executed by C:130–135. Current test: an unregistered site is reported missing. |
+| B050 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | one stale registry row | A:133; executed by C:130–135. Current test: a registry row that no longer exists is stale. |
+| B051 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | one unknown-decision error | A:145; executed by C:130–135. Current test: a row with an unknown decision or no reason is flagged. |
+| B052 | `.bkit/core/engine/audits/templates/ci-scripts.test.ts:20` | Preserved | clean registry has no missing/stale/bad decision | A:157–160; executed by C:130–135. Current test: a registered, live, reasoned site is clean. |
+| B053 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:83` | Preserved | git fixture command succeeds | M:102; same assertion after rename. Current test: git(cwd,args), called by every worktree of one repo resolves the main checkout's lock, and waits on it. |
+| B054 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:92` | Preserved | busy try status | M:555; same assertion after rename. Current test: a second run cannot take the lock while the first holds it, and is told who holds it. |
+| B055 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:93` | Preserved | busy try holder name | M:556; same assertion after rename. Current test: a second run cannot take the lock while the first holds it, and is told who holds it. |
+| B056 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:94` | Preserved | busy try checkout | M:557; same assertion after rename. Current test: a second run cannot take the lock while the first holds it, and is told who holds it. |
+| B057 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:104` | Preserved | killed holder permits acquisition | M:567; same assertion after rename. Current test: a killed holder leaves no stale lock. |
+| B058 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:105` | Preserved | killed holder acquisition status | M:568; same assertion after rename. Current test: a killed holder leaves no stale lock. |
+| B059 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:106` | Preserved | killed holder recovery time | M:569; same assertion after rename. Current test: a killed holder leaves no stale lock. |
+| B060 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:115` | Preserved | waiting runner acquires | M:578; same assertion after rename. Current test: a waiting run starts as soon as the holder finishes, having said who it waits for. |
+| B061 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:116` | Preserved | wait identifies waiter | M:579; same assertion after rename. Current test: a waiting run starts as soon as the holder finishes, having said who it waits for. |
+| B062 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:117` | Preserved | wait identifies holder | M:580; same assertion after rename. Current test: a waiting run starts as soon as the holder finishes, having said who it waits for. |
+| B063 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:118` | Preserved | wait lasts until holder release | M:581; same assertion after rename. Current test: a waiting run starts as soon as the holder finishes, having said who it waits for. |
+| B064 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:129` | Preserved | timeout status | M:592; same assertion after rename. Current test: the wait gives up at LOCAL_STACK_LOCK_WAIT_S, naming the holder. |
+| B065 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:130` | Preserved | timeout names budget and holder | M:593; same assertion after rename. Current test: the wait gives up at LOCAL_STACK_LOCK_WAIT_S, naming the holder. |
+| B066 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:141` | Preserved | release permits successor | M:604; same assertion after rename. Current test: release frees the lock before the caller exits. |
+| B067 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:142` | Preserved | release exits successfully | M:605; same assertion after rename. Current test: release frees the lock before the caller exits. |
+| B068 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:150` | Preserved | set -e caller survives busy try | M:613; same assertion after rename. Current test: a caller under `set -e` survives a refused try. |
+| B069 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:158` | Preserved | set -e caller survives dead-holder release | M:621; same assertion after rename. Current test: a caller under `set -e` survives releasing a holder that is already gone. |
+| B070 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:167` | Preserved | nested runner succeeds | M:630; same assertion after rename. Current test: a runner started by the holder does not wait on its parent. |
+| B071 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:168` | Preserved | nested runner does not wait | M:631; same assertion after rename. Current test: a runner started by the holder does not wait on its parent. |
+| B072 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:179` | Preserved | explicit stack succeeds | M:642; same assertion after rename. Current test: a stack named by BKIT_LOCAL_STACK never waits on the shared one. |
+| B073 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:180` | Preserved | explicit stack path | M:643–645; same assertion after rename. Current test: a stack named by BKIT_LOCAL_STACK never waits on the shared one. |
+| B074 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:199` | Preserved | main checkout lock path | M:662; same assertion after rename. Fixture now passes the caller checkout explicitly, matching the specified cwd contract. Current test: every worktree of one repo resolves the main checkout's lock, and waits on it. |
+| B075 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:200` | Preserved | worktree lock path | M:663; same assertion after rename. Fixture now passes the caller checkout explicitly, matching the specified cwd contract. Current test: every worktree of one repo resolves the main checkout's lock, and waits on it. |
+| B076 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:205` | Preserved | worktree contends | M:668; same assertion after rename. Current test: every worktree of one repo resolves the main checkout's lock, and waits on it. |
+| B077 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:206` | Preserved | worktree names main holder | M:669; same assertion after rename. Current test: every worktree of one repo resolves the main checkout's lock, and waits on it. |
+| B078 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:218` | Preserved | outside checkout refuses | M:682; same assertion after rename. Current test: outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why. |
+| B079 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:219` | Preserved | outside checkout diagnostic | M:683; same assertion after rename. Current test: outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why. |
+| B080 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:220` | Preserved | outside checkout makes no cache | M:684; same assertion after rename. Current test: outside a git checkout with no BKIT_LOCAL_STACK it refuses, saying why. |
+| B081 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:226` | Preserved | holder-crash fixture locates Perl | M:690; same assertion after rename. Current test: a holder that stops before it answers fails the take at once instead of hanging. |
+| B082 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:229` | Preserved | holder-crash refusal status | M:696; same assertion after rename. Current test: a holder that stops before it answers fails the take at once instead of hanging. |
+| B083 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:230` | Preserved | holder-crash diagnostic | M:697; same assertion after rename. Current test: a holder that stops before it answers fails the take at once instead of hanging. |
+| B084 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:231` | Preserved | holder-crash fails promptly | M:698; same assertion after rename. Current test: a holder that stops before it answers fails the take at once instead of hanging. |
+| B085 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:236` | Preserved | CI mode command succeeds | M:703; same assertion after rename. Current test: CI=%s is a no-op that creates no lock file. |
+| B086 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:237` | Preserved | CI mode status zero | M:704; same assertion after rename. Current test: CI=%s is a no-op that creates no lock file. |
+| B087 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:238` | Preserved | CI mode makes no cache | M:705; same assertion after rename. Current test: CI=%s is a no-op that creates no lock file. |
+| B088 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:255` | Preserved | run forwards exit 3 | M:722; same assertion after rename. Current test: `run` holds the lock for the command and passes its exit status on. |
+| B089 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:256` | Preserved | run command sees holder | M:723; same assertion after rename. Current test: `run` holds the lock for the command and passes its exit status on. |
+| B090 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:261` | Preserved | missing command usage status 2 | M:728; same assertion after rename. Current test: `run` with no arguments prints usage and exits 2. |
+| B091 | `.bkit/core/engine/audits/templates/local-stack-lock.integration.test.ts:262` | Preserved | missing command usage text | M:729; same assertion after rename. Current test: `run` with no arguments prints usage and exits 2. |
+| B092 | `.bkit/core/engine/audits/templates/templates-content.test.ts:97` | Preserved | CI template contains frozen-lockfile installation. | T:89–94 already finds the exact command, asserts its index is nonnegative, and rejects registry authentication. Current test: install step runs a plain pnpm install --frozen-lockfile (no registry auth). |
+| B103 | `.bkit/core/engine/commands/workflow/steps.test.ts:918` | Preserved | ROW_FIELDS excludes the three removed challenge steps. | S:912–915 requires exact equality between ROW_FIELDS and all current workflow row-writing calls. None uses the removed steps. Reintroducing an obsolete table entry produces an extra key and fails this assertion. Current test: ROW_FIELDS lists exactly the fields each workflow's `steps done\|finish` call writes. |
+| B104 | `.bkit/core/engine/commands/workflow/steps.test.ts:929` | Preserved | Ledger writer lists exclude the three removed challenge agents. | S:919–929 requires every configured writer to have a real prompt file. The three removed agents have no prompt files, so each obsolete reference fails the surviving assertion. Current test: every configured writer has a prompt file. |
+| B105 | `.bkit/core/engine/install/write.integration.test.ts:44` | Preserved | `fs.existsSync(FIXTURE_DIR)` requires the heavy-customised-consumer directory. | `.bkit/core/engine/commands/install/upgrade.integration.test.ts:146`, `does not silently overwrite consumer drift in --non-interactive mode`, copies the same fixture at lines 64–66, directly reads its `cursor-hooks.json` at line 169 and asserts exact preserved content at line 170. Missing directory or fixture throws and fails this enabled Vitest integration test. |
+
+The twelve restored findings B093–B102 and B106–B107 are absent from the new scan. A fresh byte comparison confirmed that `templates.test.ts`, `catalog-parity.test.ts`, `verdict-vocabulary.test.ts`, `workflow-shape.test.ts` and `instructions-sources.test.ts` exactly match their complete `origin/dev` versions. Their original guards are present, with no exception needed. The precise restored assertion locations remain in `ship-scan-reconciliation.md`.
 
 ## Exempt Deferrals
 
 The plan declares the following scope exclusions at lines 397–400. The first three also trace to the issue input; later plan/owner updates govern the final scope. `bkit ledgers triage --fid=724-machine-wide-test --plan=docs/plans/202610/724-machine-wide-test-plan.md` exited 0, classified all four rows Exempt, and wrote zero rows.
 
+<!-- prettier-ignore -->
 | Key | Status; declared where and when | Uncovered work and verified reason |
 | --- | --- | --- |
 | `724-upstream-consumer-load-gate` | Exempt; `docs/deferrals.jsonl:99`, 2026-10-29; plan Out of Scope | Upstreaming a consumer's projected-load/memory overlap gate remains separate. Reason `scope-declared`. Triage: bounded-remediation=true, in-scope-surface=false, no-external-blocker=true, own-declaration=false. |
-| `724-timeout-budget-and-ci-serialisation-unchanged` | Exempt; `docs/deferrals.jsonl:100`, 2026-10-29; plan Out of Scope | Retuning `vitest.timeout-budget.ts` and adding CI serialization remain separate; CI bypass is an intended delivered behavior. Reason `scope-declared`. Triage: bounded-remediation=true, in-scope-surface=true, no-external-blocker=true, own-declaration=false. No timeout-budget change was observed in the reviewed diff. |
+| `724-timeout-budget-and-ci-serialisation-unchanged` | Exempt; `docs/deferrals.jsonl:100`, 2026-10-29; plan Out of Scope | Retuning `vitest.timeout-budget.ts` and adding CI serialization remain separate; CI bypass is an intended delivered behavior. Reason `scope-declared`. Triage: bounded-remediation=true, in-scope-surface=true, no-external-blocker=true, own-declaration=false. No timeout-budget retuning is required by this plan. |
 | `724-gate-templates-pass-test-workers` | Exempt; `docs/deferrals.jsonl:101`, 2026-10-29; plan Out of Scope | Generic shipped consumer gate templates passing `BKIT_TEST_WORKERS` to arbitrary runners remain follow-up work; bkit's own gates are delivered. Reason `scope-declared`. Triage: bounded-remediation=true, in-scope-surface=true, no-external-blocker=true, own-declaration=false. |
-| `724-host-hook-catches-raw-test-runners` | Exempt; latest `docs/deferrals.jsonl:139`, 2026-11-02, first declared 2026-10-29; plan Out of Scope | Host hooks intercepting raw consumer test runners remain separate and are tracked by #822. The requested repository-specific Vitest setup is delivered. Reason `scope-declared`, latest status TRIAGED. Triage: bounded-remediation=true, in-scope-surface=false, no-external-blocker=true, own-declaration=false. |
+| `724-host-hook-catches-raw-test-runners` | Exempt; latest `docs/deferrals.jsonl:139`, 2026-11-02, first declared 2026-10-29; plan Out of Scope | Host hooks intercepting raw consumer test runners remain separate . The requested repository-specific Vitest setup is delivered. Reason `scope-declared`, latest status TRIAGED. Triage: bounded-remediation=true, in-scope-surface=false, no-external-blocker=true, own-declaration=false. |
 | Plan execution and merge preconditions | Exempt; plan Gate 2/3/4 and manual execution checkboxes, reviewed 2026-11-03 | Unchecked process boxes, native-host manual checks and merge/CI prerequisites are advisory under this sweep's Process 6. They are not independent missing product deliverables, and this sweep does not claim those unexecuted checks passed. |
 
 ## Lazy Deferrals
 
-None. All intended product deliverables were supported by source and recorded verification evidence. All four existing plan-related ledger rows passed triage as Exempt. No unjustified/TRIAGED row was required or appended.
+None. All fourteen intended product deliverables are delivered. Fresh triage returned four Exempt rows and zero writes. No unjustified/TRIAGED row was needed or appended.
 
 ## Handover Notes
 
-Resolve the scanner findings before the next ship. Each B001–B107 entry above blocks under the mandated disabled-test gate. Preserve the source coordinates and reported names when resolving them; the reported names are not always the actual removed test's name.
-
-- For the legacy local-stack-lock test path, compare the carried compatibility tests in `machine-lock.integration.test.ts` with every reported deleted assertion and resolve rename handling through the normal approved change process.
-- For resolve-push-base and ci-scripts, establish whether replacement coverage exists and restore any genuinely lost assertions or tests.
-- For gateguard, workflow-shape, template/catalog/vocabulary, steps, install and instruction-source findings, reconcile each listed deletion against intended test coverage and restore coverage where absent.
-- If a removed capability is genuinely outside the intended change, make that scope decision explicit and review its test impact. Declaring scope alone does not waive Process 8's disabled-test scan.
-- Re-run the required scan against the current `origin/dev` and the applicable checks after remediation. The sweep did not modify tests, source code, gates, or deferral rows.
-
-No fixes were applied. The report stops at adjudication; the caller owns the workflow failure path.
+None.

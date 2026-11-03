@@ -140,11 +140,7 @@ _local_stack_lock() {
         printf '%s' "$_lsl_line"
         break
       fi
-      if ! kill -0 "$_lsl_pid" 2>/dev/null; then
-        # The holder may have answered and exited between the read timing out and this check.
-        if IFS= read -r -t 1 _lsl_line <&3; then printf '%s' "$_lsl_line"; fi
-        break
-      fi
+      kill -0 "$_lsl_pid" 2>/dev/null || break
     done
   )" || true
   rm -f "$_lsl_fifo"

@@ -14,8 +14,6 @@ import { writeTier2JsonContained } from "./write";
 //
 // Tests that consumer-added keys in .claude/settings.json, .cursor/hooks.json and
 // .opencode/opencode.json survive writeTier2JsonContained.
-//
-// Fixture: tests/fixtures/heavy-customised-consumer/
 describe("modules-upgrade", () => {
   // ---------------------------------------------------------------------------
   // Helpers
@@ -23,11 +21,6 @@ describe("modules-upgrade", () => {
 
   let tmpDir: string;
   let originalCwd: string;
-
-  const FIXTURE_DIR = path.resolve(
-    __dirname,
-    "../../../../tests/fixtures/heavy-customised-consumer",
-  );
 
   function makeWriteSet(): WriteSet {
     return { writes: [] };
@@ -45,15 +38,10 @@ describe("modules-upgrade", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Heavy-customised consumer fixture survival (BAR-131 fixture)
-  // Task 9: heavy-customised consumer fixture survival
+  // Consumer customizations survive contained writes.
   // ---------------------------------------------------------------------------
 
-  describe("heavy-customised consumer fixture — contained write", () => {
-    it("fixture directory exists", () => {
-      expect(fs.existsSync(FIXTURE_DIR), `Fixture missing at ${FIXTURE_DIR}`).toBe(true);
-    });
-
+  describe("consumer customizations — contained write", () => {
     it("consumer Stop hook survives writeTier2JsonContained", () => {
       // A consumer that added its own Stop hook and a custom key
       const onDiskPath = path.join(tmpDir, "settings.json");

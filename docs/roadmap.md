@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T10:35:14Z)_
+_(refreshed 2026-11-03T12:11:01Z)_
 
 ### Design
 
@@ -54,7 +54,6 @@ _(refreshed 2026-11-03T10:35:14Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 724-machine-wide-test | 724-machine-wide-test | 1793701434305 |
 
 ### Debug
 
@@ -65,6 +64,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
 | 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
@@ -74,7 +74,6 @@ _(none)_
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
 | 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
 | 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
-| 380-roadmap-analysis-refresh | Roadmap ledger, two-tier generated board, fold + cadence + on-demand utility | 1787868628424 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

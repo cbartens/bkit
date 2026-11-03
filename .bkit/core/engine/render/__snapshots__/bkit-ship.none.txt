@@ -179,6 +179,7 @@ _No tracker connected, skip step._
    - **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
    - **If** exit 0 → sub-step 3.
    - **If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
+
      ```bash
      "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null || exit $?
      OPEN_EXIT=0
@@ -186,11 +187,17 @@ _No tracker connected, skip step._
      case "$OPEN_EXIT" in 0 | 80) "{BKIT}" status meta --file="{STATUS}" --workflow=ship --opened-pr >/dev/null || exit 1 ;; esac
      exit "$OPEN_EXIT"
      ```
-     **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
-     **If** any other non-zero exit → **Failure Path**.
+
+     Route:
+     - **If** exit 81 → end turn, re-run this block.
+     - **If** exit 0 → continue with the next instruction.
+     - **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
+     - **Else** → **Failure Path**.
+
      Re-run the `bkit prs probe` above.
      Hold `number` as `PR_NUMBER`, `baseRefName` as `PR_BASE`, and hold `state`.
      Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
+
    - **Else** → **Failure Path**.
 3. Route:
    - **If** `state` = MERGED → record the resume marker → Step 13:
@@ -338,6 +345,10 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" branches push --mode=plain >/dev/null
    ```
+   Route:
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 4 — Integrate
 
@@ -465,6 +476,10 @@ _No tracker connected, skip step._
    ```bash
    "{BKIT}" branches push --mode=plain >/dev/null
    ```
+   Route:
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 0 → continue with the next instruction.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Commit + Push Bookkeeping
 
@@ -520,10 +535,18 @@ _No tracker connected, skip step._
        ```
        Hold `outcome` as `REGEN_OUTCOME` and `head` as `CODE_HEAD`.
        - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
+
          ```bash
          "{BKIT}" branches push --mode=plain >/dev/null
          ```
+
+         Route:
+         - **If** exit 81 → end turn, re-run this block.
+         - **If** exit 0 → continue with the next instruction.
+         - **Else** → **Failure Path**.
+
          Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated head, then re-run the merge gate).
+
        - **Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
      - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = sub-step 1, which routes the red run again within the new allowance → **Merge Question**.
      - **Else** → **Failure Path** (exit 1: `ship.merge.maxAttempts` used up, max-retry exhaustion).
@@ -665,11 +688,18 @@ Asked from Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NEXT` held) 
        ```
        Hold `value` as `MERGE_ATTEMPT`.
      - Commit and push the fix, and NEVER force:
+
        ```bash
        "{BKIT}" ledgers commit --month="{YYYYMM}" --fid="{FID}" --scope=full --mode=commit --stage-tracked-updates --message="fix({FID}): failure-remediate attempt {MERGE_ATTEMPT}" >/dev/null \
          || { echo "[bkit-ship] failure-remediate commit failed" >&2; exit 1; }
        "{BKIT}" branches push --mode=plain >/dev/null
        ```
+
+       Route:
+       - **If** exit 81 → end turn, re-run this block.
+       - **If** exit 0 → continue with the next instruction.
+       - **Else** → **Failure Path**.
+
      - Set `REVALIDATE_REASON` empty → Step 9 (re-validate, then re-run the merge).
    - **Else** → **Failure Path**.
 
