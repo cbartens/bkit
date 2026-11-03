@@ -286,3 +286,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T01:28:25Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-worktree-setup/-/-/comment","hash":"b65e33cad5342d2a1b237d01fd4797de9a98510363ad1673ec63e4b3522a65df","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6592988937","at":"2026-11-03T01:28:26Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-03T01:28:26Z","parentSha":"e04340db075f8c22b8e605bd627e7e9747c94554","artifacts":["docs/plans/202611/logs/825-show-progress-bar/build-input-2.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:28:30Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:28:34Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T01:28:38Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-branch-sync/-/-/comment","hash":"96e9de7791e54f4f9ebd56a7ca42357df00aeb2cd3fd2729323274fe0a6a810a","ref":"https://github.com/cbartens/bkit/issues/825#issuecomment-6592992129","at":"2026-11-03T01:28:39Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-03T01:28:39Z","parentSha":"54e8c10afc3e4b2da689273a79623d685e1507dd","artifacts":[]}
