@@ -672,6 +672,7 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
 
 ## Before You Save
 
+- Re-read every added or edited passage once for token efficiency, cutting filler, repetition and wording with a shorter equivalent. Keep the original wording wherever shortening would lose meaning, clarity or compliance with the applicable rules.
 - Run `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` after you change a rule, a clause or this file, and read what it reports. It writes nothing (§ All Agent-Read Files, **Shared wording**).
 - Run the tests named in the `Checked by:` lines of the rules you touched.
 - Read the change once as a tier-1 model would: check each capital word against the test in § All Agent-Read Files, **Capitals only for invariants**, and check that the done condition and the early stops are named.
