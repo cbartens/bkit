@@ -427,3 +427,16 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T07:53:57Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T07:54:01Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:15Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:39Z","noun":"workflows","verb":"start","flags":["workflow","fid","month","lock-held","token"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:39Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-03T08:02:39Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":false,"runtimeGithubCliExit":1,"runtimeGithubCliErr":"  - To forget about this account, run: gh auth logout -h github.com -u cbartens","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:39Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:39Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:53Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-03T08:02:53Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:54Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:54Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:54Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-03T08:02:54Z","parentSha":"fc8f39b7f3da990fdb618ecace1f1ca089ae011d","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T08:02:58Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-03T08:02:58Z","parentSha":"fc8f39b7f3da990fdb618ecace1f1ca089ae011d","artifacts":["docs/plans/202610/logs/724-machine-wide-test/build-input-3.md"]}
