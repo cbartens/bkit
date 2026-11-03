@@ -11,7 +11,7 @@ Fits: any repo whose CI runs on GitHub Actions.
 The settings:
 
 - Secret: `GH_TOKEN` in cloud. A local `gh auth login` works too.
-- Non-secret, `context=ci`: none. The block discovers its own run.
+- Non-secret, `context=ci`: `CI_WORKFLOW` (your CI workflow file, default `bkit-ci.yml`). The block reads only that workflow's newest run on the current branch, because another workflow on the branch, such as a security scan, can finish later and pass. Edit the default in the block so cloud agents inherit it.
 - Non-secret, `context=diff`: `BASELINE_BRANCH` (your trunk, default `dev`) and `BASELINE_WORKFLOW` (your CI workflow file, default `bkit-ci.yml`). Edit the defaults in the block so cloud agents inherit them.
 - CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
@@ -26,18 +26,19 @@ Copy the blocks below into `.agents/context.md`, below `<!-- bkit:end -->`. The 
 ```bash
 # GitHub Actions: the failing run's job and step failures, error annotations and failed-step logs.
 # The block discovers its own run. `gh` is base tooling, so there is no context-fetch:provision sibling.
-# Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
+# Customise: run (CI_WORKFLOW, `--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
 gh auth status >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh not authenticated (set GH_TOKEN)" >&2; exit 0; }
-RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 \
+CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"
+RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \
   --json databaseId,conclusion,headSha 2>/dev/null || echo '[]')
 RUN_ID=$(printf '%s' "$RUN_JSON" | jq -r '.[0].databaseId // ""')
 RUN_SHA=$(printf '%s' "$RUN_JSON" | jq -r '.[0].headSha // ""')
 RUN_CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""')
 [ -n "$RUN_ID" ] \
-  || { echo "[context-fetch:github] skipped — no CI run found for this branch" >&2; exit 0; }
+  || { echo "[context-fetch:github] skipped — no $CI_WORKFLOW run found for this branch (check the workflow file name)" >&2; exit 0; }
 [ "$RUN_CONCLUSION" != "success" ] \
   || { echo "[context-fetch:github] skipped — run $RUN_ID concluded success (nothing failing to fetch)" >&2; exit 0; }
 FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \

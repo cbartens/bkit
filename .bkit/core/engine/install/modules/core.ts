@@ -21,6 +21,7 @@ import type { TokenMap } from "../placeholders.js";
 import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
+import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
 import { migrateTemplateNotes } from "../template-notes.js";
 import type { PreflightFinding } from "../../checks/before/index.js";
 import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
@@ -332,6 +333,7 @@ export function runBkitDocs(
   migrateJiraKeyName(dryRun, logPrefix);
   migrateModelOverrideAgentNames(dryRun, ws, logPrefix);
   migrateTemplateNotes(dryRun, ws, logPrefix);
+  migrateContextCiWorkflow(dryRun, ws, logPrefix);
 }
 
 // Migration (installs up to 6.0.x, `docs/migrations.md`): agents renamed since. A

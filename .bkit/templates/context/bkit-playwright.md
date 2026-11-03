@@ -8,7 +8,8 @@ Fits: a web e2e lane that runs Playwright on GitHub Actions and uploads its repo
 - Secret: `GH_TOKEN` in cloud. A local `gh auth login` works too.
 - Non-secret: `E2E_ARTIFACT`, your upload-artifact name (default `playwright-report`).
 - Non-secret: `E2E_JOB_RE`, an anchored regex for this lane's job name.
-- Edit the defaults of both in the block.
+- Non-secret: `CI_WORKFLOW`, the workflow file that runs this lane (default `bkit-ci.yml`). The block reads only that workflow's newest run on the current branch.
+- Edit the defaults of all three in the block.
 - CLI: `gh`. It is base tooling, so there is no provision block.
 - Domains: none beyond bkit's derived set (`github.com`).
 - Use one block per lane. A lane whose evidence does not reach GitHub, such as a native lane on Expo EAS, needs its own block: see `bkit-maestro.md` and the `expo-workflows` block in `bkit-expo.md`.
@@ -26,15 +27,16 @@ Copy the block below into `.agents/context.md`, below `<!-- bkit:end -->`.
 # downloads this lane's artifact and files it as that lane's evidence. Wrong evidence sends the
 # diagnosis after the wrong failure, which is worse than the `NOT CONFIGURED` you get from
 # leaving the placeholder in. Until it is edited, every run skips itself and names the placeholder.
-# Customise: E2E_ARTIFACT; E2E_JOB_RE (anchored, this lane only); run selection; which report files to inline vs list as binary; E2E_MAX_FILES / E2E_MAX_LINES / E2E_MAX_BIN (files inlined, lines per file, binary paths listed).
+# Customise: E2E_ARTIFACT; E2E_JOB_RE (anchored, this lane only); run selection (CI_WORKFLOW); which report files to inline vs list as binary; E2E_MAX_FILES / E2E_MAX_LINES / E2E_MAX_BIN (files inlined, lines per file, binary paths listed).
 E2E_ARTIFACT="${E2E_ARTIFACT:-playwright-report}"
 E2E_JOB_RE="${E2E_JOB_RE:-^your-e2e-job-name$}"
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:playwright] skipped — gh CLI not installed" >&2; exit 0; }
-RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 \
+CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"
+RUN_ID=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \
   --json databaseId,conclusion --jq 'if (.[0].conclusion // "") == "success" then "" else (.[0].databaseId // "" | tostring) end' 2>/dev/null)
 [ -n "$RUN_ID" ] \
-  || { echo "[context-fetch:playwright] skipped — no failing CI run found for this branch" >&2; exit 0; }
+  || { echo "[context-fetch:playwright] skipped — no failing $CI_WORKFLOW run found for this branch" >&2; exit 0; }
 # Pipe to the real jq. `gh --jq` takes one expression and no `--arg`, so the
 # `--jq --arg re "$X" '...'` form fails with `accepts at most 1 arg(s), received 4`. Under
 # 2>/dev/null that empty result looks the same as "this lane passed", so a failed lane would skip

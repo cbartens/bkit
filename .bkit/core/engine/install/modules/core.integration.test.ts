@@ -1378,6 +1378,80 @@ describe("migrateModelOverrideAgentNames (via runBkitDocs)", () => {
   });
 });
 
+describe("migrateContextCiWorkflow (via runBkitDocs)", () => {
+  const CONTEXT = path.join(".agents", "context.md");
+  const OLD_LOOKUP =
+    'RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 \\\n' +
+    "  --json databaseId,conclusion,headSha 2>/dev/null || echo '[]')";
+  const seeded =
+    "<!-- bkit:start -->\n\n# Context\n\n<!-- bkit:end -->\n\n" +
+    "<!-- context-fetch:start github context=ci -->\n\n```bash\n" +
+    OLD_LOOKUP +
+    "\n```\n\n<!-- context-fetch:end -->\n";
+  const run = (dryRun = false): { ctx: ModuleContext; logs: string[] } => {
+    const logs: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      logs.push(a.join(" "));
+    });
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    spy.mockRestore();
+    return { ctx, logs };
+  };
+  const seed = (): void => {
+    fs.mkdirSync(".agents", { recursive: true });
+    fs.writeFileSync(CONTEXT, seeded, "utf-8");
+  };
+  const updates = (ctx: ModuleContext): number =>
+    ctx.ws.writes.filter((w) => path.normalize(w.path) === CONTEXT).length;
+
+  it("scopes an old CI run lookup to the configured CI workflow and records the update", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "test-project", bkit: { testing: { ciWorkflow: "ci.yml" } } }),
+      "utf-8",
+    );
+    seed();
+    const { ctx, logs } = run();
+    const text = fs.readFileSync(CONTEXT, "utf-8");
+    expect(text).toContain(
+      'CI_WORKFLOW="${CI_WORKFLOW:-ci.yml}"\nRUN_JSON=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \\\n',
+    );
+    expect(updates(ctx)).toBe(1);
+    expect(logs.join("\n")).toContain(`${CONTEXT} — CI run lookups now read only ci.yml runs (1)`);
+  });
+
+  it("dry-run computes the same write but leaves the file; a second run changes nothing", () => {
+    seed();
+    const dry = run(true);
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toBe(seeded);
+    expect(updates(dry.ctx)).toBe(1);
+    run();
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toContain(
+      'CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"',
+    );
+    const again = run();
+    expect(updates(again.ctx)).toBe(0);
+    expect(again.logs.join("\n")).not.toContain("CI run lookups");
+  });
+
+  it("names a lookup it cannot rewrite, once per process, and leaves it alone", () => {
+    fs.mkdirSync(".agents", { recursive: true });
+    const edited = seeded.replace("--limit 1", "--limit 3");
+    fs.writeFileSync(CONTEXT, edited, "utf-8");
+    const warns: string[] = [];
+    const spy = vi.spyOn(console, "warn").mockImplementation((...a: unknown[]) => {
+      warns.push(a.join(" "));
+    });
+    const first = run();
+    run();
+    spy.mockRestore();
+    expect(fs.readFileSync(CONTEXT, "utf-8")).toBe(edited);
+    expect(updates(first.ctx)).toBe(0);
+    expect(warns.filter((w) => w.includes("--workflow"))).toHaveLength(1);
+  });
+});
+
 describe("migrateLedgerSchema (via runBkitDocs)", () => {
   const LEDGER = path.join("docs", "deferrals.jsonl");
   const OLD =

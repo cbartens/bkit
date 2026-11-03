@@ -163,18 +163,19 @@ These are the MCP servers whose every tool, reads and writes alike, agents run w
 ```bash
 # GitHub Actions: the failing run's job and step failures, error annotations and failed-step logs.
 # The block discovers its own run. `gh` is base tooling, so there is no context-fetch:provision sibling.
-# Customise: run (`--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
+# Customise: run (CI_WORKFLOW, `--branch`, `--limit`, pin RUN_ID); log slice (`--log-failed` vs `--log`); CI_LOG_TAIL (lines kept per failed job, and of the whole-run fallback); job/step name filter; annotation grep.
 command -v gh >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh CLI not installed" >&2; exit 0; }
 gh auth status >/dev/null 2>&1 \
   || { echo "[context-fetch:github] skipped — gh not authenticated (set GH_TOKEN)" >&2; exit 0; }
-RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 \
+CI_WORKFLOW="${CI_WORKFLOW:-bkit-ci.yml}"
+RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --workflow "$CI_WORKFLOW" --limit 1 \
   --json databaseId,conclusion,headSha 2>/dev/null || echo '[]')
 RUN_ID=$(printf '%s' "$RUN_JSON" | jq -r '.[0].databaseId // ""')
 RUN_SHA=$(printf '%s' "$RUN_JSON" | jq -r '.[0].headSha // ""')
 RUN_CONCLUSION=$(printf '%s' "$RUN_JSON" | jq -r '.[0].conclusion // ""')
 [ -n "$RUN_ID" ] \
-  || { echo "[context-fetch:github] skipped — no CI run found for this branch" >&2; exit 0; }
+  || { echo "[context-fetch:github] skipped — no $CI_WORKFLOW run found for this branch (check the workflow file name)" >&2; exit 0; }
 [ "$RUN_CONCLUSION" != "success" ] \
   || { echo "[context-fetch:github] skipped — run $RUN_ID concluded success (nothing failing to fetch)" >&2; exit 0; }
 FAILED_STEPS=$(gh run view "$RUN_ID" --json conclusion,jobs \
