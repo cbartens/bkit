@@ -208,3 +208,13 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:15:37Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
 {"type":"engine-action","action":"rebase","key":"rebase/641825a805335e8823ca93a7e274130adf952ea3","hash":"f77596ca5190b86d2d02e335ecf04b5fcab680116f54341458fa6167c164f1d7","ref":"4c86a088836d1ac17a88af44a95eb4374f2d4cc4","at":"2026-11-03T03:16:19Z"}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:16:28Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:16:49Z","noun":"workflows","verb":"start","flags":["workflow","fid","month","lock-held","token"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:16:50Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-03T03:16:50Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:16:51Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:16:53Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:02Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:04Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-03T03:17:04Z","parentSha":"7157a835316d646d446e64a7215c1e5d463a9f3e","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-03T03:17:04Z","parentSha":"7157a835316d646d446e64a7215c1e5d463a9f3e","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-input-1.md"]}
