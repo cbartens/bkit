@@ -32,6 +32,7 @@ import {
   journalEnabled,
   launchedByGit,
   pauseFrictionRow,
+  rebasePaused,
   shouldRecordFriction,
 } from "./journal";
 import { foldFrom, validate, writerProblem } from "./telemetry";
@@ -276,5 +277,40 @@ describe("launchedByGit", () => {
     expect(launchedByGit({ GIT_EXEC_PATH: "" })).toBe(false);
     expect(launchedByGit({ GIT_EDITOR: "vi" })).toBe(false);
     expect(launchedByGit({})).toBe(false);
+  });
+});
+
+describe("rebasePaused", () => {
+  it("is true only while the git dir of the repo holding the path has a rebase in progress", () => {
+    const repo = tmp();
+    const deep = path.join(repo, "docs", "plans", "202610", "logs", "901-x");
+    fs.mkdirSync(deep, { recursive: true });
+    fs.mkdirSync(path.join(repo, ".git"));
+    expect(rebasePaused(deep)).toBe(false);
+    fs.mkdirSync(path.join(repo, ".git", "rebase-merge"));
+    expect(rebasePaused(deep)).toBe(true);
+    fs.rmSync(path.join(repo, ".git", "rebase-merge"), { recursive: true });
+    fs.mkdirSync(path.join(repo, ".git", "rebase-apply"));
+    expect(rebasePaused(deep)).toBe(true);
+  });
+
+  it("follows a worktree's .git file to its own git dir, absolute or relative", () => {
+    const root = tmp();
+    const common = path.join(root, "main", ".git", "worktrees", "901-x");
+    fs.mkdirSync(common, { recursive: true });
+    const wt = path.join(root, "wt");
+    fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(wt, ".git"), `gitdir: ${common}\n`);
+    expect(rebasePaused(path.join(wt, "docs"))).toBe(false);
+    fs.mkdirSync(path.join(common, "rebase-merge"));
+    expect(rebasePaused(path.join(wt, "docs"))).toBe(true);
+    fs.writeFileSync(path.join(wt, ".git"), "gitdir: ../main/.git/worktrees/901-x\n");
+    expect(rebasePaused(path.join(wt, "docs"))).toBe(true);
+    // The main checkout's own git dir has no rebase: a worktree's pause stays its own.
+    expect(rebasePaused(path.join(root, "main"))).toBe(false);
+  });
+
+  it("is false outside any repo", () => {
+    expect(rebasePaused(tmp())).toBe(false);
   });
 });

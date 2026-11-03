@@ -20,6 +20,7 @@ import {
   frictionRow,
   journalEnabled,
   launchedByGit,
+  rebasePaused,
   shouldRecordFriction,
 } from "../ledgers/journal.js";
 import { fold, type StatusEvent } from "../ledgers/status.js";
@@ -478,7 +479,8 @@ function engineJournal(): Journal {
       // A call git launched (a hook's `bkit disk prune`) writes no row to the tracked status file.
       if (!journalEnabled() || launchedByGit()) return;
       const r = active(i);
-      if (r === undefined) return;
+      // A paused rebase refuses `--continue` while the tracked status file has an unstaged row.
+      if (r === undefined || rebasePaused(path.dirname(r.file))) return;
       const wrote = appendJournalRow(
         r.file,
         engineCallRow({ workflow: r.workflow, noun: i.noun, verb: i.verb, flags: i.argv }),

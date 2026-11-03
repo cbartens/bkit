@@ -190,6 +190,44 @@ describe("the dispatch seam on a real worktree", () => {
     expect(calls()).toHaveLength(1);
   });
 
+  it("branches rebase finishes a rebase paused on a commit that carries the run's status file", async () => {
+    // The resolver's own call lands mid-rebase: its row must not dirty the tracked status file.
+    git(main, ["config", "user.name", "t"]);
+    git(main, ["config", "user.email", "t@t"]);
+    const ledger = path.join("docs", "knowledge.jsonl");
+    fs.mkdirSync(path.join(main, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(main, ledger), '{"key":"dev"}\n');
+    git(main, ["add", ledger]);
+    git(main, ["commit", "-q", "-m", "dev row"]);
+    fs.mkdirSync(path.join(worktree, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(worktree, ledger), '{"key":"feat"}\n');
+    git(worktree, ["add", ledger, STATUS_REL]);
+    git(worktree, ["commit", "-q", "-m", "feat row"]);
+    const status = path.join(worktree, STATUS_REL);
+    const committed = fs.readFileSync(status, "utf-8");
+    const paused = spawnSync("git", ["rebase", "dev"], { cwd: worktree, encoding: "utf-8" });
+    expect(paused.status).not.toBe(0);
+    expect(git(worktree, ["diff", "--name-only", "--diff-filter=U"])).toBe(ledger);
+
+    const err: string[] = [];
+    const code = await runCommand(["branches", "rebase"], [branchesCommand], {
+      classicVerbs: new Set(),
+      cwd: worktree,
+      io: { stdout: () => {}, stderr: (t) => err.push(t) },
+    });
+    expect(err.join("")).not.toContain("REFUSE");
+    expect(code).toBe(0);
+    expect(git(worktree, ["status", "--porcelain"])).toBe("");
+    expect(fs.readFileSync(status, "utf-8")).toBe(committed);
+    expect(fs.readFileSync(path.join(worktree, ledger), "utf-8")).toBe(
+      '{"key":"dev"}\n{"key":"feat"}\n',
+    );
+
+    // Control: with the rebase finished, the same verb is journaled again.
+    await run(worktree, ["widgets", "odd"]);
+    expect(rows(status).filter((r) => r["type"] === "engine-call")).toHaveLength(1);
+  });
+
   it("branches anchor-read with a plan --file journals into the active run", async () => {
     const plan = path.join(worktree, "docs", "plans", "202610", `${FID}-plan.md`);
     fs.mkdirSync(path.dirname(plan), { recursive: true });

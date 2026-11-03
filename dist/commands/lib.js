@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { appendFrictionRow, appendJournalRow, engineCallRow, frictionRow, journalEnabled, launchedByGit, shouldRecordFriction, } from "../ledgers/journal.js";
+import { appendFrictionRow, appendJournalRow, engineCallRow, frictionRow, journalEnabled, launchedByGit, rebasePaused, shouldRecordFriction, } from "../ledgers/journal.js";
 import { fold } from "../ledgers/status.js";
 import { gitEnv, resolveGitSha } from "../ledgers/telemetry.js";
 import { parseJson } from "../shared/json.js";
@@ -339,7 +339,8 @@ function engineJournal() {
             if (!journalEnabled() || launchedByGit())
                 return;
             const r = active(i);
-            if (r === undefined)
+            // A paused rebase refuses `--continue` while the tracked status file has an unstaged row.
+            if (r === undefined || rebasePaused(path.dirname(r.file)))
                 return;
             const wrote = appendJournalRow(r.file, engineCallRow({ workflow: r.workflow, noun: i.noun, verb: i.verb, flags: i.argv }));
             if (!wrote.ok)
