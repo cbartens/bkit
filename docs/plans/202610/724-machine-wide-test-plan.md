@@ -976,7 +976,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Heavy / light and worker decisions for bkit's raw vitest runs
+- [x] **TASK 8:** Heavy / light and worker decisions for bkit's raw vitest runs
   - **CREATE:** `vitest.test-lock.ts`: pure `testLockDecision({ filters, env, exists, alive, watch })` (no lock under `CI` = `true` / `1`, a `LOCAL_STACK_LOCK_OWNER_tests` pid `alive(pid)` confirms, watch mode, or when every filter minus a `:line` suffix is an existing file); pure `testWorkers(env)` (`{ maxWorkers }` from a valid `BKIT_TEST_WORKERS`, else `{}`); no wait logic (the script owns the no-TTY wait, Open Question 7)
   - **READ:** `unitTimeouts` in `vitest.timeout-budget.ts`: sibling root-helper pattern (pure functions + one config spread)
   - **CREATE:** `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts`: the unit tests below, beside `vitest-timeout-budget.test.ts`, with injected `env` / `exists` / `alive`
@@ -994,7 +994,7 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 <!-- bkit:task 8 end -->
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Vitest global setup takes the tests lock for heavy raw runs in bkit's repo
+- [x] **TASK 9:** Vitest global setup takes the tests lock for heavy raw runs in bkit's repo
   - **UPDATE:** `vitest.test-lock.ts`: default-export global `setup(project)` that reads `project.vitest.config.filters` / `.watch`, and for a heavy run spawns `bash scripts/ci/bkit-machine-lock.sh run "vitest <filters|all>" --lock tests -- sh -c '…; exec cat <&3 >/dev/null'` with vitest's own stdin (so the script's no-TTY wait applies; the setup sets no `LOCAL_STACK_LOCK_WAIT_S`, Open Question 7), stdout for the ready line, stderr captured and echoed, fd 3 the keep-alive pipe; resolves on its ready line, exports `LOCAL_STACK_LOCK_OWNER_tests`, throws naming the exit and the holder line if the child ends first, and returns a teardown that closes fd 3 and awaits the child
   - **UPDATE:** `vitest.config.ts`: `globalSetup: ["./vitest.test-lock.ts"]`; `...testWorkers()` in `test`
   - **CREATE:** `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts`: the integration tests below, with `LOCAL_STACK_LOCK_OWNER_tests` stubbed empty, `tierTimeouts(true)` budgets, holder-file polling
