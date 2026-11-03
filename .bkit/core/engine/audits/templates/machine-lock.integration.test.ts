@@ -438,7 +438,77 @@ function commandRun(
   };
 }
 
+function stopGate(pid: number): void {
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ESRCH")) throw error;
+  }
+}
+
 describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
+  it("terminating a run wrapper stops its gate before another run acquires the tests lock", async () => {
+    const env = envFor({ BKIT_TEST_SLOTS: "1", LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const pidFile = path.join(tmp, "gate.pid");
+    const wrapper = spawn(
+      "bash",
+      [
+        SCRIPT,
+        "run",
+        "cancelled gate",
+        "--lock",
+        "tests",
+        "--",
+        "sh",
+        "-c",
+        'echo $$ > "$1"; exec sleep 30',
+        "sh",
+        pidFile,
+      ],
+      { env, stdio: "ignore" },
+    );
+    children.push(wrapper);
+    await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
+    const gatePid = Number(fs.readFileSync(pidFile, "utf-8").trim());
+    expect(gatePid).toBeGreaterThan(0);
+    try {
+      expect(commandRun(["before cancellation", "--lock", "tests", "--", "true"], env).status).toBe(
+        75,
+      );
+      expect(wrapper.kill("SIGTERM")).toBe(true);
+      // The current holder checks its owner's liveness once per second.
+      await delay(1200);
+      const next = commandRun(
+        [
+          "after cancellation",
+          "--lock",
+          "tests",
+          "--",
+          "sh",
+          "-c",
+          'if kill -0 "$1" 2>/dev/null; then echo gate-still-alive; fi; echo acquired',
+          "sh",
+          String(gatePid),
+        ],
+        env,
+      );
+      // Keeping the lock until the gate stops and cancelling the gate are both safe.
+      expect([0, 75], next.stderr).toContain(next.status);
+      expect(next.stdout).not.toContain("gate-still-alive");
+      const expectedOutput: Record<string, string> = { "0": "acquired\n", "75": "" };
+      expect(next.stdout).toBe(expectedOutput[String(next.status)]);
+    } finally {
+      stopGate(gatePid);
+    }
+    await expect
+      .poll(
+        () =>
+          commandRun(["after gate stops", "--lock", "tests", "--", "echo", "released"], env).status,
+        { timeout: BUDGET.hookTimeout },
+      )
+      .toBe(0);
+  });
+
   it("punctuation in distinct named locks keeps acquisition and release state separate", () => {
     const result = run(
       'take_local_stack_lock "hyphen holder" a-b || exit 11\n' +

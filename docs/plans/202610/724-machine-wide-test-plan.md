@@ -210,6 +210,8 @@ When several agents run test suites at the same time on one laptop, the machine 
 | the global setup waits for a held tests lock and takes it once the holder ends (plan-added) | Integration | `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts` | 9 |
 | the global setup throws naming the holder when the wait gives up (plan-added) | Integration | `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts` | 9 |
 | the global setup's teardown frees the tests lock (plan-added) | Integration | `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts` | 9 |
+| terminating a run wrapper stops its gate before another run acquires the tests lock | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 13 |
+| a build close push retry does not repeat workflow close or lose its outputs | Unit | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | 14 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1009,6 +1011,30 @@ Build order: script (Groups 1-2) → engine (Group 3; TASK 10 runs after TASK 5 
 
 <!-- bkit:task 9 end -->
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** Cancelling a gate wrapper releases its lock while the gate keeps running
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:370` · **Round:** 1
+  - **DONE WHEN:** Sending SIGTERM to a running wrapper cannot leave its gate command alive after another run acquires the same tests lock; ordinary command status propagation and inherited-owner behavior still pass.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `terminating a run wrapper stops its gate before another run acquires the tests lock` fails because SIGTERM kills the wrapper, the Perl holder releases within a second, and the wrapped command survives while a second run acquires the lock.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [ ] **TASK 14:** A tests-lock retry closes and publishes the same build repeatedly
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:1156` · **Round:** 1
+  - **DONE WHEN:** An exit-81 push followed by a successful retry executes workflow close once, preserves its original final-return data, and releases the workflow lock only after the successful push.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `a build close push retry does not repeat workflow close or lose its outputs` fails because the exit-81 route retries a fenced block that runs `workflows close --post --message --session-dir` before its push and retains the close outputs only after that block succeeds.
+
+<!-- bkit:task 14 end -->
+<!-- bkit:group 6 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

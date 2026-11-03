@@ -146,6 +146,35 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
 ];
 
 describe("bkit-local-gate-audit (#437)", () => {
+  it("a build close push retry does not repeat workflow close or lose its outputs", () => {
+    const body = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+    const closeBlocks = commandRoutes(body, /\bworkflows close\b/).filter(
+      ({ block }) => !block.includes("--ending=held"),
+    );
+    expect(closeBlocks).toHaveLength(1);
+    const close = closeBlocks[0]!;
+    expect(close.block).toContain("--final-return");
+    expect(close.block).not.toMatch(/\bbranches push\b|\blocks release\b/);
+    const closeAt = body.indexOf(close.block);
+    const pushBlocks = commandRoutes(body.slice(closeAt), /\bbranches push\b/);
+    expect(pushBlocks).toHaveLength(1);
+    const push = pushBlocks[0]!;
+    expect(push.block).not.toMatch(/\broadmap mirror\b|\bworkflows close\b|\blocks release\b/);
+    expectWaitRoute(push.route, "build close push-only retry");
+    const pushAt = body.indexOf(push.block, closeAt);
+    expect(body.lastIndexOf("roadmap mirror", pushAt)).toBeGreaterThanOrEqual(0);
+    const retained = body.slice(closeAt + close.block.length, pushAt);
+    expect(retained).toMatch(/`commentFile`[^\n]*`CLOSE_COMMENT_FILE`/);
+    expect(retained).toMatch(/`tracker`[^\n]*`CLOSE_TRACKER`/);
+    expect(retained).toMatch(/`finalReturn`[^\n]*`FINAL_RETURN`/);
+    const release = commandRoutes(body.slice(pushAt), /\blocks release\b/);
+    expect(release).toHaveLength(1);
+    expect(body.indexOf(release[0]!.block, pushAt)).toBeGreaterThan(
+      pushAt + push.block.length + push.route.length,
+    );
+    expect(push.route).toMatch(/exit 0[^\n]*(?:continue|next|release)/i);
+  });
+
   it("every prompt that runs bkit tests changed routes exit 81 to a re-run of the command", () => {
     const callers = GATE_CALLERS.filter(([, call]) => call.startsWith("--fallback=bkit:gate:"));
     expect(callers).toHaveLength(4);
