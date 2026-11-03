@@ -11,3 +11,9 @@ Recorded preimage for '.bkit/core/engine/commands/workflow/steps.test.ts'
 Could not apply d8b627fcb... # chore(825-show-progress-bar): plan-tests group 1 attempt 1
 [bkit-rebase] REFUSE .bkit/core/engine/commands/workflow/steps.test.ts — not an append-only ledger, a recognised lockfile or a generated register; routing to Failure Path
 [bkit-rebase] ABORTED — git rebase --abort restored the branch
+
+## Owner-requested resolution — 2026-11-03
+
+Rebased the feature branch onto origin/dev at 02eab8bf05cd0a7419b16a2a90ea90adba0802a7. Preserved both the upstream CI evidence test suite and the progress command output suite in steps.test.ts. Resolved generated graph and version metadata conflicts, then regenerated the graph documentation and installed metadata from the combined sources.
+
+Verification: all 115 steps.test.ts unit tests passed; pnpm build passed; upgrade completed with zero conflicts and zero remaining managed writes; Prettier passed; git diff --check passed. No upstream commits remain missing. The earlier full-gate timeout failures remain unresolved; this resolution does not claim a passing full gate.
