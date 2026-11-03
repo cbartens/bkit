@@ -670,10 +670,12 @@ Debug Feature — Autonomous diagnosis and remediation
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
      "{BKIT}" branches push --mode=feature --require-ci
      ```
+
      Route:
      - **If** exit 81 → end turn, re-run this block.
      - **If** exit 0 **and** `pushed` = true **and** `sha` non-empty → hold `sha` as `VERIFY_HEAD`.
      - **Else** → **Failure Path** with the missing pushed verification head.
+
    - **If** `BRANCH` = `dev`:
      Push ONLY the run's own commits, and keep the lock:
      ```bash
