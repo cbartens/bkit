@@ -6,9 +6,19 @@ import {
   PACKAGE_RUNNER,
   installCommand,
   scriptCommand,
+  testCommand,
 } from "./package-manager";
 
 describe("shared/package-manager", () => {
+  it("protects macOS test commands without changing the other platforms", () => {
+    const argv = ["pnpm", "bkit:test:file", "a file.test.ts"];
+    expect(testCommand(argv, "linux")).toEqual(argv);
+    expect(testCommand(argv, "win32")).toEqual(argv);
+    const mac = testCommand(argv, "darwin");
+    expect(mac[0]).toBe(process.execPath);
+    expect(mac[1]).toMatch(/bkit-test-awake\.mjs$/);
+    expect(mac.slice(2)).toEqual(argv);
+  });
   it("runs package scripts and installs with pnpm", () => {
     expect(PACKAGE_RUNNER).toBe("pnpm");
     expect(scriptCommand("bkit:gate:static-unit")).toEqual(["pnpm", "bkit:gate:static-unit"]);

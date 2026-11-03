@@ -33,7 +33,11 @@ import {
 import { CommandError, EXIT, git, runGit, type CommandSpec } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
+import {
+  COULD_NOT_RUN_EXIT_CODES,
+  scriptCommand,
+  testCommand,
+} from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig, type TaskCaps } from "../../shared/settings.js";
 import {
   FILE_FLAG,
@@ -114,7 +118,8 @@ export function runToLog(
 ): number {
   fs.mkdirSync(path.dirname(log), { recursive: true });
   const fd = fs.openSync(log, "w");
-  const res = spawnSync(argv[0]!, argv.slice(1), {
+  const protectedArgv = testCommand(argv);
+  const res = spawnSync(protectedArgv[0]!, protectedArgv.slice(1), {
     cwd,
     stdio: ["ignore", fd, fd],
     env: env === undefined ? process.env : { ...process.env, ...env },

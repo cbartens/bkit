@@ -20,6 +20,20 @@ import {
 
 const ROOT = process.cwd();
 
+it("protects every declared local test and gate entry point", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
+  const scripts = Object.entries<string>(pkg.scripts).filter(([name]) =>
+    /^(?:test(?::|$)|bkit:test:|bkit:gate:)/.test(name),
+  );
+  expect(scripts.length).toBeGreaterThan(10);
+  for (const [name, command] of scripts) {
+    expect(command, name).toMatch(/^node scripts\/ci\/bkit-test-awake\.mjs /);
+  }
+  expect(fs.readFileSync(path.join(ROOT, "scripts/ci/bkit-test-awake.mjs"), "utf-8")).toBe(
+    fs.readFileSync(path.join(ROOT, ".bkit/templates/scripts/ci/bkit-test-awake.mjs"), "utf-8"),
+  );
+});
+
 const temps: string[] = [];
 
 afterEach(() => {
@@ -43,6 +57,11 @@ function pnpm(env: NodeJS.ProcessEnv, ...args: string[]) {
 }
 
 const FILES = [
+  {
+    kind: "node",
+    file: "scripts/ci/bkit-test-awake.test.mjs",
+    test: "preserves arguments, output and nonzero exit status",
+  },
   {
     kind: "bats",
     file: "tests/shell/bkit-gh-stub.bats",

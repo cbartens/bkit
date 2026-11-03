@@ -4,6 +4,15 @@
 // Every command that runs a package script or an install builds the command here,
 // so changing that decision is a change to this file only.
 
+import * as path from "node:path";
+import { getTemplatesRoot } from "./package-roots.js";
+
+/** Protect local macOS tests; other platforms keep their original command. */
+export const testCommand = (argv: string[], platform: string = process.platform): string[] =>
+  platform === "darwin"
+    ? [process.execPath, path.join(getTemplatesRoot(), "scripts/ci/bkit-test-awake.mjs"), ...argv]
+    : argv;
+
 /** The package manager that runs `package.json` scripts and installs. */
 export const PACKAGE_RUNNER = "pnpm";
 

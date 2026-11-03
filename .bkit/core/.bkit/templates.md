@@ -72,6 +72,7 @@ The adoption order is the `bkit tips` order. The local stack lock has no tip, be
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
 | Disk prune | `.bkit/templates/scripts/cleanup/bkit-disk-prune.mjs`, `bkit-disk-prune.machine.mjs` | `scripts/cleanup/bkit-disk-prune.mjs`, `~/.config/bkit/disk-prune.mjs` | `scripts/cleanup/bkit-disk-prune.mjs` only |
 | Local stack lock | `.bkit/templates/scripts/ci/bkit-local-stack-lock.sh` | `scripts/ci/` | that file |
+| Local test sleep prevention | `.bkit/templates/scripts/ci/bkit-test-awake.mjs`, `bkit-test-awake.test.mjs` | `scripts/ci/` | both files |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
 | Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
 
@@ -199,6 +200,24 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
   - Ruff: `"bkit:lint:file": "ruff check"`.
 - `bkit:gate:changed` checks only the files an agent step changed: the tests that import them, the tests that name their paths, and static checks on them; exit 0 when clean. `bkit tests changed` appends the repo-relative paths and never calls it with none. It is not seeded, and `gate-changed-script-missing` fires until it is declared; undeclared, agents run the whole `bkit:gate:static` / `bkit:gate:static-unit` instead.
   - Vitest + ESLint: a script running `vitest related --run "$@" && eslint --max-warnings=0 --no-error-on-unmatched-pattern "$@"`, plus a text search of the test files for each path.
+
+## Local test sleep prevention
+
+Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into `scripts/ci/`. Install its command-launching dependency with `pnpm add -D cross-spawn@7.0.6`; it handles Windows package-command shims and argument escaping. Prefix each local test script, including individual-file runners, with `node scripts/ci/bkit-test-awake.mjs`. Wrap a complete command chain with `--shell` and one double-quoted command string. Leave CI calling the same scripts.
+
+```json
+{
+  "test": "node scripts/ci/bkit-test-awake.mjs vitest run",
+  "bkit:test:file": "node scripts/ci/bkit-test-awake.mjs vitest run",
+  "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm bkit:gate:static && pnpm test\""
+}
+```
+
+Keep each script's existing runner flags and report settings when adding the prefix. Run the wrapper's tests with `node --test scripts/ci/bkit-test-awake.test.mjs`. For a direct runner invocation, use `node scripts/ci/bkit-test-awake.mjs pnpm exec vitest run path/to/example.test.ts`.
+
+On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `docs/testing.md` § Local test sleep prevention describes the limits.
+
+`bkit tests` already protects the commands it launches using the packaged wrapper. Adopt this template for direct scripts and hooks. Existing consumer-owned scripts are not rewritten on upgrade.
 
 ## CI workflow — `bkit-ci.yml`
 

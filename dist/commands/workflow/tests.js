@@ -26,7 +26,7 @@ import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } fro
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
+import { COULD_NOT_RUN_EXIT_CODES, scriptCommand, testCommand, } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
@@ -73,7 +73,8 @@ export const gateScope = (gate) => scriptCommand(gate).join(" ");
 export function runToLog(argv, cwd, log, env) {
     fs.mkdirSync(path.dirname(log), { recursive: true });
     const fd = fs.openSync(log, "w");
-    const res = spawnSync(argv[0], argv.slice(1), {
+    const protectedArgv = testCommand(argv);
+    const res = spawnSync(protectedArgv[0], protectedArgv.slice(1), {
         cwd,
         stdio: ["ignore", fd, fd],
         env: env === undefined ? process.env : { ...process.env, ...env },

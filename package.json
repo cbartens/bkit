@@ -53,16 +53,16 @@
   },
   "license": "MIT",
   "scripts": {
-    "bkit:gate:format": "pnpm lint-staged",
-    "bkit:gate:min": "pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts",
-    "bkit:gate:static": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta",
-    "bkit:gate:static-unit": "pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats",
-    "bkit:gate:static-unit-integration": "pnpm bkit:gate:static-unit && pnpm test:integration",
-    "bkit:gate:install-static-unit-build": "pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build",
+    "bkit:gate:format": "node scripts/ci/bkit-test-awake.mjs pnpm lint-staged",
+    "bkit:gate:min": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts\"",
+    "bkit:gate:static": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta\"",
+    "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats && pnpm bkit:test:awake\"",
+    "bkit:gate:static-unit-integration": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm bkit:gate:static-unit && pnpm test:integration\"",
+    "bkit:gate:install-static-unit-build": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build\"",
     "bkit:deps:outdated": "pnpm outdated",
     "bkit:deps:audit": "pnpm audit",
-    "bkit:test:file": "node scripts/ci/bkit-test-file.mjs",
-    "bkit:gate:changed": "node scripts/gate/bkit-gate-changed.mjs",
+    "bkit:test:file": "node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs",
+    "bkit:gate:changed": "node scripts/ci/bkit-test-awake.mjs node scripts/gate/bkit-gate-changed.mjs",
     "bkit:generate": "pnpm build && pnpm cli:sync && pnpm instructions:sync && pnpm bkit upgrade && vitest run .bkit/core/engine/render -u && bash -c 'if command -v graphify >/dev/null 2>&1; then pnpm bkit:graph:refresh; else echo \"[bkit] graphify missing — skipping the capability register (install graphify to rebuild docs/capabilities.md)\"; fi'",
     "bkit:lint:file": "oxlint -c .oxlintrc.json --type-aware --tsconfig tsconfig.test.json --deny-warnings --no-error-on-unmatched-pattern",
     "bkit": "node dist/cli.js",
@@ -77,12 +77,12 @@
     "lint:slop": "slop-scan scan .",
     "bkit:slop:delta": "bkit ci slop",
     "bkit:lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
-    "test": "vitest run",
+    "test": "node scripts/ci/bkit-test-awake.mjs vitest run",
     "harvest": "tsx scripts/harvest/bkit-harvest.mjs",
-    "test:harvest": "node scripts/harvest/bkit-harvest.test.mjs",
-    "test:integration": "vitest run integration.test",
-    "test:coverage:unit": "vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/instructions,tools/cli-doc}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
-    "bkit:test:bats": "pnpm exec bats ${BKIT_TEST_REPORT_DIR:+--report-formatter junit --output \"$BKIT_TEST_REPORT_DIR\"} tests/shell/*.bats",
+    "test:harvest": "node scripts/ci/bkit-test-awake.mjs node scripts/harvest/bkit-harvest.test.mjs",
+    "test:integration": "node scripts/ci/bkit-test-awake.mjs vitest run integration.test",
+    "test:coverage:unit": "node scripts/ci/bkit-test-awake.mjs vitest run -c vitest.unit.config.ts --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts' --coverage.include='.bkit/core/engine/{cli,commands/analysis,install/cloud-env,commands/comply,commands/install/install,commands/launch,install/manifest,install/managed-block,shared/package-roots,shared/protected-paths,checks/after/index,checks/after/auth,checks/after/ci-yml,checks/after/github,checks/after/managed,checks/after/tools,checks/after/suppression,checks/before/index,checks/before/context-fetch,checks/before/env,checks/before/files,checks/before/mcp,checks/before/repo,checks/before/version,ledgers/status,ledgers/telemetry,install/write,install/placeholders,install/template-copies,render/trackers,render/hosts,render/models,commands/install/uninstall,commands/install/upgrade,install/version-file,tools/instructions,tools/cli-doc}.ts' --coverage.include='.bkit/core/engine/commands/**/*.ts' --coverage.include='.bkit/core/engine/shared/{settings,package-json,package-manager,timeouts}.ts'",
+    "bkit:test:bats": "node scripts/ci/bkit-test-awake.mjs --shell 'pnpm exec bats ${BKIT_TEST_REPORT_DIR:+--report-formatter junit --output \"$BKIT_TEST_REPORT_DIR\"} tests/shell/*.bats'",
     "build": "tsc && chmod +x dist/cli.js",
     "bkit:check:dist": "rm -rf dist && tsc && chmod +x dist/cli.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "bkit:graph": "bash scripts/graphify/bkit-graphify.sh build",
@@ -99,7 +99,8 @@
     "instructions:show": "tsx .bkit/core/engine/tools/instructions.ts --show",
     "instructions:sync": "tsx .bkit/core/engine/tools/instructions.ts --write",
     "cli:sync": "tsx .bkit/core/engine/tools/cli-doc.ts --write",
-    "prepare": "husky"
+    "prepare": "husky",
+    "bkit:test:awake": "node scripts/ci/bkit-test-awake.mjs node --test scripts/ci/bkit-test-awake.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
@@ -237,5 +238,8 @@
     "advisories": {
       "ignore": []
     }
+  },
+  "dependencies": {
+    "cross-spawn": "7.0.6"
   }
 }

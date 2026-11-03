@@ -41,7 +41,7 @@
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/core/engine/**/*.ts` → `dist/**/*.js` (same folders); committed `dist/` is the published artifact |
 | `tsc` (test files) | `tsconfig.test.json` | Type-checks the engine including `*.test.ts` with Vitest's bundler resolution, no emit (`pnpm bkit:typecheck:tests`, run by `pnpm typecheck`) |
 | `bkit:check:dist` npm script | `bkit-tests-static` lane ("Assert Dist Freshness") + source-repo pre-push | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale. Source-repo only; not in the consumer `bkit-ci.yml` template |
-| Runtime `dependencies` | none in `package.json` | bkit ships with no runtime dependency. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
+| Runtime `dependencies` | `cross-spawn` `7.0.6` | The test sleep-prevention wrapper launches commands across platforms, including Windows package shims. Anything reachable from `dist/` at consumer runtime belongs in `dependencies`, never `devDependencies` |
 
 ## Execution Hosts
 

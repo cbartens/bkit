@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { BKIT_GATE_CHANGED_SCRIPT } from "../../install/manifest.js";
 import { CommandError, EXIT, git } from "../lib.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
+import { COULD_NOT_RUN_EXIT_CODES, scriptCommand, testCommand, } from "../../shared/package-manager.js";
 /** Exit code: neither `bkit:gate:changed` nor the --fallback gate is declared. */
 const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
@@ -48,7 +48,11 @@ function runLogged(argv, cwd, log) {
     const file = path.join(dir, "out.log");
     try {
         const fd = fs.openSync(file, "w");
-        const res = spawnSync(argv[0], argv.slice(1), { cwd, stdio: ["ignore", fd, fd] });
+        const protectedArgv = testCommand(argv);
+        const res = spawnSync(protectedArgv[0], protectedArgv.slice(1), {
+            cwd,
+            stdio: ["ignore", fd, fd],
+        });
         fs.closeSync(fd);
         for (const line of fs
             .readFileSync(file, "utf-8")
