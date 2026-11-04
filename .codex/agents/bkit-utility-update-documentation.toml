@@ -1,4 +1,4 @@
-# <!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-utility-update-documentation"
 description = "Senior tech writer syncing project docs with system state after multiple plans."
 model = "gpt-6.1-sol"

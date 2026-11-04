@@ -25,7 +25,7 @@
 
 // bkit:start
 
-// bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh
+// bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh
 
 const fs = require("node:fs");
 const path = require("node:path");

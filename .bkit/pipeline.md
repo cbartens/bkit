@@ -1,6 +1,6 @@
 # bkit — Pipeline Reference
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** A reference for people: the five-phase pipeline, every subagent (the phases in the order they run, then the audit and the utilities) and every audit template. It serves evaluation and onboarding, and it is not one of the docs agents load during a workflow. How bkit compares with other frameworks and with _Agentic Design Patterns_ is in `.bkit/comparison.md`.

@@ -1,6 +1,6 @@
 # bkit — Comparison with Other Frameworks & Agentic Design Patterns
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** A reference for human readers: bkit compared with other AI development frameworks, and with Antonio Gulli's _Agentic Design Patterns_. It serves evaluation and outreach, and is not part of the agent workflow doc-matrix. The five-phase pipeline, every subagent and every audit template are in `.bkit/pipeline.md`.

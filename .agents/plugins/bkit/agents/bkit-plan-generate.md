@@ -12,7 +12,7 @@ tools:
   - replace_file_content
   - run_command
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect translating design docs into chronological implementation plans.
 **Scope:** The input and the Read / Update / Create section set the scope.

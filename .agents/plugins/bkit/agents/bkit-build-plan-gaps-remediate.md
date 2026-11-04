@@ -12,7 +12,7 @@ tools:
   - replace_file_content
   - run_command
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 **Scope:** The input and the Read / Update / Create section set the scope.

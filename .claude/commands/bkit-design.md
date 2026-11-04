@@ -1,7 +1,7 @@
 ---
 description: "Design Feature — Autonomous design phase"
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 # Design Feature (Workflow 1/5)
 
