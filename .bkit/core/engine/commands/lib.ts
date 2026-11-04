@@ -723,7 +723,7 @@ export function runTool(
   cmd: string,
   args: string[],
   cwd: string,
-  opts: { input?: string; env?: Record<string, string> } = {},
+  opts: { input?: string; env?: Record<string, string>; timeoutMs?: number } = {},
 ): ToolResult {
   const res = spawnSync(cmd, args, {
     cwd,
@@ -731,6 +731,9 @@ export function runTool(
     env: { ...gitEnv(), ...opts.env },
     input: opts.input,
     maxBuffer: OUTPUT_LIMIT,
+    ...(opts.timeoutMs === undefined
+      ? {}
+      : { timeout: Math.max(1, Math.ceil(opts.timeoutMs)), killSignal: "SIGKILL" }),
   });
   if (res.error && res.pid === 0) {
     return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
@@ -766,8 +769,9 @@ export function runGh(
   args: string[],
   input?: string,
   env?: Record<string, string>,
+  opts: { timeoutMs?: number } = {},
 ): GhResult {
-  const res = runTool("gh", args, cwd, { input, env });
+  const res = runTool("gh", args, cwd, { input, env, ...opts });
   return {
     ok: res.found && res.status === 0,
     stdout: res.stdout.trim(),
