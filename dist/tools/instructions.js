@@ -547,7 +547,11 @@ function siblingsOf(canonical, allTexts) {
     }
     let hit = byText.get(canonical);
     if (!hit) {
-        hit = [...allTexts].filter((t) => t !== canonical && !compileText(t).slotted && similarity(t, canonical) >= NEAR_COPY);
+        const { words, counts } = canonicalParts(canonical);
+        hit = [...allTexts].filter((t) => t !== canonical &&
+            !compileText(t).slotted &&
+            nearCandidate(canonicalParts(t).words, words, counts) &&
+            similarity(t, canonical) >= NEAR_COPY);
         byText.set(canonical, hit);
     }
     return hit;

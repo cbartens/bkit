@@ -226,3 +226,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:29Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/3/comment","hash":"68530af4b481bf1c53954b68b55909ea5a7ca53a145807628befe2caa705feec","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6594551016","at":"2026-11-03T03:17:30Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-03T03:17:30Z","parentSha":"50c23dd5a29648d24675f153a67ae9150ebdccfa","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-decision-1-3.md"],"attempt":3,"route":"retry"}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:34Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:34Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:34Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:17:35Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:22:05Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:30:31Z","noun":"tests","verb":"run","flags":["gate","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:31:32Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-03T03:31:37Z","noun":"ci","verb":"slop","flags":[]}
