@@ -6,7 +6,7 @@ $ARGUMENTS
 
 # Plan Feature (Workflow 2/5)
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Create the plan in `docs/plans/{YYYYMM}/`, the canonical month bucket found or set at the start. Write no code, and do not carry out the plan.

@@ -116,7 +116,7 @@ For selected CI, `context fetch --ci-selection-file` supplies the four `BKIT_CI_
 | `bkit-maestro.md` | Maestro iOS and Android lanes on GitHub Actions | `e2e` | every failed Maestro job's log, sliced to the result steps, each slice tail-bounded | `GH_TOKEN` / `MAESTRO_JOB_RE`, `MAESTRO_STEPS`, `MAESTRO_LOG_TAIL` | — | `gh` (base tool) |
 | `bkit-tavily.md` | any | `web` | web search for upstream causes (untrusted output) | `BKIT_TAVILY_API_KEY` / `QUERY` | — | — |
 | `bkit-sentry.md` | Sentry | `runtime` | unresolved issues seen in a window (organization issues endpoint), optional environment; trace / window recipes; detector-header strip | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_HOST`, `SENTRY_SINCE`, `SENTRY_ENV`, `SENTRY_N` | `sentry.io` | — |
-| `bkit-vercel.md` | Vercel | `runtime` | serverless + edge error / fatal logs in a window, paged past the CLI's 50-line cap, all branches (`--no-branch`) | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_ENV`, `SINCE`, `UNTIL`, `VERCEL_MAX_PAGES` | `vercel.com` | `vercel` (yes) |
+| `bkit-vercel.md` | Vercel | `runtime` | error / fatal logs in a window, typed records and summary cursors; excluded intervals, failed pages and page caps reported explicitly | `VERCEL_TOKEN` / `VERCEL_SCOPE`, `VERCEL_PROJECT`, `VERCEL_ENV`, `SINCE`, `UNTIL`, `VERCEL_MAX_PAGES` | `vercel.com` | `vercel@65.0.0` (yes; installed 64.x / 65.x supported) |
 | `bkit-supabase.md` | hosted Supabase | `runtime` | Postgres `ERROR` / `FATAL` / `PANIC` counts per hour, severity, SQLSTATE and role; one call per day of window | `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_ID`, `SINCE_ISO`, `UNTIL_ISO` | `supabase.com` | — |
 | `bkit-stripe.md` | Stripe | `runtime` | failure / dispute / refund events, filtered by type and window at the source, paged; events whose webhook delivery failed | `STRIPE_SECRET_KEY` / `STRIPE_SINCE_S`, `STRIPE_MAX_PAGES` | `stripe.com` | — |
 | `bkit-resend.md` | Resend | `runtime` | bounced / complained / failed / delayed sends, paged back to the window start | `RESEND_API_KEY` / `SINCE_ISO`, `RESEND_MAX_PAGES` | `resend.com` | — |
@@ -190,7 +190,7 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - **If** you have your own linter → chain both: `<your linter> && oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
 - **If** there is no `tsconfig.json` → use `"typecheck": "echo \"[bkit] typecheck: no tsconfig.json — skipping\" >&2"`.
 - `bkit:slop:delta` runs `bkit ci slop` (the bkit devDep is on `PATH` through the package script). CI passes the base sha as its one bare argument.
-- `bkit:lint:prose` runs `bkit ci prose`: Vale over every `*.md` outside `node_modules/`. Narrow it with the repeatable `--glob=<pattern>` (`*`, `**`, `?`, relative to the repo root), for example `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
+- `bkit:lint:prose` runs `bkit ci prose`: Vale over tracked and unignored untracked Markdown in the current Git checkout, excluding nested checkouts. Outside Git, it walks Markdown files while skipping nested checkouts. Both defaults skip `node_modules/` and `.git/`; unavailable source reads fail the gate. Explicit, repeatable `--glob=<pattern>` selections (`*`, `**`, `?`, relative to the repo root) can intentionally include ignored or nested paths, for example `bkit ci prose --glob='docs/*.md' --glob='.agents/*.md'`.
 - **If** the stack is not Node → point each gate at your own commands, and keep the gate names.
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
@@ -215,7 +215,7 @@ Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into
 
 Keep each script's existing runner flags and report settings when adding the prefix. Run the wrapper's tests with `node --test scripts/ci/bkit-test-awake.test.mjs`. For a direct runner invocation, use `node scripts/ci/bkit-test-awake.mjs pnpm exec vitest run path/to/example.test.ts`.
 
-On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `docs/testing.md` § Local test sleep prevention describes the limits.
+On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. POSIX `--shell` chains stop after cancellation and wait for descendant cleanup. Signals reach command owners first; surviving orphan roots receive cancellation after their owner exits. Live owners retain responsibility for their descendants and machine-lock lifetime. A command that starts cleanup children during cancellation must wait for them before exiting. If process inspection is unavailable, the wrapper reports that limitation and waits for foreground completion or a successful cleanup inspection. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `docs/testing.md` § Local test sleep prevention describes the limits.
 
 `bkit tests` already protects the commands it launches using the packaged wrapper. Adopt this template for direct scripts and hooks. Existing consumer-owned scripts are not rewritten on upgrade.
 
@@ -552,7 +552,9 @@ cp .bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs \
 
 It fails CI on a HIGH or CRITICAL finding: a vulnerable package in any lockfile Trivy reads (npm, pnpm, yarn, pip, poetry, uv, Go, Cargo, Maven, …), a risky setting in a Dockerfile / Terraform / Kubernetes / Helm file, or a secret in a tracked file. It runs on push, on pull request and daily. Reference: https://trivy.dev/docs/latest/.
 
-Copy `bkit-trivy.yml`, replace `{{DEFAULT_BRANCH}}`, and commit. It needs no secret, token or App. It blocks merges only once the `trivy` check is required in branch protection.
+Copy `bkit-trivy.yml`, replace `{{DEFAULT_BRANCH}}`, and commit. It needs no secret, token or App. It blocks merges only once the `bkit-trivy` check is required in branch protection.
+
+For an existing required `trivy` check, save the branch-protection and applicable ruleset settings before landing the workflow rename. Verify `bkit-trivy` on the candidate commit, then coordinate the context replacement with that landing. Preserve strict mode, `app_id` / `integration_id` bindings, bypass policies and unrelated checks. Do not disable protection to unblock the rename. Re-read the settings afterwards. Install, upgrade and doctor report stale requirements without changing remote settings; unavailable or capped reads remain explicitly unchecked.
 
 Accept a finding in `.trivyignore.yaml` at the repo root, which is read only when present:
 

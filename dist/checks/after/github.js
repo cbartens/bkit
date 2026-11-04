@@ -219,6 +219,67 @@ function ghAsEngine(args) {
         env: token ? { ...process.env, GH_TOKEN: token } : process.env,
     });
 }
+const TRIVY_PROTECTION_ACTION = "Before landing a check rename, save the branch-protection and applicable ruleset settings. " +
+    "Coordinate `trivy` → `bkit-trivy` with the workflow change; verify the new check on the candidate commit before requiring it. " +
+    "Change only that context, preserving strict mode, app_id / integration_id bindings, bypass policies and unrelated checks. " +
+    "Never disable protection to unblock the rename. Re-read the settings and run `bkit doctor` afterwards. This advisory changes no remote settings.";
+/** Inspect existing protected branches without changing their checks or rulesets. */
+export function buildTrivyProtectionAdvisory(cwd) {
+    if (!fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-trivy.yml")))
+        return null;
+    const stale = [];
+    let incomplete = false;
+    try {
+        const response = parseJson(ghAsEngine(["api", "repos/{owner}/{repo}/branches?protected=true&per_page=11"]));
+        if (!response.ok || !Array.isArray(response.value))
+            throw new Error("Branch list unavailable");
+        const branches = response.value;
+        incomplete = branches.length > 10;
+        for (const branch of branches.slice(0, 10)) {
+            if (typeof branch.name !== "string") {
+                incomplete = true;
+                continue;
+            }
+            const contexts = branch.protection?.required_status_checks?.contexts ?? [];
+            if (contexts.includes("trivy"))
+                stale.push(branch.name);
+            const rules = parseJson(ghAsEngine([
+                "api",
+                `repos/{owner}/{repo}/rules/branches/${encodeURIComponent(branch.name)}?per_page=100`,
+            ]));
+            if (!rules.ok || !Array.isArray(rules.value)) {
+                incomplete = true;
+                continue;
+            }
+            if (rules.value.length === 100)
+                incomplete = true;
+            for (const rule of rules.value) {
+                if (rule?.type === "required_status_checks" &&
+                    Array.isArray(rule.parameters?.required_status_checks) &&
+                    rule.parameters.required_status_checks.some((check) => check.context === "trivy"))
+                    stale.push(branch.name);
+            }
+        }
+    }
+    catch {
+        incomplete = true;
+    }
+    if (stale.length > 0)
+        return {
+            id: "trivy-required-check-rename",
+            severity: "advisory",
+            detect: `Protected branches still require \`trivy\`: ${[...new Set(stale)].join(", ")}. The template emits \`bkit-trivy\`.${incomplete ? " Other protection was not fully checked." : ""}`,
+            action: TRIVY_PROTECTION_ACTION,
+        };
+    if (incomplete)
+        return {
+            id: "trivy-required-check-unchecked",
+            severity: "advisory",
+            detect: "Trivy required checks are unchecked: a GitHub read failed or exceeded the scan limit (10 protected branches, 100 rules per branch).",
+            action: "Inspect all affected branches and rulesets in GitHub Settings. " + TRIVY_PROTECTION_ACTION,
+        };
+    return null;
+}
 /**
  * Whether the engine's token can move cards on the configured board: "present",
  * "missing", or "unknown" (gh unavailable or unauthenticated). A classic token lists its

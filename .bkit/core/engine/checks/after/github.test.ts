@@ -12,6 +12,7 @@ import {
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   buildGithubProjectTokenScopeAdvisory,
+  buildTrivyProtectionAdvisory,
 } from "./github";
 
 // ---------------------------------------------------------------------------
@@ -61,6 +62,89 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 // detectProjectsToolset
 // ---------------------------------------------------------------------------
+
+describe("Trivy required-check migration", () => {
+  beforeEach(() => {
+    fs.mkdirSync(".github/workflows", { recursive: true });
+    fs.writeFileSync(".github/workflows/bkit-trivy.yml", "jobs:\n  trivy:\n    name: bkit-trivy\n");
+    execFileSync.mockImplementation((_command, args) => {
+      const endpoint = args[1];
+      if (endpoint.includes("branches?"))
+        return JSON.stringify([
+          {
+            name: "main",
+            protection: { required_status_checks: { contexts: ["trivy", "tests"] } },
+          },
+        ]);
+      return "[]";
+    });
+  });
+
+  it("detects the legacy classic requirement and preserves protection in its instructions", () => {
+    const finding = buildTrivyProtectionAdvisory(tmpDir);
+    expect(finding?.id).toBe("trivy-required-check-rename");
+    expect(finding?.detect).toContain("main");
+    expect(finding?.action).toContain("strict");
+    expect(finding?.action).toContain("app_id");
+    expect(finding?.action).toContain("unrelated");
+    expect(execFileSync.mock.calls.map(([, args]) => args.slice(0, 1))).toEqual([["api"], ["api"]]);
+  });
+
+  it("detects a legacy context in an active ruleset", () => {
+    execFileSync
+      .mockReset()
+      .mockReturnValueOnce(
+        JSON.stringify([
+          {
+            name: "release/next",
+            protection: { required_status_checks: { contexts: ["bkit-trivy"] } },
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        JSON.stringify([
+          {
+            type: "required_status_checks",
+            parameters: { required_status_checks: [{ context: "trivy", integration_id: 12 }] },
+          },
+        ]),
+      );
+    expect(buildTrivyProtectionAdvisory(tmpDir)?.detect).toContain("release/next");
+    expect(execFileSync.mock.calls[1]?.[1][1]).toContain("release%2Fnext");
+  });
+
+  it("stays quiet when every checked requirement already uses the branded name", () => {
+    execFileSync
+      .mockReset()
+      .mockReturnValueOnce(
+        JSON.stringify([
+          { name: "main", protection: { required_status_checks: { contexts: ["bkit-trivy"] } } },
+        ]),
+      )
+      .mockReturnValueOnce("[]");
+    expect(buildTrivyProtectionAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("reports an unavailable protection read instead of treating it as clean", () => {
+    execFileSync.mockImplementation(() => {
+      throw new Error("unavailable");
+    });
+    expect(buildTrivyProtectionAdvisory(tmpDir)?.id).toBe("trivy-required-check-unchecked");
+  });
+
+  it("reports partial reads when the protected-branch budget is exceeded", () => {
+    execFileSync.mockReturnValue(
+      JSON.stringify(Array.from({ length: 11 }, (_, i) => ({ name: `branch-${i}` }))),
+    );
+    expect(buildTrivyProtectionAdvisory(tmpDir)?.id).toBe("trivy-required-check-unchecked");
+  });
+
+  it("does not query protection when the workflow is absent", () => {
+    fs.unlinkSync(".github/workflows/bkit-trivy.yml");
+    expect(buildTrivyProtectionAdvisory(tmpDir)).toBeNull();
+    expect(execFileSync).not.toHaveBeenCalled();
+  });
+});
 
 describe("detectProjectsToolset", () => {
   const writeMcp = (toolsets: string | null) => {

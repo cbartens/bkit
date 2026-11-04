@@ -1,7 +1,7 @@
 ---
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 # Debug Feature (Workflow 4/5)
 
@@ -649,7 +649,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
    A feature branch then releases the lock and pushes with the HEAD-Subject Assertion. On `dev`, the run pushes its own commits and keeps the lock until sub-step 7 gates its CI run.
    `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty. `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
-   
+
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
    ```bash
@@ -790,7 +790,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Hold `trackerState` as `TRACKER_STATE` and `board` as `BOARD`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 9. **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
-   
+
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
    ```bash
@@ -798,7 +798,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 
    Hold `state` as `STATE`, `labels` as `LABELS`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
-   
+
    **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
 
 10. **Skip if** `ISSUE_ID` empty. Comment — `{PR_LINKS}` = `--pr-number={PR_NUMBER} --pr-url="{PR_URL}"` when `TRIGGER_PR` = 1, plus `--run-id={VERIFY_RUN_ID}` when known, else empty. With selected CI, `{CI_PROOF_FIELDS}` = `--field="Original failure={CI_RUN_URL}" --field="Verification={VERIFY_RUN_URL}"`, else empty; artifact links and telemetry report written by sub-step 2:

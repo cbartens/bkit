@@ -12,7 +12,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer turning an issue or a free-form plan into a plan in task-block form.
 **Scope:** The input and the Read / Update / Create section set the scope.

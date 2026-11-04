@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** What bkit does, the environment and tracker setup, the upgrade paste, the ongoing CLI and the friction-sharing paste. First-time install and the full auth setup are in `.bkit/install.md`. Workflow internals are in `.bkit/workflows.md`, and subagent metadata (effort, model, tools, `maxTurns`) is in `.bkit/prompts.md`.

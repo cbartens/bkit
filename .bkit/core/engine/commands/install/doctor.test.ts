@@ -29,6 +29,15 @@ describe("runStatus — read-only host/provider status", () => {
     expect(out()).toContain("Installed hosts: none");
   });
 
+  it("reports residual OpenCode runtime files as absent", () => {
+    fs.mkdirSync(path.join(cwd, ".opencode/node_modules"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".opencode/package.json"), "{}");
+    fs.writeFileSync(path.join(cwd, ".opencode/bun.lock"), "runtime");
+    runStatus(cwd, "[bkit]");
+    expect(out()).toContain("opencode: absent");
+    expect(out()).toContain("Installed hosts: none");
+  });
+
   it("reports installed hosts, the claude model from settings, and a multi-provider opencode line", () => {
     fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
     fs.writeFileSync(
@@ -37,7 +46,7 @@ describe("runStatus — read-only host/provider status", () => {
       "utf-8",
     );
     fs.mkdirSync(path.join(cwd, ".cursor"), { recursive: true });
-    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.mkdirSync(path.join(cwd, ".opencode/agents"), { recursive: true });
     fs.writeFileSync(
       path.join(cwd, ".opencode", "opencode.json"),
       JSON.stringify({ model: "openrouter/foo" }),
@@ -62,7 +71,7 @@ describe("runStatus — read-only host/provider status", () => {
   });
 
   it("surfaces a parse-error for a malformed opencode.json", () => {
-    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.mkdirSync(path.join(cwd, ".opencode/agents"), { recursive: true });
     fs.writeFileSync(path.join(cwd, ".opencode", "opencode.json"), "{ bad", "utf-8");
     runStatus(cwd, "[bkit]");
     expect(out()).toContain("opencode.json: parse-error");
@@ -112,7 +121,7 @@ describe("runStatus — read-only host/provider status", () => {
   });
 
   it("says no pin is rendered when .opencode/agents/ carries none", () => {
-    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.mkdirSync(path.join(cwd, ".opencode/agents"), { recursive: true });
     runStatus(cwd, "[bkit]");
     expect(out()).toContain("model: none pinned in .opencode/agents/");
   });

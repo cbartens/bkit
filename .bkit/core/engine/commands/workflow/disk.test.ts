@@ -280,7 +280,10 @@ describe("bkit disk prune — lock", () => {
       pollMs: 10,
       log: (m) => logs.push(m),
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await vi.waitFor(() => expect(logs[0]).toContain("waiting for it to end"), {
+      timeout: 10_000,
+      interval: 10,
+    });
     expect(order(cwd)).toEqual([]);
     fs.rmSync(lock());
     expect((await running).reason).toBeNull();

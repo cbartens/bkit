@@ -13,7 +13,7 @@ tools:
   edit: true
   bash: true
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran security researcher probing diffs for auth holes, exploits and data exposure.
 **Scope:** The input and the Read / Update / Create section set the scope.

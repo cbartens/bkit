@@ -1,6 +1,6 @@
 # CLI
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** Every `bkit` command — the ones people run (`bkit install`, `bkit check`) and the `bkit <noun> <verb>` commands workflow steps run — with the contract they share. Flags, output keys and exit codes per verb: `bkit help`, `bkit <noun> --help`, `bkit <noun> <verb> --help`.
@@ -113,7 +113,7 @@ Gates CI and the git hooks run.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `slop` | by hand | `--base` | Fail when the working tree adds or worsens slop on net against a base ref. |
-| `prose` | by hand | `--glob` | Run Vale over the markdown files the globs select; fail when Vale or required styles are unavailable. |
+| `prose` | by hand | `--glob` | Run Vale over tracked and unignored Markdown, or explicit globs; fail when sources, Vale or required styles are unavailable. |
 | `skip-token` | by hand | `--ref` | Whether a commit message carries a GitHub skip-CI token ([skip ci] and kin). |
 | `min-push` | by hand | `--ref` `--base` `--update` | Exit 0 when every file a push changes is one bkit writes or bkit.testing.minPushPaths / ciSkipPaths adds (the pre-push light gate). |
 | `push-gate` | by hand | **`--gate`** | Run a consumer push gate and record successful full-gate proof for the exact clean commit. |

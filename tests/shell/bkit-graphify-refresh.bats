@@ -5,7 +5,7 @@
 # scripts/graphify/bkit-graphify.sh, which that checkout runs: `build` does nothing, and
 # `register` writes src.txt into docs/capabilities.md as its packages diagram, so the register
 # shows which tree was built. The real bkit-graph-embed.py then copies that diagram into the
-# README, the one doc bkit's GRAPH_EMBED_DOCS lists.
+# DETAILS, the one doc bkit's GRAPH_EMBED_DOCS lists.
 # Run: bats tests/shell/bkit-graphify-refresh.bats
 
 GRAPHIFY="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)/scripts/graphify/bkit-graphify.sh"
@@ -36,16 +36,16 @@ case "$1" in
 esac
 STANDIN
   cp "$EMBED" scripts/graphify/bkit-graph-embed.py
-  printf '# Readme\n\n<!-- graph:packages:start -->\n<!-- graph:packages:end -->\n\nTail\n' > README.md
+  printf '# Details\n\n<!-- graph:packages:start -->\n<!-- graph:packages:end -->\n\nTail\n' > DETAILS.md
   echo committed > src.txt
   echo stale > docs/capabilities.md
   git add -A
   git commit --quiet -m init
 }
 
-# The diagram body between the README markers, fences and markers dropped.
-readme_diagram() {
-  sed -n '/^```mermaid$/,/^```$/p' README.md | sed '1d;$d'
+# The diagram body between the DETAILS markers, fences and markers dropped.
+details_diagram() {
+  sed -n '/^```mermaid$/,/^```$/p' DETAILS.md | sed '1d;$d'
 }
 
 teardown() {
@@ -62,14 +62,14 @@ teardown() {
   grep -qx staged docs/capabilities.md
 }
 
-@test "refresh rewrites the README copy of the packages diagram from the new register" {
+@test "refresh rewrites the DETAILS copy of the packages diagram from the new register" {
   echo staged > src.txt
   git add src.txt
   run bash "$GRAPHIFY" refresh
   [ "$status" -eq 0 ]
-  [ "$(readme_diagram)" = "staged" ]
-  [ "$(head -1 README.md)" = "# Readme" ]
-  [ "$(tail -1 README.md)" = "Tail" ]
+  [ "$(details_diagram)" = "staged" ]
+  [ "$(head -1 DETAILS.md)" = "# Details" ]
+  [ "$(tail -1 DETAILS.md)" = "Tail" ]
 }
 
 @test "refresh drops a file deleted in the index from the build" {
@@ -77,5 +77,5 @@ teardown() {
   run bash "$GRAPHIFY" refresh
   [ "$status" -ne 0 ]
   [ "$(cat docs/capabilities.md)" = "stale" ]
-  [ -z "$(readme_diagram)" ]
+  [ -z "$(details_diagram)" ]
 }

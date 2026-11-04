@@ -6,6 +6,21 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [6.1.1] — 2026-11-04
+
+### Fixed
+
+- **Cancelling a shell test chain waits for descendant cleanup.** The awake wrapper stops the running command, prevents the next shell command from starting, and holds sleep prevention until cleanup finishes. Direct commands retain their lock-owner lifecycle.
+- **Default prose discovery stays within the current checkout.** `bkit ci prose` selects tracked and unignored Markdown, excludes nested checkouts, and fails when selected sources cannot be read. Explicit `--glob` selections still allow intentional ignored or nested paths.
+- **Upgrade diagnostics distinguish script commands from comments and prose.** Script-name migration warnings now identify executable invocations. Tracker rendering preserves indentation without exposing trailing whitespace in installed host files. These changes address [#855 — 6.1 consumer adoption: cancellation and validation regressions](https://github.com/cbartens/bkit/issues/855).
+- **OpenCode runtime files no longer make an uninstalled integration look broken.** Status and doctor use the managed agents directory to detect the host, preserving consumer runtime files.
+- **The Vercel runtime recipe supports CLI 64 and 65.** It provisions CLI 65.0.0, reads typed log records and continuation cursors, and reports excluded intervals, failed pages and page limits explicitly.
+- **Trivy guidance names the emitted `bkit-trivy` check.** Doctor detects stale required `trivy` checks and gives coordinated migration instructions that preserve branch protection. It changes no remote settings. The accepted-divergence template also removes an unnecessary field-normalization wrapper. These changes address [#856 — 6.1 upgrade: host detection, Vercel recipe and naming drift](https://github.com/cbartens/bkit/issues/856).
+
+### Upgrade Notes
+
+- Run `bkit upgrade` to refresh managed files. Re-copy the awake wrapper and its tests, the Vercel context recipe, and the accepted-divergence guard from `.bkit/templates/` where adopted, merging consumer customizations. Existing adopted copies are consumer-owned and are not overwritten automatically. Coordinate any required-check rename with the workflow change and verify `bkit-trivy` before requiring it.
+
 ## [6.1.0] — 2026-11-04
 
 ### Breaking Changes

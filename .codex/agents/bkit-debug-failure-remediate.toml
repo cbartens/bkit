@@ -1,4 +1,4 @@
-# <!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 name = "bkit-debug-failure-remediate"
 description = "Senior engineer applying diagnosis fixes exactly as written, no reinterpretation."
 model = "gpt-6.1-sol"

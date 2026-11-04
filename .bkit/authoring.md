@@ -1,6 +1,6 @@
 # Authoring Rules
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** How to write the files bkit's agents read (prompts, workflows, doc templates and docs) so that every model bkit runs on follows them the same way.
@@ -282,7 +282,7 @@ Every prompt and workflow has the same parts, in this order:
     | `{VAR}` | The orchestrator, before it uses or passes on the text | `docs/plans/{YYYYMM}/{FID}-plan.md` |
     | `$VAR` | Bash, when the block runs. Assign it in the same fenced block, because shell state does not carry from one block to the next. | `VERDICT="{VERDICT}"`, then `$VERDICT` |
     | `{lower words}` | The agent writing the output, as it writes | `BLOCKED — TASK {n}: {title} — {reason}` |
-    | `{{VAR}}` | `bkit install` | `<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->` |
+    | `{{VAR}}` | `bkit install` | `<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->` |
     | `{lower.dotted}` | A config key read from `package.json` | `{bkit.workflows.tasks}` |
     | `<shape>` | Nobody: it describes a value's type inside an output template | `<integer >= 0>` |
     | `[…]` | The agent filling a template or output section. The bracket says what goes there. | `[The problem or feature, and why it is needed. Initially set to PENDING.]` |

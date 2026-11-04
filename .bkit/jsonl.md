@@ -1,6 +1,6 @@
 # JSONL Entry Format
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** How to format a new row for any bkit JSONL ledger (`docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl`, `docs/decisions.jsonl`, `.bkit/issues.jsonl`, `.bkit/friction.jsonl`, `.bkit/stats.jsonl`). The codec is `.bkit/core/engine/ledgers/telemetry.ts`. Which `kind` goes to which ledger, and when each workflow writes it, is in `.bkit/workflows.md` § Telemetry Ledgers.

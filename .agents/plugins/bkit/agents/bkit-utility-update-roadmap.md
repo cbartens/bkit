@@ -14,7 +14,7 @@ tools:
   - mcp__github__list_issues
   - mcp__github__issue_read
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior PM ranking next best items to work on from board and ledgers.
 **Scope:** The input or the session prompt sets the scope.
@@ -67,7 +67,7 @@ tools:
 5. Fold `docs/deferrals.jsonl` and `docs/failures.jsonl` ledgers by `key`, highest `ts` wins → read only the winning rows where `status` is not `CLOSED`.
    - Rank what remains by `severity`, then age.
 6. **If** a tracker is wired:
-   - Read open issue titles and links only, never comments. 
+   - Read open issue titles and links only, never comments.
    - Pick the next milestone and the next umbrella (a parent issue other than the milestone).
    - Read descriptions only for these two containers and their relevant children (open, unblocked, able to start now).
    - **If** either container is absent → `None` on that line.

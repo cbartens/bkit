@@ -1,6 +1,6 @@
 # IDE / Host Differences
 
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** The authoritative inventory of how the IDE hosts differ, and the source of truth for what changes between each host's version of the commands and subagents. The install script's transform rules follow it.
@@ -79,6 +79,8 @@ A host with a subscription has a pinned provider and a flag that takes no value 
 > **Curated-column status (complete).** All four allowlisted providers (`openrouter`, `ollama`, `opencode-zen`, `opencode-go`) ship curated per-agent model pins in `prompts.md` § Models, so an install is ready to run. Both OpenAI-compatible providers and both OpenCode gateways are curated after a live catalog probe and a per-model tool-calling smoke test (a `tools:` chat/completions round-trip emitting `tool_calls`; `/models` alone != proof). The OpenCode catalogs come from models.dev, not `/zen/v1/models`: that REST endpoint returns Zen only and cannot see Go-only models (`minimax-m3`, `qwen3.7-plus`, …). models.dev is the source of truth (`opencode` = Zen, `opencode-go` = Go). `opencode-go` is curated from the models.dev/Go endpoint. Prefer pins within the Go 5h window. `opencode-zen` is existence-validated via models.dev. § Provider models has the live-probe recipe and the tier rationale.
 
 **Additive multi-provider install:** `bkit install --opencode=<provider>` is additive: a second provider adds its block to `opencode.json` and keeps the first. Agent frontmatter (`model:`) re-renders to the last-installed (active) provider, and the other blocks stay for interactive switching and overrides. The installed providers go in `bkit.providers.opencode.installed: string[]` in `package.json`, and the active one in `bkit.providers.opencode.default`. `bkit status` lists them all, marks the active one, and prints the `model:` pins read from `.opencode/agents/*.md`. `bkit doctor` checks all credentials. `bkit uninstall --opencode=<provider>` removes one provider surgically, taking its block and its array entry. When it removes the active provider, the first remaining provider becomes active, and agents and commands re-render to its pins, so `bkit check` stays green. A bare `bkit uninstall --opencode` tears down the entire OpenCode host.
+
+OpenCode installation detection uses `.opencode/agents/`. Residual runtime files in `.opencode/` after uninstall do not mark the integration as installed or require a provider.
 
 A new host needs a row in the table above, a `run<Host>Module` (`.bkit/core/engine/install/modules/<host>.ts`), a manifest block (`.bkit/core/engine/install/manifest.ts`), `.bkit/core/.<host>/hooks/` (with the host config JSON in `.bkit/shared/.<host>/`), a GateGuard case in `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` and a ReadGuard case in `.bkit/core/engine/audits/hooks/readguard-parity.integration.test.ts`. A new provider needs an entry in `OPENCODE_PROVIDERS` (`.bkit/core/engine/shared/egress.ts`), after which `tsc` demands its `OPENCODE_PROVIDER_DEFAULTS` and `GATEWAY_COLUMN` (`.bkit/core/engine/render/models.ts`) entries. It also needs a curated `prompts.md` § Models column.
 

@@ -551,9 +551,9 @@ const ADOPTED: Record<string, Entry> = {
       },
       {
         kind: "adapt",
-        what: "README carries the packages diagram",
+        what: "DETAILS carries the packages diagram",
         fill: 'GRAPH_EMBED_DOCS=""',
-        with: 'GRAPH_EMBED_DOCS="README.md"',
+        with: 'GRAPH_EMBED_DOCS="DETAILS.md"',
       },
     ],
   },

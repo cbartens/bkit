@@ -53,7 +53,8 @@ function block(name) {
  * `pr-body-marker`), use its body; otherwise emit the generic skip message.
  * (Standalone `false` blocks not attached to a pair are handled in pass 2.)
  */
-const GROUP_RE = new RegExp(block("github") +
+const GROUP_RE = new RegExp("([ \\t]*)" +
+    block("github") +
     "\\s*" +
     block("linear") +
     "(?:\\s*" +
@@ -63,7 +64,7 @@ const GROUP_RE = new RegExp(block("github") +
     ")?", "g");
 /** Conditional-keep block, KEEP form (markers stripped, content trimmed in place). */
 function condKeepRe(name) {
-    return new RegExp(block(name), "g");
+    return new RegExp("([ \\t]*)" + block(name), "g");
 }
 /** Conditional-keep block, REMOVE form (consumes the leading newline + indent). */
 function condDropRe(name) {
@@ -81,6 +82,11 @@ const ORPHAN_RE = new RegExp(marker("(github|linear|jira|true|false)", "(?:start
  */
 function trimKeptContent(s) {
     return s.replace(/^\r?\n[ \t]*/, "").replace(/\r?\n[ \t]*$/, "");
+}
+/** Retain indentation only when the replacement leaves content on its line. */
+function attachPrefix(prefix, body, head, tail) {
+    const hardBreak = / {2,}$/.test(prefix) && /\S[^\r\n]*$/.test(head);
+    return !hardBreak && /^[ \t]*(?:\r?\n|$)/.test(body + tail) ? body : prefix + body;
 }
 // ---------------------------------------------------------------------------
 // Resolution
@@ -102,17 +108,18 @@ export function substituteWorkflow(workflowContent, tracker) {
     // Pass 1: tracker groups → chosen tracker's body; none → the group's trailing
     // `false` block if present, else the generic skip message.
     let pairs = 0;
-    let output = workflowContent.replace(GROUP_RE, (match, gh, ln, jira, falseBody) => {
+    let output = workflowContent.replace(GROUP_RE, (match, prefix, gh, ln, jira, falseBody, offset) => {
         if (tracker === "jira" && jira === undefined)
             return match;
         pairs++;
-        if (tracker === "github")
-            return trimKeptContent(gh);
-        if (tracker === "linear")
-            return trimKeptContent(ln);
-        if (tracker === "jira")
-            return trimKeptContent(jira);
-        return falseBody !== undefined ? trimKeptContent(falseBody) : NONE_STUB;
+        const body = tracker === "github"
+            ? gh
+            : tracker === "linear"
+                ? ln
+                : tracker === "jira"
+                    ? jira
+                    : (falseBody ?? NONE_STUB);
+        return attachPrefix(prefix, trimKeptContent(body), workflowContent.slice(0, offset), workflowContent.slice(offset + match.length));
     });
     // Pass 2: standalone conditional `true`/`false` blocks (any `false` attached to
     // a group was already consumed in pass 1).
@@ -120,9 +127,9 @@ export function substituteWorkflow(workflowContent, tracker) {
     for (const name of ["true", "false"]) {
         const active = name === "true" ? wired : !wired;
         if (active) {
-            output = output.replace(condKeepRe(name), (_m, content) => {
+            output = output.replace(condKeepRe(name), (match, prefix, content, offset) => {
                 conditionals++;
-                return trimKeptContent(content);
+                return attachPrefix(prefix, trimKeptContent(content), output.slice(0, offset), output.slice(offset + match.length));
             });
         }
         else {

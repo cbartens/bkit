@@ -15,7 +15,7 @@ permissionMode: acceptEdits
 maxTurns: 400
 autoCompactWindow: 300000
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor correcting gotchas the docs or codebase have since contradicted.
 **Scope:** The input or the session prompt sets the scope.

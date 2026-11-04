@@ -408,28 +408,28 @@ describe("husky templates — no bkit markers in template content", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Root README workflow guidance
+// Root DETAILS workflow guidance
 // ---------------------------------------------------------------------------
 
-describe("README workflow guidance", () => {
+describe("DETAILS workflow guidance", () => {
   const REPO_ROOT = path.resolve(".");
   const readRepo = (rel: string) => fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
-  const README = readRepo("README.md");
+  const DETAILS = readRepo("DETAILS.md");
 
-  it("the root README points small changes at /bkit-build", () => {
-    expect(README).toContain("/bkit-build #N publish=false");
+  it("the root DETAILS points small changes at /bkit-build", () => {
+    expect(DETAILS).toContain("/bkit-build #N publish=false");
   });
 
-  it("the root README carries the held handoff", () => {
-    expect(README).toContain("Publish: held");
-    expect(README).toContain("Docs: not synced");
-    expect(README).toContain("/bkit-ship");
+  it("the root DETAILS carries the held handoff", () => {
+    expect(DETAILS).toContain("Publish: held");
+    expect(DETAILS).toContain("Docs: not synced");
+    expect(DETAILS).toContain("/bkit-ship");
   });
 
-  it("the root README carries the manual batch recipe with both limitations", () => {
-    expect(README).toMatch(/batch recipe/i);
-    expect(README).toMatch(/only the last (FID|feature)/i);
-    expect(README).toMatch(/never batch migrations/i);
-    expect(README).toMatch(/you own the push, the PR, the CI gate, the sweep and the docs sync/i);
+  it("the root DETAILS carries the manual batch recipe with both limitations", () => {
+    expect(DETAILS).toMatch(/batch recipe/i);
+    expect(DETAILS).toMatch(/only the last (FID|feature)/i);
+    expect(DETAILS).toMatch(/never batch migrations/i);
+    expect(DETAILS).toMatch(/you own the push, the PR, the CI gate, the sweep and the docs sync/i);
   });
 });

@@ -1,5 +1,5 @@
 /**
- * audits/repo/readme-models.test.ts — the README "Which model does each job" table agrees with
+ * audits/repo/readme-models.test.ts — the DETAILS "Which model does each job" table agrees with
  * the pins and scores it summarises.
  *
  * Sources:
@@ -7,7 +7,7 @@
  *   - `providers.md` § LiveBench 2.0 board: each model's Long Agentic score.
  *   - `providers.md` § Per-tier lineup across providers: the Claude bar for each tier.
  *
- * The README has one row per § Models provider column and one column per Claude tier. A tier
+ * The DETAILS has one row per § Models provider column and one column per Claude tier. A tier
  * is the set of agents pinned to one Claude model; the Claude row names that model. Each
  * cell lists every model its provider pins for that tier, each with its board score, or
  * `not measured` when the board has no row for it. The Claude row carries the bars.
@@ -20,12 +20,12 @@ import { parseModelLookupForColumn } from "../../render/models";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
-const README = fs.readFileSync(path.join(REPO_ROOT, "README.md"), "utf-8");
+const DETAILS = fs.readFileSync(path.join(REPO_ROOT, "DETAILS.md"), "utf-8");
 const PROMPTS_MD_PATH = path.join(getBkitDocsRoot(), "prompts.md");
 const PROVIDERS_MD = fs.readFileSync(path.join(getBkitDocsRoot(), "providers.md"), "utf-8");
 
-/** README row label → § Models provider column. */
-const README_ROWS: Record<string, string> = {
+/** DETAILS row label → § Models provider column. */
+const DETAILS_ROWS: Record<string, string> = {
   Claude: "Anthropic",
   Codex: "OpenAI",
   Antigravity: "Google",
@@ -76,7 +76,7 @@ interface Entry {
   isBar: boolean;
 }
 
-/** Every "`model` · score" entry in a README cell; score is a number, `~N`, or `not measured`. */
+/** Every "`model` · score" entry in a DETAILS cell; score is a number, `~N`, or `not measured`. */
 function entries(cell: string): Entry[] {
   return Array.from(
     cell.matchAll(/`([^`]+)` · (?:bar \*\*(~?[\d.]+)\*\*|([\d.]+)|(not measured))/g),
@@ -87,11 +87,11 @@ function entries(cell: string): Entry[] {
   }));
 }
 
-const readmeTable = tableAfter(README, "## Which model does each job");
-const readmeBody = readmeTable.slice(1);
-const claudeRow = readmeBody.find((r) => r[0] === "Claude");
-if (!claudeRow) throw new Error("README models table has no Claude row");
-/** README column index → the Claude model that defines its tier. */
+const detailsTable = tableAfter(DETAILS, "## Which model does each job");
+const detailsBody = detailsTable.slice(1);
+const claudeRow = detailsBody.find((r) => r[0] === "Claude");
+if (!claudeRow) throw new Error("DETAILS models table has no Claude row");
+/** DETAILS column index → the Claude model that defines its tier. */
 const tierByColumn = claudeRow.slice(1).map((cell) => entries(cell)[0]?.model ?? "");
 
 const modelsHeader = tableAfter(fs.readFileSync(PROMPTS_MD_PATH, "utf-8"), "## Models")[0];
@@ -126,31 +126,31 @@ const tierBars = new Map(
     .map((m) => [m[1], m[2]]),
 );
 
-/** "`row` / `tier` tier" → the models a README cell lists, or (`fromPins`) § Models pins. */
+/** "`row` / `tier` tier" → the models a DETAILS cell lists, or (`fromPins`) § Models pins. */
 function tierCells(fromPins: boolean): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const row of readmeBody) {
+  for (const row of detailsBody) {
     tierByColumn.forEach((tier, i) => {
       out[`${row[0]} / ${tier} tier`] = fromPins
-        ? pinned(README_ROWS[row[0]], tier)
+        ? pinned(DETAILS_ROWS[row[0]], tier)
         : [...new Set(entries(row[i + 1]).map((e) => e.model))].sort();
     });
   }
   return out;
 }
 
-/** README score as written: `bar N` on the Claude row, `N` or `not measured` elsewhere. */
+/** DETAILS score as written: `bar N` on the Claude row, `N` or `not measured` elsewhere. */
 const written = (e: Entry): string => (e.isBar ? `bar ${e.score}` : e.score);
 
 const claudeEntries = claudeRow.slice(1).map((cell) => entries(cell)[0]);
-const otherEntries = readmeBody
+const otherEntries = detailsBody
   .filter((r) => r !== claudeRow)
   .flatMap((r) => r.slice(1).flatMap((cell) => entries(cell).map((e) => [r[0], e] as const)));
 
 /** Parity-board name for a pinned model id: provider prefix dropped, catalog aliases resolved. */
 const boardName = (model: string): string => BOARD_NAME[model] ?? model.split("/").pop() ?? model;
 
-/** Claude model → its README bar as written, or (`fromLineup`) the lineup's target for its tier. */
+/** Claude model → its DETAILS bar as written, or (`fromLineup`) the lineup's target for its tier. */
 function claudeBars(fromLineup: boolean): Record<string, string> {
   return Object.fromEntries(
     claudeEntries.map((e) => [
@@ -162,7 +162,7 @@ function claudeBars(fromLineup: boolean): Record<string, string> {
   );
 }
 
-/** "`row` / `model`" → its README score as written, or (`fromBoard`) its parity-board score. */
+/** "`row` / `model`" → its DETAILS score as written, or (`fromBoard`) its parity-board score. */
 function otherScores(fromBoard: boolean): Record<string, string> {
   return Object.fromEntries(
     otherEntries.map(([row, e]) => [
@@ -172,10 +172,10 @@ function otherScores(fromBoard: boolean): Record<string, string> {
   );
 }
 
-describe("README § Which model does each job", () => {
+describe("DETAILS § Which model does each job", () => {
   it("has one row per § Models provider column", () => {
-    expect(readmeBody.map((r) => r[0])).toEqual(Object.keys(README_ROWS));
-    expect(Object.values(README_ROWS).sort()).toEqual([...gatewayColumns].sort());
+    expect(detailsBody.map((r) => r[0])).toEqual(Object.keys(DETAILS_ROWS));
+    expect(Object.values(DETAILS_ROWS).sort()).toEqual([...gatewayColumns].sort());
   });
 
   it("has one column per Claude tier", () => {

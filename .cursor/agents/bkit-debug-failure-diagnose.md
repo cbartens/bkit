@@ -14,7 +14,7 @@ tools:
   - WebFetch
   - WebSearch
 ---
-<!-- bkit:managed v6.1.0 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer specialising in CI / runtime failure root-cause analysis.
 **Scope:** The input and the Read / Update / Create section set the scope.

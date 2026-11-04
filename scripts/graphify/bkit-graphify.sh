@@ -87,7 +87,7 @@ R_REACH="graph-reachability.json"
 # graph:packages markers, space-separated; empty = none. rollup, register and
 # refresh rewrite each copy, and check fails on a stale one. Runs on system python.
 EMBED_PY="scripts/graphify/bkit-graph-embed.py"
-GRAPH_EMBED_DOCS="README.md"
+GRAPH_EMBED_DOCS="DETAILS.md"
 
 usage() {
   cat <<'EOF'

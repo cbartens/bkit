@@ -64,6 +64,29 @@ function seedStaleVersionPin(dir: string): void {
 // ---------------------------------------------------------------------------
 
 describe("bkit doctor — integration", () => {
+  it.each([
+    { installed: false, directory: "node_modules" },
+    { installed: true, directory: "agents" },
+  ])(
+    "requires a provider only for installed OpenCode agents: $installed",
+    ({ installed, directory }) => {
+      seedMinimalConsumer(tmpDir);
+      fs.mkdirSync(path.join(tmpDir, ".opencode/node_modules"), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, ".opencode/package.json"), "{}");
+      fs.writeFileSync(path.join(tmpDir, ".opencode/bun.lock"), "runtime");
+      fs.mkdirSync(path.join(tmpDir, ".opencode", directory), { recursive: true });
+      const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        timeout: 30_000,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const artifact = fs.readFileSync(path.join(tmpDir, ".bkit/advisories.md"), "utf-8");
+      expect(artifact.includes("opencode-provider-missing")).toBe(installed);
+      expect(result.stdout.includes("--- opencode host diagnostics ---")).toBe(installed);
+    },
+  );
+
   it("exits 0 on a minimal consumer (no crash)", () => {
     seedMinimalConsumer(tmpDir);
 
@@ -406,7 +429,7 @@ function seedMultiProvider(dir: string): void {
   );
   fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
   // opencode.json with both provider blocks present
-  fs.mkdirSync(path.join(dir, ".opencode"), { recursive: true });
+  fs.mkdirSync(path.join(dir, ".opencode/agents"), { recursive: true });
   fs.writeFileSync(
     path.join(dir, ".opencode", "opencode.json"),
     JSON.stringify({
@@ -456,7 +479,7 @@ describe("bkit status — multi-provider (Task 5 / #281)", () => {
   it("keeps singular provider: format when only one provider installed", () => {
     // Single-provider fixture
     seedMinimalConsumer(tmpDir);
-    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".opencode/agents"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".opencode", "opencode.json"),
       JSON.stringify({
