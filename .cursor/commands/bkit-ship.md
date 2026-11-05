@@ -399,11 +399,7 @@ Ship Feature — Autonomous merge and archive
 
 1. Merge `origin/dev` into `SHIP_BRANCH` locally. The block commits the run's uncommitted work first, unions the append-only ledgers, regenerates a conflicted lockfile from `dev`'s copy, rebuilds a conflicted generated register from `dev`'s copy, takes `dev`'s copy of the generated block in a conflicted embedding doc (a doc the register's script copies that block into) and merges the rest of that doc, merges a conflicted install record (`.bkit/version`) entry by entry with `dev`'s value where both sides changed an entry, runs a declared `bkit:generate`, and leaves every other conflict in the tree for sub-step 2. GitHub ignores `merge=union`, so the merged commit, not a server-side update or a rebase, is what makes the PR mergeable. No commit the block makes carries a skip token, so the sub-step 3 push starts CI at the merged head and Step 9 waits on that run:
    ```bash
-   git rev-parse --verify origin/dev
-   ```
-   Hold the printed commit as `MERGE_TARGET`.
-   ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --target="{MERGE_TARGET}" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
+   cd "{WORKTREE_PATH}" && "{BKIT}" branches sync --merge --fid="{FID}" --file="{STATUS}" --target="origin/dev" --sentinel="docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    ```
    Hold `outcome` as `MERGE_OUTCOME`, `pending` as `PENDING`, `target` as `MERGE_TARGET`, and `head` as `CODE_HEAD` and `ENTRY_HEAD`. Set `RECONCILE_NEXT` empty for this dev integration.
    Route:

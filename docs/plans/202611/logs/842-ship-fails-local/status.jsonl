@@ -325,3 +325,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T13:44:39Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","strategy","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-failure-diagnose/-/1/comment","hash":"79256bb639a2c84f7f27bc0931b356ede0deeaeb6415b515ab4a2bd865a52b5d","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6659549469","at":"2026-11-05T13:44:40Z"}
 {"type":"step-done","workflow":"build","step":"build-failure-diagnose","status":"DONE","at":"2026-11-05T13:44:40Z","parentSha":"85aff763b97f84c111f60bc64d1594fe721703dc","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-failure-diagnose-1.md"],"verdict":"CONCERNS","attempt":1,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T13:44:41Z","noun":"status","verb":"route","flags":["file","workflow","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T13:50:44Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T13:53:11Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T13:53:11Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T13:53:57Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-failure-remediate/-/1/comment","hash":"af62cdda18f24122a522c5c18032136579ba4b98e7ee0259aa7648efe31a24f6","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6659746335","at":"2026-11-05T13:53:58Z"}
+{"type":"step-done","workflow":"build","step":"build-failure-remediate","status":"DONE","at":"2026-11-05T13:53:58Z","parentSha":"c06ffa6537b60f3dee20411024aa519f5bf07c17","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-failure-remediate-1-log.md"],"verdict":"PASS","attempt":1,"strategy":"STANDARD"}
