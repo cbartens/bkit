@@ -164,6 +164,118 @@ function fencedLinesByStep(ship: string): Array<{ step: string; line: string }> 
 }
 
 // ---------------------------------------------------------------------------
+// Ship reconciliation and concurrent-change recovery.
+// ---------------------------------------------------------------------------
+
+describe("ship reconciliation and retry contracts", () => {
+  const step = (ship: string, number: number) =>
+    section(ship, new RegExp(`^## .*Step ${number} —`), /^## /);
+
+  it("reconciles and publishes feature code before bookkeeping on every ship path", () => {
+    const ship = readShip();
+    const beforeSweep = ship.slice(ship.indexOf("## 🤖 Step 2 —"), ship.indexOf("## 🤖 Step 5 —"));
+    const reconcile = beforeSweep.indexOf("branches sync --reconcile-feature");
+    const open = beforeSweep.indexOf("prs open");
+    expect(reconcile).toBeGreaterThan(-1);
+    expect(reconcile).toBeLessThan(open);
+    expect(beforeSweep.slice(reconcile)).toMatch(/branches push --mode=plain/);
+    expect(beforeSweep).toMatch(/prs probe[^\n]*--ship-entry/);
+    expect(beforeSweep).toMatch(/(?:resulting|reconciled|local)[^\n]*head|`head`[^\n]*ENTRY_HEAD/i);
+    expect(step(ship, 3)).toContain("--reconcile-feature");
+    expect(step(ship, 3)).toMatch(/basePath[\s\S]*BASE_PATH/);
+    expect(step(ship, 3)).toMatch(/(?:publish|push)[\s\S]*BASE_PATH/i);
+    expect(step(ship, 5)).not.toContain('branches fast-forward --onto="origin/{SHIP_BRANCH}"');
+  });
+
+  it("routes stale bases and refused merges through the bounded integration or validation loop", () => {
+    const merge = step(readShip(), 10);
+    expect(merge).toMatch(/runs gate[^\n]*--fresh-base/);
+    expect(merge).toMatch(/prs merge[^\n]*--ship-retry/);
+    expect(merge).toMatch(/(?:exit|code)[^\n]*19[^\n]*(?:stale|base)|(?:stale|base)[^\n]*19/i);
+    for (const destination of ["step-3", "step-9"]) {
+      const routes = fencedLinesByStep(merge)
+        .filter(({ line }) => line.includes("counters route"))
+        .filter(({ line }) => line.includes(`--continue=${destination}`));
+      expect(routes.length, destination).toBeGreaterThan(0);
+      for (const { line } of routes) {
+        expect(line).toContain("--name=MERGE_ATTEMPT");
+        expect(line).toContain("--of=ship-merge-pr:count");
+        expect(line).toContain("--rows=ship-gate-refusal:count");
+        expect(line).toContain("--exceeded=failure-path");
+      }
+    }
+    expect(merge).toMatch(/(?:exit[^\n]*9|revalidate)[^\n]*(?:Step 9|step-9)/i);
+    expect(merge).toMatch(/(?:exit[^\n]*10|integrate)[^\n]*(?:Step 3|step-3)/i);
+    expect(merge).not.toContain("--continue=step-11");
+    expect(merge).toMatch(/(?:terminal|stop)[^\n]*Failure Path/i);
+  });
+
+  it("passes the actual merge target and defers branch deletion to guarded close", () => {
+    const ship = readShip();
+    const resolver = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit/core/prompts/bkit-ship-conflict-resolve.md"),
+      "utf-8",
+    );
+    expect(ship).toMatch(/`target`[^\n]*MERGE_TARGET/);
+    expect(ship).toMatch(/Context:[^\n]*\{MERGE_TARGET\}/);
+    expect(resolver).toContain('branches sync --merge --target="{MERGE_TARGET}"');
+    expect(resolver).toMatch(/MERGE_HEAD[\s\S]*(?:MERGE_TARGET|recorded target)/);
+    expect(resolver).not.toContain("git log -5 --oneline origin/dev");
+    expect(resolver).toContain("Refused resolutions");
+    const mergeCommands = fencedLinesByStep(ship).filter(({ line }) => /prs merge\b/.test(line));
+    expect(mergeCommands.length).toBeGreaterThan(0);
+    for (const { line } of mergeCommands) expect(line).not.toContain("--delete-branch");
+    expect(step(ship, 14)).toMatch(/workflows close[^\n]*--flush[^\n]*--branch=/);
+  });
+
+  it("routes MCP safety facts through engine decisions with transport accounting", () => {
+    const ship = readShip();
+    expect(ship).toMatch(/exits 80[\s\S]*runtimeGithubCli` = false/);
+    expect(ship).toContain("prs transport-row");
+    expect(ship).toContain("--asserted-by=");
+    expect(ship).toMatch(/Max 1 transition per run/);
+    for (const command of ["prs probe", "runs gate", "prs merge"]) {
+      const factCommands = fencedLinesByStep(ship)
+        .filter(({ line }) => line.includes(command))
+        .filter(({ line }) => line.includes("--facts-file="));
+      expect(factCommands.length, command).toBeGreaterThan(0);
+      for (const { line } of factCommands) {
+        expect(line).toMatch(/--(?:owner-repo|repo)="\{OWNER_REPO\}"/);
+      }
+    }
+    const merge = step(ship, 10);
+    expect(merge).toMatch(
+      /(?:independent|re-read|reread)[^\n]*(?:post-attempt|after|state|facts)/i,
+    );
+    expect(merge).toMatch(/(?:missing|unavailable|mismatch)[^\n]*(?:Failure Path|refus|stop)/i);
+    expect(merge).not.toMatch(/else FAIL and 1/);
+    expect(merge).toMatch(
+      /(?:before|pre-attempt)[^\n]*(?:facts|read)|(?:facts|read)[^\n]*(?:before|pre-attempt)/i,
+    );
+  });
+
+  it("ties deferred sweep and docs reuse to the recorded feature code state", () => {
+    const ship = readShip();
+    const state = /feature[- ]code (?:state|fingerprint)|FEATURE_CODE_(?:STATE|FINGERPRINT)/i;
+    expect(ship).toMatch(state);
+    for (const number of [5, 6]) {
+      const block = step(ship, number);
+      expect(block).toMatch(state);
+      expect(block).toMatch(
+        /(?:record|status)[\s\S]*(?:match|same|unchanged)[\s\S]*(?:reuse|skip)/i,
+      );
+      expect(block).toMatch(/(?:chang|differ|mismatch|invalidat)[\s\S]*(?:run|invoke|repeat)/i);
+    }
+    expect(ship).toMatch(
+      /base-only[^\n]*(?:reuse|retain|unchanged)|(?:reuse|retain)[^\n]*base-only/i,
+    );
+    expect(ship).toMatch(
+      /(?:import|new|changed) feature[^\n]*(?:invalidat|repeat|rerun)|invalidat[^\n]*feature/i,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // FROZEN — canonical 14 ship-* step-key set
 // ---------------------------------------------------------------------------
 //

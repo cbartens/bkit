@@ -36,7 +36,13 @@ if [ "$1" = "api" ]; then
   exit 0
 fi
 verb="$2"
-if [ -f "$d/$verb-exit" ]; then echo "gh $verb failed" >&2; exit "$(cat "$d/$verb-exit")"; fi
+if [ -f "$d/$verb-exit" ]; then
+  if [ "$verb" = merge ]; then
+    [ ! -f "$d/view-after.json" ] || cp "$d/view-after.json" "$d/view.json"
+    [ ! -f "$d/after-view-exit" ] || cp "$d/after-view-exit" "$d/view-exit"
+  fi
+  echo "gh $verb failed" >&2; exit "$(cat "$d/$verb-exit")"
+fi
 case "$verb" in
   list) cat "$d/list.json" ;;
   view) cat "$d/view.json" ;;
@@ -791,6 +797,116 @@ describe("bkit prs transport-row", () => {
 // ---------------------------------------------------------------------------
 // merge
 // ---------------------------------------------------------------------------
+
+describe("bkit prs merge ship retry", () => {
+  const pinned = "a".repeat(40);
+  const moved = "b".repeat(40);
+  function refusal(after: Record<string, unknown>) {
+    for (const file of ["view-exit", "merge-exit", "after-view-exit", "view-after.json", "calls"]) {
+      fs.rmSync(path.join(fake, file), { force: true });
+    }
+    gh.view(pr({ headRefOid: pinned, mergeable: "MERGEABLE" }));
+    gh.viewAfterMerge(pr({ headRefOid: pinned, mergeable: "MERGEABLE", ...after }));
+    gh.exit("merge", 1);
+  }
+  const shipMerge = (cwd: string, ...extra: string[]) =>
+    run(cwd, [
+      "prs",
+      "merge",
+      "--number=7",
+      `--match-head=${pinned}`,
+      "--subject=feat(12-x): ship",
+      "--expect-merged",
+      "--ship-retry",
+      ...extra,
+    ]);
+
+  it("classifies a refused merge whose pinned head moved as revalidation", async () => {
+    refusal({ headRefOid: moved, mergeable: "CONFLICTING" });
+    const result = await shipMerge(repo());
+    expect(result.code, result.err).toBe(9);
+    expect(result.json).toMatchObject({ merged: false, state: "OPEN", route: "revalidate" });
+    expect(result.json.reason).toMatch(/head|mov/i);
+    expect(gh.calls().filter((call) => call.startsWith("pr view"))).toHaveLength(2);
+    expect(gh.calls().filter((call) => call.startsWith("pr merge"))).toHaveLength(1);
+    expect(gh.calls().find((call) => call.startsWith("pr merge"))).toContain(
+      `--match-head-commit ${pinned}`,
+    );
+    expect(gh.calls().find((call) => call.startsWith("pr merge"))).not.toContain("--delete-branch");
+  });
+
+  it("classifies a refused merge with a new dev conflict as integration", async () => {
+    refusal({ mergeable: "CONFLICTING" });
+    const result = await shipMerge(repo());
+    expect(result.code, result.err).toBe(10);
+    expect(result.json).toMatchObject({ merged: false, state: "OPEN", route: "integrate" });
+    expect(result.json.reason).toMatch(/conflict|dev|base/i);
+    expect(gh.calls().filter((call) => call.startsWith("pr merge"))).toHaveLength(1);
+    expect(gh.calls().filter((call) => call.startsWith("pr view"))).toHaveLength(2);
+  });
+
+  it("returns an explicit terminal reason for other merge refusals", async () => {
+    refusal({ mergeable: "MERGEABLE" });
+    const result = await shipMerge(repo());
+    expect(result.code, result.err).toBe(7);
+    expect(result.json).toMatchObject({ merged: false, route: "stop" });
+    expect(result.json.reason).toMatch(/refus|merge/i);
+
+    refusal({ mergeable: "MERGEABLE" });
+    fs.writeFileSync(path.join(fake, "after-view-exit"), "1");
+    const unreadable = await shipMerge(repo());
+    expect(unreadable.code).toBe(5);
+    expect(unreadable.json).toMatchObject({ merged: false, route: "stop" });
+    expect(unreadable.json.reason).toMatch(/read|unavailable|view/i);
+
+    refusal({ mergeable: "MERGEABLE" });
+    gh.view(pr({ baseRefName: "main", headRefOid: pinned }));
+    const wrongBase = await shipMerge(repo());
+    expect(wrongBase.code).toBe(EXIT_BASE_NOT_DEV);
+    expect(gh.calls().filter((call) => call.startsWith("pr merge"))).toEqual([]);
+  });
+
+  it("classifies independent MCP merge refusal facts without gh", async () => {
+    const cwd = repo();
+    const facts = path.join(fake, "merge-facts.json");
+    const scope = {
+      ownerRepo: "o/r",
+      prNumber: 7,
+      headRefName: "feat/12-x",
+      baseRefName: "dev",
+      matchHead: pinned,
+      before: pr({ headRefOid: pinned, mergeable: "MERGEABLE" }),
+    };
+    gh.exit("view", 127);
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({ ...scope, after: pr({ headRefOid: moved, mergeable: "CONFLICTING" }) }),
+    );
+    const headMoved = await shipMerge(cwd, "--owner-repo=o/r", `--facts-file=${facts}`);
+    expect(headMoved.code, headMoved.err).toBe(9);
+    expect(headMoved.json.route).toBe("revalidate");
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({ ...scope, after: pr({ headRefOid: pinned, mergeable: "CONFLICTING" }) }),
+    );
+    const conflict = await shipMerge(cwd, "--owner-repo=o/r", `--facts-file=${facts}`);
+    expect(conflict.code, conflict.err).toBe(10);
+    expect(conflict.json.route).toBe("integrate");
+    fs.writeFileSync(facts, JSON.stringify(scope));
+    const noReread = await shipMerge(cwd, "--owner-repo=o/r", `--facts-file=${facts}`);
+    expect(noReread.code).not.toBe(0);
+    expect(["integrate", "revalidate"]).not.toContain(noReread.json?.route);
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({ ...scope, ownerRepo: "other/repo", after: pr({ headRefOid: moved }) }),
+    );
+    const wrongScope = await shipMerge(cwd, "--owner-repo=o/r", `--facts-file=${facts}`);
+    expect(wrongScope.code).not.toBe(0);
+    expect(["integrate", "revalidate"]).not.toContain(wrongScope.json?.route);
+    expect(wrongScope.err).toMatch(/scope|repository|ownerRepo/i);
+    expect(gh.calls()).toEqual([]);
+  });
+});
 
 describe("bkit prs merge", () => {
   const merge = (...extra: string[]) => run(repo(), ["prs", "merge", "--number=7", ...extra]);
