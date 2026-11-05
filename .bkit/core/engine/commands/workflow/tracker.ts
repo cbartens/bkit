@@ -27,8 +27,21 @@ import { git, parseJson, runGh, type FlagSpec, type GhResult, type RunContext } 
 import { issueIdOf, readIssueTracker } from "./fids.js";
 import { acquirePublicationLock, readRunsLenient, releasePublicationLock } from "./locks.js";
 
-/** Jira Cloud's comment limit; longer bodies post as consecutive parts. */
+/** Conservative full Markdown UTF-16 budget, including markers and part labels. */
 export const JIRA_COMMENT_LIMIT = 32_767;
+
+/**
+ * Live contract evidence v1 (2026-11-05): GitHub accepts 262,144 UTF-8 body bytes
+ * and rejects the next byte; Linear accepts 100,000 Unicode scalars and rejects
+ * the next scalar. Jira's Markdown conversion makes its raw boundary dependent
+ * on formatting; both ASCII and non-BMP payloads pass at this safe UTF-16 budget.
+ * Keep the selected budgets conservative, rather than promising provider maxima.
+ */
+const COMMENT_BODY_BUDGETS = {
+  github: 65_536,
+  linear: 100_000,
+  jira: JIRA_COMMENT_LIMIT,
+} as const;
 
 export const JIRA_MCP_URL = "https://mcp.atlassian.com/v2/mcp";
 export const LINEAR_API_URL = "https://api.linear.app/graphql";
@@ -578,7 +591,11 @@ export async function postComment(
 ): Promise<PostedComment> {
   if (t.issue === null) throw new TrackerError("not-found", "no issue");
   const limit =
-    t.tracker === "linear" ? 100_000 : t.tracker === "github" ? 65_536 : JIRA_COMMENT_LIMIT;
+    t.tracker === "linear"
+      ? COMMENT_BODY_BUDGETS.linear
+      : t.tracker === "github"
+        ? COMMENT_BODY_BUDGETS.github
+        : COMMENT_BODY_BUDGETS.jira;
   if (!opts.commentId && t.tracker !== "jira" && body.length > limit) {
     const parts = splitAt(body, limit, { compact: true });
     let last: PostedComment | undefined;
@@ -1748,10 +1765,10 @@ export async function postCommentOnce(
                   outgoing = `${cached.source}\n\n${rendered.source.split("\n").slice(2).join("\n")}`;
                   const limit =
                     t.tracker === "linear"
-                      ? 100_000
+                      ? COMMENT_BODY_BUDGETS.linear
                       : t.tracker === "jira"
-                        ? JIRA_COMMENT_LIMIT
-                        : 65_536;
+                        ? COMMENT_BODY_BUDGETS.jira
+                        : COMMENT_BODY_BUDGETS.github;
                   if (outgoing.length <= limit) aggregate = true;
                   else outgoing = body;
                 } else outgoing = body;

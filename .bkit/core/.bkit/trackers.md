@@ -24,7 +24,20 @@ The engine may append routine reports to its own eligible progress comment. Owne
 
 The optional progress cache and run association live under the repository's Git-common `bkit-outbox` directory, shared by linked worktrees. Losing this state starts fresh. Remote text can confirm an owned comment, but never becomes the source of a replacement body. Reconciliation reads a bounded newest-created window, including paginated provider responses.
 
-Preparation, delivery, reconciliation, receipt and friction failures are nonfatal. When `tracker.done` is false and `commentFile` exists, attempt one new MCP comment from that file byte-for-byte. MCP fallback never edits prior tracker content. Record best-effort redacted friction and continue substantive work even when the file or fallback is unavailable. Provider capacity limits remain conservative until a disposable, explicitly authorized live probe verifies them.
+Preparation, delivery, reconciliation, receipt and friction failures are nonfatal. When `tracker.done` is false and `commentFile` exists, attempt one new MCP comment from that file byte-for-byte. MCP fallback never edits prior tracker content. Record best-effort redacted friction and continue substantive work even when the file or fallback is unavailable.
+
+### Verified provider contracts
+
+Live contract evidence version 1 verified the following boundaries through the production transports. Every selected body budget counts the complete Markdown source in UTF-16 code units, including markers and part labels. These budgets are conservative delivery ceilings, rather than promises of each provider's maximum.
+
+<!-- prettier-ignore -->
+| Provider | Selected body budget | Observed counting boundary | Inspection and edit contract |
+| --- | --- | --- | --- |
+| GitHub | 65,536 | 262,144 UTF-8 body bytes accepted; the next byte rejected for ASCII and non-BMP text. | REST create/edit and GraphQL read agree on numeric comment/author IDs, timestamps and Markdown fingerprints. `last`/`before` pagination retains newest-created order after an older edit. |
+| Linear | 100,000 | 100,000 Unicode scalars accepted; the next scalar rejected for ASCII and non-BMP text. UTF-16 counting stays conservative. | GraphQL create/edit/read return stable comment/user IDs, timestamps and Markdown fingerprints. Cursor pages are sorted by creation time before selecting the newest comments. |
+| Jira Rovo | 32,767 | The selected ASCII/non-BMP payloads pass. Markdown-to-ADF conversion changes the raw-source boundary; larger payloads can fail with `CONTENT_LIMIT_EXCEEDED`. No universal raw-source maximum is claimed. | Deployed tool schemas accept ID-based edits and `responseContentFormat: markdown`, `view: evidence`, creation ordering and offset pagination. Require returned Markdown format, stable author/comment IDs and matching fingerprints before editing. |
+
+All three preserve the generated h6 marker on the tested bodies. Repeated reads remain stable, an external edit starts fresh progress, and a terminal report creates a separate comment. Discarded acknowledgments can be recognized by bounded reads; inconclusive recognition tries a new comment and can duplicate an accepted report. Exhausted writes produce real best-effort friction and allow later reporting to continue. These probes do not establish universal notification silence: GitHub and Linear subscriber settings and Jira project notification schemes still apply.
 
 ## Marker contract
 

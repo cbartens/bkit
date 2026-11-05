@@ -1,0 +1,2677 @@
+{
+  "evidenceVersion": 1,
+  "observedUtcDate": "2026-11-05",
+  "scope": "Owner-authorized disposable targets only; real production transports; synthetic bodies; no credentials or report bodies recorded.",
+  "probe": "tracker-contract.ts",
+  "limitations": [
+    "Small page windows verify cursor/offset semantics without creating hundreds of comments.",
+    "Provider notification delivery settings were not measured; no silence guarantee.",
+    "Jira raw-source rejection boundary depends on Markdown-to-ADF conversion; selected conservative UTF-16 ceiling is verified."
+  ],
+  "records": [
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "github",
+        "issue": "837",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "create-edit-read-marker",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "evidence": {
+          "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670428456",
+          "id": "6670428456",
+          "authorId": "1326912",
+          "createdAt": "2026-11-05T21:48:20Z",
+          "updatedAt": "2026-11-05T21:48:21Z",
+          "representation": "markdown",
+          "fingerprint": "063c84f0707db4ce55bcfcb9bb560e6f6e75461fee6b75b3abb8b96737ee2389",
+          "markerPreserved": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "creation-order-pagination",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "evidence": {
+          "pageSize": 1,
+          "distinctPages": true,
+          "newestCreatedUnchangedByOlderEdit": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "routine-append-external-edit-terminal",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "evidence": {
+          "progressUrl": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670430922",
+          "afterExternalEditUrl": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670432765",
+          "terminalUrl": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670433058",
+          "cacheFiles": []
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "continuation",
+      "value": {
+        "provider": "github",
+        "continued": true,
+        "remaining": ["encoded-counting", "lost-response"]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "github",
+        "issue": "837",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "ascii-at-limit",
+        "accepted": true,
+        "requestedUtf16": 65536,
+        "requestedScalars": 65536,
+        "utf8Bytes": 65536,
+        "returnedUtf16": 65536,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670451993"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "ascii-over-limit",
+        "accepted": true,
+        "requestedUtf16": 65537,
+        "requestedScalars": 65537,
+        "utf8Bytes": 65537,
+        "returnedUtf16": 65537,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670451993"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-utf16-limit",
+        "accepted": true,
+        "requestedUtf16": 65536,
+        "requestedScalars": 32802,
+        "utf8Bytes": 131004,
+        "returnedUtf16": 65536,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670451993"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-scalar-limit",
+        "accepted": true,
+        "requestedUtf16": 131005,
+        "requestedScalars": 65536,
+        "utf8Bytes": 261943,
+        "returnedUtf16": 131005,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670451993"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-scalar-over-limit",
+        "accepted": true,
+        "requestedUtf16": 131007,
+        "requestedScalars": 65537,
+        "utf8Bytes": 261947,
+        "returnedUtf16": 131007,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670451993"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "github",
+        "issue": "837",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "ascii-262144",
+        "accepted": true,
+        "requestedUtf16": 262144,
+        "requestedScalars": 262144,
+        "utf8Bytes": 262144,
+        "returnedUtf16": 262144,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670481311"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "ascii-262145",
+        "accepted": false,
+        "requestedUtf16": 262145,
+        "requestedScalars": 262145,
+        "utf8Bytes": 262145,
+        "name": "TrackerError",
+        "message": "gh api: gh: Validation Failed (HTTP 422)"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-262144-scalars",
+        "accepted": false,
+        "requestedUtf16": 524221,
+        "requestedScalars": 262144,
+        "utf8Bytes": 1048375,
+        "name": "TrackerError",
+        "message": "gh api: gh: Validation Failed (HTTP 422)"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-262145-scalars",
+        "accepted": false,
+        "requestedUtf16": 524223,
+        "requestedScalars": 262145,
+        "utf8Bytes": 1048379,
+        "name": "TrackerError",
+        "message": "gh api: gh: Validation Failed (HTTP 422)"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "github",
+        "issue": "837",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-262144-utf8",
+        "accepted": true,
+        "requestedUtf16": 131106,
+        "requestedScalars": 65587,
+        "utf8Bytes": 262144,
+        "returnedUtf16": 131106,
+        "markerPreserved": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670540444"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "github",
+        "label": "emoji-262145-utf8",
+        "accepted": false,
+        "requestedUtf16": 131107,
+        "requestedScalars": 65588,
+        "utf8Bytes": 262145,
+        "name": "TrackerError",
+        "message": "gh api: gh: Validation Failed (HTTP 422)"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "github",
+        "issue": "837",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-recognized",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670522718",
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": true
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "github",
+        "text": "[bkit-tracker] append recognition unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-new-fallback",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670524497",
+        "observedCopies": 4,
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "github",
+        "text": "tracker comment failed (http-1); delivery unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-exhausted-continued",
+      "value": {
+        "provider": "github",
+        "pass": true,
+        "failed": {
+          "done": false,
+          "action": "comment",
+          "reason": "http-1"
+        },
+        "continued": {
+          "done": true,
+          "action": "comment",
+          "url": "https://github.com/cbartens/bkit/issues/837#issuecomment-6670525497"
+        },
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          }
+        ],
+        "realFriction": true
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "linear",
+        "issue": "9be9c5b0-6976-4178-b1fe-e32d249d91bf",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "create-edit-read-marker",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "evidence": {
+          "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-19b540ec",
+          "id": "19b540ec-4a09-439d-af76-829920fc0c8b",
+          "authorId": "444ea028-d332-4f30-b15c-54f18c79ec2a",
+          "createdAt": "2026-11-05T21:48:18.734Z",
+          "updatedAt": "2026-11-05T21:48:19.501Z",
+          "representation": "markdown",
+          "fingerprint": "336b8a6c878f6c1135c598ad2d8d1e2b933633aad0ddeb34f8824c207c40cc85",
+          "markerPreserved": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "creation-order-pagination",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "evidence": {
+          "pageSize": 1,
+          "distinctPages": true,
+          "newestCreatedUnchangedByOlderEdit": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "routine-append-external-edit-terminal",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "evidence": {
+          "progressUrl": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-30eee8e9",
+          "afterExternalEditUrl": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-c4695c10",
+          "terminalUrl": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-6b5d8a12",
+          "cacheFiles": []
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "continuation",
+      "value": {
+        "provider": "linear",
+        "continued": true,
+        "remaining": ["encoded-counting", "lost-response"]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "linear",
+        "issue": "9be9c5b0-6976-4178-b1fe-e32d249d91bf",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "linear",
+        "label": "ascii-at-limit",
+        "accepted": true,
+        "requestedUtf16": 100000,
+        "requestedScalars": 100000,
+        "utf8Bytes": 100000,
+        "returnedUtf16": 100000,
+        "markerPreserved": true,
+        "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-41e2c66d"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "linear",
+        "label": "ascii-over-limit",
+        "accepted": false,
+        "requestedUtf16": 100001,
+        "requestedScalars": 100001,
+        "utf8Bytes": 100001,
+        "name": "TrackerError",
+        "message": "linear: Argument Validation Error"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "linear",
+        "label": "emoji-utf16-limit",
+        "accepted": true,
+        "requestedUtf16": 100000,
+        "requestedScalars": 50034,
+        "utf8Bytes": 199932,
+        "returnedUtf16": 100000,
+        "markerPreserved": true,
+        "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-41e2c66d"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "linear",
+        "label": "emoji-scalar-limit",
+        "accepted": true,
+        "requestedUtf16": 199933,
+        "requestedScalars": 100000,
+        "utf8Bytes": 399799,
+        "returnedUtf16": 199933,
+        "markerPreserved": true,
+        "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-41e2c66d"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "linear",
+        "label": "emoji-scalar-over-limit",
+        "accepted": false,
+        "requestedUtf16": 199935,
+        "requestedScalars": 100001,
+        "utf8Bytes": 399803,
+        "name": "TrackerError",
+        "message": "linear: Argument Validation Error"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "linear",
+        "issue": "9be9c5b0-6976-4178-b1fe-e32d249d91bf",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-recognized",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-a83c295b",
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": true
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "linear",
+        "text": "[bkit-tracker] append recognition unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-new-fallback",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-d8ab99f8",
+        "observedCopies": 4,
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "linear",
+        "text": "tracker comment failed (network); delivery unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-exhausted-continued",
+      "value": {
+        "provider": "linear",
+        "pass": true,
+        "failed": {
+          "done": false,
+          "action": "comment",
+          "reason": "network"
+        },
+        "continued": {
+          "done": true,
+          "action": "comment",
+          "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe#comment-4aeafa5d"
+        },
+        "calls": [
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": true,
+            "read": false
+          }
+        ],
+        "realFriction": true
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "jira",
+        "issue": "MBA-11",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "create-edit-read-marker",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "evidence": {
+          "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10007",
+          "id": "10007",
+          "authorId": "712020:a10e2bfa-a015-488e-a1e1-71a5e3e5ddb5",
+          "createdAt": "2026-11-06T07:48:19.986+1000",
+          "updatedAt": "2026-11-06T07:48:21.081+1000",
+          "representation": "markdown",
+          "fingerprint": "b8083ee3261319a995b19972a80b03c02b9a07a8625f01d0a18025d7c558288d",
+          "markerPreserved": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "creation-order-pagination",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "evidence": {
+          "pageSize": 1,
+          "distinctPages": true,
+          "newestCreatedUnchangedByOlderEdit": true
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "routine-append-external-edit-terminal",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "evidence": {
+          "progressUrl": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10009",
+          "afterExternalEditUrl": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10010",
+          "terminalUrl": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10011",
+          "cacheFiles": []
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "continuation",
+      "value": {
+        "provider": "jira",
+        "continued": true,
+        "remaining": ["encoded-counting", "lost-response"]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "jira",
+        "issue": "MBA-11",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-at-limit",
+        "accepted": true,
+        "requestedUtf16": 32767,
+        "requestedScalars": 32767,
+        "utf8Bytes": 32767,
+        "returnedUtf16": 32768,
+        "markerPreserved": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10012"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-over-limit",
+        "accepted": true,
+        "requestedUtf16": 32768,
+        "requestedScalars": 32768,
+        "utf8Bytes": 32768,
+        "returnedUtf16": 32769,
+        "markerPreserved": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10012"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-utf16-limit",
+        "accepted": true,
+        "requestedUtf16": 32767,
+        "requestedScalars": 16416,
+        "utf8Bytes": 65469,
+        "returnedUtf16": 32768,
+        "markerPreserved": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10012"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-scalar-limit",
+        "accepted": false,
+        "requestedUtf16": 65469,
+        "requestedScalars": 32767,
+        "utf8Bytes": 130873,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-scalar-over-limit",
+        "accepted": false,
+        "requestedUtf16": 65471,
+        "requestedScalars": 32768,
+        "utf8Bytes": 130877,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "jira",
+        "issue": "MBA-11",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32775",
+        "accepted": false,
+        "requestedUtf16": 32775,
+        "requestedScalars": 32775,
+        "utf8Bytes": 32775,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32776",
+        "accepted": false,
+        "requestedUtf16": 32776,
+        "requestedScalars": 32776,
+        "utf8Bytes": 32776,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32777",
+        "accepted": false,
+        "requestedUtf16": 32777,
+        "requestedScalars": 32777,
+        "utf8Bytes": 32777,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-32775-utf16",
+        "accepted": false,
+        "requestedUtf16": 32775,
+        "requestedScalars": 16420,
+        "utf8Bytes": 65485,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-32777-utf16",
+        "accepted": false,
+        "requestedUtf16": 32777,
+        "requestedScalars": 16421,
+        "utf8Bytes": 65489,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "jira",
+        "issue": "MBA-11",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32769",
+        "accepted": true,
+        "requestedUtf16": 32769,
+        "requestedScalars": 32769,
+        "utf8Bytes": 32769,
+        "returnedUtf16": 32770,
+        "markerPreserved": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10019"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32770",
+        "accepted": false,
+        "requestedUtf16": 32770,
+        "requestedScalars": 32770,
+        "utf8Bytes": 32770,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32771",
+        "accepted": false,
+        "requestedUtf16": 32771,
+        "requestedScalars": 32771,
+        "utf8Bytes": 32771,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32772",
+        "accepted": false,
+        "requestedUtf16": 32772,
+        "requestedScalars": 32772,
+        "utf8Bytes": 32772,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32773",
+        "accepted": false,
+        "requestedUtf16": 32773,
+        "requestedScalars": 32773,
+        "utf8Bytes": 32773,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "ascii-32774",
+        "accepted": false,
+        "requestedUtf16": 32774,
+        "requestedScalars": 32774,
+        "utf8Bytes": 32774,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-32770-utf16",
+        "accepted": false,
+        "requestedUtf16": 32770,
+        "requestedScalars": 16418,
+        "utf8Bytes": 65474,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "counting",
+      "value": {
+        "provider": "jira",
+        "label": "emoji-32771-utf16",
+        "accepted": false,
+        "requestedUtf16": 32771,
+        "requestedScalars": 16418,
+        "utf8Bytes": 65477,
+        "name": "TrackerError",
+        "message": "jira addOrEditJiraIssueComment: {\"error\":true,\"message\":\"Failed to edit comment on \\\"MBA-11\\\": 400 {\\\"errorMessages\\\":[\\\"CONTENT_LIMIT_EXCEEDED\\\"],\\\"errors\\\":{}}. Verify the commentId belongs to this issue and that you have permission to edit it. Use getJiraIssue with comment fields to find valid comment IDs.\",\"statusCode\":400}"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "target",
+      "value": {
+        "provider": "jira",
+        "issue": "MBA-11",
+        "titleValidated": true,
+        "evidenceVersion": 1
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-recognized",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10016",
+        "calls": [
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "jira",
+        "text": "[bkit-tracker] append recognition unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-new-fallback",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10017",
+        "observedCopies": 4,
+        "calls": [
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": true,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": true
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "diagnostic",
+      "value": {
+        "provider": "jira",
+        "text": "tracker comment failed (network); delivery unavailable"
+      }
+    },
+    {
+      "version": 1,
+      "stage": "lost-response-exhausted-continued",
+      "value": {
+        "provider": "jira",
+        "pass": true,
+        "failed": {
+          "done": false,
+          "action": "comment",
+          "reason": "network"
+        },
+        "continued": {
+          "done": true,
+          "action": "comment",
+          "url": "https://bartens.atlassian.net/browse/MBA-11?focusedCommentId=10018"
+        },
+        "calls": [
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": false,
+            "read": false
+          },
+          {
+            "write": true,
+            "read": false
+          }
+        ],
+        "realFriction": true
+      }
+    },
+    {
+      "version": 1,
+      "stage": "linear-schema",
+      "value": {
+        "create": {
+          "name": "CommentCreateInput",
+          "inputFields": [
+            {
+              "name": "id",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "body",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "bodyData",
+              "type": {
+                "kind": "SCALAR",
+                "name": "JSON",
+                "ofType": null
+              }
+            },
+            {
+              "name": "issueId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "projectUpdateId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "initiativeUpdateId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "postId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "documentContentId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "projectId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "initiativeId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "parentId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "createAsUser",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "displayIconUrl",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "createdAt",
+              "type": {
+                "kind": "SCALAR",
+                "name": "DateTime",
+                "ofType": null
+              }
+            },
+            {
+              "name": "doNotSubscribeToIssue",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            },
+            {
+              "name": "createOnSyncedSlackThread",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            },
+            {
+              "name": "quotedText",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "inlineAnchorFrom",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "inlineAnchorTo",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "subscriberIds",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "name": null,
+                  "kind": "NON_NULL"
+                }
+              }
+            }
+          ]
+        },
+        "update": {
+          "name": "CommentUpdateInput",
+          "inputFields": [
+            {
+              "name": "body",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "bodyData",
+              "type": {
+                "kind": "SCALAR",
+                "name": "JSON",
+                "ofType": null
+              }
+            },
+            {
+              "name": "resolvingUserId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "resolvingCommentId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "quotedText",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            },
+            {
+              "name": "subscriberIds",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "name": null,
+                  "kind": "NON_NULL"
+                }
+              }
+            },
+            {
+              "name": "doNotSubscribeToIssue",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Boolean",
+                "ofType": null
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "jira-schemas",
+      "value": {
+        "digest": "eb2a56a087fc5c0cf43e47fef374cd5f7aef7034ef9550743cc4008e2d69344a",
+        "tools": [
+          {
+            "name": "getAccessibleAtlassianResources",
+            "title": "Get accessible Atlassian resources",
+            "description": "Returns the cloudId(s) available to the current user. Not needed when the user gives a Jira or Confluence link: other tools accept the link's site hostname (e.g. example.atlassian.net) as cloudId.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {}
+            },
+            "annotations": {
+              "title": "Get accessible Atlassian resources",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "getJiraIssue",
+            "title": "Get Jira issue",
+            "description": "Get a Jira or JSM issue by key or ID. Use for one known issue; use searchJiraIssuesUsingJql to find or list many issues. Reports how many comments an issue has, not the comments themselves \u2014 for those use listJiraIssueComments. View \"evidence\" also returns the issue's links to other issues.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (PROJ-123), numeric ID, or a Jira issue URL"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Custom Jira field IDs to fetch (e.g. [\"customfield_10010\", \"customfield_10020\"]). Overrides the view's fetch strategy. For custom fields in normal use, prefer view: \"evidence\", which fetches and maps them automatically. Use [\"*all\"] to fetch every field (expensive \u2014 prefer view: \"full\" instead).\n"
+                },
+                "includeEditableFields": {
+                  "type": "boolean",
+                  "description": "When true, also return compact metadata for fields the authenticated user can edit on this issue, including type, allowed values, and operations. Omit unless preparing an edit: this makes an extra Jira REST call.\n"
+                },
+                "fieldsByKeys": {
+                  "type": "boolean",
+                  "description": "When true, each entry in `fields` is interpreted as a Jira field key (e.g. \"summary\", \"description\") instead of a field id. Matches the Jira REST `fieldsByKeys` query parameter. Ignored when `fields` is omitted (default field list uses ids).\n"
+                },
+                "expand": {
+                  "type": "string",
+                  "description": "Additional Jira expand tokens (comma-separated), e.g. \"renderedFields,changelog\". Merged with any expand the server adds for custom-field mapping (e.g. \"names\"); duplicate tokens removed. Note \"changelog\" here returns only the newest page, sorted newest-first, and it accepts startAt/maxResults then ignores them \u2014 so it cannot be paged and reports a longer history as complete. Use listJiraIssueChangelogs to read all of it (oldest-first); do not mix their orderings.\n"
+                },
+                "properties": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Issue entity property keys to return (Jira `properties` query param, repeated per key). Omit unless you rely on app-specific issue properties.\n"
+                },
+                "failFast": {
+                  "type": "boolean",
+                  "description": "When true, forwards Jira's `failFast` query flag for this GET. Omit for Jira default behavior.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for rich-text bodies \u2014 description and environment, plus any comment bodies the view returns. Defaults to markdown. Set html to receive HTML, which is lossless, so you can pass it straight back to editJiraIssue/addOrEditJiraIssueComment with contentFormat: html. Bodies holding anything markdown cannot represent \u2014 inline media, panels, expands, layouts, statuses, @mentions, dates, emoji \u2014 are returned as HTML automatically, because markdown would drop those nodes or turn them into literal text on write-back. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Get Jira issue",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "listJiraIssueComments",
+            "title": "Get issue comments",
+            "description": "Get a paginated list of comments for a Jira issue. Use this instead of getJiraIssue when an issue has many comments \u2014 getJiraIssue embeds at most 20 and cannot page them. Page with startAt until isLast is true; total is the full comment count. Each comment reports any visibility restriction on it and, on JSM, whether it is internal (jsdPublic: false) \u2014 check both before quoting or summarising a comment. Comments are returned as a flat list: a non-null parentId means the comment is a reply, and parentId identifies its root/parent comment. Group comments by parentId to reconstruct threads. Set reactionDetail when emoji reaction data is needed. For the issue's own fields, use getJiraIssue.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (PROJ-123), numeric ID, or a Jira issue URL"
+                },
+                "startAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Zero-based index of the first comment to return (for pagination). Defaults to 0.",
+                  "default": 0
+                },
+                "maxResults": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "Maximum number of comments to return per page (1-100). Defaults to 100. Read total from the response for the full count. With view: \"full\" the page is capped at 20, because a larger full-view page can exceed the client's token limit and fail the whole call; the response echoes the effective value.",
+                  "default": 100
+                },
+                "orderBy": {
+                  "type": "string",
+                  "enum": ["created", "-created", "+created"],
+                  "description": "Order comments by created date \u2014 \"created\"/\"+created\" (oldest first) or \"-created\" (newest first)."
+                },
+                "expand": {
+                  "type": "string",
+                  "description": "Comma-separated list of extra data to include on each comment, e.g. \"renderedBody\" (HTML-rendered body) or \"properties\"."
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for comment bodies. Defaults to markdown. Set html to receive HTML, which is lossless, so a body can be passed straight back to addOrEditJiraIssueComment with contentFormat: html. Fetch as html before editing any comment, since markdown drops images, panels and expands and returns statuses/@mentions as literal text. A page holding any such comment is returned as HTML automatically. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "reactionDetail": {
+                  "type": "string",
+                  "enum": ["none", "summary", "users"],
+                  "description": "Reaction enrichment level. \"none\" (default) returns comments only, with no Reactions API call. \"summary\" adds emoji counts and whether the current user reacted. \"users\" also names who reacted \u2014 ask for it only when attribution is requested, since it costs an extra request per distinct emoji and reports when it could not expand every one.",
+                  "default": "none"
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Get issue comments",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "searchJiraIssuesUsingJql",
+            "title": "Search Jira issues using JQL",
+            "description": "Search for Jira issues using JQL, with an optional approximate count. Use view: \"evidence\" to fetch and map custom fields. Page with nextPageToken until isLast is true. For one known issue, use getJiraIssue. JQL only returns issues; inferring anything else from issue rows is silently incomplete. Use the purpose-built operation for sprints, boards, board config, field history, worklogs, releases, accountIds, issue types, projects and statuses.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "jql": {
+                  "type": "string",
+                  "description": "JQL query string e.g. \"project = PROJ AND status = 'In Progress'\". If the tool returns a repairHint, follow it and retry.\n"
+                },
+                "searchResultMode": {
+                  "type": "string",
+                  "enum": ["issues", "count", "all"],
+                  "description": "Default \"issues\". Never count for normal search or if nextPageToken used. If total for same query is known, reuse it. Use \"count\" only when no trusted count exists and either the user asks or a downstream step needs it. Use \"all\" only if both count and issues required.\n"
+                },
+                "maxResults": {
+                  "type": "number",
+                  "description": "Maximum results to return (default 50, max 100)"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Fields per issue (e.g. [\"summary\", \"status\", \"customfield_10010\"]). customfield_* IDs are site-specific \u2014 discover the correct id for story points etc. on this Cloud site. Honoured exactly when supplied. Values map to issues[].fields.customFields (human labels), not raw customfield_* keys. The default \"compact\" view omits custom fields; use view: \"evidence\" for velocity/sprint JQL (fetches and maps all custom fields) or pass explicit customfield_* IDs.\n"
+                },
+                "nextPageToken": {
+                  "type": "string",
+                  "description": "Pagination token from a previous response to fetch the next page"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for rich-text bodies (description, environment, comments) when the view returns them. Defaults to markdown; html is lossless for a later editJiraIssue. Issues holding anything markdown cannot represent (media, panels, expands, statuses, @mentions) are returned as HTML automatically, decided per issue. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "jql"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Search Jira issues using JQL",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "createJiraIssue",
+            "title": "Create Jira issue",
+            "description": "Create a new Jira issue. Custom fields go in additional_fields: keyed by field name, values are resolved automatically, so no field lookup is needed first (user fields take accountIds); keyed by customfield_* ID, pass the value in Jira's format. A rejected create returns a repairHint and names the field at fault where there is one, with its allowedValues when known, so retry from that. If sprint assignment fails, the response still has the new issue's key and sprintAssignment.assigned: false \u2014 do not create it again.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "projectKey": {
+                  "type": "string",
+                  "description": "Project key (e.g. PROJ)."
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "Issue summary / title."
+                },
+                "issueType": {
+                  "type": "string",
+                  "description": "Issue type name (e.g. Bug, Task, Story, Epic). Use listJiraProjectIssueTypesMetadata to list valid types for this project if unsure.\n"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Issue description in markdown, or HTML with contentFormat html. Converted to Jira ADF automatically."
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for description. Defaults to markdown; html adds panels, tables and status lozenges. For HTML body shapes, first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"createJiraIssue\"}. Inline media needs an existing issue: create first, then embed with editJiraIssue. When the HTML content-format feature is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text.\n"
+                },
+                "priority": {
+                  "type": "string",
+                  "description": "Priority name (e.g. High, Medium, Low, Highest, Lowest)."
+                },
+                "assignee": {
+                  "type": "string",
+                  "description": "Account ID of the assignee. Resolve a name with listJiraIssueAssignableUsers, which returns only users who can be assigned in this project; lookupJiraAccountId resolves any user and does not check that."
+                },
+                "labels": {
+                  "type": "array",
+                  "items": {},
+                  "description": "List of label strings (e.g. [\"bug\", \"needs-triage\"])."
+                },
+                "parent": {
+                  "type": "string",
+                  "description": "Parent issue key for sub-tasks or child issues (e.g. PROJ-10)."
+                },
+                "additional_fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Additional Jira fields. Keys can be human-readable field names or raw customfield_* IDs. Values can be human-readable (resolved automatically) or already-correct Jira shapes. Examples:\n  {\"Story Points\": 8}                          \u2190 number field by name\n  {\"Team\": \"Backend\"}                          \u2190 option/select by name\n  {\"Reviewers\": [\"alice@acme.com\", \"bob@acme.com\"]}  \u2190 multi-user by accountId\n  {\"Component Area\": \"Platform / Auth\"}        \u2190 cascading select as \"Parent / Child\"\n  {\"customfield_10010\": 8}                     \u2190 raw ID (no resolution needed, fastest)\n  {\"components\": [{\"name\": \"Backend\"}]}        \u2190 system array field (raw shape)\n  {\"fixVersions\": [{\"name\": \"v2.0\"}]}          \u2190 system array field (raw shape)\nOn error, the response includes allowedValues and a repairHint for self-correction.\n"
+                },
+                "assignToSprint": {
+                  "type": "string",
+                  "description": "Optional sprint assignment after the issue is created. Accepts a numeric sprint ID, an exact sprint name, or \"active\" to resolve an active sprint. Numeric sprint IDs assign directly and do not need board lookup. When omitted, createJiraIssue behaves exactly as before and does not make sprint calls.\n"
+                }
+              },
+              "required": ["cloudId", "projectKey", "summary", "issueType"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Create Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "editJiraIssue",
+            "title": "Edit Jira issue",
+            "description": "Edit an existing Jira issue. Custom fields go in additional_fields: keyed by field name, values are resolved automatically (user fields take accountIds); keyed by customfield_* ID, pass the value in Jira's format. Every field is set, not appended: send the full list for labels, components and other multi-value fields. Change status or move to a sprint with transitionJiraIssue, and convert Task\u2194Sub-task with convertJiraIssueHierarchy. Empty description or environment with \"\". When editing a body that holds inline media, use contentFormat: html, or the media is dropped. Reorder on a board with rankBeforeIssue or rankAfterIssue; fields are saved first, so a failed reorder leaves the edit applied and returns ranking.ranked: false. The response shows only getJiraIssue's default fields, so other fields you set are not echoed back.\n",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (e.g. PROJ-123)."
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Jira fields payload to set, keyed by field name or customfield_* ID. To clear a field, pass explicit null (e.g. {\"resolution\": null}). Rich-text fields (description/environment) default to markdown; set contentFormat: html to author them in HTML. Editing a body that already contains inline media must use contentFormat: html \u2014 markdown drops it. For HTML body shapes (inline media, panels, tables), first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"editJiraIssue\"}.\n"
+                },
+                "additional_fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Additional Jira fields. Keys can be human-readable field names or raw customfield_* IDs. Values can be human-readable (resolved automatically) or already-correct Jira shapes. Examples:\n  {\"Story Points\": 8}                          \u2190 number field by name\n  {\"Team\": \"Backend\"}                          \u2190 option/select by name\n  {\"Reviewers\": [\"alice@acme.com\", \"bob@acme.com\"]}  \u2190 multi-user by accountId\n  {\"Component Area\": \"Platform / Auth\"}        \u2190 cascading select as \"Parent / Child\"\n  {\"customfield_10010\": 8}                     \u2190 raw ID (no resolution needed, fastest)\n  {\"components\": [{\"name\": \"Backend\"}]}        \u2190 system array field (raw shape)\n  {\"fixVersions\": [{\"name\": \"v2.0\"}]}          \u2190 system array field (raw shape)\nOn error, the response includes allowedValues and a repairHint for self-correction.\n"
+                },
+                "inlineFileId": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media file ID(s) from uploadAttachmentToJiraIssue to append inline to the description, e.g. [\"id1\",\"id2\"]. Requires contentFormat: html and a matching inlineFileCollection (paired by index). Appends at the end, keeping existing content; for exact placement, author the media node in the HTML description instead. A file already embedded in the body is rejected (would duplicate).\n"
+                },
+                "inlineFileCollection": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media collection(s) from the upload step, paired to inlineFileId by index (a single value applies to all). Required whenever inlineFileId is set.\n"
+                },
+                "inlineFileName": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Optional file name(s) (from the upload step's fileName), paired to inlineFileId by index. Only selects the render shape: images render as a block image, other files as an inline chip. Omit to default to the image shape.\n"
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for rich-text fields (description/environment). Defaults to markdown. html preserves inline media across a read-modify-write; a body fetched as HTML can be written straight back (Jira resolves media collection/filename server-side and omits them on read \u2014 not data loss). Requires the HTML content-format feature; when it is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text and drop the media.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Output format for rich-text fields in the returned issue. Defaults to markdown. Bodies markdown cannot represent (media, panels, expands, statuses, @mentions) are always returned as HTML, so a follow-up edit does not destroy them. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "rankBeforeIssue": {
+                  "type": "string",
+                  "description": "Optional. Rank this issue immediately before the given issue key or ID (LexoRank relative anchor). Mutually exclusive with rankAfterIssue. When omitted, editJiraIssue does not make ranking calls.\n"
+                },
+                "rankAfterIssue": {
+                  "type": "string",
+                  "description": "Optional. Rank this issue immediately after the given issue key or ID (LexoRank relative anchor). Mutually exclusive with rankBeforeIssue. When omitted, editJiraIssue does not make ranking calls.\n"
+                },
+                "rankCustomFieldId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Optional. Numeric Rank field id for this rank call (e.g. 10020). Pass only when the user explicitly provides a Rank field id, or asks to reorder on a specific board's Rank field. For a named board, call getJiraBoardConfig first and use ranking.rankCustomFieldId. Do not invent or guess this id. Omit for ordinary reorders so Jira uses its default Rank field. Ignored unless rankBeforeIssue or rankAfterIssue is also set.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Edit Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "transitionJiraIssue",
+            "title": "Transition Jira issue",
+            "description": "Move a Jira issue through its workflow and/or into a sprint or the backlog \u2014 at least one is required. Take transitionId from listJiraIssueTransitions; transitionName is the transition's own name, not the target status. Returns the status the issue actually landed in, so no read-back is needed. If the sprint/backlog move fails after the status change succeeds, the status change stays \u2014 retry the move alone, not the whole call.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key like PROJ-123"
+                },
+                "transitionId": {
+                  "type": "string",
+                  "description": "Transition ID (get from listJiraIssueTransitions). Provide either transitionId or transitionName."
+                },
+                "transitionName": {
+                  "type": "string",
+                  "description": "Name of the transition itself, not the target status \u2014 the two often differ, so \"Done\" does not match a transition named \"Review->Done\". Provide only one of transitionId, transitionName, transition, or targetStatus."
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional Jira field values to apply during the workflow transition."
+                },
+                "update": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional Jira field update operations to apply during the workflow transition. A comment passed here may be dropped without error \u2014 the transition reports success and no comment is created. Use addOrEditJiraIssueComment instead."
+                },
+                "historyMetadata": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional issue history metadata to attach to the workflow transition."
+                },
+                "sprintId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Assign the issue into this sprint. Mutually exclusive with assignToBacklog."
+                },
+                "assignToBacklog": {
+                  "type": "boolean",
+                  "description": "Set true to assign the issue to the backlog, mutually exclusive with sprintId. Optionally use boardId to target a specific board's backlog."
+                },
+                "boardId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Legacy board id: targets this board's backlog when assignToBacklog is true (board IDs from listJiraBoards). Does not scope the sprint name lookup \u2014 use board for that. Superseded by board; mutually exclusive with board. Ignored for a plain transition."
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Transition Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "addOrEditJiraIssueComment",
+            "title": "Add or edit Jira issue comment",
+            "description": "Add a comment to a Jira issue, or edit an existing one: omit commentId to add, or pass one from listJiraIssueComments to edit. Returns the commentId, needed to edit or delete it later. When no file was appended through inlineFileId, it also returns the echoed body and its format (appliedContentFormat).",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (e.g. PROJ-123) or a Jira issue URL"
+                },
+                "commentBody": {
+                  "type": "string",
+                  "description": "Comment text. Markdown by default; set contentFormat: html to pass HTML instead. Required unless adding a new comment purely to embed a file via inlineFileId. Editing replaces the whole comment body: pass the full intended text (fetch the current comment first to preserve it), or \"\" for media only. Editing a body that already contains inline media must use contentFormat: html \u2014 markdown drops it. For HTML body shapes (inline media, panels, tables), first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"addOrEditJiraIssueComment\"}.\n"
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for commentBody. Defaults to markdown. html preserves inline media across a read-modify-write; a body fetched as HTML can be written straight back (Jira resolves media collection/filename server-side and omits them on read \u2014 not data loss). Requires the HTML content-format feature; when it is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text and drop the media.\n"
+                },
+                "commentVisibility": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Restrict comment visibility to a Jira group or role. Shape: `{\"type\":\"group\"|\"role\",\"value\":\"<name>\"}`.\nRole and group names are site-specific, so do not reuse a name from another site.\nOn JSM this does not make a comment internal \u2014 a restricted comment stays customer-visible\n(`jsdPublic: true`). Use `jsmCommentType: \"internalNote\"` for that.\n"
+                },
+                "jsmCommentType": {
+                  "type": "string",
+                  "enum": ["internalNote", "publicComment"],
+                  "description": "JSM comment type. Use internalNote for an internal note or publicComment for a customer-visible comment. Applies when adding or editing a JSM comment. Omit for existing Jira behavior.\n"
+                },
+                "commentId": {
+                  "type": "string",
+                  "description": "ID of an existing comment to edit. When omitted, a new comment is added."
+                },
+                "inlineFileId": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media file ID(s) from uploadAttachmentToJiraIssue to append inline to the comment, e.g. [\"id1\",\"id2\"]. Requires contentFormat: html and a matching inlineFileCollection (paired by index). Appends at the end; for exact placement, author the media node in the HTML commentBody instead. A file already embedded in the body is rejected (would duplicate).\n"
+                },
+                "inlineFileCollection": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media collection(s) from the upload step, paired to inlineFileId by index (a single value applies to all). Required whenever inlineFileId is set.\n"
+                },
+                "inlineFileName": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Optional file name(s) (from the upload step's fileName), paired to inlineFileId by index. Only selects the render shape: images render as a block image, other files as an inline chip. Omit to default to the image shape.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format of the echoed comment body. Defaults to the format written, so an html write reads back as html. Bodies markdown cannot represent (media, panels, statuses, @mentions) are always echoed as HTML so a follow-up edit does not destroy them. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Add or edit Jira issue comment",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "jira-schemas",
+      "value": {
+        "digest": "0b897b2a9d71f89fd2b4dd0f7bf9a9e9d56764ae7a1c183bf27af9cbf0e0541b",
+        "tools": [
+          {
+            "name": "getAccessibleAtlassianResources",
+            "title": "Get accessible Atlassian resources",
+            "description": "Returns the cloudId(s) available to the current user. Not needed when the user gives a Jira or Confluence link: other tools accept the link's site hostname (e.g. example.atlassian.net) as cloudId.",
+            "inputSchema": {
+              "$schema": "http://json-schema.org/draft-07/schema#",
+              "type": "object",
+              "properties": {}
+            },
+            "annotations": {
+              "title": "Get accessible Atlassian resources",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "getJiraIssue",
+            "title": "Get Jira issue",
+            "description": "Get a Jira or JSM issue by key or ID. Use for one known issue; use searchJiraIssuesUsingJql to find or list many issues. Reports how many comments an issue has, not the comments themselves \u2014 for those use listJiraIssueComments. View \"evidence\" also returns the issue's links to other issues.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (PROJ-123), numeric ID, or a Jira issue URL"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Custom Jira field IDs to fetch (e.g. [\"customfield_10010\", \"customfield_10020\"]). Overrides the view's fetch strategy. For custom fields in normal use, prefer view: \"evidence\", which fetches and maps them automatically. Use [\"*all\"] to fetch every field (expensive \u2014 prefer view: \"full\" instead).\n"
+                },
+                "includeEditableFields": {
+                  "type": "boolean",
+                  "description": "When true, also return compact metadata for fields the authenticated user can edit on this issue, including type, allowed values, and operations. Omit unless preparing an edit: this makes an extra Jira REST call.\n"
+                },
+                "fieldsByKeys": {
+                  "type": "boolean",
+                  "description": "When true, each entry in `fields` is interpreted as a Jira field key (e.g. \"summary\", \"description\") instead of a field id. Matches the Jira REST `fieldsByKeys` query parameter. Ignored when `fields` is omitted (default field list uses ids).\n"
+                },
+                "expand": {
+                  "type": "string",
+                  "description": "Additional Jira expand tokens (comma-separated), e.g. \"renderedFields,changelog\". Merged with any expand the server adds for custom-field mapping (e.g. \"names\"); duplicate tokens removed. Note \"changelog\" here returns only the newest page, sorted newest-first, and it accepts startAt/maxResults then ignores them \u2014 so it cannot be paged and reports a longer history as complete. Use listJiraIssueChangelogs to read all of it (oldest-first); do not mix their orderings.\n"
+                },
+                "properties": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Issue entity property keys to return (Jira `properties` query param, repeated per key). Omit unless you rely on app-specific issue properties.\n"
+                },
+                "failFast": {
+                  "type": "boolean",
+                  "description": "When true, forwards Jira's `failFast` query flag for this GET. Omit for Jira default behavior.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for rich-text bodies \u2014 description and environment, plus any comment bodies the view returns. Defaults to markdown. Set html to receive HTML, which is lossless, so you can pass it straight back to editJiraIssue/addOrEditJiraIssueComment with contentFormat: html. Bodies holding anything markdown cannot represent \u2014 inline media, panels, expands, layouts, statuses, @mentions, dates, emoji \u2014 are returned as HTML automatically, because markdown would drop those nodes or turn them into literal text on write-back. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Get Jira issue",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "listJiraIssueComments",
+            "title": "Get issue comments",
+            "description": "Get a paginated list of comments for a Jira issue. Use this instead of getJiraIssue when an issue has many comments \u2014 getJiraIssue embeds at most 20 and cannot page them. Page with startAt until isLast is true; total is the full comment count. Each comment reports any visibility restriction on it and, on JSM, whether it is internal (jsdPublic: false) \u2014 check both before quoting or summarising a comment. Comments are returned as a flat list: a non-null parentId means the comment is a reply, and parentId identifies its root/parent comment. Group comments by parentId to reconstruct threads. Set reactionDetail when emoji reaction data is needed. For the issue's own fields, use getJiraIssue.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (PROJ-123), numeric ID, or a Jira issue URL"
+                },
+                "startAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Zero-based index of the first comment to return (for pagination). Defaults to 0.",
+                  "default": 0
+                },
+                "maxResults": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "Maximum number of comments to return per page (1-100). Defaults to 100. Read total from the response for the full count. With view: \"full\" the page is capped at 20, because a larger full-view page can exceed the client's token limit and fail the whole call; the response echoes the effective value.",
+                  "default": 100
+                },
+                "orderBy": {
+                  "type": "string",
+                  "enum": ["created", "-created", "+created"],
+                  "description": "Order comments by created date \u2014 \"created\"/\"+created\" (oldest first) or \"-created\" (newest first)."
+                },
+                "expand": {
+                  "type": "string",
+                  "description": "Comma-separated list of extra data to include on each comment, e.g. \"renderedBody\" (HTML-rendered body) or \"properties\"."
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for comment bodies. Defaults to markdown. Set html to receive HTML, which is lossless, so a body can be passed straight back to addOrEditJiraIssueComment with contentFormat: html. Fetch as html before editing any comment, since markdown drops images, panels and expands and returns statuses/@mentions as literal text. A page holding any such comment is returned as HTML automatically. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "reactionDetail": {
+                  "type": "string",
+                  "enum": ["none", "summary", "users"],
+                  "description": "Reaction enrichment level. \"none\" (default) returns comments only, with no Reactions API call. \"summary\" adds emoji counts and whether the current user reacted. \"users\" also names who reacted \u2014 ask for it only when attribution is requested, since it costs an extra request per distinct emoji and reports when it could not expand every one.",
+                  "default": "none"
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Get issue comments",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "searchJiraIssuesUsingJql",
+            "title": "Search Jira issues using JQL",
+            "description": "Search for Jira issues using JQL, with an optional approximate count. Use view: \"evidence\" to fetch and map custom fields. Page with nextPageToken until isLast is true. For one known issue, use getJiraIssue. JQL only returns issues; inferring anything else from issue rows is silently incomplete. Use the purpose-built operation for sprints, boards, board config, field history, worklogs, releases, accountIds, issue types, projects and statuses.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "jql": {
+                  "type": "string",
+                  "description": "JQL query string e.g. \"project = PROJ AND status = 'In Progress'\". If the tool returns a repairHint, follow it and retry.\n"
+                },
+                "searchResultMode": {
+                  "type": "string",
+                  "enum": ["issues", "count", "all"],
+                  "description": "Default \"issues\". Never count for normal search or if nextPageToken used. If total for same query is known, reuse it. Use \"count\" only when no trusted count exists and either the user asks or a downstream step needs it. Use \"all\" only if both count and issues required.\n"
+                },
+                "maxResults": {
+                  "type": "number",
+                  "description": "Maximum results to return (default 50, max 100)"
+                },
+                "fields": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Fields per issue (e.g. [\"summary\", \"status\", \"customfield_10010\"]). customfield_* IDs are site-specific \u2014 discover the correct id for story points etc. on this Cloud site. Honoured exactly when supplied. Values map to issues[].fields.customFields (human labels), not raw customfield_* keys. The default \"compact\" view omits custom fields; use view: \"evidence\" for velocity/sprint JQL (fetches and maps all custom fields) or pass explicit customfield_* IDs.\n"
+                },
+                "nextPageToken": {
+                  "type": "string",
+                  "description": "Pagination token from a previous response to fetch the next page"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format for rich-text bodies (description, environment, comments) when the view returns them. Defaults to markdown; html is lossless for a later editJiraIssue. Issues holding anything markdown cannot represent (media, panels, expands, statuses, @mentions) are returned as HTML automatically, decided per issue. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                },
+                "view": {
+                  "type": "string",
+                  "enum": ["compact", "evidence", "full"],
+                  "description": "Output view preset. Default: \"compact\". Options: \"compact\", \"evidence\", \"full\". compact = minimal fields for scanning; evidence = decision-relevant detail; full = complete response."
+                }
+              },
+              "required": ["cloudId", "jql"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Search Jira issues using JQL",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "createJiraIssue",
+            "title": "Create Jira issue",
+            "description": "Create a new Jira issue. Custom fields go in additional_fields: keyed by field name, values are resolved automatically, so no field lookup is needed first (user fields take accountIds); keyed by customfield_* ID, pass the value in Jira's format. A rejected create returns a repairHint and names the field at fault where there is one, with its allowedValues when known, so retry from that. If sprint assignment fails, the response still has the new issue's key and sprintAssignment.assigned: false \u2014 do not create it again.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "projectKey": {
+                  "type": "string",
+                  "description": "Project key (e.g. PROJ)."
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "Issue summary / title."
+                },
+                "issueType": {
+                  "type": "string",
+                  "description": "Issue type name (e.g. Bug, Task, Story, Epic). Use listJiraProjectIssueTypesMetadata to list valid types for this project if unsure.\n"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Issue description in markdown, or HTML with contentFormat html. Converted to Jira ADF automatically."
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for description. Defaults to markdown; html adds panels, tables and status lozenges. For HTML body shapes, first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"createJiraIssue\"}. Inline media needs an existing issue: create first, then embed with editJiraIssue. When the HTML content-format feature is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text.\n"
+                },
+                "priority": {
+                  "type": "string",
+                  "description": "Priority name (e.g. High, Medium, Low, Highest, Lowest)."
+                },
+                "assignee": {
+                  "type": "string",
+                  "description": "Account ID of the assignee. Resolve a name with listJiraIssueAssignableUsers, which returns only users who can be assigned in this project; lookupJiraAccountId resolves any user and does not check that."
+                },
+                "labels": {
+                  "type": "array",
+                  "items": {},
+                  "description": "List of label strings (e.g. [\"bug\", \"needs-triage\"])."
+                },
+                "parent": {
+                  "type": "string",
+                  "description": "Parent issue key for sub-tasks or child issues (e.g. PROJ-10)."
+                },
+                "additional_fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Additional Jira fields. Keys can be human-readable field names or raw customfield_* IDs. Values can be human-readable (resolved automatically) or already-correct Jira shapes. Examples:\n  {\"Story Points\": 8}                          \u2190 number field by name\n  {\"Team\": \"Backend\"}                          \u2190 option/select by name\n  {\"Reviewers\": [\"alice@acme.com\", \"bob@acme.com\"]}  \u2190 multi-user by accountId\n  {\"Component Area\": \"Platform / Auth\"}        \u2190 cascading select as \"Parent / Child\"\n  {\"customfield_10010\": 8}                     \u2190 raw ID (no resolution needed, fastest)\n  {\"components\": [{\"name\": \"Backend\"}]}        \u2190 system array field (raw shape)\n  {\"fixVersions\": [{\"name\": \"v2.0\"}]}          \u2190 system array field (raw shape)\nOn error, the response includes allowedValues and a repairHint for self-correction.\n"
+                },
+                "assignToSprint": {
+                  "type": "string",
+                  "description": "Optional sprint assignment after the issue is created. Accepts a numeric sprint ID, an exact sprint name, or \"active\" to resolve an active sprint. Numeric sprint IDs assign directly and do not need board lookup. When omitted, createJiraIssue behaves exactly as before and does not make sprint calls.\n"
+                }
+              },
+              "required": ["cloudId", "projectKey", "summary", "issueType"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Create Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "editJiraIssue",
+            "title": "Edit Jira issue",
+            "description": "Edit an existing Jira issue. Custom fields go in additional_fields: keyed by field name, values are resolved automatically (user fields take accountIds); keyed by customfield_* ID, pass the value in Jira's format. Every field is set, not appended: send the full list for labels, components and other multi-value fields. Change status or move to a sprint with transitionJiraIssue, and convert Task\u2194Sub-task with convertJiraIssueHierarchy. Empty description or environment with \"\". When editing a body that holds inline media, use contentFormat: html, or the media is dropped. Reorder on a board with rankBeforeIssue or rankAfterIssue; fields are saved first, so a failed reorder leaves the edit applied and returns ranking.ranked: false. The response shows only getJiraIssue's default fields, so other fields you set are not echoed back.\n",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (e.g. PROJ-123)."
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Jira fields payload to set, keyed by field name or customfield_* ID. To clear a field, pass explicit null (e.g. {\"resolution\": null}). Rich-text fields (description/environment) default to markdown; set contentFormat: html to author them in HTML. Editing a body that already contains inline media must use contentFormat: html \u2014 markdown drops it. For HTML body shapes (inline media, panels, tables), first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"editJiraIssue\"}.\n"
+                },
+                "additional_fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Additional Jira fields. Keys can be human-readable field names or raw customfield_* IDs. Values can be human-readable (resolved automatically) or already-correct Jira shapes. Examples:\n  {\"Story Points\": 8}                          \u2190 number field by name\n  {\"Team\": \"Backend\"}                          \u2190 option/select by name\n  {\"Reviewers\": [\"alice@acme.com\", \"bob@acme.com\"]}  \u2190 multi-user by accountId\n  {\"Component Area\": \"Platform / Auth\"}        \u2190 cascading select as \"Parent / Child\"\n  {\"customfield_10010\": 8}                     \u2190 raw ID (no resolution needed, fastest)\n  {\"components\": [{\"name\": \"Backend\"}]}        \u2190 system array field (raw shape)\n  {\"fixVersions\": [{\"name\": \"v2.0\"}]}          \u2190 system array field (raw shape)\nOn error, the response includes allowedValues and a repairHint for self-correction.\n"
+                },
+                "inlineFileId": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media file ID(s) from uploadAttachmentToJiraIssue to append inline to the description, e.g. [\"id1\",\"id2\"]. Requires contentFormat: html and a matching inlineFileCollection (paired by index). Appends at the end, keeping existing content; for exact placement, author the media node in the HTML description instead. A file already embedded in the body is rejected (would duplicate).\n"
+                },
+                "inlineFileCollection": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media collection(s) from the upload step, paired to inlineFileId by index (a single value applies to all). Required whenever inlineFileId is set.\n"
+                },
+                "inlineFileName": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Optional file name(s) (from the upload step's fileName), paired to inlineFileId by index. Only selects the render shape: images render as a block image, other files as an inline chip. Omit to default to the image shape.\n"
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for rich-text fields (description/environment). Defaults to markdown. html preserves inline media across a read-modify-write; a body fetched as HTML can be written straight back (Jira resolves media collection/filename server-side and omits them on read \u2014 not data loss). Requires the HTML content-format feature; when it is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text and drop the media.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Output format for rich-text fields in the returned issue. Defaults to markdown. Bodies markdown cannot represent (media, panels, expands, statuses, @mentions) are always returned as HTML, so a follow-up edit does not destroy them. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                },
+                "rankBeforeIssue": {
+                  "type": "string",
+                  "description": "Optional. Rank this issue immediately before the given issue key or ID (LexoRank relative anchor). Mutually exclusive with rankAfterIssue. When omitted, editJiraIssue does not make ranking calls.\n"
+                },
+                "rankAfterIssue": {
+                  "type": "string",
+                  "description": "Optional. Rank this issue immediately after the given issue key or ID (LexoRank relative anchor). Mutually exclusive with rankBeforeIssue. When omitted, editJiraIssue does not make ranking calls.\n"
+                },
+                "rankCustomFieldId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Optional. Numeric Rank field id for this rank call (e.g. 10020). Pass only when the user explicitly provides a Rank field id, or asks to reorder on a specific board's Rank field. For a named board, call getJiraBoardConfig first and use ranking.rankCustomFieldId. Do not invent or guess this id. Omit for ordinary reorders so Jira uses its default Rank field. Ignored unless rankBeforeIssue or rankAfterIssue is also set.\n"
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Edit Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "transitionJiraIssue",
+            "title": "Transition Jira issue",
+            "description": "Move a Jira issue through its workflow and/or into a sprint or the backlog \u2014 at least one is required. Take transitionId from listJiraIssueTransitions; transitionName is the transition's own name, not the target status. Returns the status the issue actually landed in, so no read-back is needed. If the sprint/backlog move fails after the status change succeeds, the status change stays \u2014 retry the move alone, not the whole call.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key like PROJ-123"
+                },
+                "transitionId": {
+                  "type": "string",
+                  "description": "Transition ID (get from listJiraIssueTransitions). Provide either transitionId or transitionName."
+                },
+                "transitionName": {
+                  "type": "string",
+                  "description": "Name of the transition itself, not the target status \u2014 the two often differ, so \"Done\" does not match a transition named \"Review->Done\". Provide only one of transitionId, transitionName, transition, or targetStatus."
+                },
+                "fields": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional Jira field values to apply during the workflow transition."
+                },
+                "update": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional Jira field update operations to apply during the workflow transition. A comment passed here may be dropped without error \u2014 the transition reports success and no comment is created. Use addOrEditJiraIssueComment instead."
+                },
+                "historyMetadata": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Optional issue history metadata to attach to the workflow transition."
+                },
+                "sprintId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Assign the issue into this sprint. Mutually exclusive with assignToBacklog."
+                },
+                "assignToBacklog": {
+                  "type": "boolean",
+                  "description": "Set true to assign the issue to the backlog, mutually exclusive with sprintId. Optionally use boardId to target a specific board's backlog."
+                },
+                "boardId": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Only used when assignToBacklog is true: targets this specific board's backlog (board IDs from listJiraBoards). Ignored otherwise."
+                },
+                "actionSource": {
+                  "type": "string",
+                  "enum": ["jira_mcp_card", "model_tool_call"],
+                  "description": "Optional invocation attribution. Jira MCP cards set jira_mcp_card; omit for model/tool-loop calls."
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Transition Jira issue",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "addOrEditJiraIssueComment",
+            "title": "Add or edit Jira issue comment",
+            "description": "Add a comment to a Jira issue, or edit an existing one: omit commentId to add, or pass one from listJiraIssueComments to edit. Returns the commentId, needed to edit or delete it later. When no file was appended through inlineFileId, it also returns the echoed body and its format (appliedContentFormat).",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "issueIdOrKey": {
+                  "type": "string",
+                  "description": "Issue key (e.g. PROJ-123) or a Jira issue URL"
+                },
+                "commentBody": {
+                  "type": "string",
+                  "description": "Comment text. Markdown by default; set contentFormat: html to pass HTML instead. Required unless adding a new comment purely to embed a file via inlineFileId. Editing replaces the whole comment body: pass the full intended text (fetch the current comment first to preserve it), or \"\" for media only. Editing a body that already contains inline media must use contentFormat: html \u2014 markdown drops it. For HTML body shapes (inline media, panels, tables), first get the format guide via the generic operation runner (execute) as name=getContentFormatGuide, inputs={toolName: \"addOrEditJiraIssueComment\"}.\n"
+                },
+                "contentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Body format for commentBody. Defaults to markdown. html preserves inline media across a read-modify-write; a body fetched as HTML can be written straight back (Jira resolves media collection/filename server-side and omits them on read \u2014 not data loss). Requires the HTML content-format feature; when it is disabled the call is rejected rather than downgraded, because markdown would store the HTML tags as literal text and drop the media.\n"
+                },
+                "commentVisibility": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Restrict comment visibility to a Jira group or role. Shape: `{\"type\":\"group\"|\"role\",\"value\":\"<name>\"}`.\nRole and group names are site-specific, so do not reuse a name from another site.\nOn JSM this does not make a comment internal \u2014 a restricted comment stays customer-visible\n(`jsdPublic: true`). Use `jsmCommentType: \"internalNote\"` for that.\n"
+                },
+                "jsmCommentType": {
+                  "type": "string",
+                  "enum": ["internalNote", "publicComment"],
+                  "description": "JSM comment type. Use internalNote for an internal note or publicComment for a customer-visible comment. Applies when adding or editing a JSM comment. Omit for existing Jira behavior.\n"
+                },
+                "commentId": {
+                  "type": "string",
+                  "description": "ID of an existing comment to edit. When omitted, a new comment is added."
+                },
+                "inlineFileId": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media file ID(s) from uploadAttachmentToJiraIssue to append inline to the comment, e.g. [\"id1\",\"id2\"]. Requires contentFormat: html and a matching inlineFileCollection (paired by index). Appends at the end; for exact placement, author the media node in the HTML commentBody instead. A file already embedded in the body is rejected (would duplicate).\n"
+                },
+                "inlineFileCollection": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Media collection(s) from the upload step, paired to inlineFileId by index (a single value applies to all). Required whenever inlineFileId is set.\n"
+                },
+                "inlineFileName": {
+                  "type": "array",
+                  "items": {},
+                  "description": "Optional file name(s) (from the upload step's fileName), paired to inlineFileId by index. Only selects the render shape: images render as a block image, other files as an inline chip. Omit to default to the image shape.\n"
+                },
+                "responseContentFormat": {
+                  "type": "string",
+                  "enum": ["markdown", "html"],
+                  "description": "Format of the echoed comment body. Defaults to the format written, so an html write reads back as html. Bodies markdown cannot represent (media, panels, statuses, @mentions) are always echoed as HTML so a follow-up edit does not destroy them. An explicit markdown request is overridden for those bodies, with a warning saying so; appliedContentFormat in the response reports the format you actually got.\n"
+                }
+              },
+              "required": ["cloudId", "issueIdOrKey"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Add or edit Jira issue comment",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "executeRead",
+            "title": "Execute Read-Only Atlassian Operation",
+            "description": "Run a read-only Atlassian operation by name across all Atlassian products.\nOnly use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first.\nCopy input names exactly from the operation\u2019s discover result or tool schema. After an input validation error, correct the inputs using the error guidance before retrying; if the input contract is missing, call discover for that operation first.\nIf the user provides a Jira/Confluence URL, pass it directly as cloudId \u2014 no need to call getAccessibleAtlassianResources.\nPass all inputs as a flat object \u2014 the server routes each to the right location (path, query, or body) automatically.\nUse responseFields for field filtering, e.g. [\"key\",\"fields.summary\",\"fields.status.name\"].\nUse view to select a named output preset (e.g. \"compact\", \"evidence\", \"full\") when the operation supports views.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "Operation name to run. Only use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first."
+                },
+                "inputs": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Flat input object \u2014 pass all parameters here. The server routes each to path, query, or body automatically."
+                },
+                "responseFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "maxItems": 50,
+                  "description": "Dot-notation fields to return, e.g. [\"key\",\"fields.summary\"]. Filters response."
+                },
+                "view": {
+                  "type": "string",
+                  "description": "Named output view preset (e.g. \"compact\", \"evidence\", \"full\"). Only applies when the operation declares views. Overridden by responseFields if both are supplied."
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Execute Read-Only Atlassian Operation",
+              "readOnlyHint": true,
+              "destructiveHint": false,
+              "idempotentHint": true,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "executeWrite",
+            "title": "Execute Write Atlassian Operation",
+            "description": "Run a write Atlassian operation by name (creates or updates data, non-destructive) across all Atlassian products.\nOnly use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first.\nCopy input names exactly from the operation\u2019s discover result or tool schema. After an input validation error, correct the inputs using the error guidance before retrying; if the input contract is missing, call discover for that operation first.\nIf the user provides a Jira/Confluence URL, pass it directly as cloudId \u2014 no need to call getAccessibleAtlassianResources.\nPass all inputs as a flat object \u2014 the server routes each to the right location (path, query, or body) automatically.\nUse responseFields for field filtering, e.g. [\"key\",\"fields.summary\",\"fields.status.name\"].\nUse view to select a named output preset (e.g. \"compact\", \"evidence\", \"full\") when the operation supports views.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "Operation name to run. Only use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first."
+                },
+                "inputs": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Flat input object \u2014 pass all parameters here. The server routes each to path, query, or body automatically."
+                },
+                "responseFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "maxItems": 50,
+                  "description": "Dot-notation fields to return, e.g. [\"key\",\"fields.summary\"]. Filters response."
+                },
+                "view": {
+                  "type": "string",
+                  "description": "Named output view preset (e.g. \"compact\", \"evidence\", \"full\"). Only applies when the operation declares views. Overridden by responseFields if both are supplied."
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Execute Write Atlassian Operation",
+              "readOnlyHint": false,
+              "destructiveHint": false,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          },
+          {
+            "name": "executeDestructive",
+            "title": "Execute Destructive Atlassian Operation",
+            "description": "Run a destructive Atlassian operation by name (deletes or irreversibly changes data) across all Atlassian products.\nOnly use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first.\nCopy input names exactly from the operation\u2019s discover result or tool schema. After an input validation error, correct the inputs using the error guidance before retrying; if the input contract is missing, call discover for that operation first.\nIf the user provides a Jira/Confluence URL, pass it directly as cloudId \u2014 no need to call getAccessibleAtlassianResources.\nPass all inputs as a flat object \u2014 the server routes each to the right location (path, query, or body) automatically.\nUse responseFields for field filtering, e.g. [\"key\",\"fields.summary\",\"fields.status.name\"].\nUse view to select a named output preset (e.g. \"compact\", \"evidence\", \"full\") when the operation supports views.",
+            "inputSchema": {
+              "type": "object",
+              "properties": {
+                "cloudId": {
+                  "type": "string",
+                  "description": "Atlassian site UUID, hostname, or URL. If unknown, list accessible resources."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "description": "Operation name to run. Only use an operation name from discover results or one already in your tool list; never guess, assume, or invent a name \u2014 when unsure, call discover first."
+                },
+                "inputs": {
+                  "type": "object",
+                  "additionalProperties": {},
+                  "description": "Flat input object \u2014 pass all parameters here. The server routes each to path, query, or body automatically."
+                },
+                "responseFields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "maxLength": 256
+                  },
+                  "maxItems": 50,
+                  "description": "Dot-notation fields to return, e.g. [\"key\",\"fields.summary\"]. Filters response."
+                },
+                "view": {
+                  "type": "string",
+                  "description": "Named output view preset (e.g. \"compact\", \"evidence\", \"full\"). Only applies when the operation declares views. Overridden by responseFields if both are supplied."
+                }
+              },
+              "required": ["name"],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            },
+            "annotations": {
+              "title": "Execute Destructive Atlassian Operation",
+              "readOnlyHint": false,
+              "destructiveHint": true,
+              "idempotentHint": false,
+              "openWorldHint": false
+            },
+            "execution": {
+              "taskSupport": "forbidden"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "version": 1,
+      "stage": "linear-disposable",
+      "value": {
+        "issueCreate": {
+          "success": true,
+          "issue": {
+            "id": "9be9c5b0-6976-4178-b1fe-e32d249d91bf",
+            "identifier": "BAR-10",
+            "url": "https://linear.app/bartens/issue/BAR-10/disposable-workflow-comment-contract-probe",
+            "title": "Disposable workflow comment contract probe"
+          }
+        }
+      }
+    },
+    {
+      "version": 1,
+      "stage": "jira-disposable",
+      "value": {
+        "data": {
+          "id": "10020",
+          "key": "MBA-11"
+        }
+      }
+    }
+  ]
+}
