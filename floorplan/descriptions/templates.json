@@ -1,0 +1,108 @@
+{
+  "files": {
+    ".bkit/templates/scripts/cleanup/bkit-disk-prune.mjs": {
+      "name": "Repository disk cleanup template",
+      "description": "Removes disposable repository caches and build output to recover disk space."
+    },
+    ".bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs": {
+      "name": "Old temporary files template",
+      "description": "Deletes temporary files older than the chosen retention period."
+    },
+    ".bkit/templates/scripts/launchd/bkit-launchd-env.sh": {
+      "name": "Desktop app environment template",
+      "description": "Makes selected environment settings available to applications started by macOS."
+    },
+    ".bkit/templates/scripts/prettier/bkit-insert-ignore.mjs": {
+      "name": "Markdown table preservation template",
+      "description": "Protects Markdown tables from automatic reformatting and reports damaged tables."
+    },
+    ".bkit/templates/scripts/secrets/bkit-secrets.config.mjs": {
+      "name": "Secret destinations template",
+      "description": "Declares which secret settings belong in each external store."
+    },
+    ".bkit/templates/scripts/secrets/bkit-secrets.mjs": {
+      "name": "Secret synchronization template",
+      "description": "Checks and synchronizes configured secret values across external stores."
+    },
+    ".bkit/templates/scripts/serena/bkit-serena-mcp.sh": {
+      "name": "Code navigation launcher template",
+      "description": "Starts Serena with the repository environment for assistant code navigation."
+    },
+    ".bkit/templates/scripts/ci/bkit-check-capstone.mjs": {
+      "name": "Combined check result template",
+      "description": "Decides whether the required automated checks completed successfully."
+    },
+    ".bkit/templates/scripts/ci/bkit-check-dependency-audit.mjs": {
+      "name": "Dependency security check template",
+      "description": "Compares dependency security findings with explicit, time-limited acceptances."
+    },
+    ".bkit/templates/scripts/ci/bkit-machine-lock.sh": {
+      "name": "Shared machine lock template",
+      "description": "Prevents competing test and maintenance jobs from using the same machine resources at once."
+    },
+    ".bkit/templates/scripts/ci/bkit-test-awake.mjs": {
+      "name": "Keep test runs awake template",
+      "description": "Keeps macOS awake while a command runs and releases the sleep protection afterward."
+    },
+    ".bkit/templates/scripts/ci/lanes/bkit-resolve-push-base.mjs": {
+      "name": "Change comparison base template",
+      "description": "Finds the previous relevant revision so automated checks can identify changed files."
+    },
+    ".bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs": {
+      "name": "Suppressed-check detection template",
+      "description": "Flags code patterns that bypass type checks or weaken quality gates."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-drift.py": {
+      "name": "Capability drift scan template",
+      "description": "Finds competing implementations and callers that bypass a capability's declared owner."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-eager.py": {
+      "name": "Import-time work scan template",
+      "description": "Finds files that perform work when loaded and counts the other files affected."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-embed.py": {
+      "name": "Capability diagram embedding template",
+      "description": "Copies the capability register's package diagram into related documentation."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-imports.py": {
+      "name": "Missing import connections template",
+      "description": "Resolves source imports that the initial code graph could not connect."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-pre-push.sh": {
+      "name": "Capability freshness check template",
+      "description": "Checks that the revision being pushed produces the committed capability register."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-repair.py": {
+      "name": "Code graph repair template",
+      "description": "Adds resolved import connections missing from the generated code graph."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graph-surface.py": {
+      "name": "User-facing capability paths template",
+      "description": "Links user-facing requests to the underlying capabilities they reach."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graphify-graphml.py": {
+      "name": "Graph export template",
+      "description": "Exports the complete code graph for external diagram tools."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graphify-rollup.py": {
+      "name": "Capability register generation template",
+      "description": "Summarizes the code graph into package and module views and the capability register."
+    },
+    ".bkit/templates/scripts/graphify/bkit-graphify.sh": {
+      "name": "Code graph commands template",
+      "description": "Coordinates local code scanning, diagram generation and capability freshness checks."
+    },
+    ".bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh": {
+      "name": "Cloud bootstrap template",
+      "description": "Prepares a cloud Claude session with the project's required development tools."
+    },
+    ".bkit/templates/scripts/ci/bkit-check-accepted-divergences.mjs": {
+      "name": "Workflow exception check template",
+      "description": "Checks event-dependent workflow differences against the project's accepted exceptions."
+    },
+    ".bkit/templates/scripts/cleanup/bkit-disk-prune.machine.mjs": {
+      "name": "Machine disk cleanup template",
+      "description": "Provides machine-wide cleanup of disposable development caches."
+    }
+  }
+}

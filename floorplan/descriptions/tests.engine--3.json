@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/commands/workflow/workflows.test.ts": {
+      "name": "Workflow lifecycle tests",
+      "description": "Checks starting and continuing workflows against their saved progress and required evidence."
+    },
+    ".bkit/core/engine/commands/workflow/worktrees.integration.test.ts": {
+      "name": "Worktree lifecycle tests",
+      "description": "Checks creation, rebasing and removal of working copies against a real remote repository."
+    },
+    ".bkit/core/engine/commands/workflow/worktrees.test.ts": {
+      "name": "Working copy selection tests",
+      "description": "Checks flags, adoption, branch choices and safe handling of local working directories."
+    },
+    ".bkit/core/engine/install/cloud-env.integration.test.ts": {
+      "name": "Cloud setup parity tests",
+      "description": "Checks that cloud setup carries matching network permissions to every supported assistant."
+    },
+    ".bkit/core/engine/install/cloud-env.test.ts": {
+      "name": "Cloud environment tests",
+      "description": "Checks how project environment settings become cloud setup instructions."
+    },
+    ".bkit/core/engine/install/context-ci-workflow.test.ts": {
+      "name": "Build evidence lookup tests",
+      "description": "Checks that installed evidence lookups use the project's selected build workflow."
+    },
+    ".bkit/core/engine/install/hosts.test.ts": {
+      "name": "Installed assistant lookup tests",
+      "description": "Checks assistant detection from installed agent folders, plugin files and hooks."
+    },
+    ".bkit/core/engine/install/managed-block.test.ts": {
+      "name": "Managed section editing tests",
+      "description": "Checks that updating a managed section preserves surrounding project text."
+    },
+    ".bkit/core/engine/install/manifest.test.ts": {
+      "name": "Installation ownership tests",
+      "description": "Checks the declared files, formats and owning modules of the installation."
+    },
+    ".bkit/core/engine/install/modules/antigravity.test.ts": {
+      "name": "Antigravity setup tests",
+      "description": "Checks generation of the Antigravity plugin, instructions, skills and hooks."
+    },
+    ".bkit/core/engine/install/modules/claude.integration.test.ts": {
+      "name": "Claude settings preservation tests",
+      "description": "Checks that Claude setup keeps project-owned settings while updating bkit's managed content."
+    },
+    ".bkit/core/engine/install/modules/claude.test.ts": {
+      "name": "Claude permission tests",
+      "description": "Checks how installation records and updates generated Claude command permissions."
+    },
+    ".bkit/core/engine/install/modules/cloud.integration.test.ts": {
+      "name": "Cloud module adoption tests",
+      "description": "Checks that cloud setup provides advice while preserving adopted project files."
+    },
+    ".bkit/core/engine/install/modules/core.integration.test.ts": {
+      "name": "Core installation preservation tests",
+      "description": "Checks shared documents, package scripts and managed sections through real installation writes."
+    },
+    ".bkit/core/engine/install/modules/core.test.ts": {
+      "name": "Core installation helper tests",
+      "description": "Checks initial setup advice and detection of script names needing attention."
+    },
+    ".bkit/core/engine/install/modules/index.integration.test.ts": {
+      "name": "Module selection tests",
+      "description": "Checks that installing selected modules writes only their owned files and preserves adopted templates."
+    },
+    ".bkit/core/engine/install/modules/opencode.integration.test.ts": {
+      "name": "OpenCode installation tests",
+      "description": "Checks OpenCode instructions, settings and safety hooks through real installation writes."
+    },
+    ".bkit/core/engine/install/modules/opencode.test.ts": {
+      "name": "OpenCode provider drift tests",
+      "description": "Checks that workflow model and credential settings match the installed OpenCode provider."
+    },
+    ".bkit/core/engine/install/modules/v6-fixtures.test.ts": {
+      "name": "Historical fixture integrity tests",
+      "description": "Checks that upgrade samples retain the exact bytes shipped by the referenced release."
+    },
+    ".bkit/core/engine/install/network-allowlist.test.ts": {
+      "name": "Network permission writing tests",
+      "description": "Checks repeatable generation and preview of allowed network destinations."
+    },
+    ".bkit/core/engine/install/payload-links.integration.test.ts": {
+      "name": "Installed source link tests",
+      "description": "Checks that installation links to its packaged sources without replacing real project directories."
+    },
+    ".bkit/core/engine/install/payload-links.test.ts": {
+      "name": "Source link helper tests",
+      "description": "Checks relative source links and the platform fallback when directory links are unavailable."
+    },
+    ".bkit/core/engine/install/placeholders.integration.test.ts": {
+      "name": "Repository token resolution tests",
+      "description": "Checks repository identity replacement against real Git remote addresses."
+    },
+    ".bkit/core/engine/install/placeholders.test.ts": {
+      "name": "Project token replacement tests",
+      "description": "Checks how project names, branches and other installation tokens are resolved."
+    },
+    ".bkit/core/engine/install/template-copies.integration.test.ts": {
+      "name": "Template copying tests",
+      "description": "Checks that starter templates are copied unchanged and updated repeatably."
+    },
+    ".bkit/core/engine/install/template-copies.test.ts": {
+      "name": "Template source lookup tests",
+      "description": "Checks that template copying reads from the correct packaged source location."
+    },
+    ".bkit/core/engine/install/template-notes.test.ts": {
+      "name": "Template note migration tests",
+      "description": "Checks that only exact retired template notes are removed while custom text is preserved."
+    },
+    ".bkit/core/engine/install/version-file.integration.test.ts": {
+      "name": "Saved installation version tests",
+      "description": "Checks version reading and removal of obsolete file hashes after upgrades."
+    },
+    ".bkit/core/engine/install/version-file.test.ts": {
+      "name": "Installation version format tests",
+      "description": "Checks the saved version structure and managed-file tracking fields."
+    },
+    ".bkit/core/engine/install/write.integration.test.ts": {
+      "name": "Settings merge preservation tests",
+      "description": "Checks that managed settings merge without removing the project's own hooks."
+    },
+    ".bkit/core/engine/install/write.test.ts": {
+      "name": "Managed file writer tests",
+      "description": "Checks repeatable file writes, token replacement and preservation of project-owned content."
+    },
+    ".bkit/core/engine/ledgers/clamp-log.test.ts": {
+      "name": "Bounded log record tests",
+      "description": "Checks where shortened-log records are stored and that reading leaves them intact."
+    },
+    ".bkit/core/engine/ledgers/compact.test.ts": {
+      "name": "Record compaction tests",
+      "description": "Checks that shortening record history preserves its current meaning, age and recurrence."
+    },
+    ".bkit/core/engine/ledgers/journal.integration.test.ts": {
+      "name": "Command journal boundary tests",
+      "description": "Checks command journaling against real working copies and filesystem boundaries."
+    },
+    ".bkit/core/engine/ledgers/journal.test.ts": {
+      "name": "Command journal rule tests",
+      "description": "Checks which command outcomes become friction records and how their identity is built."
+    },
+    ".bkit/core/engine/ledgers/migrate.test.ts": {
+      "name": "Record format migration tests",
+      "description": "Checks repeatable conversion of older records while preserving unrecognized content."
+    },
+    ".bkit/core/engine/ledgers/status.test.ts": {
+      "name": "Progress record tests",
+      "description": "Checks valid evidence selections and reconstruction of workflow runs from recorded events."
+    },
+    ".bkit/core/engine/ledgers/telemetry.test.ts": {
+      "name": "Workflow measurement format tests",
+      "description": "Checks validation, normalization and aggregation of workflow measurement records."
+    },
+    ".bkit/core/engine/render/hosts.test.ts": {
+      "name": "Assistant format rendering tests",
+      "description": "Checks assistant-specific instruction fields, model settings and generated file formats."
+    },
+    ".bkit/core/engine/render/models.test.ts": {
+      "name": "Model selection tests",
+      "description": "Checks model lookup, project overrides and reasoning-effort mappings."
+    }
+  }
+}

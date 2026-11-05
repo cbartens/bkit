@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/audits/hooks/antigravity-hook-commands.integration.test.ts": {
+      "name": "Antigravity command checks",
+      "description": "Checks that installed Antigravity hooks run from both supported starting directories."
+    },
+    ".bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts": {
+      "name": "Claude editing advice checks",
+      "description": "Checks that Claude receives the required advice before editing protected project files."
+    },
+    ".bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts": {
+      "name": "Cursor editing advice checks",
+      "description": "Runs Cursor's editing adviser and checks that its shared rules match the other assistants."
+    },
+    ".bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts": {
+      "name": "Repository authoring advice checks",
+      "description": "Checks the editing reminders specific to maintaining bkit's own sources."
+    },
+    ".bkit/core/engine/audits/hooks/gateguard-opencode.test.ts": {
+      "name": "OpenCode editing advice checks",
+      "description": "Checks that OpenCode receives the required advice before project edits."
+    },
+    ".bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts": {
+      "name": "Cross-assistant editing checks",
+      "description": "Applies the same editing-advice cases to every supported assistant."
+    },
+    ".bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts": {
+      "name": "Antigravity safety checks",
+      "description": "Checks Antigravity's handling of destructive commands and attempts to read secret files."
+    },
+    ".bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts": {
+      "name": "Cursor safety checks",
+      "description": "Checks that Cursor's command and secret protections agree with the other assistants."
+    },
+    ".bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts": {
+      "name": "Session-start checks",
+      "description": "Runs session-start scripts and checks their handling of project prerequisites."
+    },
+    ".bkit/core/engine/audits/hooks/readguard-parity.integration.test.ts": {
+      "name": "Cross-assistant reading checks",
+      "description": "Applies the same file-reading advice cases to every supported assistant."
+    },
+    ".bkit/core/engine/audits/hooks/session-rules-advisory.integration.test.ts": {
+      "name": "First-action reminder checks",
+      "description": "Checks that assistants without a session-start event receive one rules reminder on their first action."
+    },
+    ".bkit/core/engine/audits/repo/bats-setup-suite.integration.test.ts": {
+      "name": "Shell test isolation checks",
+      "description": "Checks that shell tests run away from the repository they must not modify."
+    },
+    ".bkit/core/engine/audits/repo/config-keys.test.ts": {
+      "name": "Project settings checks",
+      "description": "Checks the bkit settings declared by this repository's package manifest."
+    },
+    ".bkit/core/engine/audits/repo/dogfood-noop.test.ts": {
+      "name": "Installed copy equality checks",
+      "description": "Checks that this repository's installed copies match the rendered source templates."
+    },
+    ".bkit/core/engine/audits/repo/dogfood-templates.test.ts": {
+      "name": "Adopted template checks",
+      "description": "Checks that bkit uses its own project templates according to the consumer installation contract."
+    },
+    ".bkit/core/engine/audits/repo/json-parse-owner.test.ts": {
+      "name": "JSON error ownership checks",
+      "description": "Checks that failed JSON parsing is handled in the single shared owner."
+    },
+    ".bkit/core/engine/audits/repo/ledger-integrity.test.ts": {
+      "name": "Live record integrity checks",
+      "description": "Checks that the repository's recorded decisions and workflow evidence remain machine-readable."
+    },
+    ".bkit/core/engine/audits/repo/ledger-read-idiom.test.ts": {
+      "name": "Documented record reader checks",
+      "description": "Runs the documented record reader and checks that it selects current entries without changing files."
+    },
+    ".bkit/core/engine/audits/repo/package-json.test.ts": {
+      "name": "Package manifest checks",
+      "description": "Checks the package's required distribution settings and metadata."
+    },
+    ".bkit/core/engine/audits/repo/readme-models.test.ts": {
+      "name": "Published model table checks",
+      "description": "Checks that the product guide's model table agrees with the installed model choices and scores."
+    },
+    ".bkit/core/engine/audits/repo/release-workflow.integration.test.ts": {
+      "name": "Release archive checks",
+      "description": "Builds real package archives and checks the files included for distribution."
+    },
+    ".bkit/core/engine/audits/repo/release-workflow.test.ts": {
+      "name": "Release workflow structure checks",
+      "description": "Checks the required structure of the package publishing workflow."
+    },
+    ".bkit/core/engine/audits/repo/rules-sync.test.ts": {
+      "name": "Shared rule equality checks",
+      "description": "Checks that managed rule blocks stay identical to their source."
+    },
+    ".bkit/core/engine/audits/repo/shipped-docs-refs.test.ts": {
+      "name": "Public documentation checks",
+      "description": "Checks that shipped documentation contains no private internal identifiers."
+    },
+    ".bkit/core/engine/audits/repo/test-file-script.integration.test.ts": {
+      "name": "Single-file runner checks",
+      "description": "Checks that the repository's test and lint commands accept every supported test file kind."
+    },
+    ".bkit/core/engine/audits/repo/version-hashes.test.ts": {
+      "name": "Managed fingerprint checks",
+      "description": "Checks that installation fingerprints record only files owned by bkit."
+    },
+    ".bkit/core/engine/audits/repo/vitest-repo-config-guard.test.ts": {
+      "name": "Repository protection checks",
+      "description": "Checks that tests cannot silently change the repository's Git identity or layout."
+    },
+    ".bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts": {
+      "name": "Test lock execution checks",
+      "description": "Checks test-run coordination using the real shared machine lock."
+    },
+    ".bkit/core/engine/audits/repo/vitest-test-lock.test.ts": {
+      "name": "Test lock decision checks",
+      "description": "Checks when a test run needs the shared machine lock and how it uses its worker budget."
+    },
+    ".bkit/core/engine/audits/repo/vitest-timeout-budget.test.ts": {
+      "name": "Test time allowance checks",
+      "description": "Checks that test time limits scale with machine load and remain capped and connected to each runner."
+    },
+    ".bkit/core/engine/audits/templates/auto-route-marker.integration.test.ts": {
+      "name": "Automatic routing marker checks",
+      "description": "Checks the commit marker that allows eligible post-merge runs through the cloud workflow gate."
+    },
+    ".bkit/core/engine/audits/templates/branding.test.ts": {
+      "name": "Consumer naming checks",
+      "description": "Checks that commands and files presented to consumer projects carry the required bkit naming."
+    },
+    ".bkit/core/engine/audits/templates/ci-scripts.test.ts": {
+      "name": "Automation helper checks",
+      "description": "Checks the helper scripts shipped for project automation."
+    },
+    ".bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts": {
+      "name": "Cloud startup context checks",
+      "description": "Checks cloud workflow credential gates and feature context selection."
+    },
+    ".bkit/core/engine/audits/templates/context-fetch-contexts.test.ts": {
+      "name": "Context menu equality checks",
+      "description": "Checks that documented evidence sources match the sources accepted by the runner."
+    },
+    ".bkit/core/engine/audits/templates/context-github-ci-block.test.ts": {
+      "name": "GitHub evidence checks",
+      "description": "Checks the documented block for collecting GitHub automated-check evidence."
+    },
+    ".bkit/core/engine/audits/templates/context-templates.test.ts": {
+      "name": "Provider evidence template checks",
+      "description": "Checks the provider-specific templates used to collect external evidence."
+    },
+    ".bkit/core/engine/audits/templates/context-vercel-block.test.ts": {
+      "name": "Vercel evidence checks",
+      "description": "Checks the documented block for collecting Vercel evidence."
+    },
+    ".bkit/core/engine/audits/templates/disk-prune-worktrees.integration.test.ts": {
+      "name": "Checkout cleanup execution checks",
+      "description": "Runs the example cleanup step against temporary repositories and extra checkouts."
+    },
+    ".bkit/core/engine/audits/templates/disk-prune.test.ts": {
+      "name": "Disk cleanup template checks",
+      "description": "Checks shipped disk-cleanup examples and the commands that start them."
+    }
+  }
+}

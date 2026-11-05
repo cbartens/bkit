@@ -1,0 +1,28 @@
+{
+  "files": {
+    ".bkit/core/engine/ledgers/clamp-log.ts": {
+      "name": "Trimmed evidence records",
+      "description": "Reads records of shortened evidence so step completion can report what was trimmed."
+    },
+    ".bkit/core/engine/ledgers/compact.ts": {
+      "name": "Record compaction",
+      "description": "Keeps the latest entry for each record key with its first occurrence and update count."
+    },
+    ".bkit/core/engine/ledgers/journal.ts": {
+      "name": "Command activity journal",
+      "description": "Records command dispatches, unexpected failures and pauses for owner decisions."
+    },
+    ".bkit/core/engine/ledgers/migrate.ts": {
+      "name": "Record format upgrades",
+      "description": "Converts older workflow records to the current shared format."
+    },
+    ".bkit/core/engine/ledgers/status.ts": {
+      "name": "Workflow progress format",
+      "description": "Validates progress events and combines them into each workflow run's current state."
+    },
+    ".bkit/core/engine/ledgers/telemetry.ts": {
+      "name": "Workflow measurement format",
+      "description": "Validates, combines and writes the shared records used for measurements and findings."
+    }
+  }
+}

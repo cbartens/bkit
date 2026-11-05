@@ -1,0 +1,28 @@
+{
+  "files": {
+    ".bkit/core/engine/audits/workflows/verdict-vocabulary.test.ts": {
+      "name": "Agent outcome vocabulary checks",
+      "description": "Checks that workflow gates use the outcome values declared by the producing agent."
+    },
+    ".bkit/core/engine/audits/workflows/workflow-archive-snippet.integration.test.ts": {
+      "name": "Workflow archive execution checks",
+      "description": "Runs the closing step that promotes current work and archives superseded artifacts."
+    },
+    ".bkit/core/engine/audits/workflows/workflow-book-paths.test.ts": {
+      "name": "Workflow bookkeeping path checks",
+      "description": "Checks the paths used by workflow bookkeeping shell commands."
+    },
+    ".bkit/core/engine/audits/workflows/workflow-fence-syntax.test.ts": {
+      "name": "Workflow shell syntax checks",
+      "description": "Checks that installed workflow shell blocks parse in both Bash and Zsh."
+    },
+    ".bkit/core/engine/audits/workflows/workflow-lock-snippet.integration.test.ts": {
+      "name": "Feature lock execution checks",
+      "description": "Runs feature resolution and checks that each phase acquires its required lock."
+    },
+    ".bkit/core/engine/audits/workflows/workflow-shape.test.ts": {
+      "name": "Workflow structure checks",
+      "description": "Checks that shipped workflows preserve the structure required by their commands and routing."
+    }
+  }
+}

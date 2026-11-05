@@ -117,6 +117,8 @@ cbartens/bkit (this repo)
 └── package.json            # bin: bkit → dist/cli.js
 ```
 
+The repository-owned `floorplan/` directory holds the versioned architecture walkthrough, its editable descriptions and the generated viewer. Refresh and tracking instructions live in `floorplan/README.md`. It is outside the published npm package.
+
 ## Install Lifecycle (Three Phases)
 
 ```

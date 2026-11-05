@@ -1,0 +1,124 @@
+{
+  "files": {
+    ".bkit/templates/scripts/ci/bkit-check-accepted-divergences.test.mjs": {
+      "name": "Template accepted exception checks",
+      "description": "Checks how the automation helper validates approved differences from expected project settings."
+    },
+    ".bkit/templates/scripts/ci/bkit-check-capstone.test.mjs": {
+      "name": "Template final check result tests",
+      "description": "Checks how the final automation status combines the outcomes of required check lanes."
+    },
+    ".bkit/templates/scripts/ci/bkit-check-dependency-audit.test.mjs": {
+      "name": "Template dependency audit result tests",
+      "description": "Checks how dependency audit findings are matched against accepted advisories."
+    },
+    ".bkit/templates/scripts/ci/bkit-test-awake.test.mjs": {
+      "name": "Template awake test runner checks",
+      "description": "Checks command execution, exit handling and keeping the machine awake during long checks."
+    },
+    ".bkit/templates/scripts/ci/lanes/bkit-resolve-push-base.test.mjs": {
+      "name": "Template push comparison base checks",
+      "description": "Checks selection of the Git revision used to measure changes in a push."
+    },
+    "scripts/ci/bkit-check-capstone.test.mjs": {
+      "name": "Final check result tests",
+      "description": "Checks how the final automation status combines the outcomes of required check lanes."
+    },
+    "scripts/ci/bkit-check-dependency-audit.test.mjs": {
+      "name": "Dependency audit result tests",
+      "description": "Checks how dependency audit findings are matched against accepted advisories."
+    },
+    "scripts/ci/bkit-test-awake.test.mjs": {
+      "name": "Awake test runner checks",
+      "description": "Checks command execution, exit handling and keeping the machine awake during long checks."
+    },
+    "scripts/ci/lanes/bkit-resolve-push-base.test.mjs": {
+      "name": "Push comparison base checks",
+      "description": "Checks selection of the Git revision used to measure changes in a push."
+    },
+    "scripts/harvest/bkit-harvest.test.mjs": {
+      "name": "Workflow evidence collector checks",
+      "description": "Checks collection and reporting of workflow evidence across local project checkouts."
+    },
+    "scripts/harvest/ledgers.integration.test.ts": {
+      "name": "Evidence storage integration checks",
+      "description": "Checks evidence collection across real files and project repositories."
+    },
+    "scripts/harvest/ledgers.test.ts": {
+      "name": "Evidence deduplication checks",
+      "description": "Checks duplicate removal and recovery from an incomplete final evidence record."
+    },
+    "tests/experiments/compression/bkit-compression-opencode-arm.sh": {
+      "name": "Compression experiment selector",
+      "description": "Switches the local OpenCode setup between the compression experiment's comparison arms."
+    },
+    "tests/experiments/compression/bkit-compression-opencode-tokens.py": {
+      "name": "OpenCode usage report",
+      "description": "Totals model usage and cost for an OpenCode session and its child sessions."
+    },
+    "tests/experiments/compression/bkit-compression-probe.py": {
+      "name": "Live compression comparison",
+      "description": "Sends the same real tool output in three forms and compares model input usage."
+    },
+    "tests/experiments/compression/bkit-compression-replay.py": {
+      "name": "Offline compression replay",
+      "description": "Replays captured tool outputs through Caveman and Headroom for comparison."
+    },
+    "tests/experiments/compression/bkit-compression-rtk-replay.py": {
+      "name": "RTK compression comparison",
+      "description": "Measures RTK's Claude Code output compression against the same captured samples."
+    },
+    "tests/experiments/compression/bkit-compression-summary.py": {
+      "name": "Compression results summary",
+      "description": "Summarizes the savings measured by the offline compression replay."
+    },
+    "tests/experiments/compression/bkit-compression-usage.py": {
+      "name": "Claude tool output costs",
+      "description": "Attributes Claude Code model input cost to tool outputs using session transcripts."
+    },
+    "tests/experiments/hooks/bkit-hook-probe.mjs": {
+      "name": "Assistant behavior probe",
+      "description": "Creates isolated assistant experiments and records selected event metadata without raw commands or secret settings."
+    },
+    "tests/experiments/hooks/bkit-hook-probe.test.mjs": {
+      "name": "Assistant probe checks",
+      "description": "Checks isolated probe setup, event recording and reporting across supported assistants."
+    },
+    "tests/shell/setup_suite.bash": {
+      "name": "Shell suite isolation",
+      "description": "Prepares isolated shell test execution and cleanup around each Bats run."
+    },
+    "vitest.config.ts": {
+      "name": "Shared test configuration",
+      "description": "Configures test discovery, shared setup, reporting and machine resource limits."
+    },
+    "vitest.gate-fixture.ts": {
+      "name": "Offline project gate fixture",
+      "description": "Provides a minimal consumer project that runs real check scripts with an offline package-manager boundary."
+    },
+    "vitest.repo-config-guard.ts": {
+      "name": "Repository settings protection",
+      "description": "Detects tests that change the working repository's Git identity or layout settings."
+    },
+    "vitest.setup.ts": {
+      "name": "Test process preparation",
+      "description": "Prepares each test process and protects the working repository from inherited Git settings."
+    },
+    "vitest.test-lock.ts": {
+      "name": "Shared test run lock",
+      "description": "Coordinates test runs through one machine-wide lock and applies the available worker budget."
+    },
+    "vitest.timeout-budget.ts": {
+      "name": "Load-aware test time limits",
+      "description": "Scales test and setup time allowances to current machine load within a fixed cap."
+    },
+    "vitest.tsx-bin.ts": {
+      "name": "TypeScript test launcher lookup",
+      "description": "Finds the TypeScript launcher used by tests that execute the bkit command-line tool."
+    },
+    "vitest.unit.config.ts": {
+      "name": "Unit coverage configuration",
+      "description": "Adds the required branch-coverage floor to the shared unit test configuration."
+    }
+  }
+}
