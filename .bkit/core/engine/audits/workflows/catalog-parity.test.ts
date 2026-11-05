@@ -8,7 +8,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { getBkitDocsRoot, getPromptsRoot, getWorkflowsRoot } from "../../shared/package-roots";
 import { applyCodexSkill } from "../../install/modules/codex";
 import { applyAntigravitySkill, applyOpencodeCommand, applyT1, applyT2 } from "../../render/hosts";
@@ -57,29 +57,44 @@ describe("catalog parity — prompts", () => {
   });
 });
 
-function renderedReportingWorkflows() {
-  return WORKFLOW_NAMES.flatMap((name) => {
-    const source = fs.readFileSync(path.join(getWorkflowsRoot(), `${name}.md`), "utf8");
-    return (["github", "linear", "jira", "none"] as const).flatMap((tracker) => {
-      const resolved = substituteWorkflow(source, tracker);
-      expect(resolved.orphans, `${name}/${tracker}`).toEqual([]);
-      return [
-        { host: "claude", body: resolved.output },
-        { host: "cursor", body: applyT2(applyT1(resolved.output)) },
-        { host: "codex", body: applyCodexSkill(source, name, tracker) },
-        { host: "antigravity", body: applyAntigravitySkill(resolved.output, name) },
-        { host: "opencode", body: applyOpencodeCommand(resolved.output) },
-      ].map((rendered) => ({
-        ...rendered,
-        name,
-        tracker,
-        label: `${name}/${tracker}/${rendered.host}`,
-      }));
-    });
-  });
+interface ReportingWorkflow {
+  readonly host: string;
+  readonly body: string;
+  readonly name: string;
+  readonly tracker: "github" | "linear" | "jira" | "none";
+  readonly label: string;
 }
 
-type ReportingWorkflow = ReturnType<typeof renderedReportingWorkflows>[number];
+let reportingWorkflowCache: readonly ReportingWorkflow[] | undefined;
+
+function renderedReportingWorkflows(): readonly ReportingWorkflow[] {
+  if (reportingWorkflowCache) return reportingWorkflowCache;
+  reportingWorkflowCache = Object.freeze(
+    WORKFLOW_NAMES.flatMap((name) => {
+      const source = fs.readFileSync(path.join(getWorkflowsRoot(), `${name}.md`), "utf8");
+      return (["github", "linear", "jira", "none"] as const).flatMap((tracker) => {
+        const resolved = substituteWorkflow(source, tracker);
+        expect(resolved.orphans, `${name}/${tracker}`).toEqual([]);
+        return [
+          { host: "claude", body: resolved.output },
+          { host: "cursor", body: applyT2(applyT1(resolved.output)) },
+          { host: "codex", body: applyCodexSkill(source, name, tracker) },
+          { host: "antigravity", body: applyAntigravitySkill(resolved.output, name) },
+          { host: "opencode", body: applyOpencodeCommand(resolved.output) },
+        ].map((rendered) =>
+          Object.freeze({
+            ...rendered,
+            name,
+            tracker,
+            label: `${name}/${tracker}/${rendered.host}`,
+          }),
+        );
+      });
+    }),
+  );
+  return reportingWorkflowCache;
+}
+
 const isWired = (workflow: ReportingWorkflow) => workflow.tracker !== "none";
 const isUnwired = (workflow: ReportingWorkflow) => workflow.tracker === "none";
 const isAuto = (workflow: ReportingWorkflow) => workflow.name === "bkit-auto";
@@ -106,6 +121,18 @@ function commentGates(body: string): string[] {
 }
 
 describe("rendered workflow comment contracts", () => {
+  beforeAll(() => {
+    renderedReportingWorkflows();
+  });
+
+  it("reuses the complete immutable rendered workflow matrix", () => {
+    const rendered = renderedReportingWorkflows();
+    expect(rendered).toHaveLength(6 * 4 * 5);
+    expect(renderedReportingWorkflows()).toBe(rendered);
+    expect(Object.isFrozen(rendered)).toBe(true);
+    expect(rendered.every(Object.isFrozen)).toBe(true);
+  });
+
   it("renders explicit invocation association at fileless and lifecycle posting sites", () => {
     const rendered = renderedReportingWorkflows();
     expect(rendered).toHaveLength(6 * 4 * 5);
