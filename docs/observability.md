@@ -129,12 +129,14 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 14 | Green run exists, but at a SUPERSEDED SHA (needs `--branch`) | refuse → Step 9 (re-validate at new head) |
 | 15 | Selected run concluded `cancelled` | refuse |
 | 16 | A lane named in `bkit.testing.ciRequired` concluded `skipped` | refuse |
-| 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 9 (re-validate at head) |
+| 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 3 (reconcile and refresh feature coverage) |
 | 19 | Fresh `dev` is not an ancestor of the validated code head | refuse → Step 4 (integrate and revalidate) |
 | 20 | API error / rate limit / auth, or missing/mismatched fresh-base evidence | refuse |
 | 80 | `gh` not on PATH | do it via the MCP fallback |
 
 The refusal itself is signalled by the process exit code; every refusal ends with the `required head:` block. Canonical grep patterns:
+
+Ship's `runs revalidate --require-reconciled` returns 21 when newly observed feature code needs reconciliation. It emits `reconcileRequired: true` with no validated head and records one `ship-gate-refusal` row before any CI probe or dispatch. The bounded retry returns to Step 3, including inherited-dev checks and sweep/docs coverage. Bookkeeping-only descendants retain the covered head.
 
 - `[bkit-runs] capstone %s=success at head %s (run %s, %s)` — green at the checked head.
 - `[bkit-runs] head %s = validated %s + bookkeeping only — checking CI at the validated sha` — `--validated` carry-forward applied.

@@ -599,9 +599,25 @@ Read the latest successful `ship-feature-coverage` row for `step=ship-update-doc
 **If** `RECONCILE_REQUIRED` = true → clear it → Step 3 before validation. A previous `DONE` row alone never proves coverage of imported feature code.
 
 1. Resolve the head CI must pass at. The block re-validates when the code moved **or** `REVALIDATE_REASON` = `gate-refusal`: it probes for a run at it first, dispatches only when none, and waits for it to complete. Drop `--reason` when `REVALIDATE_REASON` is empty:
+
    ```bash
-   "{BKIT}" runs revalidate --pr="{PR_NUMBER}" --entry-head="{ENTRY_HEAD}" --code-head="{CODE_HEAD}" --branch="{SHIP_BRANCH}" --month="{YYYYMM}" --fid="{FID}" --file="{STATUS}" --reason="{REVALIDATE_REASON}" --repo="{OWNER_REPO}"
+   "{BKIT}" runs revalidate --pr="{PR_NUMBER}" --require-reconciled --entry-head="{ENTRY_HEAD}" --code-head="{CODE_HEAD}" --branch="{SHIP_BRANCH}" --month="{YYYYMM}" --fid="{FID}" --file="{STATUS}" --reason="{REVALIDATE_REASON}" --repo="{OWNER_REPO}"
    ```
+
+   Hold `reconcileRequired` as `RECONCILE_REQUIRED`.
+   Route:
+   - **If** exit 21 → set `RECONCILE_REQUIRED` = true → route the recorded failed arrival to reconciliation:
+     ```bash
+     "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-3 --exceeded=failure-path
+     ```
+     Hold `value` as `MERGE_ROUNDS`, `max` as `MERGE_MAX` and `ask` as `MERGE_ASK`.
+     - **If** exit 0 → Step 3.
+     - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 3 → **Merge Question**.
+     - **Else** → **Failure Path**.
+   - **If** exit 0 → continue with the next instruction.
+   - **If** exit 81 → end turn, re-run this block.
+   - **Else** → **Failure Path**.
+
    Hold `validatedHead` as `VALIDATED_HEAD`.
 
 ### 🔒 Gate 9 — Re-validate
@@ -621,7 +637,7 @@ Read the latest successful `ship-feature-coverage` row for `step=ship-update-doc
    ```bash
    "{BKIT}" runs gate --pr="{PR_NUMBER}" --validated="{VALIDATED_HEAD}" --month="{YYYYMM}" --fid="{FID}" --repo="{OWNER_REPO}" --branch="{SHIP_BRANCH}" --fetch --fresh-base --file="{STATUS}" --snapshot="{OUTBOX}/pre-merge-snapshot.jsonl" --record="{STATUS}"
    ```
-   **If** exit 80 **or** `runtimeGithubCli` = false → use narrowly scoped MCP PR/Actions reads and compare `dev` against `VALIDATED_HEAD`. The engine must establish `base.ref` = `dev`; a mismatch takes the **Failure Path**. Write `{ ownerRepo, prNumber, headRefName, baseRefName: "dev", pr, ci: { workflowRuns, jobs }, base: { ref: "dev", sha, comparedHead, status } }` to `{OUTBOX}/ship-gate-facts.json`. `workflowRuns` and `jobs` use the Actions API payloads, and `base.sha` is the freshly read dev commit used by the compare API. Independently reread the PR and base before accepting the facts, and record the single transport transition under **gh MCP fallback**. Missing, unavailable or mismatched evidence → **Failure Path** before mutation. Return the facts to the same gate:
+   **If** exit 80 **or** `runtimeGithubCli` = false → use narrowly scoped MCP PR/Actions reads and compare `dev` against `VALIDATED_HEAD`. The engine must establish `base.ref` = `dev`; a mismatch takes the **Failure Path**. Write `{ ownerRepo, prNumber, headRefName, baseRefName: "dev", pr, ci: { workflowRuns, jobs }, base: { ref: "dev", sha, comparedHead, status } }` to `{OUTBOX}/ship-gate-facts.json`. `workflowRuns` and `jobs` use the Actions API payloads, and `base.sha` is the freshly read dev commit used by the compare API. Each run must carry its positive integer `id`, `repository.full_name`, `head_repository.full_name`, configured workflow `path` (or matching numeric `workflow_id`), `head_sha`, `head_branch` and repository-scoped `html_url`. Both repositories must match `ownerRepo`; the head must match `VALIDATED_HEAD` and `headRefName`. Each job must carry `run_id`, `run_url` and `head_sha` matching its selected run and repository. Retain every jobs page in the paginated array. Independently reread the PR and base before accepting the facts, and record the single transport transition under **gh MCP fallback**. Missing, unavailable or mismatched evidence → **Failure Path** before mutation. Return the facts to the same gate:
    ```bash
    "{BKIT}" runs gate --pr="{PR_NUMBER}" --validated="{VALIDATED_HEAD}" --month="{YYYYMM}" --fid="{FID}" --repo="{OWNER_REPO}" --branch="{SHIP_BRANCH}" --fresh-base --facts-file="{OUTBOX}/ship-gate-facts.json" --file="{STATUS}" --snapshot="{OUTBOX}/pre-merge-snapshot.jsonl" --record="{STATUS}"
    ```
@@ -635,7 +651,15 @@ Read the latest successful `ship-feature-coverage` row for `step=ship-update-doc
      - **If** exit 0 → Step 3.
      - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 3 → **Merge Question**.
      - **Else** → **Failure Path**, preserving the branch and worktree on exhaustion.
-   - **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+   - **If** exit 17 (non-bookkeeping change past `VALIDATED_HEAD`) → set `RECONCILE_REQUIRED` = true → route the recorded failed arrival to reconciliation:
+     ```bash
+     "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-3 --exceeded=failure-path
+     ```
+     Hold `value` as `MERGE_ROUNDS`, `max` as `MERGE_MAX` and `ask` as `MERGE_ASK`.
+     - **If** exit 0 → Step 3.
+     - **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 3 → **Merge Question**.
+     - **Else** → **Failure Path**.
+   - **If** exit 11 (in progress — poll), 14 (stale green) **or** 10 (no run) → route on the failed arrivals at Step 10, without asking:
      ```bash
      "{BKIT}" counters route --name=MERGE_ATTEMPT --of=ship-merge-pr:count --rows=ship-gate-refusal:count --file="{STATUS}" --workflow=ship --point=ship.merge --continue=step-9 --exceeded=failure-path
      ```

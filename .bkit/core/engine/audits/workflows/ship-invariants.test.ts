@@ -755,15 +755,14 @@ describe("bkit-ship.md — build-challenge remediation regressions", () => {
 
   // Finding 5 (MEDIUM): gate code 11 (in progress — poll) must route to the poll
   // step alongside the other poll-able codes, not fall through to Failure Path.
-  it("F5: gate code 11 (poll) routes to Step 9 alongside codes 10, 14 and 17", () => {
+  it("F5: gate code 11 (poll) routes to Step 9 alongside codes 10 and 14", () => {
     const lines = readShip().split("\n");
     const idx = lines.findIndex((l) => /\bexit 11\b/.test(l));
     expect(idx, "code 11 must have a routing lead-in").toBeGreaterThan(-1);
     expect(lines[idx]).toMatch(/\b14\b/);
     expect(lines[idx]).toMatch(/\b10\b/);
-    expect(lines[idx]).toMatch(/\b17\b/);
     const block = lines.slice(idx, idx + 12).join("\n");
-    expect(block, "codes 10/11/14/17 must route to Step 9, not Failure Path").toMatch(
+    expect(block, "codes 10/11/14 must route to Step 9, not Failure Path").toMatch(
       /"\{BKIT\}" counters route --name=MERGE_ATTEMPT .*--continue=step-9 /,
     );
   });

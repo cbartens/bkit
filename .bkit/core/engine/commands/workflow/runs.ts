@@ -2024,20 +2024,61 @@ function runGate(ctx: RunContext): number {
           if (args[0] === "repo" && args[1] === "view")
             return { ok: true, stdout: repo, stderr: "", missing: false };
           const workflow = readBkitConfig(checkoutRoot(ctx.cwd)).ciWorkflow;
+          const scopedRuns = arr(obj(ci.workflowRuns).workflow_runs).map(obj);
+          const workflowPath = workflow.startsWith(".github/workflows/")
+            ? workflow
+            : `.github/workflows/${workflow}`;
+          const validRun = (run: Record<string, unknown>) =>
+            Number.isSafeInteger(run.id) &&
+            Number(run.id) > 0 &&
+            text(obj(run.repository).full_name).toLowerCase() === repo.toLowerCase() &&
+            text(obj(run.head_repository).full_name).toLowerCase() === repo.toLowerCase() &&
+            (text(run.path) === workflowPath ||
+              (/^[1-9][0-9]*$/.test(workflow) && String(run.workflow_id) === workflow)) &&
+            run.head_sha === (str(f.validated) ?? obj(facts.pr).headRefOid) &&
+            run.head_branch === facts.headRefName &&
+            run.html_url === `https://github.com/${repo}/actions/runs/${run.id}`;
+          const invalidEvidence = (): GhResult => ({
+            ok: false,
+            stdout: "",
+            stderr: "scoped gate CI provenance is missing or mismatched",
+            missing: false,
+          });
           if (
             args[0] === "api" &&
             endpoint.startsWith(`repos/${repo}/actions/workflows/${workflow}/runs?`)
-          )
-            return reply(ci.workflowRuns);
-          const jobMatch = new RegExp(`^repos/${repo}/actions/runs/([0-9]+)/jobs$`).exec(endpoint);
-          if (
-            args[0] === "api" &&
-            jobMatch &&
-            arr(obj(ci.workflowRuns).workflow_runs).some(
-              (run) => String(obj(run).id) === jobMatch[1],
+          ) {
+            if (
+              !Array.isArray(obj(ci.workflowRuns).workflow_runs) ||
+              scopedRuns.some((run) => !validRun(run))
             )
-          )
+              return invalidEvidence();
+            return reply(ci.workflowRuns);
+          }
+          const jobMatch = new RegExp(`^repos/${repo}/actions/runs/([0-9]+)/jobs$`).exec(endpoint);
+          if (args[0] === "api" && jobMatch) {
+            const run = scopedRuns.find((candidate) => String(candidate.id) === jobMatch[1]);
+            const pages = Array.isArray(ci.jobs) ? ci.jobs : [ci.jobs];
+            if (
+              !run ||
+              !validRun(run) ||
+              pages.length === 0 ||
+              pages.some(
+                (page) =>
+                  !Array.isArray(obj(page).jobs) ||
+                  arr(obj(page).jobs).some((value) => {
+                    const job = obj(value);
+                    return (
+                      job.run_id !== run.id ||
+                      job.head_sha !== run.head_sha ||
+                      job.run_url !== `https://api.github.com/repos/${repo}/actions/runs/${run.id}`
+                    );
+                  }),
+              )
+            )
+              return invalidEvidence();
             return reply(ci.jobs);
+          }
           return {
             ok: false,
             stdout: "",
@@ -2353,6 +2394,7 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   // CI must pass at the code head while the PR head adds bookkeeping only and dev
   // demands no status checks; otherwise at the PR head.
   let validated = codeHead;
+  let reconcileRequired = current !== codeHead;
   if (foreign) {
     // The bookkeeping diff reads the checkout's git, which is not the named repo's history.
     ctx.log(
@@ -2366,7 +2408,22 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
       from: codeHead,
       to: current,
     });
+    reconcileRequired = !book.ok;
     if (!book.ok) validated = current;
+  }
+  if (f.requireReconciled === true && reconcileRequired) {
+    auditRow(status, "ship-gate-refusal", { exitCode: 21, head: current });
+    ctx.log(`feature code changed at ${current} — reconcile before CI validation`);
+    ctx.emit({
+      reconcileRequired: true,
+      validatedHead: null,
+      currentHead: current,
+      revalidated: false,
+      probe: null,
+      dispatched: false,
+      wait: null,
+    });
+    return 21;
   }
   const repo = repoFlag ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
   if (repo !== undefined && devRequiresChecks(d.gh, repo)) {
@@ -2375,6 +2432,7 @@ async function runRevalidate(ctx: RunContext): Promise<number> {
   }
 
   const out: Record<string, unknown> = {
+    ...(f.requireReconciled === true ? { reconcileRequired: false } : {}),
     validatedHead: validated,
     currentHead: current,
     revalidated: false,
@@ -2950,6 +3008,11 @@ export const runsCommand: CommandSpec = {
         "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
       use: "workflow",
       flags: [
+        {
+          name: "require-reconciled",
+          type: "boolean",
+          help: "refuse newly observed feature code before CI validation",
+        },
         { name: "pr", type: "string", required: true, help: "the PR number" },
         { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
         {
@@ -2986,13 +3049,18 @@ export const runsCommand: CommandSpec = {
       ],
       output: {
         validatedHead: "the head CI was (or must be) checked at",
+        reconcileRequired:
+          "with --require-reconciled, whether new feature code needs reconciliation",
         currentHead: "the PR head now",
         revalidated: "a probe / wait ran (the head moved, or a gate refusal re-entered)",
         probe: "the presence probe's wait result, or null",
         dispatched: "the probe found no run and dispatched one",
         wait: "the completion wait's result, or null",
       },
-      exitCodes: { [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed" },
+      exitCodes: {
+        [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed",
+        21: "--require-reconciled: new feature code needs reconciliation",
+      },
       run: runRevalidate,
     },
     mirror: {
