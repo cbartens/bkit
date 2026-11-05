@@ -174,6 +174,23 @@
       "hosts": ["api.linear.app", "mcp.linear.app", "mcp.atlassian.com"]
     }
   ],
+  "annotations": [
+    {
+      "path": ".bkit/core/engine/commands/workflow/worktrees.ts",
+      "note": "Not a problem — large-file advisory reviewed on 2026-11-05. Creation, resumption, environment preparation and removal form one coherent checkout lifecycle. Keep this file together; reconsider extracting environment preparation if it gains another caller or grows substantially. This is a structural assessment, not a correctness audit.",
+      "tags": ["reviewed"]
+    },
+    {
+      "path": ".bkit/core/engine/commands/workflow/prs.ts",
+      "note": "Not a problem — large-file advisory reviewed on 2026-11-05. Probing, opening, updating, checking and merging pull requests form a coherent interface. Length alone does not justify splitting it. Transport auditing could move later if independently justified. This is a structural assessment, not a correctness audit.",
+      "tags": ["reviewed"]
+    },
+    {
+      "path": ".bkit/core/engine/commands/workflow/fids.ts",
+      "note": "Not a problem — large-file advisory reviewed on 2026-11-05. Parsing, validating, minting and recovering feature identities belong together. Tracker-specific matching is part of that responsibility, and command definitions contribute substantial length. No split is recommended. This is a structural assessment, not a correctness audit.",
+      "tags": ["reviewed"]
+    }
+  ],
   "edges": [
     {
       "from": "engine.install",
