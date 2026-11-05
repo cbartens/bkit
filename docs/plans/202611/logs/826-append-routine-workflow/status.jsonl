@@ -331,3 +331,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:14:37Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6652109957","at":"2026-11-05T07:14:37Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-05T07:14:38Z","parentSha":"afcac9878199f5554237b7f925fb271a6401055f","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:14:39Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:15:00Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:15:00Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:15:00Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-05T07:15:00Z","parentSha":"7bee5fa9cf96f615a5897a93c8d7b2fbbeb984d7","artifacts":[],"group":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:15:00Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:33:06Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-tests/3/1/comment","hash":"98b4b52679e01a78521987750b5a92e0ebae2f8d598cf551c36aba43b978cac1","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6652412290","at":"2026-11-05T07:33:07Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-05T07:33:07Z","parentSha":"7bee5fa9cf96f615a5897a93c8d7b2fbbeb984d7","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-tests-3-log.md"],"verdict":"PASS","attempt":1,"group":3}

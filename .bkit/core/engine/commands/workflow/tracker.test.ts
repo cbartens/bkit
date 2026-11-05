@@ -8,6 +8,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { actionHash, alreadyDone, recordAction } from "../../ledgers/status";
+import { validate } from "../../ledgers/telemetry";
 import {
   JIRA_COMMENT_LIMIT,
   JIRA_TOOLS,
@@ -345,6 +346,136 @@ function breakReceiptAfterCreate(f: ReturnType<typeof publicationFixture>) {
     }),
   );
 }
+
+function commentFriction(cwd: string): Array<Record<string, unknown>> {
+  const ledger = path.join(cwd, ".bkit/friction.jsonl");
+  expect(fs.existsSync(ledger), "comment fault must attempt a real friction row").toBe(true);
+  return fs
+    .readFileSync(ledger, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+async function stateFriction(boundary: "cache" | "receipt" | "lock" | "reconciliation") {
+  const f = publicationFixture();
+  await f.publish("first");
+  if (boundary === "cache") {
+    const cache = progressFiles(f.cwd).find((file) =>
+      file.includes(`${path.sep}progress${path.sep}`),
+    );
+    if (!cache) throw new Error("expected the initial publication to save progress source");
+    fs.writeFileSync(cache, "invalid source");
+  } else if (boundary === "receipt") {
+    breakReceiptAfterCreate(f);
+    f.state.failReads = 10;
+  } else if (boundary === "lock") {
+    const locks = path.join(f.cwd, ".git/bkit-outbox/publication-locks");
+    fs.rmSync(locks, { recursive: true, force: true });
+    fs.writeFileSync(locks, "unavailable lock directory");
+  } else {
+    f.state.failEdits = 10;
+    const fetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const result = await fetch(input, init);
+        const request: { query: string } = JSON.parse(String(init?.body));
+        if (request.query.includes("commentUpdate")) f.state.failReads = 10;
+        return result;
+      }),
+    );
+  }
+  await expect(f.publish(`fault ${boundary}`)).resolves.toHaveProperty("done");
+  return commentFriction(f.cwd);
+}
+
+describe("best effort comment friction", () => {
+  it("records redacted exhausted comment friction with authorized fields", async () => {
+    const f = publicationFixture();
+    f.state.failCreates = 10;
+    const privateBody = "private person@example.invalid Bearer body-secret";
+    const result = await f.publish(privateBody);
+    expect(result).toMatchObject({ done: false, action: "comment" });
+    const entries = commentFriction(f.cwd);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const entry of entries) {
+      expect(validate(entry)).toEqual({ ok: true });
+      expect(entry).toMatchObject({
+        kind: "friction",
+        source: "orchestrator",
+        by: { workflow: "build" },
+      });
+      expect(entry.key).toEqual(expect.any(String));
+    }
+    const bytes = fs.readFileSync(path.join(f.cwd, ".bkit/friction.jsonl"), "utf8");
+    for (const privateValue of [
+      privateBody,
+      "person@example.invalid",
+      "body-secret",
+      "linear-test-secret",
+    ])
+      expect(bytes).not.toContain(privateValue);
+    expect(bytes).toContain("comment");
+  });
+
+  it("continues after friction and diagnostic writes fail without recursion", async () => {
+    const f = publicationFixture();
+    fs.mkdirSync(path.join(f.cwd, ".bkit/friction.jsonl"), { recursive: true });
+    f.state.failCreates = 10;
+    const warning = vi.fn((_line: string) => {
+      throw new Error("diagnostic unavailable");
+    });
+    await expect(
+      postCommentOnce(f.target, f.report("undeliverable"), {
+        ...f.options("undeliverable"),
+        log: warning,
+      }),
+    ).resolves.toMatchObject({ done: false });
+    expect(warning.mock.calls.length).toBeGreaterThan(0);
+    expect(warning.mock.calls.length).toBeLessThanOrEqual(3);
+    expect(warning.mock.calls.flat().join("\n")).toContain("friction");
+    expect(
+      f.state.requests.filter((request) => request.operation === "create").length,
+    ).toBeLessThanOrEqual(3);
+    expect(fs.statSync(path.join(f.cwd, ".bkit/friction.jsonl")).isDirectory()).toBe(true);
+    f.state.failCreates = 0;
+    await expect(f.publish("next substantive report")).resolves.toMatchObject({ done: true });
+    expect(f.state.comments.at(-1)?.body).toContain("next substantive report");
+  });
+
+  it("distinguishes fallback attempts from known delivery and lost reports", async () => {
+    const f = publicationFixture();
+    await f.publish("first");
+    f.state.failEdits = 10;
+    const fallback = await f.publish("fallback");
+    expect(fallback).toMatchObject({ done: true, url: f.state.comments.at(-1)?.url });
+    expect(f.state.comments).toHaveLength(2);
+    expect(f.state.requests.some((request) => request.operation === "edit")).toBe(true);
+    const count = f.state.requests.length;
+    await expect(f.publish("fallback")).resolves.toMatchObject({ done: true, deduped: true });
+    expect(f.state.requests).toHaveLength(count);
+    f.state.failCreates = 10;
+    f.state.failReads = 10;
+    const lost = await f.publish("lost");
+    expect(lost).toMatchObject({ done: false, action: "comment", reason: expect.any(String) });
+    expect(lost).not.toHaveProperty("url");
+    expect(f.state.comments.some((comment) => comment.body.includes("lost"))).toBe(false);
+    expect(commentFriction(f.cwd).length).toBeGreaterThan(0);
+  });
+
+  it("logs cache receipt lock and reconciliation problems with stable recurrence identity", async () => {
+    for (const boundary of ["cache", "receipt", "lock", "reconciliation"] as const) {
+      const first = await stateFriction(boundary);
+      const repeated = await stateFriction(boundary);
+      expect(first.length).toBeGreaterThan(0);
+      expect(repeated.length).toBeGreaterThan(0);
+      expect(first.every((entry) => validate(entry).ok)).toBe(true);
+      expect(repeated.every((entry) => validate(entry).ok)).toBe(true);
+      expect(repeated.map((entry) => entry.key)).toEqual(first.map((entry) => entry.key));
+    }
+  });
+});
 
 describe("routine publication policy", () => {
   it("creates then appends routine sections under explicit invocation ownership", async () => {
