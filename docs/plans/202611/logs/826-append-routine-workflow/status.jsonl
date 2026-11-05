@@ -297,3 +297,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:01:10Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:02:43Z","noun":"tests","verb":"changed","flags":["fallback"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-03T03:12:58Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:00:58Z","noun":"locks","verb":"acquire","flags":["kind","workflow","fid"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:24Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:39Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:43Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
