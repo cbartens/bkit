@@ -105,6 +105,7 @@ The first five rows retain the design's Key Edge Cases word for word.
 | Partial multipart delivery and missing receipts permit loss/duplicates without blocking; known acknowledged delivery stays successful. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | A postflight intervening comment preserves success/URL and invalidates future append eligibility under the accepted race boundary. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | Global network/page/attempt limits include a real slow GitHub child, reserve fallback opportunity and release an owned lock best effort. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
+| reserves new comment opportunity within total delivery budget | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 12 |
 | Shared runGh/runTool optional deadlines terminate a real slow child and classify timeout without changing callers that omit the option. | Unit | `.bkit/core/engine/commands/lib.test.ts` | 6 |
 | Independent attention delivery proceeds after routine uncertainty without a pending-operation gate. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | Explicit startup/run association, separate auto/phase ownership and missing state across cleanup/fresh clone safely create fresh progress. | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 7 |
@@ -548,6 +549,18 @@ The groups below are one implementation sequence. Each task lands its own tests 
     - `.bkit/core/engine/audits/workflows/catalog-parity.test.ts` `renders nonfatal comment fallback friction and attempted delivery gates` fails on any host/tracker workflow routing comment/MCP/logging failure to Failure Path, requiring successful delivery or waiting for comment-state recovery; preserve substantive error handling.
 
 <!-- bkit:task 9 end -->
+
+<!-- bkit:task 12 start -->
+
+- [ ] **TASK 12:** Repair the real slow-child fixture under the owner's recorded authorization.
+  - **READ:** `docs/plans/202611/logs/826-append-routine-workflow/build-decision-3-1.md`: controlling owner decision.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: use the existing stable dispatcher or explicit interpreter for the real child fixture, establish successful priming before the slow delivery, and observe actual transport attempts reliably.
+  - **DEPENDS ON:** 8, 9
+  - **DONE WHEN:** The existing budget test passes under the unit gate, its priming precondition is proven, and every original POST, count, cleanup, nonfatal and latency assertion remains intact. Both 200ms budgets stay unchanged. The tests step owns the authorized fixture repair; the code step reviews the resulting evidence without editing the frozen test. No production deadline, gate, timeout or configuration is weakened.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.test.ts` `reserves new comment opportunity within total delivery budget` fails on a fresh executable failing to establish priming state or record actual POST attempts before the existing 200ms deadline; this is an existing-test fixture update, with unchanged assertions reviewed against the group start commit.
+
+<!-- bkit:task 12 end -->
 
 <!-- bkit:group 3 end -->
 
