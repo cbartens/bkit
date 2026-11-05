@@ -271,7 +271,10 @@ function gitCalls(): string[] {
 }
 
 function isPushCall(call: string): boolean {
-  return /(?:^| )push(?: |$)/.test(call);
+  for (const argument of call.split(" ")) {
+    if (argument === "push") return true;
+  }
+  return false;
 }
 
 beforeEach(() => {
