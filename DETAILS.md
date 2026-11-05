@@ -151,6 +151,8 @@ Every agent in each phase, in the order it runs and what it checks: [pipeline re
   </picture>
 </p>
 
+New to how AI models produce answers? [This 21-slide primer](.github/assets/bkit-how-ai-llms-produce-answers.pdf) shows why an answer is only as good as the model's input, and why bkit gives every agent rich input and checks what it produces.
+
 **Most AI development frameworks are prompts:** they describe good work and trust the agent to deliver it. But an agent can be talked into calling something done, and a prompt can't stop it. **bkit builds fences instead.** Reviewer agents that didn't write the work fence in the design and the plan. They never see each other's verdicts, and several review groups mix models on purpose, so one model's blind spot is less likely to get past all of them. From the first line of code, automated checks join them, and those can't be argued with. **The fences are code, not instructions:** `bkit` won't let a step finish without its verdict and files, won't pass a task whose test it didn't see fail first, and stops a fix that didn't work after one round.
 
 <a id="agents-and-ci"></a>
@@ -549,6 +551,9 @@ Yes. `bkit uninstall` removes bkit's managed files and blocks while preserving y
 bkit is free. Your AI subscription or provider pays for the agents; multiple reviewers use more quota than one chat. See [model choices](#models), [how bkit reduces token costs](#token-costs) and [our measurements and their limits](#measurements).
 
 bkit is open source under the MIT licence, commercial use included. It runs on AI subscriptions you already have (Claude, Codex through ChatGPT, Antigravity, Cursor), on Antigravity's free tier, or with your own key on pay-as-you-go providers through OpenCode (OpenRouter, Ollama or the OpenCode gateways).
+
+**Isn't a good model enough?**
+No. A model writes each answer by predicting the next word from what it was given, and it doesn't check its own work, so a fluent answer can still be wrong. bkit gives every agent your project's rules, docs and past decisions, then checks the result with reviewers, tests and CI. The [21-slide primer](.github/assets/bkit-how-ai-llms-produce-answers.pdf) explains it step by step.
 
 **How long does a feature take?**
 No full run, from design to merge, has taken longer than a day. Each run posts its own time to the issue, next to the median of your last five runs, so you can see how yours compare.
