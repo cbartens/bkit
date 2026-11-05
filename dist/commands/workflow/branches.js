@@ -31,7 +31,7 @@ import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName, testSource } from "./test-blocks.js";
-import { addAllButCopied, copyExcludes, hasLeftovers, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
+import { addAllButCopied, assertShipEligible, copyExcludes, hasLeftovers, notOnDev, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, scriptCommand, } from "../../shared/package-manager.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { str } from "./status.js";
@@ -1913,7 +1913,7 @@ function recordMerge(statusFile, before, after) {
         ref: after,
     });
 }
-function reconcileFeature(ctx, top, branch) {
+function reconcileFeature(ctx, top, branch, observed) {
     if (branch === "" || isSharedBranch(branch)) {
         throw new CommandError(EXIT.USAGE, "feature reconciliation needs a checked-out feature branch");
     }
@@ -1934,7 +1934,20 @@ function reconcileFeature(ctx, top, branch) {
             ctx.log(`git fetch ${remote} failed: ${fetched?.stderr ?? "unknown remote ref"}`);
             return EXIT_FETCH_FAILED;
         }
+        observed.remoteHead = git(top, [
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            `refs/remotes/${remote}^{commit}`,
+        ]);
+        if (observed.remoteHead === null) {
+            ctx.log(`cannot read the freshly fetched feature ${remote}`);
+            return EXIT_FETCH_FAILED;
+        }
     }
+    assertShipEligible(top, "HEAD");
+    if (probe.ok)
+        assertShipEligible(top, remote);
     const headFlag = str(ctx.flags.head);
     if (headFlag !== undefined &&
         git(top, ["rev-parse", "--verify", "--quiet", `${headFlag}^{commit}`]) === null) {
@@ -1952,7 +1965,7 @@ function reconcileFeature(ctx, top, branch) {
         if (m.merged && file !== undefined)
             recordMerge(path.resolve(ctx.cwd, file), m.before, after);
         if (m.code !== EXIT.OK) {
-            ctx.emit({ branch, head: after, ...m, target });
+            ctx.emit({ branch, head: after, remoteHead: observed.remoteHead, ...m, target });
         }
         return m.code;
     };
@@ -1995,6 +2008,7 @@ function reconcileFeature(ctx, top, branch) {
                 return code;
         }
     }
+    assertShipEligible(top, "HEAD");
     const unpublished = !probe.ok || commitsAhead(top, remote) > 0;
     if (unpublished && SKIP_CI_TOKEN.test(git(top, ["log", "-1", "--format=%B"]) ?? "")) {
         const trigger = quietGit(top, [
@@ -2033,8 +2047,9 @@ function syncVerb(ctx) {
         return EXIT_FETCH_FAILED;
     }
     const branch = currentBranch(top);
+    const observed = { remoteHead: null };
     if (reconcile) {
-        const code = reconcileFeature(ctx, top, branch);
+        const code = reconcileFeature(ctx, top, branch, observed);
         if (code !== EXIT.OK)
             return code;
     }
@@ -2059,6 +2074,7 @@ function syncVerb(ctx) {
     const out = {
         branch: branch === "" ? null : branch,
         head,
+        ...(reconcile ? { remoteHead: observed.remoteHead, reconciledHead: head } : {}),
         basePath: ancestor.status === 0 ? "A" : "B",
         behind,
         docsBehind,
@@ -2449,30 +2465,6 @@ function fastForwardDev(root, sha, log) {
     return "fast-forwarded";
 }
 /**
- * What `branch` changed that origin/dev does not hold, compared file by file
- * against the branch's fork point: a file whose dev copy differs from the
- * branch's, or (a `.jsonl` ledger, union-merged) a line the branch added that
- * dev's copy lacks. `docs/roadmap.md` is re-rendered on every close, so it is
- * not compared. The branch and its worktree are deleted only when this is empty.
- */
-function notOnDev(root, branch) {
-    const base = git(root, ["merge-base", UPSTREAM, branch]);
-    if (base === null)
-        return [`${branch}: no common history with ${UPSTREAM}`];
-    const lines = (rev, p) => revLines(root, rev, p);
-    return (git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=d", base, branch]) ?? "")
-        .split("\n")
-        .filter((p) => p !== "" && p !== "docs/roadmap.md")
-        .filter((p) => {
-        if (!p.endsWith(".jsonl"))
-            return (git(root, ["rev-parse", `${branch}:${p}`]) !==
-                git(root, ["rev-parse", "-q", "--verify", `${UPSTREAM}:${p}`]));
-        const before = new Set(lines(base, p));
-        const onDev = new Set(lines(UPSTREAM, p));
-        return lines(branch, p).some((l) => !before.has(l) && !onDev.has(l));
-    });
-}
-/**
  * Those of `paths` whose content at `spec(p)` is already local `dev`'s: work the
  * branch carries because `dev` is unpushed, not work a run in this branch made.
  * `spec` names the side to compare — the index (`:path`) or a commit (`ref:path`).
@@ -2801,6 +2793,8 @@ export const branchesCommand = {
             output: {
                 branch: "current branch (null when detached)",
                 head: "commit compared (after a merge: the new HEAD)",
+                remoteHead: "--reconcile-feature: the freshly observed remote feature commit, or null when absent",
+                reconciledHead: "--reconcile-feature: the resulting local feature commit used for base classification",
                 basePath: `A when ${UPSTREAM} is an ancestor of head (nothing to integrate), else B`,
                 behind: `commits on ${UPSTREAM} not in head`,
                 docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,

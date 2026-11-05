@@ -1031,15 +1031,15 @@ describe("bkit worktrees setup — ship", () => {
 });
 
 describe("bkit worktrees remove", () => {
-  it("removes a worktree setup created, uncommitted changes and all, and clears the marker", async () => {
+  it("preserves a worktree setup created when it holds uncommitted changes", async () => {
     const f = fixture();
     await setup(f.repo, "design", "--worktrees");
     fs.writeFileSync(path.join(wtOf(f), "dirty.txt"), "x\n");
     const r = await run(f.repo, ["remove", `--fid=${FID}`]);
-    expect(r.json).toMatchObject({ removed: true, reason: null, repoRoot: f.repo });
-    expect(fs.existsSync(wtOf(f))).toBe(false);
-    expect(fs.existsSync(marker(f))).toBe(false);
-    expect(git(f.repo, "worktree", "list")).not.toContain(".worktrees");
+    expect(r.json).toMatchObject({ removed: false, reason: "uncommitted", repoRoot: f.repo });
+    expect(fs.readFileSync(path.join(wtOf(f), "dirty.txt"), "utf-8")).toBe("x\n");
+    expect(fs.existsSync(marker(f))).toBe(true);
+    expect(git(f.repo, "worktree", "list")).toContain(".worktrees");
     expect(git(f.repo, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
   });
 });

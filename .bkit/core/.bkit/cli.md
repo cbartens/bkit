@@ -83,7 +83,7 @@ Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `parse` | workflow | **`--prompt-file`** `--workflow` | Read an explicitly named or existing branch from the session prompt. |
-| `sync` | workflow | `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
+| `sync` | workflow | `--reconcile-feature` `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
 | `regenerate` | workflow | `--fid` `--attempt` `--file` | Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 10's fix round). |
 | `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held. |
 | `fast-forward` | workflow | **`--onto`** | Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged. |
@@ -253,7 +253,7 @@ Open and probe pull requests, and audit the close transport.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `open` | workflow | **`--fid`** **`--title`** `--issue` `--base` `--head` `--plan` `--note` `--existing` `--file` `--workflow` | Open a PR whose body carries the bkit:issue / bkit:fid marker (exit 80: use MCP). |
-| `probe` | by hand | `--head` `--base` `--state` `--number` | The open (or open-then-merged) PR for a branch, or one PR by number. |
+| `probe` | by hand | `--head` `--base` `--state` `--number` `--ship-entry` `--owner-repo` `--facts-file` | The open (or open-then-merged) PR for a branch, or one PR by number. |
 | `merge` | workflow | **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
 | `update-branch` | workflow | **`--number`** `--only-if-required` | Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch). |
 | `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP). |
@@ -402,6 +402,6 @@ Set up and remove the per-feature worktrees under .worktrees/.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `setup` | workflow | **`--workflow`** **`--fid`** **`--month`** `--worktrees` `--detect` `--branch` `--issue` | Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup). |
-| `remove` | workflow | **`--fid`** `--branch` | Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch. |
+| `remove` | workflow | **`--fid`** `--branch` | Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local branch and retain the remote branch. |
 
 <!-- cli:end -->

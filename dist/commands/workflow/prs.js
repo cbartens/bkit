@@ -39,6 +39,40 @@ function ghFailure(res, what) {
  * merged PR but must not adopt an abandoned one.
  */
 export function probePr(cwd, opts) {
+    const qualify = (pr) => opts.shipEntry === true && pr?.state === "MERGED"
+        ? qualifyMergedEntry(cwd, pr, opts.head, opts.base)
+        : { kind: "ok", pr };
+    if (opts.facts !== undefined) {
+        const facts = opts.facts;
+        if (opts.shipEntry !== true ||
+            opts.repo === undefined ||
+            opts.head === undefined ||
+            opts.base === undefined ||
+            typeof facts !== "object" ||
+            facts === null ||
+            !("ownerRepo" in facts) ||
+            facts.ownerRepo !== opts.repo ||
+            !("headRefName" in facts) ||
+            facts.headRefName !== opts.head ||
+            !("baseRefName" in facts) ||
+            facts.baseRefName !== opts.base ||
+            !("pr" in facts))
+            return {
+                kind: "failed",
+                message: "ship PR facts require matching ownerRepo, headRefName and baseRefName scope",
+            };
+        if (facts.pr === null)
+            return qualify(undefined);
+        if (!validPrFacts(facts.pr) ||
+            prRepoSlug(facts.pr.url) !== opts.repo ||
+            facts.pr.headRefName !== opts.head ||
+            facts.pr.baseRefName !== opts.base)
+            return {
+                kind: "failed",
+                message: "ship PR facts have an unreadable or mismatched PR identity, head or base scope",
+            };
+        return qualify(facts.pr);
+    }
     if (opts.number !== undefined) {
         const args = ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`];
         if (opts.repo !== undefined)
@@ -49,7 +83,7 @@ export function probePr(cwd, opts) {
         const parsed = parseJson(res.stdout);
         if (!parsed.ok)
             return { kind: "failed", message: "gh pr view printed no JSON" };
-        return { kind: "ok", pr: parsed.value };
+        return qualify(parsed.value);
     }
     const args = ["pr", "list", "--head", opts.head, "--state", opts.state, "--json", PR_FIELDS];
     if (opts.base !== undefined)
@@ -67,7 +101,80 @@ export function probePr(cwd, opts) {
     const pr = opts.state === "open"
         ? prs[0]
         : (prs.find((p) => p.state === "OPEN") ?? prs.find((p) => p.state === "MERGED"));
-    return { kind: "ok", pr };
+    return qualify(pr);
+}
+function validPrFacts(value) {
+    if (typeof value !== "object" || value === null)
+        return false;
+    return ("number" in value &&
+        typeof value.number === "number" &&
+        Number.isSafeInteger(value.number) &&
+        value.number > 0 &&
+        "url" in value &&
+        typeof value.url === "string" &&
+        "state" in value &&
+        typeof value.state === "string" &&
+        ["OPEN", "MERGED", "CLOSED"].includes(value.state) &&
+        "baseRefName" in value &&
+        typeof value.baseRefName === "string" &&
+        "headRefName" in value &&
+        typeof value.headRefName === "string" &&
+        "headRefOid" in value &&
+        typeof value.headRefOid === "string" &&
+        /^[0-9a-f]{40,64}$/i.test(value.headRefOid) &&
+        "title" in value &&
+        typeof value.title === "string" &&
+        "mergeCommit" in value &&
+        (value.mergeCommit === null ||
+            (typeof value.mergeCommit === "object" &&
+                "oid" in value.mergeCommit &&
+                typeof value.mergeCommit.oid === "string")));
+}
+function qualifyMergedEntry(cwd, pr, head, base) {
+    if (!head ||
+        pr.headRefName !== head ||
+        pr.baseRefName !== (base ?? DEV) ||
+        !/^[0-9a-f]{40,64}$/i.test(pr.headRefOid))
+        return {
+            kind: "failed",
+            message: "merged ship entry has unreadable or mismatched feature head/base evidence",
+        };
+    const local = git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${head}^{commit}`]);
+    if (local === null)
+        return { kind: "failed", message: `cannot read local feature evidence for ${head}` };
+    const remote = runGit(cwd, ["ls-remote", "--heads", "origin", `refs/heads/${head}`]);
+    if (!remote.ok)
+        return {
+            kind: "failed",
+            message: `cannot read remote feature evidence for ${head}: ${remote.stderr}`,
+        };
+    let remoteHead = null;
+    if (remote.stdout.trim() !== "") {
+        const fetched = runGit(cwd, [
+            "fetch",
+            "origin",
+            `+refs/heads/${head}:refs/remotes/origin/${head}`,
+        ]);
+        if (!fetched.ok)
+            return {
+                kind: "failed",
+                message: `cannot fetch feature evidence for ${head}: ${fetched.stderr}`,
+            };
+        remoteHead = git(cwd, [
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            `refs/remotes/origin/${head}^{commit}`,
+        ]);
+        if (remoteHead === null)
+            return { kind: "failed", message: `cannot read fetched feature evidence for ${head}` };
+    }
+    return {
+        kind: "ok",
+        pr: local === pr.headRefOid && (remoteHead === null || remoteHead === pr.headRefOid)
+            ? pr
+            : undefined,
+    };
 }
 export function prOutput(pr) {
     return {
@@ -749,6 +856,21 @@ export const prsCommand = {
                 { name: "base", type: "string", help: "only PRs into this base (default: any base)" },
                 { name: "state", type: "string", help: "open (default) | all: OPEN wins, then MERGED" },
                 { name: "number", type: "string", help: "read this PR instead of listing by --head" },
+                {
+                    name: "ship-entry",
+                    type: "boolean",
+                    help: "qualify a merged PR against fresh local and remote feature tips before resuming ship",
+                },
+                {
+                    name: "owner-repo",
+                    type: "string",
+                    help: "owner/repo scope for ship entry and MCP facts",
+                },
+                {
+                    name: "facts-file",
+                    type: "string",
+                    help: "ship entry: scoped MCP JSON {ownerRepo, headRefName, baseRefName, pr}, used without gh",
+                },
             ],
             output: PR_OUTPUT_KEYS,
             exitCodes: { 4: "gh errored — the probe could not answer" },
@@ -761,6 +883,12 @@ export const prsCommand = {
                 if (number !== undefined && !/^[1-9][0-9]*$/.test(number)) {
                     throw new CommandError(EXIT.USAGE, "--number must be a PR number");
                 }
+                const factsFile = str(ctx.flags.factsFile);
+                const facts = factsFile === undefined
+                    ? undefined
+                    : parseJson(fs.readFileSync(path.resolve(ctx.cwd, factsFile), "utf-8"));
+                if (facts !== undefined && !facts.ok)
+                    throw new CommandError(EXIT.USAGE, "ship PR facts file is not valid JSON");
                 const res = probePr(ctx.cwd, {
                     number,
                     state,
@@ -770,6 +898,9 @@ export const prsCommand = {
                             ? currentBranch(ctx.cwd)
                             : refFlag(ctx.flags.head, "head"),
                     base: ctx.flags.base === undefined ? undefined : refFlag(ctx.flags.base, "base"),
+                    repo: str(ctx.flags.ownerRepo),
+                    shipEntry: ctx.flags.shipEntry === true,
+                    facts: facts?.ok === true ? facts.value : undefined,
                 });
                 if (res.kind !== "ok") {
                     ctx.log(res.message);
