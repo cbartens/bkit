@@ -375,11 +375,11 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
    Route:
    **If** exit 81 → end turn, re-run this block. **If** another non-zero exit → **Failure Path**.
-   Build `FEATURE_CODE_STATE` as the sorted, comma-separated commit IDs from `git rev-list --no-merges origin/dev..HEAD`, retaining each commit unless the existing bookkeeping classifier proves all its changed paths are bookkeeping:
+   Compute the merge-aware feature coverage state:
    ```bash
-   "{BKIT}" ledgers only-bookkeeping --month="{YYYYMM}" --fid="{FID}" --from="{CANDIDATE_COMMIT}^" --to="{CANDIDATE_COMMIT}"
+   "{BKIT}" branches sync --feature-state --month="{YYYYMM}" --fid="{FID}"
    ```
-   Run this once per candidate. `onlyBookkeeping` = true → omit it; false with readable ancestry and changed paths → retain it; unavailable evidence → **Failure Path**. An empty list is a valid state. Base-only merge commits retain this state and can reuse completion. New feature commits and imported feature commits invalidate that completion. Record this exact state with each successful sweep/docs completion below; read those rows from `{STATUS}` on resume.
+   Hold `featureCodeState` as `FEATURE_CODE_STATE`. Non-zero exit → **Failure Path**. Bookkeeping commits and proven automatic base-only merges retain coverage. New feature commits, imported feature merges and semantic conflict resolutions invalidate coverage. Unproven merge results remain in the state. Record this exact state with each successful sweep/docs completion below; read those rows from `{STATUS}` on resume.
 2. Route:
    - **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
    - **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
@@ -436,7 +436,7 @@ description: "Ship Feature — Autonomous merge and archive"
    - **If** exit 0 → continue with the next instruction.
    - **Else** → **Failure Path**.
 
-   **If** `RECONCILE_NEXT` is held → return there and reconcile again. **Else** → refresh `ENTRY_HEAD` and `CODE_HEAD` with `git rev-parse HEAD` → Step 5. A base-only integration retains the recorded feature-code state; a conflict resolution that adds feature code invalidates it and requires a fresh state comparison.
+   **If** `RECONCILE_NEXT` is held → return there and reconcile again. **Else** → refresh `ENTRY_HEAD` and `CODE_HEAD` with `git rev-parse HEAD` → Step 5, which recomputes coverage after the integration and any conflict resolution.
 
 ### 🔒 Gate 4 — Integrate
 
@@ -449,6 +449,14 @@ description: "Ship Feature — Autonomous merge and archive"
 ---
 
 ## 🤖 Step 5 — Deferred Sweep
+
+Recompute coverage immediately before deciding whether to reuse the sweep:
+
+```bash
+"{BKIT}" branches sync --feature-state --month="{YYYYMM}" --fid="{FID}"
+```
+
+Refresh `FEATURE_CODE_STATE` from `featureCodeState`; non-zero exit → **Failure Path**.
 
 1. Read the latest successful `ship-feature-coverage` row for `step=ship-deferred-sweep` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and its artifact still exists → reuse it and skip to Step 6. **If** the state changed, differs or is missing → invoke the sweep again below. Never reuse a completion from a different feature state.
 2. Check for the plan:
@@ -494,6 +502,14 @@ description: "Ship Feature — Autonomous merge and archive"
 ---
 
 ## 🧠 Step 6 — Update Docs & Summary
+
+Refresh coverage again before deciding whether to reuse the docs artifact:
+
+```bash
+"{BKIT}" branches sync --feature-state --month="{YYYYMM}" --fid="{FID}"
+```
+
+Hold the current `featureCodeState` as `FEATURE_CODE_STATE`; non-zero exit → **Failure Path**.
 
 Read the latest successful `ship-feature-coverage` row for `step=ship-update-docs` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and the docs artifact exists → reuse it and skip sub-steps 1–3. **If** the state changed, differs or is missing → run the docs agent again. Always refresh the summary in sub-step 4.
 

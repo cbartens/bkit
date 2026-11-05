@@ -51,6 +51,7 @@ import { TIMEOUTS } from "../../shared/timeouts.js";
 import {
   activeRecord,
   bookPathspecs,
+  checkOnlyBookkeeping,
   commitBookkeeping,
   markRecordPushed,
   recordOnBranch,
@@ -2499,10 +2500,50 @@ function reconcileFeature(
   return EXIT.OK;
 }
 
+/** Merge-aware coverage identity; omit a dev merge only when Git proves its result automatic. */
+function featureCodeState(top: string, head: string, month: string, fid: string): string {
+  const commits = runGit(top, ["rev-list", "--parents", `${UPSTREAM}..${head}`]);
+  if (!commits.ok) throw new CommandError(EXIT_DIFF_FAILED, commits.stderr);
+  const retained: string[] = [];
+  for (const line of commits.stdout.split("\n").filter(Boolean)) {
+    const [sha, first, second, ...other] = line.split(" ");
+    if (!sha || !first)
+      throw new CommandError(EXIT_DIFF_FAILED, "feature coverage needs readable commit parents");
+    const bookkeeping = checkOnlyBookkeeping(top, { month, fid, from: first, to: sha });
+    if (bookkeeping.kind === "ok") continue;
+    if (bookkeeping.kind !== "outside")
+      throw new CommandError(
+        EXIT_DIFF_FAILED,
+        `feature coverage classification: ${bookkeeping.kind}`,
+      );
+    if (second && other.length === 0) {
+      const devParent = runGit(top, ["merge-base", "--is-ancestor", second, UPSTREAM]);
+      if (devParent.ok) {
+        const automatic = git(top, ["merge-tree", "--write-tree", first, second]);
+        const tree = git(top, ["rev-parse", `${sha}^{tree}`]);
+        if (automatic && tree && automatic.split("\n")[0] === tree) continue;
+      }
+    }
+    retained.push(sha);
+  }
+  return `v1:${retained.sort().join(",")}`;
+}
+
 function syncVerb(ctx: RunContext): number {
   const mergeDocs = ctx.flags.mergeDocs === true;
   const merge = ctx.flags.merge === true;
   const reconcile = ctx.flags.reconcileFeature === true;
+  const featureState = ctx.flags.featureState === true;
+  const month = str(ctx.flags.month);
+  const coverageFid = str(ctx.flags.fid);
+  if (
+    featureState &&
+    (mergeDocs || merge || reconcile || !month || !/^\d{6}$/.test(month) || !coverageFid)
+  )
+    throw new CommandError(
+      EXIT.USAGE,
+      "--feature-state needs --month=YYYYMM and --fid, separately from reconciliation or merging",
+    );
   const targetFlag = str(ctx.flags.target);
   if (targetFlag !== undefined && (!merge || targetFlag === "" || targetFlag.startsWith("-")))
     throw new CommandError(EXIT.USAGE, "--target needs --merge and a commit ref");
@@ -2567,6 +2608,9 @@ function syncVerb(ctx: RunContext): number {
     branch: branch === "" ? null : branch,
     head,
     ...(reconcile ? { remoteHead: observed.remoteHead, reconciledHead: head } : {}),
+    ...(featureState
+      ? { featureCodeState: featureCodeState(top, head, month!, coverageFid!) }
+      : {}),
     basePath: ancestor.status === 0 ? "A" : "B",
     behind,
     docsBehind,
@@ -3412,6 +3456,12 @@ export const branchesCommand: CommandSpec = {
       use: "workflow",
       flags: [
         {
+          name: "feature-state",
+          type: "boolean",
+          help: "report merge-aware feature coverage, excluding bookkeeping and proven automatic dev-only merges; needs --month and --fid",
+        },
+        { name: "month", type: "string", help: "--feature-state: bookkeeping month YYYYMM" },
+        {
           name: "reconcile-feature",
           type: "boolean",
           help: "ship: fetch and reconcile the feature branch before classifying its base; preserve divergent work through a merge and ensure unpublished work has a CI-running head",
@@ -3459,6 +3509,8 @@ export const branchesCommand: CommandSpec = {
           "--reconcile-feature: the freshly observed remote feature commit, or null when absent",
         reconciledHead:
           "--reconcile-feature: the resulting local feature commit used for base classification",
+        featureCodeState:
+          "--feature-state: versioned identity of feature commits and semantic merge results",
         target: "--merge --target: the resolved commit being merged or continued",
         basePath: `A when ${UPSTREAM} is an ancestor of head (nothing to integrate), else B`,
         behind: `commits on ${UPSTREAM} not in head`,
@@ -3478,6 +3530,8 @@ export const branchesCommand: CommandSpec = {
         sentinel: "--merge: the sentinel written on refusal (null otherwise)",
       },
       exitCodes: {
+        [EXIT_DIFF_FAILED]:
+          "--feature-state: commit ancestry or bookkeeping classification could not be read",
         [EXIT_REFUSED]: "--merge: the uncommitted work could not be committed before the merge",
         [EXIT_DETACHED]: "--merge / --merge-docs with no branch checked out",
         [EXIT_FETCH_FAILED]: `git fetch ${REMOTE} ${DEV} failed`,

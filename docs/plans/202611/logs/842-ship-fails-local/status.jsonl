@@ -211,3 +211,13 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T12:12:08Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-verify/2/1/comment","hash":"6a4b51eac1fc05d5dc0c560b9cd45d1ca40bd905d5acd4f67977ffaeee77fe33","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6657668067","at":"2026-11-05T12:12:09Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T12:12:09Z","parentSha":"f415c7600e3806620867056ef903b86e8423f32f","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-verify-2-1.md"],"verdict":"CONCERNS","attempt":1,"group":2,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:12:11Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:12:11Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:12:11Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:12:37Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:22:16Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:24:22Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:24:57Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:29:13Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-gaps-remediate/2/1/comment","hash":"372982150ea92de28a7ac576bbf815e78a3b2e9d66267f230e5664fd1056abfd","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6658004295","at":"2026-11-05T12:29:14Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-05T12:29:14Z","parentSha":"20ed44b19ad6e290441d3c43333a6720d94d59be","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-gaps-remediate-2-1-log.md"],"verdict":"PASS","attempt":1,"group":2,"strategy":"STANDARD"}

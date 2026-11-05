@@ -2634,6 +2634,66 @@ describe("branches force-build", { timeout: GIT_TIMEOUT }, () => {
   });
 });
 
+describe("branches sync feature coverage", { timeout: GIT_TIMEOUT }, () => {
+  const coverage = async (cwd: string) => {
+    const result = await run(cwd, ["sync", "--feature-state", "--month=202611", "--fid=1-x"]);
+    expect(result.code, result.err).toBe(0);
+    expect(typeof result.json?.featureCodeState).toBe("string");
+    return result.json?.featureCodeState;
+  };
+
+  it("invalidates coverage when only an imported merge result changes", async () => {
+    const { clone } = withOrigin("coverage-imported-merge");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { "feature.txt": "feature\n" }, "feature");
+    git(clone, "switch", "-q", "-c", "side", "origin/dev");
+    commit(clone, { "side.txt": "side\n" }, "side");
+    git(clone, "switch", "-q", "feat/1-x");
+    expect(git(clone, "merge", "-q", "--no-ff", "-m", "feature merge", "side").ok).toBe(true);
+    const ancestors = git(clone, "rev-list", "--no-merges", "origin/dev..HEAD").out;
+    const before = await coverage(clone);
+    write(clone, "merge-only.txt", "feature semantics introduced only by the merge\n");
+    expect(git(clone, "add", "merge-only.txt").ok).toBe(true);
+    expect(git(clone, "commit", "-q", "--amend", "--no-edit").ok).toBe(true);
+    expect(git(clone, "rev-list", "--no-merges", "origin/dev..HEAD").out).toBe(ancestors);
+    expect(await coverage(clone)).not.toBe(before);
+  });
+
+  it("retains coverage across proven automatic dev integration and bookkeeping", async () => {
+    const { origin, clone } = withOrigin("coverage-base-only");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { "feature.txt": "feature\n" }, "feature");
+    const before = await coverage(clone);
+    commit(clone, { "docs/plans/202611/logs/1-x/status.jsonl": "{}\n" }, "bookkeeping");
+    expect(await coverage(clone)).toBe(before);
+    landOnDev(origin, { "base-only.txt": "new base content\n" });
+    expect(git(clone, "fetch", "-q", "origin", "dev").ok).toBe(true);
+    expect(git(clone, "merge", "-q", "--no-ff", "-m", "integrate dev", "origin/dev").ok).toBe(true);
+    expect(await coverage(clone)).toBe(before);
+    git(clone, "switch", "-q", "-c", "imported", "origin/dev");
+    commit(clone, { "imported-feature.txt": "new feature\n" }, "imported feature");
+    git(clone, "switch", "-q", "feat/1-x");
+    expect(git(clone, "merge", "-q", "--no-ff", "-m", "import feature", "imported").ok).toBe(true);
+    expect(await coverage(clone)).not.toBe(before);
+  });
+
+  it("invalidates coverage for feature content resolved inside a dev merge", async () => {
+    const { origin, clone } = withOrigin("coverage-resolved-dev");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    write(clone, "src.txt", "feature version\n");
+    git(clone, "add", "src.txt");
+    git(clone, "commit", "-q", "-m", "feature");
+    const before = await coverage(clone);
+    landOnDev(origin, { "src.txt": "dev version\n" });
+    git(clone, "fetch", "-q", "origin", "dev");
+    expect(git(clone, "merge", "--no-ff", "-m", "integrate dev", "origin/dev").ok).toBe(false);
+    write(clone, "src.txt", "resolved feature semantics\n");
+    git(clone, "add", "src.txt");
+    expect(git(clone, "commit", "-q", "--no-edit").ok).toBe(true);
+    expect(await coverage(clone)).not.toBe(before);
+  });
+});
+
 describe("branches sync feature reconciliation", { timeout: GIT_TIMEOUT }, () => {
   function published(name: string) {
     const { origin, clone } = withOrigin(name);

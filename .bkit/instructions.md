@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:631`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:647`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1668,7 +1668,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:631`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:647`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -10431,8 +10431,10 @@ Close landed (`workflows close`)
 Missing or mismatched facts → **Failure Path** before opening or merging anything. A merged PR with extra feature work returns exit 1: open a new PR, preserving that work.
 Reconcile again on every integration retry, then publish before selecting `BASE_PATH`:
 Hold `basePath` as `BASE_PATH`, `reconciledHead` as `ENTRY_HEAD` and `CODE_HEAD`. **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 3 → Step 4 sub-step 2. **If** another non-zero exit → **Failure Path**.
-Run this once per candidate. `onlyBookkeeping` = true → omit it; false with readable ancestry and changed paths → retain it; unavailable evidence → **Failure Path**. An empty list is a valid state. Base-only merge commits retain this state and can reuse completion. New feature commits and imported feature commits invalidate that completion. Record this exact state with each successful sweep/docs completion below; read those rows from `{STATUS}` on resume.
-**If** `RECONCILE_NEXT` is held → return there and reconcile again. **Else** → refresh `ENTRY_HEAD` and `CODE_HEAD` with `git rev-parse HEAD` → Step 5. A base-only integration retains the recorded feature-code state; a conflict resolution that adds feature code invalidates it and requires a fresh state comparison.
+Hold `featureCodeState` as `FEATURE_CODE_STATE`. Non-zero exit → **Failure Path**. Bookkeeping commits and proven automatic base-only merges retain coverage. New feature commits, imported feature merges and semantic conflict resolutions invalidate coverage. Unproven merge results remain in the state. Record this exact state with each successful sweep/docs completion below; read those rows from `{STATUS}` on resume.
+**If** `RECONCILE_NEXT` is held → return there and reconcile again. **Else** → refresh `ENTRY_HEAD` and `CODE_HEAD` with `git rev-parse HEAD` → Step 5, which recomputes coverage after the integration and any conflict resolution.
+Refresh `FEATURE_CODE_STATE` from `featureCodeState`; non-zero exit → **Failure Path**.
+Hold the current `featureCodeState` as `FEATURE_CODE_STATE`; non-zero exit → **Failure Path**.
 Read the latest successful `ship-feature-coverage` row for `step=ship-deferred-sweep` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and its artifact still exists → reuse it and skip to Step 6. **If** the state changed, differs or is missing → invoke the sweep again below. Never reuse a completion from a different feature state.
 **If** `verdict` = PASS → record the covered feature-code state → Step 6:
 Reconciled feature-code state compared with recorded sweep coverage

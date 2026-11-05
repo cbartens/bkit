@@ -451,7 +451,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Enforce fresh dev ancestry at the pre-merge gate
+- [x] **TASK 5:** Enforce fresh dev ancestry at the pre-merge gate
   - **UPDATE:** `runGate` in `.bkit/core/engine/commands/workflow/runs.ts`: refresh scoped dev evidence, require it in the validated code head, and emit an additive distinct stale-base outcome with snapshot/refusal evidence; validate scoped MCP PR/CI/base facts through the same gate when gh is unavailable.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.test.ts`: add the gate regressions below using real Git ancestry and the existing gh fixture boundary.
   - **DEPENDS ON:** 1
@@ -466,7 +466,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Distinguish moved-head and base-conflict merge refusals
+- [x] **TASK 6:** Distinguish moved-head and base-conflict merge refusals
   - **UPDATE:** `mergePr` in `.bkit/core/engine/commands/workflow/prs.ts`: add ship opt-in retry classification from independently re-read PR state, checking moved head before new base conflicts and returning explicit terminal reasons otherwise; validate scoped independent MCP post-attempt facts through that same classifier.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/prs.test.ts`: add refusal regressions with a fixture that changes PR state between the attempted merge and reread.
   - **DEPENDS ON:** 5
@@ -499,7 +499,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Synchronize documentation, compiled output and provider renders
+- [x] **TASK 8:** Synchronize documentation, compiled output and provider renders
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: document the final reconciliation and retry flow, cleanup ownership, retained-remote behavior and residual API timing limit, including the separate repository-managed automatic deletion boundary.
   - **UPDATE:** `.bkit/core/.bkit/prompts.md`: document the conflict resolver's merge-target input.
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: regenerate the command reference from final specs with `pnpm cli:sync`.

@@ -254,6 +254,20 @@ describe("ship reconciliation and retry contracts", () => {
     );
   });
 
+  it("refreshes merge-aware feature coverage immediately before both reuse decisions", () => {
+    const ship = readShip();
+    for (const number of [5, 6]) {
+      const block = step(ship, number);
+      const refresh = block.indexOf("branches sync --feature-state");
+      const reuse = block.indexOf("Read the latest successful");
+      expect(refresh).toBeGreaterThanOrEqual(0);
+      expect(reuse).toBeGreaterThan(refresh);
+      expect(block.slice(refresh, reuse)).toContain("FEATURE_CODE_STATE");
+      expect(block.slice(refresh, reuse)).toContain("Failure Path");
+    }
+    expect(ship).not.toContain("rev-list --no-merges");
+  });
+
   it("ties deferred sweep and docs reuse to the recorded feature code state", () => {
     const ship = readShip();
     const state = /feature[- ]code (?:state|fingerprint)|FEATURE_CODE_(?:STATE|FINGERPRINT)/i;
