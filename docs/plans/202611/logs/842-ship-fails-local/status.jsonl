@@ -111,3 +111,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T08:26:28Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","number","post","title","comment-field","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-convert/-/1/comment","hash":"3cfb345e449cbbab37f8a013a0ea246125d422c30a7e8e8f8cf8edddf2a676ff","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6653330235","at":"2026-11-05T08:26:30Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-05T08:26:30Z","parentSha":"417e926bc6ca137e46a0fc854cb25b341b20acf8","artifacts":[],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:26:34Z","noun":"branches","verb":"anchor-read","flags":["file","field","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:27:29Z","noun":"tasks","verb":"currency","flags":["plan","base","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:28:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-current/-/1/comment","hash":"65dbb426c6838467cf9cad7affa7a7ea88cb52d5df5ebe0fa7351f2d756e1277","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6653358080","at":"2026-11-05T08:28:06Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-current","status":"DONE","at":"2026-11-05T08:28:06Z","parentSha":"967d32d23b612b4744394a216ff8fdf63ad5cfda","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-current.md"],"verdict":"PASS","attempt":1}
