@@ -673,7 +673,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Guard Jira branch, no-id line, Claude `GITHUB_ISSUE_ID` trigger (`719-guard-issue-id-sources`, `719-tracker-guard-no-issue-id-not-verified`, `719-cursor-jira-guard-hard-stop-without-bkit-bin`)
+- [x] **TASK 3:** Guard Jira branch, no-id line, Claude `GITHUB_ISSUE_ID` trigger (`719-guard-issue-id-sources`, `719-tracker-guard-no-issue-id-not-verified`, `719-cursor-jira-guard-hard-stop-without-bkit-bin`)
   - **UPDATE:** `.bkit/core/hooks/preflight-tracker.sh`: Jira key from `feat/{FID}` uppercased, read via `node_modules/.bin/bkit issues fetch --issue KEY --outbox "$TMPDIR" --json` under `timeout 20` when present, output captured (never echoed), pass on `bkit:auto` and `terminal` false; bin absent, `fetch` exit 80 or `timeout` expiry → HARD STOP naming the cause; no id under github / jira → `Guard pre-check: SKIPPED — no issue id; bkit:auto not verified`, exit 0; tracker unset / `none` → Linear branch when `LINEAR_ISSUE_ID` set, else advisory context, exit 0 on both hosts (`719-cursor-guard-tracker-unset-advisory`; Breaking Changes row)
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-preflight.sh`: trigger `LINEAR_ISSUE_ID` or `GITHUB_ISSUE_ID` (`:77-79`); header comments (`:4-17`) tracker-neutral
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-preflight.sh`: header comments (`:4-15`) tracker-neutral
