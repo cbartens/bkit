@@ -239,12 +239,10 @@ GROUP_WASH, HUE_WASH, ISSUE_WASH = "0a", "14", "26"   # alpha: 4%, 8% and 15%
 EDGE_TIERS = [(2, "80"), (3, "b3"), (6, "")]
 # GitHub draws arrowheads at a fixed 8px whatever the line width; this scales them
 # to match the thicker lines. Front matter, so it applies per diagram.
-FRONT_MATTER = ["---", "config:", "  layout: dagre",
+FRONT_MATTER = ["---", "config:", "  layout: elk",
                 '  themeCSS: "marker { overflow: visible; } '
                 'marker path { transform: scale(1.8); transform-origin: 5px 5px; }"',
-                "  flowchart:", "    useMaxWidth: false",
-                "    nodeSpacing: 80", "    rankSpacing: 100",
-                "    subGraphTitleMargin:", "      top: 12", "      bottom: 24", "---"]
+                "  flowchart:", "    useMaxWidth: false", "---"]
 
 
 def hues(keys):
