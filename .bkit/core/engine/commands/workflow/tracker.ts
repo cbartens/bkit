@@ -1680,6 +1680,7 @@ export async function postCommentOnce(
       }
     }
   };
+  let retain = true;
   try {
     try {
       try {
@@ -1819,8 +1820,11 @@ export async function postCommentOnce(
               latest.evidence.authorId === cached.comment.evidence.authorId &&
               section &&
               latest.evidence.sectionIds.includes(section.id)
-            )
+            ) {
               posted = { url: latest.url, parts: 1, evidence: latest.evidence };
+              // A section proves delivery, not authority to overwrite a changed revision.
+              retain = latest.evidence.fingerprint === actionHash(outgoing);
+            }
           } catch {
             commentDiagnostic(o, "[bkit-tracker] append recognition unavailable", warnings);
           }
@@ -1841,11 +1845,11 @@ export async function postCommentOnce(
       seal();
       return { done: false, action, reason };
     }
-    let retain = true;
     if (aggregate && posted.evidence) {
       try {
         const latest = (await recentComments(t, 1, budget)).at(-1)?.evidence;
         retain =
+          retain &&
           latest?.id === posted.evidence.id &&
           latest.fingerprint === posted.evidence.fingerprint &&
           latest.authorId === posted.evidence.authorId &&

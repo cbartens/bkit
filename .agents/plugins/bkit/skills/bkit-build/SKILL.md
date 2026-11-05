@@ -1191,7 +1191,7 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **Else** → **Failure Path**.
 7. **Skip if** `ISSUE_ID` empty. Post the completion report with the PR link. Drop `--body-file` when `CLOSE_COMMENT_FILE` is null:
    ```bash
-   "{BKIT}" issues comment --post --workflow=build --file="{STATUS}" --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL} --body-file="{CLOSE_COMMENT_FILE}"
+   "{BKIT}" issues comment --post --purpose=terminal --workflow=build --file="{STATUS}" --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL} --body-file="{CLOSE_COMMENT_FILE}"
    ```
    Hold this report's `commentFile` as `CLOSE_COMMENT_FILE` and `tracker` as `CLOSE_TRACKER` for sub-step 10's fallback.
 8. **Skip if** `ISSUE_ID` empty.

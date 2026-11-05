@@ -30,11 +30,30 @@ const object = (value: unknown): Record<string, unknown> =>
     : {};
 const rows = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.map(object) : [];
+function redactDiagnostic(text: string): string {
+  let safe = text;
+  for (const name of ["BKIT_GH_TOKEN", "BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"]) {
+    const value = process.env[name];
+    if (!value) continue;
+    // Header validation can quote escaped newlines or only one invalid line.
+    const forms = [value, JSON.stringify(value).slice(1, -1), ...value.split(/[\r\n]/)]
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    for (const form of forms) safe = safe.split(form).join(`<${name}>`);
+  }
+  return safe;
+}
 const record = (stage: string, value: unknown) =>
-  console.log(JSON.stringify({ version: 1, stage, value }));
+  console.log(
+    JSON.stringify({ version: 1, stage, value }, (key, entry: unknown) =>
+      ["message", "text", "name"].includes(key) && typeof entry === "string"
+        ? redactDiagnostic(entry)
+        : entry,
+    ),
+  );
 const reason = (error: unknown) =>
   error instanceof Error
-    ? { name: error.name, message: error.message.slice(0, 600) }
+    ? { name: redactDiagnostic(error.name), message: redactDiagnostic(error.message).slice(0, 600) }
     : { name: "unknown" };
 
 /** Discovery only: use the same endpoint, bearer credential and MCP protocol as JiraSession. */
@@ -373,12 +392,17 @@ fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(result.stdout|
         url: recognized.url,
         calls: recognizedCalls.calls,
       });
+      // Recognition may seal a normalized revision; prime the next scenario independently.
+      set({});
+      const independentSeed = object(await publish("independent uncertain-response seed"));
+      assert.equal(independentSeed.done, true);
       set({ loseWrites: 1, blockAfterDrop: true });
       const fallback = object(
         await publish("accepted append response discarded; reconciliation unavailable"),
       );
       assert.equal(fallback.done, true);
       assert.notEqual(fallback.url, recognized.url);
+      assert.notEqual(fallback.url, independentSeed.url);
       const fallbackCalls = state();
       assert.ok(fallbackCalls.dropped);
       set({});
@@ -589,63 +613,72 @@ fs.writeFileSync(file,JSON.stringify(state));process.stdout.write(result.stdout|
     remaining: ["encoded-counting", "lost-response"],
   });
 }
-if (args.has("--schemas-jira")) await jiraSchemas();
-else if (args.has("--run")) await runContract();
-else if (args.has("--create-disposable")) {
-  const team = option("team"),
-    site = option("site"),
-    project = option("project");
-  if (!team || !site || !project) throw new Error("Explicit --team, --site and --project required");
-  try {
-    record(
-      "linear-disposable",
-      await linearGql(
-        "mutation($input: IssueCreateInput!) { issueCreate(input:$input) { success issue { id identifier url title } } }",
-        {
-          input: {
-            teamId: team,
-            title: "Disposable workflow comment contract probe",
-            description:
-              "Owner-authorized temporary integration checks. Contains only generated synthetic comments; archive after recording acceptance evidence.",
+async function main() {
+  if (args.has("--schemas-jira")) await jiraSchemas();
+  else if (args.has("--run")) await runContract();
+  else if (args.has("--create-disposable")) {
+    const team = option("team"),
+      site = option("site"),
+      project = option("project");
+    if (!team || !site || !project)
+      throw new Error("Explicit --team, --site and --project required");
+    try {
+      record(
+        "linear-disposable",
+        await linearGql(
+          "mutation($input: IssueCreateInput!) { issueCreate(input:$input) { success issue { id identifier url title } } }",
+          {
+            input: {
+              teamId: team,
+              title: "Disposable workflow comment contract probe",
+              description:
+                "Owner-authorized temporary integration checks. Contains only generated synthetic comments; archive after recording acceptance evidence.",
+            },
           },
-        },
-      ),
+        ),
+      );
+    } catch (error) {
+      record("linear-create-unavailable", reason(error));
+    }
+    try {
+      record(
+        "jira-disposable",
+        await JiraSession.open().call("createJiraIssue", {
+          cloudId: site,
+          projectKey: project,
+          summary: "Disposable workflow comment contract probe",
+          issueType: "Task",
+          description:
+            "Owner-authorized temporary integration checks. Contains only generated synthetic comments; close after recording acceptance evidence.",
+        }),
+      );
+    } catch (error) {
+      record("jira-create-unavailable", reason(error));
+    }
+  } else if (args.has("--scope-jira")) {
+    const site = process.argv.find((arg) => arg.startsWith("--site="))?.slice(7);
+    if (!site) throw new Error("Explicit --site required");
+    try {
+      record(
+        "jira-project-scope",
+        await JiraSession.open().call("searchJiraIssuesUsingJql", {
+          cloudId: site,
+          jql: "updated >= -365d ORDER BY updated DESC",
+          maxResults: 2,
+          fields: ["project", "issuetype"],
+          responseContentFormat: "markdown",
+        }),
+      );
+    } catch (error) {
+      record("jira-project-unavailable", reason(error));
+    }
+  } else if (args.has("--discover")) await discover();
+  else
+    throw new Error(
+      "Refusing live mutations: use --discover or an explicit disposable target mode",
     );
-  } catch (error) {
-    record("linear-create-unavailable", reason(error));
-  }
-  try {
-    record(
-      "jira-disposable",
-      await JiraSession.open().call("createJiraIssue", {
-        cloudId: site,
-        projectKey: project,
-        summary: "Disposable workflow comment contract probe",
-        issueType: "Task",
-        description:
-          "Owner-authorized temporary integration checks. Contains only generated synthetic comments; close after recording acceptance evidence.",
-      }),
-    );
-  } catch (error) {
-    record("jira-create-unavailable", reason(error));
-  }
-} else if (args.has("--scope-jira")) {
-  const site = process.argv.find((arg) => arg.startsWith("--site="))?.slice(7);
-  if (!site) throw new Error("Explicit --site required");
-  try {
-    record(
-      "jira-project-scope",
-      await JiraSession.open().call("searchJiraIssuesUsingJql", {
-        cloudId: site,
-        jql: "updated >= -365d ORDER BY updated DESC",
-        maxResults: 2,
-        fields: ["project", "issuetype"],
-        responseContentFormat: "markdown",
-      }),
-    );
-  } catch (error) {
-    record("jira-project-unavailable", reason(error));
-  }
-} else if (args.has("--discover")) await discover();
-else
-  throw new Error("Refusing live mutations: use --discover or an explicit disposable target mode");
+}
+await main().catch((error: unknown) => {
+  record("probe-unavailable", reason(error));
+  process.exitCode = 1;
+});

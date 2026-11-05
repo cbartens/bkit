@@ -966,6 +966,11 @@ export const issuesCommand: CommandSpec = {
       use: "workflow",
       flags: [
         { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
+        {
+          name: "purpose",
+          type: "string",
+          help: "routine | attention | terminal; defaults from kind, never from PR metadata",
+        },
         { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
         { name: "step-number", type: "string", help: "step number in the heading" },
         { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
@@ -1044,6 +1049,17 @@ export const issuesCommand: CommandSpec = {
           "without --post: a --body-file / --section / --stderr-file / --error-file file is missing",
       },
       run: async (ctx) => {
+        const explicitPurpose = str(ctx.flags.purpose);
+        if (
+          explicitPurpose !== undefined &&
+          !["routine", "attention", "terminal"].includes(explicitPurpose)
+        )
+          throw new CommandError(EXIT.USAGE, "--purpose must be routine, attention or terminal");
+        const purpose =
+          explicitPurpose ??
+          (["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
+            ? "attention"
+            : "routine");
         let comment: string;
         try {
           comment = commentBody(ctx);
@@ -1081,19 +1097,14 @@ export const issuesCommand: CommandSpec = {
         ];
         const workflow = str(ctx.flags.workflow);
         const key =
-          ctx.flags.prNumber !== undefined && workflow !== undefined
+          purpose === "terminal" && workflow !== undefined
             ? endedRunActionKey(file, workflow, ...keyParts)
             : runActionKey(file, workflow, ...keyParts);
         const tracker = await postForVerb(ctx, comment, {
           fid: str(ctx.flags.fid),
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file, key }),
-          purpose:
-            ctx.flags.prNumber !== undefined
-              ? "terminal"
-              : ["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
-                ? "attention"
-                : "routine",
+          purpose,
         });
         ctx.emit({ comment, commentFile, tracker });
         return EXIT.OK;
