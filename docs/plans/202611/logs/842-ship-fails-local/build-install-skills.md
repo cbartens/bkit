@@ -1,5 +1,7 @@
 # Build Skills Installed
 
+Run 2 verification: the four selected feature skills remain installed with the expected source and a nonempty lock hash. The plan requires the same technologies. Prior discovery and publisher evidence are reused; no searches, installs or removals were repeated.
+
 ## Technologies Identified
 
 - TypeScript and native ESM for the workflow command engine.
@@ -38,7 +40,11 @@ The initial folder inventory contained these skills:
 
 The existing Git and bkit workflow skills cover branch-management techniques and repository-specific gh orchestration. Existing repository authoring rules govern the Markdown outputs.
 
+Run 2 also found `typescript-best-practices`, `node`, `vitest` and `pnpm` in the folder inventory. Each has its `SKILL.md` and the expected `skills-lock.json` source. Their previously recorded activation boundaries remain applicable.
+
 ## Newly Installed
+
+None in run 2. The following selections were installed in run 1 and verified again in run 2.
 
 <!-- prettier-ignore -->
 | Folder | Exact package | Source | Acceptance evidence |
