@@ -135,3 +135,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T09:01:09Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-tasks/1/1/comment","hash":"9bb09b929baed231d203dd47bb705db88f8c3fcc514187acdf427771141ca188","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6653953764","at":"2026-11-05T09:01:10Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-05T09:01:10Z","parentSha":"984a63fbfdf6dde9f193a4501ac37b18addf8cda","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-tasks-1-log.md"],"verdict":"FAIL","attempt":1,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:01:41Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:01:41Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:01:41Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:01:56Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:02:17Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T09:07:01Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:10:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-verify/1/1/comment","hash":"7aad559d45ac8f9974adb596c10900231e09dff9ef2a5775e6321de7e8afa6a4","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6655299172","at":"2026-11-05T10:10:05Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T10:10:05Z","parentSha":"e23c4c7cc55c429ab4d84b49a7eee1082faff03c","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":1}
