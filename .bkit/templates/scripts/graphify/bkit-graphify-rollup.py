@@ -236,7 +236,9 @@ EDGE_TIERS = [(2, "80"), (3, "b3"), (6, "")]
 FRONT_MATTER = ["---", "config:", "  layout: dagre",
                 '  themeCSS: "marker { overflow: visible; } '
                 'marker path { transform: scale(1.8); transform-origin: 5px 5px; }"',
-                "  flowchart:", "    useMaxWidth: false", "---"]
+                "  flowchart:", "    useMaxWidth: false",
+                "    nodeSpacing: 80", "    rankSpacing: 100",
+                "    subGraphTitleMargin:", "      top: 12", "      bottom: 24", "---"]
 
 
 def hues(keys):
