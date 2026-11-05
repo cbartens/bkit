@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-05T07:59:52Z)_
+_(refreshed 2026-11-05T14:08:43Z)_
 
 ### Design
 
@@ -46,7 +46,6 @@ _(refreshed 2026-11-05T07:59:52Z)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
-| 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 
 ### Build
@@ -55,6 +54,7 @@ _(refreshed 2026-11-05T07:59:52Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 
 ### Debug
 
