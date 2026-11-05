@@ -880,7 +880,7 @@ describe("cloud variants — wired trackers and host prerequisites", () => {
     const facts = installedFacts();
     expect(facts.bkit?.tracker?.default).toBe("jira");
     expect(facts.bkit?.cloud?.agent).toBe("codex");
-    expect(fs.existsSync(path.join(tmpDir, ".codex", "config.toml"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".codex", "hooks.json"))).toBe(true);
   });
 
   it("--tracker=github --auto=cursor exits 0 and records cursor", () => {
