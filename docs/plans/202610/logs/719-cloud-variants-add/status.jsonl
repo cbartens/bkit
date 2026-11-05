@@ -237,3 +237,5 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:02:03Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:02:09Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:02:16Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-05T07:03:09Z"}
+{"type":"engine-action","action":"comment","key":"build/1/failure/2/2/comment","hash":"6932d03523695fef8e643587172063efc21c8e3d4085c2a6475f395a3f95e199","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6651924162","at":"2026-11-05T07:03:10Z"}

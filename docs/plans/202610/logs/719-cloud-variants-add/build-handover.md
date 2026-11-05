@@ -1,27 +1,41 @@
-Status: OPEN
-Question: VERIFY_GAPS
-From: verify
-Pause step: 9
-Plan: docs/plans/202610/719-cloud-variants-add-plan.md
-Group: 1
-Verify attempt: 3
+# Debug Abort Handover
 
-build verify: attempt 3 of 5
+## The Short Version
 
-## Progress
+PENDING
 
-Problems after each round: 1 → 0 → 0
-Code changed: yes
-Strategy: FINAL → next FINAL (FINAL already used)
-Minutes per round: 36
-Trend: closing
+## What's Actually Happening
 
-**Q1 — Verify:** another fix round? Fewer problems after each round, and the code changed.
-Options: A) Try again / B) Stop
-Recommended: A) Try again — the last round made progress
+PENDING
 
-Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.
+## Rot Signals
 
-Decision: Stop — Stop
+PENDING
 
-Stopped by the owner (LOCAL); run stays IN_PROGRESS. /bkit-build #719 resumes at this pause.
+## Out-of-Scope Recommendations
+
+PENDING
+
+## Attempt History
+
+PENDING
+
+## Verified Resolutions (do not roll back)
+
+PENDING
+
+## Persistent Errors
+
+PENDING
+
+## Recommended Next Steps
+
+PENDING
+
+## Recommended Path
+
+PENDING
+
+## Reference Docs
+
+PENDING
