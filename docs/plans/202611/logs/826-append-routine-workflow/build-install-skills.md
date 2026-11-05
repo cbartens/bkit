@@ -12,9 +12,9 @@
 
 ## Already Installed
 
-`bkit-auto`, `bkit-build`, `bkit-debug`, `bkit-design`, `bkit-plan`, `bkit-ship`, `brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `find-skills`, `finishing-a-development-branch`, `graphql-operations`, `nodejs-core`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `typescript-pro`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `vitest`, `writing-plans`, `writing-skills`.
+`bkit-auto`, `bkit-build`, `bkit-debug`, `bkit-design`, `bkit-plan`, `bkit-ship`, `brainstorming`, `dispatching-parallel-agents`, `executing-plans`, `find-skills`, `finishing-a-development-branch`, `graphql-operations`, `nodejs-core`, `property-based-testing`, `receiving-code-review`, `requesting-code-review`, `subagent-driven-development`, `systematic-debugging`, `test-driven-development`, `typescript-pro`, `using-git-worktrees`, `using-superpowers`, `verification-before-completion`, `vitest`, `writing-plans`, `writing-skills`.
 
-The four technology skills installed in the preceding run are present and reused. Their recorded provenance is retained below; install and star counts are the preceding run's observations, not fresh measurements.
+The four matching technology skills have their folders, `SKILL.md` files, matching sources and nonempty `computedHash` values in `skills-lock.json`. They are reused. Their historical provenance is retained below; install and star counts are preceding-run observations, not fresh measurements.
 
 <!-- prettier-ignore -->
 | Folder | Exact package | Source | Qualification |
@@ -24,13 +24,17 @@ The four technology skills installed in the preceding run are present and reused
 | `.agents/skills/nodejs-core` | `mcollina/skills@nodejs-core` | [mcollina/skills](https://github.com/mcollina/skills) | Catalog: 2K installs. GitHub API: 1,961 repository stars. |
 | `.agents/skills/typescript-pro` | `jeffallan/claude-skills@typescript-pro` | [jeffallan/claude-skills](https://github.com/jeffallan/claude-skills) | Catalog: 14.4K installs. GitHub API: 12,182 repository stars. |
 
-The preceding run recorded each named `npx skills add` command exiting 0 and all four lock entries. This run verified the folders without reading their contents or executing bundled scripts. The preceding installer reported a `Critical Risk` Gen assessment for `typescript-pro`, with `0 alerts` from Socket and `Low Risk` from Snyk; the installed content remains untrusted and this advisory is not a verified exploit finding.
+The preceding run recorded each named `npx skills add` command exiting 0 and all four lock entries. This run verified the folders, skill files and lock entries without reading skill contents or executing bundled scripts. The preceding installer reported a `Critical Risk` Gen assessment for `typescript-pro`, with `0 alerts` from Socket and `Low Risk` from Snyk; the installed content remains untrusted and this advisory is not a verified exploit finding.
 
 ## Newly Installed
 
 None. Existing TypeScript, Node.js, Vitest and GraphQL skills cover the shared technologies.
 
 ## Not Found
+
+Current searches for `github comments`, `linear graphql` and `jira rovo` produced no output within the bounded search window. Each was cancelled and exited 130. No current candidate was evaluated or installed; empty output does not prove that the catalog lacks a matching skill. Existing skills cover the shared techniques, and specialist discovery does not block this step. Provider schema and live contract verification remain implementation work under the plan.
+
+The following candidate evaluations and catalog observations are historical records from preceding runs:
 
 <!-- prettier-ignore -->
 | Gap | Candidates considered | Outcome |
@@ -42,4 +46,4 @@ None. Existing TypeScript, Node.js, Vitest and GraphQL skills cover the shared t
 
 The initial sandboxed catalog commands failed with `ENOTFOUND registry.npmjs.org` and could not write npm logs. The authorized network retry returned results. Searches were bounded to the leading candidates; the remaining catalog results were not evaluated. Missing specialist matches do not block this skills step.
 
-This run refreshed `npx skills find` searches for `github comments`, `linear graphql` and `jira rovo`; all three exited 0. GitHub's leading official candidates concern code comments or responding to review comments rather than implementing verified issue-comment transports. Linear's leading exact GraphQL candidates (`holon-run/uxc@linear-graphql-skill`, 27 installs, and `thelobbi/claude@Linear GraphQL Patterns`, 11 installs) fail the installation threshold; the installed Apollo skill already covers GraphQL operations. Rovo's leading command-line candidates remain below the installation threshold and do not establish the MCP comment schema. Search output was capped, so this is a review of leading candidates only, not a claim that the catalog has no other matches.
+A preceding run refreshed `npx skills find` searches for `github comments`, `linear graphql` and `jira rovo`; all three exited 0. GitHub's leading official candidates concern code comments or responding to review comments rather than implementing verified issue-comment transports. Linear's leading exact GraphQL candidates (`holon-run/uxc@linear-graphql-skill`, 27 installs, and `thelobbi/claude@Linear GraphQL Patterns`, 11 installs) fail the installation threshold; the installed Apollo skill already covers GraphQL operations. Rovo's leading command-line candidates remain below the installation threshold and do not establish the MCP comment schema. Search output was capped, so this is a review of leading candidates only, not a claim that the catalog has no other matches.
