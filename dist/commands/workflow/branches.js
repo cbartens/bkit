@@ -23,7 +23,7 @@ import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
-import { activeRecord, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
+import { activeRecord, bookPathspecs, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_BASE_NOT_DEV, FORCE_BUILD, closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, } from "./prs.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
@@ -1954,8 +1954,40 @@ function reconcileFeature(ctx, top, branch, observed) {
         throw new CommandError(EXIT.USAGE, `--head ${headFlag} does not name a commit`);
     }
     if (!mergeInProgress(top) && hasLeftovers(top)) {
-        ctx.log("feature branch has uncommitted work — commit that work before reconciliation");
-        return EXIT_REFUSED;
+        const statusFile = str(ctx.flags.file);
+        const relative = statusFile && path.relative(top, path.resolve(ctx.cwd, statusFile)).split(path.sep).join("/");
+        const scope = relative && /^docs\/plans\/(\d{6})\/logs\/([^/]+)\/status\.jsonl$/.exec(relative);
+        const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+        if (!scope || scope[2] !== fid) {
+            ctx.log("feature branch has uncommitted work — commit that work before reconciliation");
+            return EXIT_REFUSED;
+        }
+        const outside = runGit(top, [
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+            "--",
+            ".",
+            ...copyExcludes(top),
+            ...bookPathspecs(scope[1], fid, "core").map((spec) => `:(exclude)${spec}`),
+        ]);
+        if (!outside.ok || outside.stdout !== "") {
+            ctx.log("feature branch has unrelated uncommitted work — commit that work before reconciliation");
+            return EXIT_REFUSED;
+        }
+        const carried = commitBookkeeping({
+            root: top,
+            month: scope[1],
+            fid,
+            scope: "core",
+            mode: "commit",
+            message: `chore(${fid}): carry ship bookkeeping before reconciliation`,
+        }, ctx.log);
+        if (carried.outcome !== "committed") {
+            ctx.log("the workflow bookkeeping could not be committed before reconciliation");
+            return EXIT_REFUSED;
+        }
     }
     const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
     const merge = (target, current) => {
@@ -2028,6 +2060,9 @@ function syncVerb(ctx) {
     const mergeDocs = ctx.flags.mergeDocs === true;
     const merge = ctx.flags.merge === true;
     const reconcile = ctx.flags.reconcileFeature === true;
+    const targetFlag = str(ctx.flags.target);
+    if (targetFlag !== undefined && (!merge || targetFlag === "" || targetFlag.startsWith("-")))
+        throw new CommandError(EXIT.USAGE, "--target needs --merge and a commit ref");
     if (reconcile && (mergeDocs || merge))
         throw new CommandError(EXIT.USAGE, "give --reconcile-feature separately from --merge or --merge-docs");
     const headFlag = str(ctx.flags.head);
@@ -2041,6 +2076,11 @@ function syncVerb(ctx) {
     if (merge && sentinelPath)
         fs.rmSync(sentinelPath, { force: true });
     const top = topLevel(ctx.cwd);
+    const target = targetFlag === undefined
+        ? undefined
+        : git(top, ["rev-parse", "--verify", "--quiet", `${targetFlag}^{commit}`]);
+    if (targetFlag !== undefined && !target)
+        throw new CommandError(EXIT.USAGE, `--target ${targetFlag} does not name a commit`);
     const fetch = fetchDev(top);
     if (!fetch.ok) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
@@ -2109,7 +2149,16 @@ function syncVerb(ctx) {
             throw new CommandError(EXIT.USAGE, `--merge merges ${UPSTREAM} into a feature branch, never into ${branch}`);
         }
         const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
-        const m = mergeDev(top, { branch, policy: "full", fid, generate: true, current: out.basePath === "A" }, ctx.log);
+        const m = mergeDev(top, {
+            branch,
+            policy: "full",
+            fid,
+            generate: true,
+            ...(target ? { target } : {}),
+            current: target
+                ? runGit(top, ["merge-base", "--is-ancestor", target, "HEAD"]).ok
+                : out.basePath === "A",
+        }, ctx.log);
         const refused = m.outcome === "refused";
         if (refused && sentinelPath) {
             fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
@@ -2118,6 +2167,7 @@ function syncVerb(ctx) {
         const newHead = git(top, ["rev-parse", "HEAD"]) ?? head;
         ctx.emit({
             ...out,
+            ...(target ? { target } : {}),
             head: newHead,
             merged: m.merged,
             resolved: m.resolved,
@@ -2770,6 +2820,11 @@ export const branchesCommand = {
                     help: `ship Step 4: merge ${UPSTREAM} into the checked-out feature branch — the run's uncommitted work is committed first, ledger conflicts union, a lockfile regenerates from ${DEV}'s copy, a generated register takes ${DEV}'s copy and is rebuilt after the merge, a doc embedding the register's generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry with ${DEV}'s value where both changed, any other conflict stays in the tree with the merge in progress for a hand resolution (exit 24; run again after git add), then a declared bkit:generate runs and its output is committed; never a rebase or force-push, never on ${DEV} / main`,
                 },
                 {
+                    name: "target",
+                    type: "string",
+                    help: "--merge: exact recorded merge target (default origin/dev); continuation refuses a different MERGE_HEAD",
+                },
+                {
                     name: "merge-docs",
                     type: "boolean",
                     help: `on a feature branch whose docs/ or ledgers are behind, merge ${UPSTREAM} (ledgers union, a generated register takes ${DEV}'s copy and is rebuilt, a doc embedding its generated block takes ${DEV}'s block and merges the rest, the install record (.bkit/version) merges entry by entry, other docs/ take ${DEV}, anything else aborts), then run a declared bkit:generate and commit its output`,
@@ -2795,6 +2850,7 @@ export const branchesCommand = {
                 head: "commit compared (after a merge: the new HEAD)",
                 remoteHead: "--reconcile-feature: the freshly observed remote feature commit, or null when absent",
                 reconciledHead: "--reconcile-feature: the resulting local feature commit used for base classification",
+                target: "--merge --target: the resolved commit being merged or continued",
                 basePath: `A when ${UPSTREAM} is an ancestor of head (nothing to integrate), else B`,
                 behind: `commits on ${UPSTREAM} not in head`,
                 docsBehind: `of those, commits touching docs/ or a ledger path (LEDGERS)`,

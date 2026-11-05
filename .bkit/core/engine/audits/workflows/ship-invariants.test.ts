@@ -95,7 +95,7 @@ function ledgersBlocks(ship: string): string[] {
   }
   return blocks
     .map((block) => block.join("\n"))
-    .filter((block) => /"\{BKIT\}" ledgers /.test(block));
+    .filter((block) => /"\{BKIT\}" ledgers (?:stage|commit)\b/.test(block));
 }
 
 /** True for a line that appends a hand-built `type:"..."` jq row to a file. */
@@ -355,9 +355,10 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       ),
     ].sort();
 
-  it("pushes the feature branch only to open a missing PR, in Integrate (Path B), in Commit + Push Bookkeeping, after a Merge Gate regenerate and after a Failure Remediate fix", () => {
+  it("pushes feature code during entry and base reconciliation, integration, bookkeeping and fixes", () => {
     expect(stepsWhere(isFeaturePush)).toEqual(
       [
+        "Base Check",
         "Commit + Push Bookkeeping",
         "Failure Remediate",
         "Integrate (Path B only)",
@@ -484,7 +485,9 @@ describe("bkit-ship.md — bookkeeping and status writes", () => {
     const recorded = lines.filter((l) =>
       /"\{BKIT\}" runs gate [^\n]*--record="\{STATUS\}"/.test(l),
     );
-    expect(recorded).toHaveLength(2);
+    expect(recorded).toHaveLength(3);
+    expect(recorded.filter((l) => /--fresh-base/.test(l))).toHaveLength(2);
+    expect(recorded.some((l) => /--facts-file=/.test(l))).toBe(true);
     expect(recorded.some((l) => /--capstone-only/.test(l))).toBe(true);
     // A hand-built jq row may only land in an outbox file, never status.jsonl.
     const handBuilt = lines.filter(isHandBuiltRowAppend);

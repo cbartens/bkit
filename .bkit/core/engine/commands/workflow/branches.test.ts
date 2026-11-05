@@ -2654,6 +2654,54 @@ describe("branches sync feature reconciliation", { timeout: GIT_TIMEOUT }, () =>
   const reconcile = (cwd: string, ...flags: string[]) =>
     run(cwd, ["sync", "--reconcile-feature", "--fid=1-x", ...flags]);
 
+  it("reconciles with tracked workflow bookkeeping but refuses unrelated dirty code", async () => {
+    const status = "docs/plans/202611/logs/1-x/status.jsonl";
+    const clean = published("feature-run-bookkeeping");
+    commit(clean.clone, { [status]: '{"type":"workflow-started"}\n' }, "docs: run");
+    const cloud = cloudCommit(clean.other, { "cloud.txt": "cloud work\n" });
+    fs.appendFileSync(path.join(clean.clone, status), '{"type":"runtime-resolved"}\n');
+    const result = await reconcile(clean.clone, `--file=${status}`);
+    expect(result.code, result.err).toBe(0);
+    expect(git(clean.clone, "merge-base", "--is-ancestor", cloud, "HEAD").ok).toBe(true);
+    expect(read(clean.clone, status)).toContain('"runtime-resolved"');
+    expect(git(clean.clone, "status", "--porcelain").out).toBe(`M ${status}`);
+    expect(git(clean.clone, "show", `HEAD:${status}`).out).toContain('"runtime-resolved"');
+    expect(git(clean.clone, "log", "-2", "--format=%s").out).not.toMatch(/\[skip ci\]/i);
+
+    const dirty = published("feature-run-dirty-code");
+    commit(dirty.clone, { [status]: '{"type":"workflow-started"}\n' }, "docs: run");
+    fs.appendFileSync(path.join(dirty.clone, status), '{"type":"runtime-resolved"}\n');
+    write(dirty.clone, "src.txt", "uncommitted code\n");
+    expect(git(dirty.clone, "add", "src.txt").ok).toBe(true);
+    const before = sha(dirty.clone);
+    const index = git(dirty.clone, "diff", "--cached", "--binary").out;
+    const refused = await reconcile(dirty.clone, `--file=${status}`);
+    expect(refused.code).not.toBe(0);
+    expect(sha(dirty.clone)).toBe(before);
+    expect(read(dirty.clone, status)).toContain('"runtime-resolved"');
+    expect(git(dirty.clone, "diff", "--cached", "--binary").out).toBe(index);
+    expect(read(dirty.clone, "src.txt")).toBe("uncommitted code\n");
+  });
+
+  it("continues only the explicitly recorded target through the public merge command", async () => {
+    const { clone, other } = published("feature-public-target");
+    commit(clone, { "src.txt": "laptop\n" }, "feat: laptop");
+    const remote = cloudCommit(other, { "src.txt": "cloud\n" });
+    expect((await reconcile(clone)).code).toBe(24);
+    expect(git(clone, "rev-parse", "MERGE_HEAD").out).toBe(remote);
+    const wrong = await run(clone, ["sync", "--merge", "--target=origin/dev"]);
+    expect(wrong.code).not.toBe(0);
+    expect(git(clone, "rev-parse", "MERGE_HEAD").out).toBe(remote);
+    write(clone, "src.txt", "laptop\ncloud\n");
+    expect(git(clone, "add", "src.txt").ok).toBe(true);
+    const result = await run(clone, ["sync", "--merge", `--target=${remote}`, "--fid=1-x"]);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json).toMatchObject({ target: remote, outcome: "merged" });
+    expect(sha(clone, "HEAD^2")).toBe(remote);
+    expect(git(clone, "rev-parse", "--verify", "MERGE_HEAD").ok).toBe(false);
+    expect(read(clone, "src.txt")).toBe("laptop\ncloud\n");
+  });
+
   it("fetches the unseen feature head before classifying the base", async () => {
     const { clone, other } = published("feature-unseen");
     git(clone, "config", "remote.origin.fetch", "+refs/heads/dev:refs/remotes/origin/dev");
