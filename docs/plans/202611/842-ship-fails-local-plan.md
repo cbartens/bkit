@@ -125,6 +125,10 @@ Ship finishes whenever the branch can be integrated without a person's judgement
 | Real command wiring preserves remote-only and local-only work through feature reconciliation | Integration | `.bkit/core/engine/commands/workflow/worktrees.integration.test.ts` | 1 |
 | Real close wiring preserves a newer remote tip, including an advance after the safety proof and a disappeared/recreated ref | Integration | `.bkit/core/engine/commands/workflow/worktrees.integration.test.ts` | 4 |
 | Compiled output and every provider render match the updated source contract | Static | `.bkit/core/.bkit/workflows.md` | 8 |
+| requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 9 |
+| routes late revalidation code and gate seventeen through reconciliation before merge | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 9 |
+| rejects MCP green runs from another repository or workflow at the same head | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 10 |
+| rejects MCP capstone jobs belonging to another run | Unit | `.bkit/core/engine/commands/workflow/runs.test.ts` | 10 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -513,6 +517,32 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 <!-- bkit:task 8 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Challenge round 1 findings
+
+<!-- bkit:task 9 start -->
+
+- [ ] **TASK 9:** A remote code push after bookkeeping reaches merge without reconciliation or refreshed feature coverage
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-ship.md:645` · **Round:** 1
+  - **DONE WHEN:** Newly observed feature code in Step 9 and non-bookkeeping head movement reported by Step 10 exit 17 both return through Step 3 reconciliation, inherited-unpublished-dev eligibility checks and Steps 5/6 coverage decisions before the new head can authorize merge. Step 9 consumes an explicit reconciliation-needed result instead of silently advancing `VALIDATED_HEAD`. The existing bounded retry accounting remains intact, and pure bookkeeping movement retains covered sweep/docs work. Update the existing engine/workflow owners and regenerate their shipped mirrors; no second reconciliation implementation is needed.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse` fails because `runRevalidate` currently selects the changed remote code head and returns validation success without a reconciliation-needed outcome; the same test verifies that a bookkeeping-only descendant preserves the covered code head and does not request renewed feature review.
+    - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `routes late revalidation code and gate seventeen through reconciliation before merge` fails because Step 9 accepts `validatedHead` without routing a newly observed code change to Step 3, and Step 10 exit 17 returns to Step 9 without setting `RECONCILE_REQUIRED` or otherwise requiring reconciliation; scope assertions to both route blocks and retain the bounded counter and bookkeeping-reuse assertions.
+
+<!-- bkit:task 9 end -->
+<!-- bkit:task 10 start -->
+
+- [ ] **TASK 10:** Substitute unrelated green Actions evidence into scoped MCP facts to authorize a merge
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:2027` · **Round:** 1
+  - **DONE WHEN:** The MCP adapter rejects CI evidence whose repository or configured workflow does not match the requested scope, and rejects jobs whose run identity or head does not match the selected run. Missing provenance fails closed. Update the fallback facts contract and fixtures together while retaining valid scoped evidence and paginated jobs.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `rejects MCP green runs from another repository or workflow at the same head` fails because a correct PR/base envelope containing a successful run for another repository or workflow at the requested SHA currently passes. Give the foreign run a successful capstone, keep the envelope and base valid, and assert a nonzero gate exit with `passed: false`.
+    - `.bkit/core/engine/commands/workflow/runs.test.ts` `rejects MCP capstone jobs belonging to another run` fails because the adapter returns the same `ci.jobs` payload for any requested run ID present in `ci.workflowRuns`; a successful capstone with a different `run_id`, `run_url` or `head_sha` can satisfy the selected run. Assert refusal with otherwise valid run, PR and base evidence, and acceptance of the matching control.
+
+<!-- bkit:task 10 end -->
+<!-- bkit:group 3 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

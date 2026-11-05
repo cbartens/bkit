@@ -1083,6 +1083,99 @@ describe("bkit runs gate", () => {
     expect(foreign.err).toMatch(/scope|repository|ownerRepo/i);
   });
 
+  function scopedMcpCiFixture() {
+    const f = freshBaseFixture();
+    const run = {
+      id: 1900,
+      workflow_id: 456,
+      path: ".github/workflows/bkit-ci.yml",
+      repository: { full_name: "example/example" },
+      head_repository: { full_name: "example/example" },
+      head_sha: f.head,
+      head_branch: "feat/842-gate",
+      event: "push",
+      status: "completed",
+      conclusion: "success",
+      html_url: "https://github.com/example/example/actions/runs/1900",
+    };
+    const job = {
+      id: 19001,
+      name: "bkit-tests-check",
+      status: "completed",
+      conclusion: "success",
+      run_id: run.id,
+      run_url: "https://api.github.com/repos/example/example/actions/runs/1900",
+      head_sha: f.head,
+    };
+    const facts = path.join(f.bin, "ci-provenance-facts.json");
+    const write = (runs: unknown[], jobs: unknown) =>
+      fs.writeFileSync(
+        facts,
+        JSON.stringify({
+          ownerRepo: "example/example",
+          prNumber: 7,
+          headRefName: "feat/842-gate",
+          baseRefName: "dev",
+          pr: f.pr("example/example"),
+          ci: { workflowRuns: { total_count: runs.length, workflow_runs: runs }, jobs },
+          base: {
+            ref: "dev",
+            sha: gitIn(f.cwd, "rev-parse", "origin/dev"),
+            comparedHead: f.head,
+            status: "ahead",
+          },
+        }),
+      );
+    fs.writeFileSync(path.join(f.bin, "unavailable"), "");
+    return { run, job, write, gate: () => f.run("--fresh-base", `--facts-file=${facts}`) };
+  }
+
+  it("rejects MCP green runs from another repository or workflow at the same head", async () => {
+    const f = scopedMcpCiFixture();
+    f.write([f.run], { total_count: 1, jobs: [f.job] });
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json.passed).toBe(true);
+    for (const run of [
+      { ...f.run, repository: { full_name: "foreign/repo" } },
+      { ...f.run, path: ".github/workflows/unrelated.yml" },
+      { ...f.run, repository: undefined },
+      { ...f.run, path: undefined, workflow_id: undefined },
+    ]) {
+      f.write([run], { total_count: 1, jobs: [f.job] });
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(run)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
+
+  it("rejects MCP capstone jobs belonging to another run", async () => {
+    const f = scopedMcpCiFixture();
+    // Actions --paginate --slurp yields page objects; the capstone can be on page two.
+    const pages = (job: unknown) => [
+      { total_count: 2, jobs: [{ ...f.job, id: 19002, name: "bkit-tests-unit" }] },
+      { total_count: 2, jobs: [job] },
+    ];
+    f.write([f.run], pages(f.job));
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({ passed: true, runId: 1900 });
+    for (const job of [
+      { ...f.job, run_id: 9999 },
+      { ...f.job, run_url: "https://api.github.com/repos/example/example/actions/runs/9999" },
+      { ...f.job, head_sha: "a".repeat(40) },
+      { ...f.job, run_url: "https://api.github.com/repos/foreign/repo/actions/runs/1900" },
+      { ...f.job, run_id: undefined },
+      { ...f.job, run_url: undefined },
+      { ...f.job, head_sha: undefined },
+    ]) {
+      f.write([f.run], pages(job));
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(job)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
+
   it("accepts a green capstone at the head (exit 0) and says so", async () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=green-capstone");
@@ -2941,6 +3034,85 @@ describe("bkit runs revalidate", () => {
         ["api", "repos/other/repo/rules/branches/dev"],
         ["workflow", "run", "ci.yml"],
       ]);
+    });
+  });
+
+  it("requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse", async () => {
+    const { cwd, code, file } = shipRepo();
+    const origin = tmp("bkit-revalidate-origin-");
+    gitIn(origin, "init", "-q", "--bare");
+    gitIn(cwd, "remote", "add", "origin", origin);
+    fs.mkdirSync(path.join(cwd, "docs"));
+    fs.writeFileSync(path.join(cwd, "docs/architecture.md"), "ship bookkeeping\n");
+    gitIn(cwd, "add", "docs/architecture.md");
+    gitIn(cwd, "commit", "-qm", "docs: ship bookkeeping");
+    const bookkeeping = gitIn(cwd, "rev-parse", "HEAD");
+    gitIn(cwd, "push", "-qu", "origin", "feat/7-x");
+    const collaborator = tmp("bkit-revalidate-collaborator-");
+    gitIn(collaborator, "clone", "-q", "-b", "feat/7-x", origin, ".");
+    fs.writeFileSync(
+      path.join(collaborator, "late-feature.ts"),
+      "export const lateFeature = true;\n",
+    );
+    gitIn(collaborator, "add", "late-feature.ts");
+    gitIn(collaborator, "commit", "-qm", "feat: late remote feature");
+    gitIn(collaborator, "push", "-q", "origin", "feat/7-x");
+    const remote = gitIn(collaborator, "rev-parse", "HEAD");
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(bookkeeping);
+    const replies = {
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: remote })),
+      "run-list": JSON.stringify([{ status: "completed", conclusion: "success", headSha: remote }]),
+    };
+    fakeGhBin(replies);
+    const generic = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+    );
+    expect(generic.code, generic.err).toBe(0);
+    expect(generic.json).toMatchObject({ validatedHead: remote, revalidated: true });
+    const fake = fakeGhBin(replies);
+    const late = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(late.code, late.err).toBe(21);
+    expect(late.json).toMatchObject({
+      reconcileRequired: true,
+      currentHead: remote,
+      validatedHead: null,
+      revalidated: false,
+      dispatched: false,
+      probe: null,
+      wait: null,
+    });
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(remote);
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(bookkeeping);
+    expect(fake.calls()).not.toMatch(/run list|workflow run/);
+
+    fakeGhBin({
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: bookkeeping })),
+    });
+    const control = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({
+      validatedHead: code,
+      currentHead: bookkeeping,
+      reconcileRequired: false,
+      revalidated: false,
+      dispatched: false,
     });
   });
 

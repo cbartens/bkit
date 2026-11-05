@@ -210,6 +210,42 @@ describe("ship reconciliation and retry contracts", () => {
     expect(merge).toMatch(/(?:terminal|stop)[^\n]*Failure Path/i);
   });
 
+  it("routes late revalidation code and gate seventeen through reconciliation before merge", () => {
+    const ship = readShip();
+    const revalidate = step(ship, 9);
+    expect(revalidate).toMatch(/runs revalidate[^\n]*--require-reconciled/);
+    expect(revalidate).toMatch(/`reconcileRequired`[^\n]*RECONCILE_REQUIRED/);
+    const lateCode = section(revalidate, /^   - \*\*If\*\* exit 21\b/, /^   - \*\*(?:If|Else)\*\*/);
+    const gateMovement = section(
+      step(ship, 10),
+      /^   - \*\*If\*\* exit 17\b/,
+      /^   - \*\*(?:If|Else)\*\*/,
+    );
+    expect(lateCode.length).toBeGreaterThan(0);
+    expect(gateMovement.length).toBeGreaterThan(0);
+    for (const block of [lateCode, gateMovement]) {
+      expect(block).toMatch(/RECONCILE_REQUIRED[^\n]*true/);
+      expect(block).toMatch(
+        /counters route[^\n]*--name=MERGE_ATTEMPT[^\n]*--of=ship-merge-pr:count[^\n]*--rows=ship-gate-refusal:count/,
+      );
+      expect(block).toContain("--continue=step-3");
+      expect(block).toContain("--exceeded=failure-path");
+      expect(block).toContain("Step 3");
+      expect(block).not.toContain("--continue=step-9");
+      expect(block).not.toContain("Step 11");
+    }
+    expect(revalidate.indexOf("exit 21")).toBeLessThan(revalidate.indexOf("Hold `validatedHead`"));
+    expect(step(ship, 3)).toContain("branches sync --reconcile-feature");
+    for (const number of [5, 6]) {
+      const coverage = step(ship, number);
+      expect(coverage).toContain("FEATURE_CODE_STATE");
+      expect(coverage).toMatch(
+        /(?:record|status)[\s\S]*(?:match|same|unchanged)[\s\S]*(?:reuse|skip)/i,
+      );
+      expect(coverage).toMatch(/(?:chang|differ|mismatch|invalidat)[\s\S]*(?:run|invoke|repeat)/i);
+    }
+  });
+
   it("passes the actual merge target and defers branch deletion to guarded close", () => {
     const ship = readShip();
     const resolver = fs.readFileSync(
