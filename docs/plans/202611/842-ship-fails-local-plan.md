@@ -421,7 +421,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Guard ship cleanup with one shared landed-content comparison
+- [x] **TASK 4:** Guard ship cleanup with one shared landed-content comparison
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.ts`: own the moved comparison, cover deleted files and Git tree-entry mode/type, inspect fresh local and remote tips and dirty work, and preserve unsafe or uncertain cleanup targets. Delete a local ref only with an atomic expected-tip check; preserve remote refs when conditional deletion cannot be guaranteed within the no-force-push policy.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.ts`: import the shared helper for land and delete its original `notOnDev` implementation.
   - **DELETE:** `notOnDev` in `.bkit/core/engine/commands/workflow/branches.ts`: remove the old implementation after moving it to the worktree module.

@@ -241,3 +241,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:43Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-verify-holistic/-/1/comment","hash":"3370fb20a5215df525e106a507ea48cdfddac2137e816c9367b292ed0bd43274","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6658329193","at":"2026-11-05T12:45:45Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-05T12:45:45Z","parentSha":"dc98497e5c2b5612b282d295852de5894ac934c8","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-verify-holistic.md"],"verdict":"CONCERNS","attempt":1,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:46Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:46Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:46Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:46Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:45:46Z","noun":"challenge","verb":"gate","flags":["file"]}
+{"type":"challenge-gate","workflow":"build","at":"2026-11-05T12:45:47Z","range":"origin/dev...HEAD","linesChanged":17022,"filesChanged":114,"size":"large","limit":{"lines":300,"files":10},"agents":["bkit-build-challenge-1","bkit-build-challenge-2"],"skipped":false}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:46:00Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:53:19Z","noun":"runs","verb":"gate","flags":["pr","repo","validated","fresh-base","facts-file","json"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:53:42Z","noun":"runs","verb":"gate","flags":["pr","repo","validated","fresh-base","facts-file","json"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:56:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","field","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-challenge/-/1/comment","hash":"7cbc0b38460f0f596420915f1671b39337ea98a75757099d205891c4051946cc","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6658532345","at":"2026-11-05T12:56:01Z"}
+{"type":"step-done","workflow":"build","step":"build-challenge","status":"DONE","at":"2026-11-05T12:56:02Z","parentSha":"b3157bff38dc31f1b67af4767eea8fdaa95a1c87","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-challenge-1.md","docs/plans/202611/logs/842-ship-fails-local/build-challenge-2.md"],"verdict":"CONCERNS","attempt":1,"failures":0,"round":1,"challengeFindings":null}
