@@ -340,10 +340,120 @@ function workflowCommandFlags(
   command: string | undefined,
   flags: Array<[string, string[]]>,
 ): string[] {
-  return flags.flatMap(([needle, args]) => (command?.includes(needle) ? args : []));
+  return [
+    ...flags.flatMap(([needle, args]) => (command?.includes(needle) ? args : [])),
+    ...(command?.includes("--purpose=terminal") ? ["--purpose=terminal"] : []),
+  ];
 }
 
 describe("workflow comment lifecycle across real CLI processes", () => {
+  it("keeps auto startup with PR metadata and dispatch in one progress comment", () => {
+    const dir = session();
+    const startup = ok(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=auto",
+      "--workflow-heading",
+      "--step-number=1",
+      "--step-title=Start Workflow",
+      "--field=Phase=ship",
+      "--owner-repo=o/r",
+      `--tree=feat/${FID}`,
+      "--pr-number=99",
+      "--pr-url=https://github.com/o/r/pull/99",
+      "--run-id=111",
+      `--session-dir=${dir}`,
+    ]);
+    expect(startup.tracker).toMatchObject({ done: true });
+    const dispatched = ok(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=auto",
+      "--step-number=2",
+      "--step-title=Dispatch",
+      "--field=Phase=ship",
+      `--session-dir=${dir}`,
+    ]);
+    expect(dispatched.tracker).toMatchObject({ done: true });
+    expect(remote().comments).toHaveLength(1);
+    const progress = remote().comments[0]?.body;
+    expect(progress).toContain("bkit:progress");
+    expect(progress).toContain("Start Workflow");
+    expect(progress).toContain("Dispatch");
+    expect(remote().calls.filter((call) => call.method === "POST")).toHaveLength(1);
+    expect(remote().calls.filter((call) => call.method === "PATCH")).toHaveLength(1);
+    const completion = ok(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=auto",
+      "--purpose=terminal",
+      "--step-number=3",
+      "--step-title=Completion",
+      "--owner-repo=o/r",
+      "--pr-number=99",
+      "--pr-url=https://github.com/o/r/pull/99",
+      `--session-dir=${dir}`,
+    ]);
+    expect(completion.tracker).toMatchObject({ done: true });
+    expect(remote().comments).toHaveLength(2);
+    expect(remote().comments[0]?.body).toBe(progress);
+    expect(remote().comments[1]?.body).toContain("Completion");
+    expect(remote().comments[1]?.body).not.toContain("bkit:progress");
+    expect(remote().comments[1]?.body).toContain("https://github.com/o/r/pull/99");
+  });
+
+  it("redacts malformed Jira authorization from live probe diagnostics", () => {
+    const probe = path.resolve(
+      "docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts",
+    );
+    const networkAttempts = path.join(root, "network-attempts");
+    const guard = path.join(root, "network-guard.mjs");
+    write(
+      guard,
+      'import fs from "node:fs"; import net from "node:net";\nnet.Socket.prototype.connect = function() { fs.appendFileSync(process.env.BKIT_NETWORK_ATTEMPTS, "connect\\n"); throw new Error("network forbidden in probe regression"); };\n',
+    );
+    const observed: Array<{ token: string; output: string }> = [];
+    for (const token of [
+      "synthetic-jira-prefix-1234\nsynthetic-jira-tail-5678",
+      `synthetic-jira-long-prefix-${"x".repeat(750)}\nsynthetic-jira-long-tail`,
+    ]) {
+      const result = spawnSync(requireTsx(), ["--import", guard, probe, "--discover"], {
+        cwd,
+        env: {
+          ...env,
+          BKIT_GH_TOKEN: "",
+          GH_TOKEN: "",
+          BKIT_LINEAR_API_KEY: "",
+          BKIT_JIRA_API_KEY: token,
+          BKIT_NETWORK_ATTEMPTS: networkAttempts,
+        },
+        encoding: "utf8",
+        timeout: BUDGET.testTimeout,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(fs.existsSync(networkAttempts)).toBe(false);
+      const diagnostics: Array<{ stage: string; value: unknown }> = result.stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(diagnostics.find((row) => row.stage === "jira-schema-unavailable")).toMatchObject({
+        value: { name: "TypeError", message: expect.any(String) },
+      });
+      observed.push({ token, output: result.stdout + result.stderr });
+    }
+    for (const { token, output } of observed) {
+      expect(output).not.toContain(token.split("\n")[0]);
+      expect(output).not.toContain(token.split("\n")[1]);
+      expect(output).not.toContain("synthetic-jira-");
+    }
+  });
+
   it("keeps published build completion and PR links in one terminal comment", () => {
     const workflow = fs.readFileSync(path.resolve(".bkit/core/workflows/bkit-build.md"), "utf8");
     const closeCommand = workflow

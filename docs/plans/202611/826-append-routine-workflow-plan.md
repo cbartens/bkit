@@ -116,6 +116,9 @@ The first five rows retain the design's Key Edge Cases word for word.
 | Linear create/edit/read, external edit, pagination, marker survival, verified numeric/counting budget and discarded-response reconciliation. | @live (golden) | `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts` | 10 |
 | Jira Rovo deployed schemas, transformed representation stability, edit/read, paging, limits and discarded-response reconciliation. | @live (golden) | `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts` | 10 |
 | Clean build-shaped CLI run leaves two comments; interruption, resume, old receipts, issue-less paths and unchanged fallback retain the selected contract. | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 7 |
+| preserves a human correction after lost append recognition and a later report | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 13 |
+| keeps auto startup with PR metadata and dispatch in one progress comment | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 14 |
+| redacts malformed Jira authorization from live probe diagnostics | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 15 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -594,6 +597,41 @@ The groups below are one implementation sequence. Each task lands its own tests 
 <!-- bkit:task 11 end -->
 
 <!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** A lost append response lets the next report overwrite an intervening human correction.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tracker.ts:1817` · **Round:** 1
+  - **DONE WHEN:** Recognizing a delivered section after a lost response preserves its successful outcome and known URL, but does not adopt an altered remote revision as future append authority. Retain append eligibility only when the recovered representation is proven to match the intended engine aggregate; otherwise seal the segment and start the next routine report in a new comment. A marker-preserving human correction survives that next report. The current recognition branch accepts ID, author and section marker, then saves the locally intended source with the human-edited fingerprint; its postflight sees the same edited revision and retains it. The existing recognition test has no intervening edit or third report. An independently rerun local built-export reproduction returned three successes, one comment, and correction-preserved true after recognition but false after the third report. This violates `docs/security.md` § Workflow comment ownership and `docs/architecture.md` § Tracker reporting boundary, beyond the accepted final-preflight race.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.test.ts` `preserves a human correction after lost append recognition and a later report` fails on a marker-preserving edit between a lost append acknowledgment and recognition being overwritten by a subsequent routine report; assert acknowledged delivery remains successful, the correction remains intact, and the later report creates a fresh comment without editing the corrected segment.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [ ] **TASK 14:** Auto startup with a PR link prematurely terminates its routine progress segment.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:1084` · **Round:** 1
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: add optional `issues comment --purpose=routine|attention|terminal`; retain existing kind-based classification when omitted and use explicit terminal purpose for ended-run identity.
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: pass `--purpose=terminal` on final Create PR reporting, then synchronize the CLI catalog and generated host contracts.
+  - **DONE WHEN:** Ordinary PR-link metadata does not classify a report as terminal or select an ended-run identity. The actual auto startup command with `--pr-number`, followed by Dispatch in the same explicit session, shares one routine progress comment; an explicitly identified final Create PR report remains a separate terminal comment. Propagate that explicit completion purpose through the build caller and generated host contracts. The command currently treats every `prNumber` as terminal even though `.bkit/core/workflows/bkit-auto.md:126` uses it on Start Workflow. An independently rerun built-command reproduction returned two successful creates, no edit and no startup progress marker. The existing clean-build integration cases cover final PR reporting, but not this auto startup shape. This violates `.bkit/trackers.md` § Workflow comment delivery and the plan's routine-startup acceptance scenario.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `keeps auto startup with PR metadata and dispatch in one progress comment` fails on the real startup and Dispatch CLI flag shapes creating two comments despite the same valid session; assert the routine aggregate contains both reports and a later explicit completion remains separate.
+
+<!-- bkit:task 14 end -->
+<!-- bkit:task 15 start -->
+
+- [ ] **TASK 15:** A malformed Jira credential is exposed in live-probe diagnostics.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts:35` · **Round:** 1
+  - **DONE WHEN:** Every error diagnostic emitted by the live contract probe redacts configured tracker credential values before truncation and JSON serialization. The direct Jira schema-discovery fetch must not print the Authorization value when header validation fails. Preserve the diagnostic stage, useful non-secret failure classification, opt-in target checks and existing provider evidence. This enforces `docs/security.md` § Secrets Management and the plan's Security & Privacy requirement for redacted build evidence.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `redacts malformed Jira authorization from live probe diagnostics` fails on the actual probe's `--discover` execution emitting a synthetic Jira token with an embedded newline in stdout or stderr; exercise the real header-validation failure without network traffic, including a long token whose unredacted message would be truncated, and assert the failure stage remains observable.
+
+<!-- bkit:task 15 end -->
+<!-- bkit:group 5 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

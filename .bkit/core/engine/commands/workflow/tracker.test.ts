@@ -222,6 +222,7 @@ function publicationFixture() {
     failEdits: 0,
     failCreates: 0,
     loseEditResponse: false,
+    lostEditCorrection: "",
     postflightHuman: false,
     repeatedPages: false,
   };
@@ -286,7 +287,11 @@ function publicationFixture() {
       comment.body = request.variables.input?.body ?? "";
       comment.updatedAt = "2026-11-01T01:02:00.000Z";
       if (state.postflightHuman) state.comments.push(make("intervening reply", "human-account"));
-      if (state.loseEditResponse) throw new Error("response lost after successful mutation");
+      if (state.loseEditResponse) {
+        comment.body += state.lostEditCorrection;
+        if (state.lostEditCorrection) comment.updatedAt = "2026-11-01T01:03:00.000Z";
+        throw new Error("response lost after successful mutation");
+      }
       return Response.json({ data: { commentUpdate: { success: true, comment } } });
     }),
   );
@@ -614,6 +619,28 @@ describe("bounded nonfatal publication", () => {
     expect(soleComment(f).body).toContain("ack lost");
     expect(f.state.requests.filter((r) => r.operation === "create")).toHaveLength(1);
     expect(f.state.requests.filter((r) => r.operation === "edit")).toHaveLength(1);
+  });
+
+  it("preserves a human correction after lost append recognition and a later report", async () => {
+    const f = publicationFixture();
+    expect(await f.publish("first")).toMatchObject({ done: true });
+    const corrected = soleComment(f);
+    const correction = "\nHuman correction retained after acknowledgment was lost\n";
+    f.state.loseEditResponse = true;
+    f.state.lostEditCorrection = correction;
+    const recognized = await f.publish("ack lost");
+    expect(requireOutcomeUrl(recognized)).toBe(corrected.url);
+    expect(corrected.body).toContain("ack lost");
+    expect(corrected.body).toContain(correction);
+    const correctedBody = corrected.body;
+    const before = f.state.requests.length;
+    f.state.loseEditResponse = false;
+    expect(await f.publish("later routine report")).toMatchObject({ done: true });
+    expect(corrected.body).toBe(correctedBody);
+    expect(f.state.comments).toHaveLength(2);
+    expect(f.state.comments.at(-1)?.body).toBe(f.report("later routine report"));
+    expect(f.state.requests.slice(before).filter((r) => r.operation === "edit")).toHaveLength(0);
+    expect(f.state.requests.slice(before).filter((r) => r.operation === "create")).toHaveLength(1);
   });
 
   it("contains exhausted append and create failures without fabricated success", async () => {
