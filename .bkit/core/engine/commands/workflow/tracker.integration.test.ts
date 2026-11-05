@@ -333,7 +333,118 @@ beforeEach(() => {
 
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
+function workflowCommandFlags(
+  command: string | undefined,
+  flags: Array<[string, string[]]>,
+): string[] {
+  return flags.flatMap(([needle, args]) => (command?.includes(needle) ? args : []));
+}
+
 describe("workflow comment lifecycle across real CLI processes", () => {
+  it("keeps published build completion and PR links in one terminal comment", () => {
+    const workflow = fs.readFileSync(path.resolve(".bkit/core/workflows/bkit-build.md"), "utf8");
+    const closeCommand = workflow
+      .split("\n")
+      .find((line) => line.includes('--message="chore({FID}): close-workflow"'));
+    const prCommand = workflow
+      .split("\n")
+      .find((line) => line.includes('--step-title="Create PR"'));
+    expect(closeCommand).toBeDefined();
+    expect(prCommand).toBeDefined();
+    const dir = session();
+    report(cwd, "Start Workflow", { sessionDir: dir, number: 1 });
+    start(cwd, dir);
+    report(cwd, "Summary", { file: REL, number: 15 });
+    const completed = ok(cwd, [
+      "workflows",
+      "close",
+      "--workflow=build",
+      `--fid=${FID}`,
+      `--month=${MONTH}`,
+      "--number=16",
+      "--title=Completion",
+      "--owner-repo=o/r",
+      `--session-dir=${dir}`,
+      ...workflowCommandFlags(closeCommand, [["--post", ["--post"]]]),
+    ]);
+    ok(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--step-number=16",
+      "--step-title=Create PR",
+      "--owner-repo=o/r",
+      "--pr-number=99",
+      "--pr-url=https://github.com/o/r/pull/99",
+      `--session-dir=${dir}`,
+      ...workflowCommandFlags(prCommand, [
+        ["--body-file=", [`--body-file=${String(completed.commentFile)}`]],
+        ["--workflow=build", ["--workflow=build"]],
+        ['--file="{STATUS}"', [`--file=${REL}`]],
+      ]),
+    ]);
+    expect(remote().comments).toHaveLength(2);
+    expect(remote().comments[1]?.body).toContain("Completion");
+    expect(remote().comments[1]?.body).toContain("https://github.com/o/r/pull/99");
+    expect(remote().comments[0]?.body).not.toContain("Completion");
+    expect(fs.readdirSync(path.join(cwd, ".git/bkit-outbox/progress"))).toHaveLength(0);
+  });
+
+  it("continues after the prepared completion source disappears", () => {
+    const dir = session();
+    start(cwd, dir);
+    const result = cli(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=build",
+      `--file=${REL}`,
+      "--step-number=16",
+      "--step-title=Create PR",
+      "--pr-number=99",
+      "--owner-repo=o/r",
+      "--body-file=tmp/missing-completion.md",
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.out.tracker).toMatchObject({ done: false, reason: "preparation" });
+    expect(result.out.commentFile).toBeNull();
+    expect(fs.readFileSync(path.join(cwd, ".bkit/friction.jsonl"), "utf8")).toContain(
+      '"step":"comment-delivery"',
+    );
+    expect(finish(cwd, "PASS").code).toBe(0);
+  });
+
+  it("records preparation and session association failures despite successful delivery", () => {
+    const dir = session();
+    const prepared = ok(
+      cwd,
+      [
+        "issues",
+        "comment",
+        "--post",
+        "--issue=12",
+        "--workflow=build",
+        "--step-number=1",
+        "--step-title=Preparation",
+        `--session-dir=${dir}`,
+      ],
+      { BKIT_PROGRESS_IO_FAULT: "preparation" },
+    );
+    expect(prepared.tracker).toMatchObject({ done: true });
+    expect(prepared.commentFile).toBeNull();
+    const frictionFile = path.join(cwd, ".bkit/friction.jsonl");
+    const preparationRows = fs.readFileSync(frictionFile, "utf8");
+    expect(preparationRows).toContain('"step":"comment-source"');
+    fs.rmSync(dir, { recursive: true, force: true });
+    report(cwd, "Missing association", { sessionDir: dir, number: 2 });
+    const associationRows = fs.readFileSync(frictionFile, "utf8");
+    expect(associationRows).toContain('"step":"comment-association"');
+    expect(associationRows).not.toContain(dir);
+    expect(remote().comments).toHaveLength(2);
+  });
+
   it("associates startup and run across restart or starts fresh safely", () => {
     const dir = session();
     report(cwd, "Start Workflow", { sessionDir: dir, number: 1 });

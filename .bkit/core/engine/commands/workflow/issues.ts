@@ -28,7 +28,9 @@ import {
   TRACKER_OUTPUT,
   attempt,
   classifyFailure,
+  commentDiagnostic,
   commentFileOf,
+  endedRunActionKey,
   fetchIssue,
   moveOnBoard,
   postForVerb,
@@ -1033,17 +1035,37 @@ export const issuesCommand: CommandSpec = {
         },
       ],
       output: {
-        comment: "the comment body",
+        comment: "the comment body; null when --post source preparation is unavailable",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
       },
       exitCodes: {
         [EXIT_BAD_INPUT]:
-          "a --body-file / --section / --stderr-file / --error-file file is missing",
+          "without --post: a --body-file / --section / --stderr-file / --error-file file is missing",
       },
       run: async (ctx) => {
-        const comment = commentBody(ctx);
-        const commentFile = commentFileOf(ctx.cwd, comment);
+        let comment: string;
+        try {
+          comment = commentBody(ctx);
+        } catch (err) {
+          if (
+            ctx.flags.post !== true ||
+            (err instanceof CommandError && err.code !== EXIT_BAD_INPUT)
+          )
+            throw err;
+          commentDiagnostic(
+            { cwd: ctx.cwd, workflow: str(ctx.flags.workflow), log: (line) => ctx.log(line) },
+            "[bkit-tracker] comment preparation unavailable; continuing workflow",
+            [],
+          );
+          ctx.emit({
+            comment: null,
+            commentFile: null,
+            tracker: { done: false, action: "comment", reason: "preparation" },
+          });
+          return EXIT.OK;
+        }
+        const commentFile = commentFileOf(ctx.cwd, comment, ctx);
         if (ctx.flags.post !== true) {
           ctx.emit({ comment, commentFile });
           return EXIT.OK;
@@ -1051,21 +1073,27 @@ export const issuesCommand: CommandSpec = {
         const file = str(ctx.flags.file)
           ? path.resolve(ctx.cwd, String(ctx.flags.file))
           : undefined;
-        const key = runActionKey(
-          file,
-          str(ctx.flags.workflow),
+        const keyParts = [
           str(ctx.flags.kind) ?? "step",
           str(ctx.flags.stepNumber),
           str(ctx.flags.subStep),
           str(ctx.flags.attempt),
-        );
+        ];
+        const workflow = str(ctx.flags.workflow);
+        const key =
+          ctx.flags.prNumber !== undefined && workflow !== undefined
+            ? endedRunActionKey(file, workflow, ...keyParts)
+            : runActionKey(file, workflow, ...keyParts);
         const tracker = await postForVerb(ctx, comment, {
           fid: str(ctx.flags.fid),
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file, key }),
-          purpose: ["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
-            ? "attention"
-            : "routine",
+          purpose:
+            ctx.flags.prNumber !== undefined
+              ? "terminal"
+              : ["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
+                ? "attention"
+                : "routine",
         });
         ctx.emit({ comment, commentFile, tracker });
         return EXIT.OK;

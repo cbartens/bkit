@@ -1119,14 +1119,14 @@ This block appends the roadmap row in the worktree only, closes and commits the 
 
    ```bash
    "{BKIT}" roadmap mirror --workflow=build --fid={FID} >/dev/null || exit 1
-   "{BKIT}" workflows close --workflow=build --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" {LABEL_FLAGS} --number=16 --post --title="Close Workflow & Create PR" --tree={BRANCH} --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/build-summary.md" --session-dir="{SESSION_DIR}" --line="CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug." || exit 1
+   "{BKIT}" workflows close --workflow=build --fid={FID} --month={YYYYMM} --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" {LABEL_FLAGS} --number=16 --title="Close Workflow & Create PR" --tree={BRANCH} --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/build-summary.md" --session-dir="{SESSION_DIR}" --line="CI not awaited here — /bkit-ship gates on its result; red → /bkit-debug." || exit 1
    ```
 
    Route:
    - **If** exit 0 → continue with the next instruction.
    - **Else** → **Failure Path**.
 
-   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE`, `tracker` as `CLOSE_TRACKER`, `finalReturn` as `FINAL_RETURN`.
+   Hold the close's `commentFile` as `CLOSE_COMMENT_FILE` and `finalReturn` as `FINAL_RETURN`. The close prepares its report for the single completion comment in sub-step 7.
 
    Push with the HEAD-Subject Assertion:
 
@@ -1187,10 +1187,11 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
    - **If** exit 0 → sub-step 7.
    - **Else** → **Failure Path**.
-7. **Skip if** `ISSUE_ID` empty. Comment:
+7. **Skip if** `ISSUE_ID` empty. Post the completion report with the PR link. Drop `--body-file` when `CLOSE_COMMENT_FILE` is null:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL} --session-dir="{SESSION_DIR}"
+   "{BKIT}" issues comment --post --workflow=build --file="{STATUS}" --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL} --body-file="{CLOSE_COMMENT_FILE}"
    ```
+   Hold this report's `commentFile` as `CLOSE_COMMENT_FILE` and `tracker` as `CLOSE_TRACKER` for sub-step 10's fallback.
 8. **Skip if** `ISSUE_ID` empty.
    ```bash
    "{BKIT}" issues labels --write --board=review --issue={ISSUE_ID} --owner-repo={OWNER_REPO}

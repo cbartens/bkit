@@ -313,7 +313,7 @@ async function failVerb(ctx) {
         trackerState: failedState,
         prState,
         comment,
-        commentFile: commentFileOf(ctx.cwd, comment),
+        commentFile: commentFileOf(ctx.cwd, comment, ctx),
         ...(tracker === undefined ? {} : { tracker }),
         ...(labelsWrite === undefined ? {} : { labelsWrite }),
         ...sessionRemoval(ctx),
@@ -730,7 +730,7 @@ async function handoverVerb(ctx) {
         ref: pushed ? ref : null,
         skipped,
         comment,
-        commentFile: commentFileOf(ctx.cwd, comment),
+        commentFile: commentFileOf(ctx.cwd, comment, ctx),
         ...(tracker === undefined ? {} : { tracker }),
     });
     return code;
@@ -1651,7 +1651,7 @@ function inputVerb(ctx) {
  */
 async function postClose(ctx, fid, out) {
     const comment = typeof out.comment === "string" ? out.comment : null;
-    const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment) };
+    const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment, ctx) };
     if (ctx.flags.post !== true)
         return withFile;
     if (comment === null)

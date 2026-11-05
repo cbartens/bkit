@@ -1563,7 +1563,7 @@ function saveProgress(
   fs.writeFileSync(binding.file, JSON.stringify(state), { mode: 0o600 });
 }
 
-function commentDiagnostic(o: OnceOptions, text: string, warnings: string[]): void {
+export function commentDiagnostic(o: OnceOptions, text: string, warnings: string[]): void {
   const detail = redact(text);
   try {
     o.log(detail);
@@ -1904,17 +1904,30 @@ export const TRACKER_OUTPUT =
 
 /** The `commentFile` output key's meaning, shared by every verb that prints a comment. */
 export const COMMENT_FILE_OUTPUT =
-  "absolute path of a file holding `comment` byte-for-byte (the MCP fallback reads it); null when comment is null";
+  "absolute path of a file holding `comment` byte-for-byte (the MCP fallback reads it); null when comment is null or its source file is unavailable";
 
 /** How many of the issue's latest comments a re-run checks for the same marker hash. */
 export const RECENT_COMMENTS = 5;
 
 /** `comment` written to its body file, or null for no comment. */
-export function commentFileOf(cwd: string, comment: string | null): string | null {
+export function commentFileOf(
+  cwd: string,
+  comment: string | null,
+  ctx?: Pick<RunContext, "flags" | "publication" | "log">,
+): string | null {
   if (comment === null) return null;
   try {
     return writeBodyFile(cwd, "comment", comment);
   } catch {
+    commentDiagnostic(
+      {
+        cwd,
+        workflow: ctx?.publication?.workflow ?? str(ctx?.flags.workflow),
+        log: (line) => ctx?.log(line),
+      },
+      "[bkit-tracker] fallback source unavailable; continuing workflow",
+      [],
+    );
     return null;
   }
 }
@@ -1927,11 +1940,11 @@ export function sessionPublication(
 ): RunContext["publication"] {
   if (!session || !workflow) return undefined;
   const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  if (!common) return undefined;
+  if (!common) throw new Error("session association repository unavailable");
   const sessions = path.join(common, "bkit-outbox", "sessions");
   const dir = fs.realpathSync(path.resolve(cwd, session));
   if (path.dirname(dir) !== fs.realpathSync(sessions) || !fs.statSync(dir).isDirectory())
-    return undefined;
+    throw new Error("session association directory unavailable");
   return { invocation: actionHash(`${dir}\0${workflow}`), workflow };
 }
 
@@ -2038,6 +2051,11 @@ export async function postForVerb(
           str(ctx.flags.workflow),
         );
       } catch {
+        commentDiagnostic(
+          { cwd: ctx.cwd, workflow: str(ctx.flags.workflow), log: (line) => ctx.log(line) },
+          "[bkit-tracker] invocation association unavailable; progress may start fresh",
+          [],
+        );
         publication = undefined;
       }
     }

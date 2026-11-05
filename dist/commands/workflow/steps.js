@@ -1199,7 +1199,7 @@ async function finish(ctx) {
         checks,
         comment,
         // Written after the step's commit, so the commit never carries it.
-        commentFile: commentFileOf(ctx.cwd, comment),
+        commentFile: commentFileOf(ctx.cwd, comment, ctx),
         ...(tracker === undefined ? {} : { tracker }),
     });
     if (written.code !== EXIT.OK)

@@ -46,6 +46,8 @@ Every phase carries its explicit repo-info session into fileless reports and wor
 
 Routine reports may append to an eligible engine-owned progress comment. Attention reports and terminal summaries create new comments. All tracker reporting, including preparation, MCP fallback and friction, is nonfatal: attempt the report or an applicable skip, then continue substantive work. When fallback is available, publish `commentFile` byte-for-byte as one new comment and never edit prior tracker content. See `.bkit/trackers.md` § Workflow comment delivery for ownership, reconciliation and recovery.
 
+A published build prepares its close report before the push and includes that report in its single Create PR completion comment. A held build posts its close report directly. The published completion retains its own exact fallback file after the PR link is added.
+
 ## When to Run
 
 Choose by the state of the work. Procedure stays in the command file and in § Per-Phase Workflows.

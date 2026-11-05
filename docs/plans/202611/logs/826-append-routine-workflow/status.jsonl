@@ -356,3 +356,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T08:16:25Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-plan-verify/3/1/comment","hash":"30c5a67a2a125f4e8bc52235d2c15c407e148dc13592500be8a016617229d916","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6653152369","at":"2026-11-05T08:16:26Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T08:16:26Z","parentSha":"0014f0d490f2b5033d31d7606c9660dbce4716cc","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-verify-3-1.md"],"verdict":"CONCERNS","attempt":1,"group":3,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:16:41Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:16:41Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:16:41Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:32:12Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:44:53Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:47:35Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:47:39Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:47:39Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:48:32Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T08:49:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-gaps-remediate/3/1/comment","hash":"5669e5d20c6659ad05099080b629a7ae3b8d38d28d0006eea2fa628578c461c7","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6653739081","at":"2026-11-05T08:49:20Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-05T08:49:20Z","parentSha":"e43c688dcb448ece73874fa275ca95c26fc3ae15","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-gaps-remediate-3-1-log.md"],"verdict":"FAIL","attempt":1,"group":3,"strategy":"STANDARD"}

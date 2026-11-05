@@ -524,7 +524,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Synchronize workflow context, fallback wording and operator documentation.
+- [x] **TASK 9:** Synchronize workflow context, fallback wording and operator documentation.
   - **UPDATE:** `.bkit/instructions.md`: change the shared Comments clause through its authoritative source and sync tooling.
   - **UPDATE:** `.bkit/core/workflows/bkit-auto.md`: pass explicit invocation, keep phase identity separate and make comment/MCP/friction failures nonfatal.
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: pass invocation/purpose and make all provider comment/fallback blocks and gates attempted-not-successful.
