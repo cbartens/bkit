@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-03T12:11:01Z)_
+_(refreshed 2026-11-05T07:59:52Z)_
 
 ### Design
 
@@ -47,6 +47,7 @@ _(refreshed 2026-11-03T12:11:01Z)_
 | 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793687751643 |
+| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 
 ### Build
 
