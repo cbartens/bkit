@@ -481,7 +481,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Wire reconciliation and bounded retry routes across the ship workflow and resolver
+- [x] **TASK 7:** Wire reconciliation and bounded retry routes across the ship workflow and resolver
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: wire opt-in engine contracts, early publication, fresh head variables, new-PR handling, stale-base→Step 3 and moved-head→Step 9 routing, one durable attempt count and guarded post-merge cleanup; remove eager merge-time branch deletion. Wire exit-80 and runtime-gh-unavailable fact handoffs through the same engine classifiers with single-transition transport accounting and independent rereads.
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-conflict-resolve.md`: verify and continue the engine-recorded merge target using the same mechanical-only resolution contract.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-invariants.test.ts`: assert the routes, counter consumption, target passing and cleanup ownership structurally, while retaining existing staging and head-pin assertions.
