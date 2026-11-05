@@ -192,3 +192,14 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T11:37:42Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-tasks/2/1/comment","hash":"17e4606c6fde173b0f38e78fa11ee8bd31bafd9556a0569dfee145b458882468","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6657011622","at":"2026-11-05T11:37:43Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-05T11:37:43Z","parentSha":"b72a230817cd7598a8fd844950b36829a0106ed5","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-tasks-2-log.md"],"verdict":"FAIL","attempt":1,"group":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:38:05Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:38:06Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:38:06Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:38:06Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:49:14Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:52:21Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:57:56Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:58:19Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T12:02:50Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-tasks/2/2/comment","hash":"b2dca10cf80d667d687040234d6aa17d74aebecc4c4c5700fcc2b1ca03b7bff9","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6657484953","at":"2026-11-05T12:02:51Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-05T12:02:51Z","parentSha":"8510275b981f148dac56dda90050d8a1bfbc1554","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-plan-tasks-2-log.md"],"verdict":"PASS","attempt":2,"group":2}

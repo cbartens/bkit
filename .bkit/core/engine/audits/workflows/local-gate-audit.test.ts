@@ -270,7 +270,7 @@ describe("bkit-local-gate-audit (#437)", () => {
       { workflow: "bkit-plan.md", sites: 1 },
       { workflow: "bkit-build.md", sites: 2 },
       { workflow: "bkit-debug.md", sites: 5 },
-      { workflow: "bkit-ship.md", sites: 5 },
+      { workflow: "bkit-ship.md", sites: 7 },
     ];
     for (const { workflow, sites } of pushProbes) {
       const body = fs.readFileSync(path.join(WORKFLOWS_DIR, workflow), "utf-8");

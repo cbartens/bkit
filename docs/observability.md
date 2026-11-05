@@ -130,7 +130,8 @@ Run-completeness check (`checks/status-holes.ts`, `bkit completeness check`). Ad
 | 15 | Selected run concluded `cancelled` | refuse |
 | 16 | A lane named in `bkit.testing.ciRequired` concluded `skipped` | refuse |
 | 17 | Non-bookkeeping change past `--validated`, or not its descendant | refuse → Step 9 (re-validate at head) |
-| 20 | API error / rate limit / auth | refuse |
+| 19 | Fresh `dev` is not an ancestor of the validated code head | refuse → Step 4 (integrate and revalidate) |
+| 20 | API error / rate limit / auth, or missing/mismatched fresh-base evidence | refuse |
 | 80 | `gh` not on PATH | do it via the MCP fallback |
 
 The refusal itself is signalled by the process exit code; every refusal ends with the `required head:` block. Canonical grep patterns:
@@ -147,6 +148,12 @@ The refusal itself is signalled by the process exit code; every refusal ends wit
 - `[bkit-runs] override honoured for head %s (BKIT_SHIP_GATE_OVERRIDE matches refused head)` — sanctioned escape hatch; also writes a `ship-gate-override` `status.jsonl` row (`--file=`) for audit, or emits it to stderr when the file is absent or unwritable.
 
 The override is honoured ONLY when `BKIT_SHIP_GATE_OVERRIDE=<sha>` equals the exact head being refused, so a SHA mismatch is ignored and the refusal stands. Audit the override rows (`status.jsonl` `type:"ship-gate-override"`) as part of consumer rollback (see `docs/deployments.md` § Ship gate + bookkeeping).
+
+With `--fresh-base`, ancestry is checked before the override or bookkeeping carry-forward. The gate snapshot records the fetched `devSha`, `comparedHead` and `ancestor` evidence; unavailable evidence refuses rather than assuming freshness. MCP facts are scoped to `ownerRepo`, `prNumber`, `headRefName` and `baseRefName`, with the comparison in `base` (`ref`, `sha`, `comparedHead`, `status`). A mismatched envelope cannot authorize a merge.
+
+`bkit prs merge --ship-retry` distinguishes a moved head (exit 9, return to validation) from a new conflict (exit 10, return to integration). Other merge refusals remain terminal (exit 7). A successful head-pinned merge still has a residual race with a later base update because the merge API does not pin the base SHA.
+
+Cleanup reports preservation explicitly. `local {branch} changed after its cleanup proof — preserved` means the expected-tip delete refused; `carries work origin/dev does not — preserved` means landed-work evidence failed. `cleanup evidence unavailable — preserved` names an unreadable local or remote ref. `remote origin/{branch} retained: conditional deletion is unavailable under the no-force-push policy` records the retained remote branch. Cleanup proves the index and working tree separately before removing either, and these diagnostics are independent of GitHub's repository-level automatic branch deletion setting.
 
 The same prefix carries the CI waits (`bkit runs wait`: one `attempt N: …` line per poll) and the CI-Dispatch Gate (`bkit runs dispatch`: `re-trigger commit or push failed — no verdict; route to the Failure Path`, `landed commit … inherited a CI-suppression token in its body`).
 
