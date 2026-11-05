@@ -698,7 +698,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** `codex` cloud variant (`719-any-cloud-agent-any-wired-tracker`)
+- [x] **TASK 4:** `codex` cloud variant (`719-any-cloud-agent-any-wired-tracker`)
   - **UPDATE:** `CLOUD_MODES` in `.bkit/core/engine/install/manifest.ts`: add `codex`
   - **UPDATE:** `CLOUD_VARIANTS` in `.bkit/core/engine/cli.ts`: add `codex`; help text (`:702-709`, `:801`) lists `--auto=<claude|cursor|opencode|codex>` with no tracker pairing; `:708` names the provider's own `BKIT_` key instead of `OPENCODE_PROVIDER_KEY`
   - **UPDATE:** `.bkit/core/engine/install/manifest.test.ts`: `parseCloudAgents` case for `codex`
@@ -715,7 +715,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Cloud advisories from a variant x tracker table; `BKIT_OPENAI_API_KEY` env row (`719-cloud-advisories-variant-by-tracker-table`, `719-cloud-router-secrets-bkit-prefixed`)
+- [x] **TASK 5:** Cloud advisories from a variant x tracker table; `BKIT_OPENAI_API_KEY` env row (`719-cloud-advisories-variant-by-tracker-table`, `719-cloud-router-secrets-bkit-prefixed`)
   - **UPDATE:** `runCloudModule` in `.bkit/core/engine/install/modules/cloud.ts`: per-variant rows (claude: adopt router, `/install-github-app`, `BKIT_ANTHROPIC_API_KEY` or federation variables; opencode: `--opencode` first, configured provider's `BKIT_` key; codex: `--codex` first, `.codex/bkit-cloud.md`, `BKIT_OPENAI_API_KEY`, vendor `@Codex` / Codex for Linear named not installed; cursor: `.cursor/` templates, dashboard CI trigger, per-tracker native trigger) + `trackerAdvisoryLines(ctx.issueTracker, variant)` replacing the hard-coded Linear lines (`:164`, `:181`)
   - **READ:** `OPENCODE_PROVIDER_DEFAULTS` in `.bkit/core/engine/shared/egress.ts`: provider → env var name
   - **UPDATE:** `.bkit/shared/.bkit/.env.example`: `BKIT_OPENAI_API_KEY=` row with its comment, beside `BKIT_ANTHROPIC_API_KEY`

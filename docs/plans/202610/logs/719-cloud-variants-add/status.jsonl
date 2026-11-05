@@ -332,3 +332,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T10:18:26Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-verify/3/1/comment","hash":"4108a8d4149b2a3f845b90acce6938de630c8980da811627d71fa4d8498dbeed","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6655466117","at":"2026-11-05T10:18:27Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T10:18:27Z","parentSha":"89b1f4ded233bae995dddcd2d0295c4c1d590d16","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-3-1.md"],"verdict":"CONCERNS","attempt":1,"group":3,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:18:32Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:18:35Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:18:37Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:23:13Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:23:52Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T10:25:18Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/2/build-plan-gaps-remediate/3/1/comment","hash":"7951bb87f5d9cbf13da0a244386515e344ef37a047baa74e002c9b2c09cf7337","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6655603301","at":"2026-11-05T10:25:19Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-05T10:25:19Z","parentSha":"a91cd75d6c01ac35c11957aa34ec0cc7651663db","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-gaps-remediate-3-1-log.md"],"verdict":"FAIL","attempt":1,"group":3,"strategy":"STANDARD"}
