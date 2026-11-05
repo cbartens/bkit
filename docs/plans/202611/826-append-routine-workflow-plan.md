@@ -420,7 +420,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Add the narrow ownership-aware publication lock.
+- [x] **TASK 4:** Add the narrow ownership-aware publication lock.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.ts`: reuse exclusive creation and token ownership for a distinct delivery lock.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.test.ts`: prove process serialization and refusal/reclaim boundaries.
   - **DEPENDS ON:** 3
@@ -435,7 +435,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Implement central classification, safe append and new-comment selection.
+- [x] **TASK 5:** Implement central classification, safe append and new-comment selection.
   - **UPDATE:** `postForVerb` in `.bkit/core/engine/commands/workflow/tracker.ts`: accept structured purpose and exact invocation association.
   - **UPDATE:** `postCommentOnce` in `.bkit/core/engine/commands/workflow/tracker.ts`: use available source/receipt evidence and append lock, with standalone creation for ineligible routine and separate attention/terminal reports.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: add policy, eligibility and immutable-version cases.
