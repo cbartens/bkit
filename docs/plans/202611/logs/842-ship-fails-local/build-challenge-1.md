@@ -1,4 +1,4 @@
-Verdict: CONCERNS
+Verdict: PASS
 Failures: 0
 Coverage: partial diff coverage supplemented by the supplied full raw diff
 
@@ -10,25 +10,20 @@ Lens: Bugs and edge cases — null safety, off-by-one, error paths, data integri
 
 ## Findings Log
 
-<!-- bkit:task 1 start -->
+None.
 
-- [ ] **TASK 1:** A remote code push after bookkeeping reaches merge without reconciliation or refreshed feature coverage
-      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-ship.md:645`
-  - **DONE WHEN:** Newly observed feature code in Step 9 and non-bookkeeping head movement reported by Step 10 exit 17 both return through Step 3 reconciliation, inherited-unpublished-dev eligibility checks and Steps 5/6 coverage decisions before the new head can authorize merge. Step 9 consumes an explicit reconciliation-needed result instead of silently advancing `VALIDATED_HEAD`. The existing bounded retry accounting remains intact, and pure bookkeeping movement retains covered sweep/docs work. Update the existing engine/workflow owners and regenerate their shipped mirrors; no second reconciliation implementation is needed.
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/runs.test.ts` `requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse` fails because `runRevalidate` currently selects the changed remote code head and returns validation success without a reconciliation-needed outcome; the same test verifies that a bookkeeping-only descendant preserves the covered code head and does not request renewed feature review.
-    - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `routes late revalidation code and gate seventeen through reconciliation before merge` fails because Step 9 accepts `validatedHead` without routing a newly observed code change to Step 3, and Step 10 exit 17 returns to Step 9 without setting `RECONCILE_REQUIRED` or otherwise requiring reconciliation; scope assertions to both route blocks and retain the bounded counter and bookkeeping-reuse assertions.
+## Round 2 Recheck
 
-The supporting engine path is `.bkit/core/engine/commands/workflow/runs.ts:2369`; the exit-17 retry is `.bkit/core/workflows/bkit-ship.md:689`. Step 9 checks `RECONCILE_REQUIRED` only before `runRevalidate` reads the PR head. The engine then promotes any non-bookkeeping remote head to `validatedHead`. Only the later `prs merge` exit-9 route sets the flag. Consequently a remote push after Step 8 can pass CI and merge without local reconciliation, inherited-dev eligibility checks or refreshed sweep/docs coverage. The fresh-base gate proves dev ancestry and CI, not those obligations.
+Reviewed candidate `2ebd30cedae1412bddc958b1a2fe63429e0d0496` against the updated plan and replacement raw diff. The former late-head bypass is closed in the inspected source: `runs revalidate --require-reconciled` returns 21, emits no validated head and records one refusal before CI probing when the observed feature code differs. Step 9 consumes that result before accepting `VALIDATED_HEAD`. Both exit 21 and gate exit 17 route through the existing bounded counter to Step 3, which reconciles and then refreshes sweep/docs coverage. The added command regression checks a remote code push and the bookkeeping-only control; the workflow regression scopes its assertions to both retry blocks. These are discriminating checks of the original failure paths.
 
-This precise regression delta is absent from the existing Task 7 tests: those inspect Steps 5/6 reuse wording and post-attempt retry destinations, so their current passing assertions do not cover either earlier observation. Cross-references: `.bkit/workflows.md` § `/bkit-ship` Steps 3, 5 and 6 assigns reconciliation and feature coverage ownership; `docs/testing.md` § Ship merge-gate + bookkeeping test coverage identifies workflow invariants as the Tier-2 enforcement surface.
+The Actions-facts changes were checked for correctness and failure behavior within this review's lens: missing or mismatched run provenance refuses; job pages retain their shape and each job must match its selected run and head. The added tests include matching controls, missing provenance, unrelated evidence and a capstone on a later jobs page. No independent new correctness finding was confirmed.
 
-<!-- bkit:task 1 end -->
+The source contracts agree with `.bkit/workflows.md` § `/bkit-ship`, `docs/observability.md` § `[bkit-runs]` and the testing strategy's Tier-1 command / Tier-2 workflow split. The compiled revalidation guard and Actions-facts predicates are present in `dist/commands/workflow/runs.js`. The new revalidation flag and exit-21/17 routes are present in the inspected Claude, Cursor, OpenCode and shared skills copies, and in the tracker-none render snapshot.
 
 ## Review Coverage
 
-The initial artifact reported partial diff coverage. The caller subsequently supplied `.git/bkit-outbox/842-ship-fails-local/bkit-diff-842-ship-fails-local.raw.md` as the replacement full diff. The substantive engine, workflow, resolver and added regression sections were inspected, including command error exits, pending-merge continuation, fresh-base checks, scoped transport inputs, cleanup preservation and reuse-state routing. Review depth was concentrated on those changed behavior surfaces. Generated mirrors and installed third-party reference payloads were not independently reviewed line by line; the installed skill entries and their source/hash provenance were inspected. No test suite or generation command was run by this review, and no independent parity or whole-diff correctness claim is made.
+The trimmed artifact reports partial diff coverage: 21,299 diff lines across 114 files. The supplied full raw diff removes the trimmed artifact's source omissions. Across both review rounds, substantive engine, workflow, resolver and regression changes were inspected for null/default handling, boundaries, error exits, empty evidence, pending-merge continuation, branch races, cleanup preservation and coverage reuse. Round 2 additionally read the complete substantive delta since the round-1 candidate, the new plan tasks and the relevant updated documentation.
 
-The installed Node skill recommends universal activation and type stripping. Those are untrusted guidance, not authorization to alter this repository's existing build or activate a second workflow; neither directive was followed. This is a guidance-boundary observation, not a bug-lens task.
+Generated mirrors received targeted checks of the changed guards and routes, not an independent full render-parity run. Third-party skill payloads received source/hash provenance inspection, not a line-by-line review of every reference file. No test, build, generation or scratch-consumer command was run by this reviewer; the verdict is a source-review conclusion, not an independent claim that the caller's reported test gates passed. No sibling review output was consulted.
 
-Only this report was written. No implementation, plan, test, staging or commit changes were made. This report was reformatted for the Step 11 exit-22 recovery without repeating the broad investigation. The unresolved late-head gap requires remediation and verification; this verdict does not certify build completion.
+Only this report was changed. No implementation, plan, test, staging or commit changes were made.

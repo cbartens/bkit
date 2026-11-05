@@ -524,7 +524,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** A remote code push after bookkeeping reaches merge without reconciliation or refreshed feature coverage
+- [x] **TASK 9:** A remote code push after bookkeeping reaches merge without reconciliation or refreshed feature coverage
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-ship.md:645` · **Round:** 1
   - **DONE WHEN:** Newly observed feature code in Step 9 and non-bookkeeping head movement reported by Step 10 exit 17 both return through Step 3 reconciliation, inherited-unpublished-dev eligibility checks and Steps 5/6 coverage decisions before the new head can authorize merge. Step 9 consumes an explicit reconciliation-needed result instead of silently advancing `VALIDATED_HEAD`. The existing bounded retry accounting remains intact, and pure bookkeeping movement retains covered sweep/docs work. Update the existing engine/workflow owners and regenerate their shipped mirrors; no second reconciliation implementation is needed.
   - **TEST FIRST:**
@@ -534,7 +534,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 <!-- bkit:task 9 end -->
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Substitute unrelated green Actions evidence into scoped MCP facts to authorize a merge
+- [x] **TASK 10:** Substitute unrelated green Actions evidence into scoped MCP facts to authorize a merge
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:2027` · **Round:** 1
   - **DONE WHEN:** The MCP adapter rejects CI evidence whose repository or configured workflow does not match the requested scope, and rejects jobs whose run identity or head does not match the selected run. Missing provenance fails closed. Update the fallback facts contract and fixtures together while retaining valid scoped evidence and paginated jobs.
   - **TEST FIRST:**
