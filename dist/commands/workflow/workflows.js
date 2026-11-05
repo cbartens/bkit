@@ -42,7 +42,7 @@ import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
 import { EXIT_NO_STATUS, WORKFLOW_FLAG, positiveInt, readRuns, readStatusEvents, readStatusRows, str, } from "./status.js";
-import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, attempt, commentFileOf, postForVerb, issueRef, readLabels, endedRunActionKey, skipOf, trackerTarget, writeLabels, } from "./tracker.js";
+import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, attempt, commentFileOf, postForVerb, bindRunPublication, issueRef, readLabels, endedRunActionKey, skipOf, trackerTarget, writeLabels, } from "./tracker.js";
 import { tipsText } from "../tips.js";
 import { EXIT_NO_RECORD, requireRecordOnShared, writeStepRow } from "./steps.js";
 import { addAllButCopied, removeWorktree } from "./worktrees.js";
@@ -297,6 +297,7 @@ async function failVerb(ctx) {
             fid,
             issue: str(ctx.flags.issue),
             ...(key === undefined ? {} : { file: state.status, key }),
+            purpose: "attention",
         })
         : undefined;
     const labelsWrite = ctx.flags.post === true ? await writeFailedLabels(ctx, fid, failedSet, failedState) : undefined;
@@ -721,7 +722,7 @@ async function handoverVerb(ctx) {
     if (rec !== null)
         removeRecord(tree, fid);
     const tracker = ctx.flags.post === true && comment !== null
-        ? await postForVerb(ctx, comment, { fid })
+        ? await postForVerb(ctx, comment, { fid, purpose: "attention" })
         : undefined;
     ctx.emit({
         handover: present ? artifact : null,
@@ -1655,7 +1656,7 @@ async function postClose(ctx, fid, out) {
         return withFile;
     if (comment === null)
         throw new CommandError(EXIT.USAGE, "--post needs --number");
-    return { ...withFile, tracker: await postForVerb(ctx, comment, { fid }) };
+    return { ...withFile, tracker: await postForVerb(ctx, comment, { fid, purpose: "terminal" }) };
 }
 export const workflowsCommand = {
     noun: "workflows",
@@ -1669,6 +1670,7 @@ export const workflowsCommand = {
                 FID_FLAG,
                 MONTH_FLAG,
                 STATUS_FILE_FLAG,
+                SESSION_DIR_FLAG,
                 {
                     name: "lock-held",
                     type: "boolean",
@@ -1769,6 +1771,7 @@ export const workflowsCommand = {
                 recordChat(file, workflow, process.env);
                 const runs = fold(readStatusEvents(file));
                 const run = runNumber(runs, workflow);
+                bindRunPublication(ctx, file, workflow, run);
                 const current = resumed ? lastRun(runs, workflow) : undefined;
                 ctx.emit({
                     lock,
@@ -2070,7 +2073,10 @@ export const workflowsCommand = {
                     squashSha: str(f.squashSha),
                     ref: str(f.ref),
                     ownerRepo: str(f.ownerRepo),
-                    outbox: str(f.outbox),
+                    outbox: str(f.outbox) ??
+                        (str(f.sessionDir)
+                            ? path.join(path.dirname(path.dirname(path.resolve(ctx.cwd, String(f.sessionDir)))), String(f.fid))
+                            : undefined),
                     recordStep: f.recordStep === true,
                     message: str(f.message),
                     labels: list(f.label),

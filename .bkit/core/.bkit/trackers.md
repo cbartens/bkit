@@ -18,6 +18,14 @@
 >   - Add a `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site, and extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`.
 > - There is no `none` marker. No-tracker content goes in a `false` block.
 
+## Workflow comment delivery
+
+The engine may append routine reports to its own eligible progress comment. Ownership comes from an explicit repo-info session or an exact workflow run, never another active run. A later human or unrelated comment, missing ownership evidence, or a capacity rollover starts a new comment. Attention reports and terminal summaries always use new comments.
+
+The optional progress cache and run association live under the repository's Git-common `bkit-outbox` directory, shared by linked worktrees. Losing this state starts fresh. Remote text can confirm an owned comment, but never becomes the source of a replacement body. Reconciliation reads a bounded newest-created window, including paginated provider responses.
+
+Preparation, delivery, reconciliation, receipt and friction failures are nonfatal. When `tracker.done` is false and `commentFile` exists, attempt one new MCP comment from that file byte-for-byte. MCP fallback never edits prior tracker content. Record best-effort redacted friction and continue substantive work even when the file or fallback is unavailable. Provider capacity limits remain conservative until a disposable, explicitly authorized live probe verifies them.
+
 ## Marker contract
 
 Workflow and prompt sources carry the variant for each wired tracker inline. The installer reads `bkit.tracker.default` from the consumer's manifest, and resolves the markers when it mirrors `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). The mirrors are clean: no marker survives.
@@ -95,7 +103,7 @@ This renders `N. <body>` when a tracker is wired, and `N. _No tracker connected,
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add / update item | no-op (state carries) | no-op (status carries) | skip |
-| `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
+| `comment-post-step` | engine-owned routine progress; create-only fallback | `add_issue_comment` | `save_comment` without `id` | `addOrEditJiraIssueComment` without `commentId` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue / FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |

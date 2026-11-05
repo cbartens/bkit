@@ -1415,7 +1415,15 @@ async function finish(ctx: RunContext): Promise<number> {
       attempt,
       "comment",
     );
-    tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+    tracker = await postForVerb(ctx, comment, {
+      fid: fidOfStatusFile(file),
+      file,
+      key,
+      purpose:
+        step.endsWith("-decision") || verdict === "FAIL" || verdict === "HANDOVER"
+          ? "attention"
+          : "routine",
+    });
   }
 
   const written = writeStepRow(

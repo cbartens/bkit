@@ -49,7 +49,7 @@ function fidOf(value) {
     return fid;
 }
 export const worktreeDir = (root, fid) => path.join(root, ".worktrees", fid);
-/** `.worktree-owned` in the git common dir's outbox: shared by every worktree, survives removal. */
+/** `.worktree-owned` is shared across worktrees; session invocation state stays separate. */
 export function ownershipMarker(root, fid) {
     const common = git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
     if (!common)

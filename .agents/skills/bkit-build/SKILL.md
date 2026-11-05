@@ -42,7 +42,7 @@ description: "Build Feature — Autonomous implementation"
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `PAUSE_POINT` = `build.{from}`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6.
+- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `PAUSE_POINT` = `build.{from}`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6.
 - **Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 - **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `group`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
@@ -54,7 +54,7 @@ description: "Build Feature — Autonomous implementation"
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
-- **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 
 
 - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: Warning: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
@@ -340,7 +340,7 @@ description: "Build Feature — Autonomous implementation"
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
 9. **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=build --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree={BRANCH}
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=build --workflow-heading --step-number=1 --step-title="Start Workflow" --owner-repo={OWNER_REPO} --tree={BRANCH} --session-dir="{SESSION_DIR}"
    ```
 
 ### 🔒 Gate 1 — Start Workflow
@@ -350,6 +350,7 @@ description: "Build Feature — Autonomous implementation"
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue comment attempted when applicable
 - [ ] Issue resolved
 - [ ] Long-branch advisory emitted
 
@@ -382,7 +383,7 @@ description: "Build Feature — Autonomous implementation"
 3. Enter the worktree, open the run and record the runtime:
    ```bash
    cd "{WORKTREE_PATH}" && mkdir -p "{OUTBOX}" || exit 2
-   "{BKIT}" workflows start --workflow=build --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} || exit 1
+   "{BKIT}" workflows start --workflow=build --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} --session-dir="{SESSION_DIR}" || exit 1
    "{BKIT}" runtime row --workflow=build --file="{LOG_DIR}/status.jsonl" >/dev/null || exit 2
    "{BKIT}" runtime assert --workflow=build --file="{LOG_DIR}/status.jsonl"
    ```
@@ -1190,7 +1191,7 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    - **Else** → **Failure Path**.
 7. **Skip if** `ISSUE_ID` empty. Comment:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL}
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --step-number=16 --step-title="Create PR" --owner-repo={OWNER_REPO} --pr-number={PR_NUMBER} --pr-url={PR_URL} --session-dir="{SESSION_DIR}"
    ```
 8. **Skip if** `ISSUE_ID` empty.
    ```bash

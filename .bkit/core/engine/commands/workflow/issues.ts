@@ -1019,6 +1019,11 @@ export const issuesCommand: CommandSpec = {
           help: "failure: captured stderr (last 20 lines kept)",
         },
         POST_FLAG,
+        {
+          name: "session-dir",
+          type: "string",
+          help: "explicit repo info session for fileless workflow progress ownership",
+        },
         { name: "fid", type: "string", help: "with --post: the run's FID (names the issue)" },
         { name: "issue", type: "string", help: "with --post: the issue id (instead of --fid)" },
         {
@@ -1058,6 +1063,9 @@ export const issuesCommand: CommandSpec = {
           fid: str(ctx.flags.fid),
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file, key }),
+          purpose: ["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
+            ? "attention"
+            : "routine",
         });
         ctx.emit({ comment, commentFile, tracker });
         return EXIT.OK;

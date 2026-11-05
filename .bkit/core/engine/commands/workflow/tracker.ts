@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import type { IssueTracker } from "../../install/manifest.js";
+import { appendFrictionRow, frictionRow } from "../../ledgers/journal.js";
 import {
   actionHash,
   actionKey,
@@ -1358,6 +1359,11 @@ export interface OnceOptions {
    */
   recent?: number;
   purpose?: string;
+  publication?: RunContext["publication"];
+  workflow?: string;
+  /** Diagnostic attribution supplied by the publishing boundary. */
+  cwd?: string;
+  knownUrl?: string | null;
   budgetMs?: number;
   /** Where the redacted failure detail goes (stderr). */
   log: (line: string) => void;
@@ -1383,6 +1389,24 @@ interface ProgressBinding {
 }
 
 function progressBinding(t: TrackerTarget, o: OnceOptions): ProgressBinding | "conflict" | null {
+  const common = git(t.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common) return null;
+  const target = [t.tracker, t.ownerRepo || t.jiraSite || t.linearTeam || "", t.issue].join("/");
+  if (o.publication && o.key) {
+    const { invocation, workflow } = o.publication;
+    return {
+      target,
+      invocation,
+      workflow,
+      file: path.join(
+        common,
+        "bkit-outbox",
+        "progress",
+        `${actionHash(`${target}\0${invocation}`)}.json`,
+      ),
+      priorDelivery: false,
+    };
+  }
   if (!o.file || !o.key) return null;
   const [workflow, runText, step, group, attempt] = o.key.split("/");
   if (!workflow || !/^\d+$/.test(runText ?? "")) return null;
@@ -1394,12 +1418,14 @@ function progressBinding(t: TrackerTarget, o: OnceOptions): ProgressBinding | "c
   const issue = issueIdOf(fid, t.tracker);
   if (issue !== null && issue !== t.issue) return "conflict";
   if (issue === null) return null;
-  const target = [t.tracker, t.ownerRepo || t.jiraSite || t.linearTeam || "", t.issue].join("/");
-  const invocation = actionHash(
-    [path.resolve(o.file), workflow, runText, run.startedAt].join("\0"),
-  );
-  const common = git(t.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  if (!common) return null;
+  let invocation = actionHash([path.resolve(o.file), workflow, runText, run.startedAt].join("\0"));
+  const association = runPublicationFile(common, o.file, workflow, run.startedAt);
+  if (fs.existsSync(association)) {
+    const parsed = parseJson(fs.readFileSync(association, "utf-8"));
+    const saved = asRecord(parsed.ok ? parsed.value : null);
+    if (saved.version === 1 && saved.workflow === workflow && typeof saved.invocation === "string")
+      invocation = saved.invocation;
+  }
   const at = run.steps.find(
     (row) =>
       row.step === step &&
@@ -1544,6 +1570,48 @@ function commentDiagnostic(o: OnceOptions, text: string, warnings: string[]): vo
   } catch {
     warnings.push(`${detail}; comment diagnostic unavailable`);
   }
+  const workflow = o.publication?.workflow ?? o.workflow ?? o.key?.split("/")[0];
+  if (
+    !o.cwd ||
+    !workflow ||
+    !["design", "plan", "build", "debug", "ship", "auto"].includes(workflow)
+  )
+    return;
+  const stage = /receipt|engine-action/.test(text)
+    ? "receipt"
+    : /lock/.test(text)
+      ? "lock"
+      : /recognition|reconciliation|postflight/.test(text)
+        ? "reconciliation"
+        : /source|cache/.test(text)
+          ? "source"
+          : /association/.test(text)
+            ? "association"
+            : "delivery";
+  try {
+    const root = git(o.cwd, ["rev-parse", "--show-toplevel"]) ?? o.cwd;
+    const row = frictionRow({
+      workflow,
+      step: `comment-${stage}`,
+      noun: "tracker",
+      verb: "comment",
+      code: null,
+      bookRoot: root,
+    });
+    row.summary = `Workflow comment ${stage} unavailable`;
+    row.description = `${workflow} comment reporting encountered an exhausted ${stage} problem; substantive workflow work continues.`;
+    row.remediation =
+      "Inspect tracker availability or local comment state; delivery may start a fresh comment.";
+    if (o.knownUrl) row.references = [o.knownUrl];
+    if (appendFrictionRow(root, row).ok) return;
+  } catch {
+    warnings.push("[bkit-tracker] comment friction unavailable");
+  }
+  try {
+    o.log("[bkit-tracker] comment friction unavailable; continuing workflow");
+  } catch {
+    warnings.push("[bkit-tracker] friction diagnostic unavailable");
+  }
 }
 
 /** The latest of `recent` that is `body` posted before: same marker hash, else same text. */
@@ -1565,6 +1633,7 @@ export async function postCommentOnce(
   body: string,
   o: OnceOptions,
 ): Promise<TrackerOutcome> {
+  o = { ...o, cwd: t.cwd };
   const skip = skipOf(t);
   if (skip) return skip;
   const action = "comment";
@@ -1628,6 +1697,13 @@ export async function postCommentOnce(
       ) {
         try {
           cached = readProgress(binding);
+          if (cached === null && fs.existsSync(binding.file))
+            commentDiagnostic(
+              o,
+              "[bkit-tracker] progress source unavailable; creating standalone comment",
+              warnings,
+            );
+          if (cached) o.knownUrl = cached.comment.url;
           const rendered = progressSection(body, binding, o.key);
           section = rendered.section;
           if (routine) {
@@ -1744,11 +1820,7 @@ export async function postCommentOnce(
       }
     } catch (err) {
       const reason = classifyFailure(err);
-      commentDiagnostic(
-        o,
-        `tracker ${action} failed (${reason}): ${(err as Error).message ?? String(err)}`,
-        warnings,
-      );
+      commentDiagnostic(o, `tracker ${action} failed (${reason}); delivery unavailable`, warnings);
       seal();
       return { done: false, action, reason };
     }
@@ -1763,6 +1835,7 @@ export async function postCommentOnce(
           latest.updatedAt === posted.evidence.updatedAt;
       } catch {
         retain = false;
+        commentDiagnostic(o, "[bkit-tracker] postflight reconciliation unavailable", warnings);
       }
       if (!retain) seal();
     }
@@ -1837,8 +1910,67 @@ export const COMMENT_FILE_OUTPUT =
 export const RECENT_COMMENTS = 5;
 
 /** `comment` written to its body file, or null for no comment. */
-export const commentFileOf = (cwd: string, comment: string | null): string | null =>
-  comment === null ? null : writeBodyFile(cwd, "comment", comment);
+export function commentFileOf(cwd: string, comment: string | null): string | null {
+  if (comment === null) return null;
+  try {
+    return writeBodyFile(cwd, "comment", comment);
+  } catch {
+    return null;
+  }
+}
+
+/** Optional session ownership, validated against this repository's private outbox. */
+export function sessionPublication(
+  cwd: string,
+  session: string | undefined,
+  workflow: string | undefined,
+): RunContext["publication"] {
+  if (!session || !workflow) return undefined;
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common) return undefined;
+  const sessions = path.join(common, "bkit-outbox", "sessions");
+  const dir = fs.realpathSync(path.resolve(cwd, session));
+  if (path.dirname(dir) !== fs.realpathSync(sessions) || !fs.statSync(dir).isDirectory())
+    return undefined;
+  return { invocation: actionHash(`${dir}\0${workflow}`), workflow };
+}
+
+function runPublicationFile(common: string, file: string, workflow: string, at: string): string {
+  return path.join(
+    common,
+    "bkit-outbox",
+    "invocations",
+    `${actionHash([path.resolve(file), workflow, at].join("\0"))}.json`,
+  );
+}
+
+/** Bind only the exact run opened by workflows start; loss of this cache is harmless. */
+export function bindRunPublication(
+  ctx: RunContext,
+  file: string,
+  workflow: string,
+  run: number,
+): void {
+  try {
+    const publication = sessionPublication(ctx.cwd, str(ctx.flags.sessionDir), workflow);
+    const current = readRunsLenient(file).filter((r) => r.workflow === workflow)[run - 1];
+    const common = git(ctx.cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    if (!publication || !current || !common) return;
+    const destination = runPublicationFile(common, file, workflow, current.startedAt);
+    if (fs.existsSync(destination)) return;
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, JSON.stringify({ version: 1, ...publication }), {
+      mode: 0o600,
+      flag: "wx",
+    });
+  } catch {
+    commentDiagnostic(
+      { cwd: ctx.cwd, workflow, log: (line) => ctx.log(line) },
+      "[bkit-tracker] invocation association unavailable; progress may start fresh",
+      [],
+    );
+  }
+}
 
 /**
  * The engine-action key of a comment in `file`'s current run of `workflow` (the
@@ -1884,7 +2016,7 @@ function commentKey(
  * Post `body` for a verb's `--post`: once per key in `file` when both are given,
  * else once per marker hash among the issue's latest comments.
  */
-export function postForVerb(
+export async function postForVerb(
   ctx: RunContext,
   body: string,
   o: {
@@ -1895,12 +2027,48 @@ export function postForVerb(
     purpose?: OnceOptions["purpose"];
   },
 ): Promise<TrackerOutcome> {
-  const t = trackerTarget(ctx.cwd, { fid: o.fid, issue: o.issue });
-  return postCommentOnce(t, body, {
-    file: o.file,
-    key: o.key,
-    purpose: o.purpose,
-    recent: o.file && o.key ? undefined : RECENT_COMMENTS,
-    log: (line) => ctx.log(line),
-  });
+  try {
+    const t = trackerTarget(ctx.cwd, { fid: o.fid, issue: o.issue });
+    let publication = ctx.publication;
+    if (!o.file && !publication) {
+      try {
+        publication = sessionPublication(
+          ctx.cwd,
+          str(ctx.flags.sessionDir),
+          str(ctx.flags.workflow),
+        );
+      } catch {
+        publication = undefined;
+      }
+    }
+    const key =
+      o.key ??
+      (publication
+        ? actionKey(
+            publication.workflow,
+            1,
+            "step",
+            str(ctx.flags.stepNumber),
+            str(ctx.flags.subStep),
+            str(ctx.flags.attempt),
+            "comment",
+          )
+        : undefined);
+    return await postCommentOnce(t, body, {
+      file: o.file,
+      key,
+      publication,
+      workflow: str(ctx.flags.workflow),
+      purpose: o.purpose ?? (str(ctx.flags.workflow) ? "routine" : undefined),
+      recent: key ? undefined : RECENT_COMMENTS,
+      log: (line) => ctx.log(line),
+    });
+  } catch {
+    commentDiagnostic(
+      { cwd: ctx.cwd, workflow: str(ctx.flags.workflow), log: (line) => ctx.log(line) },
+      "[bkit-tracker] comment preparation unavailable; continuing workflow",
+      [],
+    );
+    return { done: false, action: "comment", reason: "preparation" };
+  }
 }

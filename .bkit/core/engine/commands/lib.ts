@@ -141,6 +141,8 @@ export interface RunContext {
   /** Parsed flags, keyed by camelCase name. */
   flags: Record<string, FlagValue>;
   cwd: string;
+  /** Explicit publishing ownership; never inferred from another active run. */
+  publication?: { invocation: string; workflow: string };
   /** The global `--json` flag was given. Taken by every verb, never declared in a verb's spec. */
   json: boolean;
   /** Human-readable line on stderr, tagged `[bkit-<noun>]`. */
