@@ -301,3 +301,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:24Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:39Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:01:43Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-action","action":"rebase","key":"rebase/b015389418aeea9bb86dda3f502fe2b4efee1fc6","hash":"cc2bdf55f87b3a45576bafa41b5d428c64226db42e8118fc02cc1d6a20a0fb65","ref":"cfc2ff3aae8ea555ce601d1329941bd152fc7e46","at":"2026-11-05T07:07:11Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-11-05T07:07:28Z","parentSha":"cfc2ff3aae8ea555ce601d1329941bd152fc7e46","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:29Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-05T07:07:29Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:29Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:29Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:51Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:51Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-05T07:07:51Z","parentSha":"cfc2ff3aae8ea555ce601d1329941bd152fc7e46","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:07:51Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-worktree-setup/-/-/comment","hash":"b3b01eda3be72f387d576ef83302b1a5a31fb16b4d95b965f52f29d3532cf687","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6651999951","at":"2026-11-05T07:07:52Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-05T07:07:52Z","parentSha":"cfc2ff3aae8ea555ce601d1329941bd152fc7e46","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-input-3.md"]}
