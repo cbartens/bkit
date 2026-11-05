@@ -126,6 +126,7 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
+| `--tracker=jira --codex --auto=codex exits 0 and records codex` checks the current Codex hook footprint while retaining exit and saved-setting assertions | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 19 |
 | GitHub `fetchIssue`: closed → `terminal` true, open → false | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
 | Linear `fetchIssue`: `completed` state renamed `Shipped` → `terminal` true | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
 | Linear `fetchIssue`: `canceled` → true, `started` → false | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 1 |
@@ -754,6 +755,29 @@ Build order: guard (engine fact → hook part) → install engine → router con
     - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=github --opencode --auto=opencode in one run exits 0 and records opencode` fails on the `.opencode/` check ignoring `modules.has("opencode")`
 
 <!-- bkit:task 6 end -->
+
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** Correct the stale Codex install footprint assertion
+  - **READ:** `docs/plans/202610/logs/719-cloud-variants-add/build-decision-2-1.md`: the owner's decision.
+  - **UPDATE:** `.bkit/core/engine/commands/install/install.integration.test.ts`: the tests step corrects only the retired `.codex/config.toml` footprint expectation in the named Jira/Codex one-shot case to the current `.codex/hooks.json` output. Retain the test name, successful exit, Jira tracker and saved codex-agent assertions. Add no retired production file and remove no requested behavior assertion.
+  - **DEPENDS ON:** 6
+  - **DONE WHEN:** `--tracker=jira --codex --auto=codex exits 0 and records codex` passes against the existing current Codex host output, with all successful-install and saved-setting assertions retained; the full install integration file passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `--tracker=jira --codex --auto=codex exits 0 and records codex` fails on a refused one-shot install, incorrect saved tracker or cloud agent, or missing current Codex hook output. The prior recorded red and the current stale assertion failure are preserved as evidence; do not undo existing implementation to force another red.
+
+<!-- bkit:task 19 end -->
+
+<!-- bkit:task 20 start -->
+
+- [ ] **TASK 20:** Complete group 3 generation and required verification
+  - **READ:** `docs/plans/202610/logs/719-cloud-variants-add/build-decision-2-1.md`: the owner's decision and the linked verification and remediation evidence.
+  - **UPDATE:** `docs/plans/202610/logs/719-cloud-variants-add/build-plan-tasks-3-log.md`: record completed group 3 checks after TASK 19. Respect the shared tests lock and report its holder and stale-duration evidence. Preserve the observed Git-fixture stall record; change code only for a reproduced in-scope root cause.
+  - **DEPENDS ON:** 19
+  - **DONE WHEN:** generation completes successfully and the required changed-files check has a completed passing result; the group static/unit gate can then run through the normal verification step.
+  - **TEST FIRST:** n/a — verification only, no new behavior or test.
+
+<!-- bkit:task 20 end -->
 
 <!-- bkit:group 3 end -->
 
