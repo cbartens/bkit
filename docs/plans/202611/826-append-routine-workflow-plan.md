@@ -552,7 +552,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Repair the real slow-child fixture under the owner's recorded authorization.
+- [x] **TASK 12:** Repair the real slow-child fixture under the owner's recorded authorization.
   - **READ:** `docs/plans/202611/logs/826-append-routine-workflow/build-decision-3-1.md`: controlling owner decision.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: use the existing stable dispatcher or explicit interpreter for the real child fixture, establish successful priming before the slow delivery, and observe actual transport attempts reliably.
   - **DEPENDS ON:** 8, 9
