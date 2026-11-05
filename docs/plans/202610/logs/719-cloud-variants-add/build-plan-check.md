@@ -1,5 +1,5 @@
 Problems: 0
-Existence: 0
+Existence: 1
 
 <!-- verdict:end -->
 
@@ -52,8 +52,13 @@ None.
 
 ## Existence (reported only)
 
-None.
+- `docs/plans/202610/719-cloud-variants-add-plan.md:656` — TASK 2: `.bkit/core/hooks/preflight-linear.sh` does not exist
 
 ## Planned test names already in use (reported only)
 
+- `docs/plans/202610/719-cloud-variants-add-plan.md:659` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github issue without bkit:auto stops the Cursor background session" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202610/719-cloud-variants-add-plan.md:659` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github closed issue stops the session and an open labelled one passes" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202610/719-cloud-variants-add-plan.md:659` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github read failure stops the session naming the tracker and the reason" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202610/719-cloud-variants-add-plan.md:659` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "linear completed state renamed Shipped stops the session" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202610/719-cloud-variants-add-plan.md:659` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "generated Claude and Cursor hooks carry the one preflight-tracker.sh part" — name the update to it in TEST FIRST, or give the new test a new name
 - `docs/plans/202610/719-cloud-variants-add-plan.md:727` TASK 5: `.bkit/core/engine/audits/templates/templates-content.test.ts` already holds a test named "vendor API keys are BKIT_-prefixed" — name the update to it in TEST FIRST, or give the new test a new name
