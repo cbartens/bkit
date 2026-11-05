@@ -1,0 +1,21 @@
+{
+  "tasks": [
+    {
+      "title": "Repository architecture walkthrough",
+      "request": "Install Floorplan and align the documentation index.",
+      "summary": "Added a versioned architecture map with file descriptions, guided flows and a local viewer. The documentation index distinguishes the walkthrough from capability ownership checks.",
+      "items": [
+        {
+          "ref": "engine",
+          "change": "new",
+          "note": "The new map explains installation, workflow commands, assistant adapters and progress records."
+        },
+        {
+          "ref": "ops.graph",
+          "change": "new",
+          "note": "The walkthrough shows where the separate capability ownership and freshness checks live."
+        }
+      ]
+    }
+  ]
+}

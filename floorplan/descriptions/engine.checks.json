@@ -1,0 +1,76 @@
+{
+  "files": {
+    ".bkit/core/engine/checks/after/auth.ts": {
+      "name": "Credential setup checks",
+      "description": "Checks whether the GitHub and cloud credentials required by the chosen setup are present."
+    },
+    ".bkit/core/engine/checks/after/ci-yml.ts": {
+      "name": "Automation workflow checks",
+      "description": "Checks automated test workflows for unsafe shell input, missing checks and outdated contracts."
+    },
+    ".bkit/core/engine/checks/after/github.ts": {
+      "name": "GitHub setup checks",
+      "description": "Checks branch protection, automation permissions and issue-board settings without changing them."
+    },
+    ".bkit/core/engine/checks/after/index.ts": {
+      "name": "Installation results",
+      "description": "Runs post-installation checks and writes a unified checklist of blockers and setup advice."
+    },
+    ".bkit/core/engine/checks/after/managed.ts": {
+      "name": "Managed file checks",
+      "description": "Finds stale managed content, duplicate blocks and missing assistant hooks."
+    },
+    ".bkit/core/engine/checks/after/suppression.ts": {
+      "name": "Advisory preferences",
+      "description": "Applies project-declared advisory exclusions while retaining blockers."
+    },
+    ".bkit/core/engine/checks/after/tools.ts": {
+      "name": "Local tool checks",
+      "description": "Finds missing checking tools, unfinished gate commands and dependency-updater setup."
+    },
+    ".bkit/core/engine/checks/before/context-fetch.ts": {
+      "name": "Evidence source checks",
+      "description": "Checks that evidence instructions cover required contexts, prepare tools and bound their output."
+    },
+    ".bkit/core/engine/checks/before/env.ts": {
+      "name": "Environment setup checks",
+      "description": "Finds missing local settings, blank credentials and blocked environment loading."
+    },
+    ".bkit/core/engine/checks/before/files.ts": {
+      "name": "Shared file checks",
+      "description": "Detects managed-content drift, duplicate ignore rules and conflicting test reporting."
+    },
+    ".bkit/core/engine/checks/before/index.ts": {
+      "name": "Pre-install checks",
+      "description": "Collects setup findings before installation writes project files."
+    },
+    ".bkit/core/engine/checks/before/mcp.ts": {
+      "name": "Tracker connection checks",
+      "description": "Finds missing or extra assistant connections for the selected issue tracker."
+    },
+    ".bkit/core/engine/checks/before/repo.ts": {
+      "name": "Repository readiness checks",
+      "description": "Checks repository settings, plan format and command availability before installation."
+    },
+    ".bkit/core/engine/checks/before/version.ts": {
+      "name": "Installed version checks",
+      "description": "Compares the recorded installation version with the installing package."
+    },
+    ".bkit/core/engine/checks/status-holes.ts": {
+      "name": "Missing progress checks",
+      "description": "Finds gaps in recorded workflow progress and reports them as advisories."
+    },
+    ".bkit/core/engine/checks/tips/catalogue.ts": {
+      "name": "Setup advice catalogue",
+      "description": "Defines recommendations for tools, templates and settings the project has not adopted."
+    },
+    ".bkit/core/engine/checks/tips/detect.ts": {
+      "name": "Setup advice probes",
+      "description": "Inspects local assistant settings and checking tools to determine relevant setup advice."
+    },
+    ".bkit/core/engine/checks/tips/index.ts": {
+      "name": "Setup advice output",
+      "description": "Collects relevant recommendations and formats them for commands and installation reports."
+    }
+  }
+}

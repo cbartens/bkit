@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/commands/analysis.ts": {
+      "name": "Workflow measurement calculations",
+      "description": "Calculates rates, elapsed time and relationships used in workflow reports."
+    },
+    ".bkit/core/engine/commands/ci/ci.ts": {
+      "name": "Quality gate commands",
+      "description": "Runs the quality checks shared by automated builds and local Git hooks."
+    },
+    ".bkit/core/engine/commands/ci/pins.ts": {
+      "name": "Verified tool downloads",
+      "description": "Downloads pinned checking tools and verifies their expected content hashes."
+    },
+    ".bkit/core/engine/commands/ci/push-gate.ts": {
+      "name": "Completed check receipts",
+      "description": "Records successful checks against committed content so linked worktrees can reuse valid evidence."
+    },
+    ".bkit/core/engine/commands/comply.ts": {
+      "name": "Workflow compliance grading",
+      "description": "Checks recorded work against workflow rules and records compliance results."
+    },
+    ".bkit/core/engine/commands/land.ts": {
+      "name": "Shared branch landing",
+      "description": "Builds commits in a temporary checkout based on the current development branch and pushes the result there."
+    },
+    ".bkit/core/engine/commands/launch.ts": {
+      "name": "Assistant application launch",
+      "description": "Starts Cursor or OpenCode with the project's bkit environment settings."
+    },
+    ".bkit/core/engine/commands/lib.ts": {
+      "name": "Shared command execution",
+      "description": "Provides common command arguments, process execution, output and activity recording."
+    },
+    ".bkit/core/engine/commands/registry.ts": {
+      "name": "Available workflow commands",
+      "description": "Registers the command groups and operations exposed by the workflow engine."
+    },
+    ".bkit/core/engine/commands/setup/setup.ts": {
+      "name": "Release branch protection",
+      "description": "Applies bkit's protection policy to the main release branch."
+    },
+    ".bkit/core/engine/commands/stats.ts": {
+      "name": "Repository workflow report",
+      "description": "Produces the repository's workflow measurement report from local records."
+    },
+    ".bkit/core/engine/commands/telemetry.ts": {
+      "name": "Workflow measurement summary",
+      "description": "Prints the measurement summary used when a workflow closes."
+    },
+    ".bkit/core/engine/commands/tips.ts": {
+      "name": "Setup advice command",
+      "description": "Prints setup recommendations for the project or selected workflow."
+    },
+    ".bkit/core/engine/commands/workflow/branches.ts": {
+      "name": "Feature branch operations",
+      "description": "Updates, pushes and lands feature branches while recording required branch evidence."
+    },
+    ".bkit/core/engine/commands/workflow/challenge.ts": {
+      "name": "Review finding merge",
+      "description": "Combines build-review findings into the implementation plan."
+    },
+    ".bkit/core/engine/commands/workflow/completeness.ts": {
+      "name": "Workflow completeness check",
+      "description": "Checks that a run recorded every required step and command."
+    },
+    ".bkit/core/engine/commands/workflow/context.ts": {
+      "name": "Workflow evidence preparation",
+      "description": "Fetches project evidence, prepares diffs and task briefs, and limits oversized context files."
+    },
+    ".bkit/core/engine/commands/workflow/counters.ts": {
+      "name": "Attempt limits",
+      "description": "Derives attempt counts from progress records and applies retry allowances."
+    },
+    ".bkit/core/engine/commands/workflow/decisions.ts": {
+      "name": "Owner decision records",
+      "description": "Prepares owner questions, applies answers and tracks decisions awaiting action."
+    },
+    ".bkit/core/engine/commands/workflow/disk.ts": {
+      "name": "Project cleanup command",
+      "description": "Runs the person's configured disk-cleanup steps."
+    },
+    ".bkit/core/engine/commands/workflow/fids.ts": {
+      "name": "Feature identity resolution",
+      "description": "Resolves features and plans from issue references, branch names and workflow markers."
+    },
+    ".bkit/core/engine/commands/workflow/issues.ts": {
+      "name": "Issue tracker operations",
+      "description": "Prepares and sends issue text, labels and comments through the selected tracker."
+    },
+    ".bkit/core/engine/commands/workflow/ledgers.ts": {
+      "name": "Workflow record operations",
+      "description": "Validates, appends, combines and commits bookkeeping records using explicitly allowed paths."
+    },
+    ".bkit/core/engine/commands/workflow/locks.ts": {
+      "name": "Feature workflow locks",
+      "description": "Prevents competing workflows from owning the same feature at once."
+    },
+    ".bkit/core/engine/commands/workflow/plan-blocks.ts": {
+      "name": "Implementation task reader",
+      "description": "Reads structured task groups and required fields from plans and change requests."
+    },
+    ".bkit/core/engine/commands/workflow/plan-versions.ts": {
+      "name": "Latest plan draft",
+      "description": "Selects the newest numbered plan draft in a run's log folder."
+    },
+    ".bkit/core/engine/commands/workflow/plans.ts": {
+      "name": "Design handoff comments",
+      "description": "Reads suggested workstreams and plans from a design and prepares its issue handoff."
+    },
+    ".bkit/core/engine/commands/workflow/prs.ts": {
+      "name": "Pull request operations",
+      "description": "Opens, inspects, updates and merges pull requests while recording closing evidence."
+    },
+    ".bkit/core/engine/commands/workflow/repo.ts": {
+      "name": "Repository workflow facts",
+      "description": "Collects repository facts and checks workflow dispatch prerequisites."
+    },
+    ".bkit/core/engine/commands/workflow/roadmap.ts": {
+      "name": "Feature roadmap updates",
+      "description": "Builds the roadmap from feature records and copies closing updates to the development branch."
+    },
+    ".bkit/core/engine/commands/workflow/run-facts.ts": {
+      "name": "Measured workflow outcomes",
+      "description": "Derives change, step, test and plan measurements from actual run evidence."
+    },
+    ".bkit/core/engine/commands/workflow/runs.ts": {
+      "name": "Remote test evidence",
+      "description": "Waits for and validates GitHub Actions runs and prepares evidence for automatically routed workflows."
+    },
+    ".bkit/core/engine/commands/workflow/runtime.ts": {
+      "name": "Execution environment checks",
+      "description": "Identifies the execution environment and checks which workflow actions it permits."
+    },
+    ".bkit/core/engine/commands/workflow/skills.ts": {
+      "name": "Temporary skill removal",
+      "description": "Removes third-party skills that the permanent registry does not retain."
+    },
+    ".bkit/core/engine/commands/workflow/status.ts": {
+      "name": "Workflow progress operations",
+      "description": "Reads and annotates progress, routing and resumption information."
+    },
+    ".bkit/core/engine/commands/workflow/step-table.ts": {
+      "name": "Workflow step order",
+      "description": "Defines workflow steps and determines where interrupted work resumes."
+    },
+    ".bkit/core/engine/commands/workflow/steps.ts": {
+      "name": "Step completion checks",
+      "description": "Records step results, reads reviewer verdicts and checks required evidence."
+    },
+    ".bkit/core/engine/commands/workflow/summary-findings.ts": {
+      "name": "Review resolution evidence",
+      "description": "Checks whether later execution and verification resolve recorded review findings."
+    },
+    ".bkit/core/engine/commands/workflow/summary.ts": {
+      "name": "Workflow closing summary",
+      "description": "Builds a verdict, reasons and next-command recommendation from recorded evidence."
+    },
+    ".bkit/core/engine/commands/workflow/tasks.ts": {
+      "name": "Plan task progress",
+      "description": "Reads and updates task completion boxes in implementation plans."
+    }
+  }
+}

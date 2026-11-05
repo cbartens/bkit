@@ -1,0 +1,44 @@
+{
+  "files": {
+    "scripts/graphify/bkit-graph-drift.py": {
+      "name": "Capability drift scan",
+      "description": "Finds competing implementations and callers that bypass a capability's declared owner."
+    },
+    "scripts/graphify/bkit-graph-eager.py": {
+      "name": "Import-time work scan",
+      "description": "Finds files that perform work when loaded and counts the other files affected."
+    },
+    "scripts/graphify/bkit-graph-embed.py": {
+      "name": "Capability diagram embedding",
+      "description": "Copies the capability register's package diagram into related documentation."
+    },
+    "scripts/graphify/bkit-graph-imports.py": {
+      "name": "Missing import connections",
+      "description": "Resolves source imports that the initial code graph could not connect."
+    },
+    "scripts/graphify/bkit-graph-pre-push.sh": {
+      "name": "Capability freshness check",
+      "description": "Checks that the revision being pushed produces the committed capability register."
+    },
+    "scripts/graphify/bkit-graph-repair.py": {
+      "name": "Code graph repair",
+      "description": "Adds resolved import connections missing from the generated code graph."
+    },
+    "scripts/graphify/bkit-graph-surface.py": {
+      "name": "User-facing capability paths",
+      "description": "Links user-facing requests to the underlying capabilities they reach."
+    },
+    "scripts/graphify/bkit-graphify-graphml.py": {
+      "name": "Graph export",
+      "description": "Exports the complete code graph for external diagram tools."
+    },
+    "scripts/graphify/bkit-graphify-rollup.py": {
+      "name": "Capability register generation",
+      "description": "Summarizes the code graph into package and module views and the capability register."
+    },
+    "scripts/graphify/bkit-graphify.sh": {
+      "name": "Code graph commands",
+      "description": "Coordinates local code scanning, diagram generation and capability freshness checks."
+    }
+  }
+}

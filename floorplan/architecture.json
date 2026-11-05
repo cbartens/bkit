@@ -1,0 +1,277 @@
+{
+  "$schema": "floorplan/architecture@1",
+  "project": {
+    "name": "bkit",
+    "summary": "Installs a shared engineering process into coding assistants and runs the commands that support designing, building, checking and shipping changes. This is a command-line tool and instruction package, with no application server or database.",
+    "entrypoints": [".bkit/core/engine/cli.ts"]
+  },
+  "ignore": [
+    "dist/**",
+    ".agents/**",
+    ".claude/**",
+    ".cursor/**",
+    ".codex/**",
+    ".opencode/**",
+    "docs/plans/**",
+    "**/fixtures/**",
+    "floorplan/**"
+  ],
+  "nodes": [
+    {
+      "id": "engine",
+      "label": "Command-line engine",
+      "kind": "library",
+      "summary": "Runs installation, workflow commands and shared record handling.",
+      "paths": [".bkit/core/engine/**"],
+      "exclude": ["**/*.test.*", ".bkit/core/engine/audits/**"]
+    },
+    {
+      "id": "engine.commands",
+      "parent": "engine",
+      "label": "Workflow commands",
+      "kind": "feature",
+      "summary": "Coordinates branches, reviews, test runs, progress and shipping.",
+      "paths": [".bkit/core/engine/commands/**"]
+    },
+    {
+      "id": "engine.install",
+      "parent": "engine",
+      "label": "Install and upgrade",
+      "kind": "feature",
+      "summary": "Writes the selected assistant setup while preserving project-owned settings.",
+      "paths": [".bkit/core/engine/install/**", ".bkit/core/engine/commands/install/**"]
+    },
+    {
+      "id": "engine.render",
+      "parent": "engine",
+      "label": "Assistant adapters",
+      "kind": "library",
+      "summary": "Converts shared instructions and model choices into each assistant's format.",
+      "paths": [".bkit/core/engine/render/**"]
+    },
+    {
+      "id": "engine.checks",
+      "parent": "engine",
+      "label": "Setup checks",
+      "kind": "feature",
+      "summary": "Detects missing prerequisites and checks the resulting installation.",
+      "paths": [".bkit/core/engine/checks/**"]
+    },
+    {
+      "id": "engine.records",
+      "parent": "engine",
+      "label": "Progress records",
+      "kind": "data",
+      "summary": "Reads, validates and combines workflow progress, findings and measurements.",
+      "paths": [".bkit/core/engine/ledgers/**"]
+    },
+    {
+      "id": "engine.shared",
+      "parent": "engine",
+      "label": "Shared foundations",
+      "kind": "library",
+      "summary": "Keeps package settings, paths, process calls and common formats consistent.",
+      "paths": [".bkit/core/engine/shared/**"]
+    },
+    {
+      "id": "payload",
+      "label": "Assistant safety hooks",
+      "kind": "library",
+      "summary": "Supplies the reusable checks that assistants run around edits and shell commands.",
+      "paths": [
+        ".bkit/core/hooks/**",
+        ".bkit/core/.claude/**",
+        ".bkit/core/.cursor/**",
+        ".bkit/core/.codex/**",
+        ".bkit/core/.agents/**",
+        ".bkit/core/.opencode/**"
+      ]
+    },
+    {
+      "id": "templates",
+      "label": "Project starter tools",
+      "kind": "script",
+      "summary": "Provides copy-and-own scripts for testing, cloud setup, secrets and repository maintenance.",
+      "paths": [".bkit/templates/**"],
+      "exclude": ["**/*.test.*"]
+    },
+    {
+      "id": "ops",
+      "label": "Repository maintenance",
+      "kind": "script",
+      "summary": "Maintains this repository's checks, capability diagrams and development measurements.",
+      "paths": ["scripts/**"],
+      "exclude": ["**/*.test.*"]
+    },
+    {
+      "id": "ops.graph",
+      "parent": "ops",
+      "label": "Capability ownership",
+      "kind": "script",
+      "summary": "Builds diagrams and checks for competing implementations or callers bypassing their owner.",
+      "paths": ["scripts/graphify/**"]
+    },
+    {
+      "id": "ops.harvest",
+      "parent": "ops",
+      "label": "Workflow measurements",
+      "kind": "script",
+      "summary": "Collects local workflow evidence and produces cross-project measurements.",
+      "paths": ["scripts/harvest/**"]
+    },
+    {
+      "id": "ops.ci",
+      "parent": "ops",
+      "label": "Test and quality runners",
+      "kind": "script",
+      "summary": "Runs the repository checks and reports their outcomes.",
+      "paths": ["scripts/ci/**", "scripts/gate/**", "scripts/slop/**"]
+    },
+    {
+      "id": "tests",
+      "label": "Tests and experiments",
+      "kind": "test",
+      "summary": "Checks engine behavior, shipped instructions, hooks and project templates.",
+      "paths": ["**/*.test.*", "tests/**", "vitest*.ts", ".bkit/core/engine/audits/**"]
+    },
+    {
+      "id": "tests.engine",
+      "parent": "tests",
+      "label": "Engine tests",
+      "kind": "test",
+      "summary": "Checks installation, workflow commands and the common engine contracts.",
+      "paths": [".bkit/core/engine/**/*.test.ts"],
+      "exclude": [".bkit/core/engine/audits/**"]
+    },
+    {
+      "id": "tests.audit",
+      "parent": "tests",
+      "label": "Payload audits",
+      "kind": "test",
+      "summary": "Checks that shipped instructions, hooks and templates preserve their required contracts.",
+      "paths": [".bkit/core/engine/audits/**"]
+    },
+    {
+      "id": "outside",
+      "label": "External tools and services",
+      "kind": "external",
+      "summary": "Connects workflows to repository hosting, issue trackers and model providers."
+    },
+    {
+      "id": "outside.github",
+      "parent": "outside",
+      "label": "GitHub",
+      "kind": "external",
+      "summary": "Hosts source changes, pull requests, issues and automated checks.",
+      "hosts": ["github.com", "api.github.com"]
+    },
+    {
+      "id": "outside.trackers",
+      "parent": "outside",
+      "label": "Optional issue trackers",
+      "kind": "external",
+      "summary": "Stores work items in Linear or Jira when the project selects them.",
+      "hosts": ["api.linear.app", "mcp.linear.app", "mcp.atlassian.com"]
+    }
+  ],
+  "edges": [
+    {
+      "from": "engine.install",
+      "to": "payload",
+      "kind": "config",
+      "label": "Copies assistant hooks"
+    },
+    {
+      "from": "engine.install",
+      "to": "templates",
+      "kind": "config",
+      "label": "Copies starter tools"
+    },
+    {
+      "from": "engine.commands",
+      "to": "outside.github",
+      "kind": "call",
+      "label": "Repository and tracker commands"
+    },
+    {
+      "from": "engine.commands",
+      "to": "outside.trackers",
+      "kind": "call",
+      "label": "Selected tracker transport"
+    }
+  ],
+  "flows": [
+    {
+      "id": "install",
+      "title": "Set up a coding assistant",
+      "steps": [
+        {
+          "node": ".bkit/core/engine/cli.ts",
+          "note": "The developer chooses an install or upgrade command."
+        },
+        {
+          "node": "engine.install",
+          "note": "Installation selects modules and prepares project changes."
+        },
+        {
+          "node": "engine.render",
+          "note": "Shared instructions become assistant-specific files."
+        },
+        {
+          "node": "engine.checks",
+          "note": "Setup checks report prerequisites and installation results."
+        }
+      ]
+    },
+    {
+      "id": "workflow",
+      "title": "Move a feature through its workflow",
+      "steps": [
+        {
+          "node": ".bkit/core/engine/cli.ts",
+          "note": "An assistant invokes the command required by its workflow."
+        },
+        {
+          "node": "engine.commands",
+          "note": "Commands coordinate branches, checks and progress."
+        },
+        {
+          "node": "engine.records",
+          "note": "Progress and results are recorded for later steps and resumption."
+        }
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "node": "engine",
+      "title": "Start with the command-line tool",
+      "note": "bkit installs assistant instructions and supports their engineering workflows."
+    },
+    {
+      "node": "engine.install",
+      "title": "See what installation owns",
+      "note": "The installer preserves project-owned content while updating managed files."
+    },
+    {
+      "node": "engine.render",
+      "title": "Meet the assistant adapters",
+      "note": "A shared source becomes the formats each supported assistant expects."
+    },
+    {
+      "node": "payload",
+      "title": "Understand the safety hooks",
+      "note": "Hooks enforce the editing and command boundaries around assistant work."
+    },
+    {
+      "node": "tests",
+      "title": "Explore the checks",
+      "note": "Tests cover executable behavior and the written contracts shipped to projects."
+    },
+    {
+      "node": "ops.graph",
+      "title": "Compare capability ownership",
+      "note": "Graphify tracks ownership and drift; this floorplan explains system boundaries and connections."
+    }
+  ]
+}

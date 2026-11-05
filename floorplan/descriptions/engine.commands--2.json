@@ -1,0 +1,28 @@
+{
+  "files": {
+    ".bkit/core/engine/commands/workflow/test-blocks.ts": {
+      "name": "Individual test boundaries",
+      "description": "Locates named tests and supporting lines to distinguish planned edits from unrelated changes."
+    },
+    ".bkit/core/engine/commands/workflow/tests-changed.ts": {
+      "name": "Changed-file checks",
+      "description": "Runs checks relevant to the files changed by a workflow step."
+    },
+    ".bkit/core/engine/commands/workflow/tests.ts": {
+      "name": "Workflow test execution",
+      "description": "Runs declared test gates, saves complete output and reports the verdict."
+    },
+    ".bkit/core/engine/commands/workflow/tracker.ts": {
+      "name": "Issue tracker connection",
+      "description": "Performs the engine's direct communication with the selected issue tracker."
+    },
+    ".bkit/core/engine/commands/workflow/workflows.ts": {
+      "name": "Workflow run lifecycle",
+      "description": "Starts, promotes, closes and hands over workflow runs while preserving recorded state."
+    },
+    ".bkit/core/engine/commands/workflow/worktrees.ts": {
+      "name": "Feature checkout lifecycle",
+      "description": "Prepares and removes isolated feature checkouts with the project inputs they need."
+    }
+  }
+}

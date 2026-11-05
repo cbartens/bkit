@@ -45,3 +45,9 @@ docs/roadmap.md
 # not hand-written markdown: prettier would escape and reflow it, and a gate's
 # format check would then fail on another feature's log merged in from the base.
 docs/plans/*/logs/**
+# Floorplan-generated viewer files retain upstream formatting and embedded-data markers.
+floorplan/index.html
+floorplan/graph.json
+floorplan/query.mjs
+floorplan/serve.mjs
+floorplan/licenses/

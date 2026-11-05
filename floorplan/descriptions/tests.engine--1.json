@@ -1,0 +1,164 @@
+{
+  "files": {
+    ".bkit/core/engine/checks/after/auth.test.ts": {
+      "name": "Service sign-in tests",
+      "description": "Checks that setup warnings detect missing credentials for connected services."
+    },
+    ".bkit/core/engine/checks/after/ci-yml.test.ts": {
+      "name": "Build workflow checks tests",
+      "description": "Checks that installed build workflows declare required checks and inputs."
+    },
+    ".bkit/core/engine/checks/after/github.test.ts": {
+      "name": "GitHub setup tests",
+      "description": "Checks repository protections and issue-tracker setup warnings."
+    },
+    ".bkit/core/engine/checks/after/index.test.ts": {
+      "name": "Installation checklist tests",
+      "description": "Checks how post-install findings become the checklist and saved advisories."
+    },
+    ".bkit/core/engine/checks/after/managed.integration.test.ts": {
+      "name": "Protected branch detection tests",
+      "description": "Checks branch protection detection against a real Git repository."
+    },
+    ".bkit/core/engine/checks/after/managed.test.ts": {
+      "name": "Managed file freshness tests",
+      "description": "Checks that outdated managed files are reported with the right severity."
+    },
+    ".bkit/core/engine/checks/after/suppression.test.ts": {
+      "name": "Advisory opt-out tests",
+      "description": "Checks that project settings select which setup advisories are ignored."
+    },
+    ".bkit/core/engine/checks/after/tools.test.ts": {
+      "name": "Local tooling checks tests",
+      "description": "Checks warnings for missing local tools and mismatched tool setup."
+    },
+    ".bkit/core/engine/checks/before/context-fetch.test.ts": {
+      "name": "Evidence source setup tests",
+      "description": "Checks that projects declare the external evidence sources their workflows need."
+    },
+    ".bkit/core/engine/checks/before/env.test.ts": {
+      "name": "Local environment checks tests",
+      "description": "Checks warnings for missing environment files and tracker-specific credentials."
+    },
+    ".bkit/core/engine/checks/before/files.integration.test.ts": {
+      "name": "Installed file drift tests",
+      "description": "Checks that changed managed text and settings are detected in real installation output."
+    },
+    ".bkit/core/engine/checks/before/files.test.ts": {
+      "name": "Shared file checks tests",
+      "description": "Checks managed blocks and shared-file conditions before installation."
+    },
+    ".bkit/core/engine/checks/before/index.integration.test.ts": {
+      "name": "Tracker selection checks tests",
+      "description": "Checks that setup warnings use the tracker being installed rather than the previous selection."
+    },
+    ".bkit/core/engine/checks/before/index.test.ts": {
+      "name": "Pre-install checklist tests",
+      "description": "Checks repository blockers and combines setup findings before files are written."
+    },
+    ".bkit/core/engine/checks/before/mcp.test.ts": {
+      "name": "Assistant connection checks tests",
+      "description": "Checks that assistant service connections match the project's selected tracker."
+    },
+    ".bkit/core/engine/checks/before/repo.test.ts": {
+      "name": "Repository prerequisite tests",
+      "description": "Checks that installation detects missing or malformed project prerequisites."
+    },
+    ".bkit/core/engine/checks/before/version.test.ts": {
+      "name": "Version downgrade checks tests",
+      "description": "Checks that installation warns before replacing a newer major version with an older one."
+    },
+    ".bkit/core/engine/checks/status-holes.test.ts": {
+      "name": "Workflow evidence gap tests",
+      "description": "Checks that workflow steps and required command calls can be compared with recorded progress."
+    },
+    ".bkit/core/engine/checks/tips/catalogue.test.ts": {
+      "name": "Setup advice catalogue tests",
+      "description": "Checks that setup tips contain complete guidance for each workflow context."
+    },
+    ".bkit/core/engine/checks/tips/detect.test.ts": {
+      "name": "Setup advice detection tests",
+      "description": "Checks how assistant connections and repository conditions select relevant setup tips."
+    },
+    ".bkit/core/engine/checks/tips/index.test.ts": {
+      "name": "Setup advice output tests",
+      "description": "Checks that advice uses the correct checkout and displays the applicable findings."
+    },
+    ".bkit/core/engine/cli.test.ts": {
+      "name": "Command-line selection tests",
+      "description": "Checks command names, module flags and routing into the requested operation."
+    },
+    ".bkit/core/engine/commands/analysis.test.ts": {
+      "name": "Workflow analysis tests",
+      "description": "Checks failure deltas, outcome comparisons and compliance measurements from run records."
+    },
+    ".bkit/core/engine/commands/ci/ci.test.ts": {
+      "name": "Quality command tests",
+      "description": "Checks quality-check decisions and reporting, including newly introduced findings."
+    },
+    ".bkit/core/engine/commands/ci/pins.test.ts": {
+      "name": "Tool version pin tests",
+      "description": "Checks that download versions and matching integrity hashes are read correctly."
+    },
+    ".bkit/core/engine/commands/ci/push-gate.test.ts": {
+      "name": "Push verification tests",
+      "description": "Checks that incremental push checks accept only current, valid proof from earlier successful checks."
+    },
+    ".bkit/core/engine/commands/comply.integration.test.ts": {
+      "name": "Compliance boundary tests",
+      "description": "Checks that real Git changes identify edits to generated assistant copies."
+    },
+    ".bkit/core/engine/commands/comply.test.ts": {
+      "name": "Compliance grading tests",
+      "description": "Checks rules for generated-file edits and commit markers against recorded changes."
+    },
+    ".bkit/core/engine/commands/conventions.test.ts": {
+      "name": "Command convention tests",
+      "description": "Checks that registered commands expose consistent names, options and exit outcomes."
+    },
+    ".bkit/core/engine/commands/install/check.integration.test.ts": {
+      "name": "Installation drift command tests",
+      "description": "Checks that the installed setup detects weakened assistant settings and modified managed files."
+    },
+    ".bkit/core/engine/commands/install/check.test.ts": {
+      "name": "Installed module lookup tests",
+      "description": "Checks which assistant modules are inferred from their installed files."
+    },
+    ".bkit/core/engine/commands/install/doctor.integration.test.ts": {
+      "name": "Doctor command tests",
+      "description": "Checks that the diagnostic command reports installation health in a real project."
+    },
+    ".bkit/core/engine/commands/install/doctor.test.ts": {
+      "name": "Assistant status tests",
+      "description": "Checks read-only reporting of installed assistants, model settings and malformed configuration."
+    },
+    ".bkit/core/engine/commands/install/install.integration.test.ts": {
+      "name": "Installation flow tests",
+      "description": "Checks prerequisites, writes, advisories and preview parity across the complete installation flow."
+    },
+    ".bkit/core/engine/commands/install/install.test.ts": {
+      "name": "Installation helper tests",
+      "description": "Checks staging cleanup, recovery flags and installation message conventions."
+    },
+    ".bkit/core/engine/commands/install/uninstall.integration.test.ts": {
+      "name": "Uninstall preservation tests",
+      "description": "Checks that removing bkit preserves a heavily customized project's own content."
+    },
+    ".bkit/core/engine/commands/install/uninstall.test.ts": {
+      "name": "Uninstall decision tests",
+      "description": "Checks which managed files or sections are removed and which project content stays."
+    },
+    ".bkit/core/engine/commands/install/upgrade.integration.test.ts": {
+      "name": "Upgrade preservation tests",
+      "description": "Checks that upgrades report conflicts and preserve project customizations."
+    },
+    ".bkit/core/engine/commands/install/upgrade.test.ts": {
+      "name": "Upgrade comparison tests",
+      "description": "Checks how upgrades classify file differences and choose their next action."
+    },
+    ".bkit/core/engine/commands/land.test.ts": {
+      "name": "Landing retry tests",
+      "description": "Checks how landing changes handles branch movement, refused pushes and bounded retries."
+    }
+  }
+}

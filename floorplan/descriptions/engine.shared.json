@@ -1,0 +1,56 @@
+{
+  "files": {
+    ".bkit/core/engine/shared/bkit-latest.ts": {
+      "name": "Release freshness checks",
+      "description": "Checks whether the installed bkit version is behind the newest published release."
+    },
+    ".bkit/core/engine/shared/branches.ts": {
+      "name": "Shared branch names",
+      "description": "Identifies the shared development and release branches that feature work must protect."
+    },
+    ".bkit/core/engine/shared/dep-updater.ts": {
+      "name": "Dependency updater discovery",
+      "description": "Determines whether the project uses Renovate or Dependabot from its settings."
+    },
+    ".bkit/core/engine/shared/egress.ts": {
+      "name": "Allowed network destinations",
+      "description": "Defines external destinations and model-provider settings that assistants need."
+    },
+    ".bkit/core/engine/shared/json.ts": {
+      "name": "Safe project file reads",
+      "description": "Reads project text and settings while explicitly reporting unreadable or invalid input."
+    },
+    ".bkit/core/engine/shared/log-prefix.ts": {
+      "name": "Command message labels",
+      "description": "Labels installation messages with the command that produced them."
+    },
+    ".bkit/core/engine/shared/package-json.ts": {
+      "name": "Package information reader",
+      "description": "Reads package settings, dependencies and the version being installed."
+    },
+    ".bkit/core/engine/shared/package-manager.ts": {
+      "name": "Package command choices",
+      "description": "Defines consistent commands for scripts, installation and lockfile regeneration."
+    },
+    ".bkit/core/engine/shared/package-roots.ts": {
+      "name": "Package content locations",
+      "description": "Finds packaged instructions, hooks and templates wherever the engine runs."
+    },
+    ".bkit/core/engine/shared/protected-paths.ts": {
+      "name": "Managed assistant paths",
+      "description": "Identifies generated assistant directories that should not be edited by hand."
+    },
+    ".bkit/core/engine/shared/settings.ts": {
+      "name": "Project settings reader",
+      "description": "Reads project tracker, workflow, model and approval preferences."
+    },
+    ".bkit/core/engine/shared/text.ts": {
+      "name": "Reliable text output",
+      "description": "Formats command results and tables so their values can be read back without loss."
+    },
+    ".bkit/core/engine/shared/timeouts.ts": {
+      "name": "Wait and retry limits",
+      "description": "Defines shared waiting periods, polling intervals and stale-record limits."
+    }
+  }
+}
