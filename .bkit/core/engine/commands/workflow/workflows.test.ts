@@ -109,6 +109,10 @@ const rebaseInProgress = (gitDir: string) =>
   fs.existsSync(path.join(gitDir, "rebase-merge")) ||
   fs.existsSync(path.join(gitDir, "rebase-apply"));
 const statusOf = (cwd: string) => path.join(cwd, REL, "status.jsonl");
+const restoreEnvironment = (name: string, value: string | undefined) => {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+};
 /** A `package.json` whose worktree copy list also names a file outside the checkout. */
 const outsideCopy = {
   ...gatePackage,
@@ -1973,6 +1977,132 @@ describe("bkit workflows close --flush (ship)", () => {
     ];
     return { cwd, remote, wt, close };
   }
+
+  it("preserves newer feature work when closing an already merged PR", async () => {
+    const { cwd, remote, wt, close } = shipping(true);
+    write(wt, "new-fix.ts", "export const fix = true;\n");
+    git(wt, "add", "new-fix.ts");
+    git(wt, "commit", "-qm", "fix: work after merged PR");
+    const newer = git(wt, "rev-parse", "HEAD");
+    const result = await run(wt, close);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "rev-parse", `feat/${FID}`)).toBe(newer);
+    expect(fs.readFileSync(path.join(wt, "new-fix.ts"), "utf-8")).toBe(
+      "export const fix = true;\n",
+    );
+    expect(git(remote, "show", `dev:${REL}/status.jsonl`)).toContain('"workflow-done"');
+    expect(git(remote, "ls-tree", "dev", "new-fix.ts")).toBe("");
+  });
+
+  it("preserves unlanded file deletions and ledger additions on close", async () => {
+    const { cwd, remote, wt, close } = shipping(true);
+    git(wt, "rm", "-q", "a.txt");
+    git(wt, "commit", "-qm", "fix: feature deletes a file");
+    const result = await run(wt, close);
+    expect(result.code, result.err).toBe(0);
+    expect(fs.existsSync(wt)).toBe(true);
+    expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+    expect(fs.existsSync(path.join(wt, "a.txt"))).toBe(false);
+    expect(git(remote, "show", "dev:a.txt")).toBe("base");
+    expect(result.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+
+    const rowsOnly = shipping(true);
+    const ledger = '{"key":"feature-row","ts":123}\n';
+    write(rowsOnly.wt, "events.jsonl", ledger);
+    git(rowsOnly.wt, "add", "events.jsonl");
+    git(rowsOnly.wt, "commit", "-qm", "feat: feature ledger row");
+    const ledgerResult = await run(rowsOnly.wt, rowsOnly.close);
+    expect(ledgerResult.code, ledgerResult.err).toBe(0);
+    expect(ledgerResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.readFileSync(path.join(rowsOnly.wt, "events.jsonl"), "utf-8")).toBe(ledger);
+    expect(git(rowsOnly.remote, "show", "dev:events.jsonl")).not.toContain("feature-row");
+  });
+
+  it("preserves dirty work and uncertain branch evidence during close", async () => {
+    const dirty = shipping(true);
+    write(dirty.wt, "a.txt", "uncommitted edit\n");
+    write(dirty.wt, "untracked.txt", "only copy\n");
+    const lock = await run(dirty.cwd, [
+      "locks",
+      "acquire",
+      "--kind=workflow",
+      "--workflow=ship",
+      `--fid=${FID}`,
+    ]);
+    expect(lock.code).toBe(0);
+    const dirtyResult = await run(dirty.wt, [...dirty.close, `--token=${lock.json.token}`]);
+    expect(dirtyResult.code, dirtyResult.err).toBe(0);
+    expect(dirtyResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.readFileSync(path.join(dirty.wt, "a.txt"), "utf-8")).toBe("uncommitted edit\n");
+    expect(fs.readFileSync(path.join(dirty.wt, "untracked.txt"), "utf-8")).toBe("only copy\n");
+    expect(fs.existsSync(path.join(dirty.cwd, REL, ".lock"))).toBe(false);
+    expect(git(dirty.remote, "show", `dev:${REL}/status.jsonl`)).toContain('"workflow-done"');
+
+    const uncertain = shipping(true);
+    const original = git(uncertain.wt, "rev-parse", "HEAD");
+    removing.onEnter = () => {
+      git(
+        uncertain.cwd,
+        "remote",
+        "set-url",
+        "origin",
+        path.join(uncertain.cwd, "unreadable-origin.git"),
+      );
+    };
+    const uncertainResult = await run(uncertain.wt, uncertain.close);
+    expect(uncertainResult.code, uncertainResult.err).toBe(0);
+    expect(uncertainResult.json.worktree).toMatchObject({ removed: false, branchDeleted: false });
+    expect(fs.existsSync(uncertain.wt)).toBe(true);
+    expect(git(uncertain.cwd, "rev-parse", `feat/${FID}`)).toBe(original);
+    expect(uncertainResult.err).toMatch(/fetch|uncertain|unavailable|cannot.*read/i);
+  });
+
+  it("preserves a local feature ref changed after its cleanup proof", async () => {
+    const { cwd, wt, close } = shipping(true);
+    const candidate = path.join(cwd, "race-candidate");
+    git(cwd, "worktree", "add", "-q", candidate, "-b", "race-candidate", `feat/${FID}`);
+    write(candidate, "raced-fix.ts", "export const raced = true;\n");
+    git(candidate, "add", "raced-fix.ts");
+    git(candidate, "commit", "-qm", "fix: concurrent local feature work");
+    const raced = git(candidate, "rev-parse", "HEAD");
+    git(cwd, "worktree", "remove", candidate);
+    const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+    const bin = path.join(cwd, "race-bin");
+    fs.mkdirSync(bin);
+    fs.symlinkSync(
+      path.resolve(__dirname, "../../../../../tests/fixtures/gh/bin/gh"),
+      path.join(bin, "git"),
+    );
+    const racedMarker = path.join(bin, "raced");
+    const body = path.join(bin, "git-body.sh");
+    fs.writeFileSync(
+      body,
+      [
+        `case "$*" in`,
+        `  *"update-ref -d refs/heads/feat/${FID}"*|*"branch -D feat/${FID}"*)`,
+        `    if [ ! -f '${racedMarker}' ]; then '${realGit}' -C '${cwd}' update-ref 'refs/heads/feat/${FID}' '${raced}'; : > '${racedMarker}'; fi ;;`,
+        `esac`,
+        `exec '${realGit}' "$@"`,
+      ].join("\n"),
+    );
+    const savedPath = process.env.PATH;
+    const savedBody = process.env.BKIT_FAKE_TOOL_SCRIPT;
+    try {
+      process.env.PATH = [bin, savedPath].join(path.delimiter);
+      process.env.BKIT_FAKE_TOOL_SCRIPT = body;
+      const result = await run(wt, close);
+      expect(result.code, result.err).toBe(0);
+      expect(fs.existsSync(racedMarker)).toBe(true);
+      expect(git(cwd, "rev-parse", `refs/heads/feat/${FID}`)).toBe(raced);
+      expect(result.json.worktree.branchDeleted).toBe(false);
+      expect(git(cwd, "show", `feat/${FID}:raced-fix.ts`)).toBe("export const raced = true;");
+    } finally {
+      restoreEnvironment("PATH", savedPath);
+      restoreEnvironment("BKIT_FAKE_TOOL_SCRIPT", savedBody);
+    }
+  });
 
   it("lands ONE DONE commit on dev carrying the book, then removes the worktree and branch", async () => {
     const { cwd, remote, wt, close } = shipping(true);

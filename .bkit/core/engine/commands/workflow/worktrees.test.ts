@@ -411,6 +411,87 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
 });
 
 describe("bkit worktrees setup — ship branch", () => {
+  function inheritedShip(mode: "created" | "resumed" | "adopted") {
+    const cwd = repo("dev");
+    fs.rmSync(path.join(cwd, ".env"));
+    git(cwd, "config", "user.email", "t@t");
+    git(cwd, "config", "user.name", "t");
+    const origin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-origin-")));
+    dirs.push(origin);
+    git(origin, "init", "-q", "--bare", "-b", "dev");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "origin", "dev");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "feat: unpublished dev ownership");
+    const inherited = git(cwd, "rev-parse", "HEAD");
+    git(cwd, "branch", `feat/${FID}`);
+    const flags: string[] = [];
+    if (mode !== "adopted") flags.push("--worktrees");
+    if (mode === "resumed") {
+      git(cwd, "worktree", "add", "-q", worktreeDir(cwd, FID), `feat/${FID}`);
+    }
+    if (mode === "adopted") git(cwd, "switch", "-q", `feat/${FID}`);
+    return { cwd, origin, inherited, flags };
+  }
+
+  it("fetches a remote only ship branch before adopting it", async () => {
+    const cwd = repo("claude/session");
+    const origin = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-remote-only-")),
+    );
+    dirs.push(origin);
+    git(origin, "init", "-q", "--bare", "-b", "dev");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "origin", "HEAD:dev", `HEAD:feat/${FID}`);
+    git(cwd, "update-ref", "-d", `refs/remotes/origin/feat/${FID}`);
+    git(cwd, "config", "remote.origin.fetch", "+refs/heads/dev:refs/remotes/origin/dev");
+    const expected = git(origin, "rev-parse", `refs/heads/feat/${FID}`);
+    const result = await setup(cwd, "ship", `--branch=feat/${FID}`);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json).toMatchObject({
+      mode: "adopted",
+      branch: `feat/${FID}`,
+      worktreePath: cwd,
+    });
+    expect(git(cwd, "branch", "--show-current")).toBe(`feat/${FID}`);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(expected);
+    expect(git(cwd, "rev-parse", `refs/remotes/origin/feat/${FID}`)).toBe(expected);
+  });
+
+  it("refuses inherited unpublished dev commits in every ship mode", async () => {
+    const created = inheritedShip("created");
+    const resumed = inheritedShip("resumed");
+    const adopted = inheritedShip("adopted");
+    const a = await setup(created.cwd, "ship", ...created.flags);
+    const b = await setup(resumed.cwd, "ship", ...resumed.flags);
+    const c = await setup(adopted.cwd, "ship", ...adopted.flags);
+    expect([a.code, b.code, c.code]).toEqual([7, 7, 7]);
+    expect(a.err).toMatch(/unpublished|unpushed/);
+    expect(b.err).toMatch(/unpublished|unpushed/);
+    expect(c.err).toMatch(/unpublished|unpushed/);
+    expect(git(created.origin, "branch", "--list", `feat/${FID}`)).toBe("");
+    expect(git(resumed.cwd, "rev-parse", `feat/${FID}`)).toBe(resumed.inherited);
+    expect(git(adopted.cwd, "rev-parse", `feat/${FID}`)).toBe(adopted.inherited);
+
+    const independent = inheritedShip("adopted");
+    git(independent.cwd, "switch", "-q", "-c", "independent", "origin/dev");
+    git(independent.cwd, "commit", "-q", "--allow-empty", "-m", "feat: independent work");
+    const allowed = await setup(independent.cwd, "ship", "--branch=independent");
+    expect(allowed.code, allowed.err).toBe(0);
+    expect(allowed.json.branch).toBe("independent");
+  }, 60_000);
+
+  it("names inherited commits and ship recovery in the refusal", async () => {
+    const f = inheritedShip("adopted");
+    const result = await setup(f.cwd, "ship");
+    expect(result.code).toBe(7);
+    expect(result.err).toContain(f.inherited.slice(0, 7));
+    expect(result.err).toContain("unpublished dev ownership");
+    expect(result.err).toMatch(/publish.*dev|push origin dev/);
+    expect(result.err).toMatch(/ship/);
+    expect(result.err).not.toMatch(/re-run \/bkit-(?:design|plan)/);
+    expect(git(f.cwd, "rev-parse", `feat/${FID}`)).toBe(f.inherited);
+  });
+
   it("ships the prompt-named branch, else feat/{fid} when it exists, else the session branch", async () => {
     const cwd = repo("claude/work");
     git(cwd, "branch", "named");

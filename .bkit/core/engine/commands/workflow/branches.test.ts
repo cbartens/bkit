@@ -2634,6 +2634,235 @@ describe("branches force-build", { timeout: GIT_TIMEOUT }, () => {
   });
 });
 
+describe("branches sync feature reconciliation", { timeout: GIT_TIMEOUT }, () => {
+  function published(name: string) {
+    const { origin, clone } = withOrigin(name);
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    commit(clone, { "feature.txt": "shared\n" }, "feat: shared work");
+    expect(git(clone, "push", "-q", "origin", "HEAD:feat/1-x").ok).toBe(true);
+    const other = tmp(`${name}-cloud`);
+    expect(git(other, "clone", "-q", "-b", "feat/1-x", origin, ".").ok).toBe(true);
+    return { origin, clone, other };
+  }
+
+  function cloudCommit(other: string, files: Record<string, string>) {
+    commit(other, files, "feat: cloud work");
+    expect(git(other, "push", "-q", "origin", "HEAD:feat/1-x").ok).toBe(true);
+    return sha(other);
+  }
+
+  const reconcile = (cwd: string, ...flags: string[]) =>
+    run(cwd, ["sync", "--reconcile-feature", "--fid=1-x", ...flags]);
+
+  it("fetches the unseen feature head before classifying the base", async () => {
+    const { clone, other } = published("feature-unseen");
+    git(clone, "config", "remote.origin.fetch", "+refs/heads/dev:refs/remotes/origin/dev");
+    const remote = cloudCommit(other, { "cloud.txt": "remote only\n" });
+    expect(git(clone, "cat-file", "-e", remote).ok).toBe(false);
+    const result = await reconcile(clone, `--head=${remote}`);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json).toMatchObject({ head: remote, basePath: "A" });
+    expect(sha(clone)).toBe(remote);
+    expect(read(clone, "cloud.txt")).toBe("remote only\n");
+  });
+
+  it("fast forwards the feature before either base path is chosen", async () => {
+    const a = published("feature-path-a");
+    const aTip = cloudCommit(a.other, { "cloud.txt": "cloud A\n" });
+    const pathA = await reconcile(a.clone);
+    expect(pathA.code, pathA.err).toBe(0);
+    expect(pathA.json).toMatchObject({ basePath: "A", head: aTip });
+    expect(sha(a.clone)).toBe(aTip);
+
+    const b = published("feature-path-b");
+    const bTip = cloudCommit(b.other, { "cloud.txt": "cloud B\n" });
+    landOnDev(b.origin, { "dev.txt": "dev advanced\n" });
+    const pathB = await reconcile(b.clone);
+    expect(pathB.code, pathB.err).toBe(0);
+    expect(pathB.json).toMatchObject({ basePath: "B", head: bTip });
+    expect(sha(b.clone)).toBe(bTip);
+    expect(read(b.clone, "cloud.txt")).toBe("cloud B\n");
+  });
+
+  it("merges divergent feature tips without rebasing either side", async () => {
+    const { clone, other } = published("feature-diverged");
+    commit(clone, { "laptop.txt": "local only\n" }, "feat: laptop work");
+    const local = sha(clone);
+    git(other, "switch", "-q", "-c", "cloud-side");
+    commit(other, { "cloud.txt": "cloud side\n" }, "feat: cloud side");
+    const side = sha(other);
+    git(other, "switch", "-q", "feat/1-x");
+    expect(git(other, "merge", "--no-ff", "-m", "feat: retain cloud merge", "cloud-side").ok).toBe(
+      true,
+    );
+    const remote = sha(other);
+    expect(git(other, "push", "-q", "origin", "HEAD:feat/1-x").ok).toBe(true);
+    const result = await reconcile(clone);
+    expect(result.code, result.err).toBe(0);
+    expect(git(clone, "merge-base", "--is-ancestor", local, "HEAD").ok).toBe(true);
+    expect(git(clone, "merge-base", "--is-ancestor", remote, "HEAD").ok).toBe(true);
+    expect(git(clone, "merge-base", "--is-ancestor", side, "HEAD").ok).toBe(true);
+    expect(git(clone, "rev-list", "--parents", "-1", "HEAD").out.split(" ")).toHaveLength(3);
+    expect(read(clone, "laptop.txt")).toBe("local only\n");
+    expect(read(clone, "cloud.txt")).toBe("cloud side\n");
+    expect(result.json?.head).toBe(sha(clone));
+    expect(git(clone, "status", "--porcelain").out).toBe("");
+  });
+
+  it("continues the feature merge before starting a dev merge", async () => {
+    const { origin, clone, other } = published("feature-continue");
+    commit(clone, { "src.txt": "laptop\n" }, "feat: laptop edit");
+    const local = sha(clone);
+    const remote = cloudCommit(other, { "src.txt": "cloud\n" });
+    landOnDev(origin, { "dev.txt": "new base\n" });
+    const first = await reconcile(clone);
+    expect(first.code).toBe(24);
+    expect(git(clone, "rev-parse", "MERGE_HEAD").out).toBe(remote);
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(false);
+    write(clone, "src.txt", "code v0\nlaptop\ncloud\n");
+    expect(git(clone, "add", "src.txt").ok).toBe(true);
+    const continued = await reconcile(clone);
+    expect(continued.code, continued.err).toBe(0);
+    expect(git(clone, "rev-parse", "HEAD^1").out).toBe(local);
+    expect(git(clone, "rev-parse", "HEAD^2").out).toBe(remote);
+    expect(fs.existsSync(path.join(clone, ".git/MERGE_HEAD"))).toBe(false);
+    expect(continued.json).toMatchObject({ basePath: "B", head: sha(clone) });
+    const integrated = await run(clone, ["sync", "--merge", "--fid=1-x"]);
+    expect(integrated.code, integrated.err).toBe(0);
+    expect(git(clone, "merge-base", "--is-ancestor", "origin/dev", "HEAD").ok).toBe(true);
+    expect(read(clone, "src.txt")).toBe("code v0\nlaptop\ncloud\n");
+    expect(read(clone, "dev.txt")).toBe("new base\n");
+  });
+
+  it("publishes local code with a CI running head before bookkeeping", async () => {
+    const a = published("feature-publish-a");
+    commit(a.clone, { "local.ts": "export const local = true;\n" }, "feat: laptop code");
+    commit(a.clone, { "docs/testing.md": "notes\n" }, "docs: notes [skip ci]");
+    const pathA = await reconcile(a.clone);
+    expect(pathA.code, pathA.err).toBe(0);
+    expect(git(a.clone, "log", "-1", "--format=%s").out).not.toMatch(/\[(?:skip ci|ci skip)\]/i);
+    expect((await run(a.clone, ["push", "--mode=plain"])).code).toBe(0);
+    expect(sha(a.origin, "refs/heads/feat/1-x")).toBe(sha(a.clone));
+    expect(git(a.origin, "show", "refs/heads/feat/1-x:local.ts").out).toBe(
+      "export const local = true;",
+    );
+
+    const b = published("feature-publish-b");
+    commit(b.clone, { "local.ts": "export const local = true;\n" }, "feat: laptop code");
+    commit(b.clone, { "docs/testing.md": "notes\n" }, "docs: notes [skip ci]");
+    landOnDev(b.origin, { "dev.txt": "advanced\n" });
+    const pathB = await reconcile(b.clone);
+    expect(pathB.code, pathB.err).toBe(0);
+    expect(pathB.json?.basePath).toBe("B");
+    expect(git(b.clone, "log", "-1", "--format=%s").out).not.toMatch(/\[(?:skip ci|ci skip)\]/i);
+    expect((await run(b.clone, ["push", "--mode=plain"])).code).toBe(0);
+    expect(sha(b.origin, "refs/heads/feat/1-x")).toBe(sha(b.clone));
+  });
+
+  it("refuses feature reconciliation without losing work when fetch or merge fails", async () => {
+    const unavailable = published("feature-fetch-failed");
+    const original = sha(unavailable.clone);
+    git(
+      unavailable.clone,
+      "remote",
+      "set-url",
+      "origin",
+      path.join(unavailable.clone, "absent.git"),
+    );
+    const fetchFailed = await reconcile(unavailable.clone);
+    expect(fetchFailed.code).not.toBe(0);
+    expect(fetchFailed.err).toMatch(/fetch.*failed|cannot fetch/i);
+    expect(sha(unavailable.clone)).toBe(original);
+    expect(git(unavailable.clone, "status", "--porcelain").out).toBe("");
+
+    const unknown = published("feature-unknown-head");
+    const unknownBefore = sha(unknown.clone);
+    const unreadHead = await reconcile(
+      unknown.clone,
+      "--head=0000000000000000000000000000000000000000",
+    );
+    expect(unreadHead.code).not.toBe(0);
+    expect(unreadHead.err).toMatch(/commit|head|resolve|ref/i);
+    expect(sha(unknown.clone)).toBe(unknownBefore);
+
+    const dirty = published("feature-dirty");
+    const dirtyBefore = sha(dirty.clone);
+    const cloud = cloudCommit(dirty.other, { "cloud.txt": "new cloud work\n" });
+    write(dirty.clone, "src.txt", "uncommitted work\n");
+    const dirtyResult = await reconcile(dirty.clone);
+    expect(dirtyResult.code).not.toBe(0);
+    expect(dirtyResult.err).toMatch(/dirty|uncommitted|commit.*work/i);
+    expect(sha(dirty.clone)).toBe(dirtyBefore);
+    expect(read(dirty.clone, "src.txt")).toBe("uncommitted work\n");
+    expect(sha(dirty.origin, "refs/heads/feat/1-x")).toBe(cloud);
+
+    const conflicted = published("feature-conflict");
+    commit(conflicted.clone, { "src.txt": "laptop\n" }, "feat: local edit");
+    const local = sha(conflicted.clone);
+    const remote = cloudCommit(conflicted.other, { "src.txt": "cloud\n" });
+    const pending = await reconcile(conflicted.clone);
+    expect(pending.code).toBe(24);
+    expect(sha(conflicted.clone)).toBe(local);
+    expect(git(conflicted.clone, "rev-parse", "MERGE_HEAD").out).toBe(remote);
+    expect(read(conflicted.clone, "src.txt")).toContain("<<<<<<<");
+    expect(sha(conflicted.origin, "refs/heads/feat/1-x")).toBe(remote);
+  });
+
+  function unpublishedDev(name: string, diverged = false) {
+    const f = published(name);
+    git(f.clone, "switch", "-q", "dev");
+    commit(f.clone, { "unpublished.txt": "belongs to dev\n" }, "feat: unpublished dev work");
+    const inherited = sha(f.clone);
+    git(f.clone, "switch", "-q", "feat/1-x");
+    if (diverged) commit(f.clone, { "laptop.txt": "independent laptop work\n" }, "feat: laptop");
+    const local = sha(f.clone);
+    const importDev = () => {
+      expect(git(f.other, "fetch", "-q", f.clone, "dev").ok).toBe(true);
+      expect(git(f.other, "merge", "--no-edit", "FETCH_HEAD").ok).toBe(true);
+      expect(git(f.other, "push", "-q", "origin", "HEAD:feat/1-x").ok).toBe(true);
+      return sha(f.other);
+    };
+    return { ...f, inherited, local, importDev };
+  }
+
+  it("refuses remote feature work that imports unpublished local dev ancestry", async () => {
+    const ahead = unpublishedDev("remote-inherited-ahead");
+    const aheadRemote = ahead.importDev();
+    const aheadResult = await reconcile(ahead.clone);
+    expect(aheadResult.code).not.toBe(0);
+    expect(aheadResult.err).toContain(ahead.inherited.slice(0, 7));
+    expect(aheadResult.err).toMatch(/unpublished|unpushed/);
+    expect(sha(ahead.clone)).toBe(ahead.local);
+    expect(sha(ahead.origin, "refs/heads/feat/1-x")).toBe(aheadRemote);
+    expect(fs.existsSync(path.join(ahead.clone, "unpublished.txt"))).toBe(false);
+
+    const diverged = unpublishedDev("remote-inherited-diverged", true);
+    const divergedRemote = diverged.importDev();
+    const divergedResult = await reconcile(diverged.clone);
+    expect(divergedResult.code).not.toBe(0);
+    expect(divergedResult.err).toContain(diverged.inherited.slice(0, 7));
+    expect(divergedResult.err).toMatch(/unpublished|unpushed/);
+    expect(sha(diverged.clone)).toBe(diverged.local);
+    expect(sha(diverged.origin, "refs/heads/feat/1-x")).toBe(divergedRemote);
+    expect(read(diverged.clone, "laptop.txt")).toBe("independent laptop work\n");
+  });
+
+  it("rechecks inherited dev work when a retry observes a new feature candidate", async () => {
+    const f = unpublishedDev("remote-inherited-retry");
+    const eligible = await reconcile(f.clone);
+    expect(eligible.code, eligible.err).toBe(0);
+    expect(sha(f.clone)).toBe(f.local);
+    const remote = f.importDev();
+    const retry = await reconcile(f.clone);
+    expect(retry.code).not.toBe(0);
+    expect(retry.err).toContain(f.inherited.slice(0, 7));
+    expect(retry.err).toMatch(/unpublished|unpushed/);
+    expect(sha(f.clone)).toBe(f.local);
+    expect(sha(f.origin, "refs/heads/feat/1-x")).toBe(remote);
+    expect(fs.existsSync(path.join(f.clone, "unpublished.txt"))).toBe(false);
+  });
+});
+
 describe("branches sync", { timeout: GIT_TIMEOUT }, () => {
   function feature(name: string) {
     const { origin, clone } = withOrigin(name);
@@ -3207,6 +3436,33 @@ describe("branches sync-dev", { timeout: GIT_TIMEOUT }, () => {
 
 const currentBranchOf = (cwd: string) => git(cwd, "branch", "--show-current").out;
 
+describe("shared landed comparison", { timeout: GIT_TIMEOUT }, () => {
+  it("preserves unlanded executable bit changes in the shared landed comparison", async () => {
+    const { clone } = withOrigin("land-executable");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    fs.chmodSync(path.join(clone, "src.txt"), 0o755);
+    expect(git(clone, "add", "src.txt").ok).toBe(true);
+    expect(git(clone, "commit", "-qm", "feat: executable mode").ok).toBe(true);
+    expect(sha(clone, "HEAD:src.txt")).toBe(sha(clone, "origin/dev:src.txt"));
+    expect(git(clone, "ls-tree", "HEAD", "src.txt").out).toMatch(/^100755 /);
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toContain("src.txt");
+  });
+
+  it("preserves unlanded file type changes in the shared landed comparison", async () => {
+    const { clone } = withOrigin("land-symlink");
+    git(clone, "switch", "-q", "-c", "feat/1-x");
+    fs.rmSync(path.join(clone, "src.txt"));
+    fs.symlinkSync("code v0\n", path.join(clone, "src.txt"));
+    expect(git(clone, "add", "src.txt").ok).toBe(true);
+    expect(git(clone, "commit", "-qm", "feat: symlink mode").ok).toBe(true);
+    expect(sha(clone, "HEAD:src.txt")).toBe(sha(clone, "origin/dev:src.txt"));
+    expect(git(clone, "ls-tree", "HEAD", "src.txt").out).toMatch(/^120000 /);
+    const comparison = await import("./worktrees");
+    expect(comparison.notOnDev(clone, "feat/1-x")).toContain("src.txt");
+  });
+});
+
 describe("branches land", { timeout: GIT_TIMEOUT }, () => {
   const FID = "12-x";
   const M = "202610";
@@ -3506,6 +3762,58 @@ describe("branches land", { timeout: GIT_TIMEOUT }, () => {
     write(common, `bkit-outbox/${FID}/.worktree-owned`, "");
     return path.join(repo, ".worktrees", FID);
   };
+
+  async function landEntryShape(workflow: "design" | "plan", executable: boolean) {
+    const { repo } = fixture();
+    const artifact = `docs/plans/${M}/${FID}-${workflow}.md`;
+    write(repo, artifact, `# ${workflow}\n`);
+    git(repo, "add", artifact);
+    git(repo, "commit", "-qm", `docs: ${workflow} artifact`);
+    const merged = squashOnRemote(repo);
+    if (executable) {
+      fs.chmodSync(path.join(repo, artifact), 0o755);
+      git(repo, "add", artifact);
+      git(repo, "commit", "-qm", "docs: executable artifact after squash");
+    }
+    expect(sha(repo, `HEAD:${artifact}`)).toBe(sha(repo, `origin/dev:${artifact}`));
+    git(repo, "checkout", "-q", "dev");
+    const wt = ownedWorktree(repo);
+    const gh = ghMergingOnRetry(merged);
+    write(gh.base, "merged", "");
+    const result = await run(
+      repo,
+      [
+        "land",
+        `--workflow=${workflow}`,
+        `--fid=${FID}`,
+        `--month=${M}`,
+        "--pr=5",
+        `--branch=feat/${FID}`,
+      ],
+      { BKIT_RUNTIME: "LOCAL", PATH: withBin(gh.bin) },
+    );
+    return {
+      code: result.code,
+      err: result.err,
+      branchRetained: git(repo, "rev-parse", "--verify", "--quiet", `refs/heads/feat/${FID}`).ok,
+      worktreeRetained: fs.existsSync(wt),
+    };
+  }
+
+  it("uses tree entry equivalence for design and plan land cleanup", async () => {
+    const designMode = await landEntryShape("design", true);
+    const planMode = await landEntryShape("plan", true);
+    expect(designMode.code, designMode.err).toBe(18);
+    expect(planMode.code, planMode.err).toBe(18);
+    expect(designMode).toMatchObject({ branchRetained: true, worktreeRetained: true });
+    expect(planMode).toMatchObject({ branchRetained: true, worktreeRetained: true });
+    const designEquivalent = await landEntryShape("design", false);
+    const planEquivalent = await landEntryShape("plan", false);
+    expect(designEquivalent.code, designEquivalent.err).toBe(0);
+    expect(planEquivalent.code, planEquivalent.err).toBe(0);
+    expect(designEquivalent).toMatchObject({ branchRetained: false, worktreeRetained: false });
+    expect(planEquivalent).toMatchObject({ branchRetained: false, worktreeRetained: false });
+  });
 
   it("local: uncommitted work in the feature worktree keeps the worktree and the branch", async () => {
     const { repo } = fixture();

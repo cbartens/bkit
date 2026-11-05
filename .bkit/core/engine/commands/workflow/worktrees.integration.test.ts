@@ -8,9 +8,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
+import { branchesCommand } from "./branches";
+import { workflowsCommand } from "./workflows";
 import { ownershipMarker, worktreesCommand } from "./worktrees";
 
 /**
@@ -149,6 +152,164 @@ const setup = (cwd: string, workflow: string, ...extra: string[]) =>
 
 const wtOf = (f: Fixture) => path.join(f.repo, ".worktrees", FID);
 const marker = (f: Fixture) => ownershipMarker(f.repo, FID);
+
+describe("ship feature reconciliation wiring", () => {
+  useGateRunner();
+  it("reconciles cloud and laptop feature commits through the command boundary", async () => {
+    const f = fixture();
+    fs.rmSync(path.join(f.repo, ".env"));
+    git(f.repo, "switch", "-q", "-c", `feat/${FID}`);
+    fs.writeFileSync(path.join(f.repo, "feature.txt"), "shared\n");
+    git(f.repo, "add", "feature.txt");
+    git(f.repo, "commit", "-qm", "feat: shared work");
+    expect(g(f.repo, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
+    git(f.seed, "fetch", "-q", "origin", `feat/${FID}`);
+    git(f.seed, "switch", "-q", "-c", `feat/${FID}`, "FETCH_HEAD");
+    fs.writeFileSync(path.join(f.seed, "cloud.txt"), "cloud contribution\n");
+    git(f.seed, "add", "cloud.txt");
+    git(f.seed, "commit", "-qm", "feat: cloud contribution");
+    const remoteTip = git(f.seed, "rev-parse", "HEAD");
+    expect(g(f.seed, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
+    fs.writeFileSync(path.join(f.repo, "laptop.txt"), "laptop contribution\n");
+    git(f.repo, "add", "laptop.txt");
+    git(f.repo, "commit", "-qm", "feat: laptop contribution");
+    const localTip = git(f.repo, "rev-parse", "HEAD");
+    const configured = await setup(f.repo, "ship", `--branch=feat/${FID}`);
+    expect(configured.code, configured.err).toBe(0);
+    const errors: string[] = [];
+    const output: string[] = [];
+    const dispatch = (args: string[]) =>
+      runCommand(["branches", ...args, "--json"], [branchesCommand], {
+        classicVerbs: new Set(),
+        cwd: configured.json.worktreePath,
+        io: { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) },
+      });
+    expect(await dispatch(["sync", "--reconcile-feature", `--fid=${FID}`]), errors.join("")).toBe(
+      0,
+    );
+    expect(await dispatch(["push", "--mode=plain"]), errors.join("")).toBe(0);
+    const published = git(f.origin, "rev-parse", `refs/heads/feat/${FID}`);
+    expect(g(f.origin, "merge-base", "--is-ancestor", localTip, published).status).toBe(0);
+    expect(g(f.origin, "merge-base", "--is-ancestor", remoteTip, published).status).toBe(0);
+    expect(git(f.origin, "show", `${published}:cloud.txt`)).toBe("cloud contribution");
+    expect(git(f.origin, "show", `${published}:laptop.txt`)).toBe("laptop contribution");
+    expect(git(f.origin, "log", "-1", "--format=%s", published)).not.toContain("[skip ci]");
+    expect(output.join("")).toContain(published);
+  }, 60_000);
+
+  async function closeWithRemoteChange(when: "before" | "after-proof" | "recreated") {
+    const f = fixture();
+    const configured = await setup(f.repo, "build", "--worktrees");
+    expect(configured.code, configured.err).toBe(0);
+    const wt = configured.json.worktreePath as string;
+    fs.writeFileSync(path.join(wt, "feature.txt"), "landed feature\n");
+    fs.writeFileSync(path.join(wt, "package.json"), JSON.stringify(gatePackage));
+    git(wt, "add", "feature.txt", "package.json");
+    git(wt, "commit", "-qm", "feat: landed feature");
+    const original = git(wt, "rev-parse", "HEAD");
+    expect(g(wt, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
+    git(f.seed, "fetch", "-q", "origin", `feat/${FID}`);
+    git(f.seed, "merge", "-q", "--squash", "FETCH_HEAD");
+    git(f.seed, "commit", "-qm", "feat: squash feature");
+    expect(g(f.seed, "push", "-q", "origin", "HEAD:dev").status).toBe(0);
+    const squash = git(f.seed, "rev-parse", "HEAD");
+    git(f.seed, "switch", "-q", "-c", "remote-candidate", original);
+    fs.writeFileSync(path.join(f.seed, "remote-fix.txt"), "new remote work\n");
+    git(f.seed, "add", "remote-fix.txt");
+    git(f.seed, "commit", "-qm", "fix: newer remote contribution");
+    const remoteTip = git(f.seed, "rev-parse", "HEAD");
+    expect(g(f.seed, "push", "-q", "origin", "HEAD:remote-candidate").status).toBe(0);
+    if (when === "before") {
+      git(f.seed, "push", "-q", "origin", `HEAD:feat/${FID}`);
+    }
+    expect(git(f.origin, "rev-parse", `refs/heads/feat/${FID}`)).toBe(
+      when === "before" ? remoteTip : original,
+    );
+    const log = path.join(wt, "docs/plans", MONTH, "logs", FID);
+    fs.mkdirSync(log, { recursive: true });
+    const status = path.join(log, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      JSON.stringify({ type: "workflow-started", workflow: "ship", at: "2020-01-01T00:00:00Z" }) +
+        "\n",
+    );
+    const bin = path.join(f.repo, "race-bin");
+    fs.mkdirSync(bin);
+    const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+    fs.symlinkSync(
+      path.resolve(__dirname, "../../../../../tests/fixtures/gh/bin/gh"),
+      path.join(bin, "git"),
+    );
+    const raced = path.join(bin, "raced");
+    const body = path.join(bin, "git-body.sh");
+    const replace =
+      when === "recreated"
+        ? `'${realGit}' -C '${f.origin}' update-ref -d 'refs/heads/feat/${FID}' '${original}'; '${realGit}' -C '${f.origin}' update-ref 'refs/heads/feat/${FID}' '${remoteTip}'`
+        : `'${realGit}' -C '${f.origin}' update-ref 'refs/heads/feat/${FID}' '${remoteTip}' '${original}'`;
+    fs.writeFileSync(
+      body,
+      [
+        `case "$*" in`,
+        `  *"update-ref -d refs/heads/feat/${FID}"*|*"branch -D feat/${FID}"*)`,
+        `    if [ ! -f '${raced}' ]; then ${replace}; : > '${raced}'; fi ;;`,
+        `esac`,
+        `exec '${realGit}' "$@"`,
+      ].join("\n"),
+    );
+    const saved = { path: process.env.PATH, body: process.env.BKIT_FAKE_TOOL_SCRIPT };
+    if (when !== "before") {
+      process.env.PATH = [bin, saved.path].join(path.delimiter);
+      process.env.BKIT_FAKE_TOOL_SCRIPT = body;
+    }
+    const out: string[] = [];
+    const err: string[] = [];
+    try {
+      const code = await runCommand(
+        [
+          "workflows",
+          "close",
+          "--workflow=ship",
+          `--fid=${FID}`,
+          `--month=${MONTH}`,
+          `--file=${status}`,
+          "--pr-number=42",
+          `--squash-sha=${squash}`,
+          `--outbox=${path.join(f.repo, ".git", "bkit-outbox", FID)}`,
+          "--flush",
+          `--branch=feat/${FID}`,
+          "--json",
+        ],
+        [workflowsCommand],
+        {
+          classicVerbs: new Set(),
+          cwd: wt,
+          io: { stdout: (text) => out.push(text), stderr: (text) => err.push(text) },
+        },
+      );
+      expect(code, err.join("")).toBe(0);
+      const result = JSON.parse(out.join("")) as { worktree: { remoteDeleted: boolean } };
+      expect(result.worktree.remoteDeleted).toBe(false);
+      expect(git(f.origin, "rev-parse", `refs/heads/feat/${FID}`)).toBe(remoteTip);
+      expect(git(f.origin, "show", `feat/${FID}:remote-fix.txt`)).toBe("new remote work");
+      expect(git(f.origin, "show", `dev:docs/plans/${MONTH}/logs/${FID}/status.jsonl`)).toContain(
+        '"workflow-done"',
+      );
+      expect(err.join("")).toMatch(/remote|origin/);
+      return fs.existsSync(raced);
+    } finally {
+      if (saved.path === undefined) delete process.env.PATH;
+      else process.env.PATH = saved.path;
+      if (saved.body === undefined) delete process.env.BKIT_FAKE_TOOL_SCRIPT;
+      else process.env.BKIT_FAKE_TOOL_SCRIPT = saved.body;
+    }
+  }
+
+  it("keeps a newer remote feature tip while closing the landed local tip", async () => {
+    await closeWithRemoteChange("before");
+    expect(await closeWithRemoteChange("after-proof")).toBe(true);
+    expect(await closeWithRemoteChange("recreated")).toBe(true);
+  }, 60_000);
+});
 
 describe("bkit worktrees setup — mint (create)", () => {
   it("cuts feat/{fid} off a freshly fetched origin/dev, even when the clone's fetch refspec skips dev", async () => {
