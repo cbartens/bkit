@@ -1827,6 +1827,8 @@ function mergeDev(top, o, log) {
         before: null,
     };
     const full = o.policy === "full";
+    const target = o.target ?? UPSTREAM;
+    const targetName = o.target ?? DEV;
     const fid = o.fid ?? o.branch.replace(/^feat\//, "");
     const refuse = (why) => {
         const abort = runGit(top, ["merge", "--abort"]);
@@ -1835,27 +1837,33 @@ function mergeDev(top, o, log) {
         return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
     };
     if (mergeInProgress(top)) {
+        const merging = git(top, ["rev-parse", "--verify", "MERGE_HEAD"]);
+        const expected = git(top, ["rev-parse", "--verify", `${target}^{commit}`]);
+        if (merging === null || expected === null || merging !== expected) {
+            log(`the pending merge targets ${merging ?? "an unreadable ref"}, not ${target}; finish that merge first`);
+            return { ...out, code: EXIT_REFUSED, outcome: "refused" };
+        }
         out.before = git(top, ["rev-parse", "--verify", "--quiet", "ORIG_HEAD"]);
-        log(`a merge of ${UPSTREAM} is in progress — continuing it`);
+        log(`a merge of ${target} is in progress — continuing it`);
     }
     else {
         if (o.current)
             return { ...out, outcome: "current" };
         if (full && hasLeftovers(top)) {
-            const message = `chore(${fid}): carry uncommitted work before merging ${DEV}`;
+            const message = `chore(${fid}): carry uncommitted work before merging ${targetName}`;
             if (!addAllButCopied(top).ok || !quietGit(top, ["commit", "-q", "-m", message]).ok) {
                 log("the uncommitted work could not be committed before the merge");
                 return { ...out, code: EXIT_REFUSED, outcome: "refused" };
             }
             out.carried = git(top, ["rev-parse", "HEAD"]);
-            log(`committed the uncommitted work as ${out.carried} before merging ${UPSTREAM}`);
+            log(`committed the uncommitted work as ${out.carried} before merging ${target}`);
         }
         out.before = git(top, ["rev-parse", "HEAD"]);
-        const message = `chore(${fid}): merge ${DEV}`;
-        const merge = quietGit(top, ["merge", "--no-edit", "-m", message, UPSTREAM]);
+        const message = `chore(${fid}): merge ${targetName}`;
+        const merge = quietGit(top, ["merge", "--no-edit", "-m", message, target]);
         if (!merge.ok && !mergeInProgress(top)) {
             // Not a conflict: git refused to start the merge at all.
-            log(`git merge ${UPSTREAM} failed: ${merge.stderr.trim()}`);
+            log(`git merge ${target} failed: ${merge.stderr.trim()}`);
             return { ...out, code: EXIT_MERGE_CONFLICT, outcome: "refused" };
         }
     }
@@ -1881,9 +1889,9 @@ function mergeDev(top, o, log) {
             return refuse("the merge could not be committed");
     }
     out.merged = true;
-    log(`merged ${UPSTREAM} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
+    log(`merged ${target} into ${o.branch} as ${git(top, ["rev-parse", "HEAD"])}`);
     if (o.generate) {
-        out.rebuilt = rebuildRegisters(top, out.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${DEV}`, log);
+        out.rebuilt = rebuildRegisters(top, out.resolved, (files) => `chore(${fid}): rebuild ${files.join(" ")} after merging ${targetName}`, log);
         out.generated = regenerate(top, o.branch, log, { fid });
         if (out.generated === false)
             out.code = EXIT_GENERATE_FAILED;
@@ -1905,9 +1913,109 @@ function recordMerge(statusFile, before, after) {
         ref: after,
     });
 }
+function reconcileFeature(ctx, top, branch) {
+    if (branch === "" || isSharedBranch(branch)) {
+        throw new CommandError(EXIT.USAGE, "feature reconciliation needs a checked-out feature branch");
+    }
+    const remote = `${REMOTE}/${branch}`;
+    const probeResult = spawnSync("git", ["ls-remote", "--exit-code", "--heads", REMOTE, branch], {
+        cwd: top,
+        encoding: "utf-8",
+        env: gitEnv(),
+    });
+    const probe = { ok: probeResult.status === 0, stderr: probeResult.stderr ?? "" };
+    if (!probe.ok && probeResult.status !== 2) {
+        ctx.log(`cannot fetch ${remote}: ${probe.stderr}`);
+        return EXIT_FETCH_FAILED;
+    }
+    if (probe.ok) {
+        const fetched = fetchRemoteRef(top, remote);
+        if (fetched === null || !fetched.ok) {
+            ctx.log(`git fetch ${remote} failed: ${fetched?.stderr ?? "unknown remote ref"}`);
+            return EXIT_FETCH_FAILED;
+        }
+    }
+    const headFlag = str(ctx.flags.head);
+    if (headFlag !== undefined &&
+        git(top, ["rev-parse", "--verify", "--quiet", `${headFlag}^{commit}`]) === null) {
+        throw new CommandError(EXIT.USAGE, `--head ${headFlag} does not name a commit`);
+    }
+    if (!mergeInProgress(top) && hasLeftovers(top)) {
+        ctx.log("feature branch has uncommitted work — commit that work before reconciliation");
+        return EXIT_REFUSED;
+    }
+    const fid = str(ctx.flags.fid) || branch.replace(/^feat\//, "");
+    const merge = (target, current) => {
+        const m = mergeDev(top, { branch, target, policy: "full", fid, generate: true, current }, ctx.log);
+        const after = git(top, ["rev-parse", "HEAD"]);
+        const file = str(ctx.flags.file);
+        if (m.merged && file !== undefined)
+            recordMerge(path.resolve(ctx.cwd, file), m.before, after);
+        if (m.code !== EXIT.OK) {
+            ctx.emit({ branch, head: after, ...m, target });
+        }
+        return m.code;
+    };
+    if (mergeInProgress(top)) {
+        const pending = git(top, ["rev-parse", "--verify", "MERGE_HEAD"]);
+        if (pending === null ||
+            !probe.ok ||
+            !runGit(top, ["merge-base", "--is-ancestor", pending, remote]).ok) {
+            ctx.log("the pending merge is not the fetched feature merge — finish it before reconciliation");
+            return EXIT_REFUSED;
+        }
+        const code = merge(pending, false);
+        if (code !== EXIT.OK)
+            return code;
+    }
+    if (probe.ok) {
+        const local = git(top, ["rev-parse", "HEAD"]);
+        if (local === null)
+            return EXIT_REFUSED;
+        const ancestor = (a, b) => spawnSync("git", ["merge-base", "--is-ancestor", a, b], { cwd: top, env: gitEnv() }).status;
+        const behind = ancestor("HEAD", remote);
+        const ahead = ancestor(remote, "HEAD");
+        if ((behind !== 0 && behind !== 1) || (ahead !== 0 && ahead !== 1)) {
+            ctx.log(`cannot compare the local feature with ${remote}`);
+            return EXIT_REFUSED;
+        }
+        if (behind === 0 && ahead !== 0) {
+            const ff = quietGit(top, ["merge", "--ff-only", remote]);
+            if (!ff.ok) {
+                ctx.log(`cannot fast-forward the feature: ${ff.stderr}`);
+                return EXIT_REFUSED;
+            }
+            const file = str(ctx.flags.file);
+            if (file !== undefined)
+                recordMerge(path.resolve(ctx.cwd, file), local, git(top, ["rev-parse", "HEAD"]));
+        }
+        else if (ahead !== 0) {
+            const code = merge(remote, false);
+            if (code !== EXIT.OK)
+                return code;
+        }
+    }
+    const unpublished = !probe.ok || commitsAhead(top, remote) > 0;
+    if (unpublished && SKIP_CI_TOKEN.test(git(top, ["log", "-1", "--format=%B"]) ?? "")) {
+        const trigger = quietGit(top, [
+            "commit",
+            "--allow-empty",
+            "-m",
+            `chore(${fid}): validate reconciled feature`,
+        ]);
+        if (!trigger.ok) {
+            ctx.log(`cannot create a CI-running feature head: ${trigger.stderr}`);
+            return EXIT_REFUSED;
+        }
+    }
+    return EXIT.OK;
+}
 function syncVerb(ctx) {
     const mergeDocs = ctx.flags.mergeDocs === true;
     const merge = ctx.flags.merge === true;
+    const reconcile = ctx.flags.reconcileFeature === true;
+    if (reconcile && (mergeDocs || merge))
+        throw new CommandError(EXIT.USAGE, "give --reconcile-feature separately from --merge or --merge-docs");
     const headFlag = str(ctx.flags.head);
     if ((mergeDocs || merge) && headFlag !== undefined) {
         throw new CommandError(EXIT.USAGE, "--merge and --merge-docs merge into HEAD; give --head or one of them, not both");
@@ -1924,10 +2032,20 @@ function syncVerb(ctx) {
         ctx.log(`git fetch ${REMOTE} ${DEV} failed: ${fetch.stderr}`);
         return EXIT_FETCH_FAILED;
     }
-    const head = git(top, ["rev-parse", "--verify", "--quiet", `${headFlag ?? "HEAD"}^{commit}`]);
+    const branch = currentBranch(top);
+    if (reconcile) {
+        const code = reconcileFeature(ctx, top, branch);
+        if (code !== EXIT.OK)
+            return code;
+    }
+    const head = git(top, [
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        `${reconcile ? "HEAD" : (headFlag ?? "HEAD")}^{commit}`,
+    ]);
     if (!head)
         throw new CommandError(EXIT.USAGE, `--head ${headFlag ?? "HEAD"} does not name a commit`);
-    const branch = currentBranch(top);
     const ancestor = spawnSync("git", ["merge-base", "--is-ancestor", UPSTREAM, head], {
         cwd: top,
         env: gitEnv(),
@@ -2644,6 +2762,11 @@ export const branchesCommand = {
             summary: `Fetch ${UPSTREAM}; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in.`,
             use: "workflow",
             flags: [
+                {
+                    name: "reconcile-feature",
+                    type: "boolean",
+                    help: "ship: fetch and reconcile the feature branch before classifying its base; preserve divergent work through a merge and ensure unpublished work has a CI-running head",
+                },
                 {
                     name: "head",
                     type: "string",
