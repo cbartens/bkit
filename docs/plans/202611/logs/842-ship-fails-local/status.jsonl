@@ -57,3 +57,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T07:03:38Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"d8c6473df964c16b53d142595713f9c912e1ea797fa33ef96c7863bcd71e7a67","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6651932038","at":"2026-11-05T07:03:39Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-05T07:03:39Z","parentSha":"2d20c6522612e0bde8ce392a335d7d6ff9522988","artifacts":["docs/plans/202611/logs/842-ship-fails-local/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:03:53Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:03:53Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T07:04:06Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"0b48ab2c4f140a2d8af3a3be5e468d39ac280cea41241f1b5b3710725bf0eb77","ref":"https://github.com/cbartens/bkit/issues/842#issuecomment-6651939253","at":"2026-11-05T07:04:07Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-05T07:04:07Z","parentSha":"70862e7c6a31167409af47268c3f66eef7ea601d","artifacts":[]}
