@@ -58,7 +58,7 @@ export function parseIssueTracker(value) {
  *
  * Single self-describing field (mirrors `bkit.tracker.default`).
  */
-export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"];
+export const CLOUD_MODES = ["claude", "cursor", "opencode", "codex", "none"];
 /** Default when consumer manifest has no `bkit.cloud.agent` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS = "none";
 /** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */

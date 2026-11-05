@@ -34,7 +34,7 @@ describe("cli-doc", () => {
   });
 
   it("escapes a pipe inside a table cell", () => {
-    expect(renderRegion()).toContain("`--auto=<claude\\|cursor\\|opencode>`");
+    expect(renderRegion()).toContain("`--auto=<claude\\|cursor\\|opencode\\|codex>`");
   });
 
   it("replaces only the region between line-anchored markers", () => {
