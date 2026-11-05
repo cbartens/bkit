@@ -96,6 +96,7 @@ afterEach(() => {
     else process.env[k] = saved[k];
   }
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
 });
 
@@ -679,13 +680,21 @@ describe("bounded nonfatal publication", () => {
     expect(calls.filter((r) => r.operation !== "read").length).toBeLessThanOrEqual(3);
     expect(f.state.comments.at(-1)?.body).toBe(f.report("bounded fallback"));
     expect(calls.every((r) => r.signal !== undefined)).toBe(true);
+    const toolScript = path.join(fake, "gh-body.sh");
+    fs.writeFileSync(toolScript, FAKE_GH, { mode: 0o644 });
+    fs.unlinkSync(path.join(fake, "bin/gh"));
+    fs.symlinkSync(
+      path.resolve(import.meta.dirname, "../../../../../tests/fixtures/gh/bin/gh"),
+      path.join(fake, "bin/gh"),
+    );
+    vi.stubEnv("BKIT_FAKE_TOOL_SCRIPT", toolScript);
     const g = progressFixture();
     const firstOptions = { ...g.options, purpose: "routine", budgetMs: 200 };
-    await postCommentOnce(g.target, g.body, firstOptions);
+    expect(requireOutcomeUrl(await postCommentOnce(g.target, g.body, firstOptions))).toBe(g.url);
     fs.writeFileSync(
-      path.join(fake, "bin/gh"),
+      toolScript,
       `#!/bin/sh\nprintf '%s\\n' "$*" >> "$FAKE_GH_DIR/slow-calls"\nexec "${process.execPath}" -e 'setTimeout(()=>{},10000)'\n`,
-      { mode: 0o755 },
+      { mode: 0o644 },
     );
     const childStart = performance.now();
     const current = stampMarker("###### bkit:generated\nslow child current report\n");
