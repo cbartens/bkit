@@ -570,7 +570,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Complete all three provider contract and lost-response probes.
+- [x] **TASK 10:** Complete all three provider contract and lost-response probes.
   - **READ:** `docs/plans/202611/logs/826-append-routine-workflow/spike/github-read.ts`: preserve its read-only contract and reuse only the inspection approach.
   - **CREATE:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts`: bounded opt-in disposable-target @live probe from the inventory's new evidence surface.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: replace unverified capability/counting metadata only with actual recorded contract evidence.
@@ -584,7 +584,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Verify the complete built CLI and nonfatal commenting footprint.
+- [x] **TASK 11:** Verify the complete built CLI and nonfatal commenting footprint.
   - **READ:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: run the implemented module acceptance suite alongside the new integration surface.
   - **READ:** `docs/testing.md`: use existing Unit, Integration and provider-probe entry points.
   - **DEPENDS ON:** 9, 10
