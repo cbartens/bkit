@@ -67,9 +67,9 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   const dockerRel = path.join(".cursor", "Dockerfile");
   const envRel = path.join(".cursor", "environment.json");
 
-  it("cloud=claude: writes no files and points the setup advisory at the workflow template", () => {
+  it("claude variant advisory names BKIT_ANTHROPIC_API_KEY or the federation variables", () => {
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, cloudVariant: "claude" });
+    const ctx = makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" });
     runCloudModule(ctx);
 
     expect(ws.writes).toEqual([]);
@@ -81,7 +81,7 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
     expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
-    expect(advisory!.action).toMatch(/`ANTHROPIC_API_KEY` repo secret/);
+    expect(advisory!.action).toMatch(/`BKIT_ANTHROPIC_API_KEY` repo secret/);
     expect(advisory!.action).toMatch(
       /`ANTHROPIC_FEDERATION_RULE_ID` \+ `ANTHROPIC_ORGANIZATION_ID` repo variables/,
     );
@@ -94,20 +94,77 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
   });
 
-  it("cloud=opencode: writes no files and points the setup advisory at the workflow template", () => {
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, cloudVariant: "opencode", issueTracker: "github" });
+  it("opencode variant advisory names the configured provider's BKIT_ key", () => {
+    const providerKeys = [
+      ["openrouter", "BKIT_OPENROUTER_API_KEY"],
+      ["ollama", "BKIT_OLLAMA_API_KEY"],
+      ["opencode-zen", "BKIT_OPENCODE_API_KEY"],
+      ["opencode-go", "BKIT_OPENCODE_API_KEY"],
+    ] as const;
+    for (const [opencodeProvider, key] of providerKeys) {
+      const ws = makeWriteSet();
+      const ctx = makeCtx({
+        ws,
+        cloudVariant: "opencode",
+        issueTracker: "github",
+        opencodeProvider,
+      });
+      runCloudModule(ctx);
+
+      expect(ws.writes).toEqual([]);
+      expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+      expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
+
+      const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+      expect(advisory).toBeDefined();
+      expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
+      expect(advisory!.action).toContain(key);
+      expect(advisory!.action).not.toContain("OPENCODE_PROVIDER_KEY");
+      expect(advisory!.action).not.toContain("BKIT_ANTHROPIC_API_KEY");
+      const otherKeys = [...new Set(providerKeys.map(([, value]) => value))].filter(
+        (value) => value !== key,
+      );
+      for (const otherKey of otherKeys) {
+        expect(advisory!.action).not.toContain(otherKey);
+      }
+    }
+  });
+
+  it("codex variant advisory names --codex, .codex/bkit-cloud.md and BKIT_OPENAI_API_KEY", () => {
+    const ctx = makeCtx({ cloudVariant: "codex", issueTracker: "github" });
     runCloudModule(ctx);
-
-    expect(ws.writes).toEqual([]);
-    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
-
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toContain(".bkit/templates/.github/workflows/bkit-cloud.yml");
-    expect(advisory!.action).toMatch(/OPENCODE_PROVIDER_KEY/);
-    expect(advisory!.action).not.toMatch(/BKIT_ANTHROPIC_API_KEY/);
+    expect(advisory!.action).toContain("--codex");
+    expect(advisory!.action).toContain(".codex/bkit-cloud.md");
+    expect(advisory!.action).toContain("BKIT_OPENAI_API_KEY");
+    expect(ctx.ws.writes).toEqual([]);
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { cloud?: { agent?: string } };
+    };
+    expect(pkg.bkit?.cloud?.agent).toBe("codex");
+  });
+
+  it("%s variant under %s names only that tracker's key", () => {
+    const trackerKeys = [
+      ["github", "BKIT_GH_TOKEN"],
+      ["linear", "BKIT_LINEAR_API_KEY"],
+      ["jira", "BKIT_JIRA_API_KEY"],
+    ] as const;
+    for (const cloudVariant of ["claude", "cursor", "opencode", "codex"] as const) {
+      for (const [issueTracker, key] of trackerKeys) {
+        const ctx = makeCtx({ cloudVariant, issueTracker, opencodeProvider: "openrouter" });
+        runCloudModule(ctx);
+        expect(ctx.advisories.length, `${cloudVariant}/${issueTracker}`).toBeGreaterThan(0);
+        const text = ctx.advisories.map((a) => `${a.detect}\n${a.action}`).join("\n");
+        expect(text, `${cloudVariant}/${issueTracker}`).toContain(key);
+        const otherKeys = trackerKeys.filter(([tracker]) => tracker !== issueTracker);
+        for (const [, otherKey] of otherKeys) {
+          expect(text, `${cloudVariant}/${issueTracker}`).not.toContain(otherKey);
+        }
+      }
+    }
   });
 
   it("cloud=cursor: writes no files and points the setup advisory at the .cursor templates", () => {
