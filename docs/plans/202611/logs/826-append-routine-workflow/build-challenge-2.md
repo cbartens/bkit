@@ -1,4 +1,4 @@
-Verdict: CONCERNS
+Verdict: PASS
 Failures: 0
 
 <!-- verdict:end -->
@@ -9,28 +9,24 @@ Lens: Security — auth, secrets, input validation, data exposure, OWASP, data-a
 
 ## Findings Log
 
-<!-- bkit:task 1 start -->
+None.
 
-- [ ] **TASK 1:** A malformed Jira credential is exposed in live-probe diagnostics.
-      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts:35`
-  - **DONE WHEN:** Every error diagnostic emitted by the live contract probe redacts configured tracker credential values before truncation and JSON serialization. The direct Jira schema-discovery fetch must not print the Authorization value when header validation fails. Preserve the diagnostic stage, useful non-secret failure classification, opt-in target checks and existing provider evidence. This enforces `docs/security.md` § Secrets Management and the plan's Security & Privacy requirement for redacted build evidence.
-  - **TEST FIRST:**
-    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `redacts malformed Jira authorization from live probe diagnostics` fails on the actual probe's `--discover` execution emitting a synthetic Jira token with an embedded newline in stdout or stderr; exercise the real header-validation failure without network traffic, including a long token whose unredacted message would be truncated, and assert the failure stage remains observable.
+## Round 2 review
 
-<!-- bkit:task 1 end -->
+Partial diff coverage. The feature artifact remains capped at 500 lines per selected file. This review read the complete 580-line group-5 diff, inspected the omitted live probe directly, traced the affected ownership and publication source, and revisited relevant engine security hunks outside the clipped artifact. The round-1 security review supplies the unchanged feature context. This verdict does not claim an exhaustive review of generated mirrors or third-party reference material.
 
-## Evidence and scope
+The credential disclosure is repaired. `redactDiagnostic` replaces configured tracker credentials, escaped representations and newline fragments before `reason` truncates messages. Structured diagnostic fields and the top-level failure handler use the same protection. Explicit disposable-target checks remain. The frozen regression executes the actual probe with both short and long malformed synthetic credentials, retains real header validation, asserts zero socket attempts, and rejects either credential fragment in stdout or stderr.
 
-Partial diff coverage. The supplied artifact is capped at 500 lines per selected file and omits complete files. The security review expanded the full changed engine hunks for `tracker.ts`, `locks.ts`, `issues.ts`, `workflows.ts`, their posting callers and the command runner; it also examined session-bearing workflow changes, ownership and diagnostic documentation, the live probe and its dependency boundary. Generated mirrors and third-party reference material are not claimed as independently complete code coverage.
+An independent local execution of the actual discovery probe confirmed both cases: redaction PASS, TypeError classification retained, and zero network attempts. The review replaced credential environment values with synthetic or empty values and blocked socket connections. Captured diagnostics were checked in memory; only the aggregate result was printed. No real credential, external request or provider mutation was used.
 
-The new probe's `jiraSchemas` calls `fetch` directly, unlike the production `post` helper that converts network errors into bounded safe reasons. `reason` copies `error.message.slice(0, 600)`, and the `jira-schema-unavailable` record prints it. A local execution of the actual probe with a synthetic embedded-newline Jira credential produced a `TypeError` whose message included the full synthetic Authorization value. Linear and GitHub credentials were set empty in that child process. Header validation failed before network I/O; no live provider call or real credential was used. The same run's production Jira transport emitted only `fetch failed`, demonstrating the existing safe boundary the probe bypasses.
+Lost-acknowledgment recognition now separates evidence of delivery from authority to append later. The recovered fingerprint must equal the intended aggregate hash before `retain` remains true, and postflight cannot reset a false value. A changed representation seals the source segment while preserving the known delivery URL. The regression requires the human correction to remain byte-for-byte intact after a later report and asserts a new create with no further edit. Provider normalization can conservatively seal a segment; it cannot authorize overwriting a changed revision through this path. The live probe's additional acknowledged seed establishes an independent append premise after such sealing and preserves its existing assertions.
 
-Local reproduction from the feature worktree:
+The explicit purpose enum is validated before publication. PR metadata no longer chooses terminal ownership, while the published-build completion caller supplies terminal purpose. This change introduces no new authorization source, network destination or executable interpolation. No runtime dependency or package-lock change is present. No additional authentication, cross-target data access, injection, secret exposure or supply-chain defect was confirmed within the reviewed surfaces.
 
-```bash
-node --import tsx --input-type=module -e 'process.env.BKIT_GH_TOKEN = ""; process.env.BKIT_LINEAR_API_KEY = ""; process.env.BKIT_JIRA_API_KEY = "synthetic-secret-1234\n5678"; process.argv = [process.execPath, "tracker-contract.ts", "--discover"]; await import("./docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts");'
-```
+The review follows `docs/security.md` sections Workflow comment ownership and Secrets Management, `docs/architecture.md` section Tracker reporting boundary, `docs/observability.md` section Tracker reporting diagnostics, and `docs/testing.md` section Routine tracker reporting coverage. No new task block duplicates the repaired plan tasks 13–15.
 
-The session association uses real-path containment, progress filenames are derived from hashes, cached source files are created with private permissions, and the changed provider writes use structured subprocess arguments or GraphQL/MCP variables. No runtime dependency or package-lock change was introduced. No additional injection, cross-target privilege escalation or dependency finding was confirmed. The existing Task 6 requirement to preserve human edits remains applicable to lost-acknowledgment recognition; this report adds no duplicate task for that already identified repair.
+## Validation limits
 
-No broad tests, source edits, live mutations, builds or commits were performed in this review. The local header-validation reproduction exited zero because discovery catches and records the failure; that exit is not evidence of safe diagnostic output or a passing full gate.
+The supplied red and green evidence covers all three group-5 regressions. This review ran only the bounded two-case probe check described above; it did not run a suite, build or live acceptance check. The prior required holistic changed gate remains failed evidence because its integration selection timed out. This security PASS does not waive that failure or establish a passing overall feature gate; the orchestrator's final required gate remains outstanding.
+
+No source, test or plan edits, builds, installs or commits were performed in this review.

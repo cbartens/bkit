@@ -458,7 +458,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Implement bounded append/new-comment fallback and a nonfatal comment boundary.
+- [x] **TASK 6:** Implement bounded append/new-comment fallback and a nonfatal comment boundary.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: contain preparation/cache/receipt/lock/inspection/transport/reconciliation errors, reserve fallback budget and preserve acknowledged success.
   - **UPDATE:** `runGh` in `.bkit/core/engine/commands/lib.ts`: pass an optional remaining deadline through the existing GitHub transport without changing callers that omit it.
   - **UPDATE:** `runTool` in `.bkit/core/engine/commands/lib.ts`: bound the real child with the optional remaining-time limit and retain compatible error classification.
@@ -604,7 +604,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** A lost append response lets the next report overwrite an intervening human correction.
+- [x] **TASK 13:** A lost append response lets the next report overwrite an intervening human correction.
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tracker.ts:1817` · **Round:** 1
   - **DONE WHEN:** Recognizing a delivered section after a lost response preserves its successful outcome and known URL, but does not adopt an altered remote revision as future append authority. Retain append eligibility only when the recovered representation is proven to match the intended engine aggregate; otherwise seal the segment and start the next routine report in a new comment. A marker-preserving human correction survives that next report. The current recognition branch accepts ID, author and section marker, then saves the locally intended source with the human-edited fingerprint; its postflight sees the same edited revision and retains it. The existing recognition test has no intervening edit or third report. An independently rerun local built-export reproduction returned three successes, one comment, and correction-preserved true after recognition but false after the third report. This violates `docs/security.md` § Workflow comment ownership and `docs/architecture.md` § Tracker reporting boundary, beyond the accepted final-preflight race.
   - **TEST FIRST:**
@@ -613,7 +613,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 <!-- bkit:task 13 end -->
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Auto startup with a PR link prematurely terminates its routine progress segment.
+- [x] **TASK 14:** Auto startup with a PR link prematurely terminates its routine progress segment.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:1084` · **Round:** 1
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: add optional `issues comment --purpose=routine|attention|terminal`; retain existing kind-based classification when omitted and use explicit terminal purpose for ended-run identity.
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: pass `--purpose=terminal` on final Create PR reporting, then synchronize the CLI catalog and generated host contracts.
@@ -624,7 +624,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 <!-- bkit:task 14 end -->
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** A malformed Jira credential is exposed in live-probe diagnostics.
+- [x] **TASK 15:** A malformed Jira credential is exposed in live-probe diagnostics.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts:35` · **Round:** 1
   - **DONE WHEN:** Every error diagnostic emitted by the live contract probe redacts configured tracker credential values before truncation and JSON serialization. The direct Jira schema-discovery fetch must not print the Authorization value when header validation fails. Preserve the diagnostic stage, useful non-secret failure classification, opt-in target checks and existing provider evidence. This enforces `docs/security.md` § Secrets Management and the plan's Security & Privacy requirement for redacted build evidence.
   - **TEST FIRST:**

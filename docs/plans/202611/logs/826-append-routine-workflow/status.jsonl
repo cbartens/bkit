@@ -571,3 +571,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:30Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-plan-verify/5/1/comment","hash":"d69848b89e03e322b93efd634095667f1f8b24258d8e0d9a03a34d5409a524ad","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6671801882","at":"2026-11-05T23:02:30Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T23:02:30Z","parentSha":"631a18e19f077f14200f4eab2200c0ec6098f6ef","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-plan-verify-5-1.md"],"verdict":"PASS","attempt":1,"group":5,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:37Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:37Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:37Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:37Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:37Z","noun":"status","verb":"route","flags":["step","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:38Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:38Z","noun":"challenge","verb":"gate","flags":["file"]}
+{"type":"challenge-gate","workflow":"build","at":"2026-11-05T23:02:39Z","range":"origin/dev...HEAD","linesChanged":27932,"filesChanged":150,"size":"large","limit":{"lines":300,"files":10},"agents":["bkit-build-challenge-1","bkit-build-challenge-2"],"skipped":false}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:02:39Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T23:07:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","field","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-challenge/-/2/comment","hash":"d0241af10df98703e47995c02f6e24039335501006091f35afdbb5ff27f9259d","ref":"https://github.com/cbartens/bkit/issues/826#issuecomment-6671885319","at":"2026-11-05T23:07:20Z"}
+{"type":"step-done","workflow":"build","step":"build-challenge","status":"DONE","at":"2026-11-05T23:07:20Z","parentSha":"5e1c5d8ccc6816af037b47e990df5493918cc55e","artifacts":["docs/plans/202611/logs/826-append-routine-workflow/build-challenge-1.md","docs/plans/202611/logs/826-append-routine-workflow/build-challenge-2.md"],"verdict":"PASS","attempt":2,"failures":0,"round":2,"challengeFindings":[]}
