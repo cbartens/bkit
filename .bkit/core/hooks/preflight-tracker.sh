@@ -1,8 +1,8 @@
 # --- Tracker guard: identical in the Claude and Cursor preflight hooks (bkit renders it
-# from one source). Pure bash + python3 + curl, no bkit runtime. Needs `emit_context`,
+# from one source). Uses bash + python3 + curl, and bkit for Jira. Needs `emit_context`,
 # which the host's code above defines in that host's output shape. Dispatches on
-# `bkit.tracker.default` in the repo's package.json (unreadable -> linear, the original
-# guard). Passes only on a readable issue that carries `bkit:auto` and is not finished by
+# `bkit.tracker.default` in the repo's package.json. An unset tracker uses Linear only
+# when LINEAR_ISSUE_ID is present. Passes on a readable issue carrying `bkit:auto` that is not finished by
 # the tracker's state category; any unreadable answer is a HARD STOP naming tracker + reason.
 
 CURL_LIMITS=(--connect-timeout 5 --max-time 15)
@@ -19,27 +19,36 @@ BKIT_GUARD_TRACKER=$(ROOT="$BKIT_GUARD_ROOT" python3 -c '
 import json, os
 try:
     with open(os.path.join(os.environ["ROOT"], "package.json")) as f:
-        print(((json.load(f).get("bkit") or {}).get("tracker") or {}).get("default") or "linear")
+        print(((json.load(f).get("bkit") or {}).get("tracker") or {}).get("default") or "none")
 except Exception:
-    print("linear")
-' 2>/dev/null || echo linear)
+    print("none")
+' 2>/dev/null || echo none)
+
+if [[ "$BKIT_GUARD_TRACKER" == "none" ]]; then
+  if [[ -n "${LINEAR_ISSUE_ID:-}" ]]; then
+    BKIT_GUARD_TRACKER="linear"
+  else
+    exit 0
+  fi
+fi
 
 case "$BKIT_GUARD_TRACKER" in
   github)
+    # Issue id: GITHUB_ISSUE_ID, else the leading digits of the `feat/{FID}` branch.
+    GH_ISSUE="${GITHUB_ISSUE_ID:-}"
+    if [[ -z "$GH_ISSUE" ]]; then
+      GH_BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+      if [[ "$GH_BRANCH" =~ ^feat/([0-9]+) ]]; then GH_ISSUE="${BASH_REMATCH[1]}"; fi
+    fi
+    if [[ -z "$GH_ISSUE" ]]; then
+      emit_context "Guard pre-check: SKIPPED — no issue id; bkit:auto not verified"
+      exit 0
+    fi
     # BKIT_GH_TOKEN reads the issue over the GitHub REST API.
     if [[ -z "${BKIT_GH_TOKEN:-}" ]]; then
       echo "Guard pre-check: FAIL. BKIT_GH_TOKEN not set, so the GitHub issue cannot be validated." >&2
       emit_context "Guard pre-check: FAIL. BKIT_GH_TOKEN is not set, so bkit cannot check the GitHub issue. HARD STOP: refuse any GitHub-related work. Report the failure to the user, then stop."
       exit 1
-    fi
-    # Issue id: GITHUB_ISSUE_ID, else the leading digits of the `feat/{FID}` branch.
-    GH_ISSUE="${GITHUB_ISSUE_ID:-}"
-    if [[ -z "$GH_ISSUE" ]]; then
-      GH_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-      if [[ "$GH_BRANCH" =~ ^feat/([0-9]+) ]]; then GH_ISSUE="${BASH_REMATCH[1]}"; fi
-    fi
-    if [[ -z "$GH_ISSUE" ]]; then
-      bkit_guard_fail "GitHub" "(unknown)" "no issue id (GITHUB_ISSUE_ID unset and the branch is not feat/{number}-...)"
     fi
     GH_REMOTE=$(git remote get-url origin 2>/dev/null || true)
     GH_REPO=$(printf '%s' "$GH_REMOTE" | sed -E 's#^(https://([^@/]*@)?|ssh://git@|git@)github\.com[:/]##; s#\.git$##')
@@ -123,8 +132,61 @@ else:
     TERMINAL="false"
     [[ "$STATE_TYPE" == "completed" || "$STATE_TYPE" == "canceled" ]] && TERMINAL="true"
     ;;
+  jira)
+    JIRA_BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    JIRA_ISSUE=""
+    if [[ "$JIRA_BRANCH" =~ ^feat/([A-Za-z][A-Za-z0-9]*-[0-9]+)(-|$) ]]; then
+      JIRA_ISSUE=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]')
+    fi
+    if [[ -z "$JIRA_ISSUE" ]]; then
+      emit_context "Guard pre-check: SKIPPED — no issue id; bkit:auto not verified"
+      exit 0
+    fi
+    BKIT_JIRA_BIN="$BKIT_GUARD_ROOT/node_modules/.bin/bkit"
+    if [[ ! -x "$BKIT_JIRA_BIN" ]]; then
+      bkit_guard_fail "Jira" "$JIRA_ISSUE" "node_modules/.bin/bkit is missing or not executable"
+    fi
+    BKIT_JIRA_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/bkit-guard.XXXXXX") \
+      || bkit_guard_fail "Jira" "$JIRA_ISSUE" "could not create a temporary issue outbox"
+    JIRA_FETCH=("$BKIT_JIRA_BIN" issues fetch --issue "$JIRA_ISSUE" --outbox "$BKIT_JIRA_TMPDIR" --json)
+    if command -v timeout >/dev/null 2>&1; then
+      JIRA_FETCH=(timeout 20 "${JIRA_FETCH[@]}")
+    fi
+    JIRA_STATUS=0
+    JIRA_RESPONSE=$("${JIRA_FETCH[@]}" 2>/dev/null) || JIRA_STATUS=$?
+    rm -rf -- "$BKIT_JIRA_TMPDIR"
+    if [[ "$JIRA_STATUS" == "124" ]]; then
+      bkit_guard_fail "Jira" "$JIRA_ISSUE" "the issue fetch timed out"
+    fi
+    if [[ "$JIRA_STATUS" != "0" ]]; then
+      JIRA_REASON=$(RESPONSE="$JIRA_RESPONSE" python3 -c '
+import json, os
+try:
+    reason = json.loads(os.environ["RESPONSE"]).get("reason")
+    print(reason if reason in {"auth", "network", "not-found", "unavailable"} else "unreadable reply")
+except Exception:
+    print("unreadable reply")
+')
+      bkit_guard_fail "Jira" "$JIRA_ISSUE" "the issue fetch failed (exit ${JIRA_STATUS}, ${JIRA_REASON})"
+    fi
+    IFS=$'\t' read -r ISSUE_STATE TERMINAL LABELS < <(RESPONSE="$JIRA_RESPONSE" python3 -c '
+import json, os
+try:
+    d = json.loads(os.environ["RESPONSE"])
+    state, terminal, labels = d["state"], d["terminal"], d["labels"]
+    if not isinstance(state, str) or not state or not isinstance(terminal, bool) or not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
+        raise ValueError("invalid issue facts")
+    print(state + "\t" + str(terminal).lower() + "\t" + (",".join(labels) or "-"))
+except Exception:
+    print("UNKNOWN\t-\t-")
+')
+    if [[ "$ISSUE_STATE" == "UNKNOWN" ]]; then
+      bkit_guard_fail "Jira" "$JIRA_ISSUE" "the issue fetch answer could not be read"
+    fi
+    ISSUE_ID_DISPLAY="$JIRA_ISSUE"
+    TRACKER_NAME="Jira"
+    ;;
   *)
-    # Jira and tracker none: no guard here.
     exit 0
     ;;
 esac
