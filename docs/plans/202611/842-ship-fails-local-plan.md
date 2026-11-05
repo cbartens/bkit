@@ -369,7 +369,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Reconcile the remote feature branch before base classification and publish code with CI
+- [x] **TASK 1:** Reconcile the remote feature branch before base classification and publish code with CI
   - **UPDATE:** `syncVerb` in `.bkit/core/engine/commands/workflow/branches.ts`: add ship opt-in reconciliation, explicit feature fetch, fast-forward/divergence handling and resulting head outputs; preserve existing default sync callers.
   - **UPDATE:** `mergeDev` in `.bkit/core/engine/commands/workflow/branches.ts`: generalize the merge target and continuation safely, reuse mechanical settlement, and keep code-carrying commits free of skip tokens.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/branches.test.ts`: add the unit regressions below with real temporary Git repositories.
@@ -389,7 +389,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Fetch ship branches during setup and reject inherited unpublished dev work
+- [x] **TASK 2:** Fetch ship branches during setup and reject inherited unpublished dev work
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.ts`: extend ship setup, adoption, fetch and inherited-work checks with commit identifiers and accurate failure diagnostics; expose the same check to each publication candidate.
   - **UPDATE:** `syncVerb` in `.bkit/core/engine/commands/workflow/branches.ts`: invoke that check on the fetched remote and reconciled heads before any push, including changed candidates on retries.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/worktrees.test.ts`: add the setup regressions below and fix affected existing expectations in this task.
@@ -407,7 +407,7 @@ Code-only — `git revert` sufficient. Revert the implementation and regenerated
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Qualify the merged-on-entry shortcut against current feature work
+- [x] **TASK 3:** Qualify the merged-on-entry shortcut against current feature work
   - **UPDATE:** `probePr` in `.bkit/core/engine/commands/workflow/prs.ts`: add an opt-in ship check of the reconciled local and remote feature state against a merged PR's recorded head, retaining open-PR priority and generic probe compatibility; accept validated scoped MCP facts through the same engine decision path.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/prs.test.ts`: add probe regressions and update output expectations together.
   - **DEPENDS ON:** 1, 2

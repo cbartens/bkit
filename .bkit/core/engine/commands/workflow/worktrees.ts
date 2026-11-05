@@ -727,7 +727,7 @@ export function notOnDev(root: string, branch: string): string[] {
   }
 }
 
-/** Uncommitted files whose current contents are not already safely on dev. */
+/** Uncommitted files whose index or working contents are not already safely on dev. */
 function dirtyWork(root: string, wt: string, landed: boolean): string[] {
   const status = cleanupRead(wt, [
     "status",
@@ -741,14 +741,24 @@ function dirtyWork(root: string, wt: string, landed: boolean): string[] {
   if (!status.ok) return [`cannot inspect dirty work: ${status.stderr}`];
   const entries = status.stdout.split("\0").filter(Boolean);
   const paths: string[] = [];
+  const staged = new Set<string>();
   for (let i = 0; i < entries.length; i++) {
     const row = entries[i]!;
-    paths.push(row.slice(3));
-    if (/[RC]/.test(row.slice(0, 2))) paths.push(entries[++i]!);
+    const changed = [row.slice(3)];
+    if (/[RC]/.test(row.slice(0, 2))) changed.push(entries[++i]!);
+    paths.push(...changed);
+    if (row[0] !== " " && row[0] !== "?") {
+      for (const file of changed) staged.add(file);
+    }
   }
   if (!landed) return paths;
   return paths.filter((file) => {
     try {
+      if (
+        staged.has(file) &&
+        !cleanupRead(wt, ["diff", "--cached", "--quiet", ORIGIN_DEV, "--", file]).ok
+      )
+        return true;
       const entry = treeEntry(root, ORIGIN_DEV, file);
       const full = path.join(wt, file);
       const stat = fs.lstatSync(full, { throwIfNoEntry: false });

@@ -12,7 +12,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, writeRecord } from "./ledgers";
-import { addAllButCopied, ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
+import {
+  addAllButCopied,
+  ownershipMarker,
+  removeWorktree,
+  worktreeDir,
+  worktreesCommand,
+} from "./worktrees";
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -776,6 +782,72 @@ describe("bkit worktrees remove", () => {
     }
     const remoteHas = (origin: string) =>
       git(origin, "branch", "--list", `feat/${FID}`).includes(`feat/${FID}`);
+
+    it.each([
+      { change: "content", stage: (file: string) => fs.writeFileSync(file, "staged-only work\n") },
+      { change: "mode", stage: (file: string) => fs.chmodSync(file, 0o755) },
+      {
+        change: "type",
+        stage: (file: string) => {
+          fs.unlinkSync(file);
+          fs.symlinkSync("staged target", file);
+        },
+      },
+      { change: "deletion", stage: (file: string) => fs.unlinkSync(file) },
+    ])("preserves staged-only $change during landed cleanup", ({ stage }) => {
+      const cwd = repo();
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "landed\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "landed file");
+      const origin = withOrigin(cwd);
+      git(cwd, "push", "-q", "origin", "dev");
+      const wt = linked(cwd, FID, true);
+      const file = path.join(wt, "staged.txt");
+      stage(file);
+      git(wt, "add", "staged.txt");
+      const staged = git(wt, "ls-files", "--stage", "--", "staged.txt");
+      fs.rmSync(file, { force: true });
+      fs.writeFileSync(file, "landed\n");
+      fs.chmodSync(file, 0o644);
+
+      const messages: string[] = [];
+      const result = removeWorktree(cwd, FID, `feat/${FID}`, (m) => messages.push(m), {
+        landed: true,
+      });
+
+      expect(result).toMatchObject({
+        removed: false,
+        reason: "uncommitted",
+        branchDeleted: false,
+        remoteDeleted: false,
+      });
+      expect(messages.join("\n")).toContain("staged.txt");
+      expect(fs.readFileSync(file, "utf-8")).toBe("landed\n");
+      expect(git(wt, "ls-files", "--stage", "--", "staged.txt")).toBe(staged);
+      expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(true);
+      expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+      expect(git(origin, "branch", "--list", "dev")).toContain("dev");
+    });
+
+    it("removes landed staged content when both index and working contents are on dev", () => {
+      const cwd = repo();
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "base\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "base file");
+      withOrigin(cwd);
+      const wt = linked(cwd, FID, true);
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "landed\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "landed file");
+      git(cwd, "push", "-q", "origin", "dev");
+      fs.writeFileSync(path.join(wt, "staged.txt"), "landed\n");
+      git(wt, "add", "staged.txt");
+
+      const result = removeWorktree(cwd, FID, `feat/${FID}`, () => {}, { landed: true });
+
+      expect(result).toMatchObject({ removed: true, branchDeleted: true });
+      expect(fs.existsSync(wt)).toBe(false);
+    });
 
     it("deletes the proved local branch and retains the remote branch conditionally", async () => {
       const cwd = repo();
