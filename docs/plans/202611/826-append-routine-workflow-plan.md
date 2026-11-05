@@ -484,7 +484,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Wire explicit invocation lifecycle through existing command callers.
+- [x] **TASK 7:** Wire explicit invocation lifecycle through existing command callers.
   - **UPDATE:** `RunContext` in `.bkit/core/engine/commands/lib.ts`: carry structured publishing association without generic active-run inference.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: provide explicit session invocation association without making cache availability a workflow prerequisite.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: accept explicit session/invocation association on fileless workflow posts.
@@ -508,7 +508,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Record exhausted comment problems as friction best effort.
+- [x] **TASK 8:** Record exhausted comment problems as friction best effort.
   - **UPDATE:** `TrackerOutcome` in `.bkit/core/engine/commands/workflow/tracker.ts`: report append/new-comment/dedupe/uncertain/lost outcomes while preserving done/skipped/fallback meanings.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: best-effort append redacted friction using existing ledger helpers, authorized orchestrator fields and a stable recurrence key; contain logging and warning failures without recursion.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: assert real local friction records, exhausted failure continuation and sensitive-data exclusion.
