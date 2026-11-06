@@ -122,6 +122,62 @@ for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) {
 }
 
 test(
+  "shell cancellation reads complete readiness JSON when publication is interrupted",
+  { skip: process.platform === "win32", timeout: 12000 },
+  (t) => {
+    const base = resolve("tmp");
+    mkdirSync(base, { recursive: true });
+    const dir = mkdtempSync(join(base, "awake-publish-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const preload = join(dir, "pause-publication.cjs");
+    const receipt = join(dir, "publication-observed");
+    writeFileSync(
+      preload,
+      `
+      if (process.argv[1]?.endsWith("worker.cjs")) {
+        const fs = require("node:fs");
+        const writeFileSync = fs.writeFileSync;
+        fs.writeFileSync = function (file, data, ...options) {
+          if (typeof data !== "string" || !data.startsWith('{"pid":'))
+            return writeFileSync.call(this, file, data, ...options);
+          const fd = fs.openSync(file, "w");
+          try {
+            writeFileSync(${JSON.stringify(receipt)}, "paused");
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+            writeFileSync(fd, data, ...options);
+          } finally {
+            fs.closeSync(fd);
+          }
+        };
+      }
+    `,
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--test",
+        "--test-name-pattern=^shell cancellation waits for SIGTERM cleanup$",
+        fileURLToPath(import.meta.url),
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          NODE_TEST_CONTEXT: undefined,
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --require=${JSON.stringify(preload)}`,
+        },
+      },
+    );
+    assert.equal(
+      existsSync(receipt),
+      true,
+      `the worker must pause after opening its JSON file\n${result.stdout}${result.stderr}`,
+    );
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+  },
+);
+
+test(
   "shell cancellation follows a worker orphaned by a nested shell",
   {
     skip: process.platform === "win32",
