@@ -31,20 +31,7 @@ Design, Plan, Build, Debug and Ship are bkit's five primary workflows. Together 
 | Debug | Reproduce and diagnose a failure, apply a supported fix and verify recovery. | A failing test, CI run or reported behavior to reproduce. | A remediated change and verification evidence, or an explicit unresolved blocker. |
 | Ship | Check that finished work is ready, integrate it and complete the handover and cleanup. | A completed change on a branch. | An integrated change, updated records and a handover for human acceptance. |
 
-```mermaid
-flowchart LR
-    IDEA["Open question or idea"] --> DESIGN["Design"]
-    DESIGN --> PLAN["Plan"]
-    PLAN --> BUILD["Build"]
-    BUILD --> CHECKS["Verification and CI"]
-    CHECKS -->|Pass| SHIP["Ship"]
-    CHECKS -->|Failure| DEBUG["Debug"]
-    FAILURE["Reported failure"] --> DEBUG
-    DEBUG --> CHECKS
-    SHIP --> LANDED["Integrated change"]
-```
-
-This is the typical relationship, not a requirement to run every phase for every change. Start where the work stands: a settled task can enter Plan or Build, and a failure can enter Debug directly. Debug is a recovery workflow, so a successful build does not need a debugging phase before shipping. Auto routes supported events to the appropriate workflow; it is not a sixth development phase. The [workflow catalog](../.bkit/workflows.md) defines the commands, entry conditions and handoffs.
+Start where the work stands: a settled task can enter Plan or Build, and a failure can enter Debug directly. Debug is a recovery workflow, so a successful build does not need a debugging phase before shipping. Auto routes supported events to the appropriate workflow; it is not a sixth development phase. The [workflow catalog](../.bkit/workflows.md) defines the commands, entry conditions and handoffs.
 
 ## Core, shared and templates
 
@@ -59,38 +46,68 @@ These three parts explain how bkit delivers the process to a project. They descr
 
 For example, Core defines how Build requests verification, Shared supplies common project context, and an adopted CI template helps the project run its own checks. These roles support the same lifecycle, but adopting a template is a separate action from installing managed content. The source directory alone does not determine whether an entire destination file is owned by bkit; the install contract also supports managed sections and merged configuration.
 
+## Multiple hosts and model providers
+
+bkit carries the same engineering process across coding assistants. A host is the application that runs the workflow; a provider is the service or gateway supplying its models. Host adaptation translates commands, skills, agent roles, hooks and model settings into the selected host's format.
+
+<!-- prettier-ignore -->
+| Host | Configured provider choices |
+| --- | --- |
+| Claude | Anthropic |
+| Codex | OpenAI |
+| Cursor | Cursor |
+| Antigravity | Google |
+| OpenCode | OpenRouter, Ollama, OpenCode Zen or OpenCode Go |
+
+Several hosts can be installed in one project. OpenCode can retain several provider configurations with one active default. bkit supplies model and reasoning-effort choices for agent roles, adapted to each host's supported settings. Plans, progress records and tracker state let work continue on another configured host or provider without depending on the previous chat's memory. Provider switching is configured explicitly; this is not automatic request failover.
+
+The [host and provider catalog](../.bkit/providers.md) owns the detailed support matrix and host-specific limits. The [agent catalog](../.bkit/prompts.md) owns model selections. These limits matter: a shared workflow does not mean every host exposes identical tools or permission enforcement.
+
 ## Component map
 
-The groups describe responsibilities, independently of where their code lives. Arrows show the main handoffs and supporting relationships, not a complete execution sequence.
+This single chart combines the lifecycle, supporting responsibilities, delivery roles and host/provider support. Solid arrows show the main handoffs; dotted arrows show supporting relationships. The lifecycle allows direct entry at the appropriate phase.
 
 ```mermaid
 flowchart LR
-    subgraph setup["Prepare a project"]
-        INSTALL["Install and maintain the setup"]
-        ADAPT["Adapt to the coding assistant"]
-        STARTERS["Offer project starter tools"]
-    end
-    subgraph delivery["Deliver a change"]
-        GUIDE["Design, Plan, Build, Debug and Ship"]
-        EXECUTE["Coordinate development operations"]
-        VERIFY["Check the work and support recovery"]
-    end
-    subgraph continuity["Retain context and evidence"]
-        RECORDS["Record progress and decisions"]
+    subgraph core["Core — define and operate the process"]
+        INSTALL["Install, upgrade and check setup"]
+        ADAPT["Adapt instructions, hooks and agent models"]
+        subgraph lifecycle["Development lifecycle"]
+            DESIGN["Design"] --> PLAN["Plan"]
+            PLAN --> BUILD["Build"]
+            BUILD --> VERIFY["Verification and CI"]
+            VERIFY -->|Pass| SHIP["Ship"]
+            VERIFY -->|Failure| DEBUG["Debug"]
+            DEBUG --> VERIFY
+        end
+        EXECUTE["Coordinate branches, tasks and reviews"]
+        RECORDS["Retain progress and decisions"]
         CONNECT["Connect trackers and external evidence"]
-        LEARN["Explain and improve the process"]
+        LEARN["Document, audit and measure"]
     end
+    subgraph shared["Shared — common project scaffolding"]
+        CONFIG["Entry instructions, settings and doc headers"]
+    end
+    subgraph templates["Templates — copy, adapt and own"]
+        STARTERS["CI, testing, maintenance and docs"]
+    end
+    subgraph assistants["Supported hosts and model providers"]
+        HOSTS["Claude · Codex · Cursor<br/>Antigravity · OpenCode"]
+        PROVIDERS["Host providers and OpenCode gateways<br/>Model and effort choices per agent"]
+    end
+    CONFIG --> INSTALL
     INSTALL --> ADAPT
-    INSTALL --> STARTERS
-    ADAPT --> GUIDE
-    GUIDE --> EXECUTE
-    STARTERS --> VERIFY
-    EXECUTE --> VERIFY
-    VERIFY --> GUIDE
+    INSTALL -->|Offer for adoption| STARTERS
+    ADAPT --> HOSTS
+    PROVIDERS -.->|Configured per host| HOSTS
+    HOSTS -->|Run the shared workflows| lifecycle
+    STARTERS -.->|Project-owned checks| VERIFY
+    EXECUTE -.-> lifecycle
     EXECUTE --> RECORDS
     CONNECT <--> EXECUTE
-    RECORDS --> GUIDE
+    RECORDS -.->|Resume across hosts| lifecycle
     RECORDS --> LEARN
+    SHIP --> RESULT["Integrated change"]
 ```
 
 ## Component breakdown
@@ -99,7 +116,7 @@ flowchart LR
 | Purpose | Component | Responsibility | Works with |
 | --- | --- | --- | --- |
 | Prepare a project | Installation and upgrades | Establish the selected assistant setup, refresh managed content, preserve project-owned content and report setup drift. | Assistant adaptation supplies the rendered instructions; starter tools are offered for adoption. |
-| Prepare a project | Assistant adaptation | Express shared workflows, agent roles, model choices and configuration in each supported assistant's format. | Installation writes the result; coding assistants read and run it. |
+| Prepare a project | Host and provider adaptation | Carry one process across Claude, Codex, Cursor, Antigravity and OpenCode, with provider-specific model choices and host-specific configuration. | Installation writes the result; the configured host and provider run agent roles; progress records support continuation elsewhere. |
 | Prepare a project | Project starter tools | Supply templates a project can copy and own for checks, cloud setup, secrets, code maps and repository maintenance. | Developers adapt them to the project; verification calls the project's declared scripts. |
 | Deliver a change | Design, Plan, Build, Debug and Ship | Own the development lifecycle described above, from exploring an idea through implementation, failure recovery and integration. | The owner settles required decisions; specialist agents perform assigned work; coordination commands perform repeatable operations. |
 | Deliver a change | Development coordination | Manage feature identities, branches, worktrees, task progress, reviews and pull requests so work can proceed and resume coherently. | Guidance selects the next operation; records retain its state; connectors reach external services. |
@@ -151,6 +168,7 @@ Feature proposals and delivery state belong in the tracker and [roadmap](roadmap
 | [Capabilities](capabilities.md) | Where are registered implementation capabilities owned, and do callers bypass their owners? |
 | [Repository floorplan](../floorplan/README.md) | How can I explore the files, connections and guided flows interactively? |
 | [Workflow catalog](../.bkit/workflows.md) | Which workflow should I run, and what does it do? |
+| [Host and provider catalog](../.bkit/providers.md) | Which assistants and model gateways can run the process, and how do their integrations differ? |
 | [Template catalog](../.bkit/templates.md) | Which starter tools can a project adopt, and how? |
 
 The capability register and floorplan describe implementation evidence at their own level of detail. For example, installation uses both managed-version markers and tracker-block substitution from the capability register, while development guidance spans responsibilities outside that register. Components need no matching capability row, and a capability may support several components. This document is maintained independently of both generated views.

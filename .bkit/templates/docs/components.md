@@ -20,7 +20,7 @@
 
 ## Primary workflows
 
-[Name the workflows central to the product or tool. Explain each one's purpose, starting input and outcome. Show their handoffs and recovery paths, making clear which steps are optional or can be entered directly.]
+[Name the workflows central to the product or tool. Explain each one's purpose, starting input and outcome. Include their handoffs and recovery paths in the single component map below, making clear which steps are optional or can be entered directly.]
 
 <!-- prettier-ignore -->
 | Workflow | Purpose | Starts with | Produces |
@@ -33,7 +33,7 @@
 
 ## Component map
 
-[Show the main relationships between purpose groups. Arrows show collaboration or handoffs, not every call or a required execution order. Replace this example with the repository's responsibilities.]
+[Use one Mermaid chart for the main responsibilities, workflows and supporting relationships. Include delivery roles and supported hosts or providers when these are central to the product. Arrows show collaboration or handoffs, not every call or a required execution order. Replace this example with the repository's responsibilities.]
 
 ```mermaid
 flowchart LR
