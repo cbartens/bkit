@@ -18,6 +18,19 @@
 
 [Who uses the repository, what problem it solves and what outcome it produces. State what kind of system it is and its main limits.]
 
+## Primary workflows
+
+[Name the workflows central to the product or tool. Explain each one's purpose, starting input and outcome. Show their handoffs and recovery paths, making clear which steps are optional or can be entered directly.]
+
+<!-- prettier-ignore -->
+| Workflow | Purpose | Starts with | Produces |
+| --- | --- | --- | --- |
+| [User-recognizable workflow] | [Outcome it is responsible for.] | [Input or trigger.] | [Result or handoff.] |
+
+## Delivery and ownership
+
+[If the repository distributes distinct kinds of content, explain their roles and who maintains the result. Examples include a managed engine, shared configuration and optional templates. Use the project's actual concepts rather than imposing these categories on every repository. Link to architecture for paths and packaging details. Omit this section when the distinction does not apply.]
+
 ## Component map
 
 [Show the main relationships between purpose groups. Arrows show collaboration or handoffs, not every call or a required execution order. Replace this example with the repository's responsibilities.]

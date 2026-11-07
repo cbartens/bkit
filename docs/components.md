@@ -18,6 +18,47 @@ bkit gives developers and coding assistants a shared process for designing, plan
 
 The npm package combines a command-line tool with instructions, hooks and templates. The coding assistant supplies reasoning and edits; the project's own scripts supply stack-specific builds and tests. bkit has no application server or database.
 
+## The development lifecycle
+
+Design, Plan, Build, Debug and Ship are bkit's five primary workflows. Together they turn an idea into an integrated change, with review, verification and recorded progress along the way. Each workflow has a distinct responsibility and delegates focused work to specialist agents.
+
+<!-- prettier-ignore -->
+| Workflow | Purpose | Starts with | Produces |
+| --- | --- | --- | --- |
+| Design | Decide what to build and how it should work by exploring alternatives, resolving questions and reviewing the approach. | A request whose approach is still open. | A reviewed design with scope, decisions and remaining questions. |
+| Plan | Turn the agreed approach into ordered, executable tasks with verification criteria. | A settled design, issue or audit findings. | An implementation plan with dependencies, tests and completion criteria. |
+| Build | Implement the planned change, prove it with tests and review it before delivery. | A plan, or a clear issue or prompt that Build converts into a plan. | A verified change on a branch, normally published as a pull request; local-only builds stay local. |
+| Debug | Reproduce and diagnose a failure, apply a supported fix and verify recovery. | A failing test, CI run or reported behavior to reproduce. | A remediated change and verification evidence, or an explicit unresolved blocker. |
+| Ship | Check that finished work is ready, integrate it and complete the handover and cleanup. | A completed change on a branch. | An integrated change, updated records and a handover for human acceptance. |
+
+```mermaid
+flowchart LR
+    IDEA["Open question or idea"] --> DESIGN["Design"]
+    DESIGN --> PLAN["Plan"]
+    PLAN --> BUILD["Build"]
+    BUILD --> CHECKS["Verification and CI"]
+    CHECKS -->|Pass| SHIP["Ship"]
+    CHECKS -->|Failure| DEBUG["Debug"]
+    FAILURE["Reported failure"] --> DEBUG
+    DEBUG --> CHECKS
+    SHIP --> LANDED["Integrated change"]
+```
+
+This is the typical relationship, not a requirement to run every phase for every change. Start where the work stands: a settled task can enter Plan or Build, and a failure can enter Debug directly. Debug is a recovery workflow, so a successful build does not need a debugging phase before shipping. Auto routes supported events to the appropriate workflow; it is not a sixth development phase. The [workflow catalog](../.bkit/workflows.md) defines the commands, entry conditions and handoffs.
+
+## Core, shared and templates
+
+These three parts explain how bkit delivers the process to a project. They describe ownership and delivery roles; the [architecture](architecture.md) gives the detailed file layout.
+
+<!-- prettier-ignore -->
+| Part | Purpose | What it supplies | Who maintains the installed result? |
+| --- | --- | --- | --- |
+| Core (`.bkit/core/`) | Define and operate bkit's engineering process. | The command-line engine, the five workflows and Auto routing, specialist-agent prompts, rules, hooks and reference instructions. | bkit maintains the installed or rendered content it owns. Package-only engine and source material stay in the package rather than being copied wholesale into the project. |
+| Shared (`.bkit/shared/`) | Supply common project scaffolding and configuration alongside the core process. | Agent entry instructions, connection settings, environment examples, host configuration and standard documentation headers. | bkit maintains its declared files or marked sections; project-owned content outside those sections remains the project's. |
+| Templates (`.bkit/templates/`) | Offer optional starting points a project can adapt to its own stack and practices. | CI workflows, testing and maintenance helpers, secrets tooling and document examples, including this component map. | bkit refreshes the template sources. Once copied into use, an adopted file belongs to the project and is maintained there. |
+
+For example, Core defines how Build requests verification, Shared supplies common project context, and an adopted CI template helps the project run its own checks. These roles support the same lifecycle, but adopting a template is a separate action from installing managed content. The source directory alone does not determine whether an entire destination file is owned by bkit; the install contract also supports managed sections and merged configuration.
+
 ## Component map
 
 The groups describe responsibilities, independently of where their code lives. Arrows show the main handoffs and supporting relationships, not a complete execution sequence.
@@ -30,7 +71,7 @@ flowchart LR
         STARTERS["Offer project starter tools"]
     end
     subgraph delivery["Deliver a change"]
-        GUIDE["Guide development work"]
+        GUIDE["Design, Plan, Build, Debug and Ship"]
         EXECUTE["Coordinate development operations"]
         VERIFY["Check the work and support recovery"]
     end
@@ -60,7 +101,7 @@ flowchart LR
 | Prepare a project | Installation and upgrades | Establish the selected assistant setup, refresh managed content, preserve project-owned content and report setup drift. | Assistant adaptation supplies the rendered instructions; starter tools are offered for adoption. |
 | Prepare a project | Assistant adaptation | Express shared workflows, agent roles, model choices and configuration in each supported assistant's format. | Installation writes the result; coding assistants read and run it. |
 | Prepare a project | Project starter tools | Supply templates a project can copy and own for checks, cloud setup, secrets, code maps and repository maintenance. | Developers adapt them to the project; verification calls the project's declared scripts. |
-| Deliver a change | Development guidance | Turn requests into designs and executable plans, guide implementation and diagnosis, review results and prepare shipping. | The owner settles required decisions; specialist agents perform assigned work; coordination commands perform repeatable operations. |
+| Deliver a change | Design, Plan, Build, Debug and Ship | Own the development lifecycle described above, from exploring an idea through implementation, failure recovery and integration. | The owner settles required decisions; specialist agents perform assigned work; coordination commands perform repeatable operations. |
 | Deliver a change | Development coordination | Manage feature identities, branches, worktrees, task progress, reviews and pull requests so work can proceed and resume coherently. | Guidance selects the next operation; records retain its state; connectors reach external services. |
 | Deliver a change | Verification and recovery | Check prerequisites, test evidence, review findings and delivery conditions. Hooks guard supported assistant actions; diagnosis and remediation steps address failures. | Project scripts run tests and builds; guidance handles failed checks and review decisions. |
 | Retain context and evidence | Progress and project memory | Record plans, decisions, findings, deferrals, step outcomes and measurements, and derive the current workflow state. | Guidance reads prior context; coordination writes progress; reports summarize the evidence. |
