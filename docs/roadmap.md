@@ -23,13 +23,14 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-05T23:31:23Z)_
+_(refreshed 2026-11-07T10:09:39Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
