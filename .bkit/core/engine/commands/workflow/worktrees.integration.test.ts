@@ -432,6 +432,11 @@ describe("bkit worktrees setup — mint (resume)", () => {
       expect(again.code).toBe(3);
       expect(again.err).toContain("already in progress");
 
+      const debug = await setup(f.repo, "debug", "--worktrees");
+      expect(debug.code).toBe(3);
+      expect(debug.json).toMatchObject({ rebaseConflict: true, installed: false });
+      expect(debug.err).toContain("already in progress");
+
       // Once resolved, a re-run clears the sentinel.
       fs.writeFileSync(path.join(wtOf(f), "a.txt"), "resolved\n");
       git(wtOf(f), "add", "a.txt");
@@ -478,7 +483,36 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(build.json).toMatchObject({ mode: "resumed" });
   });
 
-  it.each(["debug", "build"])(
+  it.each(["b.txt", "a.txt"])(
+    "debug preserves failed CI ancestry when dev changes %s",
+    async (upstreamFile) => {
+      const f = await minted();
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "failed feature\n");
+      git(wtOf(f), "add", "a.txt");
+      git(wtOf(f), "commit", "-qm", "failed CI head");
+      const failedHead = git(wtOf(f), "rev-parse", "HEAD");
+      advanceDev(f, upstreamFile, "upstream change\n");
+      fs.writeFileSync(path.join(wtOf(f), "pending.txt"), "pending work\n");
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const r = await setup(f.repo, "debug", "--worktrees");
+        expect(r.code).toBe(0);
+        expect(r.json).toMatchObject({
+          mode: "resumed",
+          sentinel: null,
+          rebaseConflict: false,
+          carriedSha: null,
+        });
+        expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(failedHead);
+        expect(g(wtOf(f), "merge-base", "--is-ancestor", failedHead, "HEAD").status).toBe(0);
+        expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf8")).toBe("failed feature\n");
+        expect(fs.readFileSync(path.join(wtOf(f), "pending.txt"), "utf8")).toBe("pending work\n");
+        expect(r.json.installed).toBe(true);
+      }
+    },
+  );
+
+  it.each(["build"])(
     "%s: commits a failed ship's leftovers, drops the logs dev already holds, then rebases",
     async (workflow) => {
       const f = await minted();

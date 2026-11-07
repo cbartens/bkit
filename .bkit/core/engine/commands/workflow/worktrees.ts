@@ -12,6 +12,7 @@
 // use local `dev` when it is a fast-forward of `origin/dev`: dev pushes wait for
 // a human, so local dev is routinely ahead, and a worktree without those commits
 // builds against superseded work.
+// Debug preserves the adopted branch's history for CI evidence ancestry checks.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -1007,6 +1008,8 @@ export const worktreesCommand: CommandSpec = {
               detail: "a rebase is already in progress",
               onto: worktreeBase(wt, workflow),
             };
+          } else if (workflow === "debug") {
+            ctx.log("debug resume: preserving branch history for CI evidence; no rebase");
           } else {
             fetchBranch(wt, DEV);
             const onto = worktreeBase(wt, workflow, ctx.log);
