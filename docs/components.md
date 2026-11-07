@@ -18,6 +18,18 @@ bkit gives developers and coding assistants a shared process for designing, plan
 
 The npm package combines a command-line tool with instructions, hooks and templates. The coding assistant supplies reasoning and edits; the project's own scripts supply stack-specific builds and tests. bkit has no application server or database.
 
+The central idea is a repeatable engineering process: specialist agents do the work, independent reviewers challenge it, code checks the evidence, and the owner controls the required decisions. Project knowledge accumulates across features instead of disappearing with each chat.
+
+<!-- prettier-ignore -->
+| Core concept | Responsibility in the system |
+| --- | --- |
+| Independent judgment | Separate agents explore, implement and review. Reviewers assess the work independently, with different models used where the configured review group calls for them. |
+| Completion checked by code | The engine verifies step outputs, test-first evidence, retry limits and resume state. Local checks and continuous integration (CI) verify the resulting software. |
+| Human control | Decision points surface unresolved choices and unsuccessful repair attempts. Production promotion stays with the owner; optional cloud continuation follows the configured authorization. |
+| Persistent project knowledge | Plain documents, append-only records and tracker history retain decisions, lessons, known bugs and postponed work. Utilities reconcile those records as the project changes. |
+| Focused, resumable work | Separate working copies isolate features. Fresh agents receive focused briefs, and saved state lets another session or host continue the work. Model choices match each role's reasoning needs. |
+| Improvement beyond passing tests | Audits inspect risks and gaps the test suite may miss. Findings become planned work; measurements and maintenance utilities help improve the process. |
+
 ## The development lifecycle
 
 Design, Plan, Build, Debug and Ship are bkit's five primary workflows. Together they turn an idea into an integrated change, with review, verification and recorded progress along the way. Each workflow has a distinct responsibility and delegates focused work to specialist agents.
@@ -45,6 +57,33 @@ These three parts explain how bkit delivers the process to a project. They descr
 | Templates (`.bkit/templates/`) | Offer optional starting points a project can adapt to its own stack and practices. | CI workflows, testing and maintenance helpers, secrets tooling and document examples, including this component map. | bkit refreshes the template sources. Once copied into use, an adopted file belongs to the project and is maintained there. |
 
 For example, Core defines how Build requests verification, Shared supplies common project context, and an adopted CI template helps the project run its own checks. These roles support the same lifecycle, but adopting a template is a separate action from installing managed content. The source directory alone does not determine whether an entire destination file is owned by bkit; the install contract also supports managed sections and merged configuration.
+
+### Shared — give every agent the same project context
+
+Shared supplies the common foundations that connect bkit's process to the project. It establishes places for project knowledge and the configuration that makes instructions, hooks and connected tools available.
+
+<!-- prettier-ignore -->
+| Responsibility | What it provides |
+| --- | --- |
+| Project knowledge | Standard document headers for architecture, technology, data, security, testing, deployments, observability, design and setup. Agents fill in the project's facts and keep them current as work ships. Decisions and lessons remain in their dedicated records. |
+| Assistant and tool connections | Entry instructions that point assistants to the rulebook, host settings and hook registrations, and connection configuration for external tools. These make the shared process available in each selected host. |
+| Environment and workspace conventions | Credential examples, cloud-session setup material and git conventions. These establish how the project supplies its environment while keeping actual credentials outside committed documentation. |
+
+The document index directs each agent to relevant knowledge. Shared provides the maintained foundation; the project owns its facts and custom content. [Architecture](architecture.md) explains which destinations use managed sections or merged settings.
+
+### Templates — equip the project's development environment
+
+Templates turn the process into checks and tools that fit the project's stack. They are optional starting points: a project adopts the groups it needs and owns their configuration and operation.
+
+<!-- prettier-ignore -->
+| Responsibility | What a project can adopt | How it supports the process |
+| --- | --- | --- |
+| Verification and delivery | A CI pipeline, git hooks, formatting and quality checks, with additional test and deployment lanes as the project needs them. | Catch problems locally, then require the expected CI lanes to complete successfully before shipping. The project's own scripts define the checks. |
+| Cloud continuation and evidence | Cloud-agent setup, CI-driven routing and connectors for logs, errors, hosting, databases and other services. | Continue authorized work after CI and give Debug actual failure evidence. Unavailable evidence stays explicitly unchecked. |
+| Code understanding and work intake | Serena code lookup, graphify capability maps, issue forms and document examples such as this component map. | Find existing behavior before changing it, expose ownership drift and turn requests into useful workflow inputs. |
+| Security and repository upkeep | Secrets synchronization, dependency updates, vulnerability scans, environment helpers, machine locks and cleanup tools. | Keep credentials and dependencies consistent, detect risks and maintain a usable development environment. |
+
+Audit checklists belong to Core even though their installed directory is named `docs/templates/`: bkit's audit agent uses them directly. The copy-and-own tools described here live in `.bkit/templates/`. [The template catalog](../.bkit/templates.md) owns the inventory and adoption instructions.
 
 ## Multiple hosts and model providers
 
@@ -80,33 +119,49 @@ flowchart LR
             VERIFY -->|Failure| DEBUG["Debug"]
             DEBUG --> VERIFY
         end
-        EXECUTE["Coordinate branches, tasks and reviews"]
-        RECORDS["Retain progress and decisions"]
+        REVIEW["Independent specialist reviews<br/>Design, plan, correctness and security"]
+        EXECUTE["Engine checks and coordination<br/>Evidence, test order, retries and resume"]
+        RECORDS["Project memory<br/>Progress, decisions, lessons and findings"]
         CONNECT["Connect trackers and external evidence"]
-        LEARN["Document, audit and measure"]
+        LEARN["Audits, utilities and measurements"]
     end
     subgraph shared["Shared — common project scaffolding"]
-        CONFIG["Entry instructions, settings and doc headers"]
+        KNOWLEDGE["Project knowledge foundations<br/>Architecture, data, security and operations"]
+        CONFIG["Assistant and tool connections<br/>Entry instructions, hooks and settings"]
+        ENV["Environment and workspace conventions"]
     end
     subgraph templates["Templates — copy, adapt and own"]
-        STARTERS["CI, testing, maintenance and docs"]
+        CHECKS["Verification and delivery<br/>CI, git hooks and quality checks"]
+        CLOUD["Cloud continuation and evidence<br/>Agent setup, routing and connectors"]
+        MAP["Code understanding and work intake<br/>Code lookup, maps, issue forms and docs"]
+        UPKEEP["Security and repository upkeep<br/>Secrets, updates, scans, locks and cleanup"]
     end
     subgraph assistants["Supported hosts and model providers"]
         HOSTS["Claude · Codex · Cursor<br/>Antigravity · OpenCode"]
         PROVIDERS["Host providers and OpenCode gateways<br/>Model and effort choices per agent"]
     end
     CONFIG --> INSTALL
+    ENV --> INSTALL
     INSTALL --> ADAPT
-    INSTALL -->|Offer for adoption| STARTERS
+    INSTALL -->|Offer for adoption| templates
     ADAPT --> HOSTS
     PROVIDERS -.->|Configured per host| HOSTS
     HOSTS -->|Run the shared workflows| lifecycle
-    STARTERS -.->|Project-owned checks| VERIFY
+    OWNER["Owner decisions and authorization"] -.-> lifecycle
+    REVIEW -.-> lifecycle
+    CHECKS -.->|Project-owned checks| VERIFY
+    CLOUD -.->|Authorized continuation| lifecycle
+    CLOUD -.-> CONNECT
+    MAP -.-> lifecycle
+    UPKEEP -.->|Maintain the environment| EXECUTE
     EXECUTE -.-> lifecycle
     EXECUTE --> RECORDS
     CONNECT <--> EXECUTE
+    KNOWLEDGE -.->|Project context| lifecycle
+    RECORDS -.->|Keep docs current| KNOWLEDGE
     RECORDS -.->|Resume across hosts| lifecycle
     RECORDS --> LEARN
+    LEARN -.->|Findings become work| PLAN
     SHIP --> RESULT["Integrated change"]
 ```
 
@@ -119,11 +174,11 @@ flowchart LR
 | Prepare a project | Host and provider adaptation | Carry one process across Claude, Codex, Cursor, Antigravity and OpenCode, with provider-specific model choices and host-specific configuration. | Installation writes the result; the configured host and provider run agent roles; progress records support continuation elsewhere. |
 | Prepare a project | Project starter tools | Supply templates a project can copy and own for checks, cloud setup, secrets, code maps and repository maintenance. | Developers adapt them to the project; verification calls the project's declared scripts. |
 | Deliver a change | Design, Plan, Build, Debug and Ship | Own the development lifecycle described above, from exploring an idea through implementation, failure recovery and integration. | The owner settles required decisions; specialist agents perform assigned work; coordination commands perform repeatable operations. |
-| Deliver a change | Development coordination | Manage feature identities, branches, worktrees, task progress, reviews and pull requests so work can proceed and resume coherently. | Guidance selects the next operation; records retain its state; connectors reach external services. |
-| Deliver a change | Verification and recovery | Check prerequisites, test evidence, review findings and delivery conditions. Hooks guard supported assistant actions; diagnosis and remediation steps address failures. | Project scripts run tests and builds; guidance handles failed checks and review decisions. |
+| Deliver a change | Development coordination | Manage feature identities, isolated working copies, tasks and pull requests. Check step evidence, test-first order, retry limits and resume state in code. | Agents make judgment calls; the engine performs repeatable operations; records retain their results. |
+| Deliver a change | Independent review, verification and recovery | Challenge designs, plans and implementations, check the resulting software, and diagnose failures. Supported hooks constrain agent actions; required decisions return to the owner. | Reviewers work independently; project scripts and CI run checks; bounded remediation addresses findings. |
 | Retain context and evidence | Progress and project memory | Record plans, decisions, findings, deferrals, step outcomes and measurements, and derive the current workflow state. | Guidance reads prior context; coordination writes progress; reports summarize the evidence. |
 | Retain context and evidence | Tracker and evidence connections | Read work items, update workflow status, post work records and obtain selected CI or runtime evidence through the configured integrations. | Trackers hold external work items; context-fetch blocks obtain project-specific evidence for diagnosis. |
-| Retain context and evidence | Documentation, audits and measurements | Explain the system, inspect engineering practices and report workflow outcomes and friction. This repository also collects maintainer-local measurements across consumer projects. | Project memory supplies records; capability maps and the floorplan provide implementation views. |
+| Retain context and evidence | Documentation, audits and measurements | Keep project knowledge current, inspect risks beyond existing tests and report workflow outcomes and friction. This repository also collects maintainer-local measurements across consumer projects. | Audit findings feed Plan; utilities reconcile docs, records and tracker state; measurements inform process improvements. |
 
 ## Main journeys
 
@@ -170,5 +225,6 @@ Feature proposals and delivery state belong in the tracker and [roadmap](roadmap
 | [Workflow catalog](../.bkit/workflows.md) | Which workflow should I run, and what does it do? |
 | [Host and provider catalog](../.bkit/providers.md) | Which assistants and model gateways can run the process, and how do their integrations differ? |
 | [Template catalog](../.bkit/templates.md) | Which starter tools can a project adopt, and how? |
+| [Product guide](../DETAILS.md) | What are bkit's core ideas, user benefits and detailed capabilities? |
 
 The capability register and floorplan describe implementation evidence at their own level of detail. For example, installation uses both managed-version markers and tracker-block substitution from the capability register, while development guidance spans responsibilities outside that register. Components need no matching capability row, and a capability may support several components. This document is maintained independently of both generated views.

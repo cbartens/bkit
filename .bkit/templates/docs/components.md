@@ -16,7 +16,7 @@
 
 ## Repository purpose
 
-[Who uses the repository, what problem it solves and what outcome it produces. State what kind of system it is and its main limits.]
+[Who uses the repository, what problem it solves and what outcome it produces. State what kind of system it is and its main limits. Summarize the core concepts from the existing product guide or specification as responsibilities, with links to the detail rather than copied feature lists.]
 
 ## Primary workflows
 
@@ -29,7 +29,7 @@
 
 ## Delivery and ownership
 
-[If the repository distributes distinct kinds of content, explain their roles and who maintains the result. Examples include a managed engine, shared configuration and optional templates. Use the project's actual concepts rather than imposing these categories on every repository. Link to architecture for paths and packaging details. Omit this section when the distinction does not apply.]
+[If the repository distributes distinct kinds of content, explain their roles and who maintains the result. For each part, group what it supplies by purpose and explain how those groups support the main workflows. Examples include a managed engine, shared configuration and optional templates. Use the project's actual concepts rather than imposing these categories on every repository. Link to architecture for paths and packaging details. Omit this section when the distinction does not apply.]
 
 ## Component map
 
