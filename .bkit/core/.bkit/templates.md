@@ -33,6 +33,7 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
 | Issue forms | Three forms (idea, well-defined change, bug) asking for what design, plan / build and debug read first. | Issues arrive as a title and a line; agents guess at scope, "done" and repro steps. |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
+| Component map | Purpose-based overview of the repository's responsibilities and main journeys. | Readers have to infer what the system does from implementation details. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
@@ -67,6 +68,7 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | Issue forms | `.bkit/templates/.github/ISSUE_TEMPLATE/` | `.github/ISSUE_TEMPLATE/` | the forms you use |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
+| Component map | `.bkit/templates/docs/components.md` | `docs/components.md` | the populated document |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
@@ -645,6 +647,14 @@ Issues are the first input every workflow reads. There is one form per way work 
 - `labels:` applies `enhancement` / `bug` only when the repo has them. Missing labels are skipped, never created.
 - Never add `bkit:*` labels, because workflows own them.
 - **If** the repo has existing forms → copy only the `bkit-*` files you want. The names never collide.
+
+## Component map — purpose and responsibilities
+
+Copy `.bkit/templates/docs/components.md` to `docs/components.md`, remove the example introduction, then replace the body from `## Repository purpose` onward with the project's purpose, component diagram, responsibility table and main journeys. Keep the rules header. Register the document under `Project Documents` in `.agents/docs.md`, with conditional reads for Design, Plan, Build, Debug and Ship.
+
+Group by purpose rather than directories or deployment units. Reference `docs/capabilities.md` when present for implementation ownership and drift; the two views need no matching names, counts or boundaries. Link to `docs/architecture.md` for implementation topology and to `floorplan/` when the project has an interactive code map. Neither graphify nor Floorplan is required.
+
+The adopted document is maintained by the project. Update it when responsibilities or main journeys change. Installation and upgrades refresh the template source without overwriting the adopted document. Keep current behavior separate from planned scope, proposals and later candidates.
 
 ## graphify — map
 

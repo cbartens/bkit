@@ -24,6 +24,8 @@ bkit = **CLI tool + agent-stack payload** as npm package (`@cbartens/bkit` on np
 
 No server, database, or network service. Build-time / DX tool only.
 
+The purpose-based view lives in [Components](components.md): what each major part does and how the parts work together. This document holds implementation boundaries and topology. The reusable document template lives at `.bkit/templates/docs/components.md`; the populated `docs/components.md` is project-owned.
+
 **Stack-agnostic:** engine, workflows and prompts assume no app stack; stack-specific behaviour enters only through consumer-declared `package.json` scripts bkit calls by name (`.bkit/workflows.md` § Local gate scripts).
 
 ## Tracker reporting boundary
