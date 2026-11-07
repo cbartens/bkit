@@ -603,6 +603,31 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isSymbolicLink()).toBe(true);
   });
 
+  it.each([".bkit/.env", "./.bkit/.env"])(
+    "resumes with bkit's own env in the copy list (%s)",
+    async (entry) => {
+      const f = fixture();
+      fs.writeFileSync(
+        path.join(f.repo, "package.json"),
+        JSON.stringify({
+          bkit: { workflows: { worktree: { copy: [entry], install: false } } },
+        }),
+      );
+      fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+      const source = path.join(f.repo, ".bkit/.env");
+      fs.writeFileSync(source, "TEST_VALUE=fixture\n");
+      expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+      const dest = path.join(wtOf(f), ".bkit/.env");
+      expect(fs.lstatSync(dest).isSymbolicLink()).toBe(true);
+
+      const again = await setup(f.repo, "build", "--worktrees");
+      expect(again.code).toBe(0);
+      expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "unchanged" });
+      expect(fs.realpathSync(dest)).toBe(fs.realpathSync(source));
+      expect(fs.readFileSync(source, "utf-8")).toBe("TEST_VALUE=fixture\n");
+    },
+  );
+
   it("re-links bkit's own .bkit/.env on resume, so a worktree made earlier heals itself", async () => {
     const f = fixture();
     fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
