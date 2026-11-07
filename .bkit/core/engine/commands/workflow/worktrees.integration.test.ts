@@ -18,6 +18,15 @@ import { ownershipMarker, worktreesCommand } from "./worktrees";
  * Developer Mode), `bkitEnvCopy` fails a copy onto `.bkit/.env`. Off, both pass through.
  */
 const fsFaults = vi.hoisted(() => ({ symlink: false, bkitEnvCopy: false }));
+const pathPlatform = vi.hoisted(() => ({ windows: false }));
+vi.mock("node:path", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:path")>();
+  return {
+    ...real,
+    normalize: (value: string) =>
+      pathPlatform.windows ? real.win32.normalize(value) : real.normalize(value),
+  };
+});
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
   const refused = (what: string) =>
@@ -63,6 +72,7 @@ beforeEach(() => {
   delete process.env.DIRENV_EXIT;
 });
 afterEach(() => {
+  pathPlatform.windows = false;
   fsFaults.symlink = false;
   fsFaults.bkitEnvCopy = false;
   process.env.PATH = savedPath;
@@ -659,6 +669,35 @@ describe("bkit worktrees setup — mint (resume)", () => {
       expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "unchanged" });
       expect(fs.realpathSync(dest)).toBe(fs.realpathSync(source));
       expect(fs.readFileSync(source, "utf-8")).toBe("TEST_VALUE=fixture\n");
+    },
+  );
+
+  it.each([".bkit/.env", "./.bkit/.env", ".bkit\\.env", ".\\.bkit\\.env"])(
+    "skips the owned env with Windows path normalization (%s)",
+    async (entry) => {
+      const f = fixture();
+      fs.writeFileSync(
+        path.join(f.repo, "package.json"),
+        JSON.stringify({
+          bkit: { workflows: { worktree: { copy: [entry, "app.env"], install: false } } },
+        }),
+      );
+      fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+      const source = path.join(f.repo, ".bkit/.env");
+      fs.writeFileSync(source, "TEST_VALUE=fixture\n");
+      fs.writeFileSync(path.join(f.repo, "app.env"), "APP_VALUE=fixture\n");
+      pathPlatform.windows = true;
+
+      for (const expectedEnv of ["linked", "unchanged"]) {
+        const r = await setup(f.repo, "build", "--worktrees");
+        expect(r.code).toBe(0);
+        expect(r.json.copyMissing).toEqual([]);
+        expect(r.json.copied).toEqual(["app.env"]);
+        expect(r.json.bkitEnv).toBe(expectedEnv);
+        expect(fs.realpathSync(path.join(wtOf(f), ".bkit/.env"))).toBe(source);
+        expect(fs.readFileSync(source, "utf8")).toBe("TEST_VALUE=fixture\n");
+        expect(fs.readFileSync(path.join(wtOf(f), "app.env"), "utf8")).toBe("APP_VALUE=fixture\n");
+      }
     },
   );
 

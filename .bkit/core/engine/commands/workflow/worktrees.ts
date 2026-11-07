@@ -512,7 +512,7 @@ function copyListed(root: string, wt: string, entries: string[], log: (m: string
   for (const entry of entries) {
     const rel = path.normalize(entry);
     // bkit's own env is managed by linkBkitEnv, including on resume.
-    if (BKIT_OWN_COPY.includes(rel)) continue;
+    if (BKIT_OWN_COPY.some((owned) => path.normalize(owned) === rel)) continue;
     if (!insideCheckout(rel)) {
       log(`worktree copy: ${entry} is outside the main checkout — skipped`);
       continue;
