@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-07T10:09:39Z)_
+_(refreshed 2026-11-07T10:17:54Z)_
 
 ### Design
 
@@ -47,6 +47,7 @@ _(refreshed 2026-11-07T10:09:39Z)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
+| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 
 ### Build
 
