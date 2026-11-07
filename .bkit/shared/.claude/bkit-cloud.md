@@ -40,7 +40,7 @@ set -euo pipefail
 # `.bkit/templates/.cursor/Dockerfile`. bkit needs Node >=24 and the base image ships
 # older majors, so this one goes into /usr/local and leads PATH for every step below.
 # renovate: datasource=node-version depName=node
-NODE_VERSION="24.22.1"
+NODE_VERSION="24.22.2"
 NODE_SHA256="6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6"
 if [ "$(/usr/local/bin/node --version 2>/dev/null || true)" != "v${NODE_VERSION}" ]; then
   command -v xz >/dev/null 2>&1 || { apt-get update && apt-get install -y --no-install-recommends xz-utils; }
@@ -54,7 +54,7 @@ export PATH="/usr/local/bin:$PATH"
 hash -r
 
 # renovate: datasource=github-releases depName=errata-ai/vale
-VALE_VERSION="3.24.0"
+VALE_VERSION="3.25.1"
 VALE_SHA256="867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
@@ -65,7 +65,7 @@ if ! command -v vale >/dev/null 2>&1; then
 fi
 
 # renovate: datasource=github-releases depName=cli/cli
-GH_VERSION="2.103.0"
+GH_VERSION="2.103.3"
 GH_SHA256="fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786"
 if ! command -v gh >/dev/null 2>&1; then
   cd /tmp
