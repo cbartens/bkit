@@ -11,6 +11,7 @@ import {
   checkNamespace,
   ciDispatchGate,
   mirrorPushRun,
+  parseCiReference,
   pollOnce,
   repoScopedGh,
   runsCommand,
@@ -38,6 +39,34 @@ useGateRunner();
 
 const dirs: string[] = [];
 const restoreEnv: Array<() => void> = [];
+describe("Markdown CI references", () => {
+  it.each([
+    ["actions/runs/123", { kind: "run", repo: "example/repo", id: "123" }],
+    ["actions/runs/123/attempts/2", { kind: "run", repo: "example/repo", id: "123", attempt: 2 }],
+    ["pull/456", { kind: "pr", repo: "example/repo", id: "456" }],
+  ])("preserves the identity of %s", (suffix, expected) => {
+    const url = `https://github.com/example/repo/${suffix}`;
+    for (const input of [url, `[run](${url})`, `[${url}](${url})`, `<${url}>`]) {
+      expect(parseCiReference(input)).toEqual(expected);
+    }
+  });
+
+  it("still rejects distinct run references in Markdown", () => {
+    const first = "https://github.com/example/repo/actions/runs/123";
+    const second = "https://github.com/example/repo/actions/runs/124";
+    expect(() => parseCiReference(`[${first}](${first}) [${second}](${second})`)).toThrow(
+      "multiple run references were supplied",
+    );
+  });
+
+  it("still rejects malformed IDs and attempts inside links", () => {
+    for (const suffix of ["abc", "123/attempts/nope"]) {
+      const url = `https://github.com/example/repo/actions/runs/${suffix}`;
+      expect(() => parseCiReference(`[${url}](${url})`)).toThrow(/invalid run/);
+    }
+  });
+});
+
 afterEach(() => {
   for (const r of restoreEnv.splice(0).reverse()) r();
   for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
