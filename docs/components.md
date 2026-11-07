@@ -104,7 +104,7 @@ The [host and provider catalog](../.bkit/providers.md) owns the detailed support
 
 ## Component map
 
-This single chart combines the lifecycle, supporting responsibilities, delivery roles and host/provider support. Solid arrows show the main handoffs; dotted arrows show supporting relationships. The lifecycle allows direct entry at the appropriate phase.
+This single chart combines the lifecycle, supporting responsibilities, delivery roles and support for hosts and providers. Solid arrows show the main handoffs; dotted arrows show supporting relationships. The lifecycle allows direct entry at the appropriate phase.
 
 ```mermaid
 flowchart LR

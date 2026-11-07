@@ -650,11 +650,9 @@ Issues are the first input every workflow reads. There is one form per way work 
 
 ## Component map — purpose and responsibilities
 
-Copy `.bkit/templates/docs/components.md` to `docs/components.md`, remove the example introduction, then replace the body from `## Repository purpose` onward with the project's purpose, component diagram, responsibility table and main journeys. Keep the rules header. Register the document under `Project Documents` in `.agents/docs.md`, with conditional reads for Design, Plan, Build, Debug and Ship.
+Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, worked examples, document registration and completion checks.
 
-Group by purpose rather than directories or deployment units. Reference `docs/capabilities.md` when present for implementation ownership and drift; the two views need no matching names, counts or boundaries. Link to `docs/architecture.md` for implementation topology and to `floorplan/` when the project has an interactive code map. Neither graphify nor Floorplan is required.
-
-The adopted document is maintained by the project. Update it when responsibilities or main journeys change. Installation and upgrades refresh the template source without overwriting the adopted document. Keep current behavior separate from planned scope, proposals and later candidates.
+The project owns the populated document. Installation and upgrades refresh the template source without overwriting the adopted copy. Neither graphify nor Floorplan is required; the template's rules header defines the boundaries between the purpose-based overview and other documentation.
 
 ## graphify — map
 
