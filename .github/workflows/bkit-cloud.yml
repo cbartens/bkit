@@ -192,11 +192,15 @@ jobs:
       # node_modules/.bin/bkit absent: the gate reports bkit-unavailable and starts nothing.
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
+      # Both tooling steps are `continue-on-error`: a missing packageManager / lockfile or a failed
+      # download leaves bkit absent, and the gate then reports bkit-unavailable (green, nothing starts).
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -222,7 +226,11 @@ jobs:
           BKIT_OPENAI_API_KEY: ${{ secrets.BKIT_OPENAI_API_KEY }}
           HEAD_DIR: pr-head
         run: |
-          AGENT=$(jq -r '.bkit.cloud.agent // empty | strings' "${HEAD_DIR:-.}/package.json" 2>/dev/null || true)
+          # Routing config (`bkit.cloud.agent`) comes from the `dev` checkout (workspace root), never
+          # from the feat/** head: a branch cut before `bkit install --auto=` still dispatches,
+          # and the agent set on `dev` reaches in-flight branches. Only the five known values pass.
+          AGENT=$(jq -r '.bkit.cloud.agent // empty | strings' package.json 2>/dev/null || true)
+          case "$AGENT" in claude|opencode|codex|cursor|none) ;; *) AGENT="" ;; esac
           AGENT="${AGENT:-none}"
           claude=false
           opencode=false
@@ -303,6 +311,18 @@ jobs:
           # bkit runs from the dev checkout (workspace root) against the data in HEAD_DIR.
           HEAD_DIR="${HEAD_DIR:-.}"
           BKIT_BIN="$PWD/node_modules/.bin/bkit"
+          # Routing config (`bkit.cloud`, `bkit.tracker`) is read from `dev`: overlay it onto the
+          # throwaway head checkout so bkit run there reads the same copy.
+          if [ "$HEAD_DIR" != "." ] && [ -f package.json ] && [ -f "$HEAD_DIR/package.json" ]; then
+            if jq -s '.[1] as $r | .[0] | .bkit = ((.bkit // {}) | del(.cloud, .tracker)
+              + (if ($r.bkit.cloud // null) != null then {cloud: $r.bkit.cloud} else {} end)
+              + (if ($r.bkit.tracker // null) != null then {tracker: $r.bkit.tracker} else {} end))' \
+              "$HEAD_DIR/package.json" package.json > "$HEAD_DIR/package.json.route" 2>/dev/null; then
+              mv "$HEAD_DIR/package.json.route" "$HEAD_DIR/package.json"
+            else
+              rm -f "$HEAD_DIR/package.json.route"
+            fi
+          fi
           bkit_cli() { (cd "$HEAD_DIR" && "$BKIT_BIN" "$@"); }
           if [ "$EVENT" = "workflow_dispatch" ]; then
             # Dispatched: phase + issue come straight from inputs.
