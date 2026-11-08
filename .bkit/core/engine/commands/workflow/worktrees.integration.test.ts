@@ -11,7 +11,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
-import { ownershipMarker, worktreesCommand } from "./worktrees";
+import { ownershipMarker, rebaseNoteFile, worktreesCommand } from "./worktrees";
 
 /**
  * Filesystem refusals on demand: `symlink` refuses every symlink (Windows without
@@ -431,7 +431,9 @@ describe("bkit worktrees setup — mint (resume)", () => {
       const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
       expect(r.json.sentinel).toBe(path.join(logDir, ".rebase-failed"));
       expect(fs.existsSync(r.json.sentinel)).toBe(true);
-      expect(fs.readFileSync(path.join(logDir, "rebase-resolve-log.md"), "utf-8")).toContain(
+      // Held outside the tree until `branches rebase` writes the run's log.
+      expect(fs.existsSync(path.join(logDir, "rebase-resolve-log.md"))).toBe(false);
+      expect(fs.readFileSync(rebaseNoteFile(wtOf(f))!, "utf-8")).toContain(
         "rebase onto origin/dev stopped",
       );
       expect(git(wtOf(f), "diff", "--name-only", "--diff-filter=U")).toBe("a.txt");
@@ -457,6 +459,39 @@ describe("bkit worktrees setup — mint (resume)", () => {
       const after = await setup(f.repo, workflow, "--worktrees");
       expect(after.code).toBe(0);
       expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
+    },
+  );
+
+  it.each(["build", "plan", "design"])(
+    "%s: a branch that tracks its rebase log can continue the paused rebase",
+    async (workflow) => {
+      const f = await minted(workflow);
+      const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
+      const log = path.join(logDir, "rebase-resolve-log.md");
+      fs.writeFileSync(log, "earlier run\n");
+      git(wtOf(f), "add", log);
+      git(wtOf(f), "commit", "-q", "-m", "an earlier run's log");
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "feature\n");
+      git(wtOf(f), "commit", "-q", "-am", "feature edit");
+      advanceDev(f, "a.txt", "dev\n");
+
+      const r = await setup(f.repo, workflow, "--worktrees");
+      expect(r.code).toBe(3);
+      // Only the conflict: no tracked file changed while the rebase is paused.
+      expect(git(wtOf(f), "status", "--porcelain", "--untracked-files=no")).toBe("UU a.txt");
+      expect(fs.readFileSync(log, "utf-8")).toBe("earlier run\n");
+      const again = await setup(f.repo, "debug", "--worktrees");
+      expect(again.code).toBe(3);
+      expect(git(wtOf(f), "status", "--porcelain", "--untracked-files=no")).toBe("UU a.txt");
+
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "resolved\n");
+      git(wtOf(f), "add", "a.txt");
+      const cont = spawnSync("git", ["-c", "core.editor=true", "rebase", "--continue"], {
+        cwd: wtOf(f),
+        encoding: "utf-8",
+      });
+      expect(cont.stderr).not.toContain("You must edit all merge conflicts");
+      expect(cont.status).toBe(0);
     },
   );
 
