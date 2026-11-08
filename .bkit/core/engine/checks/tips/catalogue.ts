@@ -482,11 +482,10 @@ export const SETUP_TIPS: readonly SetupTip[] = [
   {
     id: "share-friction",
     title: "Tell bkit what slowed you down",
-    line: "Your workflows have noted problems with bkit itself that its makers never see. Send them, with your stats, as one issue on bkit's issue page.",
+    line: "Your workflows logged problems its makers never see. Send them with your stats as one issue.",
     why: "Workflows note every place bkit got in the way: a command that failed, rework, a manual step. Those notes stay in this repo, so the people who fix bkit never learn about them. One report from you is how they reach the fix list.",
-    caution:
-      "bkit's issue page is public. Your agent removes project names, paths and links first, and shows you the exact text before anything is posted.",
-    ask: "Share this repo's bkit friction and stats with bkit's makers as one new issue: follow the paste block in .bkit/README.md § Share friction with bkit, show me the exact title and text, and post only after I say yes.",
+    caution: "bkit's issues are public. Your agent strips project names, paths and links first.",
+    ask: "Share this repo's bkit friction and stats as one issue per .bkit/README.md § Share friction with bkit. Show me the exact text; post only after I say yes.",
     steps: "`.bkit/README.md` § Share friction with bkit.",
     fires: hasUnsharedFriction,
   },
