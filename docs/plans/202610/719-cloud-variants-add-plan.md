@@ -987,7 +987,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
+- [x] **TASK 16:** Shipped docs under `.bkit/core/.bkit/`
   - **UPDATE:** `.bkit/core/.bkit/cloud.md`: Purpose + support matrix one row per agent, no tracker columns (`:20-35`); § Reactive comment handlers `:46` and § Post-CI auto-routing (`:471-519`: § What lives where (post-CI half) routing rows `:482-483`, § bkit-cloud.yml — required GitHub repo credentials table `:503` and its "GitHub-tracker only" sentence `:519`) — one agent per run, codex row, `BKIT_` credentials table incl. tracker keys, GitHub-tracker-only text removed; § Routing decision tracker-neutral; troubleshooting `verdict` / `reason` → cause → action incl. codex summary line; codex runner notes (unguarded diffs, `drop-sudo`, Node 24); session guard per tracker, no-id sessions unguarded, Codex Cloud unguarded; Linear / Jira router dispatch, the codex router job and the Cursor Jira guard (bin present at `sessionStart`) "not yet verified live" (`719-live-checks-deferred-to-owner-use`)
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: `preflight-linear.sh` row (`:307`) → `preflight-tracker.sh`; Codex rows (`--auto=codex`, router job)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Cloud-agent workflow — `bkit-cloud.yml` (`:243`) secrets bullets `Secrets for claude` (`:254`) and `Secrets for opencode` (`:255`) to the `BKIT_` names, plus a codex bullet
