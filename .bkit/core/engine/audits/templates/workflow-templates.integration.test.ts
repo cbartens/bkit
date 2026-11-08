@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 
 describe("bkit-cloud.yml template — GitHub-only content", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
@@ -42,6 +43,30 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
       expect(step).toContain(`${name}: \${{ secrets.${name} }}`);
     }
     expect(yml).not.toContain("OPENCODE_PROVIDER_KEY");
+  });
+
+  it("context checkout ref is the workflow_run head branch on feat/** and dev for dev runs and workflow_dispatch", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };
+    };
+    const checkout = doc.jobs.context.steps.find((st) => st.uses?.startsWith("actions/checkout@"));
+    expect(checkout, "context job has no actions/checkout step").toBeDefined();
+    const ref = String(checkout!.with!.ref);
+    const expr = /^\$\{\{([\s\S]*)\}\}$/.exec(ref.trim())?.[1];
+    expect(expr, `ref is not a single expression: ${ref}`).toBeDefined();
+    const evaluate = (eventName: string, headBranch: string | undefined): unknown => {
+      const github = {
+        event_name: eventName,
+        event: { workflow_run: { head_branch: headBranch } },
+      };
+      const startsWith = (a: unknown, b: unknown) => String(a).startsWith(String(b));
+      return new Function("github", "startsWith", `return (${expr});`)(github, startsWith);
+    };
+    expect(evaluate("workflow_run", "feat/363-widen-bkit-cloud-trigger")).toBe(
+      "feat/363-widen-bkit-cloud-trigger",
+    );
+    expect(evaluate("workflow_run", "dev")).toBe("dev");
+    expect(evaluate("workflow_dispatch", undefined)).toBe("dev");
   });
 
   it("claude step passes the four workload identity federation inputs from repo variables", () => {
