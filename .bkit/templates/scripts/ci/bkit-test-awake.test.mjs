@@ -33,10 +33,11 @@ function cancellationFixture(t, command) {
     const file = (name) => path.join(__dirname, name);
     for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"])
       process.on(signal, () => fs.writeFileSync(file("cancelled"), signal));
-    fs.writeFileSync(file("ready"), JSON.stringify({
+    fs.writeFileSync(file("ready.tmp"), JSON.stringify({
       pid: process.pid,
       owner: Number(process.env.LOCAL_STACK_LOCK_OWNER_awake || 0),
     }));
+    fs.renameSync(file("ready.tmp"), file("ready"));
     setInterval(() => {
       if (fs.existsSync(file("release"))) {
         fs.writeFileSync(file("finished"), "done");
