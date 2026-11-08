@@ -434,20 +434,28 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(verdictRow(result.summary, "label-absent")).toBe(true);
     });
 
-    it.each([
-      ["linear", "<!-- bkit:issue=BAR-123 bkit:fid=bar-123-auth -->", "feat/bar-123-auth"],
-      ["jira", "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->", "feat/ab2-12-login-retry"],
-    ])("%s recorded fetch reply carrying bkit:auto passes the gate", (tracker, marker, branch) => {
-      setTracker(tracker);
-      const result = featRun(
-        { STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: recorded(["bkit:auto"]) },
-        marker,
-        branch,
-      );
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.outputs.skip).toBe("false");
-      expect(result.outputs.phase).toBe("debug");
-      expect(result.stdout).not.toContain("serves the GitHub tracker only");
+    it("%s recorded fetch reply carrying bkit:auto passes the gate", () => {
+      const cases: Array<[string, string, string]> = [
+        ["linear", "<!-- bkit:issue=BAR-123 bkit:fid=bar-123-auth -->", "feat/bar-123-auth"],
+        [
+          "jira",
+          "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+          "feat/ab2-12-login-retry",
+        ],
+      ];
+      for (const [tracker, marker, branch] of cases) {
+        const ctx = `case ${tracker}`;
+        setTracker(tracker);
+        const result = featRun(
+          { STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: recorded(["bkit:auto"]) },
+          marker,
+          branch,
+        );
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("false");
+        expect(result.outputs.phase, ctx).toBe("debug");
+        expect(result.stdout, ctx).not.toContain("serves the GitHub tracker only");
+      }
     });
 
     it("jira marker AB2-12 dispatches", () => {
@@ -482,37 +490,41 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(verdictRow(result.summary, "unreadable")).toBe(true);
     });
 
-    it.each([["network"], ["not-found"]])(
-      "exit 80 reason=%s is unreadable with that reason and exits green",
-      (reason) => {
+    it("exit 80 reason=%s is unreadable with that reason and exits green", () => {
+      for (const reason of ["network", "not-found"]) {
+        const ctx = `reason ${reason}`;
         const result = featRun({
           STUB_FETCH_EXIT: "80",
           STUB_FETCH_OUT: JSON.stringify({ reason }),
         });
-        expect(result.status, result.stderr).toBe(0);
-        expect(result.outputs.skip).toBe("true");
-        expect(result.outputs.phase).toBeUndefined();
-        expect(result.stdout).toContain("unreadable");
-        expect(result.stdout).toContain(reason);
-        expect(result.stdout).not.toContain("label-absent");
-        expect(verdictRow(result.summary, "unreadable")).toBe(true);
-        expect(result.summary).toContain(reason);
-        expect(verdictRow(result.summary, "label-absent")).toBe(false);
-      },
-    );
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("true");
+        expect(result.outputs.phase, ctx).toBeUndefined();
+        expect(result.stdout, ctx).toContain("unreadable");
+        expect(result.stdout, ctx).toContain(reason);
+        expect(result.stdout, ctx).not.toContain("label-absent");
+        expect(verdictRow(result.summary, "unreadable"), ctx).toBe(true);
+        expect(result.summary, ctx).toContain(reason);
+        expect(verdictRow(result.summary, "label-absent"), ctx).toBe(false);
+      }
+    });
 
-    it.each([
-      ["empty", ""],
-      ["non-array", JSON.stringify({ title: "t", labels: "bkit:auto" })],
-    ])("%s fetch output is unreadable reason=output-unparseable", (_name, out) => {
-      const result = featRun({ STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: out });
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.outputs.skip).toBe("true");
-      expect(result.outputs.phase).toBeUndefined();
-      expect(result.stdout).toContain("output-unparseable");
-      expect(verdictRow(result.summary, "unreadable")).toBe(true);
-      expect(verdictRow(result.summary, "label-absent")).toBe(false);
-      expect(verdictRow(result.summary, "pass")).toBe(false);
+    it("%s fetch output is unreadable reason=output-unparseable", () => {
+      const cases: Array<[string, string]> = [
+        ["empty", ""],
+        ["non-array", JSON.stringify({ title: "t", labels: "bkit:auto" })],
+      ];
+      for (const [name, out] of cases) {
+        const ctx = `case ${name}`;
+        const result = featRun({ STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: out });
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("true");
+        expect(result.outputs.phase, ctx).toBeUndefined();
+        expect(result.stdout, ctx).toContain("output-unparseable");
+        expect(verdictRow(result.summary, "unreadable"), ctx).toBe(true);
+        expect(verdictRow(result.summary, "label-absent"), ctx).toBe(false);
+        expect(verdictRow(result.summary, "pass"), ctx).toBe(false);
+      }
     });
 
     it("absent node_modules/.bin/bkit warns bkit unavailable and exits green", () => {

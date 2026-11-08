@@ -21,3 +21,6 @@ WROTE — TASK 8: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration
 WROTE — TASK 8: `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `context checkout ref is the workflow_run head branch on feat/** and dev for dev runs and workflow_dispatch`
 WROTE — TASK 9: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `pass row's jobs field names codex:BKIT_OPENAI_API_KEY and the ignored claude job with its reason`
 WROTE — TASK 9: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `no-agent row's jobs field names the recorded agent's missing BKIT_ secret and the ignored secrets`
+WROTE — TASK 8: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `%s recorded fetch reply carrying bkit:auto passes the gate`
+WROTE — TASK 8: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `exit 80 reason=%s is unreadable with that reason and exits green`
+WROTE — TASK 8: `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `%s fetch output is unreadable reason=output-unparseable`
