@@ -22,7 +22,6 @@ None. (Post-merge housekeeping from the sweep: close deferral `397-dual-agent-sa
 
 ## Attempt History
 
-<!-- prettier-ignore -->
 | Strategy | What was tried | Why it failed |
 | --- | --- | --- |
 | STANDARD | Ship Step 5 Deferred Sweep (read-only audit) | FAIL: 2 blocking deferrals (lost assertions). No ship-failure-diagnose or remediate attempts exist. |

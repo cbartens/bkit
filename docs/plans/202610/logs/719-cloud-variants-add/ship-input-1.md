@@ -8,7 +8,6 @@
 
 `bkit install --auto=<variant>` turns on cloud agents. Codex is not a variant, and each variant only installs with one tracker:
 
-<!-- prettier-ignore -->
 | Where | What it does |
 | --- | --- |
 | `.bkit/core/engine/install/manifest.ts:104` | `CLOUD_MODES` is `["claude","cursor","opencode","none"]`, so `--auto=codex` is rejected and `bkit.cloud.agent` cannot record codex |
