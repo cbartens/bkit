@@ -30,6 +30,7 @@ _(refreshed 2026-11-08T00:51:36Z)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
@@ -46,6 +47,7 @@ _(refreshed 2026-11-08T00:51:36Z)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
+| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 
 ### Build
 
