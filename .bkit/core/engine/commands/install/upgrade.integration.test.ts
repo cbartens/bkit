@@ -2351,3 +2351,44 @@ describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
     expect(runCli(["check"]).status).toBe(0);
   });
 });
+
+describe("#892 — upgrade replaces the old sample config names", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade replaces the old sample config names", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.writeFileSync(path.join(templates, ".prettierignore"), "node_modules/\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(templates, "prettierignore.example"), { force: true });
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    expect(fs.existsSync(path.join(templates, ".lintstagedrc.json"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, ".prettierignore"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, "lintstagedrc.example.json"))).toBe(true);
+    expect(fs.existsSync(path.join(templates, "prettierignore.example"))).toBe(true);
+    expect(runCli(["check"]).status).toBe(0);
+  });
+});
