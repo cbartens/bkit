@@ -946,7 +946,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Router secret findings per variant, renamed-secret guard, dashboards text (`719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`)
+- [x] **TASK 14:** Router secret findings per variant, renamed-secret guard, dashboards text (`719-router-secret-findings-per-variant`, `719-router-secret-rename-detect-only`)
   - **UPDATE:** `detectCiRouterSecrets` in `.bkit/core/engine/checks/after/auth.ts`: reads `cloud.agent`, tracker and opencode provider via `readBkitConfig(cwd)`; Anthropic findings (`anthropic-api-key-secret-missing`, `-shadows-federation`, `-federation-template-stale`) only for claude under `BKIT_ANTHROPIC_API_KEY`; `cloud-router-tracker-secret-missing`; `codex-api-key-secret-missing`; `cloud-router-secret-renamed` (legacy `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` present, `BKIT_` twin absent; action inlines `gh secret set <BKIT_NAME>` + `gh secret delete <legacy>`); every secret finding keyed on the names the adopted `.github/workflows/bkit-cloud.yml` reads (`secrets.BKIT_` content sniff, the `buildCloudSetupAdvisory` pattern): a legacy copy gets its findings under the legacy names and no rename finding (`719-router-secret-rename-detect-only`); docblock drops "GitHub-tracker only"
   - **UPDATE:** `buildCloudDashboardsAdvisory` in `.bkit/core/engine/checks/after/auth.ts`: router section names the recorded variant's `BKIT_` secret (opencode: `OPENCODE_PROVIDER_DEFAULTS[provider].envVar`)
   - **UPDATE:** `.bkit/core/engine/checks/after/auth.test.ts`: `detectCiRouterSecrets` (`:163-260`, `mockGhNames`) and dashboards (`:261-300`) cases to the `BKIT_` names

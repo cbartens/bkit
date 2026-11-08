@@ -352,6 +352,7 @@ export function buildGithubProjectTokenScopeAdvisory(cwd) {
  *   - router present, linear / jira, copy says it serves GitHub only → `cloud-router-tracker-stale`
  *   - router present, `cloud.agent` codex, no `openai/codex-action`   → `cloud-router-codex-missing`
  *   - router present, `cloud.agent` absent                            → `cloud-router-agent-unset`
+ *   - router present, `cloud.agent` none / cursor                     → `cloud-router` (router starts nothing)
  *   - router present otherwise                                        → `cloud-router` (informational)
  *   - `bkit.cloud.agent === "none"` (explicit)                        → null (opt-out — stay quiet)
  *   - otherwise (undecided)                                           → `cloud-router-none` (nudge)
@@ -396,6 +397,14 @@ export function buildCloudSetupAdvisory(cwd) {
                 severity: "advisory",
                 detect: "`.github/workflows/bkit-cloud.yml` is present but `bkit.cloud.agent` is not recorded, so the router cannot tell which agent job to start.",
                 action: "Record the variant: `pnpm bkit install --auto=claude`, `--auto=opencode` or `--auto=codex` (the agent whose credential you set).",
+            };
+        }
+        if (cloudAgents === "none" || cloudAgents === "cursor") {
+            return {
+                id: "cloud-router",
+                severity: "advisory",
+                detect: `\`.github/workflows/bkit-cloud.yml\` is present but \`bkit.cloud.agent\` is \`${cloudAgents}\`: the router starts no agent job for \`${cloudAgents}\`, so CI results dispatch nothing.`,
+                action: "Record the agent whose credential you set: `pnpm bkit install --auto=claude`, `--auto=opencode` or `--auto=codex`.",
             };
         }
         const claude = cloudAgents === "claude";

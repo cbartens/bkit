@@ -175,7 +175,7 @@ flowchart LR
   n_bkit_core_engine_commands -->|379| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|204| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|172| n_bkit_core_engine_shared
-  n_bkit_core_engine_checks -->|132| n_bkit_core_engine_shared
+  n_bkit_core_engine_checks -->|138| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|83| n_bkit_core_engine_checks
   n_bkit_core_engine_install -->|64| n_bkit_core_engine_render
   n_bkit_core_engine_checks -->|56| n_bkit_core_engine_install
