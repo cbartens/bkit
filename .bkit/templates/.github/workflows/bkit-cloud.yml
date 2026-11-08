@@ -163,8 +163,8 @@ jobs:
       # SHA pins in this file — your updater refreshes them in your copy (keep this file out
       # of renovate.json5 `ignorePaths`); `bkit upgrade` lists this template when bkit's pins move.
       # Two checkouts. `pr-head` is DATA only: a feat/** run checks out the PR head branch
-      # (its `package.json` config, `status.jsonl` and `.bkit/issues.jsonl` feature rows are
-      # what the router reads); a dev run and a workflow_dispatch check out `dev` there. The
+      # (its `status.jsonl` and `.bkit/issues.jsonl` feature rows are what the router
+      # reads; `bkit.cloud` and `bkit.tracker` come from the `dev` checkout); a dev run and a workflow_dispatch check out `dev` there. The
       # workspace root is always `dev`: bkit is installed and run from it, so a branch
       # pushed by an agent session cannot change the code that decides the `bkit:auto` kill
       # switch, and the dev arm commits its dispatch-cap counter row there.

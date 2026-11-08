@@ -1096,7 +1096,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 25 start -->
 
-- [ ] **TASK 25:** A consumer whose repo has no `packageManager` field or no `pnpm-lock.yaml` (or any run where the pnpm download or the pnpm cache restore fails) gets a red context job instead of the documented green `bkit-unavailable` no-op: `pnpm/action-setup` and `actions/setup-node` (`cache: pnpm`) sit before `Install bkit` without `continue-on-error`, so they abort the job before the gate can report anything
+- [x] **TASK 25:** A consumer whose repo has no `packageManager` field or no `pnpm-lock.yaml` (or any run where the pnpm download or the pnpm cache restore fails) gets a red context job instead of the documented green `bkit-unavailable` no-op: `pnpm/action-setup` and `actions/setup-node` (`cache: pnpm`) sit before `Install bkit` without `continue-on-error`, so they abort the job before the gate can report anything
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:195` · **Round:** 2
   - **DONE WHEN:** a failure in any context-job tooling step before `Install bkit` (`pnpm/action-setup` `:195`, `actions/setup-node` `:198`) leaves the job running, so `bkit_gate` emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` plus its summary row, no agent starts and the run is green, matching plan § Breaking Changes and `docs/observability.md:190`; the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
   - **TEST FIRST:**
