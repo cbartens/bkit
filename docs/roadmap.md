@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-08T10:57:52Z)_
+_(refreshed 2026-11-08T13:07:27Z)_
 
 ### Design
 
@@ -47,6 +47,7 @@ _(refreshed 2026-11-08T10:57:52Z)_
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 864-move-project-docs | 864-move-project-docs | 1794046674228 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
 
 ### Build
 
