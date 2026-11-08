@@ -1,5 +1,5 @@
 Problems: 0
-Existence: 2
+Existence: 0
 
 <!-- verdict:end -->
 
@@ -54,20 +54,4 @@ None.
 
 ## Existence (reported only)
 
-- `docs/plans/202610/719-cloud-variants-add-plan.md:657` — TASK 2: `.bkit/core/hooks/preflight-linear.sh` does not exist
-- `docs/plans/202610/719-cloud-variants-add-plan.md:740` — TASK 6: `validateCloudTrackerMatch` is not in `.bkit/core/engine/commands/install/install.ts`
-
-## Planned test names already in use (reported only)
-
-- `docs/plans/202610/719-cloud-variants-add-plan.md:660` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github issue without bkit:auto stops the Cursor background session" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:660` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github closed issue stops the session and an open labelled one passes" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:660` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "github read failure stops the session naming the tracker and the reason" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:660` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "linear completed state renamed Shipped stops the session" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:660` TASK 2: `.bkit/core/engine/audits/hooks/preflight-sh.integration.test.ts` already holds a test named "generated Claude and Cursor hooks carry the one preflight-tracker.sh part" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.test.ts` already holds a test named "validateCloudTrackerWired passes %s with %s" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.test.ts` already holds a test named "validateCloudTrackerWired refuses tracker none naming --tracker=" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.integration.test.ts` already holds a test named "--auto=codex without .codex/ exits 1 naming --codex and writes nothing" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.integration.test.ts` already holds a test named "--tracker=jira --codex --auto=codex exits 0 and records codex" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.integration.test.ts` already holds a test named "--tracker=github --auto=cursor exits 0 and records cursor" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:749` TASK 6: `.bkit/core/engine/commands/install/install.integration.test.ts` already holds a test named "--tracker=github --opencode --auto=opencode in one run exits 0 and records opencode" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202610/719-cloud-variants-add-plan.md:766` TASK 19: `.bkit/core/engine/commands/install/install.integration.test.ts` already holds a test named "--tracker=jira --codex --auto=codex exits 0 and records codex" — name the update to it in TEST FIRST, or give the new test a new name
+None.
