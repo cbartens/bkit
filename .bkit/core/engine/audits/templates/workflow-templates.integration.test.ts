@@ -86,12 +86,17 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
 
   it("every job's runs-on is the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
     const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
-    expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
+    expect(runsOn).toEqual([
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+    ]);
   });
 
-  it("one context job resolves phase + arg; both runner jobs need it and read its outputs", () => {
+  it("one context job resolves phase + arg; every runner job needs it and read its outputs", () => {
     expect(yml.match(/- name: Resolve phase \+ brief context/g)).toHaveLength(1);
-    expect(yml.match(/^ {4}needs: context$/gm)).toHaveLength(2);
+    expect(yml.match(/^ {4}needs: context$/gm)).toHaveLength(3);
     expect(yml).toContain(
       "if: needs.context.outputs.claude == 'true' && needs.context.outputs.skip != 'true'",
     );
@@ -323,7 +328,9 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
 
   it("(1c) the FID/ISSUE extraction lines exit 0 under set -euo pipefail on an empty parse and read a recorded parse (real-tool validation)", () => {
     const canonical = readBkitCloudYml();
-    const block = canonical.slice(canonical.indexOf("# SHARED-DERIV:"));
+    // The feat/** arm reads the marker + branch parse (`.fid` / `.issueId`); the dev arm above
+    // it reads `.fidNamed` from the subject parse.
+    const block = canonical.slice(canonical.indexOf("# feat/** pre-merge path"));
     const fidLine = block.match(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
     const issueLine = block.match(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
     const run = (parsed: string) =>

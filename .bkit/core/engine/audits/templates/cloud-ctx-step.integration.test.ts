@@ -187,7 +187,27 @@ interface RunResult {
   summary: string;
 }
 
+/**
+ * The dev arm names the FID through `bkit fids parse --prompt-file` (a `logs/{FID}/` folder) and
+ * takes the issue from the FID's feature row in `.bkit/issues.jsonl`. A dev run whose subject
+ * scopes a slug-shaped FID gets both, unless the test seeded its own `.bkit/issues.jsonl`.
+ */
+function seedDevFeature(workspaceDir: string, subject: string): void {
+  const fid = /^\w+\(([a-z0-9][a-z0-9-]*)\):/.exec(subject.split("\n")[0] ?? "")?.[1];
+  if (!fid) return;
+  if (statusDirs(workspaceDir, fid).length === 0) {
+    fs.mkdirSync(path.join(workspaceDir, "docs/plans/202611/logs", fid), { recursive: true });
+  }
+  const rows = path.join(workspaceDir, ".bkit/issues.jsonl");
+  if (fs.existsSync(rows)) return;
+  fs.mkdirSync(path.dirname(rows), { recursive: true });
+  fs.writeFileSync(rows, JSON.stringify({ schema: 2, kind: "feature", key: fid }) + "\n");
+}
+
 function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
+  if (env.BRANCH === "dev" && env.COMMIT_MSG !== undefined) {
+    seedDevFeature(fixture.workspaceDir, env.COMMIT_MSG);
+  }
   const outputFile = path.join(fixture.workspaceDir, `.gh-output-${Math.random()}`);
   const summaryFile = path.join(fixture.workspaceDir, `.gh-summary-${Math.random()}`);
   fs.writeFileSync(outputFile, "");
@@ -347,7 +367,11 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   // -------------------------------------------------------------------------
   // T16 — dev-path FID recovery is shape-tolerant (GitHub + Linear slugs)
   // -------------------------------------------------------------------------
-  it("T16: a Linear-shaped commit scope (bar-123-slug) is admitted by the FID regex, not silently no-op'd on shape alone", () => {
+  it("T16: a Linear-shaped commit scope (bar-123-slug) under the linear tracker dispatches", () => {
+    fs.writeFileSync(
+      path.join(fixture.workspaceDir, "package.json"),
+      JSON.stringify({ name: "c", bkit: { tracker: { default: "linear" } } }),
+    );
     const result = runCtxStep(fixture, {
       EVENT: "workflow_run",
       CONCLUSION: "failure",
@@ -355,15 +379,24 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       COMMIT_MSG: "feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]",
       HEAD_SHA: "sha-linear",
       STUB_LATEST_CI_SHA: "sha-linear",
-      STUB_ISSUE_LABELS: "bkit:auto",
+      STUB_FETCH_EXIT: "0",
+      STUB_FETCH_OUT: JSON.stringify({
+        title: "t",
+        url: "u",
+        state: "In Progress",
+        labels: ["bkit:auto"],
+        terminal: false,
+        files: {},
+      }),
     });
     expect(result.outputs.skip).toBe("false");
     expect(result.outputs.arg).toBe("bar-123-auth");
   });
 
-  // Jira is local-only: a Jira key holding a digit (ab1-123-slug) matches neither cloud
-  // shape, so the dev arm no-ops on shape before any label check or counter write.
-  it("T16: a Jira-shaped commit scope with a digit in the key (ab1-123-slug) no-ops — no dispatch", () => {
+  // The tracker comes from package.json, never from the FID's shape: under the github tracker a
+  // Jira-shaped key (ab1-123-slug) has no issue id, so the gate stops before any counter write.
+  // Under jira the same shape dispatches (see the ab2-12 test below).
+  it("T16: a Jira-shaped commit scope under the github tracker has no issue — no dispatch", () => {
     const result = runCtxStep(fixture, {
       EVENT: "workflow_run",
       CONCLUSION: "failure",
@@ -768,10 +801,13 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       fs.writeFileSync(path.join(fixture.workspaceDir, "package.json"), text);
 
     it("refuses to dispatch uncounted when package.json cannot be read", () => {
+      // The engine cannot read the wired tracker from a broken package.json either, so the run
+      // stops before the cap read; either way nothing dispatches and no counter row is written.
       writePkg("{ broken");
       const result = devFailure("new-sha");
       expect(result.outputs.skip).toBe("true");
-      expect(`${result.stdout}${result.stderr}`).toContain("refusing to dispatch uncounted");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toEqual([]);
     });
 
     it("4 dev-dispatch rows with the SAME headSha count as ONE cycle — cap not tripped", () => {
@@ -806,7 +842,10 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       writePkg(
         JSON.stringify({
           name: "c",
-          bkit: { workflows: { debug: { fix: { maxAttempts: 1 }, soak: { maxAttempts: 0 } } } },
+          bkit: {
+            tracker: { default: "github" },
+            workflows: { debug: { fix: { maxAttempts: 1 }, soak: { maxAttempts: 0 } } },
+          },
         }),
       );
       seedDevDispatchRows(fixture.workspaceDir, fid, ["sha-1", "sha-2"]);
