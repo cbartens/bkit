@@ -1081,3 +1081,8 @@
 {"type":"owner-answer","workflow":"ship","at":"2026-11-08T20:49:52Z"}
 {"type":"engine-call","workflow":"ship","at":"2026-11-08T20:49:52Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
 {"type":"engine-call","workflow":"ship","at":"2026-11-08T20:50:06Z","noun":"branches","verb":"sync","flags":["merge","fid","file","sentinel"]}
+{"type":"engine-action","action":"merge","key":"merge/48ac5cf768aac0569be958fbcf78fc4bbd404378","hash":"54f2ab2604db7a39fd9e5148d78b5519eae8c1650d7a95afdfe47240f76b45ac","ref":"85d14ce4c662289dd389b41e318dbbff75ab680b","at":"2026-11-08T20:50:45Z"}
+{"type":"engine-call","workflow":"ship","at":"2026-11-08T20:51:01Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","commit","number","post","title"]}
+{"type":"engine-action","action":"comment","key":"ship/2/ship-failure-remediate/-/1/comment","hash":"7bba0ee6c0c3f22858dfdca6e2379da5c80ddf94e9bd6ee9634e355b280efbda","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6722081868","at":"2026-11-08T20:51:03Z"}
+{"type":"step-done","workflow":"ship","step":"ship-failure-remediate","status":"DONE","at":"2026-11-08T20:51:03Z","parentSha":"85d14ce4c662289dd389b41e318dbbff75ab680b","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/ship-failure-remediate-1-log.md"],"verdict":"PASS","attempt":1,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"ship","at":"2026-11-08T20:51:08Z","noun":"ledgers","verb":"commit","flags":["month","fid","scope","mode","stage-tracked-updates","message"]}
