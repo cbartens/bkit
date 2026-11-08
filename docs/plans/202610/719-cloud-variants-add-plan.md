@@ -926,7 +926,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Stale-router sniffs and per-variant router text (`719-router-stale-copy-detect-only`)
+- [x] **TASK 13:** Stale-router sniffs and per-variant router text (`719-router-stale-copy-detect-only`)
   - **UPDATE:** `buildCloudSetupAdvisory` in `.bkit/core/engine/checks/after/github.ts`: `cloud-router-tracker-stale` (adopted copy contains `serves the GitHub tracker only` under linear / jira), `cloud-router-codex-missing` (no `openai/codex-action` under `cloud.agent` codex); `cloud-router-agent-unset` (adopted copy present, `bkit.cloud.agent` absent; action inlines `bkit install --auto=<claude|opencode|codex>`; replaces the "active" `cloud-router` text, `:315-317`, `:346-352`, for that case; `719-router-agent-unset-detect-only`); precedence `cloud-claude-missing-id-token` → tracker-stale → codex-missing; id-token action = template re-copy + re-apply `runs-on` / `{{NODE_VERSION}}` (no `--tracker=github`); Jira early return removed; `cloud-router-none` tracker-neutral; `cloud-router` text (`:343-349`) per variant
   - **UPDATE:** `.bkit/core/engine/checks/after/github.test.ts`: describe `buildCloudSetupAdvisory` (`:286-365`) cases asserting the old text
   - **UPDATE:** `docs/migrations.md`: § Detect-only guards rows `cloud-router-tracker-stale`, `cloud-router-codex-missing`, `cloud-router-agent-unset`
