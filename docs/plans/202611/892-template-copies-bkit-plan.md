@@ -39,7 +39,7 @@ After `bkit upgrade`, the sample configs `.bkit/templates/.lintstagedrc.json` an
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Rename both sample configs, fix the tests that name the old paths, and add the regression tests
+- [x] **TASK 1:** Rename both sample configs, fix the tests that name the old paths, and add the regression tests
   - **CREATE:** `.bkit/templates/lintstagedrc.example.json`: the current `.lintstagedrc.json` bytes
   - **CREATE:** `.bkit/templates/prettierignore.example`: the current `.prettierignore` bytes
   - **DELETE:** `.bkit/templates/.lintstagedrc.json`: replaced by the example name
