@@ -504,6 +504,26 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(verdictRow(result.summary, "unreadable")).toBe(true);
     });
 
+    it("exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value", () => {
+      setTracker("jira");
+      const result = featRun(
+        {
+          STUB_FETCH_EXIT: "80",
+          STUB_FETCH_OUT: JSON.stringify({ reason: "auth" }),
+          BKIT_JIRA_API_KEY: "jira-secret-value",
+        },
+        "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+        "feat/ab2-12-login-retry",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.stdout).toContain("BKIT_JIRA_API_KEY");
+      expect(result.stdout).toContain("set but rejected");
+      expect(result.stdout).not.toContain("jira-secret-value");
+      expect(result.stderr).not.toContain("jira-secret-value");
+      expect(result.summary).not.toContain("jira-secret-value");
+    });
+
     it("exit 80 reason=%s is unreadable with that reason and exits green", () => {
       for (const reason of ["network", "not-found"]) {
         const ctx = `reason ${reason}`;
@@ -675,6 +695,23 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       expect(result.outputs.skip).toBe("true");
       expect(result.outputs.phase).toBeUndefined();
       expect(readStatusRows(fixture.workspaceDir, FID)).toEqual([]);
+    });
+
+    it("dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green", () => {
+      seedFeature(FID);
+      fs.rmSync(path.join(fixture.workspaceDir, "node_modules"), { recursive: true, force: true });
+      const result = devRun(`feat(${FID}): x bkit [auto route]`);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain(
+        "::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)",
+      );
+      expect(result.stdout).not.toContain("Cannot derive FID");
+      expect(result.summary).toMatch(/^\|.*\|\s*unreadable\s*\|\s*bkit-unavailable\s*\|/m);
+      expect(JSON.stringify(readStatusRows(fixture.workspaceDir, FID))).not.toContain(
+        "dev-dispatch",
+      );
     });
 
     it("dev arm passes the gate for a closed issue that still carries bkit:auto", () => {

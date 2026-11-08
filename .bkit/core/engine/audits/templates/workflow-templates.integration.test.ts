@@ -8,6 +8,29 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
+/** A step's directory with the workspace prefix and slashes stripped; "." when unset. */
+function normStepDir(v: unknown): string {
+  const dir = (typeof v === "string" ? v : ".")
+    .replace(/^\$\{\{\s*github\.workspace\s*\}\}\/?/, "")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+  return dir.length > 0 ? dir : ".";
+}
+
+/** Evaluates a checkout `ref` expression for a workflow_run event on the given head branch. */
+function evalCheckoutRef(ref: string, headBranch: string): unknown {
+  const expr = /^\$\{\{([\s\S]*)\}\}$/.exec(ref.trim())?.[1];
+  const github = {
+    event_name: "workflow_run",
+    event: { workflow_run: { head_branch: headBranch } },
+  };
+  const startsWith = (a: unknown, b: unknown) => String(a).startsWith(String(b));
+  return new Function("github", "startsWith", `return (${expr ?? JSON.stringify(ref)});`)(
+    github,
+    startsWith,
+  );
+}
+
 describe("bkit-cloud.yml template — GitHub-only content", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
@@ -70,6 +93,41 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     );
     expect(evaluate("workflow_run", "dev")).toBe("dev");
     expect(evaluate("workflow_dispatch", undefined)).toBe("dev");
+  });
+
+  it("context job installs and runs bkit from dev, never from the feat/** PR head", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: {
+        context: {
+          steps: Array<{
+            name?: string;
+            uses?: string;
+            "working-directory"?: string;
+            with?: Record<string, unknown>;
+          }>;
+        };
+      };
+    };
+    const steps = doc.jobs.context.steps;
+    const installIdx = steps.findIndex((st) => st.name === "Install bkit");
+    expect(installIdx, "context job has no Install bkit step").toBeGreaterThan(-1);
+    const installDir = normStepDir(steps[installIdx]!["working-directory"]);
+    const checkoutsBeforeInstall = steps
+      .slice(0, installIdx)
+      .filter((st) => st.uses?.startsWith("actions/checkout@"));
+    const intoInstallDir = checkoutsBeforeInstall.filter(
+      (st) => normStepDir(st.with?.path) === installDir,
+    );
+    expect(intoInstallDir.length, "no checkout feeds the Install bkit directory").toBeGreaterThan(
+      0,
+    );
+    const head = "feat/363-widen-bkit-cloud-trigger";
+    for (const co of intoInstallDir) {
+      expect(evalCheckoutRef(String(co.with?.ref), head)).toBe("dev");
+    }
+    // The checkout that populates the install directory last decides what runs; it resolves to dev.
+    const last = intoInstallDir[intoInstallDir.length - 1]!;
+    expect(evalCheckoutRef(String(last.with?.ref), head)).not.toBe(head);
   });
 
   it("claude step passes the four workload identity federation inputs from repo variables", () => {
