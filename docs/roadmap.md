@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-07T10:17:54Z)_
+_(refreshed 2026-11-08T00:51:36Z)_
 
 ### Design
 
@@ -55,12 +55,14 @@ _(refreshed 2026-11-07T10:17:54Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 826-append-routine-workflow | 826-append-routine-workflow | 1793921483594 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 
 ### Debug
 
-_(none)_
+<!-- prettier-ignore -->
+| FID | Title | Last-transition (ts) |
+| --- | --- | --- |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1794099096201 |
 
 ### Shipped _(last 10)_
 
