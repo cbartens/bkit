@@ -411,3 +411,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:22Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-branch-sync/-/-/comment","hash":"065df6723b1320c08facab84f7cec02250934e60bc0f68b7e80d9d5d28b4b0e2","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6716059111","at":"2026-11-08T02:15:23Z"}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-08T02:15:23Z","parentSha":"7a1bce82814985f4218cc19b0f8e9be0ced7344b","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:24Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:46Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:58Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","optional-artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-convert/-/1/comment","hash":"1fa0653a20627a2842072f352cc90a45ecfcc2659062cdd7bf2bc37f8a993a3d","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6716064858","at":"2026-11-08T02:15:59Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-08T02:15:59Z","parentSha":"3c561406dec04d605a27042811e374d9dc48507f","artifacts":["docs/plans/202610/719-cloud-variants-add-plan.md","docs/plans/202610/logs/719-cloud-variants-add/build-plan-check.md"],"attempt":1}
