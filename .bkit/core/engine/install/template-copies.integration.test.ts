@@ -85,7 +85,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".husky/pre-push",
       ".vale.ini",
       ".vale/styles/Bkit/LLMSlop.yml",
-      ".prettierignore",
+      "prettierignore.example",
       ".oxlintrc.json",
       ".envrc",
       ".cursor/Dockerfile",
