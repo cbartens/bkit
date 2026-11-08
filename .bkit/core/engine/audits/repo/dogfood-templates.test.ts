@@ -229,6 +229,13 @@ const ADOPTED: Record<string, Entry> = {
         with: "runs-on: ubuntu-latest",
         count: 3,
       },
+      {
+        kind: "placeholder",
+        what: "Node version from .nvmrc",
+        fill: "node-version: {{NODE_VERSION}}\n",
+        with: "node-version-file: .nvmrc\n",
+        count: 1,
+      },
     ],
   },
   ".github/workflows/bkit-health.yml": {

@@ -582,7 +582,17 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#501) bkit [auto route]",
         HEAD_SHA: headSha,
         STUB_LATEST_CI_SHA: headSha,
-        STUB_ISSUE_LABELS: "bkit:auto",
+        // The gate reads the label through bkit; a recorded reply keeps it independent of
+        // the package.json each cap test writes.
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: JSON.stringify({
+          title: "t",
+          url: "u",
+          state: "Todo",
+          labels: ["bkit:auto"],
+          terminal: false,
+          files: {},
+        }),
       });
     const writePkg = (text: string) =>
       fs.writeFileSync(path.join(fixture.workspaceDir, "package.json"), text);
@@ -676,6 +686,12 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   // -------------------------------------------------------------------------
   describe("feat/** path — FID recovery + cap exemption (T13, H1 regression)", () => {
     it("T13/H1: a marker-less feat/** PR recovers the FULL FID slug from the branch (not truncated to '363')", () => {
+      // The branch's issue id counts only when a feature row for it is logged.
+      fs.mkdirSync(path.join(fixture.workspaceDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, ".bkit/issues.jsonl"),
+        `${JSON.stringify({ kind: "feature", key: "363-widen-bkit-cloud-trigger" })}\n`,
+      );
       const result = runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
@@ -712,7 +728,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         });
         expect(result.status, `step aborted: ${result.stderr}`).toBe(0);
         expect(result.outputs.skip).toBe("true");
-        expect(result.stdout).toContain("Cannot derive FID/ISSUE for branch");
+        expect(result.stdout).toContain("no-issue");
       },
     );
 
@@ -747,7 +763,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): widen trigger bkit [auto route]",
         HEAD_SHA: "feat-sha-1",
         STUB_PR_NUMBER: "79",
-        STUB_PR_BODY: "<!-- bkit:issue=#363 --><!-- bkit:fid=363-widen-bkit-cloud-trigger -->",
+        STUB_PR_BODY: "<!-- bkit:issue=#363 bkit:fid=363-widen-bkit-cloud-trigger -->",
         STUB_ISSUE_LABELS: "bkit:auto",
       });
       expect(result.outputs.skip).toBe("false");
@@ -780,7 +796,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         path.join(dir, "status.jsonl"),
         rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
       );
-      git(ws, "add", "-A");
+      git(ws, "add", "docs");
       git(ws, "commit", "-qm", "build rows");
       git(ws, "push", "-q", "origin", BRANCH);
       git(ws, "checkout", "-q", "dev");
@@ -795,7 +811,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: `chore(${FID}): summary bkit [auto route]`,
         HEAD_SHA: "feat-sha-457",
         STUB_PR_NUMBER: "91",
-        STUB_PR_BODY: `<!-- bkit:issue=#457 --><!-- bkit:fid=${FID} -->`,
+        STUB_PR_BODY: `<!-- bkit:issue=#457 bkit:fid=${FID} -->`,
         STUB_ISSUE_LABELS: "bkit:auto",
       });
     }

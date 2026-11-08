@@ -15,12 +15,14 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     "utf-8",
   );
 
-  it("carries id-token: write, GitHub MCP only and no tracker sentinels", () => {
+  it("carries id-token: write, GitHub MCP only and the tracker read keys in the context step", () => {
     expect(yml).toContain("id-token: write");
-    expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
     expect(yml).not.toContain("mcp__linear__*");
-    expect(yml).not.toContain("BKIT_JIRA_API_KEY");
     expect(yml).not.toContain("mcp__jira__*");
+    const ctxStart = yml.indexOf("- name: Resolve phase + brief context");
+    for (const name of ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"]) {
+      expect(yml.indexOf(`${name}: \${{ secrets.${name} }}`)).toBeGreaterThan(ctxStart);
+    }
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
     expect(yml).toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/);
@@ -222,27 +224,17 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out).toMatch(/workflow_dispatch[\s\S]{0,400}bkit \[auto route\]/);
   });
 
-  it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
+  it("(c) the label gate is bkit_gate, defined after SHARED-DERIV and called on both arms; no gh issue view remains", () => {
     const out = rawTemplate;
-    // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
-    // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
-    expect(out).toContain('gh issue view "$ISSUE"');
-    // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
-    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
-    // SHARED-DERIV fallback sets ISSUE from FID (branch-derived numeric id): FID stays
-    // the FULL slug (shared status.jsonl key with the dev path) and the short ISSUE
-    // prefix is derived FROM it.
-    // `|| true` is required — on the fix/** arm this runs before the slug allowlist, so
-    // a non-FID branch yields no grep match and pipefail would kill the step.
-    expect(out).toContain(
-      "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
-    );
-    // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
-    // gh issue view must appear AFTER the SHARED-DERIV machinery (uses its output).
+    expect(out).not.toContain("gh issue view");
     const sharedDerivStart = out.indexOf("# SHARED-DERIV:");
     expect(sharedDerivStart).toBeGreaterThan(-1);
-    const ghIssueViewPos = out.indexOf('gh issue view "$ISSUE"');
-    expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
+    expect(out.indexOf("bkit_gate() {")).toBeGreaterThan(sharedDerivStart);
+    expect(out.match(/bkit_gate "\$ISSUE" \|\|/g)).toHaveLength(2);
+    // The feat arm recovers FID + issue through bkit, not a marker regex.
+    expect(out).toContain(
+      'node_modules/.bin/bkit fids parse --marker "$PR_BODY" --branch "$BRANCH" --json',
+    );
   });
 
   it("(c) the free-tier marker check lives in the context job's if: gate, which both runner jobs need", () => {
@@ -320,114 +312,41 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     expect(template).not.toContain("grep -oP");
   });
 
-  it("(1b) ISSUE assignment in canonical has || true failure guard (pipefail safety)", () => {
-    // Finding 1 (challenge-1): without || true, `set -euo pipefail` aborts the step
-    // when grep exits 1 on a no-match PR body, making fallback/fail-safe dead code.
-    // The ISSUE assignment must end with `|| true` so a no-match exits 0.
+  it("(1b) feat-arm FID/ISSUE parse lines in canonical and template carry a || true failure guard (pipefail safety)", () => {
+    for (const text of [readBkitCloudYml(), readBkitCloudTemplate()]) {
+      expect(text).toMatch(/PARSED=\$\(node_modules\/\.bin\/bkit fids parse[^\n]*\|\| true\)/);
+      expect(text).toMatch(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
+      expect(text).toMatch(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
+    }
+  });
+
+  it("(1c) the FID/ISSUE extraction lines exit 0 under set -euo pipefail on an empty parse and read a recorded parse (real-tool validation)", () => {
     const canonical = readBkitCloudYml();
-    // The form: grep -oE ... | sed ... | head -1 || true
-    expect(canonical).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
-  });
-
-  it("(1b) FID assignment in canonical has || true failure guard (pipefail safety)", () => {
-    const canonical = readBkitCloudYml();
-    expect(canonical).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
-  });
-
-  it("(1b) ISSUE assignment in template has || true failure guard (pipefail safety)", () => {
-    const template = readBkitCloudTemplate();
-    expect(template).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
-  });
-
-  it("(1b) FID assignment in template has || true failure guard (pipefail safety)", () => {
-    const template = readBkitCloudTemplate();
-    expect(template).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
-  });
-
-  it("(1c) SHARED-DERIV extraction snippet exits 0 under set -euo pipefail when PR body is empty (real-tool validation)", () => {
-    // Finding 1 (challenge-1): the original code aborted on empty PR body.
-    // This test extracts the actual ISSUE/FID assignment commands from the canonical
-    // workflow and executes them under `set -euo pipefail` with an empty PR body to
-    // prove the || true guards make the step exit 0 (not exit 1).
-    const canonical = readBkitCloudYml();
-
-    // Extract the two assignment lines from the SHARED-DERIV machinery.
-    const sharedDerivStart = canonical.indexOf("# SHARED-DERIV:");
-    expect(sharedDerivStart).toBeGreaterThan(-1);
-    const sharedDerivBlock = canonical.slice(sharedDerivStart);
-
-    // Pull out the ISSUE= and FID= lines (they contain the grep commands).
-    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    expect(
-      issueLineMatch,
-      "ISSUE= assignment line must be found after SHARED-DERIV",
-    ).not.toBeNull();
-    expect(fidLineMatch, "FID= assignment line must be found after SHARED-DERIV").not.toBeNull();
-
-    const issueLine = issueLineMatch![0]!.trim();
-    const fidLine = fidLineMatch![0]!.trim();
-
-    // Build a minimal shell script that runs both assignments under strict mode
-    // with an empty PR_BODY and asserts the variables are empty (no-match, no abort).
-    const script = [
-      "set -euo pipefail",
-      'PR_BODY=""',
-      issueLine,
-      fidLine,
-      // Assert variables are empty (grep found nothing, || true kept us alive)
-      '[ -z "$ISSUE" ] || { echo "FAIL: ISSUE should be empty, got: $ISSUE"; exit 2; }',
-      '[ -z "$FID" ]   || { echo "FAIL: FID should be empty, got: $FID"; exit 2; }',
-      'echo "OK: both empty, script did not abort"',
-    ].join("\n");
-
-    const result = spawnSync("bash", ["-c", script], {
-      encoding: "utf-8",
-      timeout: 10_000,
-    });
-
-    expect(
-      result.status,
-      `SHARED-DERIV snippet aborted under set -euo pipefail with empty PR body.\n` +
-        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    ).toBe(0);
-    expect(result.stdout).toContain("OK: both empty, script did not abort");
-  });
-
-  it("(1c) SHARED-DERIV extraction snippet correctly parses a well-formed PR body (positive case)", () => {
-    // Complementary positive case: a PR body WITH the markers must yield the correct values.
-    const canonical = readBkitCloudYml();
-
-    const sharedDerivBlock = canonical.slice(canonical.indexOf("# SHARED-DERIV:"));
-
-    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    expect(issueLineMatch).not.toBeNull();
-    expect(fidLineMatch).not.toBeNull();
-
-    const issueLine = issueLineMatch![0]!.trim();
-    const fidLine = fidLineMatch![0]!.trim();
-
-    const script = [
-      "set -euo pipefail",
-      'PR_BODY="<!-- bkit:issue=#141 bkit:fid=141-cloud-app -->"',
-      issueLine,
-      fidLine,
-      '[ "$ISSUE" = "141" ] || { echo "FAIL: expected ISSUE=141, got: $ISSUE"; exit 2; }',
-      '[ "$FID" = "141-cloud-app" ] || { echo "FAIL: expected FID=141-cloud-app, got: $FID"; exit 2; }',
-      'echo "OK: ISSUE=$ISSUE FID=$FID"',
-    ].join("\n");
-
-    const result = spawnSync("bash", ["-c", script], {
-      encoding: "utf-8",
-      timeout: 10_000,
-    });
-
-    expect(
-      result.status,
-      `SHARED-DERIV snippet failed to parse well-formed PR body.\n` +
-        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    ).toBe(0);
-    expect(result.stdout).toContain("OK: ISSUE=141 FID=141-cloud-app");
+    const block = canonical.slice(canonical.indexOf("# SHARED-DERIV:"));
+    const fidLine = block.match(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
+    const issueLine = block.match(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
+    const run = (parsed: string) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          [
+            "set -euo pipefail",
+            `PARSED='${parsed}'`,
+            fidLine,
+            issueLine,
+            'echo "FID=$FID ISSUE=$ISSUE"',
+          ].join("\n"),
+        ],
+        { encoding: "utf-8", timeout: 10_000 },
+      );
+    const empty = run("");
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(empty.stdout).toContain("FID= ISSUE=");
+    const parsed = run(
+      '{"fid":"141-cloud-app","issueId":"141","source":"marker","tracker":"github"}',
+    );
+    expect(parsed.status, parsed.stderr).toBe(0);
+    expect(parsed.stdout).toContain("FID=141-cloud-app ISSUE=141");
   });
 });

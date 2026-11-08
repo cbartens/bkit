@@ -164,13 +164,33 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
-          # `dev` at the workspace root: the dev arm's dispatch-cap counter row is
-          # committed to dev's `status.jsonl`; the feat/** arm reads the branch's
-          # `status.jsonl` from origin.
-          ref: dev
+          # Per-arm checkout: a feat/** run checks out the PR head branch (its `status.jsonl`,
+          # `.bkit/issues.jsonl` feature rows and lockfile are the ones the router reads); a
+          # dev run and a workflow_dispatch check out `dev`, where the dev arm commits its
+          # dispatch-cap counter row.
+          ref: ${{ startsWith(github.event.workflow_run.head_branch, 'feat/') && github.event.workflow_run.head_branch || 'dev' }}
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
           token: ${{ github.token }}
+
+      # The consumer's own bkit, from its lockfile, so the label gate reads the tracker through
+      # `bkit issues fetch` and FIDs through `bkit fids parse`. A failed install leaves
+      # node_modules/.bin/bkit absent: the gate reports bkit-unavailable and starts nothing.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Install bkit
+        if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       # Exactly one router job starts: the agent recorded in package.json `bkit.cloud.agent`,
       # and only when that agent's BKIT_ secret is set. Another agent's secret never starts a
@@ -257,15 +277,13 @@ jobs:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          BKIT_LINEAR_API_KEY: ${{ secrets.BKIT_LINEAR_API_KEY }}
+          BKIT_JIRA_API_KEY: ${{ secrets.BKIT_JIRA_API_KEY }}
+          SEL_AGENT: ${{ steps.select.outputs.agent }}
+          SEL_DISPATCHED: ${{ steps.select.outputs.dispatched }}
+          SEL_IGNORED: ${{ steps.select.outputs.ignored }}
         run: |
           set -euo pipefail
-          # Cloud runs serve the GitHub tracker only: Linear cloud runs start from Cursor's
-          # Linear integration, and Jira runs locally only. Unset tracker → continue.
-          TRACKER=$(jq -r '.bkit.tracker.default // empty | strings' package.json 2>/dev/null || true)
-          if [ -n "$TRACKER" ] && [ "$TRACKER" != "github" ]; then
-            echo "::notice::bkit.tracker.default is '$TRACKER' — bkit-cloud.yml serves the GitHub tracker only; no-op exit."
-            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-          fi
           if [ "$EVENT" = "workflow_dispatch" ]; then
             # Dispatched: phase + issue come straight from inputs.
             PHASE="$IN_PHASE"
@@ -369,6 +387,97 @@ jobs:
               return 0
             }
 
+            # bkit_gate <issue> — the tracker-agnostic bkit:auto gate. Reads the issue's labels
+            # through the consumer's own bkit (`issues fetch`), logs one `[bkit-cloud] gate:`
+            # line and writes one $GITHUB_STEP_SUMMARY row `tracker | issue | verdict | reason
+            # | jobs`. Returns 0 on pass; returns 1 (caller must skip, exit green) for every
+            # other outcome: no-issue, unreadable (bkit-unavailable, an exit 80 reason,
+            # output-unparseable), label-absent, no-agent. Unreadable fails closed: nothing starts.
+            bkit_gate() {
+              local gate_issue="${1:-}" tracker verdict="" reason="" jobs="" rc=0 reply="" outbox secret_var
+              tracker=$(jq -r '.bkit.tracker.default // empty | strings' package.json 2>/dev/null || true)
+              tracker="${tracker:-none}"
+              # jobs: the dispatched job + its BKIT_ secret, each ignored job with its reason.
+              bkit_gate_secret() {
+                case "$1" in
+                  claude) printf '%s' "BKIT_ANTHROPIC_API_KEY" ;;
+                  opencode) printf '%s' "one of BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY" ;;
+                  codex) printf '%s' "BKIT_OPENAI_API_KEY" ;;
+                esac
+              }
+              local job
+              if [ -n "${SEL_DISPATCHED:-}" ]; then
+                jobs="${SEL_DISPATCHED}:$(bkit_gate_secret "$SEL_DISPATCHED")"
+                for job in ${SEL_IGNORED:-}; do jobs="$jobs; $job: not bkit.cloud.agent"; done
+              elif [ -n "${SEL_AGENT:-}" ]; then
+                case "$SEL_AGENT" in
+                  claude | opencode | codex) jobs="$SEL_AGENT: missing $(bkit_gate_secret "$SEL_AGENT")" ;;
+                  *) jobs="bkit.cloud.agent is '$SEL_AGENT': no router job" ;;
+                esac
+                for job in ${SEL_IGNORED:-}; do jobs="$jobs; $job: not bkit.cloud.agent ($(bkit_gate_secret "$job"))"; done
+              fi
+              bkit_gate_row() {
+                {
+                  echo "### bkit-cloud gate"
+                  echo ""
+                  echo "| tracker | issue | verdict | reason | jobs |"
+                  echo "| --- | --- | --- | --- | --- |"
+                  echo "| $tracker | ${gate_issue:--} | $1 | $2 | ${jobs:--} |"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              }
+              if [ ! -x node_modules/.bin/bkit ]; then
+                echo "::warning::[bkit-cloud] gate: unreadable (bkit-unavailable) — node_modules/.bin/bkit is absent (the lockfile install failed); no agent starts."
+                bkit_gate_row unreadable bkit-unavailable
+                return 1
+              fi
+              if [ -z "$gate_issue" ]; then
+                echo "::notice::[bkit-cloud] gate: no-issue — no tracker issue is recorded for this run; no agent starts."
+                bkit_gate_row no-issue "no issue recorded"
+                return 1
+              fi
+              outbox=$(mktemp -d)
+              reply=$(node_modules/.bin/bkit issues fetch --issue "$gate_issue" --outbox "$outbox" --json 2>/dev/null) || rc=$?
+              if [ "$rc" -eq 80 ]; then
+                reason=$(printf '%s' "$reply" | jq -r '.reason // "unknown"' 2>/dev/null || echo unknown)
+                case "$tracker:$reason" in
+                  linear:auth) secret_var=BKIT_LINEAR_API_KEY ;;
+                  jira:auth) secret_var=BKIT_JIRA_API_KEY ;;
+                  github:auth) secret_var=GH_TOKEN ;;
+                  *) secret_var="" ;;
+                esac
+                if [ -n "$secret_var" ]; then
+                  echo "::warning::[bkit-cloud] gate: unreadable (reason=auth) — the $tracker read was refused; check the $secret_var secret (${!secret_var:+set but rejected}${!secret_var:-empty or missing}). No agent starts."
+                else
+                  echo "::warning::[bkit-cloud] gate: unreadable (reason=$reason) — the $tracker issue could not be read; no agent starts."
+                fi
+                bkit_gate_row unreadable "reason=$reason${secret_var:+ ($secret_var)}"
+                return 1
+              fi
+              if [ "$rc" -ne 0 ]; then
+                echo "::warning::[bkit-cloud] gate: unreadable (reason=exit-$rc) — bkit issues fetch failed; no agent starts."
+                bkit_gate_row unreadable "reason=exit-$rc"
+                return 1
+              fi
+              if ! printf '%s' "$reply" | jq -e '.labels | type == "array"' > /dev/null 2>&1; then
+                echo "::warning::[bkit-cloud] gate: unreadable (reason=output-unparseable) — bkit issues fetch printed no label list; no agent starts."
+                bkit_gate_row unreadable "reason=output-unparseable"
+                return 1
+              fi
+              if ! printf '%s' "$reply" | jq -e '.labels | index("bkit:auto") != null' > /dev/null 2>&1; then
+                echo "::notice::[bkit-cloud] gate: label-absent — issue $gate_issue no longer carries bkit:auto; no agent starts (kill switch)."
+                bkit_gate_row label-absent "bkit:auto not on the issue"
+                return 1
+              fi
+              if [ -n "${SEL_AGENT:-}" ] && [ -z "${SEL_DISPATCHED:-}" ]; then
+                echo "::notice::[bkit-cloud] gate: no-agent — $jobs; no agent starts."
+                bkit_gate_row no-agent "bkit:auto present, no agent job selected"
+                return 1
+              fi
+              echo "::notice::[bkit-cloud] gate: pass — issue $gate_issue carries bkit:auto."
+              bkit_gate_row pass "bkit:auto present"
+              return 0
+            }
+
             if [ "$BRANCH" = "dev" ]; then
               # Post-merge dev CI — no open PR. Recover FID from squash-merge commit
               # scope. dev success = regression check passed = no-op (the merge
@@ -382,8 +491,7 @@ jobs:
               # Shape-tolerant: the regex accepts BOTH GitHub
               # (363-slug) and Linear (bar-123-slug) FID SHAPES, mirroring the
               # alternation the feat/** fallback below uses. The kill switch
-              # below (`gh issue view "$ISSUE"`) is GitHub-Issues-only, so a
-              # Linear FID no-ops there (empty labels -> bkit:auto absent).
+              # below (`bkit_gate`) reads any wired tracker through bkit.
               # `head -1` FIRST — head_commit.message is subject+body and
               # grep's `^` anchors per line, so without it a squash body line
               # (GitHub's default body is the list of source commit subjects)
@@ -409,13 +517,10 @@ jobs:
               # instead of reaching the designed no-op exit just below.
               ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
               ARG="$FID"
-              # Kill switch: re-check bkit:auto on the issue (live revocation).
-              # exact label match, not substring. MUST precede the stale-run
-              # guard and the dispatch-cap guard below; it needs nothing they set.
-              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
-                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-              fi
+              # Kill switch: re-check bkit:auto on the issue (live revocation), through
+              # bkit_gate. MUST precede the stale-run guard and the dispatch-cap guard
+              # below; it needs nothing they set.
+              bkit_gate "$ISSUE" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
               # Stale-run guard: HEAD_SHA is current iff it is the headSha of the
               # most recent COMPLETED CI run on dev ([skip ci] close commits never
               # appear in gh run list). --workflow bkit-ci.yml (filename), not `bkit-ci`
@@ -459,47 +564,30 @@ jobs:
               fi
               ARG="$PR_NUMBER"
 
-              # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every
-              # bkit-build PR body. Also assert the marker-derived FID
-              # against the slug allowlist here — bkit:fid=[^[:space:]>]+ admits
-              # '/', '.', '..' and glob metacharacters, so an unvalidated match
-              # falls through to path construction (find -path / mkdir -p / git
-              # commit) in bkit_dev_dispatch_guard below. A mismatch falls through
-              # to the branch fallback exactly like an empty/missing marker.
+              # `bkit fids parse` (the consumer's own bkit) recovers FID + issue id: the
+              # PR-body marker first (any wired tracker's shape, Jira keys with digits
+              # included), then the feat/{FID} branch, whose issue id counts only when
+              # `.bkit/issues.jsonl` has a feature row for it. The FID is asserted against
+              # the slug allowlist before it builds any path (find -path / mkdir -p / git
+              # commit) in the guards below. An absent bkit leaves both empty; bkit_gate
+              # then reports bkit-unavailable.
               PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-              ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
-              FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
-              if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                # FALLBACK: extract FID from the branch name (feat/{FID}) when the
-                # PR body carries no usable bkit:fid= marker.
-                # keep the FULL slug (do NOT collapse to the leading
-                # numeric/alpha id, e.g. '363' instead of
-                # '363-widen-bkit-cloud-trigger'). ISSUE (short
-                # numeric/alpha prefix, used only for `gh issue view`) is derived
-                # FROM the full FID, not the other way round. NOTE the '#' sed
-                # delimiter: with '|' the alternation would need escaping and is
-                # ambiguous under -E.
-                FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
-                # `|| true` is load-bearing under `set -euo pipefail` —
-              # this runs BEFORE the slug allowlist, so a non-FID branch
-              # (Renovate, a hand-named hotfix) yields no match,
-              # pipefail propagates grep's exit 1, and the step dies red
-              # instead of reaching the designed no-op exit just below.
-              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              PARSED=""
+              if [ -x node_modules/.bin/bkit ]; then
+                PARSED=$(node_modules/.bin/bkit fids parse --marker "$PR_BODY" --branch "$BRANCH" --json 2>/dev/null || true)
               fi
-              if [ -z "$FID" ] || [ -z "$ISSUE" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"
-                exit 0
+              FID=$(printf '%s' "$PARSED" | jq -r '.fid // empty' 2>/dev/null || true)
+              ISSUE=$(printf '%s' "$PARSED" | jq -r '.issueId // empty' 2>/dev/null || true)
+              if [ -n "$FID" ] && ! [[ "$FID" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+                FID=""
+                ISSUE=""
+              fi
+              if [ -z "$FID" ] && [ -x node_modules/.bin/bkit ]; then
+                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no usable bkit:fid marker or feat/{FID} branch."
               fi
 
               # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
-              # exact label match, not substring.
-              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
-                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
+              bkit_gate "$ISSUE" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
               # A build still writing this branch owns it: no-op exit. "Still
               # running" = the branch's status.jsonl has a build workflow-started

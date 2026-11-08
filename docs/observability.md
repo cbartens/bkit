@@ -176,6 +176,21 @@ Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev 
 - `[bkit-runs] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
 - `[bkit-runs] no dev push run exists at %s after %sm.` — exit 3.
 
+### `[bkit-cloud] gate:` annotations — router label gate
+
+`bkit-cloud.yml`'s context job reads `bkit:auto` through the consumer's own bkit (`bkit issues fetch`) on every tracker. Each run logs one GitHub annotation and writes one `$GITHUB_STEP_SUMMARY` row `tracker | issue | verdict | reason | jobs`. Every outcome other than `pass` starts no agent and leaves the run green. Brackets load-bearing — log-drain grep key.
+
+<!-- prettier-ignore -->
+| Verdict | Annotation | Reason column |
+| --- | --- | --- |
+| `pass` | `::notice::[bkit-cloud] gate: pass` | `bkit:auto present` |
+| `label-absent` | `::notice::[bkit-cloud] gate: label-absent` | `bkit:auto not on the issue` |
+| `no-issue` | `::notice::[bkit-cloud] gate: no-issue` | no issue recorded in the marker or a feature row |
+| `no-agent` | `::notice::[bkit-cloud] gate: no-agent` | label present but `bkit.cloud.agent` selected no job |
+| `unreadable` | `::warning::[bkit-cloud] gate: unreadable (…)` | `bkit-unavailable` (lockfile install failed), `reason=auth` (names `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` / `GH_TOKEN`), `reason=network`, `reason=not-found`, `reason=exit-N`, `reason=output-unparseable` |
+
+The `jobs` column holds the `Select agent job` hand-off: the dispatched job with its `BKIT_` secret (`codex:BKIT_OPENAI_API_KEY`) and each ignored job with its reason (`claude: not bkit.cloud.agent`); a `no-agent` row names the recorded agent's missing `BKIT_` secret and the ignored secrets.
+
 ## Advisory Checklist Output
 
 Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/checks/after/index.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
