@@ -296,9 +296,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out.indexOf("bkit_gate() {")).toBeGreaterThan(sharedDerivStart);
     expect(out.match(/bkit_gate "\$ISSUE" \|\|/g)).toHaveLength(2);
     // The feat arm recovers FID + issue through bkit, not a marker regex.
-    expect(out).toContain(
-      'node_modules/.bin/bkit fids parse --marker "$PR_BODY" --branch "$BRANCH" --json',
-    );
+    expect(out).toContain('bkit_cli fids parse --marker "$PR_BODY" --branch "$BRANCH" --json');
   });
 
   it("(c) the free-tier marker check lives in the context job's if: gate, which both runner jobs need", () => {
@@ -379,7 +377,7 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
 
   it("(1b) feat-arm FID/ISSUE parse lines in canonical and template carry a || true failure guard (pipefail safety)", () => {
     for (const text of [readBkitCloudYml(), readBkitCloudTemplate()]) {
-      expect(text).toMatch(/PARSED=\$\(node_modules\/\.bin\/bkit fids parse[^\n]*\|\| true\)/);
+      expect(text).toMatch(/PARSED=\$\(bkit_cli fids parse[^\n]*\|\| true\)/);
       expect(text).toMatch(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
       expect(text).toMatch(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
     }
