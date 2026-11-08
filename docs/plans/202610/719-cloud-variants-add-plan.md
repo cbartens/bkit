@@ -210,6 +210,10 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | `cloud` tip: Claude App + `BKIT_ANTHROPIC_API_KEY` only for claude | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
 | `cloud` tip for codex: `--codex` + `BKIT_OPENAI_API_KEY` | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 15 |
 | bkit's adopted router equals the template after its listed edits (existing test; `DONE WHEN` of TASKS 7, 8, 10, 11, 12, entry edits land in TASK 8 and TASK 12) | Unit | `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` | 12 |
+| exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 21 |
+| dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 22 |
+| context job installs and runs bkit from dev, never from the feat/** PR head | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 23 |
+| never lets BKIT_OPENAI_API_KEY into the paste block | Unit | `.bkit/core/engine/install/cloud-env.test.ts` | 24 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1041,6 +1045,48 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 18 end -->
 
 <!-- bkit:group 9 end -->
+
+<!-- bkit:group 10 start -->
+
+### TASK GROUP 10: Challenge round 1 findings
+
+<!-- bkit:task 21 start -->
+
+- [ ] **TASK 21:** A rejected tracker key is printed into the run's warning annotation: on `bkit issues fetch` exit 80 `reason=auth` with `BKIT_JIRA_API_KEY` (or `BKIT_LINEAR_API_KEY`, or `GH_TOKEN`) set, `${!secret_var:-empty or missing}` expands to the secret's value, so the warning reads `set but rejected<value>` and exposure rests on GitHub log masking alone
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:449` · **Round:** 1
+  - **DONE WHEN:** the `reason=auth` warning names the secret and says `set but rejected` or `empty or missing` without ever expanding the secret's value (e.g. a `[ -n "${!secret_var:-}" ]` test choosing the wording); the adopted copy `.github/workflows/bkit-cloud.yml:449` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value` fails on stdout containing the fixture value (`BKIT_JIRA_API_KEY: "jira-secret-value"`, `STUB_FETCH_EXIT: "80"`, `STUB_FETCH_OUT: {"reason":"auth"}`, tracker `jira`) right after `set but rejected`
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [ ] **TASK 22:** A failed `Install bkit` on a post-merge `dev` CI failure is misreported: with `node_modules/.bin/bkit` absent the dev arm never reaches `bkit_gate`, so it logs the `::notice::Cannot derive FID by dev commit scope or linked PR` no-op instead of the `bkit-unavailable` warning, writes no gate summary row, and the in-code comment ("`bkit_gate` reports an absent bkit") is false
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:502` · **Round:** 1
+  - **DONE WHEN:** a dev-arm run with `node_modules/.bin/bkit` absent emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` and a `bkit-unavailable` summary row, exits green with `skip=true` and writes no dispatch-cap counter row (same outcome as the feat arm); the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green` fails on stdout carrying only the `Cannot derive FID` notice, with no `::warning::` and no `bkit-unavailable` text or summary row (dev CI `failure`, subject `feat(363-widen-bkit-cloud-trigger): x bkit [auto route]`, `node_modules` removed from the fixture workspace)
+
+<!-- bkit:task 22 end -->
+<!-- bkit:task 23 start -->
+
+- [ ] **TASK 23:** A feat branch pushed by a steered agent session ships its own `bkit` (package.json / lockfile / committed `node_modules/.bin/bkit`), which the context job then runs to decide the `bkit:auto` kill switch, so the agent can keep itself dispatched after the human removes the label
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:172` · **Round:** 1
+  - **DONE WHEN:** the owner decides where the kill switch's code comes from, and the router and `docs/security.md` § CI Auto-Route Trust match that decision. Today the feat arm checks out `workflow_run.head_branch` (`:172`), runs `pnpm install --frozen-lockfile --ignore-scripts` from that head's lockfile (`:194`), then executes `node_modules/.bin/bkit fids parse` / `issues fetch` (`:581`, `:439`) inside a `contents: write` job whose step env holds `GH_TOKEN`, `BKIT_LINEAR_API_KEY` and `BKIT_JIRA_API_KEY`. Before this diff the gate was `gh issue view` on a `dev` checkout, which the branch could not change. `docs/security.md` justifies the new steering with "the same collaborator can edit the workflow file", but the codex and opencode jobs push with `GITHUB_TOKEN`, which GitHub refuses to let edit `.github/workflows/*`, while it can edit `package.json`, `pnpm-lock.yaml` and `.bkit/issues.jsonl`. No agent can settle this because it reverses an owner-confirmed plan row (Breaking Changes: "`feat/**` context job checks out the PR head") and the existing `workflow-templates.integration.test.ts` case that pins that ref. The owner chooses one of: (a) install and run `bkit` from a `dev` checkout and read only data (marker, branch, `.bkit/issues.jsonl`) from the PR head; (b) keep the PR-head `bkit` and record in § CI Auto-Route Trust that an agent session writing the branch can defeat the kill switch for that branch.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `context job installs and runs bkit from dev, never from the feat/** PR head` fails on the context job's `Install bkit` step running in a checkout whose `ref` resolves to `github.event.workflow_run.head_branch`
+
+<!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [ ] **TASK 24:** A consumer who fills the new `BKIT_OPENAI_API_KEY` row in `.bkit/.env` gets that paid OpenAI key pasted into every generated cloud env block (`.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`), so every cloud agent session that reads untrusted issue / PR text holds it
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/shared/.bkit/.env.example:88` · **Round:** 1
+  - **DONE WHEN:** the owner settles the plan's open Suggested Scope Expansion row ("`BKIT_OPENAI_API_KEY` reaches every generated cloud env block … Owner security decision"), which no plan task builds, and the code matches it. The key is used only by the `codex` router job as a repo Actions secret. `.bkit/core/engine/install/cloud-env.ts:35-39` (`SESSION_HIJACK_KEYS`) drops only the three Anthropic keys and pastes every other resolved `.envrc` key. No agent can settle this because `cloud-env.test.ts` `drops exactly the three documented session-hijack keys` and `docs/security.md` § Secrets Management pin the current list. The owner chooses one of: (a) drop `BKIT_OPENAI_API_KEY` from the paste block (add it to the drop list, or a new router-only list) and update that test and § Secrets Management; (b) remove the row from `.env.example`, because the key belongs only in repo secrets; (c) keep the paste and record why in § Credential surfaces.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/cloud-env.test.ts` `never lets BKIT_OPENAI_API_KEY into the paste block` fails on `renderCloudEnvBlock(resolveCloudEnvVars(tmpDir))` containing `BKIT_OPENAI_API_KEY` and the sentinel value `sk-openai-must-not-leak` when `.bkit/.env` sets it
+
+<!-- bkit:task 24 end -->
+<!-- bkit:group 10 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
