@@ -407,3 +407,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:12Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-worktree-setup/-/-/comment","hash":"99ad30688e1edbf7caee8ef88ebe42549d8ff00fe9c1fd267ed7de4ab3c956e7","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6716057402","at":"2026-11-08T02:15:12Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-08T02:15:12Z","parentSha":"956a3729dceea4f5378493ed70368720c30aa568","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-input-3.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:21Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T02:15:22Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-branch-sync/-/-/comment","hash":"065df6723b1320c08facab84f7cec02250934e60bc0f68b7e80d9d5d28b4b0e2","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6716059111","at":"2026-11-08T02:15:23Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-08T02:15:23Z","parentSha":"7a1bce82814985f4218cc19b0f8e9be0ced7344b","artifacts":[]}
