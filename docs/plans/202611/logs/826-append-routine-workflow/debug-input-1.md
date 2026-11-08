@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-/bkit-debug #826 — fix the awake-wrapper test failure and continue the workflow.
+Continue /bkit-debug #826 — retry the test lock, fix the awake-wrapper failure, and finish the workflow.
 
 ## Issue description — oldest
 
