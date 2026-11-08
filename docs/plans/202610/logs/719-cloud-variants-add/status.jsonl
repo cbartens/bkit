@@ -386,3 +386,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-05T11:35:21Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/2/build-plan-verify/3/2/comment","hash":"d3927b015a8f15159b88eca04d52adbf62ebbf84eeeba2fa27e2885eadaa67d2","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6656967888","at":"2026-11-05T11:35:22Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-05T11:35:22Z","parentSha":"c2b9d0df3a53ed20cbc587e3a751b1436f5ec21e","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-3-2.md"],"verdict":"PASS","attempt":2,"group":3,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:35:31Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:35:34Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-05T11:35:39Z","noun":"tests","verb":"run","flags":["gate","log","artifact","fid","file","workflow","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:26Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:31Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:31Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}

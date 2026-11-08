@@ -770,7 +770,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 20 start -->
 
-- [ ] **TASK 20:** Complete group 3 generation and required verification
+- [x] **TASK 20:** Complete group 3 generation and required verification
   - **READ:** `docs/plans/202610/logs/719-cloud-variants-add/build-decision-2-1.md`: the owner's decision and the linked verification and remediation evidence.
   - **UPDATE:** `docs/plans/202610/logs/719-cloud-variants-add/build-plan-tasks-3-log.md`: record completed group 3 checks after TASK 19. Respect the shared tests lock and report its holder and stale-duration evidence. Preserve the observed Git-fixture stall record; change code only for a reproduced in-scope root cause.
   - **DEPENDS ON:** 19
