@@ -67,6 +67,7 @@ function extractStepScript(yaml: string, stepName: string): string {
 const rawTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const CTX_SCRIPT = hasTools ? extractStepScript(rawTemplate, "Resolve phase + brief context") : "";
 const GATE_SCRIPT = extractStepScript(rawTemplate, "Check runner credentials");
+const SELECT_SCRIPT = extractStepScript(rawTemplate, "Select agent job");
 const hasBash = spawnSync("bash", ["--version"]).status === 0;
 
 // ---------------------------------------------------------------------------
@@ -811,6 +812,12 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     "ANTHROPIC_FEDERATION_RULE_ID",
     "ANTHROPIC_ORGANIZATION_ID",
     "OPENCODE_PROVIDER_KEY",
+    "OPENAI_API_KEY",
+    "BKIT_ANTHROPIC_API_KEY",
+    "BKIT_OPENCODE_API_KEY",
+    "BKIT_OPENROUTER_API_KEY",
+    "BKIT_OLLAMA_API_KEY",
+    "BKIT_OPENAI_API_KEY",
   ];
   let tmp: string;
 
@@ -822,17 +829,24 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  function runGate(env: Record<string, string>): {
-    stdout: string;
-    outputs: Record<string, string>;
-  } {
+  function runScript(
+    script: string,
+    env: Record<string, string>,
+    agent?: string | null,
+  ): { stdout: string; outputs: Record<string, string> } {
     const outputFile = path.join(tmp, "github-output");
     fs.writeFileSync(outputFile, "");
+    const cwd = path.join(tmp, "workspace");
+    fs.mkdirSync(cwd, { recursive: true });
+    const bkit: Record<string, unknown> = {};
+    if (agent !== undefined && agent !== null) bkit.cloud = { agent };
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "c", bkit }));
     const base = Object.fromEntries(
       Object.entries(process.env).filter(([k]) => !CREDENTIAL_VARS.includes(k)),
     );
-    const res = spawnSync("bash", ["-c", GATE_SCRIPT], {
+    const res = spawnSync("bash", ["-c", script], {
       encoding: "utf8",
+      cwd,
       env: { ...base, GITHUB_OUTPUT: outputFile, ...env },
     });
     expect(res.status).toBe(0);
@@ -844,17 +858,29 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     return { stdout: res.stdout ?? "", outputs };
   }
 
-  it("ANTHROPIC_API_KEY alone enables the claude job", () => {
-    const { outputs } = runGate({ ANTHROPIC_API_KEY: "k" });
-    expect(outputs).toMatchObject({ claude: "true", opencode: "false", enabled: "true" });
+  function runGate(env: Record<string, string>) {
+    return runScript(GATE_SCRIPT, env);
+  }
+
+  function runSelect(agent: string | null, env: Record<string, string>) {
+    return runScript(SELECT_SCRIPT, env, agent);
+  }
+
+  function selectedJobs(outputs: Record<string, string>): string[] {
+    return ["claude", "opencode", "codex"].filter((j) => outputs[j] === "true");
+  }
+
+  it("BKIT_ANTHROPIC_API_KEY alone enables the run", () => {
+    const { outputs } = runGate({ BKIT_ANTHROPIC_API_KEY: "k" });
+    expect(outputs).toMatchObject({ enabled: "true" });
   });
 
-  it("both federation variables, no key, enable the claude job", () => {
+  it("both federation variables, no key, enable the run", () => {
     const { outputs, stdout } = runGate({
       ANTHROPIC_FEDERATION_RULE_ID: "fdrl_x",
       ANTHROPIC_ORGANIZATION_ID: "00000000-0000-0000-0000-000000000000",
     });
-    expect(outputs).toMatchObject({ claude: "true", enabled: "true" });
+    expect(outputs).toMatchObject({ enabled: "true" });
     expect(stdout).not.toContain("claude job no-op");
   });
 
@@ -863,14 +889,79 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     ["ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_FEDERATION_RULE_ID"],
   ])("only %s set: claude job no-ops with a notice naming %s", (set, missing) => {
     const { outputs, stdout } = runGate({ [set]: "x" });
-    expect(outputs).toMatchObject({ claude: "false", enabled: "false" });
+    expect(outputs).toMatchObject({ enabled: "false" });
     expect(stdout).toMatch(new RegExp(`::notice::${missing} repo variable not set`));
   });
 
   it("no claude credential: notice names both the secret and the federation variables", () => {
-    const { outputs, stdout } = runGate({ OPENCODE_PROVIDER_KEY: "k" });
-    expect(outputs).toMatchObject({ claude: "false", opencode: "true", enabled: "true" });
-    expect(stdout).toContain("ANTHROPIC_API_KEY");
+    const { outputs, stdout } = runGate({ BKIT_OPENCODE_API_KEY: "k" });
+    expect(outputs).toMatchObject({ enabled: "true" });
+    expect(stdout).toContain("BKIT_ANTHROPIC_API_KEY");
     expect(stdout).toContain("ANTHROPIC_FEDERATION_RULE_ID");
+  });
+
+  it.each([
+    ["BKIT_ANTHROPIC_API_KEY"],
+    ["BKIT_OPENCODE_API_KEY"],
+    ["BKIT_OPENROUTER_API_KEY"],
+    ["BKIT_OLLAMA_API_KEY"],
+    ["BKIT_OPENAI_API_KEY"],
+  ])("%s alone sets enabled true", (name) => {
+    expect(runGate({ [name]: "k" }).outputs.enabled).toBe("true");
+  });
+
+  it("enabled is true when any agent BKIT_ secret is set and false when none is", () => {
+    for (const legacy of ["ANTHROPIC_API_KEY", "OPENCODE_PROVIDER_KEY", "OPENAI_API_KEY"]) {
+      expect(runGate({ [legacy]: "k" }).outputs.enabled).toBe("false");
+      expect(runGate({ [legacy]: "k", BKIT_OPENAI_API_KEY: "k" }).outputs.enabled).toBe("true");
+    }
+    expect(runGate({}).outputs.enabled).toBe("false");
+  });
+
+  it("absent bkit.cloud.agent selects no job and the notice names bkit install --auto=", () => {
+    const { outputs, stdout } = runSelect(null, {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENROUTER_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
+    expect(stdout).toContain("bkit install --auto=");
+  });
+
+  it("recorded claude with BKIT_ANTHROPIC_API_KEY selects only the claude job", () => {
+    const { outputs } = runSelect("claude", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual(["claude"]);
+    expect(outputs.agent).toBe("claude");
+  });
+
+  it("recorded codex selects only codex while BKIT_ANTHROPIC_API_KEY is also set", () => {
+    const { outputs } = runSelect("codex", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual(["codex"]);
+    expect(outputs.agent).toBe("codex");
+  });
+
+  it("recorded agent without its secret selects no job and names the missing secret", () => {
+    const { outputs, stdout } = runSelect("codex", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
+    expect(stdout).toContain("BKIT_OPENAI_API_KEY");
+  });
+
+  it.each([["cursor"], ["none"]])("recorded %s selects no router job", (agent) => {
+    const { outputs } = runSelect(agent, {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
   });
 });

@@ -22,9 +22,26 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     expect(yml).not.toContain("mcp__jira__*");
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
-    expect(yml).toMatch(
-      /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
-    );
+    expect(yml).toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/);
+  });
+
+  it("claude job reads secrets.BKIT_ANTHROPIC_API_KEY and no step names secrets.ANTHROPIC_API_KEY", () => {
+    expect(yml).toContain("secrets.BKIT_ANTHROPIC_API_KEY");
+    expect(yml).not.toMatch(/secrets\.ANTHROPIC_API_KEY/);
+  });
+
+  it("opencode dispatch maps each provider BKIT_ secret to its own env name", () => {
+    const start = yml.indexOf("- name: Dispatch /bkit-auto on opencode runner");
+    expect(start).toBeGreaterThan(-1);
+    const step = yml.slice(start);
+    for (const name of [
+      "BKIT_OPENCODE_API_KEY",
+      "BKIT_OPENROUTER_API_KEY",
+      "BKIT_OLLAMA_API_KEY",
+    ]) {
+      expect(step).toContain(`${name}: \${{ secrets.${name} }}`);
+    }
+    expect(yml).not.toContain("OPENCODE_PROVIDER_KEY");
   });
 
   it("claude step passes the four workload identity federation inputs from repo variables", () => {
