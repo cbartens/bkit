@@ -9,7 +9,13 @@ import { buildTrackerSetupAdvisory } from "../after/github";
 import { buildDepUpdaterSetupAdvisory } from "../after/tools";
 import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
 import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
-import { STAR_TIP_ID, dropTipSilencedAdvisories, isTipSilenced, orderForWorkflow } from "./index";
+import {
+  STAR_TIP_ID,
+  collectTips,
+  dropTipSilencedAdvisories,
+  isTipSilenced,
+  orderForWorkflow,
+} from "./index";
 import type { PreflightFinding } from "../before/index";
 
 const tip = (id: string): SetupTip => SETUP_TIPS.find((t) => t.id === id)!;
@@ -352,6 +358,33 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("cloud").fires(cwd)).toBe(true); // bootstrap hook still missing
     write(".claude/hooks/bkit-cloud-bootstrap.sh");
     expect(tip("cloud").fires(cwd)).toBe(false);
+  });
+
+  it("cloud tip names the Claude GitHub App and BKIT_ANTHROPIC_API_KEY only for cloud.agent claude", () => {
+    const cloudText = (): string => {
+      const t = collectTips(cwd).tips.find((x) => x.id === "cloud")!;
+      return `${t.ask} ${t.steps}`;
+    };
+    pkg({ cloud: { agent: "claude" } });
+    const claude = cloudText();
+    expect(claude).toContain("BKIT_ANTHROPIC_API_KEY");
+    expect(claude).toContain("Claude");
+    expect(claude).toContain("bkit-cloud-bootstrap.sh");
+    for (const agent of ["opencode", "codex", "cursor"]) {
+      pkg({ cloud: { agent } });
+      const variant = cloudText();
+      expect(variant, agent).not.toContain("BKIT_ANTHROPIC_API_KEY");
+      expect(variant, agent).not.toContain("bkit-cloud-bootstrap.sh");
+      expect(variant, agent).not.toMatch(/Claude (GitHub )?App/);
+    }
+  });
+
+  it("cloud tip for codex names --codex and BKIT_OPENAI_API_KEY", () => {
+    pkg({ cloud: { agent: "codex" } });
+    const t = collectTips(cwd).tips.find((x) => x.id === "cloud")!;
+    const text = `${t.ask} ${t.steps}`;
+    expect(text).toContain("--codex");
+    expect(text).toContain("BKIT_OPENAI_API_KEY");
   });
 
   it("ci-workflow follows a renamed bkit.testing.ciWorkflow", () => {

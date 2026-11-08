@@ -188,6 +188,22 @@ describe("resolveCloudEnvVars", () => {
     expect(block).toContain("BKIT_GH_TOKEN=real");
   });
 
+  it("never lets BKIT_OPENAI_API_KEY into the paste block", () => {
+    write(".envrc", "dotenv_if_exists .bkit/.env");
+    write(
+      ".bkit/.env",
+      ["BKIT_GH_TOKEN=real", "BKIT_OPENAI_API_KEY=sk-openai-must-not-leak"].join("\n"),
+    );
+
+    const res = resolveCloudEnvVars(tmpDir);
+    const block = renderCloudEnvBlock(res);
+
+    expect(res.included.map(([k]) => k)).not.toContain("BKIT_OPENAI_API_KEY");
+    expect(block).not.toContain("BKIT_OPENAI_API_KEY");
+    expect(block).not.toContain("sk-openai-must-not-leak");
+    expect(block).toContain("BKIT_GH_TOKEN=real");
+  });
+
   it("returns an empty resolution (the sole baseline placeholder) when no .envrc exists", () => {
     write("package.json", JSON.stringify({ name: "x" }));
     const res = resolveCloudEnvVars(tmpDir);

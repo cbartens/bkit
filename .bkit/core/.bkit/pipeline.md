@@ -39,7 +39,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
 │ workflow_dispatch        → ship|debug|design|plan|build                │
 │ Dispatches the matching /bkit-* skill — runs unattended in cloud       │
 │ (Claude on the web / Cursor cloud agents / OpenCode).                    │
-│ Opt-in: `bkit install --auto=claude|cursor|opencode`. See `.bkit/cloud.md`. │
+│ Opt-in: `bkit install --auto=claude|opencode|codex|cursor`. See `.bkit/cloud.md`. │
 └────────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼

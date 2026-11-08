@@ -3,16 +3,19 @@
 name: bkit-cloud
 
 # Phase-routed cloud-agent workflow. One `context` job resolves the phase and its
-# argument, then TWO dispatch jobs — `claude` (via claude-code-action@v1) and `opencode`
-# (via the opencode CLI `run` subcommand) — run the same `/bkit-auto <phase> <arg>`
-# orchestrator against the committed `.claude/` / `.opencode/` config respectively.
+# argument, then ONE dispatch job (the recorded agent) — `claude` (via claude-code-action@v1),
+# `opencode` (via the opencode CLI `run` subcommand) or `codex` (via openai/codex-action) —
+# runs the same `/bkit-auto <phase> <arg>` orchestrator against the committed
+# `.claude/` / `.opencode/` / `.codex/` config respectively.
 #
-# RUNTIME GATING — credential-presence auto-detect (in the context job):
-#   - ANTHROPIC_API_KEY secret set, OR both ANTHROPIC_FEDERATION_RULE_ID and
-#     ANTHROPIC_ORGANIZATION_ID repo variables set → claude job runs.
-#   - OPENCODE_PROVIDER_KEY set → opencode job runs.
-#   Both can run on one event (additive); a missing credential skips that job (zero
-#   billable runner minutes).
+# RUNTIME GATING — one agent per run (in the context job):
+#   - The agent recorded in package.json `bkit.cloud.agent` (claude | opencode | codex)
+#     is the only router job that starts, and only when its credential is set:
+#     claude: BKIT_ANTHROPIC_API_KEY secret, or both ANTHROPIC_FEDERATION_RULE_ID and
+#     ANTHROPIC_ORGANIZATION_ID repo variables; opencode: any of BKIT_OPENCODE_API_KEY /
+#     BKIT_OPENROUTER_API_KEY / BKIT_OLLAMA_API_KEY; codex: BKIT_OPENAI_API_KEY.
+#   - No credential-presence fallback: another agent's secret never starts a job. A missing
+#     credential or an unrecorded agent starts nothing (zero billable runner minutes).
 #
 # Trigger surfaces:
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
@@ -24,13 +27,13 @@ name: bkit-cloud
 #
 # Required credentials (claude job): Claude GitHub App (one-time `/install-github-app`;
 #   claude-code-action@v1 authenticates as the App via `id-token: write` OIDC) + ONE of:
-#   - ANTHROPIC_API_KEY repo secret, or
+#   - BKIT_ANTHROPIC_API_KEY repo secret, or
 #   - workload identity federation (keyless): ANTHROPIC_FEDERATION_RULE_ID +
 #     ANTHROPIC_ORGANIZATION_ID repo variables (+ optional ANTHROPIC_SERVICE_ACCOUNT_ID /
 #     ANTHROPIC_WORKSPACE_ID) from a Claude Console federation rule. A set
-#     ANTHROPIC_API_KEY secret wins over federation — delete it when switching.
-# Required secrets (opencode job): OPENCODE_PROVIDER_KEY (any provider key the
-#   committed .opencode/opencode.json references; fan-out maps it to known env var names).
+#     BKIT_ANTHROPIC_API_KEY secret wins over federation — delete it when switching.
+# Required secrets (opencode job): one of BKIT_OPENCODE_API_KEY / BKIT_OPENROUTER_API_KEY /
+#   BKIT_OLLAMA_API_KEY (the provider the committed .opencode/opencode.json references).
 # Required tracker label on the issue: `bkit:auto` (opt-in) for the CI-driven path.
 # Docs: bkit's cloud.md § Post-CI auto-routing.
 
@@ -85,12 +88,12 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # context job — checks which runner secrets are set and resolves phase + arg ONCE
-  # for both runner jobs. CI-driven runs fire only on terminal CI conclusions (skip
+  # context job — selects the recorded agent's job and resolves phase + arg ONCE
+  # for the router jobs. CI-driven runs fire only on terminal CI conclusions (skip
   # cancelled / skipped). Free-tier gate: CI-driven runs additionally require
   # 'bkit [auto route]' in the head commit message — zero runner minutes if the marker
   # is absent (no opted-in close-workflow HEAD). Dispatched runs always proceed. When
-  # this job is skipped, both runner jobs are skipped with it.
+  # this job is skipped, every router job is skipped with it.
   # ---------------------------------------------------------------------------
   context:
     name: bkit-cloud-context (${{ github.event_name }})
@@ -110,60 +113,174 @@ jobs:
       issues: read
       actions: read
     outputs:
-      claude: ${{ steps.gate.outputs.claude }}
-      opencode: ${{ steps.gate.outputs.opencode }}
+      agent: ${{ steps.select.outputs.agent }}
+      claude: ${{ steps.select.outputs.claude }}
+      opencode: ${{ steps.select.outputs.opencode }}
+      codex: ${{ steps.select.outputs.codex }}
+      dispatched: ${{ steps.select.outputs.dispatched }}
+      ignored: ${{ steps.select.outputs.ignored }}
       skip: ${{ steps.ctx.outputs.skip }}
       phase: ${{ steps.ctx.outputs.phase }}
       arg: ${{ steps.ctx.outputs.arg }}
     steps:
-      # A runner job whose credential is missing is a no-op; with neither job enabled,
-      # nothing below runs (no counter row, no checkout).
+      # With no router credential set, nothing below runs (no counter row, no checkout).
+      # Which single job starts is decided by `Select agent job` after checkout.
       - name: Check runner credentials
         id: gate
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BKIT_ANTHROPIC_API_KEY: ${{ secrets.BKIT_ANTHROPIC_API_KEY }}
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
-          OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          BKIT_OPENCODE_API_KEY: ${{ secrets.BKIT_OPENCODE_API_KEY }}
+          BKIT_OPENROUTER_API_KEY: ${{ secrets.BKIT_OPENROUTER_API_KEY }}
+          BKIT_OLLAMA_API_KEY: ${{ secrets.BKIT_OLLAMA_API_KEY }}
+          BKIT_OPENAI_API_KEY: ${{ secrets.BKIT_OPENAI_API_KEY }}
         run: |
-          claude=false
-          opencode=false
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
-            claude=true
+          enabled=false
+          if [ -n "$BKIT_ANTHROPIC_API_KEY" ]; then
+            enabled=true
           elif [ -n "$ANTHROPIC_FEDERATION_RULE_ID" ] && [ -n "$ANTHROPIC_ORGANIZATION_ID" ]; then
-            claude=true
+            enabled=true
           elif [ -n "$ANTHROPIC_FEDERATION_RULE_ID" ]; then
             echo "::notice::ANTHROPIC_ORGANIZATION_ID repo variable not set — federation needs it alongside ANTHROPIC_FEDERATION_RULE_ID; claude job no-op."
           elif [ -n "$ANTHROPIC_ORGANIZATION_ID" ]; then
             echo "::notice::ANTHROPIC_FEDERATION_RULE_ID repo variable not set — federation needs it alongside ANTHROPIC_ORGANIZATION_ID; claude job no-op."
           else
-            echo "::notice::Neither the ANTHROPIC_API_KEY secret nor the ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables are set — claude job no-op."
+            echo "::notice::Neither the BKIT_ANTHROPIC_API_KEY secret nor the ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables are set — claude job no-op."
           fi
-          if [ -n "$OPENCODE_PROVIDER_KEY" ]; then
-            opencode=true
+          if [ -n "$BKIT_OPENCODE_API_KEY" ] || [ -n "$BKIT_OPENROUTER_API_KEY" ] || [ -n "$BKIT_OLLAMA_API_KEY" ]; then
+            enabled=true
           else
-            echo "::notice::OPENCODE_PROVIDER_KEY not set — opencode job no-op."
+            echo "::notice::None of BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY is set — opencode job no-op."
           fi
-          enabled=false
-          if [ "$claude" = true ] || [ "$opencode" = true ]; then enabled=true; fi
-          {
-            echo "claude=$claude"
-            echo "opencode=$opencode"
-            echo "enabled=$enabled"
-          } >> "$GITHUB_OUTPUT"
+          if [ -n "$BKIT_OPENAI_API_KEY" ]; then
+            enabled=true
+          else
+            echo "::notice::BKIT_OPENAI_API_KEY not set — codex job no-op."
+          fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
 
       # SHA pins in this file — your updater refreshes them in your copy (keep this file out
       # of renovate.json5 `ignorePaths`); `bkit upgrade` lists this template when bkit's pins move.
+      # Two checkouts. `pr-head` is DATA only: a feat/** run checks out the PR head branch
+      # (its `status.jsonl` and `.bkit/issues.jsonl` feature rows are what the router
+      # reads; `bkit.cloud` and `bkit.tracker` come from the `dev` checkout); a dev run and a workflow_dispatch check out `dev` there. The
+      # workspace root is always `dev`: bkit is installed and run from it, so a branch
+      # pushed by an agent session cannot change the code that decides the `bkit:auto` kill
+      # switch, and the dev arm commits its dispatch-cap counter row there.
+      # Order matters: the root `dev` checkout runs first because actions/checkout empties a
+      # workspace that has no .git, which would delete `pr-head/` if it ran second.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
-          # `dev` at the workspace root: the dev arm's dispatch-cap counter row is
-          # committed to dev's `status.jsonl`; the feat/** arm reads the branch's
-          # `status.jsonl` from origin.
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
           token: ${{ github.token }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          ref: ${{ startsWith(github.event.workflow_run.head_branch, 'feat/') && github.event.workflow_run.head_branch || 'dev' }}
+          path: pr-head
+          fetch-depth: 0
+          # Untrusted branch content: no credential is left in its git config.
+          persist-credentials: false
+
+      # The consumer's own bkit, from the `dev` lockfile, so the label gate reads the tracker through
+      # `bkit issues fetch` and FIDs through `bkit fids parse`. A failed install leaves
+      # node_modules/.bin/bkit absent: the gate reports bkit-unavailable and starts nothing.
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
+      # Both tooling steps are `continue-on-error`: a missing packageManager / lockfile or a failed
+      # download leaves bkit absent, and the gate then reports bkit-unavailable (green, nothing starts).
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
+        with:
+          node-version: {{NODE_VERSION}}
+          cache: pnpm
+
+      - name: Install bkit
+        if: steps.gate.outputs.enabled == 'true'
+        continue-on-error: true
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Exactly one router job starts: the agent recorded in package.json `bkit.cloud.agent`,
+      # and only when that agent's BKIT_ secret is set. Another agent's secret never starts a
+      # job; Cursor runs through its own triggers and starts none here.
+      - name: Select agent job
+        id: select
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          BKIT_ANTHROPIC_API_KEY: ${{ secrets.BKIT_ANTHROPIC_API_KEY }}
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          BKIT_OPENCODE_API_KEY: ${{ secrets.BKIT_OPENCODE_API_KEY }}
+          BKIT_OPENROUTER_API_KEY: ${{ secrets.BKIT_OPENROUTER_API_KEY }}
+          BKIT_OLLAMA_API_KEY: ${{ secrets.BKIT_OLLAMA_API_KEY }}
+          BKIT_OPENAI_API_KEY: ${{ secrets.BKIT_OPENAI_API_KEY }}
+          HEAD_DIR: pr-head
+        run: |
+          # Routing config (`bkit.cloud.agent`) comes from the `dev` checkout (workspace root), never
+          # from the feat/** head: a branch cut before `bkit install --auto=` still dispatches,
+          # and the agent set on `dev` reaches in-flight branches. Only the five known values pass.
+          AGENT=$(jq -r '.bkit.cloud.agent // empty | strings' package.json 2>/dev/null || true)
+          case "$AGENT" in claude|opencode|codex|cursor|none) ;; *) AGENT="" ;; esac
+          AGENT="${AGENT:-none}"
+          claude=false
+          opencode=false
+          codex=false
+          dispatched=""
+          ignored=""
+          missing=""
+          have_claude=false
+          if [ -n "$BKIT_ANTHROPIC_API_KEY" ] || { [ -n "$ANTHROPIC_FEDERATION_RULE_ID" ] && [ -n "$ANTHROPIC_ORGANIZATION_ID" ]; }; then have_claude=true; fi
+          have_opencode=false
+          if [ -n "$BKIT_OPENCODE_API_KEY" ] || [ -n "$BKIT_OPENROUTER_API_KEY" ] || [ -n "$BKIT_OLLAMA_API_KEY" ]; then have_opencode=true; fi
+          have_codex=false
+          if [ -n "$BKIT_OPENAI_API_KEY" ]; then have_codex=true; fi
+          case "$AGENT" in
+            claude)
+              if [ "$have_claude" = true ]; then claude=true; dispatched=claude
+              else missing="BKIT_ANTHROPIC_API_KEY (or the ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables)"; fi
+              ;;
+            opencode)
+              if [ "$have_opencode" = true ]; then opencode=true; dispatched=opencode
+              else missing="one of BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY"; fi
+              ;;
+            codex)
+              if [ "$have_codex" = true ]; then codex=true; dispatched=codex
+              else missing="BKIT_OPENAI_API_KEY"; fi
+              ;;
+            cursor)
+              echo "::notice::bkit.cloud.agent is 'cursor' — Cursor runs through its own native triggers; no router job starts."
+              ;;
+            *)
+              echo "::notice::bkit.cloud.agent is '$AGENT' — no router job starts. Run bkit install --auto=<claude|opencode|codex> to record one."
+              ;;
+          esac
+          if [ -n "$missing" ]; then
+            echo "::notice::bkit.cloud.agent is '$AGENT' but its credential is not set (missing $missing) — no router job starts."
+          fi
+          [ "$have_claude" = true ] && [ "$AGENT" != claude ] && ignored="${ignored:+$ignored }claude"
+          [ "$have_opencode" = true ] && [ "$AGENT" != opencode ] && ignored="${ignored:+$ignored }opencode"
+          [ "$have_codex" = true ] && [ "$AGENT" != codex ] && ignored="${ignored:+$ignored }codex"
+          if [ -n "$ignored" ]; then
+            echo "::notice::Ignoring credentials for other agents ($ignored) — only the recorded agent '$AGENT' dispatches."
+          fi
+          {
+            echo "agent=$AGENT"
+            echo "claude=$claude"
+            echo "opencode=$opencode"
+            echo "codex=$codex"
+            echo "dispatched=$dispatched"
+            echo "ignored=$ignored"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure git user
         if: steps.gate.outputs.enabled == 'true'
@@ -183,15 +300,30 @@ jobs:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          BKIT_LINEAR_API_KEY: ${{ secrets.BKIT_LINEAR_API_KEY }}
+          BKIT_JIRA_API_KEY: ${{ secrets.BKIT_JIRA_API_KEY }}
+          SEL_AGENT: ${{ steps.select.outputs.agent }}
+          SEL_DISPATCHED: ${{ steps.select.outputs.dispatched }}
+          SEL_IGNORED: ${{ steps.select.outputs.ignored }}
+          HEAD_DIR: pr-head
         run: |
           set -euo pipefail
-          # Cloud runs serve the GitHub tracker only: Linear cloud runs start from Cursor's
-          # Linear integration, and Jira runs locally only. Unset tracker → continue.
-          TRACKER=$(jq -r '.bkit.tracker.default // empty | strings' package.json 2>/dev/null || true)
-          if [ -n "$TRACKER" ] && [ "$TRACKER" != "github" ]; then
-            echo "::notice::bkit.tracker.default is '$TRACKER' — bkit-cloud.yml serves the GitHub tracker only; no-op exit."
-            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          # bkit runs from the dev checkout (workspace root) against the data in HEAD_DIR.
+          HEAD_DIR="${HEAD_DIR:-.}"
+          BKIT_BIN="$PWD/node_modules/.bin/bkit"
+          # Routing config (`bkit.cloud`, `bkit.tracker`) is read from `dev`: overlay it onto the
+          # throwaway head checkout so bkit run there reads the same copy.
+          if [ "$HEAD_DIR" != "." ] && [ -f package.json ] && [ -f "$HEAD_DIR/package.json" ]; then
+            if jq -s '.[1] as $r | .[0] | .bkit = ((.bkit // {}) | del(.cloud, .tracker)
+              + (if ($r.bkit.cloud // null) != null then {cloud: $r.bkit.cloud} else {} end)
+              + (if ($r.bkit.tracker // null) != null then {tracker: $r.bkit.tracker} else {} end))' \
+              "$HEAD_DIR/package.json" package.json > "$HEAD_DIR/package.json.route" 2>/dev/null; then
+              mv "$HEAD_DIR/package.json.route" "$HEAD_DIR/package.json"
+            else
+              rm -f "$HEAD_DIR/package.json.route"
+            fi
           fi
+          bkit_cli() { (cd "$HEAD_DIR" && "$BKIT_BIN" "$@"); }
           if [ "$EVENT" = "workflow_dispatch" ]; then
             # Dispatched: phase + issue come straight from inputs.
             PHASE="$IN_PHASE"
@@ -222,12 +354,11 @@ jobs:
             # proceeding). Returns 0 to proceed to dispatch.
             bkit_dev_dispatch_guard() {
               local guard_fid="$1" guard_head_sha="$2"
-              # assert the FID against the same slug allowlist the dev arm
-              # already enforces BEFORE it's used to build any path (find -path /
-              # mkdir -p / git commit -m). Defence-in-depth re-check for the
-              # PR-body marker path (bkit:fid=<anything up to whitespace/'>'>
-              # admits '/', '.', '..').
-              if ! [[ "$guard_fid" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+              # assert the characters of the FID that `bkit fids parse` printed
+              # (the engine slug charset: lowercase letters, digits, '-'; no '/', no
+              # '.', non-empty) BEFORE it's used to build any path (find -path /
+              # mkdir -p / git commit -m). This checks characters, not FID shape.
+              if ! [[ "$guard_fid" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
                 echo "::notice::Invalid FID '$guard_fid' — refusing to write dev-dispatch counter (fail-closed)."
                 return 1
               fi
@@ -295,6 +426,99 @@ jobs:
               return 0
             }
 
+            # bkit_gate <issue> — the tracker-agnostic bkit:auto gate. Reads the issue's labels
+            # through the consumer's own bkit (`issues fetch`), logs one `[bkit-cloud] gate:`
+            # line and writes one $GITHUB_STEP_SUMMARY row `tracker | issue | verdict | reason
+            # | jobs`. Returns 0 on pass; returns 1 (caller must skip, exit green) for every
+            # other outcome: no-issue, unreadable (bkit-unavailable, an exit 80 reason,
+            # output-unparseable), label-absent, no-agent. Unreadable fails closed: nothing starts.
+            bkit_gate() {
+              local gate_issue="${1:-}" tracker reason="" jobs="" rc=0 reply="" outbox secret_var secret_state
+              tracker=$(jq -r '.bkit.tracker.default // empty | strings' "$HEAD_DIR/package.json" 2>/dev/null || true)
+              tracker="${tracker:-none}"
+              # jobs: the dispatched job + its BKIT_ secret, each ignored job with its reason.
+              bkit_gate_secret() {
+                case "$1" in
+                  claude) printf '%s' "BKIT_ANTHROPIC_API_KEY" ;;
+                  opencode) printf '%s' "one of BKIT_OPENCODE_API_KEY, BKIT_OPENROUTER_API_KEY, BKIT_OLLAMA_API_KEY" ;;
+                  codex) printf '%s' "BKIT_OPENAI_API_KEY" ;;
+                esac
+              }
+              local job
+              if [ -n "${SEL_DISPATCHED:-}" ]; then
+                jobs="${SEL_DISPATCHED}:$(bkit_gate_secret "$SEL_DISPATCHED")"
+                for job in ${SEL_IGNORED:-}; do jobs="$jobs; $job: not bkit.cloud.agent"; done
+              elif [ -n "${SEL_AGENT:-}" ]; then
+                case "$SEL_AGENT" in
+                  claude | opencode | codex) jobs="$SEL_AGENT: missing $(bkit_gate_secret "$SEL_AGENT")" ;;
+                  *) jobs="bkit.cloud.agent is '$SEL_AGENT': no router job" ;;
+                esac
+                for job in ${SEL_IGNORED:-}; do jobs="$jobs; $job: not bkit.cloud.agent ($(bkit_gate_secret "$job"))"; done
+              fi
+              bkit_gate_row() {
+                {
+                  echo "### bkit-cloud gate"
+                  echo ""
+                  echo "| tracker | issue | verdict | reason | jobs |"
+                  echo "| --- | --- | --- | --- | --- |"
+                  echo "| $tracker | ${gate_issue:--} | $1 | $2 | ${jobs:--} |"
+                } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+              }
+              if [ ! -x node_modules/.bin/bkit ]; then
+                echo "::warning::[bkit-cloud] gate: unreadable (bkit-unavailable) — node_modules/.bin/bkit is absent (the lockfile install failed); no agent starts."
+                bkit_gate_row unreadable bkit-unavailable
+                return 1
+              fi
+              if [ -z "$gate_issue" ]; then
+                echo "::notice::[bkit-cloud] gate: no-issue — no tracker issue is recorded for this run; no agent starts."
+                bkit_gate_row no-issue "no issue recorded"
+                return 1
+              fi
+              outbox=$(mktemp -d)
+              reply=$(bkit_cli issues fetch --issue "$gate_issue" --outbox "$outbox" --json 2>/dev/null) || rc=$?
+              if [ "$rc" -eq 80 ]; then
+                reason=$(printf '%s' "$reply" | jq -r '.reason // "unknown"' 2>/dev/null || echo unknown)
+                case "$tracker:$reason" in
+                  linear:auth) secret_var=BKIT_LINEAR_API_KEY ;;
+                  jira:auth) secret_var=BKIT_JIRA_API_KEY ;;
+                  github:auth) secret_var=GH_TOKEN ;;
+                  *) secret_var="" ;;
+                esac
+                if [ -n "$secret_var" ]; then
+                  # Wording only: the secret's value is tested, never expanded.
+                  if [ -n "${!secret_var:-}" ]; then secret_state="set but rejected"; else secret_state="empty or missing"; fi
+                  echo "::warning::[bkit-cloud] gate: unreadable (reason=auth) — the $tracker read was refused; check the $secret_var secret ($secret_state). No agent starts."
+                else
+                  echo "::warning::[bkit-cloud] gate: unreadable (reason=$reason) — the $tracker issue could not be read; no agent starts."
+                fi
+                bkit_gate_row unreadable "reason=$reason${secret_var:+ ($secret_var)}"
+                return 1
+              fi
+              if [ "$rc" -ne 0 ]; then
+                echo "::warning::[bkit-cloud] gate: unreadable (reason=exit-$rc) — bkit issues fetch failed; no agent starts."
+                bkit_gate_row unreadable "reason=exit-$rc"
+                return 1
+              fi
+              if ! printf '%s' "$reply" | jq -e '.labels | type == "array"' > /dev/null 2>&1; then
+                echo "::warning::[bkit-cloud] gate: unreadable (reason=output-unparseable) — bkit issues fetch printed no label list; no agent starts."
+                bkit_gate_row unreadable "reason=output-unparseable"
+                return 1
+              fi
+              if ! printf '%s' "$reply" | jq -e '.labels | index("bkit:auto") != null' > /dev/null 2>&1; then
+                echo "::notice::[bkit-cloud] gate: label-absent — issue $gate_issue no longer carries bkit:auto; no agent starts (kill switch)."
+                bkit_gate_row label-absent "bkit:auto not on the issue"
+                return 1
+              fi
+              if [ -n "${SEL_AGENT:-}" ] && [ -z "${SEL_DISPATCHED:-}" ]; then
+                echo "::notice::[bkit-cloud] gate: no-agent — $jobs; no agent starts."
+                bkit_gate_row no-agent "bkit:auto present, no agent job selected"
+                return 1
+              fi
+              echo "::notice::[bkit-cloud] gate: pass — issue $gate_issue carries bkit:auto."
+              bkit_gate_row pass "bkit:auto present"
+              return 0
+            }
+
             if [ "$BRANCH" = "dev" ]; then
               # Post-merge dev CI — no open PR. Recover FID from squash-merge commit
               # scope. dev success = regression check passed = no-op (the merge
@@ -304,44 +528,50 @@ jobs:
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
               # PHASE=debug below.
-              # Primary: parse FID from commit scope: feat(363-widen-bkit-cloud-trigger): ...
-              # Shape-tolerant: the regex accepts BOTH GitHub
-              # (363-slug) and Linear (bar-123-slug) FID SHAPES, mirroring the
-              # alternation the feat/** fallback below uses. The kill switch
-              # below (`gh issue view "$ISSUE"`) is GitHub-Issues-only, so a
-              # Linear FID no-ops there (empty labels -> bkit:auto absent).
-              # `head -1` FIRST — head_commit.message is subject+body and
-              # grep's `^` anchors per line, so without it a squash body line
-              # (GitHub's default body is the list of source commit subjects)
-              # like "feat(999-other): ..." would win and key the cap counter,
-              # status path and /bkit-debug dispatch to an unrelated feature.
-              FID=$(printf '%s' "$COMMIT_MSG" | head -1 | grep -oE '^\w+\((([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+)\):' | sed -E 's/^\w+\(([^)]+)\):/\1/' | head -1 || true)
-              if [ -z "$FID" ]; then
-                # Fallback: gh api merge-commit linked PR -> PR body bkit:fid marker.
-                # filter to same-repo MERGED PRs (the endpoint also returns OPEN
-                # fork PRs at this SHA).
-                PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
-                  --jq '[.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY and .merged_at != null)] | .[0].body // empty' 2>/dev/null || echo "")
-                FID=$(printf '%s' "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+              # `bkit fids parse` (the consumer's own bkit) recovers the FID, for every
+              # wired tracker's shape (Jira keys with digits included): the squash subject
+              # (first line only — head_commit.message is subject+body, and a body line
+              # such as "feat(999-other): ..." must not key the cap counter, status path
+              # and /bkit-debug dispatch to an unrelated feature) through --prompt-file,
+              # else the merged PR's bkit:fid marker. The issue id comes from the
+              # feat/{FID} row in `.bkit/issues.jsonl` (`fids parse --branch`), never from
+              # the subject's "(#PR)". No bkit, a non-zero exit (no FID, or several issues
+              # named) or a null FID is the no-FID no-op below; `bkit_gate` reports an
+              # absent bkit.
+              FID=""
+              ISSUE=""
+              if [ ! -x node_modules/.bin/bkit ]; then
+                # Absent bkit (failed install): bkit_gate reports bkit-unavailable and writes the
+                # summary row; nothing starts.
+                bkit_gate "" || true
+                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              if [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
+              if [ -x node_modules/.bin/bkit ]; then
+                SUBJECT_FILE=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/bkit-cloud-subject.XXXXXX")
+                printf '%s\n' "$COMMIT_MSG" | head -1 > "$SUBJECT_FILE"
+                PARSED=$(bkit_cli fids parse --prompt-file "$SUBJECT_FILE" --json 2>/dev/null) || PARSED=""
+                FID=$(printf '%s' "$PARSED" | jq -r '.fidNamed // empty' 2>/dev/null || true)
+                if [ -z "$FID" ]; then
+                  # Fallback: gh api merge-commit linked PR -> PR body bkit:fid marker.
+                  # filter to same-repo MERGED PRs (the endpoint also returns OPEN
+                  # fork PRs at this SHA).
+                  PR_BODY=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+                    --jq '[.[] | select(.head.repo.full_name == env.GITHUB_REPOSITORY and .merged_at != null)] | .[0].body // empty' 2>/dev/null || echo "")
+                  PARSED=$(bkit_cli fids parse --marker "$PR_BODY" --json 2>/dev/null) || PARSED=""
+                  FID=$(printf '%s' "$PARSED" | jq -r '.fid // empty' 2>/dev/null || true)
+                fi
+              fi
+              if [ -z "$FID" ] || ! [[ "$FID" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
                 echo "::notice::Cannot derive FID by dev commit scope or linked PR — no-op exit (fail-safe)."
                 echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
               fi
-              # `|| true` is load-bearing under `set -euo pipefail` —
-              # this runs BEFORE the slug allowlist, so a non-FID branch
-              # (Renovate, a hand-named hotfix) yields no match,
-              # pipefail propagates grep's exit 1, and the step dies red
-              # instead of reaching the designed no-op exit just below.
-              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              BRANCH_PARSED=$(bkit_cli fids parse --branch "feat/$FID" --json 2>/dev/null) || BRANCH_PARSED=""
+              ISSUE=$(printf '%s' "$BRANCH_PARSED" | jq -r '.issueId // empty' 2>/dev/null || true)
               ARG="$FID"
-              # Kill switch: re-check bkit:auto on the issue (live revocation).
-              # exact label match, not substring. MUST precede the stale-run
-              # guard and the dispatch-cap guard below; it needs nothing they set.
-              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
-                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
-              fi
+              # Kill switch: re-check bkit:auto on the issue (live revocation), through
+              # bkit_gate. MUST precede the stale-run guard and the dispatch-cap guard
+              # below; it needs nothing they set.
+              bkit_gate "$ISSUE" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
               # Stale-run guard: HEAD_SHA is current iff it is the headSha of the
               # most recent COMPLETED CI run on dev ([skip ci] close commits never
               # appear in gh run list). --workflow bkit-ci.yml (filename), not `bkit-ci`
@@ -385,47 +615,30 @@ jobs:
               fi
               ARG="$PR_NUMBER"
 
-              # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every
-              # bkit-build PR body. Also assert the marker-derived FID
-              # against the slug allowlist here — bkit:fid=[^[:space:]>]+ admits
-              # '/', '.', '..' and glob metacharacters, so an unvalidated match
-              # falls through to path construction (find -path / mkdir -p / git
-              # commit) in bkit_dev_dispatch_guard below. A mismatch falls through
-              # to the branch fallback exactly like an empty/missing marker.
+              # `bkit fids parse` (the consumer's own bkit) recovers FID + issue id: the
+              # PR-body marker first (any wired tracker's shape, Jira keys with digits
+              # included), then the feat/{FID} branch, whose issue id counts only when
+              # `.bkit/issues.jsonl` has a feature row for it. The FID is asserted against
+              # the slug allowlist before it builds any path (find -path / mkdir -p / git
+              # commit) in the guards below. An absent bkit leaves both empty; bkit_gate
+              # then reports bkit-unavailable.
               PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-              ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
-              FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
-              if [ -z "$ISSUE" ] || [ -z "$FID" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                # FALLBACK: extract FID from the branch name (feat/{FID}) when the
-                # PR body carries no usable bkit:fid= marker.
-                # keep the FULL slug (do NOT collapse to the leading
-                # numeric/alpha id, e.g. '363' instead of
-                # '363-widen-bkit-cloud-trigger'). ISSUE (short
-                # numeric/alpha prefix, used only for `gh issue view`) is derived
-                # FROM the full FID, not the other way round. NOTE the '#' sed
-                # delimiter: with '|' the alternation would need escaping and is
-                # ambiguous under -E.
-                FID=$(echo "$BRANCH" | sed -E 's#^feat/##')
-                # `|| true` is load-bearing under `set -euo pipefail` —
-              # this runs BEFORE the slug allowlist, so a non-FID branch
-              # (Renovate, a hand-named hotfix) yields no match,
-              # pipefail propagates grep's exit 1, and the step dies red
-              # instead of reaching the designed no-op exit just below.
-              ISSUE=$(printf '%s' "$FID" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)
+              PARSED=""
+              if [ -x node_modules/.bin/bkit ]; then
+                PARSED=$(bkit_cli fids parse --marker "$PR_BODY" --branch "$BRANCH" --json 2>/dev/null || true)
               fi
-              if [ -z "$FID" ] || [ -z "$ISSUE" ] || ! [[ "$FID" =~ ^([0-9]+|[a-z]+-[0-9]+)-[a-z0-9-]+$ ]]; then
-                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"
-                exit 0
+              FID=$(printf '%s' "$PARSED" | jq -r '.fid // empty' 2>/dev/null || true)
+              ISSUE=$(printf '%s' "$PARSED" | jq -r '.issueId // empty' 2>/dev/null || true)
+              if [ -n "$FID" ] && ! [[ "$FID" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+                FID=""
+                ISSUE=""
+              fi
+              if [ -z "$FID" ] && [ -x node_modules/.bin/bkit ]; then
+                echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no usable bkit:fid marker or feat/{FID} branch."
               fi
 
               # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
-              # exact label match, not substring.
-              if ! gh issue view "$ISSUE" --json labels --jq '.labels[].name' 2>/dev/null | grep -qxF 'bkit:auto'; then
-                echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
-                echo "skip=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
+              bkit_gate "$ISSUE" || { echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
               # A build still writing this branch owns it: no-op exit. "Still
               # running" = the branch's status.jsonl has a build workflow-started
@@ -451,7 +664,7 @@ jobs:
           fi
           # Guard: arg must be alphanumeric/dash/dot/slash (numeric PR/issue ids + FIDs like
           # 245-opencode-provider-host). workflow_dispatch inputs.issue flows unsanitized into
-          # both runner jobs' model prompt — reject anything else (prompt-injection guard).
+          # the selected router job's model prompt — reject anything else (prompt-injection guard).
           if ! [[ "$ARG" =~ ^[0-9A-Za-z._/-]+$ ]]; then
             echo "::error::Invalid arg value '${ARG}' — aborting." >&2
             exit 1
@@ -463,8 +676,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
-  # claude job — dispatch via claude-code-action@v1 (ANTHROPIC_API_KEY or federation).
-  # Runs only when the context job found a claude credential and resolved a phase.
+  # claude job — dispatch via claude-code-action@v1 (BKIT_ANTHROPIC_API_KEY or federation).
+  # Runs only when `Select agent job` chose claude and the context job resolved a phase.
   # OIDC auth via Claude GitHub App (id-token: write); requires one-time
   # `/install-github-app` in the consumer repo.
   # ---------------------------------------------------------------------------
@@ -522,26 +735,26 @@ jobs:
           prompt: "/bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"
           # Lock the runner-side session to the same tool surface bkit grants the local
           # orchestrator. GitHub MCP surface is always available; this workflow is
-          # GitHub-tracker only (cloud=claude requires tracker=github).
+          # GitHub MCP only; other trackers via bkit verbs.
           claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__github__*"
           # Workload identity federation: the action exchanges this job's GitHub OIDC token
           # for a short-lived Claude API token. Unset variables pass empty; a set
-          # ANTHROPIC_API_KEY secret takes precedence.
+          # BKIT_ANTHROPIC_API_KEY secret takes precedence.
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
           anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.BKIT_ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
+          BKIT_LINEAR_API_KEY: ${{ secrets.BKIT_LINEAR_API_KEY }}
+          BKIT_JIRA_API_KEY: ${{ secrets.BKIT_JIRA_API_KEY }}
 
   # ---------------------------------------------------------------------------
-  # opencode job — dispatch via `opencode run` CLI (OPENCODE_PROVIDER_KEY required).
-  # Runs only when the context job found OPENCODE_PROVIDER_KEY set and resolved a phase.
+  # opencode job — dispatch via `opencode run` CLI (a provider BKIT_ secret required).
+  # Runs only when `Select agent job` chose opencode and the context job resolved a phase.
   # The committed .opencode/opencode.json provides provider config + model pins —
   # no model is hard-coded in this YAML. No OIDC / Claude identity.
-  # OPENCODE_PROVIDER_KEY is fanned out to all known provider env var names so the
-  # opencode.json ${VAR} reference resolves regardless of which provider is installed.
   # ---------------------------------------------------------------------------
   opencode:
     name: bkit-cloud-opencode (${{ github.event_name }})
@@ -565,6 +778,18 @@ jobs:
           git config user.name 'bkit-auto[bot]'
           git config user.email 'bkit-auto@users.noreply.github.com'
 
+      # Repo dependencies for the dispatched phase (bkit:* scripts, the committed config).
+      # Pnpm version comes from the consumer's package.json#packageManager (no `with: version:`).
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: {{NODE_VERSION}}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Install opencode
         run: |
           # Version-pinned. Renovate bumps it through the `# renovate:` line below; without
@@ -579,17 +804,140 @@ jobs:
       - name: Dispatch /bkit-auto on opencode runner
         env:
           GH_TOKEN: ${{ github.token }}
-          # Fan out the single OPENCODE_PROVIDER_KEY secret to every supported cloud provider's
-          # env var name, so the committed .opencode/opencode.json {env:VAR} reference resolves
-          # regardless of which provider the consumer installed (openrouter/ollama/opencode).
-          # `opencode` (the opencode-native Zen gateway) reads BKIT_OPENCODE_API_KEY. No Claude
-          # identity leak — ANTHROPIC_API_KEY is absent.
-          BKIT_OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          BKIT_OLLAMA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          BKIT_OPENCODE_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          # Each provider secret maps to its same-named env var, so the committed
+          # .opencode/opencode.json {env:VAR} reference resolves for the installed provider.
+          # No Claude identity leak — ANTHROPIC_API_KEY is absent.
+          BKIT_OPENCODE_API_KEY: ${{ secrets.BKIT_OPENCODE_API_KEY }}
+          BKIT_OPENROUTER_API_KEY: ${{ secrets.BKIT_OPENROUTER_API_KEY }}
+          BKIT_OLLAMA_API_KEY: ${{ secrets.BKIT_OLLAMA_API_KEY }}
+          BKIT_LINEAR_API_KEY: ${{ secrets.BKIT_LINEAR_API_KEY }}
+          BKIT_JIRA_API_KEY: ${{ secrets.BKIT_JIRA_API_KEY }}
           # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).
           BKIT_PHASE: ${{ needs.context.outputs.phase }}
           BKIT_ARG: ${{ needs.context.outputs.arg }}
         run: |
           opencode run "/bkit-auto $BKIT_PHASE $BKIT_ARG"
+
+  # ---------------------------------------------------------------------------
+  # codex job — dispatch via openai/codex-action (BKIT_OPENAI_API_KEY required).
+  # Runs only when `Select agent job` chose codex and the context job resolved a phase.
+  # The action runs `drop-sudo` on the runner, which is irreversible: a reused self-hosted
+  # `{{CLOUD_RUNNER}}` loses sudo for later jobs, so use an ephemeral runner. The action also
+  # puts its own Node 24 on PATH, which later steps in this job see.
+  # ---------------------------------------------------------------------------
+  codex:
+    name: bkit-cloud-codex (${{ github.event_name }})
+    needs: context
+    if: needs.context.outputs.codex == 'true' && needs.context.outputs.skip != 'true'
+    runs-on: {{CLOUD_RUNNER}}
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    # One run per FID; the `-codex` suffix keeps it apart from the workflow-level lane.
+    concurrency:
+      group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}-codex
+      cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Configure git user
+        run: |
+          git config user.name 'bkit-auto[bot]'
+          git config user.email 'bkit-auto@users.noreply.github.com'
+
+      - name: Install vale
+        env:
+          # renovate: datasource=github-releases depName=errata-ai/vale
+          VALE_VERSION: "3.24.0"
+          VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
+        run: |
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      # Repo dependencies BEFORE the action: the action sandbox cannot fetch them.
+      # Pnpm version comes from the consumer's package.json#packageManager (no `with: version:`).
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: {{NODE_VERSION}}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Codex loads project config (.codex/, hooks, skills) only for a trusted project; the
+      # runner has no interactive trust prompt, so the config in codex-home trusts the workspace.
+      - name: Trust the workspace in codex-home
+        run: |
+          mkdir -p "$RUNNER_TEMP/codex-home"
+          {
+            echo "[projects.\"$GITHUB_WORKSPACE\"]"
+            echo 'trust_level = "trusted"'
+          } > "$RUNNER_TEMP/codex-home/config.toml"
+          echo "BKIT_CODEX_STARTED=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
+      - name: Dispatch $bkit-auto on Codex runner
+        id: codex
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675 # v1
+        with:
+          openai-api-key: ${{ secrets.BKIT_OPENAI_API_KEY }}
+          # The runner is the sandbox: the dispatched phase needs git, network and the repo's
+          # own tooling. Bot-authored triggers (workflow_run) must be allowed.
+          sandbox: danger-full-access
+          allow-bots: true
+          codex-home: ${{ runner.temp }}/codex-home
+          # renovate: datasource=npm depName=@openai/codex
+          codex-version: "0.165.0"
+          prompt: "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BKIT_LINEAR_API_KEY: ${{ secrets.BKIT_LINEAR_API_KEY }}
+          BKIT_JIRA_API_KEY: ${{ secrets.BKIT_JIRA_API_KEY }}
+
+      - name: Codex run summary
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION_OUTCOME: ${{ steps.codex.outcome }}
+          STARTED: ${{ env.BKIT_CODEX_STARTED }}
+          ARG: ${{ needs.context.outputs.arg }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          commits="-"
+          comments="-"
+          if [[ -z "$STARTED" ]]; then
+            # An earlier step failed before the start time was recorded: no count can be known.
+            :
+          elif [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # dispatch arm: ARG is an issue number, not a PR number, so no commits are tied to it.
+            if [[ "$ARG" =~ ^[0-9]+$ ]]; then
+              comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --paginate --jq "[.[] | select(.created_at >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+            fi
+            # Linear / Jira key: the comments live on the tracker issue, which this step does not read.
+          elif [[ "$ARG" =~ ^[0-9]+$ ]]; then
+            # feat arm: ARG is the PR number. Count PR commits and comments landed since start.
+            commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${ARG}/commits" --paginate --jq "[.[] | select(.commit.committer.date >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+            comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --paginate --jq "[.[] | select(.created_at >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+          else
+            # dev arm: ARG is the FID, there is no PR or issue number to read comments from.
+            # A failed fetch or log leaves commits unknown ("-"), never a false 0.
+            if git fetch -q origin dev 2>/dev/null && log=$(git log origin/dev --since="$STARTED" --author='bkit-auto' --oneline 2>/dev/null); then
+              commits=$(printf '%s' "$log" | grep -c . || true)
+            fi
+          fi
+          {
+            echo "### bkit-cloud codex"
+            echo ""
+            echo "| action | commits | comments |"
+            echo "| --- | --- | --- |"
+            echo "| ${ACTION_OUTCOME:--} | ${commits:--} | ${comments:--} |"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

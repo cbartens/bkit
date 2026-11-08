@@ -57,10 +57,10 @@ First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to past
 <!-- prettier-ignore -->
 | Command | Flags | What it does |
 | --- | --- | --- |
-| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
+| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
 | `bkit check` | — | Drift gate: exit 1 when a managed file needs re-rendering. The CI gate. |
 | `bkit upgrade` | `--to=<version>` `--latest` `--auto-apply` `--dry-run` | Re-render everything installed; --to / --latest bump @cbartens/bkit first. |
-| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
+| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
 | `bkit doctor` | — | Preflight and advisory replay; rewrites .bkit/advisories.md only. Exits 0. |
 | `bkit tips` | `--workflow=<name>` `--all` | What this repo has not set up yet, most useful first. Exits 0. |
 | `bkit status` | — | Current host and provider. Writes nothing. Exits 0. |

@@ -74,6 +74,8 @@ export interface SetupTip {
   ask: string;
   /** Where the agent finds the exact steps. */
   steps: string;
+  /** Per-repo `ask` / `steps`; `collectTips` applies it before returning the tip. */
+  resolve?: (cwd: string) => { ask: string; steps: string };
   /** False when no `bkit.advisories.ignore` entry may silence the tip. */
   silenceable?: false;
   /** Advisory ids this tip reuses the check of; a trailing `*` matches an id prefix. */
@@ -89,6 +91,37 @@ export const ALL_WORKFLOWS: readonly ComplyPhase[] = ["design", "plan", "build",
 
 /** Every `bkit tips --workflow=` context: the phase workflows, then the two agent closes. */
 export const EVERY_CONTEXT: readonly TipsContext[] = [...ALL_WORKFLOWS, "audit", "utility"];
+
+const CLOUD_STEPS = "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.";
+
+/** The `cloud` tip's `ask` / `steps` for the recorded `bkit.cloud.agent`. */
+function cloudTipText(agent: string): { ask: string; steps: string } {
+  const copy =
+    "copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml";
+  const tail = "then tell me which dashboard settings are left.";
+  switch (agent) {
+    case "claude":
+      return {
+        ask: `Check my cloud-agent setup against .bkit/cloud.md: install the Claude GitHub App on the repo, ${copy} and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/, run \`gh secret set BKIT_ANTHROPIC_API_KEY\` (or, keyless, \`gh variable set\` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), ${tail}`,
+        steps: CLOUD_STEPS,
+      };
+    case "codex":
+      return {
+        ask: `Check my cloud-agent setup against .bkit/cloud.md: confirm bkit was installed with --codex, ${copy}, run \`gh secret set BKIT_OPENAI_API_KEY\`, ${tail}`,
+        steps: CLOUD_STEPS,
+      };
+    case "opencode":
+      return {
+        ask: `Check my cloud-agent setup against .bkit/cloud.md: ${copy}, set the opencode provider's BKIT_ API key as a repo secret (the name is in .bkit/cloud.md), ${tail}`,
+        steps: CLOUD_STEPS,
+      };
+    default:
+      return {
+        ask: `Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/, ${tail}`,
+        steps: CLOUD_STEPS,
+      };
+  }
+}
 
 export const SETUP_TIPS: readonly SetupTip[] = [
   // --- current: is bkit itself up to date ---------------------------------------------
@@ -259,8 +292,9 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     title: "Finish cloud setup",
     line: "You've turned on cloud agents, but setup isn't finished, so cloud runs will stop partway. Finish the remaining steps.",
     why: "With cloud agents, bkit runs on its own: a change that passes its checks gets shipped and one that fails gets investigated, with nobody at the keyboard. That only works once every piece is in place.",
-    ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY` (or, keyless, `gh variable set` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), then tell me which dashboard settings are left.",
+    ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml, set the agent's credential as a repo secret under its BKIT_ name, then tell me which dashboard settings are left.",
     steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
+    resolve: (cwd) => cloudTipText(readBkitConfig(cwd).cloudAgents),
     fires: (cwd) => {
       const cloud = readBkitConfig(cwd).cloudAgents;
       if (cloud === "none") return false;

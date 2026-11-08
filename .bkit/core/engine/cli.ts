@@ -24,7 +24,7 @@ export type ModuleFlag =
   "core" | "claude" | "cursor" | "opencode" | "codex" | "antigravity" | "cloud";
 
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
-export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"] as const;
+export const CLOUD_VARIANTS = ["claude", "cursor", "opencode", "codex"] as const;
 export type CloudVariant = (typeof CLOUD_VARIANTS)[number];
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
@@ -589,7 +589,7 @@ export const CLASSIC_VERB_HELP: readonly ClassicVerbHelp[] = [
       "--antigravity",
       "--cursor",
       "--opencode=<provider>",
-      "--auto=<claude|cursor|opencode>",
+      "--auto=<claude|cursor|opencode|codex>",
       "--tracker=<name>",
       "--auto-revert",
     ],
@@ -645,7 +645,7 @@ export const CLASSIC_VERB_HELP: readonly ClassicVerbHelp[] = [
       "--antigravity",
       "--cursor",
       "--opencode=<provider>",
-      "--auto=<claude|cursor|opencode>",
+      "--auto=<claude|cursor|opencode|codex>",
       "--dry-run",
       "--force",
       "--nuke",
@@ -851,14 +851,14 @@ Dependency updaters (copy an example and own it):
   blocks when that value and the configs disagree.
   All templates and install steps: .bkit/templates.md
 
-  --auto=<claude|cursor|opencode>
-                  Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
-                  tracker=github + the ANTHROPIC_API_KEY repo secret (or the
-                  ANTHROPIC_FEDERATION_RULE_ID + ANTHROPIC_ORGANIZATION_ID repo variables
-                  for keyless federation) + the Claude GitHub App; --auto=cursor
-                  needs tracker=linear; --auto=opencode needs tracker=github + a remote
-                  opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
-                  uninstall only.
+  --auto=<claude|cursor|opencode|codex>
+                  Cloud-agent (auto-dispatch) integration (opt-in). Every variant needs
+                  a wired tracker (github, linear or jira). Claude needs the
+                  BKIT_ANTHROPIC_API_KEY repo secret or the ANTHROPIC_FEDERATION_RULE_ID
+                  + ANTHROPIC_ORGANIZATION_ID repo variables, plus the Claude GitHub App.
+                  Codex needs --codex and BKIT_OPENAI_API_KEY. OpenCode needs --opencode
+                  and its configured provider's BKIT_ key. Cursor uses its dashboard
+                  triggers. Bare --auto is accepted on uninstall only.
 
 Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, jira, none
@@ -966,7 +966,7 @@ export function validateModuleFlagsForVerb(
 // The CLI entrypoint, run only when this file is executed and driven by real
 // argv/fs/process.exit side effects; install.integration.test.ts exercises it through
 // spawned processes. Pure decision logic lives in exported functions
-// (validateModuleFlagsForVerb above, validateCloudTrackerMatch in commands/install/install.ts)
+// (validateModuleFlagsForVerb above, validateCloudTrackerWired in commands/install/install.ts)
 // for unit coverage.
 export async function main() {
   const commandExit = await runCommand(process.argv.slice(2), COMMANDS, {

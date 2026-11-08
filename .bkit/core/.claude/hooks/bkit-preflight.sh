@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # bkit-preflight.sh — Claude Code SessionStart hook
 #
-# Validates Linear issue state before any background/cloud session does bkit
+# Validates tracker issue state before any issue-carrying session does bkit
 # work. Refuses the session if the issue isn't approved for automation.
 #
-# Trigger:  LINEAR_ISSUE_ID env var present (proxy for non-IDE session).
-# Guards:   `bkit:auto` label present; issue state not in {Cancelled, Done}.
-# Setup:    See `.bkit/README.md` § Linear setup.
+# Trigger:  LINEAR_ISSUE_ID or GITHUB_ISSUE_ID env var present.
+# Guards:   `bkit:auto` label present; issue state not terminal by category.
+# Setup:    See `.bkit/README.md` for the configured tracker.
 #
 # IMPORTANT — Claude Code SessionStart hooks CANNOT block the session: any
 # non-zero exit is treated as non-blocking (docs.claude.com/docs/en/hooks.md).
@@ -14,8 +14,8 @@
 # HARD STOP instruction) AND `stderr` (visible to the user). Exit code is
 # informational only.
 #
-# bkit generates the managed block at install: the Linear guard and the rules-read
-# advisory are shared with the Cursor hook (bkit's `hooks/preflight-linear.sh` and
+# bkit generates the managed block at install: the tracker guard and the rules-read
+# advisory are shared with the Cursor hook (bkit's `hooks/preflight-tracker.sh` and
 # `hooks/preflight-rules.sh`); the trigger, the brew check and the output shape below
 # are Claude's own.
 
@@ -32,7 +32,7 @@ INPUT=$(cat)
 # emit_context — Claude SessionStart expects ONE JSON document
 # { hookSpecificOutput: { hookEventName, additionalContext } } on stdout. Each call
 # accumulates its string; the EXIT trap writes the document once, so the advisory and
-# the Linear guard result ride one document (two documents are unparseable).
+# the tracker guard result ride one document (two documents are unparseable).
 # (Cursor variant: emits { additional_context: ... } directly.)
 BKIT_CONTEXT=""
 emit_context() {
@@ -52,7 +52,7 @@ bkit_json_escape() {
   s=${s//$'\t'/\\t}
   # The rest of the C0 range (U+0000–U+001F) — bash cannot hold NUL, so 1–31 minus the
   # three above. A raw control byte makes the whole document unparseable and the host
-  # discards it, taking the advisory and the Linear guard result with it.
+  # discards it, taking the advisory and the tracker guard result with it.
   for (( i = 1; i < 32; i++ )); do
     case $i in 9 | 10 | 13) continue ;; esac
     printf -v oct '%03o' "$i"
@@ -74,9 +74,9 @@ trap bkit_write_document EXIT
 # {{BKIT_PART preflight-rules.sh}}
 
 # IDE session detection — the advisory above already fired; nothing else runs here.
-# Claude has no native is-background flag, so we use empty LINEAR_ISSUE_ID as the proxy.
+# Claude has no native is-background flag, so we use the issue env vars as the proxy.
 # (Cursor variant: parses `is_background_agent` from stdin JSON.)
-if [[ -z "${LINEAR_ISSUE_ID:-}" ]]; then
+if [[ -z "${LINEAR_ISSUE_ID:-}" && -z "${GITHUB_ISSUE_ID:-}" ]]; then
   exit 0
 fi
 
@@ -100,6 +100,6 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 fi
 
-# {{BKIT_PART preflight-linear.sh}}
+# {{BKIT_PART preflight-tracker.sh}}
 
 # <!-- bkit:end -->

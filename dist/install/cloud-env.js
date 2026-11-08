@@ -34,6 +34,10 @@ export const SESSION_HIJACK_KEYS = [
     "BKIT_ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
 ];
+// Router-only keys: used by a router job as a repo Actions secret, never by a cloud agent
+// session. Pasting them would hand a paid key to every session that reads untrusted issue /
+// PR text. Always dropped from the paste block.
+export const ROUTER_ONLY_KEYS = ["BKIT_OPENAI_API_KEY"];
 // bkit baseline env-var NAMES every cloud environment needs, whatever the tracker:
 // `gh` and the GitHub MCP server read BKIT_GH_TOKEN on every host. Emitted as a
 // placeholder ONLY when absent from the resolved `.envrc` set — a present value keeps
@@ -111,6 +115,7 @@ export function resolveCloudEnvVars(cwd) {
         included: [],
         unset: [],
         hijackDropped: [],
+        routerOnlyDropped: [],
         emptySkipped: [],
         placeholders: [],
         sources: [],
@@ -148,6 +153,13 @@ export function resolveCloudEnvVars(cwd) {
     for (const k of SESSION_HIJACK_KEYS) {
         if (map.has(k)) {
             res.hijackDropped.push(k);
+            map.delete(k);
+        }
+    }
+    // Drop router-only keys.
+    for (const k of ROUTER_ONLY_KEYS) {
+        if (map.has(k)) {
+            res.routerOnlyDropped.push(k);
             map.delete(k);
         }
     }
@@ -199,6 +211,9 @@ export function renderCloudEnvNotes(res) {
     }
     if (res.hijackDropped.length) {
         bullets.push(`- **Dropped — session-billing hijack:** ${fmtList(res.hijackDropped)} — would redirect the agent's own model calls onto API-key billing instead of your subscription.`);
+    }
+    if (res.routerOnlyDropped.length) {
+        bullets.push(`- **Dropped — router-only secret:** ${fmtList(res.routerOnlyDropped)} — set it as a repo Actions secret; no cloud agent session needs it.`);
     }
     if (res.emptySkipped.length) {
         bullets.push(`- **Empty in source (skipped):** ${fmtList(res.emptySkipped)}`);

@@ -159,8 +159,9 @@ export function opencodeProviderEnvVar(providerKey: string): string {
  * secret `env:` var. `bkit install --opencode=<provider>` rewrites neither; this advisory names
  * the hand-edit.
  *
- * bkit-cloud.yml runs `opencode run` against the committed `.opencode/` config and fans one
- * `OPENCODE_PROVIDER_KEY` secret out to every provider env var, so it is not checked.
+ * bkit-cloud.yml runs `opencode run` against the committed `.opencode/` config and passes
+ * the provider's `BKIT_` secret (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or
+ * `BKIT_OLLAMA_API_KEY`) under its own env var name, so it is not checked.
  *
  * No-op when opencode.yml is absent. No equivalent check for claude.yml (provider-fixed to
  * Claude). Severity "advisory": never gates `bkit check`; surfaces on both check and postinstall.
@@ -222,7 +223,7 @@ export function detectOpencodeYmlProviderDrift(cwd: string): PreflightFinding | 
       "        model: " +
       expectedPrefix +
       "/<model>   # a model your provider serves (see .opencode/opencode.json)\n\n" +
-      "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and fans OPENCODE_PROVIDER_KEY out to every provider env var.)",
+      "Keep opencode.yml in sync with .opencode/opencode.json on every provider switch. (bkit-cloud.yml needs no such edit: it reads .opencode/ and passes the provider's BKIT_ secret under its own name.)",
   };
 }
 

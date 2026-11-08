@@ -1,6 +1,6 @@
 // audits/hooks/preflight-sh.integration.test.ts — SessionStart hook (preflight.sh)
 // runtime behaviour. Spawns the hook as install generates it (the host template with
-// the shared Linear guard spliced in) as a bash child process, plus one source-level
+// the shared tracker guard spliced in) as a bash child process, plus one source-level
 // (no-subprocess) check of the Claude hook.
 //
 // The Claude hook runs as a Claude SessionStart hook, the Cursor one as a Cursor Cloud
@@ -9,9 +9,8 @@
 //     carrying the rules-read advisory, built without python3.
 //   - Missing BKIT_LINEAR_API_KEY / LINEAR_ISSUE_ID hard-stop, in each host's own
 //     output shape, with the advisory riding the same one JSON document.
-//   - Neither hook calls bkit: both run with no node_modules at all.
-//   - Jira has no preflight guard: a Jira session passes through, and neither hook
-//     reads the Jira token or calls Atlassian.
+//   - Jira sessions read issue facts through bkit, with missing binaries and failed
+//     reads stopping the session; the hook never calls Atlassian directly.
 
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -36,7 +35,7 @@ function runPreflight(
   hook: string,
   env: Record<string, string | undefined>,
   input = "{}",
-  opts: { path?: string } = {},
+  opts: { path?: string; cwd?: string; timeout?: number } = {},
 ): { status: number | null; stdout: string; stderr: string } {
   // Strip undefined keys so we don't leak the parent process env back in.
   const cleanEnv: Record<string, string> = {};
@@ -45,11 +44,11 @@ function runPreflight(
   }
   // cwd outside any git repo: Cursor's runtime marker write is skipped.
   const result = spawnSync("bash", [hook], {
-    cwd: GENERATED,
+    cwd: opts.cwd ?? GENERATED,
     env: { PATH: opts.path ?? process.env.PATH ?? "", ...cleanEnv },
     input,
     encoding: "utf-8",
-    timeout: 10_000,
+    timeout: opts.timeout ?? 10_000,
   });
   return {
     status: result.status,
@@ -112,7 +111,7 @@ describe("BAR-186 — Claude SessionStart preflight.sh runtime behaviour", () =>
   });
 });
 
-describe("Claude SessionStart preflight.sh — no Jira guard", () => {
+describe("Claude SessionStart preflight.sh — Jira session without an issue", () => {
   it("a Jira session (token set, no LINEAR_ISSUE_ID) emits the advisory and exits 0", () => {
     const result = runPreflight(CLAUDE_HOOK, { BKIT_JIRA_API_KEY: "t" });
     expect(result.status).toBe(0);
@@ -139,7 +138,9 @@ describe("Cursor sessionStart preflight.sh runtime behaviour", () => {
   });
 
   it("a background agent without BKIT_LINEAR_API_KEY hard-stops in Cursor's shape", () => {
-    const result = runPreflight(CURSOR_HOOK, {}, '{"is_background_agent": true}');
+    const result = runPreflight(CURSOR_HOOK, {}, '{"is_background_agent": true}', {
+      cwd: fixtureRepo("linear"),
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("BKIT_LINEAR_API_KEY not set");
     expect(JSON.parse(result.stdout).additional_context).toContain("HARD STOP");
@@ -150,6 +151,7 @@ describe("Cursor sessionStart preflight.sh runtime behaviour", () => {
       CURSOR_HOOK,
       { BKIT_LINEAR_API_KEY: "k" },
       '{"is_background_agent": true}',
+      { cwd: fixtureRepo("linear") },
     );
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("LINEAR_ISSUE_ID not set");
@@ -173,10 +175,10 @@ describe("preflight.sh — the rules-read advisory", () => {
   });
 });
 
-describe("preflight.sh — generated from one Linear guard", () => {
+describe("preflight.sh — generated from one tracker guard", () => {
   it("both generated hooks carry the shared guard verbatim and never call bkit", () => {
     const guard = fs
-      .readFileSync(path.join(HOOK_SOURCES, "hooks", "preflight-linear.sh"), "utf-8")
+      .readFileSync(path.join(HOOK_SOURCES, "hooks", "preflight-tracker.sh"), "utf-8")
       .trimEnd();
     for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
       const text = fs.readFileSync(hook, "utf-8");
@@ -228,5 +230,275 @@ describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
     expect(darwinIdx).toBeGreaterThan(-1);
     expect(brewBinsIdx).toBeGreaterThan(-1);
     expect(darwinIdx).toBeLessThan(brewBinsIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tracker-aware guard (preflight-tracker.sh): GitHub REST and Linear by state category.
+// Each case runs in its own fixture repo (package.json with bkit.tracker.default, an
+// origin remote, a feat/{FID} branch) with a `curl` stub first on PATH.
+// ---------------------------------------------------------------------------
+
+const BACKGROUND = '{"is_background_agent": true}';
+
+/** A fixture consumer repo on `feat/12-thing`, its tracker set in package.json. */
+function fixtureRepo(tracker: string | undefined, branch = "feat/12-thing"): string {
+  const cwd = fs.mkdtempSync(path.join(GENERATED, "repo-"));
+  spawnSync("git", ["init", "-q", "-b", branch], { cwd });
+  spawnSync("git", ["remote", "add", "origin", "https://github.com/o/r.git"], { cwd });
+  fs.writeFileSync(
+    path.join(cwd, "package.json"),
+    JSON.stringify(tracker ? { bkit: { tracker: { default: tracker } } } : {}),
+  );
+  return cwd;
+}
+
+/**
+ * A `curl` stub: prints `body` and exits `exit` (or fails with 22 and no output). Its
+ * directory is returned as a PATH that puts the stub before the real curl.
+ */
+function curlStub(body: string, exit = 0): string {
+  const bin = fs.mkdtempSync(path.join(GENERATED, "curl-"));
+  const file = path.join(bin, "curl");
+  fs.writeFileSync(path.join(bin, "reply"), body);
+  fs.writeFileSync(
+    file,
+    `#!/bin/sh\n[ ${exit} -eq 0 ] && cat "${path.join(bin, "reply")}"\nexit ${exit}\n`,
+  );
+  fs.chmodSync(file, 0o755);
+  return `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
+}
+
+const githubIssue = (state: string, labels: string[]) =>
+  JSON.stringify({ state, labels: labels.map((name) => ({ name })) });
+
+function jiraFixture(
+  terminal: boolean,
+  labels = ["bkit:auto"],
+  failure?: "auth" | "timeout",
+): { cwd: string; env: Record<string, string>; calls: string } {
+  const cwd = fixtureRepo("jira", "feat/ab2-12-thing");
+  const bin = path.join(cwd, "node_modules", ".bin");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.symlinkSync(path.resolve("tests/fixtures/gh/bin/gh"), path.join(bin, "bkit"));
+  const calls = path.join(cwd, "fetch-args");
+  const body = path.join(cwd, "fetch-body.sh");
+  const reply = path.join(cwd, "fetch-reply.json");
+  fs.writeFileSync(
+    reply,
+    JSON.stringify(
+      failure === "auth"
+        ? { reason: "auth" }
+        : {
+            title: "Fixture issue",
+            url: "https://example.atlassian.net/browse/AB2-12",
+            state: terminal ? "Shipped" : "In progress",
+            labels,
+            terminal,
+            files: {},
+          },
+    ),
+  );
+  fs.writeFileSync(
+    body,
+    `printf '%s\\n' "$@" > '${calls}'\n` +
+      (failure === "timeout" ? "sleep 21\n" : `cat '${reply}'\n`) +
+      `exit ${failure === "auth" ? 80 : 0}\n`,
+  );
+  return { cwd, env: { BKIT_FAKE_TOOL_SCRIPT: body }, calls };
+}
+
+/** The one JSON document on stdout, parsed; fails the case when there are more lines. */
+function onlyDocument(stdout: string): string {
+  expect(stdout.trim().split("\n")).toHaveLength(1);
+  return emittedContext(stdout);
+}
+
+describe("preflight-tracker.sh — GitHub tracker", () => {
+  const run = (reply: string, env: Record<string, string | undefined> = {}, curlExit = 0) =>
+    runPreflight(
+      CURSOR_HOOK,
+      { BKIT_GH_TOKEN: "ghp_x", GITHUB_ISSUE_ID: "12", ...env },
+      BACKGROUND,
+      { cwd: fixtureRepo("github"), path: curlStub(reply, curlExit) },
+    );
+
+  it("github issue without bkit:auto stops the Cursor background session", () => {
+    const result = run(githubIssue("open", ["enhancement"]));
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("bkit:auto");
+  });
+
+  it("github closed issue stops the session and an open labelled one passes", () => {
+    const closed = run(githubIssue("closed", ["bkit:auto"]));
+    expect(closed.status).toBe(1);
+    expect(onlyDocument(closed.stdout)).toContain("HARD STOP");
+    const open = run(githubIssue("open", ["bkit:auto"]));
+    expect(open.status).toBe(0);
+    const context = onlyDocument(open.stdout);
+    expect(context).toContain("PASS");
+    expect(context).not.toContain("HARD STOP");
+  });
+
+  it.each([
+    ["curl failure", { BKIT_GH_TOKEN: "ghp_x" }, 22, /github.*(could not|failed)/i],
+    ["BKIT_GH_TOKEN unset", { BKIT_GH_TOKEN: undefined }, 0, /BKIT_GH_TOKEN/],
+  ])(
+    "github read failure stops the session naming the tracker and the reason",
+    (_n, env, curlExit, reason) => {
+      const result = run(githubIssue("open", ["bkit:auto"]), env, curlExit);
+      expect(result.status).toBe(1);
+      const context = onlyDocument(result.stdout);
+      expect(context).toContain("HARD STOP");
+      expect(context).toMatch(reason);
+    },
+  );
+});
+
+describe("preflight-tracker.sh — Linear tracker by state category", () => {
+  it("linear completed state renamed Shipped stops the session", () => {
+    const reply = JSON.stringify({
+      data: {
+        issue: {
+          identifier: "ENG-4",
+          title: "T",
+          state: { name: "Shipped", type: "completed" },
+          labels: { nodes: [{ name: "bkit:auto" }] },
+        },
+      },
+    });
+    const result = runPreflight(
+      CURSOR_HOOK,
+      { BKIT_LINEAR_API_KEY: "k", LINEAR_ISSUE_ID: "ENG-4" },
+      BACKGROUND,
+      { cwd: fixtureRepo("linear"), path: curlStub(reply) },
+    );
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("terminal");
+  });
+});
+
+describe("preflight-tracker.sh — Jira and session issue sources", () => {
+  it("jira terminal issue stops the Cursor background session", () => {
+    const terminal = jiraFixture(true);
+    const stopped = runPreflight(CURSOR_HOOK, terminal.env, BACKGROUND, {
+      cwd: terminal.cwd,
+    });
+    expect(stopped.status).toBe(1);
+    const context = onlyDocument(stopped.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toMatch(/Jira/i);
+    expect(context).toMatch(/terminal|finished|Shipped/i);
+    expect(context).not.toContain('"terminal"');
+    const args = fs.readFileSync(terminal.calls, "utf-8").trim().split("\n");
+    expect(args.slice(0, 2)).toEqual(["issues", "fetch"]);
+    expect(args.join(" ")).toMatch(/--issue(?:=| )AB2-12(?: |$)/);
+    expect(args.join(" ")).toMatch(/--outbox(?:=| )\S+/);
+    expect(args).toContain("--json");
+
+    const open = jiraFixture(false);
+    const passed = runPreflight(CURSOR_HOOK, open.env, BACKGROUND, { cwd: open.cwd });
+    expect(passed.status).toBe(0);
+    expect(onlyDocument(passed.stdout)).toContain("PASS");
+
+    const unlabelled = jiraFixture(false, []);
+    const optedOut = runPreflight(CURSOR_HOOK, unlabelled.env, BACKGROUND, {
+      cwd: unlabelled.cwd,
+    });
+    expect(optedOut.status).toBe(1);
+    expect(onlyDocument(optedOut.stdout)).toContain("bkit:auto");
+  });
+
+  it("jira session without node_modules/.bin/bkit stops naming the missing bin", () => {
+    const result = runPreflight(CURSOR_HOOK, {}, BACKGROUND, {
+      cwd: fixtureRepo("jira", "feat/ab2-12-thing"),
+    });
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toMatch(/Jira/i);
+    expect(context).toContain("node_modules/.bin/bkit");
+    expect(context).toMatch(/missing|absent|not (?:found|installed|available)/i);
+  });
+
+  it("jira fetch %s stops the session naming the tracker and the reason", () => {
+    for (const [reason, message] of [
+      ["auth", /auth/i],
+      ["timeout", /timeout|timed out/i],
+    ] as const) {
+      const fixture = jiraFixture(false, ["bkit:auto"], reason);
+      const result = runPreflight(CURSOR_HOOK, fixture.env, BACKGROUND, {
+        cwd: fixture.cwd,
+        timeout: 25_000,
+      });
+      expect(result.status, reason).toBe(1);
+      const context = onlyDocument(result.stdout);
+      expect(context, reason).toContain("HARD STOP");
+      expect(context, reason).toMatch(/Jira/i);
+      expect(context, reason).toMatch(message);
+      expect(fs.existsSync(fixture.calls), reason).toBe(true);
+    }
+  }, 30_000);
+
+  it("%s session with no issue id records bkit:auto not verified and exits 0", () => {
+    for (const tracker of ["github", "jira"]) {
+      const result = runPreflight(CURSOR_HOOK, {}, BACKGROUND, {
+        cwd: fixtureRepo(tracker, "work/session"),
+      });
+      expect(result.status, tracker).toBe(0);
+      const context = onlyDocument(result.stdout);
+      expect(context, tracker).toContain(
+        "Guard pre-check: SKIPPED — no issue id; bkit:auto not verified",
+      );
+      expect(context, tracker).toContain(".agents/rules.md");
+      expect(context, tracker).not.toContain("HARD STOP");
+      expect(result.stderr, tracker).toBe("");
+    }
+  });
+
+  it("Claude session carrying GITHUB_ISSUE_ID runs the tracker guard", () => {
+    const result = runPreflight(
+      CLAUDE_HOOK,
+      { GITHUB_ISSUE_ID: "12", BKIT_GH_TOKEN: "fixture-token" },
+      "{}",
+      {
+        cwd: fixtureRepo("github", "work/session"),
+        path: curlStub(githubIssue("open", [])),
+      },
+    );
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("bkit:auto");
+    expect(context).toContain(".agents/rules.md");
+  });
+
+  it("unset tracker without LINEAR_ISSUE_ID adds advisory context and exits 0", () => {
+    for (const tracker of [undefined, "none"]) {
+      const result = runPreflight(CURSOR_HOOK, {}, BACKGROUND, {
+        cwd: fixtureRepo(tracker),
+      });
+      expect(result.status, String(tracker)).toBe(0);
+      const context = onlyDocument(result.stdout);
+      expect(context).toContain(".agents/rules.md");
+      expect(context).not.toContain("HARD STOP");
+      expect(result.stderr).toBe("");
+    }
+  });
+});
+
+describe("preflight-tracker.sh — one shared part", () => {
+  it("generated Claude and Cursor hooks carry the one preflight-tracker.sh part", () => {
+    const part = path.join(HOOK_SOURCES, "hooks", "preflight-tracker.sh");
+    expect(fs.existsSync(part)).toBe(true);
+    const guard = fs.readFileSync(part, "utf-8").trimEnd();
+    for (const hook of [CLAUDE_HOOK, CURSOR_HOOK]) {
+      expect(fs.readFileSync(hook, "utf-8"), hook).toContain(guard);
+    }
+    expect(fs.existsSync(path.join(HOOK_SOURCES, "hooks", "preflight-linear.sh"))).toBe(false);
   });
 });
