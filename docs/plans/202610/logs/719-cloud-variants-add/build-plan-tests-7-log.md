@@ -23,3 +23,4 @@ WROTE — TASK 14: `.bkit/core/engine/checks/after/auth.test.ts` `legacy OPENCOD
 WROTE — TASK 14: `.bkit/core/engine/checks/after/auth.test.ts` `dashboards router section names the recorded variant's BKIT_ secret`
 WROTE — TASK 14: `.bkit/core/engine/checks/after/auth.test.ts` `adopted copy still reading legacy secret names gets legacy-name findings and no cloud-router-secret-renamed`
 NOTE — TASK 13: removed old test 'jira tracker: no nudge' (contradicts planned jira test); first cloud-router test now sets agent claude + id-token + BKIT_ content.
+WROTE — TASK 14: `.bkit/core/engine/checks/after/auth.test.ts` `adopted copy still reading legacy secret names gets legacy-name findings and no cloud-router-secret-renamed` (rewritten: adds contrast with a BKIT_ copy that must give the rename finding; red today)

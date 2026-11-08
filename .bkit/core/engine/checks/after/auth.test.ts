@@ -370,6 +370,14 @@ describe("detectCiRouterSecrets per variant", () => {
     expect(detectCiRouterSecrets(tmpDir).map((f) => f.id)).not.toContain(
       "cloud-router-secret-renamed",
     );
+    setup({ agent: "claude", router: CURRENT });
+    const renamed = detectCiRouterSecrets(tmpDir).find(
+      (f) => f.id === "cloud-router-secret-renamed",
+    );
+    expect(renamed).toBeDefined();
+    expect(renamed!.action).toContain("gh secret set BKIT_ANTHROPIC_API_KEY");
+    expect(renamed!.action).toContain("gh secret delete ANTHROPIC_API_KEY");
+    setup({ agent: "claude", router: LEGACY });
     mockGhNames({ secret: [], variable: [] });
     const missing = detectCiRouterSecrets(tmpDir).find(
       (f) => f.id === "anthropic-api-key-secret-missing",
