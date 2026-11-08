@@ -743,3 +743,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T06:10:57Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","step-number","step-title","sub-step","error-file"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-11-08T06:10:57Z"}
 {"type":"engine-action","action":"comment","key":"build/3/failure/10/5/comment","hash":"c43482524cf4adb2dca23897d49c5caefd4a5558805da219994e4613e6cf461e","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718085487","at":"2026-11-08T06:10:58Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-11-08T06:39:49Z","parentSha":"6b357660b8792b73b3f2d61686911c1548948d58","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"session","workflow":"build","at":"2026-11-08T06:39:49Z","platform":"claude-code","session":"fp:58cf66be5f85"}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:39:49Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-08T06:39:49Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:39:49Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:39:57Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:39:57Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:40:02Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-08T06:40:02Z","parentSha":"6b357660b8792b73b3f2d61686911c1548948d58","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:40:02Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/4/build-worktree-setup/-/-/comment","hash":"99ad30688e1edbf7caee8ef88ebe42549d8ff00fe9c1fd267ed7de4ab3c956e7","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718331415","at":"2026-11-08T06:40:03Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-08T06:40:03Z","parentSha":"6b357660b8792b73b3f2d61686911c1548948d58","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-input-4.md"]}
