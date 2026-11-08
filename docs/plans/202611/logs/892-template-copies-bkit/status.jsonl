@@ -1,0 +1,12 @@
+{"type":"workflow-started","workflow":"build","at":"2026-11-08T12:26:20Z","parentSha":"53f80ca33a108b4d0a72376f2a915a35ce1402bc","limits":{"build.verify":{"ask":true,"max":5},"build.challenge":{"ask":true,"max":2},"build.tests":{"ask":true,"max":2}}}
+{"type":"session","workflow":"build","at":"2026-11-08T12:26:20Z","platform":"claude-code","session":"fp:13a562c53b40"}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:20Z","noun":"runtime","verb":"row","flags":["workflow","file"]}
+{"type":"runtime-resolved","workflow":"build","at":"2026-11-08T12:26:20Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":""}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:21Z","noun":"runtime","verb":"assert","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:25Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:25Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file","plan"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:29Z","noun":"steps","verb":"done","flags":["workflow","step","file","commit"]}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-11-08T12:26:29Z","parentSha":"53f80ca33a108b4d0a72376f2a915a35ce1402bc","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:26:29Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"995daf80ebedca19357c4e42a21a06ad5ada0bcc62bdede5db084522c7b61f0c","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6721466793","at":"2026-11-08T12:26:31Z"}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-08T12:26:31Z","parentSha":"53f80ca33a108b4d0a72376f2a915a35ce1402bc","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-input-1.md"]}
