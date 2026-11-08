@@ -214,6 +214,8 @@ A team picks whichever cloud agent they like (Claude, opencode, Codex or Cursor)
 | dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 22 |
 | context job installs and runs bkit from dev, never from the feat/** PR head | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 23 |
 | never lets BKIT_OPENAI_API_KEY into the paste block | Unit | `.bkit/core/engine/install/cloud-env.test.ts` | 24 |
+| context job tooling setup steps before Install bkit cannot fail the job | Integration | `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` | 25 |
+| Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording | Integration | `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` | 26 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -1087,6 +1089,30 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 24 end -->
 <!-- bkit:group 10 end -->
+
+<!-- bkit:group 11 start -->
+
+### TASK GROUP 11: Challenge round 2 findings
+
+<!-- bkit:task 25 start -->
+
+- [ ] **TASK 25:** A consumer whose repo has no `packageManager` field or no `pnpm-lock.yaml` (or any run where the pnpm download or the pnpm cache restore fails) gets a red context job instead of the documented green `bkit-unavailable` no-op: `pnpm/action-setup` and `actions/setup-node` (`cache: pnpm`) sit before `Install bkit` without `continue-on-error`, so they abort the job before the gate can report anything
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:195` · **Round:** 2
+  - **DONE WHEN:** a failure in any context-job tooling step before `Install bkit` (`pnpm/action-setup` `:195`, `actions/setup-node` `:198`) leaves the job running, so `bkit_gate` emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` plus its summary row, no agent starts and the run is green, matching plan § Breaking Changes and `docs/observability.md:190`; the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts` `context job tooling setup steps before Install bkit cannot fail the job` fails on the parsed `jobs.context.steps` entries whose `uses` starts with `pnpm/action-setup@` or `actions/setup-node@` having no `continue-on-error: true`
+
+<!-- bkit:task 25 end -->
+<!-- bkit:task 26 start -->
+
+- [ ] **TASK 26:** A consumer records `--auto=codex` on `dev`, but every feature branch cut before that commit has no `bkit.cloud.agent` in its own `package.json`, so `Select agent job` reads `none` from `pr-head/`, starts nothing, and its notice tells them to "Run bkit install --auto=<claude|opencode|codex>", a command they already ran; the reverse also holds: setting `bkit.cloud.agent` to `none` (or another agent) on `dev` does not reach in-flight branches, which keep starting the agent their own `package.json` names
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:225` · **Round:** 2
+  - **DONE WHEN:** the owner decides which copy of `bkit.cloud.agent` (and `bkit.tracker.default`, read the same way by `bkit_gate` `:417` and by bkit under `cd pr-head`) wins when the feat/** head and `dev` disagree, and the router and its notice match that decision. No agent can settle it because owner decision `build-decision-4-1.md` Q1 explicitly lists `bkit.cloud.agent` / `bkit.tracker.default` as data read from the feat/** head. The owner chooses one of: (a) read routing config from the `dev` checkout (workspace root) and only marker / branch / `.bkit/issues.jsonl` from `pr-head/`; (b) read the feat/** head first and fall back to `dev` when the head lacks the field, with the notice naming which copy decided; (c) keep the head-only read and make the notice say the branch predates the recording (merge `dev` into it) instead of telling the user to run `bkit install --auto=`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts` `Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording` fails on `codex=false` and the "Run bkit install --auto=" notice when the root `package.json` records `bkit.cloud.agent: "codex"`, `HEAD_DIR` points at a `package.json` with no `bkit.cloud.agent`, and `BKIT_OPENAI_API_KEY` is set
+
+<!-- bkit:task 26 end -->
+<!-- bkit:group 11 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
