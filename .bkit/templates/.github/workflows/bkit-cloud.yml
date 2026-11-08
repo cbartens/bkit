@@ -862,8 +862,13 @@ jobs:
           ACTION_OUTCOME: ${{ steps.codex.outcome }}
           STARTED: ${{ env.BKIT_CODEX_STARTED }}
           ARG: ${{ needs.context.outputs.arg }}
+          EVENT: ${{ github.event_name }}
         run: |
-          if [[ "$ARG" =~ ^[0-9]+$ ]]; then
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # dispatch arm: ARG is an issue number, not a PR number, so no commits are tied to it.
+            commits="-"
+            comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --paginate --jq "[.[] | select(.created_at >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+          elif [[ "$ARG" =~ ^[0-9]+$ ]]; then
             # feat arm: ARG is the PR number. Count PR commits and comments landed since start.
             commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${ARG}/commits" --paginate --jq "[.[] | select(.commit.committer.date >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
             comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --paginate --jq "[.[] | select(.created_at >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
