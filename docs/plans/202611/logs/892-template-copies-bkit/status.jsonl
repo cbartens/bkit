@@ -19,3 +19,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T12:28:45Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","optional-artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-convert/-/1/comment","hash":"1fa0653a20627a2842072f352cc90a45ecfcc2659062cdd7bf2bc37f8a993a3d","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6721466793","at":"2026-11-08T12:28:47Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-08T12:28:47Z","parentSha":"edc97752f97e8e7d7968143c8cb6a24fbfcbdba1","artifacts":["docs/plans/202611/892-template-copies-bkit-plan.md","docs/plans/202611/logs/892-template-copies-bkit/build-plan-check.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:28:49Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:28:52Z","noun":"branches","verb":"anchor-read","flags":["file","field","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:28:56Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","number","post","title","comment-field","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-current/-/1/comment","hash":"738f7d3d0f87cff6c4486c893308ed5b63cec34a65df3b5b41fc1100cdb8842c","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6721466793","at":"2026-11-08T12:28:59Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-current","status":"DONE","at":"2026-11-08T12:28:59Z","parentSha":"e328cb2629aca3290915018e9331e72249c19ddb","artifacts":[],"attempt":1}
