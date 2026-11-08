@@ -842,7 +842,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Summary `jobs` field from the `Select agent job` hand-off (`719-cloud-router-dispatches-recorded-agent-only`, `719-cloud-router-secrets-bkit-prefixed`)
+- [x] **TASK 9:** Summary `jobs` field from the `Select agent job` hand-off (`719-cloud-router-dispatches-recorded-agent-only`, `719-cloud-router-secrets-bkit-prefixed`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `bkit_gate`'s `$GITHUB_STEP_SUMMARY` row fills `jobs` from the `Select agent job` outputs — the dispatched job + its `BKIT_` secret (`codex:BKIT_OPENAI_API_KEY`) and each ignored job with its reason (`claude: not bkit.cloud.agent`); a `no-agent` row names the recorded agent's missing `BKIT_` secret and the ignored secrets; `BKIT_` names only
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, `runs-on` + `{{NODE_VERSION}}` re-applied
   - **UPDATE:** `.bkit/core/engine/audits/templates/cloud-ctx-step.integration.test.ts`: summary-row cases read `$GITHUB_STEP_SUMMARY` after the Select and ctx steps run in sequence
