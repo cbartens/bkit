@@ -132,6 +132,26 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     expect(evalCheckoutRef(String(last.with?.ref), head)).not.toBe(head);
   });
 
+  it("context job tooling setup steps before Install bkit cannot fail the job", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: {
+        context: {
+          steps: Array<{ name?: string; uses?: string; "continue-on-error"?: unknown }>;
+        };
+      };
+    };
+    const steps = doc.jobs.context.steps;
+    const installIdx = steps.findIndex((st) => st.name === "Install bkit");
+    expect(installIdx, "context job has no Install bkit step").toBeGreaterThan(-1);
+    const tooling = steps
+      .slice(0, installIdx)
+      .filter((st) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(String(st.uses)));
+    expect(tooling.length, "no pnpm / setup-node step before Install bkit").toBe(2);
+    for (const st of tooling) {
+      expect(st["continue-on-error"], `${st.uses} can fail the context job`).toBe(true);
+    }
+  });
+
   it("context job runs the workspace-root checkout before every nested `path:` checkout", () => {
     const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
       jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };

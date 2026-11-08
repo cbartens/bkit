@@ -1316,6 +1316,46 @@ describe.skipIf(!hasTools)(
   },
 );
 
+describe.skipIf(!hasBash)("bkit-cloud.yml Select agent job — routing config source", () => {
+  it("Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-select-dev-"));
+    try {
+      const headDir = path.join(tmp, "pr-head");
+      fs.mkdirSync(headDir);
+      fs.writeFileSync(path.join(headDir, "package.json"), JSON.stringify({ name: "c" }));
+      fs.writeFileSync(
+        path.join(tmp, "package.json"),
+        JSON.stringify({ name: "c", bkit: { cloud: { agent: "codex" } } }),
+      );
+      const outputFile = path.join(tmp, "github-output");
+      fs.writeFileSync(outputFile, "");
+      const res = spawnSync("bash", ["-c", SELECT_SCRIPT], {
+        cwd: tmp,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BKIT_ANTHROPIC_API_KEY: "",
+          ANTHROPIC_FEDERATION_RULE_ID: "",
+          ANTHROPIC_ORGANIZATION_ID: "",
+          BKIT_OPENCODE_API_KEY: "",
+          BKIT_OPENROUTER_API_KEY: "",
+          BKIT_OLLAMA_API_KEY: "",
+          BKIT_OPENAI_API_KEY: "k",
+          HEAD_DIR: "pr-head",
+          GITHUB_OUTPUT: outputFile,
+        },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const out = fs.readFileSync(outputFile, "utf8");
+      expect(out).toMatch(/^codex=true$/m);
+      expect(out).toMatch(/^dispatched=codex$/m);
+      expect(res.stdout).not.toContain("Run bkit install --auto=");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detection", () => {
   const CREDENTIAL_VARS = [
     "ANTHROPIC_API_KEY",
