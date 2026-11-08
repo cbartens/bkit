@@ -88,7 +88,7 @@ App / stack credentials do not belong here — runtime keys and `/bkit-debug` ob
 | --- | --- | --- |
 | `BKIT_GH_TOKEN` | GitHub MCP server; engine tracker calls (`gh` with `GH_TOKEN` set from it); self-hosted Renovate platform auth | Write PAT. Fine-grained (one owner) when bkit touches a single repo / owner; classic when one token must span owners. Always set an expiry (max 30 days); re-mint before it lapses and update local `.bkit/.env` + the repo Actions secret together (only repo secret). Classic scopes: `repo`, `workflow`, `project`, `read:org`, `notifications`, `gist`, `write:discussion`, `write:packages`, `audit_log`; Renovate minimum → `docs/deployments.md` § Dependency updaters. |
 | npm publish | `.github/workflows/release.yml` | No npm token anywhere. OIDC trusted publishing only; package publishing access = "Require two-factor authentication and disallow tokens". |
-| OpenCode provider keys | OpenCode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the single `OPENCODE_PROVIDER_KEY` secret fans out to the configured provider's env-var name. |
+| OpenCode provider keys | OpenCode host model access | Referenced as `{env:KEY}` in `.opencode/opencode.json` — never inlined. In CI the provider's `BKIT_` secret (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY` or `BKIT_OLLAMA_API_KEY`) reaches the OpenCode job under that same name. |
 | `BKIT_ANTHROPIC_API_KEY` / `BKIT_CURSOR_API_KEY` / `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` | Cloud agents and tracker | Optional; opt-in surfaces only. The engine sends the Linear key to `api.linear.app/graphql` and the Jira key as a bearer to `mcp.atlassian.com/v2/mcp`; it never prints a key, and tracker failure reasons carry no request headers. |
 
 ### `.claude/bkit-cloud.md` + `.cursor/bkit-cloud.md` + `.codex/bkit-cloud.md` — generated, hold live secrets
@@ -171,6 +171,12 @@ Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at r
 GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) → `run:` body ONLY via `env:` (runtime expansion), never inlined into `${{ }}` — see `docs/deployments.md` § `bkit-cloud.yml`.
 
 ## CI Auto-Route Trust (bkit-cloud)
+
+**Engine-owned FID parse:** the router never matches a FID with its own regex. `bkit fids parse` (the consumer's own bkit, installed from its lockfile) returns the FID and issue id, and `bkit_dev_dispatch_guard` asserts the FID charset again before the counter write. The `dev` subject goes through `fids parse --prompt-file`, never an argument.
+
+**Kill switch on every tracker:** the `bkit:auto` label is read through `bkit issues fetch` on GitHub, Linear and Jira alike. An unreadable label (missing key, service down, issue not found, bkit not installable, unparseable output) starts no agent and exits green, with the reason in the log and job summary. Tracker keys (`BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`) are set at step scope, never job-wide.
+
+**Same-repo PR steering its own routing:** a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steers the routing run for that PR. The author is collaborator-trusted (write access), so this widens nothing: the same collaborator can edit the workflow file.
 
 **Same-repo trigger gate:** every CI-driven dispatch job additionally requires `workflow_run.head_repository.full_name == github.repository`, so a fork PR's CI completion never boots one. `workflow_run` runs in the base repo with the workflow's own `permissions:`, and the `dev` arm performs a privileged `git push origin dev` (the dispatch-counter row) before any agent boots — without the guard, a fork-triggered run reaches that write with `contents: write`. The guard gates the trigger only; outbound lookups made inside the job filter their own results (see the `dev` arm exception below).
 

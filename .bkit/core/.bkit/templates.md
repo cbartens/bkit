@@ -269,13 +269,16 @@ A post-CI router that runs bkit workflows:
 - Failed `dev` CI → `/bkit-debug {FID}`.
 - `workflow_dispatch` runs any phase.
 
-A `context` job resolves the phase and argument once. Then two runner jobs follow, each skipped without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). `bkit install --auto=claude|opencode` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
+A `context` job resolves the phase and argument once. Then three runner jobs follow, and only the one `bkit.cloud.agent` names starts, when its secret is set: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action), `opencode` (`opencode run`, https://opencode.ai/docs/github/) and `codex` (`openai/codex-action`, https://github.com/openai/codex-action). `bkit install --auto=claude|opencode|codex` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
 
-- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
-- Secrets for `claude`: `ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
-- Secrets for `opencode`: `OPENCODE_PROVIDER_KEY`.
+- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template), `--auto=opencode` (needs `--opencode=<provider>` first) or `--auto=codex` (needs `--codex`). Each works with any wired tracker (GitHub, Linear or Jira).
+- Secrets for `claude`: `BKIT_ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
+- Secrets for `opencode`: the installed provider's key, one of `BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`.
+- Secrets for `codex`: `BKIT_OPENAI_API_KEY`.
+- Tracker secrets: `BKIT_LINEAR_API_KEY` under Linear, `BKIT_JIRA_API_KEY` under Jira. The workflow reads them at step scope.
 - Repo Actions permissions: read and write, with PR creation allowed.
-- Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
+- Adapt: `{{CLOUD_RUNNER}}` in all four jobs.
+- The `codex` job runs `drop-sudo` on the runner (irreversible), so use an ephemeral runner.
 - Traps:
   - The file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade`. Diff it on every upgrade.
   - The OpenCode install version is a plain argument. The `# renovate:` comment above it lets the example `renovate.json5` bump it.
@@ -623,7 +626,7 @@ The PyPI name is `serena-agent`, and the CLI is `serena`. PyPI `serena` is an un
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. The forms are for the GitHub tracker only, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. These forms serve the GitHub tracker alone, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |
