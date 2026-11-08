@@ -58,7 +58,7 @@ After `bkit upgrade`, the sample configs `.bkit/templates/.lintstagedrc.json` an
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Update the references to the old sample names
+- [x] **TASK 2:** Update the references to the old sample names
   - **UPDATE:** `.bkit/templates.md`: lines 55, 56, 343 and the `lint-staged` / `Prettier` sections name `.bkit/templates/prettierignore.example` and `.bkit/templates/lintstagedrc.example.json`, copy commands keep the dotfile destination; note that `bkit upgrade` removes the old sample names
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: the `ask` text at lines 210 and 250 names the example files
   - **UPDATE:** `.bkit/install.md`: references to the old sample paths
@@ -72,7 +72,7 @@ After `bkit upgrade`, the sample configs `.bkit/templates/.lintstagedrc.json` an
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Check whether `.bkit/templates/.oxlintrc.json` is the same trap
+- [x] **TASK 3:** Check whether `.bkit/templates/.oxlintrc.json` is the same trap
   - **READ:** `.bkit/templates/.oxlintrc.json`: its `ignorePatterns` already list `.bkit/templates/**`
   - **READ:** `.bkit/templates.md`: seeded lint script `oxlint -c .oxlintrc.json --type-aware --deny-warnings` (line 175)
   - **UPDATE:** `.bkit/templates.md`: records the result of running oxlint from a throwaway consumer root over a violating file under `.bkit/templates/`; if oxlint reports it, also rename the sample to `oxlintrc.example.json` and update its references and the dogfood entry in the same change
