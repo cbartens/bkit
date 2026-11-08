@@ -392,3 +392,6 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:26Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:31Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:31Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T01:46:45Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
+{"type":"workflow-failed","workflow":"build","at":"2026-11-08T01:46:45Z"}
+{"type":"engine-action","action":"comment","key":"build/2/failure/2/2/comment","hash":"bbfc77756ec8f0fd756e48816a9a728bbad80d5fc61841445179fa4a12a5544d","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6715796954","at":"2026-11-08T01:46:47Z"}
