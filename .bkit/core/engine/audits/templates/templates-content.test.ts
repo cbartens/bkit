@@ -13,7 +13,7 @@ import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/bkit-ci.yml");
-const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
+const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/prettierignore.example");
 const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
 const OXLINT_TEMPLATE = path.resolve(".bkit/templates/.oxlintrc.json");
 
@@ -668,7 +668,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
   });
 });
 
-describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", () => {
+describe("consumer .prettierignore template (.bkit/templates/prettierignore.example)", () => {
   const content = fs.readFileSync(CONSUMER_PRETTIERIGNORE_TEMPLATE, "utf-8");
 
   it("template file exists", () => {
