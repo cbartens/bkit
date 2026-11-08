@@ -763,3 +763,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T06:40:23Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","number","post","title","comment-field","message"]}
 {"type":"engine-action","action":"comment","key":"build/4/build-plan-convert/-/1/comment","hash":"3cfb345e449cbbab37f8a013a0ea246125d422c30a7e8e8f8cf8edddf2a676ff","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718334352","at":"2026-11-08T06:40:24Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-08T06:40:24Z","parentSha":"b7b30102524a30328f5f5e75c1cda4fef8a517ea","artifacts":[],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:40:25Z","noun":"branches","verb":"anchor-read","flags":["file","field","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:41:12Z","noun":"tasks","verb":"currency","flags":["plan","base","against"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:45:42Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/4/build-plan-current/-/1/comment","hash":"322974413065218b62f4d5fe97354c3c58cadb2c4a34c85d58306d88c5b0645e","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718378683","at":"2026-11-08T06:45:43Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-current","status":"DONE","at":"2026-11-08T06:45:43Z","parentSha":"96a57fe8244597db986aae63cc0a144d6ac975cf","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-current.md"],"verdict":"CONCERNS","attempt":1}
