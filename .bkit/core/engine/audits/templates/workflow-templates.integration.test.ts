@@ -75,8 +75,10 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
       jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };
     };
-    const checkout = doc.jobs.context.steps.find((st) => st.uses?.startsWith("actions/checkout@"));
-    expect(checkout, "context job has no actions/checkout step").toBeDefined();
+    const checkout = doc.jobs.context.steps
+      .filter((st) => st.uses?.startsWith("actions/checkout@"))
+      .find((st) => st.with?.path === "pr-head");
+    expect(checkout, "context job has no pr-head actions/checkout step").toBeDefined();
     const ref = String(checkout!.with!.ref);
     const expr = /^\$\{\{([\s\S]*)\}\}$/.exec(ref.trim())?.[1];
     expect(expr, `ref is not a single expression: ${ref}`).toBeDefined();
@@ -128,6 +130,20 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     // The checkout that populates the install directory last decides what runs; it resolves to dev.
     const last = intoInstallDir[intoInstallDir.length - 1]!;
     expect(evalCheckoutRef(String(last.with?.ref), head)).not.toBe(head);
+  });
+
+  it("context job runs the workspace-root checkout before every nested `path:` checkout", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };
+    };
+    const checkouts = doc.jobs.context.steps.filter((st) =>
+      st.uses?.startsWith("actions/checkout@"),
+    );
+    const rootIdx = checkouts.findIndex((st) => normStepDir(st.with?.path) === ".");
+    const nestedIdx = checkouts.findIndex((st) => normStepDir(st.with?.path) !== ".");
+    expect(rootIdx, "no root checkout").toBeGreaterThan(-1);
+    expect(nestedIdx, "no nested checkout").toBeGreaterThan(-1);
+    expect(rootIdx).toBeLessThan(nestedIdx);
   });
 
   it("claude step passes the four workload identity federation inputs from repo variables", () => {

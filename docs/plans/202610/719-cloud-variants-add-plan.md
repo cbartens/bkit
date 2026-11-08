@@ -1052,7 +1052,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 21 start -->
 
-- [ ] **TASK 21:** A rejected tracker key is printed into the run's warning annotation: on `bkit issues fetch` exit 80 `reason=auth` with `BKIT_JIRA_API_KEY` (or `BKIT_LINEAR_API_KEY`, or `GH_TOKEN`) set, `${!secret_var:-empty or missing}` expands to the secret's value, so the warning reads `set but rejected<value>` and exposure rests on GitHub log masking alone
+- [x] **TASK 21:** A rejected tracker key is printed into the run's warning annotation: on `bkit issues fetch` exit 80 `reason=auth` with `BKIT_JIRA_API_KEY` (or `BKIT_LINEAR_API_KEY`, or `GH_TOKEN`) set, `${!secret_var:-empty or missing}` expands to the secret's value, so the warning reads `set but rejected<value>` and exposure rests on GitHub log masking alone
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:449` · **Round:** 1
   - **DONE WHEN:** the `reason=auth` warning names the secret and says `set but rejected` or `empty or missing` without ever expanding the secret's value (e.g. a `[ -n "${!secret_var:-}" ]` test choosing the wording); the adopted copy `.github/workflows/bkit-cloud.yml:449` matches the template.
   - **TEST FIRST:**
@@ -1061,7 +1061,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 21 end -->
 <!-- bkit:task 22 start -->
 
-- [ ] **TASK 22:** A failed `Install bkit` on a post-merge `dev` CI failure is misreported: with `node_modules/.bin/bkit` absent the dev arm never reaches `bkit_gate`, so it logs the `::notice::Cannot derive FID by dev commit scope or linked PR` no-op instead of the `bkit-unavailable` warning, writes no gate summary row, and the in-code comment ("`bkit_gate` reports an absent bkit") is false
+- [x] **TASK 22:** A failed `Install bkit` on a post-merge `dev` CI failure is misreported: with `node_modules/.bin/bkit` absent the dev arm never reaches `bkit_gate`, so it logs the `::notice::Cannot derive FID by dev commit scope or linked PR` no-op instead of the `bkit-unavailable` warning, writes no gate summary row, and the in-code comment ("`bkit_gate` reports an absent bkit") is false
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.github/workflows/bkit-cloud.yml:502` · **Round:** 1
   - **DONE WHEN:** a dev-arm run with `node_modules/.bin/bkit` absent emits `::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)` and a `bkit-unavailable` summary row, exits green with `skip=true` and writes no dispatch-cap counter row (same outcome as the feat arm); the adopted copy `.github/workflows/bkit-cloud.yml` matches the template.
   - **TEST FIRST:**
@@ -1079,7 +1079,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 <!-- bkit:task 23 end -->
 <!-- bkit:task 24 start -->
 
-- [ ] **TASK 24:** A consumer who fills the new `BKIT_OPENAI_API_KEY` row in `.bkit/.env` gets that paid OpenAI key pasted into every generated cloud env block (`.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`), so every cloud agent session that reads untrusted issue / PR text holds it
+- [x] **TASK 24:** A consumer who fills the new `BKIT_OPENAI_API_KEY` row in `.bkit/.env` gets that paid OpenAI key pasted into every generated cloud env block (`.claude/bkit-cloud.md`, `.cursor/bkit-cloud.md`, `.codex/bkit-cloud.md`), so every cloud agent session that reads untrusted issue / PR text holds it
       **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/shared/.bkit/.env.example:88` · **Round:** 1
   - **DONE WHEN:** the owner settles the plan's open Suggested Scope Expansion row ("`BKIT_OPENAI_API_KEY` reaches every generated cloud env block … Owner security decision"), which no plan task builds, and the code matches it. The key is used only by the `codex` router job as a repo Actions secret. `.bkit/core/engine/install/cloud-env.ts:35-39` (`SESSION_HIJACK_KEYS`) drops only the three Anthropic keys and pastes every other resolved `.envrc` key. No agent can settle this because `cloud-env.test.ts` `drops exactly the three documented session-hijack keys` and `docs/security.md` § Secrets Management pin the current list. The owner chooses one of: (a) drop `BKIT_OPENAI_API_KEY` from the paste block (add it to the drop list, or a new router-only list) and update that test and § Secrets Management; (b) remove the row from `.env.example`, because the key belongs only in repo secrets; (c) keep the paste and record why in § Credential surfaces.
   - **TEST FIRST:**

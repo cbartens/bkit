@@ -168,6 +168,16 @@ jobs:
       # workspace root is always `dev`: bkit is installed and run from it, so a branch
       # pushed by an agent session cannot change the code that decides the `bkit:auto` kill
       # switch, and the dev arm commits its dispatch-cap counter row there.
+      # Order matters: the root `dev` checkout runs first because actions/checkout empties a
+      # workspace that has no .git, which would delete `pr-head/` if it ran second.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          ref: dev
+          fetch-depth: 0
+          # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
+          token: ${{ github.token }}
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.gate.outputs.enabled == 'true'
         with:
@@ -176,14 +186,6 @@ jobs:
           fetch-depth: 0
           # Untrusted branch content: no credential is left in its git config.
           persist-credentials: false
-
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.gate.outputs.enabled == 'true'
-        with:
-          ref: dev
-          fetch-depth: 0
-          # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
-          token: ${{ github.token }}
 
       # The consumer's own bkit, from the `dev` lockfile, so the label gate reads the tracker through
       # `bkit issues fetch` and FIDs through `bkit fids parse`. A failed install leaves

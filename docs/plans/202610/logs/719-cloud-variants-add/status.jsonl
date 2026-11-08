@@ -832,3 +832,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T08:02:54Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/4/build-plan-verify/10/1/comment","hash":"2fb4fff8256f0c0415b61f4b43df059e6507852a1b354afe233be04b55c2f495","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718808662","at":"2026-11-08T08:02:56Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-08T08:02:56Z","parentSha":"c9f80bdb751141e4329d5db35a853c22c8b7a40f","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-10-1.md"],"verdict":"CONCERNS","attempt":1,"group":10,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:03:03Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:03:03Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:03:03Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:05:41Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:11:15Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:18:07Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T08:24:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/4/build-plan-gaps-remediate/10/1/comment","hash":"0f1214835798c44a622966ca686cc853dc35eb73acadbae1191f17de42a78b2c","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718808662","at":"2026-11-08T08:24:06Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-08T08:24:06Z","parentSha":"e13a525253d501bbe4d940d81a083be69a4d42bc","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-gaps-remediate-10-1-log.md"],"verdict":"PASS","attempt":1,"group":10,"strategy":"STANDARD"}
