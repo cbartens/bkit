@@ -723,3 +723,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T06:00:33Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/3/build-plan-verify/9/2/comment","hash":"eb1ca73f83d508db97cc96c2f70fd71f22856a4d2d272bb797475d0a399ef288","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6717996668","at":"2026-11-08T06:00:34Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-08T06:00:34Z","parentSha":"079c29e8995607447e5bd4d83547f0cdce64fcb2","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-9-2.md"],"verdict":"PASS","attempt":2,"group":9,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:00:35Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:00:35Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:00:40Z","noun":"status","verb":"route","flags":["step","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:00:40Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:01:43Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:10:27Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/3/build-plan-verify-holistic/-/1/comment","hash":"b5e90849fe8128550b5bae5eaa07b181b0df82be43ea8748668b09fd45ca1427","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718081280","at":"2026-11-08T06:10:28Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-08T06:10:28Z","parentSha":"7d26211027859ded2cf94cb25e547e01a2830be8","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-holistic.md"],"verdict":"FAIL","attempt":1,"failures":4}
