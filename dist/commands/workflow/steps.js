@@ -1148,7 +1148,14 @@ async function finish(ctx) {
         if (comment === null)
             throw new CommandError(EXIT.USAGE, "--post needs --number");
         const key = actionKey(workflow, fs.existsSync(file) ? runNumber(readRuns(file), workflow) : 1, step, group, attempt, "comment");
-        tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+        tracker = await postForVerb(ctx, comment, {
+            fid: fidOfStatusFile(file),
+            file,
+            key,
+            purpose: step.endsWith("-decision") || verdict === "FAIL" || verdict === "HANDOVER"
+                ? "attention"
+                : "routine",
+        });
     }
     const written = writeStepRow(ctx.cwd, {
         file,
@@ -1192,7 +1199,7 @@ async function finish(ctx) {
         checks,
         comment,
         // Written after the step's commit, so the commit never carries it.
-        commentFile: commentFileOf(ctx.cwd, comment),
+        commentFile: commentFileOf(ctx.cwd, comment, ctx),
         ...(tracker === undefined ? {} : { tracker }),
     });
     if (written.code !== EXIT.OK)

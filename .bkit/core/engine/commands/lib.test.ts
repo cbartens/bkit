@@ -16,6 +16,7 @@ import {
   resolveActiveRun,
   runCommand,
   runGit,
+  runGh,
   runTool,
   statusLocation,
   utcMonth,
@@ -34,6 +35,7 @@ const FLAGS: FlagSpec[] = [
   { name: "artifact", type: "string", repeatable: true, help: "artifact path" },
   { name: "dry-run", type: "boolean", help: "report only" },
 ];
+const LIB_ORIGINAL_PATH = process.env.PATH ?? "";
 
 const usage = (fn: () => unknown) => {
   try {
@@ -694,6 +696,58 @@ describe("runGit / runTool output limit", () => {
   const dirs: string[] = [];
   afterEach(() => {
     for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("bounds a slow child with an optional deadline and classifies timeout", async () => {
+    const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-deadline-")));
+    dirs.push(cwd);
+    const marker = path.join(cwd, "child-survived");
+    const code = `setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'alive'),1000)`;
+    const started = performance.now();
+    const options = { input: undefined, timeoutMs: 80 };
+    const result = runTool(process.execPath, ["-e", code], cwd, options);
+    expect(performance.now() - started).toBeLessThan(700);
+    expect(result.found).toBe(true);
+    expect(result.status).not.toBe(0);
+    expect(result.status).not.toBe(127);
+    expect(result.stderr).toMatch(/timeout|timed.out|ETIMEDOUT/i);
+    const bin = path.join(cwd, "bin");
+    fs.mkdirSync(bin);
+    fs.writeFileSync(
+      path.join(bin, "gh"),
+      `#!/bin/sh\nexec "${process.execPath}" -e ${JSON.stringify(code)}\n`,
+      { mode: 0o755 },
+    );
+    const deadlineGh: (
+      cwd: string,
+      args: string[],
+      input?: string,
+      env?: Record<string, string>,
+      options?: { timeoutMs?: number },
+    ) => ReturnType<typeof runGh> = runGh;
+    const ghStarted = performance.now();
+    const ghResult = deadlineGh(
+      cwd,
+      [],
+      undefined,
+      { PATH: `${bin}:${LIB_ORIGINAL_PATH}` },
+      options,
+    );
+    expect(performance.now() - ghStarted).toBeLessThan(700);
+    expect(ghResult).toMatchObject({ ok: false, missing: false });
+    expect(ghUnavailable(ghResult)).toBe(false);
+    expect(ghResult.stderr).toMatch(/timeout|timed.out|ETIMEDOUT/i);
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(
+      runTool(process.execPath, ["-e", "process.stdout.write('unchanged')"], cwd),
+    ).toMatchObject({ found: true, status: 0, stdout: "unchanged" });
+    fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nprintf 'unchanged\\n'\n", { mode: 0o755 });
+    expect(runGh(cwd, [], undefined, { PATH: `${bin}:${LIB_ORIGINAL_PATH}` })).toMatchObject({
+      ok: true,
+      stdout: "unchanged",
+      missing: false,
+    });
   });
 
   /** A repo holding one blob of `bytes` bytes; returns its sha for `git cat-file -p`. */

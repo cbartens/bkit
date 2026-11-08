@@ -25,6 +25,14 @@ The workflow commits every captured payload inside an untrusted fence (`===== BE
 
 No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout / stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
 
+## Tracker reporting diagnostics
+
+The tracker helper emits bounded `[bkit-tracker]` diagnostics and best-effort `tool-failure` friction for preparation, source, lock, delivery, reconciliation and receipt failures. Rows identify the workflow phase and failure stage; a known comment URL may be included. They exclude comment bodies, credentials, personal data and raw provider errors. Stable phase and stage identity groups recurrences across invocations.
+
+Unavailable fallback-source files and invalid or unreadable session associations attempt their own friction records even when the current provider write succeeds. Missing optional association arguments do not count as an association failure.
+
+Write friction in the active worktree's ledger. A failed friction write emits one bounded diagnostic without recursively attempting friction. Reporting and diagnostic failures remain nonfatal. If a provider accepts a write but its response is lost, an unprovable reconciliation can produce a duplicate new comment; diagnostics must not claim an exactly-once guarantee.
+
 ## Log Format
 
 All bkit CLI output uses bracketed context prefixes:

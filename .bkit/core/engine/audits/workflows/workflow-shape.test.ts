@@ -250,7 +250,9 @@ describe("Step 1 FID check", () => {
 describe("resume facts", () => {
   it("build resumes an open decision from `openDecision`, not a file scan", () => {
     const text = workflow("build");
-    expect(text).toContain("**If** Step 2's `workflows start` printed `openDecision` != null");
+    expect(text).toContain(
+      '**If** Step 2\'s `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null',
+    );
     expect(text).not.toContain("holds `Status: OPEN` → resume");
     for (const field of [
       "decision",

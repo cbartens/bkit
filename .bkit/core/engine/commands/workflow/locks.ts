@@ -9,8 +9,9 @@
 // lock this caller owns (same token, else same workflow and feature), so a Failure
 // Path that never got the lock cannot delete the holder's.
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import {
@@ -23,8 +24,10 @@ import {
 import {
   CommandError,
   EXIT,
+  git,
   parseJson,
   repoRoot,
+  runTool,
   statusRelPath,
   utcMonth,
   type CommandSpec,
@@ -130,6 +133,98 @@ function openExclusive(file: string): number | undefined {
 }
 
 const newToken = () => randomBytes(4).toString("hex");
+
+export interface PublicationLock {
+  path: string;
+  token: string;
+  owner: { host: string; pid: number; startTime: string };
+}
+
+/** The OS start identity distinguishes a live reused PID from a recorded owner. */
+function processStart(pid: number, timeoutMs = 1000): string | null {
+  const result = runTool("ps", ["-p", String(pid), "-o", "lstart="], process.cwd(), {
+    timeoutMs: Math.max(50, Math.min(1000, timeoutMs)),
+  });
+  return result.found && result.status === 0 && result.stdout.trim() !== ""
+    ? result.stdout.trim()
+    : null;
+}
+
+function publicationHolder(file: string): PublicationLock | null {
+  const parsed = parseJson(fs.readFileSync(file, "utf8"));
+  if (!parsed.ok || typeof parsed.value !== "object" || parsed.value === null) return null;
+  const raw = parsed.value as Partial<PublicationLock>;
+  return typeof raw.token === "string" &&
+    /^[a-f0-9]{32}$/.test(raw.token) &&
+    typeof raw.path === "string" &&
+    typeof raw.owner?.host === "string" &&
+    Number.isInteger(raw.owner.pid) &&
+    raw.owner.pid > 0 &&
+    typeof raw.owner.startTime === "string" &&
+    Number.isFinite(Date.parse(raw.owner.startTime))
+    ? { path: file, token: raw.token, owner: raw.owner }
+    : null;
+}
+
+/** A separate best-effort lock for one issue and invocation; age never establishes death. */
+export async function acquirePublicationLock(
+  cwd: string,
+  options: { target: string; invocation: string; timeoutMs?: number },
+): Promise<PublicationLock | null> {
+  try {
+    const end = performance.now() + Math.min(30_000, Math.max(0, options.timeoutMs ?? 30_000));
+    const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    const startTime = processStart(process.pid, end - performance.now());
+    if (!common || !startTime || !options.target || !options.invocation) return null;
+    const digest = createHash("sha256")
+      .update(`${options.target}\0${options.invocation}`)
+      .digest("hex");
+    const file = path.join(common, "bkit-outbox", "publication-locks", `${digest}.lock`);
+    const lock: PublicationLock = {
+      path: file,
+      token: randomBytes(16).toString("hex"),
+      owner: { host: os.hostname(), pid: process.pid, startTime },
+    };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    do {
+      if (tryCreate(file, JSON.stringify(lock))) return lock;
+      const holder = publicationHolder(file);
+      if (!holder || holder.owner.host !== lock.owner.host) return null;
+      let dead = false;
+      try {
+        process.kill(holder.owner.pid, 0);
+      } catch (error) {
+        dead = (error as NodeJS.ErrnoException).code === "ESRCH";
+      }
+      if (dead) {
+        if (publicationHolder(file)?.token !== holder.token) return null;
+        fs.unlinkSync(file);
+        if (tryCreate(file, JSON.stringify(lock))) return lock;
+        continue;
+      }
+      if (processStart(holder.owner.pid, end - performance.now()) !== holder.owner.startTime)
+        return null;
+      const remaining = end - performance.now();
+      if (remaining <= 0) return null;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(20, remaining)));
+    } while (performance.now() <= end);
+    return null;
+  } catch {
+    // Lock failures select standalone publication rather than fail substantive work.
+    return null;
+  }
+}
+
+/** Remove only this publication token; filesystem errors leave append unavailable. */
+export async function releasePublicationLock(lock: PublicationLock): Promise<boolean> {
+  try {
+    if (publicationHolder(lock.path)?.token !== lock.token) return false;
+    fs.unlinkSync(lock.path);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const lockLine = (workflow: string, fid: string, token: string) =>
   `${statusTimestamp()} ${workflow} ${fid} ${token}`;

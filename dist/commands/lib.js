@@ -552,6 +552,9 @@ export function runTool(cmd, args, cwd, opts = {}) {
         env: { ...gitEnv(), ...opts.env },
         input: opts.input,
         maxBuffer: OUTPUT_LIMIT,
+        ...(opts.timeoutMs === undefined
+            ? {}
+            : { timeout: Math.max(1, Math.ceil(opts.timeoutMs)), killSignal: "SIGKILL" }),
     });
     if (res.error && res.pid === 0) {
         return { found: false, status: 127, stdout: "", stderr: `${cmd} not found on PATH` };
@@ -569,8 +572,8 @@ export function runTool(cmd, args, cwd, opts = {}) {
 }
 const signalNumber = (signal) => (signal ? os.constants.signals[signal] : undefined) ?? 1;
 /** `gh <args>` in `cwd`, never throwing; `input` goes to stdin; `env` is added to the child's. */
-export function runGh(cwd, args, input, env) {
-    const res = runTool("gh", args, cwd, { input, env });
+export function runGh(cwd, args, input, env, opts = {}) {
+    const res = runTool("gh", args, cwd, { input, env, ...opts });
     return {
         ok: res.found && res.status === 0,
         stdout: res.stdout.trim(),

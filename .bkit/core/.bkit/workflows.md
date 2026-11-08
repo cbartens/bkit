@@ -40,6 +40,14 @@ Skill selection and activation within every workflow follow `.agents/skills.md` 
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
 | `/bkit-auto` | args `{PHASE} {ARG}` (`{ARG}` = PR number **or** FID slug for ship / debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; debug receives the exact held run reference; the same session continues into the dispatched skill |
 
+## Tracker reporting
+
+Every phase carries its explicit repo-info session into fileless reports and workflow start. The engine binds that session to the exact run so later step reports retain the same invocation. Auto and its dispatched phase keep separate invocations. A resumed exact run keeps its original association; an unrelated run never supplies one.
+
+Routine reports may append to an eligible engine-owned progress comment. Attention reports and terminal summaries create new comments. All tracker reporting, including preparation, MCP fallback and friction, is nonfatal: attempt the report or an applicable skip, then continue substantive work. When fallback is available, publish `commentFile` byte-for-byte as one new comment and never edit prior tracker content. See `.bkit/trackers.md` § Workflow comment delivery for ownership, reconciliation and recovery.
+
+A published build prepares its close report before the push and includes that report in its single Create PR completion comment with explicit `--purpose=terminal`. Ordinary PR-link metadata keeps the kind-based purpose, so auto's startup and Dispatch share routine progress. A held build posts its close report directly. The published completion retains its own exact fallback file after the PR link is added.
+
 ## When to Run
 
 Choose by the state of the work. Procedure stays in the command file and in § Per-Phase Workflows.

@@ -105,6 +105,7 @@ The first five rows retain the design's Key Edge Cases word for word.
 | Partial multipart delivery and missing receipts permit loss/duplicates without blocking; known acknowledged delivery stays successful. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | A postflight intervening comment preserves success/URL and invalidates future append eligibility under the accepted race boundary. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | Global network/page/attempt limits include a real slow GitHub child, reserve fallback opportunity and release an owned lock best effort. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
+| reserves new comment opportunity within total delivery budget | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 12 |
 | Shared runGh/runTool optional deadlines terminate a real slow child and classify timeout without changing callers that omit the option. | Unit | `.bkit/core/engine/commands/lib.test.ts` | 6 |
 | Independent attention delivery proceeds after routine uncertainty without a pending-operation gate. | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 6 |
 | Explicit startup/run association, separate auto/phase ownership and missing state across cleanup/fresh clone safely create fresh progress. | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 7 |
@@ -115,6 +116,9 @@ The first five rows retain the design's Key Edge Cases word for word.
 | Linear create/edit/read, external edit, pagination, marker survival, verified numeric/counting budget and discarded-response reconciliation. | @live (golden) | `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts` | 10 |
 | Jira Rovo deployed schemas, transformed representation stability, edit/read, paging, limits and discarded-response reconciliation. | @live (golden) | `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts` | 10 |
 | Clean build-shaped CLI run leaves two comments; interruption, resume, old receipts, issue-less paths and unchanged fallback retain the selected contract. | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 7 |
+| preserves a human correction after lost append recognition and a later report | Unit | `.bkit/core/engine/commands/workflow/tracker.test.ts` | 13 |
+| keeps auto startup with PR metadata and dispatch in one progress comment | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 14 |
+| redacts malformed Jira authorization from live probe diagnostics | Integration | `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` | 15 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -362,7 +366,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Extend provider inspection and mutation contracts.
+- [x] **TASK 1:** Extend provider inspection and mutation contracts.
   - **UPDATE:** `postComment` in `.bkit/core/engine/commands/workflow/tracker.ts`: return stable comment identity and mutation evidence through existing transports.
   - **UPDATE:** `recentComments` in `.bkit/core/engine/commands/workflow/tracker.ts`: add complete bounded inspection with creation-order evidence and stable returned-body representation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: cover adapter contract interpretation and safe unavailable evidence.
@@ -379,7 +383,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Extend section rendering, budgets and deterministic splitting.
+- [x] **TASK 2:** Extend section rendering, budgets and deterministic splitting.
   - **UPDATE:** `splitAt` in `.bkit/core/engine/commands/workflow/tracker.ts`: account for complete encoded bodies and safe continuation parts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: retain first-line generated marker and add versioned run/segment/revision/section markers with original UTC times.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: add boundary, timestamp and marker interpretation cases.
@@ -396,7 +400,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Add a small exact-source cache and reuse available success receipts.
+- [x] **TASK 3:** Add a small exact-source cache and reuse available success receipts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: store versioned active-progress source, target/invocation, comment identity, section IDs and available revision evidence in the existing Git-common outbox.
   - **READ:** `.bkit/core/engine/ledgers/status.ts`: reuse existing action identity and success receipts without new delivery records.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: exercise real temporary cache files, source safety and nonfatal cache/receipt faults.
@@ -419,7 +423,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Add the narrow ownership-aware publication lock.
+- [x] **TASK 4:** Add the narrow ownership-aware publication lock.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.ts`: reuse exclusive creation and token ownership for a distinct delivery lock.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.test.ts`: prove process serialization and refusal/reclaim boundaries.
   - **DEPENDS ON:** 3
@@ -434,7 +438,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Implement central classification, safe append and new-comment selection.
+- [x] **TASK 5:** Implement central classification, safe append and new-comment selection.
   - **UPDATE:** `postForVerb` in `.bkit/core/engine/commands/workflow/tracker.ts`: accept structured purpose and exact invocation association.
   - **UPDATE:** `postCommentOnce` in `.bkit/core/engine/commands/workflow/tracker.ts`: use available source/receipt evidence and append lock, with standalone creation for ineligible routine and separate attention/terminal reports.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: add policy, eligibility and immutable-version cases.
@@ -454,7 +458,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Implement bounded append/new-comment fallback and a nonfatal comment boundary.
+- [x] **TASK 6:** Implement bounded append/new-comment fallback and a nonfatal comment boundary.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: contain preparation/cache/receipt/lock/inspection/transport/reconciliation errors, reserve fallback budget and preserve acknowledged success.
   - **UPDATE:** `runGh` in `.bkit/core/engine/commands/lib.ts`: pass an optional remaining deadline through the existing GitHub transport without changing callers that omit it.
   - **UPDATE:** `runTool` in `.bkit/core/engine/commands/lib.ts`: bound the real child with the optional remaining-time limit and retain compatible error classification.
@@ -484,7 +488,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Wire explicit invocation lifecycle through existing command callers.
+- [x] **TASK 7:** Wire explicit invocation lifecycle through existing command callers.
   - **UPDATE:** `RunContext` in `.bkit/core/engine/commands/lib.ts`: carry structured publishing association without generic active-run inference.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/repo.ts`: provide explicit session invocation association without making cache availability a workflow prerequisite.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: accept explicit session/invocation association on fileless workflow posts.
@@ -508,7 +512,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Record exhausted comment problems as friction best effort.
+- [x] **TASK 8:** Record exhausted comment problems as friction best effort.
   - **UPDATE:** `TrackerOutcome` in `.bkit/core/engine/commands/workflow/tracker.ts`: report append/new-comment/dedupe/uncertain/lost outcomes while preserving done/skipped/fallback meanings.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: best-effort append redacted friction using existing ledger helpers, authorized orchestrator fields and a stable recurrence key; contain logging and warning failures without recursion.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: assert real local friction records, exhausted failure continuation and sensitive-data exclusion.
@@ -524,7 +528,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Synchronize workflow context, fallback wording and operator documentation.
+- [x] **TASK 9:** Synchronize workflow context, fallback wording and operator documentation.
   - **UPDATE:** `.bkit/instructions.md`: change the shared Comments clause through its authoritative source and sync tooling.
   - **UPDATE:** `.bkit/core/workflows/bkit-auto.md`: pass explicit invocation, keep phase identity separate and make comment/MCP/friction failures nonfatal.
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: pass invocation/purpose and make all provider comment/fallback blocks and gates attempted-not-successful.
@@ -549,6 +553,18 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 9 end -->
 
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** Repair the real slow-child fixture under the owner's recorded authorization.
+  - **READ:** `docs/plans/202611/logs/826-append-routine-workflow/build-decision-3-1.md`: controlling owner decision.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: use the existing stable dispatcher or explicit interpreter for the real child fixture, establish successful priming before the slow delivery, and observe actual transport attempts reliably.
+  - **DEPENDS ON:** 8, 9
+  - **DONE WHEN:** The existing budget test passes under the unit gate, its priming precondition is proven, and every original POST, count, cleanup, nonfatal and latency assertion remains intact. Both 200ms budgets stay unchanged. The tests step owns the authorized fixture repair; the code step reviews the resulting evidence without editing the frozen test. No production deadline, gate, timeout or configuration is weakened.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.test.ts` `reserves new comment opportunity within total delivery budget` fails on a fresh executable failing to establish priming state or record actual POST attempts before the existing 200ms deadline; this is an existing-test fixture update, with unchanged assertions reviewed against the group start commit.
+
+<!-- bkit:task 12 end -->
+
 <!-- bkit:group 3 end -->
 
 <!-- bkit:group 4 start -->
@@ -557,7 +573,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Complete all three provider contract and lost-response probes.
+- [x] **TASK 10:** Complete all three provider contract and lost-response probes.
   - **READ:** `docs/plans/202611/logs/826-append-routine-workflow/spike/github-read.ts`: preserve its read-only contract and reuse only the inspection approach.
   - **CREATE:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts`: bounded opt-in disposable-target @live probe from the inventory's new evidence surface.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tracker.ts`: replace unverified capability/counting metadata only with actual recorded contract evidence.
@@ -571,7 +587,7 @@ The groups below are one implementation sequence. Each task lands its own tests 
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Verify the complete built CLI and nonfatal commenting footprint.
+- [x] **TASK 11:** Verify the complete built CLI and nonfatal commenting footprint.
   - **READ:** `.bkit/core/engine/commands/workflow/tracker.test.ts`: run the implemented module acceptance suite alongside the new integration surface.
   - **READ:** `docs/testing.md`: use existing Unit, Integration and provider-probe entry points.
   - **DEPENDS ON:** 9, 10
@@ -581,6 +597,41 @@ The groups below are one implementation sequence. Each task lands its own tests 
 <!-- bkit:task 11 end -->
 
 <!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** A lost append response lets the next report overwrite an intervening human correction.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tracker.ts:1817` · **Round:** 1
+  - **DONE WHEN:** Recognizing a delivered section after a lost response preserves its successful outcome and known URL, but does not adopt an altered remote revision as future append authority. Retain append eligibility only when the recovered representation is proven to match the intended engine aggregate; otherwise seal the segment and start the next routine report in a new comment. A marker-preserving human correction survives that next report. The current recognition branch accepts ID, author and section marker, then saves the locally intended source with the human-edited fingerprint; its postflight sees the same edited revision and retains it. The existing recognition test has no intervening edit or third report. An independently rerun local built-export reproduction returned three successes, one comment, and correction-preserved true after recognition but false after the third report. This violates `docs/security.md` § Workflow comment ownership and `docs/architecture.md` § Tracker reporting boundary, beyond the accepted final-preflight race.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.test.ts` `preserves a human correction after lost append recognition and a later report` fails on a marker-preserving edit between a lost append acknowledgment and recognition being overwritten by a subsequent routine report; assert acknowledged delivery remains successful, the correction remains intact, and the later report creates a fresh comment without editing the corrected segment.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** Auto startup with a PR link prematurely terminates its routine progress segment.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:1084` · **Round:** 1
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: add optional `issues comment --purpose=routine|attention|terminal`; retain existing kind-based classification when omitted and use explicit terminal purpose for ended-run identity.
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: pass `--purpose=terminal` on final Create PR reporting, then synchronize the CLI catalog and generated host contracts.
+  - **DONE WHEN:** Ordinary PR-link metadata does not classify a report as terminal or select an ended-run identity. The actual auto startup command with `--pr-number`, followed by Dispatch in the same explicit session, shares one routine progress comment; an explicitly identified final Create PR report remains a separate terminal comment. Propagate that explicit completion purpose through the build caller and generated host contracts. The command currently treats every `prNumber` as terminal even though `.bkit/core/workflows/bkit-auto.md:126` uses it on Start Workflow. An independently rerun built-command reproduction returned two successful creates, no edit and no startup progress marker. The existing clean-build integration cases cover final PR reporting, but not this auto startup shape. This violates `.bkit/trackers.md` § Workflow comment delivery and the plan's routine-startup acceptance scenario.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `keeps auto startup with PR metadata and dispatch in one progress comment` fails on the real startup and Dispatch CLI flag shapes creating two comments despite the same valid session; assert the routine aggregate contains both reports and a later explicit completion remains separate.
+
+<!-- bkit:task 14 end -->
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** A malformed Jira credential is exposed in live-probe diagnostics.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `docs/plans/202611/logs/826-append-routine-workflow/spike/tracker-contract.ts:35` · **Round:** 1
+  - **DONE WHEN:** Every error diagnostic emitted by the live contract probe redacts configured tracker credential values before truncation and JSON serialization. The direct Jira schema-discovery fetch must not print the Authorization value when header validation fails. Preserve the diagnostic stage, useful non-secret failure classification, opt-in target checks and existing provider evidence. This enforces `docs/security.md` § Secrets Management and the plan's Security & Privacy requirement for redacted build evidence.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` `redacts malformed Jira authorization from live probe diagnostics` fails on the actual probe's `--discover` execution emitting a synthetic Jira token with an embedded newline in stdout or stderr; exercise the real header-validation failure without network traffic, including a long token whose unredacted message would be truncated, and assert the failure stage remains observable.
+
+<!-- bkit:task 15 end -->
+<!-- bkit:group 5 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

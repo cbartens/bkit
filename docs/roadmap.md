@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-08T00:51:36Z)_
+_(refreshed 2026-11-08T01:33:17Z)_
 
 ### Design
 
@@ -59,16 +59,14 @@ _(refreshed 2026-11-08T00:51:36Z)_
 
 ### Debug
 
-<!-- prettier-ignore -->
-| FID | Title | Last-transition (ts) |
-| --- | --- | --- |
-| 826-append-routine-workflow | 826-append-routine-workflow | 1794099096201 |
+_(none)_
 
 ### Shipped _(last 10)_
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
@@ -78,7 +76,6 @@ _(refreshed 2026-11-08T00:51:36Z)_
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
 | 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
-| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

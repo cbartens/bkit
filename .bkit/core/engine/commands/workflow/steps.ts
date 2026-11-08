@@ -1415,7 +1415,15 @@ async function finish(ctx: RunContext): Promise<number> {
       attempt,
       "comment",
     );
-    tracker = await postForVerb(ctx, comment, { fid: fidOfStatusFile(file), file, key });
+    tracker = await postForVerb(ctx, comment, {
+      fid: fidOfStatusFile(file),
+      file,
+      key,
+      purpose:
+        step.endsWith("-decision") || verdict === "FAIL" || verdict === "HANDOVER"
+          ? "attention"
+          : "routine",
+    });
   }
 
   const written = writeStepRow(
@@ -1464,7 +1472,7 @@ async function finish(ctx: RunContext): Promise<number> {
     checks,
     comment,
     // Written after the step's commit, so the commit never carries it.
-    commentFile: commentFileOf(ctx.cwd, comment),
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
   });
   if (written.code !== EXIT.OK) return written.code;

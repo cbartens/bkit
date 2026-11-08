@@ -210,6 +210,7 @@ _No tracker connected, skip step._
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue comment attempted when applicable
 - [ ] Issue resolved
 - [ ] Push mode decided
 - [ ] Debug attempt derived
@@ -238,7 +239,7 @@ _No tracker connected, skip step._
 2. Open the run inside the worktree:
    ```bash
    mkdir -p "{OUTBOX}" || exit 1
-   "{BKIT}" workflows start --workflow=debug --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN}
+   "{BKIT}" workflows start --workflow=debug --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} --session-dir="{SESSION_DIR}"
    ```
    Hold `file` as `STATUS`.
 3. Write the input file — session prompt, issue text, plan (when present):
