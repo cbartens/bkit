@@ -47,3 +47,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T12:46:44Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-08T12:46:50Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-08T12:46:50Z","parentSha":"954f27b7550ffa78c5f0169b2344af578bc7e6cd","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-tasks-1-log.md"],"verdict":"PASS","attempt":1,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:46:58Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:46:58Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:48:44Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:48:44Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T12:51:30Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/1/comment","hash":"94ee82655fdec525a7749980339562ce8e06338a577504cd67eb1a07b6b460dc","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6721466793","at":"2026-11-08T12:51:32Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-08T12:51:32Z","parentSha":"9e42482a55c5dc8b6e4890b6d4dd86f5f5445ea2","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":4}
