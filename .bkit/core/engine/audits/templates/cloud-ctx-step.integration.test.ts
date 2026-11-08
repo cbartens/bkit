@@ -551,6 +551,176 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
     });
   });
 
+  // -------------------------------------------------------------------------
+  // Dev arm — FID through `bkit fids parse --prompt-file`, issue through the feature row.
+  // -------------------------------------------------------------------------
+  describe("dev path — engine parse of the squash subject and merged-PR body", () => {
+    const seedFeature = (fid: string) => {
+      fs.mkdirSync(path.join(fixture.workspaceDir, "docs/plans/202611/logs", fid), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(fixture.workspaceDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, ".bkit/issues.jsonl"),
+        JSON.stringify({ schema: 2, kind: "feature", key: fid }) + "\n",
+      );
+    };
+    const setTracker = (tracker: string) =>
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, "package.json"),
+        JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }),
+      );
+    const spyBkit = (logFile: string) => {
+      const bin = path.join(fixture.workspaceDir, "node_modules/.bin/bkit");
+      fs.renameSync(bin, `${bin}-real`);
+      fs.writeFileSync(
+        bin,
+        `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${logFile}"\nexec "${bin}-real" "$@"\n`,
+        { mode: 0o755 },
+      );
+    };
+    const devRun = (commitMsg: string, env: Record<string, string> = {}) =>
+      runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: "dev",
+        COMMIT_MSG: commitMsg,
+        HEAD_SHA: "dev-sha",
+        STUB_LATEST_CI_SHA: "dev-sha",
+        STUB_ISSUE_LABELS: "bkit:auto",
+        ...env,
+      });
+    const recorded = (state: string, terminal: boolean) =>
+      JSON.stringify({
+        title: "t",
+        url: "u",
+        state,
+        labels: ["bkit:auto"],
+        terminal,
+        files: {},
+      });
+    const FID = "363-widen-bkit-cloud-trigger";
+    /** Every file and directory under the workspace, minus run scratch, .git and node_modules. */
+    const tree = (): string[] => {
+      const out: string[] = [];
+      const walk = (dir: string) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (e.name === ".git" || e.name === "node_modules" || e.name.startsWith(".gh-")) continue;
+          const p = path.join(dir, e.name);
+          out.push(path.relative(fixture.workspaceDir, p));
+          if (e.isDirectory()) walk(p);
+        }
+      };
+      walk(fixture.workspaceDir);
+      return out.sort();
+    };
+
+    it("dev subject feat(<fid>): resolves the FID via --prompt-file and the issue via the feature row", () => {
+      seedFeature(FID);
+      const bkitLog = path.join(tmpRoot, "bkit.log");
+      const ghLog = path.join(tmpRoot, "gh.log");
+      fs.writeFileSync(bkitLog, "");
+      spyBkit(bkitLog);
+      const result = devRun(`feat(${FID}): widen trigger (#500) bkit [auto route]`, {
+        STUB_GH_LOG: ghLog,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(FID);
+      const bkitCalls = fs.readFileSync(bkitLog, "utf8");
+      expect(bkitCalls).toMatch(/fids parse --prompt-file \S+ --json/);
+      expect(bkitCalls).toContain(`--branch feat/${FID}`);
+      const ghCalls = fs.readFileSync(ghLog, "utf8");
+      expect(ghCalls).toMatch(/issues\/363/);
+      expect(ghCalls).not.toMatch(/issues\/500/);
+    });
+
+    it("linear-shaped FID under the github tracker gives no-issue and no dispatch", () => {
+      seedFeature("bar-123-auth");
+      const ghLog = path.join(tmpRoot, "gh.log");
+      fs.writeFileSync(ghLog, "");
+      const result = devRun("feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]", {
+        STUB_GH_LOG: ghLog,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain("no-issue");
+      expect(fs.readFileSync(ghLog, "utf8")).not.toMatch(/\/issues\//);
+      expect(readStatusRows(fixture.workspaceDir, "bar-123-auth")).toEqual([]);
+    });
+
+    it("dev subject naming several issues is a no-FID no-op", () => {
+      seedFeature(FID);
+      const result = devRun(
+        `feat(${FID}): handle issue #11 and issue #12 (#500) bkit [auto route]`,
+        { STUB_API_PR_BODY: "" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(readStatusRows(fixture.workspaceDir, FID)).toEqual([]);
+    });
+
+    it("dev arm passes the gate for a closed issue that still carries bkit:auto", () => {
+      seedFeature(FID);
+      const result = devRun(`feat(${FID}): widen trigger (#500) bkit [auto route]`, {
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: recorded("Done", true),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(FID);
+      expect(new RegExp(`^\\|.*\\|\\s*pass\\s*\\|`, "m").test(result.summary)).toBe(true);
+      expect(readStatusRows(fixture.workspaceDir, FID)).toHaveLength(1);
+    });
+
+    it("dev subject feat(ab2-12-login-retry) under jira passes bkit_dev_dispatch_guard and dispatches", () => {
+      const jiraFid = "ab2-12-login-retry";
+      setTracker("jira");
+      seedFeature(jiraFid);
+      const result = devRun(`feat(${jiraFid}): retry login (#9) bkit [auto route]`, {
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: recorded("In Progress", false),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(jiraFid);
+      expect(result.stdout).not.toContain("Invalid FID");
+      expect(readStatusRows(fixture.workspaceDir, jiraFid)).toHaveLength(1);
+    });
+
+    it("traversal FID from the subject or the merged-PR body is a no-FID no-op that writes nothing outside docs/plans/", () => {
+      seedFeature(FID);
+      const before = tree();
+      const cases: Array<[string, string, string]> = [
+        ["subject", "feat(../x): sneaky (#9) bkit [auto route]", ""],
+        [
+          "merged-PR body",
+          "Manual push straight to dev bkit [auto route]",
+          "<!-- bkit:issue=363 bkit:fid=../x -->",
+        ],
+        [
+          "merged-PR body slash path",
+          "Manual push straight to dev bkit [auto route]",
+          "<!-- bkit:issue=363 bkit:fid=a/../../x -->",
+        ],
+      ];
+      for (const [name, subject, body] of cases) {
+        const result = devRun(subject, { STUB_API_PR_BODY: body });
+        expect(result.status, `${name}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, name).toBe("true");
+        expect(result.outputs.phase, name).toBeUndefined();
+        expect(tree(), name).toEqual(before);
+        expect(readStatusRows(fixture.workspaceDir, "x"), name).toEqual([]);
+        expect(readStatusRows(fixture.workspaceDir, FID), name).toEqual([]);
+      }
+    });
+  });
+
   it("a github tracker in package.json passes the tracker gate and dispatches", () => {
     fs.writeFileSync(
       path.join(fixture.workspaceDir, "package.json"),

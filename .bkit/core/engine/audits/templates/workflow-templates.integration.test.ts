@@ -2,6 +2,7 @@
 // workflow templates.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
@@ -348,5 +349,243 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     );
     expect(parsed.status, parsed.stderr).toBe(0);
     expect(parsed.stdout).toContain("FID=141-cloud-app ISSUE=141");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Router dispatch jobs — tracker secrets at step scope, the codex job, the install blocks.
+// ---------------------------------------------------------------------------
+
+interface CloudStep {
+  name?: string;
+  id?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  env?: Record<string, unknown>;
+  with?: Record<string, unknown>;
+}
+interface CloudJob {
+  needs?: string | string[];
+  if?: string;
+  env?: Record<string, unknown>;
+  permissions?: Record<string, string>;
+  steps: CloudStep[];
+}
+interface CloudDoc {
+  env?: Record<string, unknown>;
+  jobs: Record<string, CloudJob>;
+}
+
+const secretMapped = (env: Record<string, unknown> | undefined, name: string): boolean =>
+  env?.[name] === `\${{ secrets.${name} }}`;
+const isDispatchStep = (st: CloudStep): boolean =>
+  Boolean(
+    st.uses?.startsWith("anthropics/claude-code-action@") ||
+    st.uses?.startsWith("openai/codex-action@") ||
+    st.name?.startsWith("Dispatch /bkit-auto on opencode"),
+  );
+const dispatchSteps = (doc: CloudDoc): Array<[string, CloudStep]> =>
+  Object.entries(doc.jobs)
+    .filter(([id]) => id !== "context")
+    .flatMap(([id, job]) =>
+      job.steps.filter(isDispatchStep).map((st): [string, CloudStep] => [id, st]),
+    );
+const withOf = (st: CloudStep): Record<string, unknown> => st.with ?? {};
+const writesConfigToml = (st: CloudStep): boolean => /config\.toml/.test(st.run ?? "");
+const isAlwaysRun = (st: CloudStep): boolean => st.if?.trim() === "always()" && Boolean(st.run);
+const dummyEnv = (st: CloudStep): Record<string, string> =>
+  Object.fromEntries(Object.keys(st.env ?? {}).map((k) => [k, `value-${k}`]));
+
+describe("bkit-cloud.yml template — dispatch jobs", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+  const raw = fs.readFileSync(
+    path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+  const filled = raw
+    .replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")
+    .replaceAll("{{NODE_VERSION}}", "22");
+  const doc = parseYaml(filled) as CloudDoc;
+  const codexJob = (): CloudJob => {
+    const job = doc.jobs.codex;
+    expect(job, "no codex job").toBeDefined();
+    return job!;
+  };
+  const codexActionIndex = (job: CloudJob) =>
+    job.steps.findIndex((st) => st.uses?.startsWith("openai/codex-action@"));
+  const installIndex = (job: CloudJob) =>
+    job.steps.findIndex((st) => /pnpm install --frozen-lockfile/.test(st.run ?? ""));
+  const has = (cmd: string, args: string[]) =>
+    spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
+
+  it("tracker secrets sit in the ctx and every dispatch step env and in no job or workflow env", () => {
+    const secrets = ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"];
+    const mapped = secretMapped;
+    const ctx = doc.jobs.context!.steps.find((st) => st.id === "ctx");
+    expect(ctx, "no ctx step").toBeDefined();
+    for (const name of secrets) expect(mapped(ctx!.env, name), `ctx ${name}`).toBe(true);
+
+    const dispatch = dispatchSteps(doc);
+    expect(dispatch.map(([id]) => id).sort()).toEqual(expect.arrayContaining(["opencode", "run"]));
+    for (const [id, st] of dispatch) {
+      for (const name of secrets) expect(mapped(st.env, name), `${id} ${name}`).toBe(true);
+    }
+    for (const [id, job] of Object.entries(doc.jobs)) {
+      for (const name of secrets) expect(job.env?.[name], `job ${id} env ${name}`).toBeUndefined();
+    }
+    for (const name of secrets) expect(doc.env?.[name], `workflow env ${name}`).toBeUndefined();
+  });
+
+  it("codex job runs only when the context job selects codex and skip is not true", () => {
+    const job = codexJob();
+    expect(job.if?.trim()).toBe(
+      "needs.context.outputs.codex == 'true' && needs.context.outputs.skip != 'true'",
+    );
+    expect(job.needs).toBe("context");
+    expect(job.permissions).toEqual(doc.jobs.opencode!.permissions);
+  });
+
+  it("codex job installs dependencies before openai/codex-action", () => {
+    const job = codexJob();
+    const action = codexActionIndex(job);
+    const install = installIndex(job);
+    expect(action, "no openai/codex-action step").toBeGreaterThan(-1);
+    expect(install, "no pnpm install --frozen-lockfile step").toBeGreaterThan(-1);
+    expect(install).toBeLessThan(action);
+    const before = job.steps.slice(0, install);
+    expect(before.some((st) => st.uses?.startsWith("actions/setup-node@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("pnpm/action-setup@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("actions/checkout@"))).toBe(true);
+  });
+
+  it("codex-action is SHA-pinned with a v1 comment and codex-version is pinned under a renovate annotation", () => {
+    const action = codexJob().steps.find((st) => st.uses?.startsWith("openai/codex-action@"));
+    expect(action, "no openai/codex-action step").toBeDefined();
+    expect(action!.uses).toMatch(/^openai\/codex-action@[0-9a-f]{40}$/);
+    expect(raw).toMatch(/uses: openai\/codex-action@[0-9a-f]{40} # v1\s*$/m);
+    expect(String(action!.with?.["codex-version"])).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(raw).toMatch(
+      /# renovate: datasource=npm depName=@openai\/codex\n\s*codex-version: "\d+\.\d+\.\d+"/,
+    );
+  });
+
+  it("codex-action passes danger-full-access, allow-bots, BKIT_OPENAI_API_KEY and the $bkit-auto prompt", () => {
+    const action = codexJob().steps.find((st) => st.uses?.startsWith("openai/codex-action@"));
+    expect(action, "no openai/codex-action step").toBeDefined();
+    const w = withOf(action!);
+    expect(w["sandbox"]).toBe("danger-full-access");
+    expect(String(w["allow-bots"])).toBe("true");
+    expect(w["openai-api-key"]).toBe("${{ secrets.BKIT_OPENAI_API_KEY }}");
+    expect(w["prompt"]).toBe(
+      "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}",
+    );
+    expect(String(w["codex-home"])).toContain("codex-home");
+    expect(raw).not.toMatch(/secrets\.OPENAI_API_KEY/);
+  });
+
+  it("trust step writes a codex-home config.toml trusting the workspace", () => {
+    const step = codexJob().steps.find(writesConfigToml);
+    expect(step, "no step writes config.toml").toBeDefined();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-codex-trust-"));
+    try {
+      const runnerTemp = path.join(dir, "runner-temp");
+      const workspace = path.join(dir, "ws");
+      fs.mkdirSync(runnerTemp);
+      fs.mkdirSync(workspace);
+      const res = spawnSync("bash", ["-eo", "pipefail", "-c", step!.run!], {
+        cwd: workspace,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+          GITHUB_WORKSPACE: workspace,
+          GITHUB_ENV: path.join(dir, "env"),
+          GITHUB_OUTPUT: path.join(dir, "out"),
+        },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const config = path.join(runnerTemp, "codex-home", "config.toml");
+      expect(fs.existsSync(config), "no codex-home/config.toml").toBe(true);
+      const toml = fs.readFileSync(config, "utf8");
+      expect(toml).toContain(`[projects."${workspace}"]`);
+      expect(toml).toMatch(/trust_level\s*=\s*"trusted"/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(!has("actionlint", ["-version"]))("filled bkit-cloud.yml passes actionlint", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-lint-"));
+    try {
+      const file = path.join(dir, "bkit-cloud.yml");
+      fs.writeFileSync(file, filled);
+      const r = spawnSync("actionlint", ["-no-color", file], { encoding: "utf-8" });
+      expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("codex summary step runs under if: always() and writes action, commits and comments", () => {
+    const job = codexJob();
+    const action = codexActionIndex(job);
+    expect(action, "no openai/codex-action step").toBeGreaterThan(-1);
+    const step = job.steps.slice(action + 1).find(isAlwaysRun);
+    expect(step, "no if: always() summary step after the action").toBeDefined();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-codex-summary-"));
+    try {
+      const stubBin = path.join(dir, "bin");
+      fs.mkdirSync(stubBin);
+      fs.writeFileSync(path.join(stubBin, "gh"), "#!/usr/bin/env bash\necho 0\n", { mode: 0o755 });
+      const ws = path.join(dir, "ws");
+      fs.mkdirSync(ws);
+      for (const args of [
+        ["init", "-q", "-b", "dev"],
+        ["config", "user.email", "t@t.co"],
+        ["config", "user.name", "t"],
+        ["commit", "-q", "--allow-empty", "-m", "base"],
+      ]) {
+        spawnSync("git", args, { cwd: ws });
+      }
+      const summary = path.join(dir, "summary");
+      fs.writeFileSync(summary, "");
+      const stepEnv = dummyEnv(step!);
+      spawnSync("bash", ["-c", step!.run!], {
+        cwd: ws,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${stubBin}:${process.env.PATH}`,
+          GITHUB_STEP_SUMMARY: summary,
+          GITHUB_WORKSPACE: ws,
+          GITHUB_REPOSITORY: "owner/repo",
+          RUNNER_TEMP: dir,
+          GH_TOKEN: "dummy",
+          ...stepEnv,
+        },
+      });
+      const text = fs.readFileSync(summary, "utf8");
+      for (const field of ["action", "commits", "comments"]) {
+        expect(text.toLowerCase(), `summary lacks ${field}`).toContain(field);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("opencode job installs dependencies before its dispatch step", () => {
+    const job = doc.jobs.opencode!;
+    const install = installIndex(job);
+    const dispatch = job.steps.findIndex((st) =>
+      st.name?.startsWith("Dispatch /bkit-auto on opencode"),
+    );
+    expect(dispatch, "no opencode dispatch step").toBeGreaterThan(-1);
+    expect(install, "no pnpm install --frozen-lockfile step").toBeGreaterThan(-1);
+    expect(install).toBeLessThan(dispatch);
+    const before = job.steps.slice(0, install);
+    expect(before.some((st) => st.uses?.startsWith("actions/setup-node@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("pnpm/action-setup@"))).toBe(true);
   });
 });
