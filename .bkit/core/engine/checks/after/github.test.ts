@@ -372,7 +372,11 @@ describe("buildCloudSetupAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-auto\n",
+      "name: bkit-auto\npermissions:\n  id-token: write\nenv:\n  K: ${{ secrets.BKIT_ANTHROPIC_API_KEY }}\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloud: { agent: "claude" } } }),
     );
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -417,15 +421,6 @@ describe("buildCloudSetupAdvisory", () => {
     expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-none");
   });
 
-  it("jira tracker: no nudge (Jira runs locally only)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "x", bkit: { tracker: { default: "jira" } } }),
-    );
-    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
-  });
-
   it("router presence wins over a stale bkit.cloud.agent=none field", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -439,6 +434,84 @@ describe("buildCloudSetupAdvisory", () => {
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-router");
+  });
+
+  // ---- TASK 13: stale-router sniffs, per-variant text, agent-unset ----
+
+  const writeRouter = (content: string, agent?: string, tracker?: string) => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), content);
+    const bkit: Record<string, unknown> = {};
+    if (agent) bkit.cloud = { agent };
+    if (tracker) bkit.tracker = { default: tracker };
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
+  };
+  const STALE = "# serves the GitHub tracker only\n";
+
+  it("adopted copy serving the GitHub tracker only under %s gives cloud-router-tracker-stale", () => {
+    for (const tracker of ["linear", "jira"]) {
+      writeRouter(`${STALE}permissions:\n  id-token: write\nsecrets.BKIT_X\n`, "claude", tracker);
+      expect(buildCloudSetupAdvisory(tmpDir)?.id, tracker).toBe("cloud-router-tracker-stale");
+    }
+  });
+
+  it("adopted copy without openai/codex-action under cloud.agent codex gives cloud-router-codex-missing", () => {
+    writeRouter("name: bkit-auto\nsecrets.BKIT_X\n", "codex", "github");
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-codex-missing");
+  });
+
+  it("missing id-token wins over tracker-stale and tracker-stale over codex-missing", () => {
+    writeRouter(`${STALE}secrets.BKIT_X\n`, "claude", "linear");
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-claude-missing-id-token");
+    writeRouter(`${STALE}id-token: write\nsecrets.BKIT_X\n`, "claude", "linear");
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-tracker-stale");
+    writeRouter(`${STALE}secrets.BKIT_X\n`, "codex", "linear");
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-tracker-stale");
+    writeRouter("secrets.BKIT_X\n", "codex", "linear");
+    expect(buildCloudSetupAdvisory(tmpDir)?.id).toBe("cloud-router-codex-missing");
+  });
+
+  it("cloud-claude-missing-id-token action names the template re-copy, not --tracker=github", () => {
+    writeRouter("name: bkit-auto\nsecrets.BKIT_X\n", "claude", "github");
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result?.id).toBe("cloud-claude-missing-id-token");
+    expect(result!.action).not.toContain("--tracker=github");
+    expect(result!.action).toMatch(/template/i);
+    expect(result!.action).toMatch(/re-copy/i);
+  });
+
+  it("jira tracker without a router gets the tracker-neutral cloud-router-none nudge", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { tracker: { default: "jira" } } }),
+    );
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result?.id).toBe("cloud-router-none");
+    expect(result!.action).toMatch(/bkit install --auto=/);
+    expect(result!.action).not.toContain("For a GitHub-tracker repo");
+    expect(result!.action).not.toContain("--tracker=github");
+  });
+
+  it("cloud-router advisory names the Claude GitHub App only for cloud.agent claude", () => {
+    writeRouter("id-token: write\nsecrets.BKIT_ANTHROPIC_API_KEY\n", "claude", "github");
+    const claude = buildCloudSetupAdvisory(tmpDir);
+    expect(claude?.id).toBe("cloud-router");
+    expect(`${claude!.detect}\n${claude!.action}`).toContain("Claude GitHub App");
+    for (const agent of ["codex", "opencode"]) {
+      writeRouter("openai/codex-action\nsecrets.BKIT_OPENAI_API_KEY\n", agent, "github");
+      const other = buildCloudSetupAdvisory(tmpDir);
+      expect(other?.id, agent).toBe("cloud-router");
+      expect(`${other!.detect}\n${other!.action}`, agent).not.toContain("Claude GitHub App");
+    }
+  });
+
+  it("adopted router with no bkit.cloud.agent gives cloud-router-agent-unset naming bkit install --auto=", () => {
+    writeRouter("name: bkit-auto\nsecrets.BKIT_X\n", undefined, "github");
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result?.id).toBe("cloud-router-agent-unset");
+    expect(result!.action).toContain("bkit install --auto=");
+    expect(result!.detect).not.toMatch(/routing is active/i);
   });
 });
 
