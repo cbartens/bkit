@@ -883,7 +883,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Tracker secrets in the claude / opencode dispatch steps (`719-router-tracker-secrets-step-scope`)
+- [x] **TASK 11:** Tracker secrets in the claude / opencode dispatch steps (`719-router-tracker-secrets-step-scope`)
   - **UPDATE:** `.bkit/templates/.github/workflows/bkit-cloud.yml`: `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` in the `env:` of the `run` and `opencode` dispatch steps only; `claude_args` comment (`:524-525`) → "GitHub MCP only; other trackers via bkit verbs"
   - **UPDATE:** `.github/workflows/bkit-cloud.yml`: re-copy, edits re-applied
   - **UPDATE:** `.bkit/core/engine/audits/templates/workflow-templates.integration.test.ts`: describe "bkit-cloud.yml template — GitHub-only content" "no `BKIT_LINEAR_API_KEY`" pin removed

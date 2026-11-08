@@ -863,9 +863,16 @@ jobs:
           STARTED: ${{ env.BKIT_CODEX_STARTED }}
           ARG: ${{ needs.context.outputs.arg }}
         run: |
-          git fetch -q origin dev 2>/dev/null || true
-          commits=$(git log origin/dev --since="$STARTED" --author='bkit-auto' --oneline 2>/dev/null | wc -l | tr -d ' ' || true)
-          comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --jq length 2>/dev/null || true)
+          if [[ "$ARG" =~ ^[0-9]+$ ]]; then
+            # feat arm: ARG is the PR number. Count PR commits and comments landed since start.
+            commits=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${ARG}/commits" --paginate --jq "[.[] | select(.commit.committer.date >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+            comments=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ARG}/comments" --paginate --jq "[.[] | select(.created_at >= \"${STARTED}\")] | length" 2>/dev/null | paste -sd+ - | bc 2>/dev/null || true)
+          else
+            # dev arm: ARG is the FID, there is no PR or issue number to read comments from.
+            git fetch -q origin dev 2>/dev/null || true
+            commits=$(git log origin/dev --since="$STARTED" --author='bkit-auto' --oneline 2>/dev/null | wc -l | tr -d ' ' || true)
+            comments="-"
+          fi
           {
             echo "### bkit-cloud codex"
             echo ""
