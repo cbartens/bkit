@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-08T10:57:52Z)_
+_(refreshed 2026-11-08T12:52:29Z)_
 
 ### Design
 
@@ -54,7 +54,6 @@ _(refreshed 2026-11-08T10:57:52Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1794135472246 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 
 ### Debug
@@ -66,6 +65,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
@@ -75,7 +75,6 @@ _(none)_
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
-| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

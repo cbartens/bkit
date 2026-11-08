@@ -1,12 +1,6 @@
 {
   "version": 1,
   "skills": {
-    "bash-defensive-patterns": {
-      "source": "wshobson/agents",
-      "sourceType": "github",
-      "skillPath": "plugins/shell-scripting/skills/bash-defensive-patterns/SKILL.md",
-      "computedHash": "991522cad769b74711aea3fe3330e032bd63bc27b754ee26205207c0e056d4e6"
-    },
     "brainstorming": {
       "source": "obra/superpowers",
       "ref": "v5.0.7",
@@ -40,18 +34,6 @@
       "sourceType": "github",
       "skillPath": "skills/finishing-a-development-branch/SKILL.md",
       "computedHash": "9edba9a38684c060fdc38290f640e1dc0c37de286723ac9be73bacacf7cd6f3d"
-    },
-    "github-actions-hardening": {
-      "source": "github/awesome-copilot",
-      "sourceType": "github",
-      "skillPath": "skills/github-actions-hardening/SKILL.md",
-      "computedHash": "10e35ff70fcf42e09295ffad0ac3203e4d6b6f74557cc3fa1654112b89e0eea2"
-    },
-    "pnpm": {
-      "source": "antfu/skills",
-      "sourceType": "github",
-      "skillPath": "skills/pnpm/SKILL.md",
-      "computedHash": "71fd67de7ced43ff8eab87b46183fa10f09428bb3d9ae44418b506bac858583e"
     },
     "property-based-testing": {
       "source": "trailofbits/skills",
@@ -94,12 +76,6 @@
       "skillPath": "skills/test-driven-development/SKILL.md",
       "computedHash": "126f1ebf6ccd414f42544f6e83d8cc5adb089e1108eaffb7c400701e37eecd9f"
     },
-    "typescript-best-practices": {
-      "source": "cursor/plugins",
-      "sourceType": "github",
-      "skillPath": "harness/pstack/claude-code/skills/typescript-best-practices/SKILL.md",
-      "computedHash": "2ef9e9307b23e38676b122330079a68315f87182e7fc308e263e3d2381090cb3"
-    },
     "using-git-worktrees": {
       "source": "obra/superpowers",
       "ref": "v5.0.7",
@@ -120,12 +96,6 @@
       "sourceType": "github",
       "skillPath": "skills/verification-before-completion/SKILL.md",
       "computedHash": "9b446f0c7fe1cfb560b1d34439523b1a76d5f177290007b2c053a1c749a4a8ba"
-    },
-    "vitest": {
-      "source": "antfu/skills",
-      "sourceType": "github",
-      "skillPath": "skills/vitest/SKILL.md",
-      "computedHash": "90f1cee9326269c91b46a601b3a575491505d8e771009dacff01329381d45291"
     },
     "writing-plans": {
       "source": "obra/superpowers",
