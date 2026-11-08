@@ -19,7 +19,7 @@ Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Tr
 **Token isolation:**
 
 - Renovate PRs get a restricted `GITHUB_TOKEN`.
-- They have no access to the cloud lane's model-auth secrets (`secrets.ANTHROPIC_API_KEY` / `secrets.OPENCODE_PROVIDER_KEY`).
+- They have no access to the cloud lane's model-auth secrets (`secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`).
 - They have no access to federated Claude tokens either. Only a `bkit-cloud.yml` job that matches the federation rule mints those.
 - `bkit-cloud.yml` does not dispatch on Renovate PRs.
 - As a result, a compromised dependency PR cannot reach agent API credentials.

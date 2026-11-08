@@ -560,7 +560,7 @@ The codex job writes a `### bkit-cloud codex` summary row: the action outcome, c
 
 ## Claude — workload identity federation
 
-The keyless claude job stores no long-lived `ANTHROPIC_API_KEY` in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`). Anthropic checks it against a federation rule and returns a short-lived Claude API token. The action refreshes it in the background on long runs.
+The keyless claude job stores no long-lived `BKIT_ANTHROPIC_API_KEY` in GitHub. `claude-code-action` asks GitHub for the job's OIDC token (issuer `https://token.actions.githubusercontent.com`, audience `https://api.anthropic.com`). Anthropic checks it against a federation rule and returns a short-lived Claude API token. The action refreshes it in the background on long runs.
 
 **Setup (one-time):**
 
@@ -575,7 +575,7 @@ The keyless claude job stores no long-lived `ANTHROPIC_API_KEY` in GitHub. `clau
    gh variable set ANTHROPIC_ORGANIZATION_ID --body='<organization-uuid>'
    # optional: ANTHROPIC_SERVICE_ACCOUNT_ID (svac_...), ANTHROPIC_WORKSPACE_ID
    ```
-4. Delete the key if one is set: `gh secret delete ANTHROPIC_API_KEY`. **A set key wins over federation:** the action uses the key, and federation never runs. `bkit check` flags both being set (`anthropic-api-key-shadows-federation`).
+4. Delete the key if one is set: `gh secret delete BKIT_ANTHROPIC_API_KEY`. **A set key wins over federation:** the action uses the key, and federation never runs. `bkit check` flags both being set (`anthropic-api-key-shadows-federation`).
 
 **Adopted copy predates federation:** The variables are set, but `.github/workflows/bkit-cloud.yml` lacks the `anthropic_federation_rule_id:` input, so the claude job sees no credential. `bkit check` flags it (`anthropic-federation-template-stale`). Re-copy from `.bkit/templates/.github/workflows/bkit-cloud.yml`, then re-apply your local edits (`runs-on`).
 

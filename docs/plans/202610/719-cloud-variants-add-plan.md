@@ -974,7 +974,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** `cloud` tip per variant
+- [x] **TASK 15:** `cloud` tip per variant
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: `cloud` tip `ask` / `steps` (`:237-251`) from the recorded variant; Claude App, `BKIT_ANTHROPIC_API_KEY` and the bootstrap hook only for claude
   - **UPDATE:** `dist/checks/tips/catalogue.js`: `pnpm build` output
   - **DEPENDS ON:** 4
@@ -1002,7 +1002,7 @@ Build order: guard (engine fact → hook part) → install engine → router con
 
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** Repo docs and code comments
+- [x] **TASK 17:** Repo docs and code comments
   - **UPDATE:** `docs/deployments.md`: § `bkit-cloud.yml` — dual-job cloud-agent lane jobs table and rules (`:659-675`): one agent per run, `BKIT_` secrets, codex job, context install
   - **UPDATE:** `.bkit/shared/docs/security.md`: § Supply-Chain (GitHub Actions) Token isolation bullet `:22` (inside the managed `bkit:start` / `bkit:end` block) secret names → `secrets.BKIT_ANTHROPIC_API_KEY` / the provider `BKIT_` keys / `secrets.BKIT_OPENAI_API_KEY`
   - **UPDATE:** `docs/security.md`: outside the managed block (`:1-67`) only — § Credential surfaces opencode provider keys row (`:90`); § CI Auto-Route Trust (`:172-180`): engine-owned FID parse plus the `bkit_dev_dispatch_guard` charset assert, dev subject via `fids parse --prompt-file`, kill switch on every tracker, tracker keys at step scope, a same-repo PR's head `package.json` (`bkit.cloud.agent`, `bkit.tracker.default`) steering its own routing run (collaborator-trusted); `:22` comes from TASK 18's `bkit install`

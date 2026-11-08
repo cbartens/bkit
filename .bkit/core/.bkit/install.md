@@ -194,7 +194,7 @@ For post-CI auto-routing (ship-vs-debug after CI), bkit ships a single `.github/
 - The **codex** job (`openai/codex-action`) runs when `BKIT_OPENAI_API_KEY` is set.
 - Cursor wires the slash command through a dashboard trigger, with no GHA on the Cursor side.
 
-`bkit install --auto=opencode` requires `tracker=github`.
+Every `--auto` variant works with GitHub, Linear or Jira as the tracker; only `tracker=none` refuses.
 
 `.bkit/cloud.md` holds the full recipe, the paste-in setup script, the env-var inventory, the Cursor dashboard config and the consumer customisation patterns. The host-delta matrix is in `.bkit/providers.md` § Runtime environment.
 
