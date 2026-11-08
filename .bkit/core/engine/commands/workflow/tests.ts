@@ -342,7 +342,7 @@ export interface TouchedTest {
 }
 
 /**
- * The planned tests of `group` a code step changed since their red: a test whose own lines
+ * The planned tests of `group` (every group when undefined) a code step changed since their red: a test whose own lines
  * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
  * per-test locking, or when no line carried the name) derives the block from the recorded
  * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
@@ -352,7 +352,7 @@ export function touchedTests(
   top: string,
   file: string,
   workflow: string,
-  group: number,
+  group: number | undefined,
 ): TouchedTest[] {
   const touched: TouchedTest[] = [];
   const texts = new Map<string, string | null>();

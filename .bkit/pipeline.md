@@ -88,7 +88,9 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
   │                         unfixable gaps / no progress → Decision Pause (human, in session)
   │ 7. gaps-remediate    (fix verifier gaps, re-verify)
   └ group gate between groups (static + unit) ─────────────────────────────
-  8. verify build        (holistic second pass across whole plan, once)
+  8. verify build        (holistic pass across whole plan; again after later groups;
+                         fixable gaps → holistic gaps-remediate, re-verify;
+                         unfixable / no progress → Decision Pause)
   9. challenge           (size gate first: under 300 lines and 10 files → security only;
                          else both in parallel, distinct lenses, no sibling reads)
     • bug-hunting (large changes)  • security (always)
@@ -207,7 +209,7 @@ Output: a PR to `dev`. This is the heaviest phase: most of its steps verify rath
 | `bkit-build-plan-tasks` | Producer | Implements one task group's tasks from its brief against the tests already recorded failing, touching no planned test. Iterates edit → lint/typecheck/test → edit. Near its turn cap it hands over (`HANDOVER`), and the group re-runs once. |
 | `bkit-build-plan-verify` | Critic | Verifies each task of one group against the group's own diff. Passes the satisfied task numbers, and `bkit tasks tick` sets the boxes. The producer-critic loop uses `bkit.workflows.build.verify.maxAttempts` for its limit. |
 | `bkit-build-plan-gaps-remediate` | Gap-fixer | Fills gaps the verifier found, then re-verifies. |
-| `bkit-build-plan-verify` | Holistic critic | Second, whole-of-plan verification pass across everything built. |
+| `bkit-build-plan-verify` | Holistic critic | Whole-of-plan verification pass across everything built, with its own fix loop through `bkit-build-plan-gaps-remediate` (holistic mode). |
 | `bkit-build-challenge-1` | Bug-hunting | Adversarial review of the full diff. Writes each finding as a plan task with a test first. Forbidden from reading its sibling. Parallel. Runs only on a large change (300+ lines or 10+ files, `docs/plans/**` excluded, measured by `bkit challenge gate`). A small change runs `-2` alone. `bkit challenge merge` then appends the findings to the plan, and execute and verify fix them. |
 | `bkit-build-challenge-2` | Security | Same diff, security lens. Runs on every change, alone on a small one. |
 | `bkit-debug-failure-diagnose` | Diagnostician | When tests fail, diagnoses with Standard / Pivot / Final strategy escalation. Shared with debug. |

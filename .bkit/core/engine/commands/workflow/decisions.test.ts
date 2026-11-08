@@ -212,6 +212,46 @@ describe("bkit decisions compose", () => {
     expect(text).toMatch(/Recommended: [AB]\) (Try again|Decide) — /);
   });
 
+  it("--loop=holistic counts only the rounds since the whole-feature check was last clean", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const holistic = (at: string, verdict: string, failures: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify-holistic",
+      status: "DONE",
+      at,
+      verdict,
+      failures,
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        holistic("2026-10-01T00:10:00Z", "FAIL", 5),
+        holistic("2026-10-01T00:20:00Z", "PASS", 0),
+        holistic("2026-10-01T00:30:00Z", "FAIL", 3),
+        holistic("2026-10-01T00:40:00Z", "FAIL", 3),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=holistic",
+      `--file=${status}`,
+      "--attempt=2",
+      "--max=2",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("build verify: attempt 2 of 2");
+    expect(text).toContain("Problems after each round: 3 → 3");
+    expect(text).toMatch(/\*\*Q1 — Holistic verify:\*\* decide the items below/);
+  });
+
   it("--loop needs --file", async () => {
     const { root, logs } = checkout();
     expect((await compose(root, logs, ITEMS, "--loop=verify")).r.code).toBe(2);

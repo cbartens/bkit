@@ -156,10 +156,10 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 | --- | --- | --- | --- |
 | `derive` | workflow | **`--file`** **`--workflow`** **`--step`** `--group` **`--position`** `--all-runs` | Count a step's DONE rows in the active run, at one of three positions. |
 | `run` | workflow | **`--file`** **`--workflow`** | Which run of the workflow this invocation is (1-based; a resume keeps its number). |
-| `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
-| `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
+| `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--since-clean` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
+| `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--since-clean` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
 | `max` | workflow | `--point` `--file` `--workflow` `--group` | The ask points' limits and ask settings: one by --point, or all. |
-| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
+| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` `--since-clean` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
 | `rows` | workflow | **`--file`** **`--workflow`** **`--type`** **`--position`** | Count rows of one audit type in the active run (since its workflow-started row). |
 
 ### `decisions`

@@ -489,6 +489,32 @@ describe("buildSummary", () => {
       );
   });
 
+  it("a holistic gaps fix FAIL resolved by a later PASS holistic verify is historical", () => {
+    const row = (step: string, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      verdict,
+      attempt,
+    });
+    const gaps = row("build-plan-gaps-remediate-holistic", "FAIL");
+    const answered = buildSummary(
+      input({
+        rows: [
+          row("build-plan-verify-holistic", "FAIL"),
+          gaps,
+          row("build-plan-verify-holistic", "PASS", 2),
+        ],
+      }),
+    );
+    expect(answered.markdown).toContain(
+      "build-plan-gaps-remediate-holistic FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(answered.verdict).toBe("PASS");
+    expect(
+      buildSummary(input({ rows: [gaps, row("build-plan-verify-holistic", "FAIL", 2)] })).reasons,
+    ).toContain("build-plan-gaps-remediate-holistic FAIL");
+  });
+
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
     const gate = (linesChanged: number, filesChanged: number, size: string, skipped: boolean) => ({
       type: "challenge-gate",

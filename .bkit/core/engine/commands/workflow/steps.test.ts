@@ -1959,6 +1959,31 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(r.json.touched).toEqual([TEST.file]);
   });
 
+  it("refuses the holistic gaps fix, which has no group, when it edits any group's planned test, exit 11", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    const holistic = codeStep(
+      "build-plan-gaps-remediate-holistic",
+      "bkit-build-plan-gaps-remediate",
+      "logs/remediate-1-log.md",
+    ).filter((a) => a !== "--group=1");
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    expect((await run(cwd, holistic)).code).toBe(0);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(
+      cwd,
+      "logs/remediate-2-log.md",
+      fs.readFileSync(path.join(cwd, "logs/remediate-1-log.md"), "utf-8"),
+    );
+    const r = await run(
+      cwd,
+      holistic.map((a) => a.replace("remediate-1-log", "remediate-2-log")),
+    );
+    expect(r.code).toBe(EXIT_TESTS_TOUCHED);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.reask).toMatchObject({ agent: "bkit-build-plan-gaps-remediate" });
+  });
+
   it("refuses a build-plan-tests step whose diff changes a file no TEST FIRST line of the group names, exit 15", async () => {
     const cwd = planned();
     write(cwd, TEST.file, "it('adds a row', () => expect(addRow()).toBe(2));\n");

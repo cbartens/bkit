@@ -80,8 +80,8 @@ tools:
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
 4. Read the inputs, and find where to resume:
-   - Read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log.
-   - Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
+   - **If** Context `Mode` = `Holistic` → read the holistic verify report and every log. Each line of its `Identified Gaps Log` is one gap. Read the plan's task block of each task a gap names; no group gate log is supplied.
+   - **Else** → read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log. Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
    - Resume at the first gap that is not `DONE`.
    - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
    - Skip each gap logged `test-loosened`, and write no log line for it: the tests step restores that test, because a code step never edits a planned test.

@@ -226,6 +226,24 @@ export function activeDoneSteps(runs, workflow, f) {
         return [];
     return run.steps.filter((s) => matches(s, f));
 }
+/** A check round that found no problems: verdict PASS, or CONCERNS with 0 failures. */
+export const cleanRound = (s) => s.status === "DONE" && (s.verdict === "PASS" || (s.verdict === "CONCERNS" && s.failures === 0));
+/** The active run's last clean round of `step` (`cleanRound`); undefined when none ran. */
+export function lastCleanRound(runs, workflow, step) {
+    return lastRun(runs, workflow)
+        ?.steps.filter((s) => s.step === step && cleanRound(s))
+        .at(-1);
+}
+/** `activeDoneSteps` after `clean`'s last clean round: the rounds of the loop still open. */
+export function activeDoneStepsSinceClean(runs, workflow, f, clean) {
+    const run = lastRun(runs, workflow);
+    if (!run)
+        return [];
+    const last = lastCleanRound(runs, workflow, clean);
+    return run.steps
+        .slice(last === undefined ? 0 : run.steps.indexOf(last) + 1)
+        .filter((s) => matches(s, f));
+}
 /** DONE rows for the step across ALL runs of `workflow`: debug's limits span every run. */
 export function allRunsDoneSteps(runs, workflow, f) {
     return runs
