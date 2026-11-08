@@ -1488,6 +1488,25 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     expect(outputs.agent).toBe("claude");
   });
 
+  it("recorded claude with both federation variables and no API key selects the claude job", () => {
+    const { outputs } = runSelect("claude", {
+      ANTHROPIC_FEDERATION_RULE_ID: "fdrl_x",
+      ANTHROPIC_ORGANIZATION_ID: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(selectedJobs(outputs)).toEqual(["claude"]);
+    expect(outputs.dispatched).toBe("claude");
+  });
+
+  it.each([["BKIT_OPENCODE_API_KEY"], ["BKIT_OPENROUTER_API_KEY"], ["BKIT_OLLAMA_API_KEY"]])(
+    "recorded opencode with %s selects only the opencode job",
+    (key) => {
+      const { outputs } = runSelect("opencode", { [key]: "k", BKIT_ANTHROPIC_API_KEY: "k" });
+      expect(selectedJobs(outputs)).toEqual(["opencode"]);
+      expect(outputs.dispatched).toBe("opencode");
+      expect(outputs.ignored).toContain("claude");
+    },
+  );
+
   it("recorded codex selects only codex while BKIT_ANTHROPIC_API_KEY is also set", () => {
     const { outputs } = runSelect("codex", {
       BKIT_ANTHROPIC_API_KEY: "k",
