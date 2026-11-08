@@ -525,7 +525,7 @@ Fine-grained permissions for this repo:
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in each of its four jobs (`context`, `claude`, `opencode`, `codex`): replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 
@@ -669,7 +669,7 @@ The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it t
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM credential |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | `Select agent job` picks `claude` and the `Check runner credentials` step sets `claude=true`: `BKIT_ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
+| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | agent is `claude` and `Select agent job` sets `claude=true`: `BKIT_ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
 | `opencode` | `opencode run` CLI (installed in-job, after the repo's dependencies) | agent is `opencode` and one of `BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / `BKIT_OLLAMA_API_KEY` is non-empty; absent → no-op | the provider's `BKIT_` secret |
 | `codex` | `openai/codex-action` (`sandbox: danger-full-access`, workspace trusted through codex-home) | agent is `codex` and `BKIT_OPENAI_API_KEY` is non-empty; absent → no-op | `BKIT_OPENAI_API_KEY` secret |
 

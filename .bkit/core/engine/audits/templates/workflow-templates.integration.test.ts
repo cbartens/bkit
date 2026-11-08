@@ -287,9 +287,10 @@ describe("KN-3 regression: bkit-ci.yml files must NOT set `with.version:` for pn
 // ---------------------------------------------------------------------------
 // SHARED-DERIV portability + pipefail safety
 //
-// The SHARED-DERIV grep region of bkit-cloud.yml uses portable `grep -oE` + `sed`
-// (no `grep -oP` PCRE lookbehind), with `|| true` guards on the ISSUE/FID assignments
-// so a no-match exits 0 under `set -euo pipefail` and reaches the skip=true path.
+// The SHARED-DERIV region of bkit-cloud.yml reads the FID and issue id from
+// `bkit fids parse` + `jq` (no `grep -oP` PCRE lookbehind), with `|| true` guards on the
+// ISSUE/FID assignments so a no-match exits 0 under `set -euo pipefail` and reaches the
+// skip=true path.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {

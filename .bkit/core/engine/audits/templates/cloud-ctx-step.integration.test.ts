@@ -20,21 +20,10 @@ import { requireTsx } from "../../../../../vitest.tsx-bin";
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const TEMPLATE_PATH = path.join(REPO_ROOT, ".bkit/templates/.github/workflows/bkit-cloud.yml");
 
-// The ctx step's dev-arm FID extraction relies on `sed -E ... \w+ ...`, a GNU
-// sed extension. GH Actions runners (ubuntu-latest) ship GNU sed, but macOS
-// dev machines ship BSD sed (silently no-ops on `\w`, unrelated to the code
-// under test). GNU sed is used via a PATH-shimmed `sed` that shells out to `gsed`.
-const nativeSedVersion = spawnSync("sed", ["--version"], { encoding: "utf8" });
-const nativeSedIsGnu = nativeSedVersion.status === 0 && /GNU sed/.test(nativeSedVersion.stdout);
-const gsedWhich = spawnSync("which", ["gsed"], { encoding: "utf8" });
-const gsedPath = gsedWhich.status === 0 ? gsedWhich.stdout.trim() : "";
-const hasGnuSed = nativeSedIsGnu || Boolean(gsedPath);
-
 const hasTools =
   spawnSync("git", ["--version"]).status === 0 &&
   spawnSync("jq", ["--version"]).status === 0 &&
-  spawnSync("bash", ["--version"]).status === 0 &&
-  hasGnuSed;
+  spawnSync("bash", ["--version"]).status === 0;
 
 // ---------------------------------------------------------------------------
 // Extraction — pull a named step's `run: |` block out of the raw template. Both
@@ -160,14 +149,6 @@ exec "${requireTsx()}" "${path.join(REPO_ROOT, ".bkit/core/engine/cli.ts")}" "$@
 `,
     { mode: 0o755 },
   );
-
-  if (!nativeSedIsGnu && gsedPath) {
-    fs.writeFileSync(
-      path.join(stubBinDir, "sed"),
-      `#!/usr/bin/env bash\nexec "${gsedPath}" "$@"\n`,
-      { mode: 0o755 },
-    );
-  }
 
   return { workspaceDir, originDir, stubBinDir };
 }

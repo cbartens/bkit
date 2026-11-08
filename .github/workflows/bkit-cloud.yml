@@ -3,9 +3,10 @@
 name: bkit-cloud
 
 # Phase-routed cloud-agent workflow. One `context` job resolves the phase and its
-# argument, then ONE dispatch job (the recorded agent) — `claude` (via claude-code-action@v1) and `opencode`
-# (via the opencode CLI `run` subcommand) — runs the same `/bkit-auto <phase> <arg>`
-# orchestrator against the committed `.claude/` / `.opencode/` config respectively.
+# argument, then ONE dispatch job (the recorded agent) — `claude` (via claude-code-action@v1),
+# `opencode` (via the opencode CLI `run` subcommand) or `codex` (via openai/codex-action) —
+# runs the same `/bkit-auto <phase> <arg>` orchestrator against the committed
+# `.claude/` / `.opencode/` / `.codex/` config respectively.
 #
 # RUNTIME GATING — one agent per run (in the context job):
 #   - The agent recorded in package.json `bkit.cloud.agent` (claude | opencode | codex)
@@ -87,12 +88,12 @@ concurrency:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # context job — checks which runner secrets are set and resolves phase + arg ONCE
-  # for both runner jobs. CI-driven runs fire only on terminal CI conclusions (skip
+  # context job — selects the recorded agent's job and resolves phase + arg ONCE
+  # for the router jobs. CI-driven runs fire only on terminal CI conclusions (skip
   # cancelled / skipped). Free-tier gate: CI-driven runs additionally require
   # 'bkit [auto route]' in the head commit message — zero runner minutes if the marker
   # is absent (no opted-in close-workflow HEAD). Dispatched runs always proceed. When
-  # this job is skipped, both runner jobs are skipped with it.
+  # this job is skipped, every router job is skipped with it.
   # ---------------------------------------------------------------------------
   context:
     name: bkit-cloud-context (${{ github.event_name }})
@@ -616,7 +617,7 @@ jobs:
           fi
           # Guard: arg must be alphanumeric/dash/dot/slash (numeric PR/issue ids + FIDs like
           # 245-opencode-provider-host). workflow_dispatch inputs.issue flows unsanitized into
-          # both runner jobs' model prompt — reject anything else (prompt-injection guard).
+          # the selected router job's model prompt — reject anything else (prompt-injection guard).
           if ! [[ "$ARG" =~ ^[0-9A-Za-z._/-]+$ ]]; then
             echo "::error::Invalid arg value '${ARG}' — aborting." >&2
             exit 1
@@ -629,7 +630,7 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # claude job — dispatch via claude-code-action@v1 (BKIT_ANTHROPIC_API_KEY or federation).
-  # Runs only when the context job found a claude credential and resolved a phase.
+  # Runs only when `Select agent job` chose claude and the context job resolved a phase.
   # OIDC auth via Claude GitHub App (id-token: write); requires one-time
   # `/install-github-app` in the consumer repo.
   # ---------------------------------------------------------------------------
@@ -691,7 +692,7 @@ jobs:
           claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__github__*"
           # Workload identity federation: the action exchanges this job's GitHub OIDC token
           # for a short-lived Claude API token. Unset variables pass empty; a set
-          # ANTHROPIC_API_KEY secret takes precedence.
+          # BKIT_ANTHROPIC_API_KEY secret takes precedence.
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
