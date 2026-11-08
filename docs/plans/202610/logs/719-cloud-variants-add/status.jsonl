@@ -771,3 +771,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-08T06:46:12Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/4/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718383313","at":"2026-11-08T06:46:13Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-08T06:46:13Z","parentSha":"f63cce96395efda7d69f4eafb1f206a36144f043","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:46:20Z","noun":"context","verb":"brief","flags":["plan","next","dir","file","note-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:46:24Z","noun":"status","verb":"route","flags":["step","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:46:24Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T06:48:05Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-08T07:01:08Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/4/build-plan-verify-holistic/-/1/comment","hash":"338c14393531c11975a48ed33bf9899280f1016214f70a9b5061396701a3f95d","ref":"https://github.com/cbartens/bkit/issues/719#issuecomment-6718507146","at":"2026-11-08T07:01:09Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-08T07:01:09Z","parentSha":"88035b9af32fd9dcb97cfd5cc57fd257d6f3280a","artifacts":["docs/plans/202610/logs/719-cloud-variants-add/build-plan-verify-holistic.md"],"verdict":"PASS","attempt":1,"failures":0}
