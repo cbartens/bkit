@@ -190,6 +190,22 @@ function slotHolder(who: string, env: NodeJS.ProcessEnv) {
   return running(`take_local_stack_lock "${who}" tests || exit 1; echo acquired; sleep 30`, env);
 }
 
+function replyProbeDiagnostic(result: ReturnType<typeof spawnSync>): string {
+  return JSON.stringify({
+    status: result.status,
+    signal: result.signal,
+    error: result.error && "code" in result.error ? result.error.code : undefined,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  });
+}
+
+function stopReplyProbe(pidFile: string): void {
+  if (fs.existsSync(pidFile)) {
+    spawnSync("kill", ["-TERM", fs.readFileSync(pidFile, "utf-8").trim()]);
+  }
+}
+
 describe("machine lock slots, order and wait budgets", () => {
   it("reports a remaining numbered slot under bash -e after the primary slot is released", async () => {
     const env = envFor({ BKIT_TEST_SLOTS: "2" });
@@ -696,6 +712,68 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain("stopped before it answered");
     expect(r.ms).toBeLessThan(10_000);
+  });
+
+  it.each([
+    {
+      name: "preserves fragmented successful FIFO replies across timed reads",
+      reply: 'print $out "o"; select(undef, undef, undef, 1.2); print $out "k\\n";',
+      status: 0,
+      stdout: "acquired\nreleased\n",
+      stderr: "",
+    },
+    {
+      name: "stops and reaps an acquired holder after a malformed FIFO reply",
+      reply: 'print $out "invalid\\n";',
+      status: 1,
+      stdout: "",
+      stderr: "[machine-lock] ❌ could not take the lock for tests: invalid\n",
+    },
+  ])("$name", ({ reply, status, stdout, stderr }) => {
+    const broken = path.join(tmp, "reply-lock.sh");
+    const pidFile = path.join(tmp, "reply-holder.pid");
+    const text = fs.readFileSync(SCRIPT, "utf-8");
+    const original = 'print $out "ok\\n";';
+    expect(text).toContain(original);
+    fs.writeFileSync(
+      broken,
+      text.replace(
+        original,
+        () =>
+          'open(my $probe, ">", $ENV{BKIT_LOCK_PROBE_PID}) or die $!; ' +
+          'print $probe "$$\\n"; close $probe; ' +
+          reply,
+      ),
+    );
+    const env = envFor({ BKIT_LOCK_PROBE_PID: pidFile });
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        `. "${broken}"; take_local_stack_lock probe tests || exit 1; echo acquired; release_local_stack_lock tests; echo released`,
+      ],
+      { env, encoding: "utf-8", timeout: 5_000 },
+    );
+    const diagnostic = replyProbeDiagnostic(result);
+    try {
+      expect(result.status, diagnostic).toBe(status);
+      expect(result.signal, diagnostic).toBeNull();
+      expect(result.error, diagnostic).toBeUndefined();
+      expect(fs.existsSync(pidFile), diagnostic).toBe(true);
+      const pid = fs.readFileSync(pidFile, "utf-8").trim();
+      expect(pid, diagnostic).toMatch(/^[1-9]\d*$/);
+      expect(() => process.kill(Number(pid), 0), diagnostic).toThrow("ESRCH");
+      expect(result.stdout, diagnostic).toBe(stdout);
+      expect(result.stderr, diagnostic).toBe(stderr);
+      const next = run(
+        "try_local_stack_lock next tests && echo reacquired; release_local_stack_lock tests",
+        env,
+      );
+      expect(next.status, next.stderr).toBe(0);
+      expect(next.stdout, next.stderr).toContain("reacquired");
+    } finally {
+      stopReplyProbe(pidFile);
+    }
   });
 
   it.each(["true", "1"])("CI=%s is a no-op that creates no lock file", (ci) => {
