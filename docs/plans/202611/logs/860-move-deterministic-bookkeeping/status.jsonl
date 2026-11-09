@@ -60,3 +60,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T08:22:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"4f79c0d1f204735cdd0798637d15894cf148ebc1020078e65a975d0e975fb546","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6735474887","at":"2026-11-09T08:22:04Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-09T08:22:04Z","parentSha":"da97be3876cf42450f57b335b7aac09629f33a59","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:22:23Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:22:25Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"59f826c73abde09fe67f6506795176b63aa67ead3d5c6410059f17ecd084c141","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6735474887","at":"2026-11-09T08:22:28Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-09T08:22:29Z","parentSha":"f931a15cebe5f9ffa2f04d3c8cd239282466b2a0","artifacts":[]}
