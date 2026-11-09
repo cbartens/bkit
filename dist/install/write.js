@@ -148,10 +148,12 @@ function isPlainObject(v) {
     return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 function groupCommands(group) {
+    const out = [];
+    if (typeof group.command === "string")
+        out.push(group.command);
     const hooks = group.hooks;
     if (!Array.isArray(hooks))
-        return [];
-    const out = [];
+        return out;
     for (const h of hooks) {
         if (isPlainObject(h) && typeof h.command === "string")
             out.push(h.command);

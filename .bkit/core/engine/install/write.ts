@@ -212,9 +212,10 @@ function isPlainObject(v: JsonValue | undefined): v is { [k: string]: JsonValue 
 }
 
 function groupCommands(group: { [k: string]: JsonValue }): string[] {
-  const hooks = group.hooks;
-  if (!Array.isArray(hooks)) return [];
   const out: string[] = [];
+  if (typeof group.command === "string") out.push(group.command);
+  const hooks = group.hooks;
+  if (!Array.isArray(hooks)) return out;
   for (const h of hooks) {
     if (isPlainObject(h) && typeof h.command === "string") out.push(h.command);
   }
