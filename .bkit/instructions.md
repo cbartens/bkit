@@ -8761,7 +8761,7 @@ Advisory: proceed once satisfied.
 - hook: GateGuard
 - fires: Advice for some targets does not fit the host's output limit
 - hosts: All five
-- source: `.bkit/core/hooks/gateguard-engine.js` `deliverAdvice`
+- source: `.bkit/core/hooks/gateguard-engine.js` `selectAdvice`
 
 ```text
 [bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}

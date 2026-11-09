@@ -75,6 +75,7 @@ function bkitGuardrails(payload) {
         payload.session_id,
         payload.agent_id,
         ADVICE_BUDGETS.claude,
+        notes.join("\n\n"),
       ),
     );
   }

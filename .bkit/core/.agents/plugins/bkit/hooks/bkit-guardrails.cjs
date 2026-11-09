@@ -123,13 +123,17 @@ function bkitGuardrails(payload) {
   const blocks = tier.edits
     ? shellTargetBlocks(tier.edits.targets, ctx, p.session_id, p.agent_id)
     : [];
-  const selection = blocks.length > 0 ? selectAdvice(blocks, ADVICE_BUDGETS.antigravity) : null;
-  const edits = [notice, selection ? selection.context : ""].filter(Boolean).join("\n\n");
-  const advisory =
+  const fetchLine =
     tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}` +
-        (edits ? `\n\n${edits}` : "")
-      : edits;
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
+      : "";
+  // The fetch line, shell notice and retry text count against the budget with the blocks.
+  const fixed = [fetchLine, notice].filter(Boolean).join("\n\n");
+  const unit = ADVICE_BUDGETS.antigravity.unit;
+  const fixedCost = adviceSize(fixed, unit) + adviceSize(AG_RETRY_SUFFIX, unit) + (fixed ? 2 : 0);
+  const selection =
+    blocks.length > 0 ? selectAdvice(blocks, ADVICE_BUDGETS.antigravity, fixedCost) : null;
+  const advisory = [fixed, selection ? selection.context : ""].filter(Boolean).join("\n\n");
   const sent = adviseOnceDelivery(
     "guardrails",
     p.session_id,

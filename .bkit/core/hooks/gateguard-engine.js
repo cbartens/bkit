@@ -301,7 +301,8 @@ const ADVICE_BUDGETS = {
   antigravity: { limit: 2000, unit: "bytes" },
   opencode: { limit: 8000, unit: "chars" },
 };
-const ADVICE_NOTICE_RESERVE = 512;
+
+const ADVICE_NOTICE_RESERVE = 300;
 
 function adviceSize(text, unit) {
   return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
@@ -309,31 +310,43 @@ function adviceSize(text, unit) {
 
 // Selects prepared advice blocks inside `budget`: only whole blocks, in order, with
 // `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Pure: acknowledges
-// nothing. Returns `{ selected, context }` (`context` includes the omitted-target notice).
-function selectAdvice(blocks, budget) {
+// nothing. `fixedCost` is the size (in the budget's unit) of text the caller adds around
+// the blocks, so the whole composed advice fits. Returns `{ selected, context }`
+// (`context` includes the omitted-target notice).
+function selectAdvice(blocks, budget, fixedCost = 0) {
   const sep = "\n\n";
-  const room = budget.limit - ADVICE_NOTICE_RESERVE;
-  const selected = [];
-  const omitted = [];
-  let used = 0;
-  for (const b of blocks) {
-    const cost = adviceSize(b.context, budget.unit) + (selected.length > 0 ? sep.length : 0);
-    if (used + cost <= room) {
-      selected.push(b);
-      used += cost;
-    } else {
-      omitted.push(b);
+  const pick = (room) => {
+    const selected = [];
+    const omitted = [];
+    let used = 0;
+    for (const b of blocks) {
+      const cost = adviceSize(b.context, budget.unit) + (selected.length > 0 ? sep.length : 0);
+      if (used + cost <= room) {
+        selected.push(b);
+        used += cost;
+      } else {
+        omitted.push(b);
+      }
     }
-  }
-  const texts = selected.map((b) => b.context);
-  if (omitted.length > 0) {
+    return { selected, omitted };
+  };
+  const omittedNotice = (omitted) => {
     const reminder = omitted.some((b) => b.agentRead)
       ? " Agent-read files: see `.bkit/authoring.md` § Which Sections Apply."
       : "";
-    texts.push(
-      `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`,
-    );
+    return `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`;
+  };
+  let { selected, omitted } = pick(
+    budget.limit - (fixedCost > 0 ? 0 : ADVICE_NOTICE_RESERVE) - fixedCost,
+  );
+  if (fixedCost > 0 && omitted.length > 0) {
+    // Composed advice counts its own text, so the omitted-target notice is sized exactly
+    // (worst case: every block omitted) instead of by the fixed reserve.
+    const noticeRoom = adviceSize(omittedNotice(blocks), budget.unit) + sep.length;
+    ({ selected, omitted } = pick(budget.limit - fixedCost - noticeRoom));
   }
+  const texts = selected.map((b) => b.context);
+  if (omitted.length > 0) texts.push(omittedNotice(omitted));
   return { selected, context: texts.join(sep) };
 }
 
@@ -349,9 +362,9 @@ function acknowledgeSelected(selected) {
 // Delivers prepared advice blocks inside `budget` (see `selectAdvice`). Acknowledges exactly
 // the selected blocks, and only when `verified` says the route reaches the model. Returns
 // `{ mode, context }` or null when there is nothing to say.
-function deliverAdvice(blocks, budget, verified) {
+function deliverAdvice(blocks, budget, verified, fixedCost = 0) {
   if (blocks.length === 0) return null;
-  const { selected, context } = selectAdvice(blocks, budget);
+  const { selected, context } = selectAdvice(blocks, budget, fixedCost);
   return { mode: verified ? acknowledgeSelected(selected) : "advisory", context };
 }
 
@@ -376,12 +389,19 @@ function shellTargetBlocks(targets, ctx, sessionId, agentId) {
 }
 
 // The shell `notice` plus the per-file checklists for the evidence's exact targets, inside
-// `budget`. Always advisory text (never a deny); acknowledges the delivered blocks.
-function shellEditContext(notice, edits, ctx, sessionId, agentId, budget) {
+// `budget`. Always advisory text (never a deny); acknowledges the delivered blocks. The
+// notice and `outside` (text the caller joins around the result) count against `budget`.
+function shellEditContext(notice, edits, ctx, sessionId, agentId, budget, outside = "") {
+  const sepSize = 2;
+  const fixedCost =
+    adviceSize(notice, budget.unit) +
+    sepSize +
+    (outside ? adviceSize(outside, budget.unit) + sepSize : 0);
   const delivered = deliverAdvice(
     shellTargetBlocks(edits.targets, ctx, sessionId, agentId),
     budget,
     true,
+    fixedCost,
   );
   return delivered ? `${notice}\n\n${delivered.context}` : notice;
 }

@@ -69,6 +69,9 @@ function adviseOnce(hook, sessionId, signature, advisory) {
  * unusable retry store returns the bare allow with `delivered` false, so the caller leaves
  * the advised targets unacknowledged.
  */
+const AG_RETRY_SUFFIX =
+  "\nThis call was held once so you see this advisory. Repeat the same call to proceed.";
+
 function adviseOnceDelivery(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
   // One-way digest of the call signature: the retry store is world-readable and has no
@@ -89,7 +92,7 @@ function adviseOnceDelivery(hook, sessionId, signature, advisory) {
   return {
     decision: {
       decision: "deny",
-      reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
+      reason: `${advisory}${AG_RETRY_SUFFIX}`,
     },
     delivered: true,
   };
