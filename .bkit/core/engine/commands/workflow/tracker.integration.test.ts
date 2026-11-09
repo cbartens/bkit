@@ -622,6 +622,10 @@ describe("workflow comment lifecycle across real CLI processes", () => {
     expect(committed).not.toMatch(/progress\/|terminal-journal|pending-delivery/);
     const remaining = fs.readdirSync(path.join(cwd, ".git/bkit-outbox"), { recursive: true });
     expect(remaining.join("\n")).not.toMatch(/terminal-journal|pending-delivery/);
+    // A close given --message commits its run record; this close takes none, and
+    // `worktrees remove` preserves a worktree holding uncommitted work.
+    git(worktree, "add", "-A");
+    git(worktree, "commit", "-qm", "run record");
     const removed = ok(cwd, ["worktrees", "remove", `--fid=${FID}`]);
     expect(removed.removed).toBe(true);
     expect(fs.existsSync(worktree)).toBe(false);
