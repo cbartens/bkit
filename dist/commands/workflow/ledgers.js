@@ -1094,7 +1094,7 @@ function withInvocationBy(row, inv, refuse) {
     const unavailable = inv.observedModel === "unavailable";
     const expected = {
         workflow: inv.workflow ?? inv.standalone ?? undefined,
-        step: inv.step ?? undefined,
+        step: inv.step ?? inv.declaredStep ?? undefined,
         subagent: inv.agent ?? undefined,
         model: inv.agent !== null && inv.observedModel !== null && !unavailable
             ? inv.observedModel
@@ -1241,6 +1241,12 @@ function append(ctx) {
     const bound = ctx.invocation?.bookRoot;
     if (bound !== undefined && bound !== null && bound !== root)
         throw new CommandError(EXIT.USAGE, `conflict: --root ${root} is not the invocation's book root ${bound}`);
+    // A runless call has no book root of its own: its output scope is the checkout that issued it.
+    if (ctx.invocation?.scope === "outbox") {
+        const rel = path.relative(ctx.invocation.worktree, root);
+        if (rel.startsWith("..") || path.isAbsolute(rel))
+            throw new CommandError(EXIT.USAGE, `conflict: --root ${root} is outside the checkout ${ctx.invocation.worktree} that issued invocation ${ctx.invocation.id}`);
+    }
     const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value, ctx.invocation);
     ctx.log(`appended ${r.appended} row(s) to ${r.file}`);
     ctx.emit({ ...r });

@@ -1894,6 +1894,66 @@ describe("bkit ledgers append --invocation", () => {
     expect(unauthorized.err).toContain("does not write knowledge rows");
     expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
   });
+
+  it("scopes a runless invocation to its declared step, agent and issuing checkout", async () => {
+    const r = repo();
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+
+    // The declared step fills by.step; a different step is refused.
+    const ok = await appendWith(r, "knowledge", [knowledge()], [`--invocation=${id}`]);
+    expect(ok.code).toBe(0);
+    const row = JSON.parse(fs.readFileSync(ledgerFile, "utf-8").trim().split("\n")[0]!);
+    expect(row.by).toMatchObject({
+      workflow: "audit",
+      step: "audit:bkit-audit-example",
+      subagent: "bkit-build-plan-tests",
+    });
+    const written = fs.readFileSync(ledgerFile, "utf-8");
+    const wrongStep = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", by: { step: "audit:other" } })],
+      [`--invocation=${id}`],
+    );
+    expect(wrongStep.code).toBe(EXIT_ROW_REFUSED);
+    expect(wrongStep.err).toMatch(/conflict/i);
+
+    // A root outside the issuing checkout is refused, with no ledger effect there.
+    const elsewhere = repo();
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify([knowledge({ key: "y" })]));
+    const outside = await run(r, [
+      "append",
+      `--root=${elsewhere}`,
+      "--ledger=knowledge",
+      `--rows=${file}`,
+      `--invocation=${id}`,
+    ]);
+    expect(outside.code).toBe(2);
+    expect(outside.err).toMatch(/outside the checkout/);
+    expect(fs.existsSync(path.join(elsewhere, "docs/knowledge.jsonl"))).toBe(false);
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+  });
 });
 
 describe("bkit ledgers query", () => {

@@ -390,7 +390,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
+- [x] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: additive RowBy availability/source/configured-model fields and compatible writer/normalization validation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: optional invocation-aware append context, fill-before-validate and explicit conflicts; retain legacy positional callers.
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: actual/unavailable/configured model compatibility.
@@ -407,7 +407,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Expose canonical complete ledger reads (deterministic-bookkeeping-2; R8–R11, R23).
+- [x] **TASK 3:** Expose canonical complete ledger reads (deterministic-bookkeeping-2; R8–R11, R23).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: detailed line diagnostics around the existing parser and canonical fold, preserving existing callers.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: proposed query verb, key/status filters, deterministic order, snapshot-bound paging and coverage results.
   - **READ:** `.bkit/core/engine/ledgers/compact.ts`: preserve normalized identity/lineage and malformed-history retention.

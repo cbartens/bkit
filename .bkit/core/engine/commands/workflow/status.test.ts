@@ -1228,4 +1228,73 @@ describe("bkit status invocation", () => {
     expect(fs.existsSync(String(audit.json.receipt))).toBe(true);
     expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
   });
+
+  it("binds group and attempt and registers setup, remediation and ship steps", async () => {
+    const root = runRepo([
+      started("build", "2026-11-09T10:00:00Z"),
+      started("ship", "2026-11-09T10:30:00Z"),
+    ]);
+    const issue = (workflow: string, step: string, extra: string[] = []) =>
+      run(
+        [
+          "status",
+          "invocation",
+          `--workflow=${workflow}`,
+          `--step=${step}`,
+          `--file=${REL}`,
+          ...extra,
+        ],
+        root,
+      );
+
+    const remediate = await issue("build", "build-plan-gaps-remediate", [
+      "--group=2",
+      "--attempt=3",
+      "--agent=bkit-build-plan-gaps-remediate",
+    ]);
+    expect(remediate.code).toBe(0);
+    expect(remediate.json).toMatchObject({
+      scope: "run",
+      group: "2",
+      attempt: "3",
+      agent: "bkit-build-plan-gaps-remediate",
+      bookRoot: root,
+    });
+    // An agent with no reported model is recorded unavailable.
+    expect(remediate.json.observedModel).toBe("unavailable");
+
+    const setup = await issue("build", "build-worktree-setup");
+    expect(setup.json).toMatchObject({
+      number: 2,
+      group: null,
+      attempt: null,
+      observedModel: null,
+    });
+
+    const ship = await issue("ship", "ship-summary");
+    expect(ship.code).toBe(0);
+    expect(ship.json).toMatchObject({ workflow: "ship", number: 6, bookRoot: root });
+
+    const debug = await issue("debug", "debug-run-tests");
+    expect(debug.code).toBe(0);
+    expect(debug.json).toMatchObject({ workflow: "debug", number: 3 });
+
+    // Malformed ids and standalone calls with a group are refused.
+    expect((await issue("build", "build-branch-sync", ["--group=a/b"])).code).toBe(2);
+    expect((await issue("build", "build-branch-sync", ["--agent=Bad Name"])).code).toBe(2);
+    const bare = await run(
+      ["status", "invocation", "--standalone=utility", "--name=u", "--group=1"],
+      root,
+    );
+    expect(bare.code).toBe(2);
+    const runless = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-x", "--agent=bkit-audit-x"],
+      root,
+    );
+    expect(runless.json).toMatchObject({
+      declaredStep: "audit:bkit-audit-x",
+      allowedAgent: "bkit-audit-x",
+      observedModel: "unavailable",
+    });
+  });
 });
