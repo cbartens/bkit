@@ -1,0 +1,20 @@
+=== LC_ALL=de_DE.UTF-8 ===
+occupied case [exit 128]: Schwerwiegend: Anfordern in Branch 'refs/heads/dev' verweigert, ausgecheckt in '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c6/wt'
+classified: git-refused (no English pattern matched)
+edited case [exit 1]: Fehler: Ihre lokalen Änderungen in den folgenden Dateien würden durch den Merge
+überschrieben werden:
+	a.txt
+Bitte committen oder stashen Sie Ihre Änderungen, bevor Sie mergen.
+Abbruch
+classified: git-refused (no English pattern matched)
+=== LC_ALL=C ===
+occupied case [exit 128]: fatal: refusing to fetch into branch 'refs/heads/dev' checked out at '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c6/wt'
+classified: occupied
+edited case [exit 1]: error: Your local changes to the following files would be overwritten by merge:
+	a.txt
+Please commit your changes or stash them before you merge.
+Aborting
+classified: edited-files
+=== git-state alternative, LC_ALL=de_DE.UTF-8 ===
+occupied: 1 worktree(s) have refs/heads/dev
+edited paths: a.txt; paths the update changes: a.txt; overlap: a.txt
