@@ -458,3 +458,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/3/4/comment","hash":"77aa88d1e2c74034795f9084851e1011239c36525050da8c308d5fec901b4b6f","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6752959619","at":"2026-11-09T22:18:01Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T22:18:01Z","parentSha":"1034fc46a02da425204224561466e94a61ec97d4","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-3-4.md"],"verdict":"FAIL","attempt":4,"group":3,"failures":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:04Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:20Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:20Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:20Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:18:20Z","noun":"status","verb":"row","flags":["file","workflow","type","field"]}
+{"type":"owner-pause","workflow":"build","at":"2026-11-09T22:18:20Z","reason":"decision"}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:19:55Z","noun":"status","verb":"row","flags":["file","workflow","type"]}
+{"type":"owner-answer","workflow":"build","at":"2026-11-09T22:19:55Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:19:55Z","noun":"counters","verb":"grant","flags":["name","of","group","point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T22:19:55Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/3/comment","hash":"f050fccf50ba912bd20ce9e15717f5fca64ae881365adafa1dc1173f33c9f736","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6752996980","at":"2026-11-09T22:19:56Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-09T22:19:57Z","parentSha":"8f51429ed62b189cb33a001c20965ac4bb366922","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-decision-1-3.md"],"attempt":3,"route":"fix"}
