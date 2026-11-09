@@ -446,7 +446,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Make documentation maintenance and audits report adoption and project content gaps.
+- [x] **TASK 4:** Make documentation maintenance and audits report adoption and project content gaps.
   - **UPDATE:** `.bkit/core/prompts/bkit-utility-update-documentation.md`: review relevant expected documents even when absent from the index.
   - **UPDATE:** `.bkit/core/prompts/bkit-ship-update-docs.md`: report unresolved coverage alongside edits and existing results.
   - **UPDATE:** `.bkit/core/docs/templates/bkit-audit-documentation.md`: report missing, unindexed, starter-only and undercovered project topics with evidence.

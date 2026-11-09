@@ -953,4 +953,47 @@ describe("buildSummary", () => {
       "- Accepted: log/build-decision-1-1.md: Decision: Accept — fine by me",
     );
   });
+
+  it("reads pretty-printed and one-line warning records from a jsonl fence", () => {
+    const pretty = JSON.stringify(
+      {
+        topic: "security",
+        gap: "missing",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "has } and { in text",
+        action: "PRETTY-ACTION",
+      },
+      null,
+      2,
+    );
+    const oneLine = JSON.stringify({
+      topic: "testing",
+      gap: "missing",
+      recommendedPath: "docs/testing.md",
+      alternativeEvidence: "e",
+      action: "ONELINE-ACTION",
+    });
+    const text = [
+      "Verdict: PASS",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      "{ broken",
+      pretty,
+      oneLine,
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-tasks", verdict: "PASS", artifacts: ["log/a.md"] },
+        ],
+        read: reader({ "log/a.md": text }),
+      }),
+    );
+    expect(s.markdown).toContain("PRETTY-ACTION");
+    expect(s.markdown).toContain("ONELINE-ACTION");
+  });
 });

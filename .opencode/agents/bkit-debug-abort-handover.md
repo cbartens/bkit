@@ -55,8 +55,9 @@ tools:
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
 6. Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
-7. Append one row per failure to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
-8. Append one row per deferral to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+7. Collect the `## Documentation Warnings` records from the diagnose, remediate and verify logs of the run, and copy them verbatim into the handover's `Documentation Warnings` section, dropping exact duplicates. Take no records from raw `*-input-*.md` files.
+8. Append one row per failure to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+9. Append one row per deferral to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 
 **Output format:**
 
@@ -98,6 +99,10 @@ tools:
 ## Recommended Path
 
 [Which option to take, and why. Initially set to `PENDING`.]
+
+## Documentation Warnings
+
+[The deduped records of the run's `## Documentation Warnings` sections, verbatim, in one `jsonl` fence with one JSON object per record. **If** none → `None`. Initially set to `PENDING`.]
 
 ## Reference Docs
 

@@ -78,7 +78,50 @@ const WARNING_FIELDS = [
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
 const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel);
 /**
- * The structured records under `## Documentation Warnings` (one JSON object per line in a
+ * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
+ * rewrites a one-line record into that shape); braces inside strings are ignored. Text outside
+ * an object and an unterminated object are dropped.
+ */
+function jsonObjectChunks(body) {
+    const chunks = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+        if (inString) {
+            if (escaped)
+                escaped = false;
+            else if (ch === "\\")
+                escaped = true;
+            else if (ch === '"')
+                inString = false;
+            continue;
+        }
+        if (ch === '"' && depth > 0)
+            inString = true;
+        else if (ch === "{") {
+            if (depth === 0)
+                start = i;
+            depth++;
+        }
+        else if (ch === "}" && depth > 0) {
+            depth--;
+            if (depth === 0)
+                chunks.push(body.slice(start, i + 1));
+        }
+    }
+    if (depth > 0) {
+        // An unterminated object must not swallow the records after it: rescan after its first line.
+        const nl = body.indexOf("\n", start);
+        if (nl !== -1)
+            chunks.push(...jsonObjectChunks(body.slice(nl + 1)));
+    }
+    return chunks;
+}
+/**
+ * The structured records under `## Documentation Warnings` (JSON objects, one per line or pretty-printed, in a
  * `jsonl` fence) of the run's own step artifacts, merged by normalised topic and gap. A missing
  * section, a malformed line or a record without all five non-empty fields is skipped.
  */
@@ -99,8 +142,8 @@ function documentationWarnings(rows, read) {
             const fence = section === null ? null : /```jsonl[ \t]*\r?\n([\s\S]*?)```/.exec(section[1]);
             if (fence === null)
                 continue;
-            for (const line of fence[1].split(/\r?\n/)) {
-                const parsed = parseJson(line);
+            for (const chunk of jsonObjectChunks(fence[1])) {
+                const parsed = parseJson(chunk);
                 if (!parsed.ok)
                     continue;
                 const value = parsed.value;

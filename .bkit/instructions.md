@@ -10901,6 +10901,7 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
 Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
 [scope-discipline] Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
+[scope-discipline] Collect the `## Documentation Warnings` records from the diagnose, remediate and verify logs of the run, and copy them verbatim into the handover's `Documentation Warnings` section, dropping exact duplicates. Take no records from raw `*-input-*.md` files.
 ```
 
 #### bkit-debug-failure-diagnose
