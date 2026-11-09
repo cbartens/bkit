@@ -849,7 +849,7 @@ describe("bkit worktrees remove", () => {
       expect(fs.existsSync(wt)).toBe(false);
     });
 
-    it("deletes the proved local branch and retains the remote branch conditionally", async () => {
+    it("deletes the proved local and remote branch at their landed tips", async () => {
       const cwd = repo();
       const origin = withOrigin(cwd);
       git(cwd, "push", "-q", "origin", "dev");
@@ -861,12 +861,32 @@ describe("bkit worktrees remove", () => {
       expect(r.json).toMatchObject({
         removed: true,
         branchDeleted: true,
-        remoteDeleted: false,
+        remoteDeleted: true,
         branchBlockedBy: null,
       });
       expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
+      expect(remoteHas(origin)).toBe(false);
+    });
+
+    it("retains the remote branch when origin refuses its conditional deletion", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      git(cwd, "push", "-q", "origin", "dev");
+      linked(cwd, FID, true);
+      git(cwd, "push", "-q", "origin", `feat/${FID}`);
+      const hook = path.join(origin, "hooks", "pre-receive");
+      fs.writeFileSync(hook, "#!/bin/sh\necho refused >&2\nexit 1\n");
+      fs.chmodSync(hook, 0o755);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        removed: true,
+        branchDeleted: true,
+        remoteDeleted: false,
+        branchBlockedBy: null,
+      });
       expect(remoteHas(origin)).toBe(true);
-      expect(r.err).toContain("conditional deletion is unavailable");
+      expect(r.err).toContain(`remote origin/feat/${FID} not deleted — preserved`);
     });
 
     it("an unmarked worktree holding the branch blocks BOTH deletes and is named", async () => {

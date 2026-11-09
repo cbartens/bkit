@@ -402,6 +402,6 @@ Set up and remove the per-feature worktrees under .worktrees/.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `setup` | workflow | **`--workflow`** **`--fid`** **`--month`** `--worktrees` `--detect` `--branch` `--issue` | Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup). |
-| `remove` | workflow | **`--fid`** `--branch` | Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local branch and retain the remote branch. |
+| `remove` | workflow | **`--fid`** `--branch` | Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local and remote branch at their proved landed tips. |
 
 <!-- cli:end -->

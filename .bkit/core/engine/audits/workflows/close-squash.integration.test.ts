@@ -227,20 +227,17 @@ describe.each(["design", "plan"] as const)("bkit-%s.md local close squash", (wor
     expect(git(fx.repo, "diff", "--cached", "--name-only")).toBe(foreign);
   });
 
-  it("lands this run's doc, removes the local branch and retains the remote tip", () => {
+  it("lands this run's doc and then removes the branch, leaving unrelated edits alone", () => {
     const fx = initFixture(workflow);
     write(path.join(fx.repo, "src/app.ts"), "export const wip = 1;\n");
     const branchDoc = git(fx.repo, "rev-parse", `feat/${FID}:${fx.docPath}`);
-    const branchTip = git(fx.repo, "rev-parse", `feat/${FID}`);
 
     const res = runClose(workflow, fx.repo);
 
     expect(res.status, res.stderr).toBe(0);
     expect(git(fx.repo, "rev-parse", `origin/dev:${fx.docPath}`)).toBe(branchDoc);
     expect(git(fx.repo, "branch", "--list", `feat/${FID}`)).toBe("");
-    expect(git(fx.repo, "ls-remote", "origin", `refs/heads/feat/${FID}`)).toBe(
-      `${branchTip}\trefs/heads/feat/${FID}`,
-    );
+    expect(git(fx.repo, "ls-remote", "origin", `refs/heads/feat/${FID}`)).toBe("");
     expect(fs.existsSync(path.join(fx.repo, ".worktrees", FID))).toBe(false);
     expect(git(fx.repo, "status", "--porcelain", "--", "src/app.ts")).toBe("M src/app.ts");
   });

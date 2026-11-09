@@ -825,14 +825,16 @@ export function worktreeHolding(root: string, branch: string): string | null {
 }
 
 /**
- * Delete the proved local tip atomically. A worktree still holding it blocks
- * deletion; the remote branch is retained because its deletion cannot be conditional.
+ * Delete the proved local tip atomically, then the proved remote tip. A worktree
+ * still holding the branch blocks both. The remote delete carries a lease on its
+ * proved tip, so origin refuses it when someone pushed after the proof.
  */
 function deleteBranch(
   root: string,
   branch: string,
   log: (m: string) => void,
   expected: string,
+  remoteExpected: string | null,
 ): { branchDeleted: boolean; remoteDeleted: boolean; branchBlockedBy: string | null } {
   const holder = worktreeHolding(root, branch);
   if (holder !== null) {
@@ -843,12 +845,21 @@ function deleteBranch(
   }
   const del = runGit(root, ["update-ref", "-d", `refs/heads/${branch}`, expected]);
   if (!del.ok) log(`local ${branch} changed after its cleanup proof — preserved: ${del.stderr}`);
-  log(
-    `remote origin/${branch} retained: conditional deletion is unavailable under the no-force-push policy`,
-  );
+  let remoteDeleted = false;
+  if (del.ok && remoteExpected !== null) {
+    const ref = `refs/heads/${branch}`;
+    const remote = runGit(root, [
+      "push",
+      `--force-with-lease=${ref}:${remoteExpected}`,
+      "origin",
+      `:${ref}`,
+    ]);
+    remoteDeleted = remote.ok;
+    if (!remote.ok) log(`remote origin/${branch} not deleted — preserved: ${remote.stderr}`);
+  }
   return {
     branchDeleted: del.ok,
-    remoteDeleted: false,
+    remoteDeleted,
     branchBlockedBy: del.ok ? null : "changed-after-proof",
   };
 }
@@ -865,8 +876,8 @@ export interface RemoveResult {
 
 /**
  * Remove `.worktrees/{fid}` when a workflow created it (the ownership marker),
- * preserve unlanded or dirty work, then delete the proved local branch tip unless
- * another worktree holds it. Remote branches are retained. Throws EXIT_REMOVE
+ * preserve unlanded or dirty work, then delete the proved local and remote branch
+ * tips unless another worktree holds the branch. Throws EXIT_REMOVE
  * when `git worktree remove` fails.
  */
 export function removeWorktree(
@@ -883,11 +894,12 @@ export function removeWorktree(
   const wt = worktreeDir(root, fid);
   const marker = ownershipMarker(root, fid);
   let expected: string | null = null;
+  let remoteExpected: string | null = null;
   const result = (removed: boolean, reason: string | null, removeBranch = false): RemoveResult => {
     const cleanup =
       branch === undefined || !removeBranch || expected === null
         ? null
-        : deleteBranch(root, branch, log, expected);
+        : deleteBranch(root, branch, log, expected, remoteExpected);
     return {
       removed,
       reason,
@@ -939,6 +951,12 @@ export function removeWorktree(
           );
           return result(false, "remote-not-landed");
         }
+        remoteExpected = git(root, [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          `refs/remotes/origin/${branch}^{commit}`,
+        ]);
       }
     } catch (error) {
       log(`cleanup evidence unavailable — preserved: ${(error as Error).message}`);
@@ -1366,14 +1384,14 @@ export const worktreesCommand: CommandSpec = {
     },
     remove: {
       summary:
-        "Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local branch and retain the remote branch.",
+        "Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local and remote branch at their proved landed tips.",
       use: "workflow",
       flags: [
         FID_FLAG,
         {
           name: "branch",
           type: "string",
-          help: "feature branch to delete locally only at its proved landed tip; preserve unlanded/uncertain work and retain the remote branch",
+          help: "feature branch to delete locally and on origin only at its proved landed tips; preserve unlanded/uncertain work",
         },
       ],
       output: {
@@ -1385,7 +1403,7 @@ export const worktreesCommand: CommandSpec = {
         branchDeleted:
           "--branch: the proved local tip was atomically deleted; false when preserved or unavailable, null without --branch",
         remoteDeleted:
-          "--branch: false because the remote branch is retained under the no-force-push policy; null without --branch",
+          "--branch: the remote branch was deleted at its proved landed tip; false when absent, refused or changed, null without --branch",
         branchBlockedBy:
           "--branch: the worktree still holding the branch or changed-after-proof; null when none",
       },
