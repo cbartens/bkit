@@ -23,8 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-08T12:52:29Z)_
-_(refreshed 2026-11-08T13:07:27Z)_
+_(refreshed 2026-11-09T09:57:50Z)_
 
 ### Design
 
@@ -48,7 +47,7 @@ _(refreshed 2026-11-08T13:07:27Z)_
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 864-move-project-docs | 864-move-project-docs | 1794046674228 |
-| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 
 ### Build
 
@@ -57,6 +56,7 @@ _(refreshed 2026-11-08T13:07:27Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
+| 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
 
 ### Debug
 

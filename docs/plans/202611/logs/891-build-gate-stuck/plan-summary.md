@@ -9,7 +9,6 @@ Failures: 0
 CONCERNS
 
 - plan-apply-review CONCERNS
-- 5 deferral(s) from this run remain open
 
 ## Steps
 
@@ -17,7 +16,7 @@ CONCERNS
 | Step | Verdict | Failures | Attempts | Artifact |
 | --- | --- | --- | --- | --- |
 | plan-start-workflow | - | - | 1 | - |
-| plan-worktree-setup | - | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-input-1.md` |
+| plan-worktree-setup | - | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-input-3.md` |
 | plan-generate | - | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-v1-draft.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-generate-check.md` |
 | plan-fetch-context | - | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/related-deferrals.md`, `docs/plans/202611/logs/891-build-gate-stuck/related-failures.md`, `docs/plans/202611/logs/891-build-gate-stuck/related-issues.md` |
 | plan-review | CONCERNS | 13 | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-review-1.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-review-2.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-scope-check.md` |
@@ -37,7 +36,7 @@ None
 | Step | Verdict | Attempt | Artifact |
 | --- | --- | --- | --- |
 | plan-start-workflow | - | - | - |
-| plan-worktree-setup | - | - | `docs/plans/202611/logs/891-build-gate-stuck/plan-input-1.md` |
+| plan-worktree-setup | - | - | `docs/plans/202611/logs/891-build-gate-stuck/plan-input-3.md` |
 | plan-generate | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-v1-draft.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-generate-check.md` |
 | plan-fetch-context | - | 1 | `docs/plans/202611/logs/891-build-gate-stuck/related-deferrals.md`, `docs/plans/202611/logs/891-build-gate-stuck/related-failures.md`, `docs/plans/202611/logs/891-build-gate-stuck/related-issues.md` |
 | plan-review | CONCERNS | 1 | `docs/plans/202611/logs/891-build-gate-stuck/plan-review-1.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-review-2.md`, `docs/plans/202611/logs/891-build-gate-stuck/plan-scope-check.md` |
@@ -53,59 +52,71 @@ None
 
 ### Narrative
 
-When a gate fails only on tests that also fail on the base branch, the build says so plainly and lets the owner accept them once.
+When `/bkit-build` pauses because a group gate or the final test run is red, the owner is told whether those failing tests also fail on the commit the branch started from. The recommendation follows from that: `Stop` and fix `dev` when no round here can help, or `Try again` when a round can. After the owner fixes `dev` and resumes, the build re-runs the red gate and carries on if it's now green, instead of looping on the old pause.
 
 ### Success Criteria
 
-1. the group gates and the Step 12 run treat those exact tests as known, and stop only on new failures;
-2. every other failing test still fails the gate;
-3. `/bkit-ship` still shows the accepted tests to the owner before merge.
-4. The pause also stops offering `Try again` when the only failures are accepted base-branch failures, because no round can change them.
+1. At a pause after a red group gate (Step 8) or a red final run (Step 12), the pause says how many failing tests also fail on the base commit: all, some, none, or "can't tell" with the reason.
+2. When all failing tests are also red on the base commit, the pause recommends `Stop` and tells the owner to fix `dev` first. In adopt mode it also tells them to merge `dev` into the branch before resuming. `Try again` is still offered in every case.
+3. The pause's "problems after each round" numbers include the group gate's failing tests, so a red gate never shows as "0 → 0".
+4. Resuming into a pause about a red gate re-runs that gate first. If it passes, the build continues without asking. If it's still red, the pause is asked again with fresh numbers.
+5. A group-gate or final-run failure is never offered as an `Accept` item, and the verify agent doesn't log gate failures as verify gaps.
 
 ### Process Sketch
 
-- **WHEN** a group gate fails and its JUnit reports name the failing cases **→ THEN** the Decision Pause lists those cases as one `Accept` / `Fix now` / `Stop` question and says an accept covers only these named tests.
-- **WHEN** the owner answers `Accept` **→ THEN** bkit records the exact cases (`classname` + `name`) for the feature, and the gate's step runs again (Step 8 for a group gate, Step 12 for the final run).
-- **WHEN** a later gate runs (Step 8, Step 9's remediate gate, Step 12, debug Step 3, an agent's `bkit tests changed`, the pre-push gate of a workflow's `branches push`) **→ THEN** the gate receives the accepted cases in `$BKIT_ACCEPTED_TESTS`, skips them, and passes when nothing else fails; groups 2+ start, and the build's pushes go through.
-- **IF** a new test fails, or a failure has no test name (lint, typecheck) **→ THEN** the gate still fails and routes as today.
-- **IF** the gate fails and every failing case is already accepted (the runner ignores `$BKIT_ACCEPTED_TESTS`) **→ THEN** the pause offers no `Try again` and says the gate does not skip accepted tests.
-- **WHEN** `/bkit-ship` runs for the feature **→ THEN** it lists the accepted cases to the owner before the merge gate.
+- **WHEN** the build pauses after a red group gate or a red final run **→ THEN** the pause counts the gate's failing tests in each round's numbers and says how many of them also fail on the base commit: all, some, none, or "can't tell" with the reason.
+- **IF** every failing test also fails on the base commit **→ THEN** the pause recommends `Stop`, says no round here can fix them and tells the owner to fix `dev` and resume, adding the merge-`dev` sentence in adopt mode; `Try again` is still offered.
+- **IF** only some fail on the base commit **→ THEN** the pause says how many a round can fix and how many will still stop the build.
+- **IF** the base check cannot decide (no JUnit report, a red gate with no failing test case, no `bkit:test:file`, no install or no base run possible) **→ THEN** the trend rule recommends, and the pause says the cause is unknown and why.
+- **WHEN** the owner resumes into a pause about a red gate **→ THEN** the build re-runs that gate first: green continues without asking, red asks the pause again with fresh numbers.
+- **WHEN** any pause follows a red gate or suite **→ THEN** it holds no `Accept` item for a failing test, and the group-mode verify agent logs no gap for one.
 
 ### Concrete Example
 
-**Setup:** The owner of a consumer repo starts `/bkit-build` on an issue with 6 task groups. `dev` has 3 failing unit tests in `scripts/registry.test.mjs` and `scripts/ceiling.test.mjs`. The consumer's `bkit:gate:static-unit` runner honours `$BKIT_ACCEPTED_TESTS` (`docs/testing.md` § Accepted failures).
+**Setup:** The owner runs `/bkit-build` in adopt mode (`RUNTIME_WORKTREES=false`, working on the branch in place) on a consumer repo. The branch started from a `dev` commit whose unit tier has 3 red tests in 2 files: a dead-code registry missing two new files, and a suppression-count ceiling that was not raised. No CI run exists at that commit.
 
 **Steps:**
 
-1. Group 1 is built and verified → `tests run` for `build-group-gate-1` exits 1; its test-run row records the 3 failing cases with their `classname` and `name`.
-2. Step 9 runs one remediate round → the gate fails on the same 3 cases, and the verify limit is used up → the Decision Pause asks: "3 tests failed in the group gate … Accept them as already failing on the base branch?" with `Options: A) Accept / B) Fix now / C) Stop` and `No recommendation — only you can say these tests already fail on dev`.
-3. The owner answers `A` with a reason → bkit runs `tests accept`, which writes an `accepted-failures` row naming the 3 cases, and appends one `docs/decisions.jsonl` row → Step 8 runs again.
-4. `tests run --accepted-from` hands the gate the 3 cases; the runner skips them, and the gate exits 0 → `GATE_VERDICT` = PASS → Step 7 briefs group 2.
-5. Groups 2-6 build; Step 12 passes with the same 3 cases skipped. Steps 15 and 16 run `branches push --accepted-from`, so the consumer's pre-push gate skips the same 3 cases and the push goes through. `/bkit-ship` prints "Built with 3 test(s) accepted as already failing on the base branch" and names each before the merge gate.
+1. The build builds and verifies task group 1 → verify passes, and the group gate exits 1 with 3 failing tests.
+2. A fix round (Step 9) changes no source file → the build reaches the Decision Pause, runs `bkit tests base` on the 2 failing files in a detached checkout of the base commit, and all 3 tests fail there too.
+3. The owner reads the pause → it shows `Problems after each round: 3` (the one verify round, with its gate's 3 failing tests counted; the fix round ran no second verify round), `Group gate failures after each round: 3`, `Also red on base {sha}: 3 of 3 (local run)`, options `Try again` / `Stop`, and recommends `Stop`: "these 3 tests fail on `dev` too; no round here can fix them. Fix `dev`, then resume." plus "merge `dev` into the branch before resuming." No `Accept` item appears.
+4. The owner answers `Stop` → the build writes its handover and releases its lock.
+5. The owner fixes `dev`, merges `dev` into the branch and runs `/bkit-build` again → the resume records `Decision: Re-run gate` on the open pause and re-runs group 1's gate, which passes.
 
-**Outcome:** All 6 groups are built, and the 3 accepted cases are named in the build's decision file, in `status.jsonl` and in the ship session before merge.
+**Outcome:** The build continues to group 2 without asking, and groups 2-6 build. The run never returns to the old pause.
 
 ### Edge Cases
 
 <!-- prettier-ignore -->
 | Scenario | Expected Behavior |
 | --- | --- |
-| A failure with no test name: lint, type checks and other steps that write no JUnit report (issue comment, decision 2) | No `Accept` item: the pause says the failure has no test names, so an accept cannot cover it, and the gate still fails |
-| A new test fails beside the accepted ones | The gate fails; the pause lists only the not-yet-accepted cases |
-| The gate's runner ignores `$BKIT_ACCEPTED_TESTS`, so accepted cases still fail | `tests run` reports `onlyAccepted: true`; Step 8 goes straight to the Decision Pause with no remediate round; the pause writes one hard-blocker item ("the gate does not skip accepted tests") with `Fix now` / `Stop` and no loop question, so no `Try again`. The item also says a failure with no test names (lint, typecheck) may sit beside the accepted ones, since `onlyAccepted` counts JUnit cases only. Success Criterion 1 is not met for this runner until the consumer wires it as `docs/testing.md` § Accepted failures says |
-| More than 100 failing cases in one run | The row records the first 100 and `failedCasesTruncated: true`; `tests accept` refuses, so the owner fixes the base branch or answers `Fix now` |
-| A test file is renamed or a case is renamed after the accept | The renamed case no longer matches the accepted `classname` + `name`, so it fails the gate and the pause asks again |
-| An accepted test starts passing (the base branch was fixed and merged in) | The gate passes; the accept is harmless and stays on record |
-| Headless run (`ask` = false, or a cloud runtime) | The `Accept` item is a hard blocker with no recommendation, so `decisions apply --by=headless` exits 4: a headless runtime goes to the **Failure Path**, and an `ask` = false run that is not headless asks the owner the hard blocker. Today the same pause has no item and takes `Stop` (a resumable handover); see Breaking Changes |
-| Two cases share a `name` in different files | Only the case whose `classname` and `name` both match is accepted |
-| `tests run` without `--accepted-from` (a by-hand run, CI) | No accepted cases are passed, and the verdict comes from the exit code exactly as before |
-| `--accepted-from` names a status file with no `accepted-failures` rows | The gate gets an empty list, and behaviour is unchanged |
-| `tests run --ci-run --accepted-from` (debug Step 3 in CI-evidence mode) | The flag is accepted, no list is written, and the CI `test-run` row and exit code are as today |
-| A workflow's `branches push` runs the consumer's pre-push hook while the base branch holds accepted red tests | `branches push --accepted-from` passes `$BKIT_ACCEPTED_TESTS` in the `git push` environment, the hook's `bkit ci push-gate` hands it to the gate, and the push goes through when nothing else fails (Q4) |
-| A by-hand `git push` from the feature branch | Not a workflow push, so no accepted cases are passed, and the pre-push gate fails on the base-red tests as today |
-| An agent's `bkit tests changed` self-check meets an accepted case | With `--accepted-from` from its Context, the case is skipped, so the agent neither edits it nor reports `BLOCKED` |
-| The owner's reason holds a quote, a backtick or `$(` | `tests accept --reason-file` reads it from a file the orchestrator writes, so no shell runs it, and the row holds it byte for byte |
-| A per-group verify gap and the named-failure item both name the gate's failing tests | The named-failure item wins: the pause lists no separate gap for the gate's failing tests, so an `Accept` always runs `tests accept` |
+| **some** → say so: "a round can fix 2 of 5; the build will still stop on the 3 from `dev`." The owner chooses between `Try again` and stopping now. | The pause prints that sentence with the real counts; the loop question keeps both options, and its recommendation follows the trend rule (Open Question Q1). |
+| **can't tell** (no JUnit report, no `bkit:test:file` script, no base run possible) → today's trend rule, and say the cause is unknown. | Verdict `unknown` with a reason; the loop question recommends by the trend rule and its reason says `cause unknown: {reason}`. |
+| Never use "the last CI run on `dev`" as evidence. Most bkit commits are `[skip ci]`, so that run is often many commits old. | Only a CI run at the exact base sha is read; any other run is ignored. |
+| A completed `success` CI run exists at the exact base sha, with no skipped lane. | Verdict `none`, source `ci`; no local run, no detached checkout. The repo for the CI lookup comes from `resolveOwnerRepo` (`gh repo view`, then the `origin` remote URL). |
+| A CI run at the base sha is red, still running, or skipped a lane; the CI query fails (a `gh` API error); or no repo resolves. | The CI result is not used; the failing files run locally at the base commit. |
+| A failing test's file does not exist at the base commit. | Its cases count as caused by the branch. |
+| A failing case passes, or is absent, in its file's run at the base commit. | That case counts as caused by the branch. |
+| A failing case's file cannot be resolved (no `file` attribute, a `classname` that is no repo path and matches no single tracked basename). | That case is undetermined; with 0 base-red cases the verdict is `unknown` (reason names the unresolved case count). |
+| A failing case's `file` attribute or `classname` names an untracked or outside-repo path (`../x.test.ts`, an absolute path). | The path is not used, so the runner never runs a file outside the repo; the case is undetermined unless a later rule resolves it to a tracked file. |
+| The gate's `failures` count is null (the runner crashed before writing a report). | The round's progress count reads `?`, the trend reads `stuck`, and the base check returns `unknown` with reason `no JUnit report`. |
+| The gate is red with 0 failing JUnit cases (a static check failed after the unit run, a coverage threshold failed, or the runner hit an unhandled error). | The round's progress count reads `?` and the trend reads `stuck`, as for a null count; the base check returns `unknown` with reason `gate red with no failing test case`, never `all`. |
+| The branch has no merge-base with the `dev` ref that `devBase` names. | Verdict `unknown` with reason `no base commit`; no checkout is added. |
+| A `worktreeCopy` entry (for example `.env`) exists in the main checkout. | It is copied into the base checkout before the base run, so a test that reads it behaves as it does on `dev`. |
+| `worktreeInstall` is off. | Verdict `unknown` with reason `no install at the base commit (worktreeInstall off)`; no file runs against a checkout without dependencies, so an environment failure never reads as `all`. |
+| The frozen install at the base commit fails (the store lacks a package and the network is off). | Verdict `unknown` with reason `base install failed (exit N)`; the detached checkout is removed. |
+| A file run at the base commit writes no JUnit report. | Verdict `unknown` with reason `no report from the base run`. |
+| The run is interrupted (SIGINT / SIGTERM) during the base run. | The detached checkout is removed before the process exits. `withCleanup` does this, and `ci.test.ts` already covers its signal path; the base-run body stays synchronous inside it, so no new signal test is planned. |
+| A holistic, challenge, unproven or summary pause. | No base check and no `Gate: FAIL` header; the pause behaves as today. |
+| Resume into an open pause without a `Gate: FAIL` header (an older pause file, or a non-gate pause). | It is asked again as today. |
+| The re-run gate on resume is still red. | The build goes straight to the Decision Pause with fresh round numbers and a fresh base check; no fix round runs first. |
+| The re-run gate on resume is green. | The build continues to the next group (Step 8) or past Step 12 without asking, and `GATE_RERUN` is cleared. |
+| The resume re-run writes a second `build-group-gate` row under the same verify attempt. | `steps finish` accepts the repeat, and the completeness check reports no hole for the run. |
+| The resume is interrupted after `steps finish --step=build-decision` and before `decisions apply --by=rerun`. | The pause file is still `Status: OPEN` with `Gate: FAIL`, so the next resume re-runs the gate again. |
+| Resume in worktree mode. | Step 2's `bkit worktrees setup` rebases the branch onto `dev` first, so the re-run gate sees the fix; adopt mode gets no rebase or merge, only the pause's merge-`dev` sentence. |
+| `--base-check` points to a missing file or a file that is not the verb's JSON shape. | `decisions compose` exits with a usage error that names the problem (the missing file, or the missing or invalid field), and the workflow takes the Failure Path. |
+| `decisions apply --by=rerun` on a decision file without `Gate: FAIL` or not `Status: OPEN`. | Usage error naming the missing `Gate: FAIL` header or the file's status; nothing written. |
+| `bkit tests base` without a required flag (`--log`, `--file` or `--workflow`). | Usage error; nothing runs. |
 
 ## Open Questions
 
@@ -113,34 +124,31 @@ When a gate fails only on tests that also fail on the base branch, the build say
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question Q1:** Does bkit check that a failing case also fails on the base branch before it offers `Accept`? → the owner decides at plan review.
-  - **Options:** A) No check: the owner judges, and bkit records the exact cases from the JUnit reports — no extra run, but an owner can accept a failure the branch caused, and CI on the PR still shows it · B) At the pause only, run the failing cases' test files once on the base commit through `bkit:test:file` and recommend `Accept` for the cases that also fail there — trustworthy and safe headless, but needs a base worktree and a case-to-file map that not every runner writes · C) Run the whole gate on the base branch after every red gate and compare — the most trustworthy, but it doubles every red gate's run time.
-  - **Recommended:** A) No check — the issue comment chose it (decision 1, with C rejected for its run time), and the item stays a hard blocker, so no run accepts without the owner.
+- **Open Question Q1:** What does the loop question recommend when only some failing tests also fail on the base commit? → The owner decides at plan review.
+  - **Options:** A) The trend rule, with the "a round can fix X of N; the build will still stop on the Y from `dev`" sentence as the reason's lead — a headless run still has a recommendation to take, and the owner sees the split · B) No recommendation — matches "the owner chooses" most literally, but a loop question without one is a hard blocker, so a headless run goes to the Failure Path at every such pause · C) Always `Try again` — fixes the branch's share first, but recommends a round even when the trend says the round is stuck.
+  - **Recommended:** A) The trend rule — the split is shown either way, and only A keeps headless runs moving without overriding the trend.
   - **Default if unanswered:** A.
-- **Open Question Q2:** How does an accepted case stop failing the gate? → the owner decides at plan review; this changes the issue comment's decision 3.
-  - **Options:** A) Engine verdict override, as the comment says: `tests run` returns PASS when every failing JUnit case is accepted — no consumer change, but a gate that chains stages with `&&` stops at the failing tier, so later stages never run and the gate reads PASS (this repo's `bkit:gate:static-unit` would skip `pnpm bkit:test:bats`; Step 12's `bkit:gate:static-unit-integration` would skip `pnpm test:integration`) · B) Runner-side skip: `tests run --accepted-from` hands the gate the accepted cases in `$BKIT_ACCEPTED_TESTS`, each runner skips them, and the verdict still comes from the exit code — every stage runs and the exit code stays truthful, but each consumer wires its runners once (a few lines per runner, documented in `docs/testing.md`), and an unwired runner keeps failing as today, with the pause saying why · C) A, plus a rule that the override applies only to the group gate — Step 8 unblocks with no consumer change, but the false PASS remains for any `&&` stage after the unit tier, and Step 12 stays stuck.
-  - **Recommended:** B) Runner-side skip — it is the only option where "every other failing test still fails the gate" holds for chained gates, and an unwired runner fails safe.
-  - **Default if unanswered:** B, but B reverses the owner's recorded decision 3, so the build does not start until the owner answers Q2 at Gate 1. The runbook below is written for B, and `docs/decisions.jsonl` `891-accepted-tests-skipped-by-the-gate-runner` records B as the plan's recommendation pending this answer.
-  - **If the owner picks A:** the runbook changes as follows. Task 3 drops `BKIT_ACCEPTED_TESTS` and the `{log}.accepted.json` list and returns PASS when every failing case is accepted; tasks 6, 7, 11 and 12 drop out (nothing to hand the self-checks or the pushes); task 3's § Accepted failures section in `docs/testing.md` goes; task 8's `onlyAccepted` item and task 9's `onlyAccepted` routing arm go.
-- **Open Question Q3:** Does `/bkit-debug` also offer an `Accept`, or only honour accepts the build recorded? → the owner decides at plan review.
-  - **Options:** A) Honour only: debug Step 3 passes `--accepted-from`, and debug writes no new accept — debug's Loop Question is unchanged, but a base-red test first seen in debug still loops · B) Also offer `Accept` at debug's Loop Question — debug unblocks on its own, but it adds a pause item and an accept path to a second workflow.
-  - **Recommended:** A) Honour only — the issue comment scopes debug to "the same handling" of the `tests run` verb, and build is where the accept is asked.
+- **Open Question Q2:** What does the loop question recommend when none of the failing tests fail on the base commit? → The owner decides at plan review.
+  - **Options:** A) The trend rule, with the reason "the failures come from this branch" — keeps the existing stuck/closing logic · B) Always `Try again` — every failure is the branch's, but a stuck round would be recommended again.
+  - **Recommended:** A) The trend rule — the base verdict says a round *can* help, the trend says whether the last one *did*.
   - **Default if unanswered:** A.
-- **Open Question Q4:** How do the build's own pushes get past the consumer's pre-push gate while the base branch holds the accepted red tests? → the owner decides at plan review. Build Steps 15 and 16 (`bkit-build.md:1082`, `:1183`), ship's pushes (`bkit-ship.md:274` and later) and debug's pushes run `branches push`, which runs `git push` without `--no-verify` (`branches.ts:1069`), so the shipped pre-push hook (`.bkit/templates/.husky/pre-push`) runs `bkit ci push-gate` on the full gate, which fails on the accepted tests.
-  - **Options:** A) `branches push --accepted-from="{STATUS}"` writes the feature's accepted list and passes `BKIT_ACCEPTED_TESTS` in the `git push` environment; the hook and `bkit ci push-gate` (which spawns the gate with the inherited environment, `push-gate.ts:94-96`) hand it to the gate, so no hook template change is needed — the pushes go through and the Concrete Example and Success Criterion 3 hold, but every `branches push` call in build, debug and ship gains the flag (tasks 7 and 12) · B) The build stops at the push and says the pre-push gate fails on accepted tests — no new push path, but the Concrete Example stops at Step 15 and `/bkit-ship` is never reached, so Success Criterion 3 cannot be shown · C) The owner pushes by hand with `git push --no-verify` — no code, but it skips every pre-push check, not only the accepted tests, and the workflow has no step for it.
-  - **Recommended:** A) Hand the accepted list to the pre-push gate — it is the only option under which Success Criterion 3 is reached, and the hook still fails on any not-accepted case.
-  - **Default if unanswered:** A. Tasks 7 and 12 implement it.
-- **Open Question Q5:** Are bkit's own builds (this repo's `bkit:gate:static-unit` chaining Vitest, bats and awake with `&&`) outside Success Criterion 1? → the owner decides at plan review.
-  - **Options:** A) Yes: bkit's own runners stay unwired (Out of Scope row, deferral `891-bkit-repo-runners-skip-accepted-tests`) — the change stays consumer-facing, but a `/bkit-build` of bkit itself on a red `dev` still stops at the "the gate does not skip accepted tests" item · B) No: add a runbook task wiring bkit's Vitest config to `$BKIT_ACCEPTED_TESTS` — bkit's own builds unblock, at the cost of one more task and the same per-runner precision limits § Accepted failures documents for Vitest.
-  - **Recommended:** A) Keep bkit's own runners out of this plan — the issue is a consumer's report, and the deferral keeps the work visible.
+- **Open Question Q3:** Which install does the base run use? → The owner decides at plan review.
+  - **Options:** A) `pnpm install --frozen-lockfile --prefer-offline` — takes packages from the local store and downloads only what is missing · B) `pnpm install --frozen-lockfile --offline` — never touches the network, but fails (verdict `unknown`) whenever the store lacks a package only the base commit uses · C) `pnpm install --frozen-lockfile` — always checks the registry, slowest.
+  - **Recommended:** A) `--prefer-offline` — the issue's ~8 s measurement was an offline-store install; A keeps that speed and still works when the store is missing an old version.
   - **Default if unanswered:** A.
-- **Assumption:** Common runners can skip cases by name from an environment variable (Vitest `test.testNamePattern` in its config, Jest `testNamePattern`, pytest `-k` through `PYTEST_ADDOPTS`, a custom script by reading the JSON file) → if a consumer's runner cannot, its accepted cases keep failing, and the pause tells the owner the gate does not skip them; the build stays as stuck as today for that runner.
-- **Assumption:** A JUnit case's `classname` + `name` identifies one test across gate runs → if a runner writes no `classname`, the match falls back to an empty `classname`, and two same-named cases in different files are accepted together. bkit matches on both fields, but a runner's skip can be coarser: Vitest's `testNamePattern` matches the full test name, not the file, so that wiring also skips a same-named case in another file; `docs/testing.md` § Accepted failures states the precision per runner and shows a setup-file skip that reads `classname`.
-- **Assumption:** The pre-push hook and `bkit ci push-gate` pass the `git push` environment through to the gate (`push-gate.ts:94-96` spawns it with `gitEnv()`, a copy of `process.env`) → if a consumer's own hook clears the environment, Q4 A does not reach its gate, and the build's push fails on the accepted tests as today.
-- **Assumption:** 100 named cases per test-run row is enough → a base branch with more than 100 failing cases cannot be accepted; the owner fixes the base branch first.
-- **Assumption:** `/bkit-ship`'s merge gate (`bkit runs gate`) still needs green CI, and CI on the PR runs the same red tests while `dev` is red → ship refuses the merge until `dev` is fixed and the branch is synced. The accept unblocks the build, not the merge. If the owner expects ship to merge over the red tests, this plan does not do that.
-- **Assumption:** Build and debug for one feature share `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`bkit-build.md:429`, `bkit-debug.md:318`) → if debug ran on a different status file, it would not see build's accepts.
-- **Assumption:** One pause item covers all named failing cases of one gate run → an owner who wants to accept only some answers `Fix now` with directions for the rest; if per-case answers are needed, the item shape changes.
+- **Open Question Q4:** How does a resume record that it re-ran the gate instead of asking? → The owner decides at plan review.
+  - **Options:** A) `decisions apply --by=rerun` writes `Decision: Re-run gate — the owner resumed the run, so the gate runs again first ({date})` under Q1 and sets `Status: DECIDED` — no new status; `statusOf`, `pending` and the build summary stay as they are · B) A new `Status: RERUN` with a `Re-run:` line — distinct in the file, but `statusOf`, `apply`, `pending` and the build summary's "no decision recorded" check (`.bkit/core/engine/commands/workflow/summary.ts`) all have to learn it.
+  - **Recommended:** A) — the resume is an answer to the pause's question, so it belongs on a `Decision:` line, and nothing else changes.
+  - **Default if unanswered:** A.
+- **Assumption:** The group gate runs only when verify passed (Step 8 sub-step 8 is reached only with `VERIFY_VERDICT` = PASS), so a pause after a red gate holds no verify gap items → if wrong, a red-gate pause can also hold gap items; the compose still works (it recommends `Decide` instead of `Stop` with items), so only the wording changes.
+- **Assumption:** The gate's `{log}.reports` folder under `{OUTBOX}` still exists when the Decision Pause composes in the same session → if wrong, every base check reads `unknown` "no JUnit report" and the pause falls back to today's trend rule.
+- **Assumption:** The consumer's JUnit reports carry a `file` attribute or a `classname` that resolves to a tracked file (Vitest writes the file path as `classname`; bats writes the file's name) → if wrong, cases stay undetermined and the verdict reads `unknown`, never a wrong `all`.
+- **Assumption:** `bkit:test:file {file}` at the base commit runs one file and writes JUnit to `$BKIT_TEST_REPORT`, as `docs/testing.md` § Test first (**Declare `bkit:test:file`**) requires → if the base commit's `package.json` lacks the script, the verdict reads `unknown` with that reason.
+- **Assumption:** `shipGate`'s query of GitHub Actions at a sha is unchanged and already proven by `/bkit-ship`; this plan's tests reach it through the `tests/fixtures/gh/bin/gh` stub, and bkit has no `@live` tier → if the real query shape drifted, `/bkit-ship` would break first; the base check would read a wrong CI verdict only when the stub and GitHub disagree.
+- **Assumption:** The owner accepts today's headless `Stop` routing for this plan: Decision Pause step 6 routes a headless `Stop` by `From:` (re-run Step 8 or Step 12), so a headless run with verdict `all` re-runs the red gate until its loop limit sends it to the Failure Path, which costs rounds but builds nothing wrong → if wrong (the owner needs a headless `Stop` to end the run at once), this plan's `all` → `Stop` recommendation burns rounds on every base-red gate in headless runs, and the Suggested Scope Expansion row for a headless Stop route must join the plan.
+- **Assumption:** A base run with no install cannot be trusted, so `worktreeInstall` off makes the verdict `unknown` → if wrong (a consumer with `worktreeInstall` off shares dependencies into each checkout another way), that consumer's base check always reads `unknown` and its pauses fall back to the trend rule; no verdict is ever a wrong `all`.
+- **Assumption:** The repo for the CI lookup resolves through `resolveOwnerRepo` (`gh repo view`, then the `origin` remote URL) → if wrong (neither names the GitHub repo), every base check skips CI and runs locally, which costs the local run's time but never gives a wrong verdict.
+- **Assumption:** A base run costs about 8 s in bkit (1 s checkout, 2 s install, 5 s per test file) and runs once per pause, not once per round → if a consumer's install is far slower, each red-gate pause waits for it; the cost is bounded by one install plus the failing files.
 
 ## Risks and Action Items
 
