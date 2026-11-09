@@ -107,3 +107,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T10:53:11Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/1/1/comment","hash":"b8020ba67ac83d17ffd0e2a559aea96f454408c9db698f5ba25d731ca0e86874","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6735505754","at":"2026-11-09T10:53:14Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-09T10:53:14Z","parentSha":"45f4254bdad73a85de2feac5d1b6d717106d5d59","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-tasks-1-log.md"],"verdict":"PASS","attempt":1,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T10:53:39Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T10:53:49Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T10:53:56Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T10:59:45Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T10:59:49Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T11:05:51Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/1/comment","hash":"6e39d89db58d4ec3d3b7f9855e59a32d0bf10897f1ff34f4a1dac7baa83b63e6","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6735505754","at":"2026-11-09T11:05:53Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T11:05:53Z","parentSha":"d51b44bc4d546e0df85939219a4f8ef5ba0e82cf","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-verify-1-1.md"],"verdict":"CONCERNS","attempt":1,"group":1,"failures":3}
