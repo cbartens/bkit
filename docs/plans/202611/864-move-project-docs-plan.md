@@ -415,7 +415,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Review every instruction responsibility and apply the consultation contract.
+- [x] **TASK 3:** Review every instruction responsibility and apply the consultation contract.
   - **READ:** `docs/technology.md`: use the declared runtime and host versions.
   - **READ:** `docs/security.md`: preserve the boundaries for missing or untrusted evidence.
   - **READ:** `docs/testing.md`: preserve the test selection rules.
@@ -476,7 +476,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Consolidate run warnings and verify the shipped source contracts.
+- [x] **TASK 6:** Consolidate run warnings and verify the shipped source contracts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/summary.ts`: aggregate structured findings from attributed current-run files by topic and gap.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: supply the active run and its attributed files through summary and handover using Task 3's warning record contract.
   - **UPDATE:** `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`: audit responsibility coverage, applicability and output contracts using the relocated starter inventory from Task 2.
@@ -494,7 +494,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Refresh rendered outputs and dogfood the packaged CLI.
+- [x] **TASK 7:** Refresh rendered outputs and dogfood the packaged CLI.
   - **READ:** `docs/architecture.md`: verify the installer contract in a fresh and legacy scratch repo.
   - **UPDATE:** `docs/architecture.md`: describe the copy, reconciliation and migration boundaries.
   - **UPDATE:** `docs/observability.md`: document CLI advisories and phase warning summaries.
