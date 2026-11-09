@@ -2448,7 +2448,7 @@ describe("#892 — upgrade copies the lint-staged sample to the root", () => {
     expect(fs.existsSync(rootConfig)).toBe(true);
     const shipped = path.join(tmpDir, ".bkit", "templates", "lintstagedrc.example.json");
     expect(fs.readFileSync(rootConfig, "utf-8")).toBe(fs.readFileSync(shipped, "utf-8"));
-    expect(combinedOutput(up)).toContain(".lintstagedrc.json");
+    expect(combinedOutput(up)).toMatch(/(?<![\w./-])\.lintstagedrc\.json/);
   });
 
   it("upgrade dry run reports the lint-staged config copy without writing it", () => {
@@ -2457,7 +2457,13 @@ describe("#892 — upgrade copies the lint-staged sample to the root", () => {
     const dry = runCli(["upgrade", "--dry-run"]);
     expect(dry.status, combinedOutput(dry)).toBe(0);
 
-    expect(combinedOutput(dry)).toContain(".lintstagedrc.json");
+    // A root-level name only: the pruned `.bkit/templates/.lintstagedrc.json` line must not satisfy it.
+    expect(combinedOutput(dry)).toMatch(/(?<![\w./-])\.lintstagedrc\.json/);
+    // The copy is a dry-run write line of its own, naming the root file: a `removed:` or `added:`
+    // template line, or any line that only mentions the file, does not count.
+    expect(combinedOutput(dry)).toMatch(
+      /\[dry-run\][^\n]*(?<![\w./-])\.lintstagedrc\.json[ \t]*(?:\n|$)/,
+    );
     expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
   });
 });
