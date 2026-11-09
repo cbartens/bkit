@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T09:57:50Z)_
+_(refreshed 2026-11-09T11:03:28Z)_
 
 ### Design
 
@@ -48,6 +48,7 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
+| 895-one-question-format | 895-one-question-format | 1794222208628 |
 
 ### Build
 
