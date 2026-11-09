@@ -28,10 +28,10 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 | Package folder | Install does | Repo gets |
 | --- | --- | --- |
 | `.bkit/core/` | Writes its files and keeps them current. It never writes `engine/`, `workflows/` or `prompts/` as they are: workflows and prompts render to host agent and command copies | Whole files, managed blocks, hooks, reference docs in `.bkit/`, audit and plan templates |
-| `.bkit/shared/` | Writes its files and keeps them current | bkit blocks and keys inside files you also edit (`docs/*.md`, `.gitignore`, settings, tool-server config) |
+| `.bkit/shared/` | Writes its files and keeps them current | bkit blocks and keys inside files you also edit (`.agents/docs.md`, `.gitignore`, settings, tool-server config) |
 | `.bkit/templates/` | Never writes them into the repo. It keeps a raw copy at `.bkit/templates/`, and `bkit upgrade` lists the changed paths | Nothing until you copy one and own it |
 
-`bkit check` proves that the written files match the package. Nothing proves the rest: a template never copied, a copy whose tool never runs, a written doc that holds only bkit's block, or a shipped audit never run. The failure this audit targets is a shipped piece that would have caught something but sits unused or half-wired, while every check stays green. Examples: `.husky/pre-push` was never copied, so tests run only in CI; `.lintstagedrc.json` was copied, but `pre-commit` never calls lint-staged; `{{NODE_VERSION}}` was left raw in `bkit-ci.yml`; `bkit-cloud.yml` waits on a workflow name that no longer exists; `docs/security.md` holds bkit's block and nothing else; `bkit-audit-security` was never run; or the install is three releases behind, with hand edits inside managed blocks.
+`bkit check` proves that the written files match the package. Nothing proves the rest: a template never copied, a copy whose tool never runs, a project document (`docs/*.md`) never copied from its starter or left as the untouched starter, or a shipped audit never run. The failure this audit targets is a shipped piece that would have caught something but sits unused or half-wired, while every check stays green. Examples: `.husky/pre-push` was never copied, so tests run only in CI; `.lintstagedrc.json` was copied, but `pre-commit` never calls lint-staged; `{{NODE_VERSION}}` was left raw in `bkit-ci.yml`; `bkit-cloud.yml` waits on a workflow name that no longer exists; `docs/security.md` is still the starter text, or the document exists but `Project Documents` does not list it; `bkit-audit-security` was never run; or the install is three releases behind, with hand edits inside managed blocks.
 
 **Applies when:** `.bkit/version` is present. **If** it is absent → write one `N/A` row with its evidence, and never report the surface as "clean".
 
@@ -98,7 +98,25 @@ bkit ships three folders. A file's path inside its folder is the path it lands a
 - [ ] **Step 3 — Version:** Compare `pinnedVersion`, the installed package and the registry latest. **If** pinned != installed → the package was bumped without `bkit upgrade`. **If** the repo is behind → record the release count, the release-note changes that touch this repo, and the template paths changed since the pinned version. **Done when:** `Version` names all three versions and every relevant release-note change.
 - [ ] **Step 4 — Check and Doctor:** Run `bkit check`, and record its exit code and the cause of each drift line. Run `bkit doctor`, and mark each advisory adopt, reject (saying why) or not applicable. Carry the previous report's rejects forward, and re-raise one only when the advisory text changed. **Done when:** `Check and Doctor` holds one row per drift line and per advisory.
 - [ ] **Step 5 — Hosts:** Compare the agent hosts in use with the bkit hosts installed. Find the hosts in use from the repo's config directories and from team use. Use the `Hosts` section of the newest `bkit-audit-agents` report as a cross-check, not as the source. For each installed host, check for one agent copy per `core/prompts/` source, one command copy per `core/workflows/` source, and every `core/` hook file present, executable and wired in that host's settings. Record these as findings: a host in use with no bkit install, because agents there run without bkit gates; a missing or extra copy; and a hook file present but unwired, or wired but absent. Whether hooks fire and agree across hosts goes to `bkit-audit-agents`. **Done when:** `Hosts` holds one row per host: in use · installed · agent copies · command copies · hooks wired.
-- [ ] **Step 6 — Written Files:** (a) Check that every `bkit:start` / `bkit:end` block and owned key is untouched (the Step 4 drift). **If** one holds a hand edit → the fix moves the edit below `bkit:end` or to `Project Instructions`. **If** the defect is in what bkit shipped → the fix is upstream in bkit. (b) In each file bkit shares with you (`AGENTS.md`, `CLAUDE.md`, `.agents/*.md`, `.gitignore`, `.gitattributes`, settings, tool-server config), check that your part is present for every block that expects one. A shared file that holds only bkit's block is unadopted. The ten project documents belong to you, so check them against their starters in `.bkit/templates/docs/` and `Project Documents` in `.agents/docs.md`. **If** `.bkit/.env.example` exists → check that `.bkit/.env` is present and git-ignored, and that every listed key is set (names only). **If** bkit wrote a tracker or tool-server entry → check that the credential env var it names is set. Whether your part is true goes to `bkit-audit-documentation`. **Done when:** `Written Files` holds one row per shared file: block untouched · your part present · verdict.
+- [ ] **Step 6 — Written Files:** (a) Check that every `bkit:start` / `bkit:end` block and owned key is untouched (the Step 4 drift). **If** one holds a hand edit → the fix moves the edit below `bkit:end` or to `Project Instructions`. **If** the defect is in what bkit shipped → the fix is upstream in bkit. (b) In each file bkit shares with you (`AGENTS.md`, `CLAUDE.md`, `.agents/*.md`, `.gitignore`, `.gitattributes`, settings, tool-server config), check that your part is present for every block that expects one. A shared file that holds only bkit's block is unadopted. The ten project documents belong to you, so check them against their starters in `.bkit/templates/docs/` and `Project Documents` in `.agents/docs.md`, topic by topic:
+  - **Presence:** a relevant topic with no file (absent or missing) is a finding. An indexed equivalent document counts (`Equivalent to docs/{topic}.md` in its Scope cell).
+  - **Index accuracy:** a file with no row, and a row with no file, are findings.
+  - **Content:** an empty file, or a file that still matches its starter, is a finding; a file that differs is a candidate for assessment, never proof of coverage. A topic that does not apply (no UI, no database) is irrelevant and recorded as not applicable with the reason.
+  - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Never mark the surface adopted.
+  - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+
+    ```jsonl
+    {
+      "topic": "testing",
+      "gap": "starter-only",
+      "recommendedPath": "docs/testing.md",
+      "alternativeEvidence": "CI lanes are defined in the bkit CI workflow.",
+      "action": "Populate the testing document with the project's tiers and lanes."
+    }
+    ```
+
+  **If** `.bkit/.env.example` exists → check that `.bkit/.env` is present and git-ignored, and that every listed key is set (names only). **If** bkit wrote a tracker or tool-server entry → check that the credential env var it names is set. Whether your part is true goes to `bkit-audit-documentation`. **Done when:** `Written Files` holds one row per shared file and per project document topic: block untouched · your part present · state (populated, starter-only, empty, absent or not applicable) · verdict.
+
 - [ ] **Step 7 — Audits:** For each `docs/templates/bkit-audit-*.md`, record whether its `**Applies when:**` is met, yes or no, with evidence; its `**Cadence:**`; and its newest report under `docs/audits/` by commit date. An audit never run is due, by the same rule as `bkit-utility-update-roadmap`. An `N/A` report with evidence counts as a run. Record these as findings: an audit that applies and was never run; an audit overdue by more than one cadence; and `Process Improvements` `Project` edits that a report proposed and that are absent from that template's `Project Instructions`. **Done when:** `Audits` holds one row per template: applies · cadence · last run · overdue by · verdict.
 - [ ] **Step 8 — Adoption:** Join each file in the package's `templates/` to `.bkit/templates.md` § Contract.
   - **If** a file is missing from the Contract → the fix is an upstream bkit doc fix.
@@ -154,6 +172,12 @@ Within a severity, list missing gates first, then unwired copies, then drift.
 | PENDING | PENDING | PENDING | PENDING | PENDING | PENDING |
 
 **If** the run finds nothing → write one row: `None`.
+
+## Documentation Warnings
+
+PENDING
+
+Write `None` when the adoption check found no project-document gap; the records of Step 6 go here otherwise.
 
 ## Report
 

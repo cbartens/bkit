@@ -11,7 +11,7 @@ import { detectOpencodeYmlProviderDrift } from "../../install/modules/opencode.j
 import { detectManagedDuplicate, detectManagedStale } from "./managed.js";
 import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken } from "./auth.js";
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, buildTrivyProtectionAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
-import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectValeMissing, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
+import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectProjectDocs, detectValeMissing, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiScriptsOldNames, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
 // ---------------------------------------------------------------------------
@@ -371,6 +371,9 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);
+    // Project documents (docs/*.md): missing, empty, starter-only or unindexed. Advisory only.
+    for (const f of detectProjectDocs(cwd, onSuppressed))
+        phase3.push(f);
     // turbo.json inputs for cache-replay safety (KN-24).
     for (const f of detectTurboIntegrationInputs(cwd))
         phase3.push(f);

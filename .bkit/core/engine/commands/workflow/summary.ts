@@ -7,6 +7,7 @@ import { coversList, type Plan, type Workstream } from "./plans.js";
 import { issueIdOf, type FidTracker } from "./fids.js";
 import { parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
+import { parseJson } from "../../shared/json.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
 
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"] as const;
@@ -131,6 +132,71 @@ const taskGroupOf = (r: Row) => {
   const taskGroup = r.group ?? r.subPlan;
   return typeof taskGroup === "number" ? taskGroup : undefined;
 };
+
+/** One consolidated documentation gap: a topic and gap key, with every distinct piece of evidence and action. */
+interface DocWarning {
+  topic: string;
+  gap: string;
+  recommendedPath: string;
+  evidence: string[];
+  actions: string[];
+}
+
+const WARNING_FIELDS = [
+  "topic",
+  "gap",
+  "recommendedPath",
+  "alternativeEvidence",
+  "action",
+] as const;
+/** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
+const isRawInput = (rel: string) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel);
+
+/**
+ * The structured records under `## Documentation Warnings` (one JSON object per line in a
+ * `jsonl` fence) of the run's own step artifacts, merged by normalised topic and gap. A missing
+ * section, a malformed line or a record without all five non-empty fields is skipped.
+ */
+function documentationWarnings(rows: Row[], read: (rel: string) => string | null): DocWarning[] {
+  const merged = new Map<string, DocWarning>();
+  const seenFiles = new Set<string>();
+  for (const row of rows) {
+    if (row.type !== "step-done") continue;
+    for (const rel of artifactsOf(row)) {
+      if (!rel.endsWith(".md") || isRawInput(rel) || seenFiles.has(rel)) continue;
+      seenFiles.add(rel);
+      const text = read(rel);
+      if (text === null) continue;
+      const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(
+        text,
+      );
+      const fence = section === null ? null : /```jsonl[ \t]*\r?\n([\s\S]*?)```/.exec(section[1]!);
+      if (fence === null) continue;
+      for (const line of fence[1]!.split(/\r?\n/)) {
+        const parsed = parseJson(line);
+        if (!parsed.ok) continue;
+        const value = parsed.value;
+        if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+        const rec = value as Record<string, unknown>;
+        const fields = WARNING_FIELDS.map((f) => rec[f]);
+        if (!fields.every((f): f is string => typeof f === "string" && f.trim() !== "")) continue;
+        const [topic, gap, recommendedPath, evidence, action] = fields.map((f) => f.trim());
+        const key = `${topic!.toLowerCase()}\u0000${gap!.toLowerCase()}`;
+        const found = merged.get(key) ?? {
+          topic: topic!.toLowerCase(),
+          gap: gap!.toLowerCase(),
+          recommendedPath: recommendedPath!,
+          evidence: [],
+          actions: [],
+        };
+        if (!found.evidence.includes(evidence!)) found.evidence.push(evidence!);
+        if (!found.actions.includes(action!)) found.actions.push(action!);
+        merged.set(key, found);
+      }
+    }
+  }
+  return [...merged.values()];
+}
 
 /** The run's step rows grouped per step (and task group), in first-seen order. */
 function stepGroups(rows: Row[]): StepGroup[] {
@@ -499,6 +565,17 @@ export function buildSummary(input: SummaryInput): Summary {
       "",
       ...unconfirmed.map((u) => `- ${u}`),
     );
+
+  // Documentation warnings: advisory only, never part of the verdict.
+  const docWarnings = documentationWarnings(input.rows, read);
+  if (docWarnings.length > 0) {
+    out.push("", "## Documentation Warnings", "");
+    for (const w of docWarnings) {
+      out.push(`- **${w.topic}** (${w.gap}) — \`${w.recommendedPath}\``);
+      for (const e of w.evidence) out.push(`  - Evidence: ${e}`);
+      for (const a of w.actions) out.push(`  - Action: ${a}`);
+    }
+  }
 
   // Risks and action items.
   const items: string[] = [];

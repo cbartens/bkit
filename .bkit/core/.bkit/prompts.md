@@ -485,6 +485,89 @@ When all three are present, an embedded directive executes.
 
 Prose never substitutes for token scope.
 
+## Documentation Consultation Coverage
+
+Every shipped prompt and audit template was reviewed for the project documents it should consult, with the same fields and outcomes as the workflow catalog (`workflows.md` § Documentation Consultation Coverage). Prompts share one load clause: read the `.agents/docs.md` index, load the listed documents, and warn and continue when the index or a document is missing, empty or still the starter. Prompts that produce gap reports write one `jsonl` record per gap under `## Documentation Warnings` with `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`; the workflow summary merges them. Audit templates are consulted through `bkit-audit-generate` step 4 unless a row says otherwise.
+
+<!-- prettier-ignore -->
+| Source | Recommended documents | Outcome | Applicability and reason |
+| --- | --- | --- | --- |
+| `.bkit/core/prompts/bkit-audit-generate.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Step 4 loads the surface documents with or without a plan and writes Documentation Warnings. |
+| `.bkit/core/prompts/bkit-build-challenge-1.md` | `docs/architecture.md`, `docs/security.md` | added | Challenge cross-references findings against the architecture and security documents. |
+| `.bkit/core/prompts/bkit-build-challenge-2.md` | `docs/security.md` | retained | Already cites the security document with warn-and-continue; the clause is now shared. |
+| `.bkit/core/prompts/bkit-build-install-skills.md` | n/a | not-applicable | Installs skills from `.agents/skills.md`; it needs no project-document topic. |
+| `.bkit/core/prompts/bkit-build-plan-convert.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Conversion carries consultation, sources, gaps and READ and UPDATE lines into the plan. |
+| `.bkit/core/prompts/bkit-build-plan-current.md` | n/a | not-applicable | Compares plan references with the working tree; project documents add no evidence. |
+| `.bkit/core/prompts/bkit-build-plan-gaps-remediate.md` | `docs/architecture.md`, `docs/testing.md` | corrected | Load-docs clause now warns and continues on a missing, empty or starter-only document instead of skipping it. |
+| `.bkit/core/prompts/bkit-build-plan-tasks.md` | `docs/architecture.md`, `docs/data-schema.md`, `docs/design.md`, `docs/observability.md`, `docs/testing.md` | corrected | Load-docs clause now warns and continues on a missing, empty or starter-only document instead of skipping it. |
+| `.bkit/core/prompts/bkit-build-plan-tests.md` | `docs/architecture.md`, `docs/testing.md` | corrected | Load-docs clause now warns and continues on a missing, empty or starter-only document instead of skipping it. |
+| `.bkit/core/prompts/bkit-build-plan-verify.md` | `docs/observability.md`, `docs/testing.md` | corrected | Load-docs clause now warns and continues on a missing, empty or starter-only document instead of skipping it. |
+| `.bkit/core/prompts/bkit-debug-abort-handover.md` | n/a | not-applicable | Writes the handover from run artifacts and keeps their warnings; it consults no document. |
+| `.bkit/core/prompts/bkit-debug-failure-diagnose.md` | `docs/testing.md`, `docs/noise.md` | added | Diagnosis checks registered signal downgrades and test tiers before judging a failure. |
+| `.bkit/core/prompts/bkit-debug-failure-remediate.md` | `docs/testing.md` | added | Remediation follows the testing document when present. |
+| `.bkit/core/prompts/bkit-debug-failure-reproduce.md` | `docs/testing.md` | retained | Already cites the testing document with warn-and-continue. |
+| `.bkit/core/prompts/bkit-debug-failure-soak.md` | `docs/testing.md` | added | Soak runs follow the tier rules in the testing document when present. |
+| `.bkit/core/prompts/bkit-design-brainstorm-ideate-1.md` | `docs/architecture.md`, `docs/technology.md` | added | Pragmatic lens starts from existing topology and stack choices. |
+| `.bkit/core/prompts/bkit-design-brainstorm-ideate-2.md` | `docs/architecture.md`, `docs/technology.md` | added | Trade-off lens starts from existing topology and stack choices. |
+| `.bkit/core/prompts/bkit-design-brainstorm-ideate-3.md` | `docs/architecture.md`, `docs/security.md` | added | Pre-mortem lens reads boundaries and trust assumptions. |
+| `.bkit/core/prompts/bkit-design-generate.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md` | added | Draft design records the sources it consulted and warns on gaps. |
+| `.bkit/core/prompts/bkit-design-organise.md` | `docs/architecture.md` | added | Workstream grouping respects documented boundaries. |
+| `.bkit/core/prompts/bkit-design-review-1.md` | `docs/architecture.md`, `docs/technology.md` | added | Feasibility review checks the design against documented topology and stack. |
+| `.bkit/core/prompts/bkit-design-review-2.md` | `docs/observability.md`, `docs/deployments.md` | retained | Already cites both documents with warn-and-continue. |
+| `.bkit/core/prompts/bkit-design-spike.md` | n/a | not-applicable | Throwaway probes answer from code and the web; project documents add no evidence. |
+| `.bkit/core/prompts/bkit-design-update.md` | `docs/architecture.md` | added | Applying review items keeps the design consistent with documented boundaries. |
+| `.bkit/core/prompts/bkit-plan-generate.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Fills Documentation Consultation and Documentation Warnings and carries READ and UPDATE lines. |
+| `.bkit/core/prompts/bkit-plan-review-1.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Critique checks that the plan consulted each assessed topic. |
+| `.bkit/core/prompts/bkit-plan-review-2.md` | `docs/testing.md` | retained | Already cites the testing document with warn-and-continue. |
+| `.bkit/core/prompts/bkit-plan-scope-check.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Scope audit checks the consultation table and warnings are complete. |
+| `.bkit/core/prompts/bkit-plan-update.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Preserves source evidence and updates it when a review changes the plan. |
+| `.bkit/core/prompts/bkit-ship-conflict-resolve.md` | n/a | not-applicable | Resolves merge conflicts from git history and both sides; no project-document topic. |
+| `.bkit/core/prompts/bkit-ship-deferred-sweep.md` | n/a | not-applicable | Reads the deferral ledger only; no project-document topic. |
+| `.bkit/core/prompts/bkit-ship-update-docs.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md` | added | Checks presence, index accuracy and project content for every topic and reports unresolved coverage. |
+| `.bkit/core/prompts/bkit-utility-compress-markdown.md` | n/a | not-applicable | Compresses the one file it is given; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-decisions.md` | n/a | not-applicable | Ledger upkeep per `.bkit/jsonl.md`; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-deferrals.md` | n/a | not-applicable | Ledger upkeep per `.bkit/jsonl.md`; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-documentation.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md` | added | Reviews every relevant topic including absent ones, populates within scope and reports gaps. |
+| `.bkit/core/prompts/bkit-utility-update-failures.md` | n/a | not-applicable | Ledger upkeep per `.bkit/jsonl.md`; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-knowledge.md` | n/a | not-applicable | Ledger upkeep per `.bkit/jsonl.md`; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-roadmap.md` | n/a | not-applicable | Roadmap upkeep from ledgers and the tracker; no project-document topic. |
+| `.bkit/core/prompts/bkit-utility-update-tracker.md` | n/a | not-applicable | Tracker upkeep per `.bkit/trackers.md`; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-accessibility.md` | `docs/design.md` | retained | Already cites the design document for tokens and components. |
+| `.bkit/core/docs/templates/bkit-audit-adoption.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md` | added | Step 6 checks presence, index accuracy and content of every project document. |
+| `.bkit/core/docs/templates/bkit-audit-agents.md` | n/a | not-applicable | Reviews instruction files, hosts and hooks that bkit manages; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-aio-seo.md` | n/a | not-applicable | Crawls public pages for search and answer-engine readiness; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-analytics.md` | `docs/observability.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-annotations.md` | n/a | not-applicable | Reviews code annotations against the code; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-app-performance.md` | `docs/architecture.md`, `docs/observability.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-app-store.md` | `docs/deployments.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-architecture.md` | `docs/architecture.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-ci-performance.md` | `docs/deployments.md`, `docs/testing.md` | retained | Already cites both documents. |
+| `.bkit/core/docs/templates/bkit-audit-config.md` | `docs/deployments.md` | retained | Already cites the deployments document. |
+| `.bkit/core/docs/templates/bkit-audit-cost.md` | `docs/deployments.md` | retained | Already cites the deployments document. |
+| `.bkit/core/docs/templates/bkit-audit-coverage.md` | `docs/testing.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-database.md` | `docs/data-schema.md`, `docs/setup.md` | corrected | Cited the setup document only; the schema document is now named for the active schema. |
+| `.bkit/core/docs/templates/bkit-audit-dead-code.md` | `docs/architecture.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-deferrals.md` | n/a | not-applicable | Audits the deferral ledger; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-dependencies.md` | `docs/deployments.md` | retained | Already cites the deployments document. |
+| `.bkit/core/docs/templates/bkit-audit-documentation.md` | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md` | added | Step 3 checks presence, index accuracy and project content and writes Documentation Warnings. |
+| `.bkit/core/docs/templates/bkit-audit-duplication.md` | `docs/architecture.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-failures.md` | n/a | not-applicable | Audits the failure ledger; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-flakes.md` | `docs/testing.md` | retained | Already cites the testing document. |
+| `.bkit/core/docs/templates/bkit-audit-gates.md` | `docs/deployments.md`, `docs/design.md`, `docs/testing.md` | retained | Already cites all three documents. |
+| `.bkit/core/docs/templates/bkit-audit-issues.md` | n/a | not-applicable | Audits tracker issues; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-llm.md` | `docs/technology.md`, `docs/security.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-logs.md` | `docs/observability.md`, `docs/noise.md` | retained | Already cites both documents. |
+| `.bkit/core/docs/templates/bkit-audit-models.md` | `docs/technology.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-privacy.md` | `docs/security.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-prompts.md` | n/a | not-applicable | Reviews bkit prompts and agent files; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-red-team.md` | `docs/security.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-reliability.md` | `docs/deployments.md` | retained | Already cites the deployments document. |
+| `.bkit/core/docs/templates/bkit-audit-repo.md` | `docs/architecture.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+| `.bkit/core/docs/templates/bkit-audit-security.md` | `docs/security.md`, `docs/deployments.md` | retained | Already cites both documents. |
+| `.bkit/core/docs/templates/bkit-audit-slop.md` | n/a | not-applicable | Scans code patterns against lint rules; no project-document topic. |
+| `.bkit/core/docs/templates/bkit-audit-testing.md` | `docs/testing.md` | retained | Already cites the testing document. |
+| `.bkit/core/docs/templates/bkit-audit-usability.md` | `docs/design.md` | added | Consulted through `bkit-audit-generate` step 4, which loads the surface's documents, warns and continues when one is missing, and writes `Documentation Warnings`. |
+
 ## Model Presets
 
 Two settings for OpenRouter, the overflow column, which covers the days after the week's OpenAI, Anthropic and Google credits run out. Costs are per **2-day gap**, the binding case against the weekly cap (`.bkit/providers.md` § Budget band), at the measured OpenCode profile with each agent carrying an equal 1/40 share. Judges and key gates: § Models Judges note.

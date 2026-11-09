@@ -6,6 +6,21 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { PreflightFinding } from "../before/index.js";
 import { readPackageJson } from "../../shared/package-json.js";
+import { readTextFile } from "../../shared/json.js";
+import { getPkgRoot } from "../../shared/package-roots.js";
+import {
+  PROJECT_DOC_TOPICS,
+  PROJECT_INDEX_PATH,
+  type ProjectDocTopic,
+  findIndexedEquivalent,
+  inspectRepoFile,
+  legacyStarterTopic,
+  normalizeLegacyText,
+  projectDocPath,
+  readProjectIndex,
+  starterPath,
+} from "../../install/project-docs.js";
+import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import {
   DEP_UPDATER_NAMES,
@@ -414,4 +429,159 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       `  ${UPDATER_EXAMPLE_PATHS}\n\n` +
       'Use one updater, not both, and set `bkit.dependencies.updater` to its name (`"renovate"` or `"dependabot"`) in package.json. To silence this advisory, set it to `"none"`. See .bkit/templates.md.',
   };
+}
+
+// ---------------------------------------------------------------------------
+// Project documentation adoption and population
+// ---------------------------------------------------------------------------
+
+/** Text of a topic's current starter: the package copy first, then the consumer's own copy. */
+function readStarterText(cwd: string, topic: ProjectDocTopic): string | null {
+  for (const base of [getPkgRoot(), cwd]) {
+    const read = readTextFile(path.join(base, starterPath(topic)));
+    if (read.ok) return read.text;
+  }
+  return null;
+}
+
+/** True when `rel` is a repo-relative path with no parent or absolute segments. */
+function isInTreePath(rel: string): boolean {
+  if (rel === "" || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel)) return false;
+  return !rel.split(/[\\/]/).includes("..");
+}
+
+type DocAssessment = "empty" | "unpopulated" | "candidate";
+
+/** Mechanical read of a project document: empty, an untouched starter, or a candidate. */
+function assessDocText(cwd: string, topic: ProjectDocTopic, text: string): DocAssessment {
+  if (text.trim() === "") return "empty";
+  const normalized = normalizeLegacyText(text);
+  const legacy = legacyStarterTopic(text);
+  if (legacy === topic) return "unpopulated";
+  const starter = readStarterText(cwd, topic);
+  if (starter !== null && normalizeLegacyText(starter) === normalized) return "unpopulated";
+  // Headings, comments and rules only: nothing a project wrote.
+  const meaningful = normalized
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) => l !== "" && !l.startsWith("#") && !/^<!--.*-->$/.test(l) && !/^[-*_|: ]+$/.test(l),
+    );
+  return meaningful.length === 0 ? "unpopulated" : "candidate";
+}
+
+/**
+ * Report the state of the ten project documents (`docs/architecture.md` ... `docs/setup.md`):
+ * the index missing, a document absent, empty, an untouched starter, present but unindexed, or
+ * unreadable. A document the index lists at another path (same basename, or a Scope cell
+ * `Equivalent to docs/<topic>.md`) counts for its topic. Findings are advisories only and read no
+ * file outside the repository. A document that differs from every starter is a candidate for
+ * the agent to assess; the mechanical read makes no claim about what it covers.
+ */
+export function detectProjectDocs(
+  cwd: string,
+  onSuppressed?: SuppressionReporter,
+): PreflightFinding[] {
+  const index = readProjectIndex(cwd);
+  const rows = index.status === "ok" ? index.rows : [];
+  const indexedPaths = new Set(rows.map((r) => r.path));
+  const missing: string[] = [];
+  const empty: string[] = [];
+  const unpopulated: string[] = [];
+  const unindexed: string[] = [];
+  const ambiguous: string[] = [];
+
+  for (const topic of PROJECT_DOC_TOPICS) {
+    const recommended = projectDocPath(topic);
+    const equivalent = findIndexedEquivalent(rows, topic);
+    const defaultState = inspectRepoFile(cwd, recommended);
+    let target = recommended;
+    if (defaultState === "absent") {
+      if (equivalent === null) {
+        missing.push(recommended);
+        continue;
+      }
+      target = equivalent;
+    }
+    if (!isInTreePath(target)) {
+      ambiguous.push(`${target} (${recommended}: it resolves outside the repository)`);
+      continue;
+    }
+    const state = target === recommended ? defaultState : inspectRepoFile(cwd, target);
+    if (state === "absent") {
+      missing.push(recommended);
+      continue;
+    }
+    if (state !== "regular") {
+      ambiguous.push(`${target} (${state.unsafe})`);
+      continue;
+    }
+    const read = readTextFile(path.join(cwd, target));
+    if (!read.ok) {
+      ambiguous.push(`${target} (it could not be read)`);
+      continue;
+    }
+    const assessed = assessDocText(cwd, topic, read.text);
+    if (assessed === "empty") empty.push(target);
+    else if (assessed === "unpopulated") unpopulated.push(target);
+    else if (index.status === "ok" && !indexedPaths.has(target)) unindexed.push(target);
+  }
+
+  const findings: PreflightFinding[] = [];
+  if (index.status === "missing") {
+    findings.push({
+      id: "project-docs-index-missing",
+      severity: "advisory",
+      detect: `${PROJECT_INDEX_PATH} is absent, so agents have no list of the project's own documents to consult.`,
+      action: `Run \`bkit install\` to write ${PROJECT_INDEX_PATH}, then add a row under \`## Project Documents\` for each project document you keep. Until then agents warn and fall back to repository evidence.`,
+    });
+  } else if (index.status === "unreadable") {
+    ambiguous.push(`${PROJECT_INDEX_PATH} (${index.reason})`);
+  }
+  if (missing.length > 0) {
+    findings.push({
+      id: "project-docs-missing",
+      severity: "advisory",
+      detect: `No project document covers: ${missing.join(", ")}.`,
+      action: `Copy the starter for each topic you want from \`.bkit/templates/docs/\` into \`docs/\`, fill it in from the repository, and add its row to \`## Project Documents\` in ${PROJECT_INDEX_PATH}. A document you already keep elsewhere counts: index it with \`Equivalent to <recommended path>\` in its Scope cell. Skip topics that do not apply.`,
+    });
+  }
+  if (empty.length > 0) {
+    findings.push({
+      id: "project-docs-empty",
+      severity: "advisory",
+      detect: `These project documents are empty: ${empty.join(", ")}.`,
+      action: `Write the project's facts into each file, or delete it and remove its row from ${PROJECT_INDEX_PATH}. Agents cannot use an empty document.`,
+    });
+  }
+  if (unpopulated.length > 0) {
+    findings.push({
+      id: "project-docs-unpopulated",
+      severity: "advisory",
+      detect: `These project documents still hold only the shipped starter text: ${unpopulated.join(", ")}.`,
+      action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, or index an equivalent document that already holds them (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes.`,
+    });
+  }
+  if (unindexed.length > 0) {
+    findings.push({
+      id: "project-docs-unindexed",
+      severity: "advisory",
+      detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them: ${unindexed.join(", ")}.`,
+      action: `Add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH}, or run \`bkit upgrade\` to register the default paths.`,
+    });
+  }
+  if (ambiguous.length > 0) {
+    findings.push({
+      id: "project-docs-ambiguous",
+      severity: "advisory",
+      detect: `bkit did not read these project documents or the index: ${ambiguous.join("; ")}.`,
+      action: `Replace each with a regular file inside the repository (no symbolic link, no \`..\` path), or repair the \`## Project Documents\` table in ${PROJECT_INDEX_PATH}. bkit changes none of them itself.`,
+    });
+  }
+
+  return findings.filter((f) => {
+    if (!isAdvisorySuppressed(cwd, f.id, f.severity)) return true;
+    onSuppressed?.({ id: f.id, scope: "." });
+    return false;
+  });
 }

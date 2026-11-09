@@ -75,6 +75,8 @@ const PLAN_HEADINGS = [
   "### Core",
   "### Conditional",
   "### 🔒 Gate 1: Prerequisites Check",
+  "## Documentation Consultation",
+  "## Documentation Warnings",
   "## Data Schema Integration",
   "### Data Schema Usage",
   "### Data Schema Changes",

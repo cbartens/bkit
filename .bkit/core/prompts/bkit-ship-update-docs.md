@@ -55,8 +55,12 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task.
    - Exclude `knowledge.jsonl` and `decisions.jsonl`.
+   - Check coverage before editing, for each of the ten recommended topics (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) the shipped files touch: presence (absent or missing file), index accuracy (a row without a file, a file without a row, an `Equivalent to docs/{topic}.md` Scope cell), and project content (empty, or still the `.bkit/templates/docs/{topic}.md` starter).
+   - Mark an irrelevant topic not applicable, with the reason.
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Never report a clean sync while a relevant topic is absent or incomplete.
+   - Populate a relevant absent or starter-only document only within the ship's scope and from facts verified in the shipped files; otherwise report the gap.
 3. Read the history shipped this cycle:
    - Run `git rev-parse --is-shallow-repository`.
    - **If** it prints `true` → name the boundary commit in the output, and say that older history is unread.
@@ -67,6 +71,16 @@ autoCompactWindow: 300000
 7. Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line.
    - Do not write `docs/deferrals.jsonl`.
 8. Produce the **Create** output.
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "testing",
+       "gap": "starter-only",
+       "recommendedPath": "docs/testing.md",
+       "alternativeEvidence": "The test runner configuration names the available tiers",
+       "action": "Populate the testing document with the lane graph and tier rules."
+     }
+     ```
 
 **Output format:**
 
@@ -80,6 +94,14 @@ autoCompactWindow: 300000
 ## Drift Resolved
 
 [For each file, which passes applied and which gaps closed. **If** none → `None`.]
+
+## Unresolved Coverage
+
+[Each topic that is absent, unindexed, empty, starter-only or undercovered after this run, with the evidence. Report it next to the edits above; it never makes the sync read as clean. **If** every relevant topic is covered → `None`.]
+
+## Documentation Warnings
+
+[The `jsonl` records from step 8. **If** no gaps → omit this section.]
 
 ## Pending Items
 

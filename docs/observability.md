@@ -193,6 +193,26 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
 - `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
 
+## Project documentation advisories
+
+`detectProjectDocs` (`checks/after/tools.ts`) runs in Phase 3 and returns advisories only; none blocks install, upgrade, check or doctor. A document an indexed row covers at another path (same basename, or a Scope cell `Equivalent to docs/{topic}.md`) counts for its topic. The detector never reads a symbolic link or a path outside the repository.
+
+<!-- prettier-ignore -->
+| Finding id | Raised when |
+| --- | --- |
+| `project-docs-index-missing` | `.agents/docs.md` is absent |
+| `project-docs-missing` | A recommended topic has no document and no indexed equivalent |
+| `project-docs-empty` | A covering document is empty |
+| `project-docs-unpopulated` | A covering document is still a current or legacy starter, or only headings |
+| `project-docs-unindexed` | A populated candidate exists but the index does not list it |
+| `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |
+
+A document that differs from every starter is a candidate for agent assessment; the check does not claim it is complete.
+
+## Phase documentation warnings
+
+Agents that consult project documents write gaps as `jsonl` records (`topic`, `gap`, `recommendedPath`, `alternativeEvidence`, `action`) under `## Documentation Warnings`. `bkit workflows summary` (`commands/workflow/summary.ts`) reads those records only from the active run's step artifacts, skips raw `*-input-*` files and malformed lines, merges records by topic and gap, and prints one `## Documentation Warnings` section in the summary. The section is advisory and never changes the verdict or failure count.
+
 ## Phase 3 Credential + Migration Findings
 
 Phase 3 emits credential findings as advisory text. Finding ids = audit trail:
