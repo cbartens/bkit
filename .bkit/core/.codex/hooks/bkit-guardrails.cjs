@@ -36,7 +36,10 @@
 // {{BKIT_MANAGED_MARKER}}
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+// {{BKIT_PART gateguard-engine.js}}
 
 // {{BKIT_PART guardrails-shell.js}}
 
@@ -60,7 +63,7 @@ function deny(reason) {
  * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
  * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs, ctx) {
+function decideShell(cmd, dirs, ctx, session) {
   const c = String(cmd || "").trim();
   const v = classifyShell(c, dirs, ctx);
   if (!v) return allow();
@@ -83,7 +86,16 @@ function decideShell(cmd, dirs, ctx) {
       );
     default:
       // Shell-as-edit-channel: advisory on every host, never a block.
-      return ask(shellEditAdvisory(v.edits));
+      return ask(
+        shellEditContext(
+          shellEditAdvisory(v.edits),
+          v.edits,
+          ctx,
+          session,
+          undefined,
+          ADVICE_BUDGETS.codex,
+        ),
+      );
   }
 }
 
@@ -105,7 +117,7 @@ function bkitGuardrails(payload) {
   // Codex passes the command as a string, or as an argv array for some shells.
   const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd, hookDirs(payload), hookContext(payload));
+  const decision = decideShell(cmd, hookDirs(payload), hookContext(payload), payload.session_id);
   return decision.verdict === "allow" ? null : decision;
 }
 

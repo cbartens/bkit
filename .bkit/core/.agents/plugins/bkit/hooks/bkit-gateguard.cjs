@@ -43,7 +43,13 @@ const crypto = require("node:crypto");
 
 // Antigravity's file-writing tools. `write_to_file` creates or overwrites a whole file;
 // `replace_file_content` edits in place. `Edit` / `Write` are accepted as matchers too.
-const EDIT_TOOLS = new Set(["write_to_file", "replace_file_content", "Edit", "Write"]);
+const EDIT_TOOLS = new Set([
+  "write_to_file",
+  "replace_file_content",
+  "multi_replace_file_content",
+  "Edit",
+  "Write",
+]);
 
 // Antigravity names the touched path `TargetFile`; `file_path` / `path` / `target_file`
 // cover a consumer's own matcher. Resolved against cwd.
@@ -69,14 +75,29 @@ function bkitGateguard(payload) {
   const input = p.tool_input || {};
   const cwd = typeof p.cwd === "string" ? p.cwd : "";
   const sessionId = dedupKey(p.session_id, p.agent_id);
-  const target = parseEditTargets(input, cwd).find((t) => !alreadyWarned(sessionId, t.file));
-  if (!target) return null;
-  // A write_to_file to a not-yet-existing path is a NEW file and gets the reuse checklist;
-  // replace_file_content is always an in-place edit of an existing file.
-  const isNew = p.tool_name === "write_to_file" && !fs.existsSync(target.file);
-  const result = firstTouchAdvice(target.file, sessionId, isNew);
-  if (!result) return null;
-  return adviseOnce("gateguard", sessionId, agCallSignature(p.tool_name, input), result.context);
+  // Prepare every unwarned target (nothing recorded), select complete blocks inside the
+  // budget, and acknowledge them only once the deny-once transport has delivered them.
+  const blocks = [];
+  const seen = new Set();
+  for (const t of parseEditTargets(input, cwd)) {
+    // A write_to_file to a not-yet-existing path is a NEW file and gets the reuse
+    // checklist; the replace tools always edit an existing file in place.
+    const isNew = p.tool_name === "write_to_file" && !fs.existsSync(t.file);
+    const prepared = prepareAdvice(t.file, sessionId, isNew, cwd);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    blocks.push(prepared);
+  }
+  if (blocks.length === 0) return null;
+  const { selected, context } = selectAdvice(blocks, ADVICE_BUDGETS.antigravity);
+  const sent = adviseOnceDelivery(
+    "gateguard",
+    sessionId,
+    agCallSignature(p.tool_name, input),
+    context,
+  );
+  if (sent.delivered) acknowledgeSelected(selected);
+  return sent.decision;
 }
 
 // bkit:end

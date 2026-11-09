@@ -19,7 +19,7 @@
       },
       {
         "command": "node .cursor/hooks/bkit-gateguard.cjs",
-        "matcher": "Write"
+        "matcher": "Write|Delete"
       },
       {
         "command": "node .cursor/hooks/bkit-readguard.cjs",

@@ -187,12 +187,18 @@ function advisoryFor(tool, targets, sessionID, isNewFile) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off" || mode === "deny") return null;
   if (!EDIT_TOOLS.has(tool)) return null;
-  const contexts = [];
+  // Every target is prepared (nothing recorded); only complete blocks inside the OpenCode
+  // budget are shown and acknowledged. Alias spellings of one file share one identity.
+  const blocks = [];
+  const seen = new Set();
   for (const target of targets) {
-    const result = firstTouchAdvice(target.file, sessionID, target.isNew ?? isNewFile);
-    if (result) contexts.push(result.context);
+    const prepared = prepareAdvice(target.file, sessionID, target.isNew ?? isNewFile);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    blocks.push(prepared);
   }
-  return contexts.length > 0 ? contexts.join("\n\n") : null;
+  const delivered = deliverAdvice(blocks, ADVICE_BUDGETS.opencode, true);
+  return delivered ? delivered.context : null;
 }
 
 /** OpenCode 1.x before hook: `(input, output)`, tool args on `output.args`. */

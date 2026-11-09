@@ -299,6 +299,7 @@ const ADVICE_BUDGETS = {
   codex: { limit: 2000, unit: "bytes" },
   cursor: { limit: 2000, unit: "bytes" },
   antigravity: { limit: 2000, unit: "bytes" },
+  opencode: { limit: 8000, unit: "chars" },
 };
 const ADVICE_NOTICE_RESERVE = 512;
 
@@ -306,12 +307,10 @@ function adviceSize(text, unit) {
   return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
 }
 
-// Delivers prepared advice blocks inside `budget`: only whole blocks, in order, with
-// `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Acknowledges exactly
-// the selected blocks, and only when `verified` says the route reaches the model. Returns
-// `{ mode, context }` or null when there is nothing to say.
-function deliverAdvice(blocks, budget, verified) {
-  if (blocks.length === 0) return null;
+// Selects prepared advice blocks inside `budget`: only whole blocks, in order, with
+// `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Pure: acknowledges
+// nothing. Returns `{ selected, context }` (`context` includes the omitted-target notice).
+function selectAdvice(blocks, budget) {
   const sep = "\n\n";
   const room = budget.limit - ADVICE_NOTICE_RESERVE;
   const selected = [];
@@ -335,11 +334,54 @@ function deliverAdvice(blocks, budget, verified) {
       `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`,
     );
   }
-  let mode = "advisory";
-  if (verified) {
-    let durable = true;
-    for (const b of selected) if (!acknowledgeAdvice(b)) durable = false;
-    mode = selected.length > 0 && (durable || processPersists()) ? selected[0].mode : "advisory";
+  return { selected, context: texts.join(sep) };
+}
+
+// Records the selected blocks once their route has delivered them. Returns the mode to
+// report: a deny only when every record is durable (or the process outlives the call).
+function acknowledgeSelected(selected) {
+  if (selected.length === 0) return "advisory";
+  let durable = true;
+  for (const b of selected) if (!acknowledgeAdvice(b)) durable = false;
+  return durable || processPersists() ? selected[0].mode : "advisory";
+}
+
+// Delivers prepared advice blocks inside `budget` (see `selectAdvice`). Acknowledges exactly
+// the selected blocks, and only when `verified` says the route reaches the model. Returns
+// `{ mode, context }` or null when there is nothing to say.
+function deliverAdvice(blocks, budget, verified) {
+  if (blocks.length === 0) return null;
+  const { selected, context } = selectAdvice(blocks, budget);
+  return { mode: verified ? acknowledgeSelected(selected) : "advisory", context };
+}
+
+// Prepared per-file blocks for the exact targets of a shell edit. Shell targets are
+// relative to the evidence root (`ctx.root`, else `ctx.cwd`); they normalize to the same
+// absolute identity the edit tools record, so both channels share one warning. A shell
+// edit is advisory only and never a new-file reuse check: the file may not exist yet.
+function shellTargetBlocks(targets, ctx, sessionId, agentId) {
+  const base = (ctx && (ctx.root || ctx.cwd)) || process.cwd();
+  const sid = dedupKey(sessionId, agentId);
+  const blocks = [];
+  const seen = new Set();
+  for (const t of targets || []) {
+    const prepared = prepareAdvice(t, sid, false, base);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    // The record carries only the normalized path: the relative spelling is shell-local.
+    prepared.spelling = prepared.key;
+    blocks.push(prepared);
   }
-  return { mode, context: texts.join(sep) };
+  return blocks;
+}
+
+// The shell `notice` plus the per-file checklists for the evidence's exact targets, inside
+// `budget`. Always advisory text (never a deny); acknowledges the delivered blocks.
+function shellEditContext(notice, edits, ctx, sessionId, agentId, budget) {
+  const delivered = deliverAdvice(
+    shellTargetBlocks(edits.targets, ctx, sessionId, agentId),
+    budget,
+    true,
+  );
+  return delivered ? `${notice}\n\n${delivered.context}` : notice;
 }

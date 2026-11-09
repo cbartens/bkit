@@ -28,7 +28,10 @@
 // {{BKIT_MANAGED_MARKER}}
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+// {{BKIT_PART gateguard-engine.js}}
 
 // {{BKIT_PART guardrails-shell.js}}
 
@@ -61,7 +64,7 @@ function deny(userMessage, agentMessage) {
  * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
  * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs, ctx) {
+function decideShell(cmd, dirs, ctx, session) {
   const c = cmd.trim();
   const v = classifyShell(c, dirs, ctx);
   if (!v) return allow();
@@ -86,7 +89,17 @@ function decideShell(cmd, dirs, ctx) {
     default:
       // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
       // naming the edited paths.
-      return { permission: "allow", agent_message: shellEditAdvisory(v.edits) };
+      return {
+        permission: "allow",
+        agent_message: shellEditContext(
+          shellEditAdvisory(v.edits),
+          v.edits,
+          ctx,
+          session,
+          undefined,
+          ADVICE_BUDGETS.cursor,
+        ),
+      };
   }
 }
 
@@ -118,7 +131,12 @@ function bkitGuardrails(payload) {
     payload.tool_name == null &&
     payload.tool_input == null
   ) {
-    return decideShell(payload.command, hookDirs(payload), hookContext(payload));
+    return decideShell(
+      payload.command,
+      hookDirs(payload),
+      hookContext(payload),
+      payload.session_id || payload.conversation_id,
+    );
   }
 
   // preToolUse Read/TabRead: { tool_name, tool_input: { path|file_path|target_file|... } }

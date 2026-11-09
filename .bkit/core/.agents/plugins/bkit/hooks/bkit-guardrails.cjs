@@ -42,6 +42,8 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+// {{BKIT_PART gateguard-engine.js}}
+
 // {{BKIT_PART guardrails-shell.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
@@ -116,12 +118,26 @@ function bkitGuardrails(payload) {
       reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
     };
   }
+  const ctx = hookContext(p);
+  const notice = tier.edits ? shellEditAdvisory(tier.edits) : "";
+  const blocks = tier.edits
+    ? shellTargetBlocks(tier.edits.targets, ctx, p.session_id, p.agent_id)
+    : [];
+  const selection = blocks.length > 0 ? selectAdvice(blocks, ADVICE_BUDGETS.antigravity) : null;
+  const edits = [notice, selection ? selection.context : ""].filter(Boolean).join("\n\n");
   const advisory =
     tier.tier === "fetch"
       ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}` +
-        (tier.edits ? `\n\n${shellEditAdvisory(tier.edits)}` : "")
-      : shellEditAdvisory(tier.edits);
-  return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
+        (edits ? `\n\n${edits}` : "")
+      : edits;
+  const sent = adviseOnceDelivery(
+    "guardrails",
+    p.session_id,
+    agCallSignature(tool, input),
+    advisory,
+  );
+  if (sent.delivered && selection) acknowledgeSelected(selection.selected);
+  return sent.decision;
 }
 
 // bkit:end
