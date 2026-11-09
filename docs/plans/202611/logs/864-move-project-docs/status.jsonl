@@ -163,3 +163,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T12:27:26Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/1/2/comment","hash":"af6093311f0e9ac70c66f28f39cee411c469dcdcb324d691c92d19421580184c","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6739866174","at":"2026-11-09T12:27:28Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-09T12:27:28Z","parentSha":"6a6b1ab7f7a013f3290774000beb41cea2af4708","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-tasks-1-log.md"],"verdict":"PASS","attempt":2,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:27:31Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:27:39Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:27:39Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:38:55Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:44:27Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/3/comment","hash":"1597cce806721cd6347dcb003a47f091ef7f91fe97ac4e1c5108a34168048db5","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6739866174","at":"2026-11-09T12:44:30Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T12:44:30Z","parentSha":"c3104f1d8e580bba09f6709f2f4c592cfed67c35","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-verify-1-3.md"],"verdict":"PASS","attempt":3,"group":1,"failures":0}
