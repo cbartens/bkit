@@ -124,7 +124,8 @@ describe("no workflow or prompt names a template path", () => {
     expect(templates.length).toBeGreaterThan(0);
     for (const rel of templates) expect(names, rel).toContain(rel);
     for (const rel of [
-      ".prettierignore",
+      "prettierignore.example",
+      "lintstagedrc.example.json",
       ".cursor/Dockerfile",
       ".serena/project.yml",
       ".graphifyignore",

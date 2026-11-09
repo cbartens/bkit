@@ -34,7 +34,7 @@ type Op =
 type Edit = Op & { kind: Kind; what: string };
 
 type Entry =
-  | { status: "adopted"; edits: Edit[] }
+  | { status: "adopted"; edits: Edit[]; copyAs?: string }
   | { status: "not-adopted"; what: string }
   | { status: "generated"; what: string }
   /** The repo root has its own file under the same name; it is not an adopted copy. */
@@ -309,8 +309,9 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".prettierignore": {
+  "prettierignore.example": {
     status: "adopted",
+    copyAs: ".prettierignore",
     edits: [
       {
         kind: "bkit-only",
@@ -325,7 +326,7 @@ const ADOPTED: Record<string, Entry> = {
       },
     ],
   },
-  ".lintstagedrc.json": identical,
+  "lintstagedrc.example.json": { status: "adopted", copyAs: ".lintstagedrc.json", edits: [] },
   ".oxlintrc.json": {
     status: "adopted",
     edits: [
@@ -781,7 +782,10 @@ describe("this repo adopts its own templates", () => {
     expect(Object.keys(ADOPTED).sort()).toEqual(templatePaths());
   });
 
-  const copyPathOf = (rel: string) => path.join(repo, rel);
+  const copyPathOf = (rel: string) => {
+    const entry = ADOPTED[rel];
+    return path.join(repo, entry?.status === "adopted" ? (entry.copyAs ?? rel) : rel);
+  };
 
   it.each(entriesWith("not-adopted"))("%s", (rel, entry) => {
     expect(fs.existsSync(copyPathOf(rel)), `${rel}: ${entry.what}`).toBe(false);

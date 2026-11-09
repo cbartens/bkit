@@ -70,7 +70,11 @@ import {
   writeCursorCloudDoc,
   writeCursorCliPermissionsArtifact,
 } from "../../install/cloud-env.js";
-import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import {
+  syncTemplateCopies,
+  formatTemplateChanges,
+  warnMissingLintStagedConfig,
+} from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { type ModuleContext, renderManagedOutputs } from "../../install/modules/index.js";
@@ -1059,6 +1063,8 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   );
 
   // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
+  // A real upgrade prints the missing-lint-staged line through the advisories; a dry run prints it here.
+  if (upgradeFlags.dryRun) warnMissingLintStagedConfig(process.cwd());
   if (!upgradeFlags.dryRun) await runUpgradeAdvisories();
 
   // Non-interactive mode: exit non-zero on conflicts
