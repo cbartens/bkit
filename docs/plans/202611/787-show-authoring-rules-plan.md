@@ -407,7 +407,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Integrate Claude shell advice and NotebookEdit payloads
+- [x] **TASK 6:** Integrate Claude shell advice and NotebookEdit payloads
   - **UPDATE:** `.bkit/core/hooks/gateguard-edit-payload.js`: accept NotebookEdit/notebook_path and the existing edit payloads with shared preparation/batching identity.
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-gateguard.cjs`: retain the existing pure entry point and output contract while integrating complete advice.
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-guardrails.cjs`: render the shared engine and compose fetch/edit advice with effective cwd/session/agent context; preserve non-blocking behavior and a single response.
@@ -435,7 +435,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Integrate Codex initial shell commands and complete patch batches
+- [x] **TASK 8:** Integrate Codex initial shell commands and complete patch batches
   - **UPDATE:** `.bkit/core/.codex/hooks/bkit-gateguard.cjs`: consume every exact add/update/delete/move target, not only the first eligible target; batch through the shared engine and preserve payload cwd identity.
   - **UPDATE:** `.bkit/core/.codex/hooks/bkit-guardrails.cjs`: compose richer shell evidence and general advice within the existing protocol and protections.
   - **READ:** `.bkit/shared/.codex/hooks.json`: retain existing apply_patch and Bash registration; interactive write_stdin is outside this pre-tool coverage.
@@ -448,7 +448,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Integrate Antigravity multi-replace and preserve OpenCode boundaries
+- [x] **TASK 9:** Integrate Antigravity multi-replace and preserve OpenCode boundaries
   - **UPDATE:** `.bkit/core/.agents/plugins/bkit/hooks/bkit-gateguard.cjs`: accept multi_replace_file_content and its documented targets alongside existing edit tools; batch shared advice with the existing transport.
   - **UPDATE:** `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs`: integrate shared shell advice without changing the established advisory deny-once/retry transport or stronger decisions.
   - **UPDATE:** `.bkit/core/hooks/antigravity-hook.js`: retain the existing hashed retry signature and expose transport acceptance internally so acknowledgement follows a complete selected block's acceptance. An identical retry or unavailable retry-store location returns the existing bare allow and does not acknowledge newly prepared targets; keep the public driver envelope and fail-open behavior unchanged.
