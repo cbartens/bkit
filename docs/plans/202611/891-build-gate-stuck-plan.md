@@ -5,7 +5,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Build Gate Pause: Base-Commit Evidence and Resume Re-Run Implementation Plan
@@ -235,19 +235,19 @@ No breaking change. Every CLI and type change adds; a decision file written befo
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question Q1:** What does the loop question recommend when only some failing tests also fail on the base commit? → The owner decides at plan review.
+- **Open Question Q1:** What does the loop question recommend when only some failing tests also fail on the base commit? → **Answered:** the owner chose A (decision `891-base-commit-check-at-the-decision-pause`).
   - **Options:** A) The trend rule, with the "a round can fix X of N; the build will still stop on the Y from `dev`" sentence as the reason's lead — a headless run still has a recommendation to take, and the owner sees the split · B) No recommendation — matches "the owner chooses" most literally, but a loop question without one is a hard blocker, so a headless run goes to the Failure Path at every such pause · C) Always `Try again` — fixes the branch's share first, but recommends a round even when the trend says the round is stuck.
   - **Recommended:** A) The trend rule — the split is shown either way, and only A keeps headless runs moving without overriding the trend.
   - **Default if unanswered:** A.
-- **Open Question Q2:** What does the loop question recommend when none of the failing tests fail on the base commit? → The owner decides at plan review.
+- **Open Question Q2:** What does the loop question recommend when none of the failing tests fail on the base commit? → **Answered:** the owner chose A (decision `891-base-commit-check-at-the-decision-pause`).
   - **Options:** A) The trend rule, with the reason "the failures come from this branch" — keeps the existing stuck/closing logic · B) Always `Try again` — every failure is the branch's, but a stuck round would be recommended again.
   - **Recommended:** A) The trend rule — the base verdict says a round _can_ help, the trend says whether the last one _did_.
   - **Default if unanswered:** A.
-- **Open Question Q3:** Which install does the base run use? → The owner decides at plan review.
+- **Open Question Q3:** Which install does the base run use? → **Answered:** the owner chose A (decision `891-base-commit-check-at-the-decision-pause`).
   - **Options:** A) `pnpm install --frozen-lockfile --prefer-offline` — takes packages from the local store and downloads only what is missing · B) `pnpm install --frozen-lockfile --offline` — never touches the network, but fails (verdict `unknown`) whenever the store lacks a package only the base commit uses · C) `pnpm install --frozen-lockfile` — always checks the registry, slowest.
   - **Recommended:** A) `--prefer-offline` — the issue's ~8 s measurement was an offline-store install; A keeps that speed and still works when the store is missing an old version.
   - **Default if unanswered:** A.
-- **Open Question Q4:** How does a resume record that it re-ran the gate instead of asking? → The owner decides at plan review.
+- **Open Question Q4:** How does a resume record that it re-ran the gate instead of asking? → **Answered:** the owner chose A (decision `891-resume-reruns-a-red-gate-pause`).
   - **Options:** A) `decisions apply --by=rerun` writes `Decision: Re-run gate — the owner resumed the run, so the gate runs again first ({date})` under Q1 and sets `Status: DECIDED` — no new status; `statusOf`, `pending` and the build summary stay as they are · B) A new `Status: RERUN` with a `Re-run:` line — distinct in the file, but `statusOf`, `apply`, `pending` and the build summary's "no decision recorded" check (`.bkit/core/engine/commands/workflow/summary.ts`) all have to learn it.
   - **Recommended:** A) — the resume is an answer to the pause's question, so it belongs on a `Decision:` line, and nothing else changes.
   - **Default if unanswered:** A.
@@ -325,7 +325,7 @@ The base run executes the base commit's own `bkit:test:file` script and install 
 - [ ] **Package Management:** No package is added or removed. `--prefer-offline` is a flag of the existing `pnpm` runner, and `pnpm-lock.yaml` stays as it is.
 - [ ] **Dependency Versions:** Node v24.16.0, pnpm 10.34.7, gh 2.102.0 and git 2.56.0 are installed. `pnpm bkit:deps:outdated` lists only dev dependencies (oxlint-tsgolint 7.0.2004 → 7.0.2005, oxlint 1.89 → 1.90, @types/node 24.19.2 → 26.6.6, vite 6.4.5 → 8.3.5); none blocks this plan's build.
 - [ ] **Existing-Solution Search (reuse over duplicate):** The searches are recorded in `Reuse Inventory`.
-- [ ] **User Context:** Every file the runbook reads or changes was opened in this worktree (`/Users/christian/Documents/GitHub/bkit/.worktrees/891-build-gate-stuck`). The owner's answers to Q1-Q4 are the only missing input; each has a default.
+- [ ] **User Context:** Every file the runbook reads or changes was opened in this worktree (`/Users/christian/Documents/GitHub/bkit/.worktrees/891-build-gate-stuck`). The owner answered Q1-Q4 (A for each), so no input is missing.
 - [ ] **Project Context:** The `docs/decisions.jsonl` rows keyed `891-*` were read (the three accepted-failure rows are `SUPERSEDED`), as were the `891-*` deferral rows and knowledge rows on `dist/` staleness (`kn-7-dist-staleness-pnpm-build-must-run-before-push-for-bk`) and spawn-heavy unit suites (`spawn-heavy-unit-suite-needs-its-own-budget-under-load`).
 - [ ] **Testing & Quality:** The tiers follow `docs/testing.md` § Which tier does a behaviour need? and § Tiers: pure logic at Unit, the verb through `tsx` at Integration, real temp git repos with the `useGateRunner` fixture and the gh stub, and no mocking library. Spawn-heavy unit suites use `describe(..., { timeout: tierTimeouts(true).testTimeout })` from `vitest.timeout-budget.ts`.
 - [ ] **Prerequisite Plans:** None. The #889 holistic-loop change (`6fc6a44b8`) is already on `dev` and in this branch.
