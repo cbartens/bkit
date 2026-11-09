@@ -89,6 +89,7 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 | --- | --- | --- | --- |
 | Fresh installation ships all ten templates without managed markers or creating managed project docs; legacy migration removes only ownership metadata, preserves edits inside/outside blocks and index entries, is idempotent, handles missing/malformed markers safely and leaves still-managed files unchanged; later install/upgrade/check/uninstall preserve project ownership | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts`, `.bkit/core/engine/commands/install/upgrade.integration.test.ts`, `.bkit/core/engine/commands/install/uninstall.integration.test.ts` | 1 |
 | Explicit adoption registers the starter immediately, preserves existing equivalent entries and handles retries and unsafe paths | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 2 |
+| A second upgrade leaves project docs, the doc index and the version file byte-identical, ignoring the two files that change on every run by design | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 8 |
 | Ownership audits resolve relocated starter paths and the managed destinations of operational guidance | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 2 |
 | The template-path guard accepts a named project-document read with applicability, equivalents and warning-and-continue behavior, and rejects a mandatory document read and hard dependencies on executable or configuration templates | Unit | `.bkit/core/engine/audits/templates/template-path-refs.test.ts` | 2 |
 | Adoption advisories distinguish missing, zero-content, unchanged starters, populated and indexed equivalent docs; remain non-blocking and respect existing advisory controls | Unit | `.bkit/core/engine/checks/after/tools.test.ts`, `.bkit/core/engine/checks/after/index.test.ts` | 5 |
@@ -392,6 +393,19 @@ The groups describe implementation order. A single pull request can carry all gr
     - `.bkit/core/engine/audits/templates/template-path-refs.test.ts` `allows qualified project document reads and rejects mandatory template dependencies` fails on rejection of the qualified read, acceptance of an unconditional project-doc read, or acceptance of a hard dependency on an executable or configuration template.
 
 <!-- bkit:task 2 end -->
+
+<!-- bkit:task 8 start -->
+
+- [ ] **TASK 8:** Narrow the second-upgrade idempotency check to the files the migration owns.
+  - **READ:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: find the closing snapshot of `migrates legacy ownership without changing project text or core ownership`.
+  - **READ:** `.bkit/core/engine/install/cloud-env.ts`: `renderCloudCacheBust` bumps the `# cache-bust` counter in `.claude/bkit-cloud.md` on every upgrade, by design.
+  - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: make the closing "second run changes nothing" comparison skip `.claude/bkit-cloud.md` and `.bkit/advisories.md` (its `_Mode:` line differs between `check` and `upgrade`). Compare every other file.
+  - **DEPENDS ON:** 1
+  - **DONE WHEN:** `migrates legacy ownership without changing project text or core ownership` passes. Project docs, the doc index and `.bkit/version` are compared byte for byte between the two runs, and only `.claude/bkit-cloud.md` and `.bkit/advisories.md` are left out of the comparison. No source file changes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `leaves project docs, the index and the version file unchanged when upgrade runs twice` fails on any project doc, index row or `.bkit/version` byte differing between the first and second upgrade.
+
+<!-- bkit:task 8 end -->
 
 <!-- bkit:group 1 end -->
 
