@@ -576,6 +576,18 @@ export const statusCommand = {
                     if (registered === undefined)
                         throw new CommandError(EXIT.USAGE, `--step ${step} is not a registered ${workflow} step`);
                     const statusPath = path.resolve(ctx.cwd, file);
+                    const realFile = (() => {
+                        let dir = path.dirname(statusPath);
+                        const tail = [path.basename(statusPath)];
+                        while (!fs.existsSync(dir) && path.dirname(dir) !== dir) {
+                            tail.unshift(path.basename(dir));
+                            dir = path.dirname(dir);
+                        }
+                        return path.join(fs.realpathSync(dir), ...tail);
+                    })();
+                    const realTop = fs.realpathSync(top);
+                    if (realFile !== realTop && !realFile.startsWith(realTop + path.sep))
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is outside this checkout (${top}); issue the invocation from the checkout that owns the run`);
                     const logs = path.dirname(path.dirname(statusPath));
                     if (path.basename(statusPath) !== "status.jsonl" ||
                         path.basename(logs) !== "logs" ||
