@@ -373,7 +373,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Bind managed commands to engine-issued invocation context (deterministic-bookkeeping-4; R1–R7, R21–R22).
+- [x] **TASK 1:** Bind managed commands to engine-issued invocation context (deterministic-bookkeeping-4; R1–R7, R21–R22).
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add common explicit invocation resolution (one `--invocation` flag/receipt shared with #836's host pass-through), conflict/path validation and help/spec support without using implicit journal discovery as authority.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: specialize typed workflow invocation issuance/lookup plus explicit standalone audit/utility issuance into the existing outbox; return validated scope and operation/correction inputs without inventing a run/FID.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation events and exact run/step occurrence resolution; retain existing reducer contracts. One record per agent call carries run, step and agent (this plan) plus host and configured model at start (#836); reuse whatever #836 has landed and add no second invocation type to `status.jsonl`.
@@ -432,7 +432,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Record invocations and invocation-bound engine calls in the run's status log (owner decision, build decision 1; closes Task 1's status-authority and journal gaps).
+- [x] **TASK 10:** Record invocations and invocation-bound engine calls in the run's status log (owner decision, build decision 1; closes Task 1's status-authority and journal gaps).
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation event for a workflow-mode invocation, with exact run/step/agent/group/attempt resolution; status is the authority and the outbox receipt is an index rebuilt from it. Add no second invocation type.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` appends that event to the run's own `status.jsonl` and writes the receipt from it; a lookup whose receipt is missing rebuilds it from the event.
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: `runCommand` writes the `engine-call` row for invocation-bound calls again, into the issuing run's own status log only, never another worktree's.
@@ -450,7 +450,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Keep invocation issuance inside the issuing checkout and out of step timing (owner decision, build decision 2; closes verify attempt 5 gaps).
+- [x] **TASK 11:** Keep invocation issuance inside the issuing checkout and out of step timing (owner decision, build decision 2; closes verify attempt 5 gaps).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` refuses a `--file` outside the issuing checkout's top folder before any write, so an invocation row never lands in another worktree's `status.jsonl` and an id is never tied to another worktree's run.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.ts`: add the `invocation` row type to `MARK_ROWS` so a step's minutes start at the previous step's row, not at an invocation row.
   - **DEPENDS ON:** 10.
