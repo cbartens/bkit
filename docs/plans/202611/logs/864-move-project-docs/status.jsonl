@@ -191,3 +191,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:22Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/1/3/comment","hash":"61771845ea9509889168a612bfd223702a9b260afd5de583dec104f509ad54b9","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6740833695","at":"2026-11-09T13:08:24Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-09T13:08:24Z","parentSha":"868fda2b96fcd433cc3ceb2c10f56947591f5895","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-gaps-remediate-1-3-log.md"],"verdict":"CONCERNS","attempt":3,"group":1,"strategy":"FINAL"}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:28Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:44Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:44Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:50Z","noun":"decisions","verb":"apply","flags":["by","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:59Z","noun":"counters","verb":"grant","flags":["name","of","group","point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T13:08:59Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/2/comment","hash":"403e7cea6f8a896ba876bc8880bd0f12c031655c075461ba3f63372feb1db868","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6740846029","at":"2026-11-09T13:09:00Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-09T13:09:00Z","parentSha":"2fbaaf86cf1a46352942d307fb1bcfb5ed03046c","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-decision-1-2.md"],"attempt":2,"route":"verify"}
