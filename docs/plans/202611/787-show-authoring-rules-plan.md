@@ -421,7 +421,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Integrate Cursor Delete and shell advice inside managed ownership
+- [x] **TASK 7:** Integrate Cursor Delete and shell advice inside managed ownership
   - **UPDATE:** `.bkit/core/hooks/gateguard-edit-payload.js`: accept the documented Delete target payload while retaining the shared Claude contract.
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-gateguard.cjs`: extend managed handling without replacing the consumer-owned outer input/output driver.
   - **UPDATE:** `.bkit/core/.cursor/hooks/bkit-guardrails.cjs`: compose shared edit advice with existing shell decisions and output interface.
