@@ -118,6 +118,9 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | resumes corrected substep and blocks exhausted unauthorized or uncertain effects | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 8 |
 | renders one recovery precedence contract for all hosts and tracker adapters | Unit | `.bkit/core/engine/tools/instructions.test.ts` | 9 |
 | installs and upgrades fresh consumers with deterministic bookkeeping contracts | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
+| records the issued invocation in the run status log and rebuilds a deleted receipt | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 10 |
+| writes the engine-call row for an invocation-bound command | Unit | `.bkit/core/engine/commands/lib.test.ts` | 10 |
+| keeps invocation events and engine-call rows inside the issuing worktree after receipt loss | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 10 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -424,6 +427,24 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `distinguishes unreadable missing malformed and clean ledger coverage without writing` fails on reporting a clean empty scan for unread input or altering original bytes.
 
 <!-- bkit:task 3 end -->
+
+<!-- bkit:task 10 start -->
+
+- [ ] **TASK 10:** Record invocations and invocation-bound engine calls in the run's status log (owner decision, build decision 1; closes Task 1's status-authority and journal gaps).
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation event for a workflow-mode invocation, with exact run/step/agent/group/attempt resolution; status is the authority and the outbox receipt is an index rebuilt from it. Add no second invocation type.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` appends that event to the run's own `status.jsonl` and writes the receipt from it; a lookup whose receipt is missing rebuilds it from the event.
+  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: `runCommand` writes the `engine-call` row for invocation-bound calls again, into the issuing run's own status log only, never another worktree's.
+  - **UPDATE:** `docs/observability.md`: `[bkit-telemetry]` states that invocation-bound calls write their `engine-call` row to the issuing run's status log.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.test.ts`: the owner approved replacing the assertion in `issues invocation metadata from an explicit run and registered step` that issuing changes no run state with: the issuing run's own status log gains the invocation event. Keep every other expectation of that test.
+  - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: the owner approved replacing the assertion in `resumes explicit invocation across two real worktrees without identity leakage` that the status bytes stay unchanged with: only the issuing run's own status log gains the invocation event and `engine-call` rows, and the other worktree's files stay byte-identical. Keep every other expectation of that test.
+  - **DEPENDS ON:** 1.
+  - **DONE WHEN:** A workflow-mode invocation is an additive event in the run's `status.jsonl` and the outbox receipt is rebuilt from it when missing; invocation-bound commands write their `engine-call` row so `bkit completeness check` sees them; nothing is written to another worktree's status or artifacts; runless audit/utility issuance still creates no run, status file or `docs/` directory; `docs/observability.md` matches; and the three tests below pass together with the two updated Task 1 tests.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `records the issued invocation in the run status log and rebuilds a deleted receipt` fails on issuance leaving `status.jsonl` unchanged or a deleted receipt making a live run's id unresolvable.
+    - `.bkit/core/engine/commands/lib.test.ts` `writes the engine-call row for an invocation-bound command` fails on `runCommand` skipping the journal row when `--invocation` is present.
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps invocation events and engine-call rows inside the issuing worktree after receipt loss` fails on a missing event or row in the issuing worktree's status log, any write to the other worktree, or a resumed command failing after the receipt is deleted.
+
+<!-- bkit:task 10 end -->
 <!-- bkit:group 1 end -->
 
 <!-- bkit:group 2 start -->

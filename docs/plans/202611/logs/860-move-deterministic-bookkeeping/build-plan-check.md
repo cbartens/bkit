@@ -12,7 +12,7 @@ Plan: `docs/plans/202611/860-move-deterministic-bookkeeping-plan.md`. Caps: 5 ta
 <!-- prettier-ignore -->
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
-| 1 | Explicit identity and canonical ledger contracts | 3 | 9 | 7.5 |
+| 1 | Explicit identity and canonical ledger contracts | 4 | 12 | 10.6 |
 | 2 | Replay-safe writes and shared result rendering | 3 | 10 | 8.9 |
 | 3 | Durable continuation and maintained caller contracts | 3 | 8 | 12.8 |
 
@@ -24,6 +24,7 @@ Plan: `docs/plans/202611/860-move-deterministic-bookkeeping-plan.md`. Caps: 5 ta
 | 1 | 1 | 3 | 3 |
 | 2 | 1 | 3 | 3 |
 | 3 | 1 | 3 | 3 |
+| 10 | 1 | 3 | 3 |
 | 4 | 2 | 4 | 3 |
 | 5 | 2 | 3 | 2 |
 | 6 | 2 | 3 | 3 |
@@ -38,3 +39,9 @@ None.
 ## Existence (reported only)
 
 None.
+
+## Planned test names already in use (reported only)
+
+- `docs/plans/202611/860-move-deterministic-bookkeeping-plan.md:387` TASK 1: `.bkit/core/engine/commands/workflow/status.test.ts` already holds a test named "issues invocation metadata from an explicit run and registered step" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/860-move-deterministic-bookkeeping-plan.md:387` TASK 1: `.bkit/core/engine/commands/lib.test.ts` already holds a test named "rejects stale cross-worktree invocation and conflicting overrides" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/860-move-deterministic-bookkeeping-plan.md:387` TASK 1: `.bkit/core/engine/ledgers/journal.integration.test.ts` already holds a test named "resumes explicit invocation across two real worktrees without identity leakage" — name the update to it in TEST FIRST, or give the new test a new name
