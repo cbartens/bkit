@@ -177,3 +177,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T12:49:00Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-09T12:49:13Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-09T12:49:13Z","parentSha":"8cd680a6c63198a7ee71baaf9cd622fe2f83b2f0","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-tasks-1-log.md"],"verdict":"PASS","attempt":2,"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:49:26Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:49:26Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:50:10Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:50:10Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:54:02Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/1/5/comment","hash":"1538cc42b6090ed5b620c9308b6bf50f346a3625c77dfa5b4f46dfc39538cea5","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6739960295","at":"2026-11-09T12:54:04Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T12:54:04Z","parentSha":"16e04bc3db09731d17667b8ef2065084edce986e","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-1-5.md"],"verdict":"CONCERNS","attempt":5,"group":1,"failures":3}
