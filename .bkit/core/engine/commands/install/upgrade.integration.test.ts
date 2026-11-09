@@ -2351,3 +2351,163 @@ describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
     expect(runCli(["check"]).status).toBe(0);
   });
 });
+
+describe("#892 — upgrade replaces the old sample config names", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade replaces the old sample config names", () => {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.writeFileSync(path.join(templates, ".prettierignore"), "node_modules/\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(templates, "prettierignore.example"), { force: true });
+
+    expect(runCli(["upgrade", "--auto-apply"]).status).toBe(0);
+
+    expect(fs.existsSync(path.join(templates, ".lintstagedrc.json"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, ".prettierignore"))).toBe(false);
+    expect(fs.existsSync(path.join(templates, "lintstagedrc.example.json"))).toBe(true);
+    expect(fs.existsSync(path.join(templates, "prettierignore.example"))).toBe(true);
+    expect(runCli(["check"]).status).toBe(0);
+  });
+});
+
+describe("#892 — upgrade warns about a missing root lint-staged config instead of writing one", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  const COPY_LINE = "cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  /** A consumer holding the old sample, gating format on lint-staged, with lint-staged installed and no root config. */
+  function seedNestedSampleConsumer(
+    opts: {
+      gate?: string;
+      devDependencies?: Record<string, string>;
+      rootFile?: [string, string];
+    } = {},
+  ): void {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "consumer",
+          version: "0.0.0",
+          scripts: { "bkit:gate:format": opts.gate ?? "pnpm lint-staged" },
+          devDependencies: opts.devDependencies ?? { "lint-staged": "^17.0.0" },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(tmpDir, ".lintstagedrc.json"), { force: true });
+    if (opts.rootFile)
+      fs.writeFileSync(path.join(tmpDir, opts.rootFile[0]), opts.rootFile[1], "utf-8");
+  }
+
+  it("upgrade writes no root lint-staged config for a consumer that relied on the nested sample", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+
+  it("upgrade names the missing root lint-staged config with the copy command", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(combinedOutput(up)).toContain(
+      `bkit upgrade: no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+  });
+
+  it("upgrade --dry-run names the missing root lint-staged config once and writes none", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--dry-run"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+
+  it("upgrade prints no missing lint-staged config line when the consumer's config is lint-staged.config.ts", () => {
+    seedNestedSampleConsumer({
+      rootFile: ["lint-staged.config.ts", "export default { '*': 'prettier -w' };\n"],
+    });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+
+  it("upgrade prints no missing lint-staged config line when lint-staged is not a dependency", () => {
+    seedNestedSampleConsumer({ devDependencies: {} });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+
+  it("upgrade prints no missing lint-staged config line when the format gate passes lint-staged a config path", () => {
+    seedNestedSampleConsumer({ gate: "pnpm lint-staged --config tools/lint-staged.json" });
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+    expect(combinedOutput(up)).not.toContain(COPY_LINE);
+  });
+});

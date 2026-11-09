@@ -38,7 +38,7 @@ import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
 import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, writeClaudeCloudDoc, writeCodexCloudDoc, writeCursorCloudDoc, writeCursorCliPermissionsArtifact, } from "../../install/cloud-env.js";
-import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import { syncTemplateCopies, formatTemplateChanges, warnMissingLintStagedConfig, } from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { renderManagedOutputs } from "../../install/modules/index.js";
@@ -793,6 +793,9 @@ export async function runUpgradeCommand(upgradeFlags) {
     }
     console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`);
     // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
+    // A real upgrade prints the missing-lint-staged line through the advisories; a dry run prints it here.
+    if (upgradeFlags.dryRun)
+        warnMissingLintStagedConfig(process.cwd());
     if (!upgradeFlags.dryRun)
         await runUpgradeAdvisories();
     // Non-interactive mode: exit non-zero on conflicts

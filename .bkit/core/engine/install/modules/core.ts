@@ -19,7 +19,11 @@ import {
   stripManagedBlock,
 } from "../managed-block.js";
 import type { TokenMap } from "../placeholders.js";
-import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
+import {
+  listFilesRecursive,
+  warnMissingLintStagedConfig,
+  syncTemplateCopies,
+} from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
@@ -1893,6 +1897,7 @@ export function runCoreModule(ctx: ModuleContext): void {
       console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
     }
   }
+  warnMissingLintStagedConfig(cwd);
 
   // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
   // installed package (browse-only, gitignored; no-op in dogfood). A real

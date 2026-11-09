@@ -1,0 +1,79 @@
+=== alpine/git:v2.43.4 ===
+git 2.43.4
+-- 1 empty-from-start, --empty=drop alone
+$ git cherry-pick --empty=drop a3c30324add61ec3683d85a3ce745d0453834794
+usage: git cherry-pick [--edit] [-n] [-m <parent-number>] [-s] [-x] [--ff]
+[exit 129]
+HEAD moved: no
+-- 2 empty-from-start, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop a3c30324add61ec3683d85a3ce745d0453834794
+usage: git cherry-pick [--edit] [-n] [-m <parent-number>] [-s] [-x] [--ff]
+[exit 129]
+HEAD moved: no
+-- 3 becomes-empty, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop d315f34edcb5f480fdf1999826e31055c5c03268
+usage: git cherry-pick [--edit] [-n] [-m <parent-number>] [-s] [-x] [--ff]
+[exit 129]
+HEAD moved: no
+-- 8 fallback without --empty: becomes-empty, --allow-empty only
+$ git cherry-pick --allow-empty d315f34edcb5f480fdf1999826e31055c5c03268
+HEAD detached at 9c8eca6
+The previous cherry-pick is now empty, possibly due to conflict resolution.
+If you wish to commit it anyway, use:
+Otherwise, please use 'git cherry-pick --skip'
+You are currently cherry-picking commit d315f34.
+  (all conflicts fixed: run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+nothing to commit, working tree clean
+[exit 1]
+HEAD moved: no
+sequencer state: stopped
+$ git cherry-pick --skip
+[exit 0]
+HEAD after --skip equals base: yes
+[docker exit 0]
+=== alpine/git:v2.45.1 ===
+git 2.45.1
+-- 1 empty-from-start, --empty=drop alone
+$ git cherry-pick --empty=drop a3c30324add61ec3683d85a3ce745d0453834794
+HEAD detached at 9c8eca6
+The previous cherry-pick is now empty, possibly due to conflict resolution.
+If you wish to commit it anyway, use:
+Otherwise, please use 'git cherry-pick --skip'
+You are currently cherry-picking commit a3c3032.
+  (all conflicts fixed: run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+nothing to commit, working tree clean
+[exit 1]
+HEAD moved: no
+-- 2 empty-from-start, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop a3c30324add61ec3683d85a3ce745d0453834794
+[detached HEAD 95e39b0] X2 empty from the start
+ Date: Mon Nov 9 10:41:50 2026 +0000
+[exit 0]
+HEAD moved: 1 commit(s): X2 empty from the start=0; 
+-- 3 becomes-empty, --allow-empty --empty=drop
+$ git cherry-pick --allow-empty --empty=drop d315f34edcb5f480fdf1999826e31055c5c03268
+dropping d315f34edcb5f480fdf1999826e31055c5c03268 X1 becomes empty on replay -- patch contents already upstream
+[exit 0]
+HEAD moved: no
+-- 8 fallback without --empty: becomes-empty, --allow-empty only
+$ git cherry-pick --allow-empty d315f34edcb5f480fdf1999826e31055c5c03268
+HEAD detached at 9c8eca6
+The previous cherry-pick is now empty, possibly due to conflict resolution.
+If you wish to commit it anyway, use:
+Otherwise, please use 'git cherry-pick --skip'
+You are currently cherry-picking commit d315f34.
+  (all conflicts fixed: run "git cherry-pick --continue")
+  (use "git cherry-pick --skip" to skip this patch)
+  (use "git cherry-pick --abort" to cancel the cherry-pick operation)
+nothing to commit, working tree clean
+[exit 1]
+HEAD moved: no
+sequencer state: stopped
+$ git cherry-pick --skip
+[exit 0]
+HEAD after --skip equals base: yes
+[docker exit 0]

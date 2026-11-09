@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T09:57:50Z)_
+_(refreshed 2026-11-09T12:25:50Z)_
 
 ### Design
 
@@ -34,6 +34,7 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
+| 849-keep-local-dev | 849-keep-local-dev | 1794226387201 |
 
 ### Plan
 
@@ -48,6 +49,7 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
+| 895-one-question-format | 895-one-question-format | 1794222208628 |
 
 ### Build
 
@@ -56,7 +58,6 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
-| 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
 
 ### Debug
 
@@ -67,6 +68,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
@@ -76,7 +78,6 @@ _(none)_
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
-| 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
