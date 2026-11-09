@@ -20,7 +20,9 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { requireTsx } from "../../../../../vitest.tsx-bin";
 import { runUninstall, type UninstallContext } from "./uninstall";
 import { serializeBkitVersion } from "../../install/version-file";
 import { BKIT_GATE_SCRIPTS } from "../../install/manifest";
@@ -695,5 +697,60 @@ describe("targeted uninstall drops the module's bkit.* keys", () => {
     const result = await runUninstall(["cloud"], makeCtx({ dryRun: true }));
     expect(result.stripped).toContain("package.json#bkit.cloud.agent");
     expect(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #864 — project documents belong to the project, not to the uninstall
+// ---------------------------------------------------------------------------
+
+describe("#864 — full uninstall keeps project documents", () => {
+  it("preserves project document copies on full uninstall", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-uninstall-864-"));
+    const cli = path.resolve(__dirname, "../../cli.ts");
+    const run = (...args: string[]) =>
+      spawnSync(requireTsx(), [cli, ...args], {
+        cwd: dir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 120_000,
+      });
+    fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = run("install", "--claude", "--cursor");
+    expect(install.status, `${install.stdout}\n${install.stderr}`).toBe(0);
+
+    // One adopted starter, one legacy-migrated document.
+    fs.mkdirSync(path.join(dir, "docs"), { recursive: true });
+    fs.copyFileSync(
+      path.join(dir, ".bkit", "templates", "docs", "design.md"),
+      path.join(dir, "docs", "design.md"),
+    );
+    const own = "# Testing\n\nOur own tiers.\n";
+    fs.writeFileSync(path.join(dir, "docs", "testing.md"), own, "utf-8");
+    const reinstall = run("install", "--claude", "--cursor");
+    expect(reinstall.status, `${reinstall.stdout}\n${reinstall.stderr}`).toBe(0);
+    const design = fs.readFileSync(path.join(dir, "docs", "design.md"), "utf-8");
+    const index = fs.readFileSync(path.join(dir, ".agents", "docs.md"), "utf-8");
+    const projectPart = index.slice(index.lastIndexOf("<!-- bkit:end -->"));
+    expect(projectPart).toContain("| `docs/design.md` |");
+    expect(projectPart).toContain("| `docs/testing.md` |");
+
+    const un = run("uninstall");
+    expect(un.status, `${un.stdout}\n${un.stderr}`).toBe(0);
+
+    expect(fs.readFileSync(path.join(dir, "docs", "design.md"), "utf-8")).toBe(design);
+    expect(fs.readFileSync(path.join(dir, "docs", "testing.md"), "utf-8")).toBe(own);
+    // The still-owned template copies go, and the consumer's index rows stay.
+    expect(fs.existsSync(path.join(dir, ".bkit", "templates", "docs", "design.md"))).toBe(false);
+    const left = fs.readFileSync(path.join(dir, ".agents", "docs.md"), "utf-8");
+    expect(left).toContain("| `docs/design.md` |");
+    expect(left).toContain("| `docs/testing.md` |");
+    expect(left).not.toContain("<!-- bkit:start -->");
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

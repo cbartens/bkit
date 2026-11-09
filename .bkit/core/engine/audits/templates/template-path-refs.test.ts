@@ -173,3 +173,56 @@ describe("no workflow or prompt names a template path", () => {
     expect(hits).toEqual([]);
   });
 });
+
+describe("#864 — qualified project document reads", () => {
+  const DOC_TOPICS = [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ];
+  const docPaths = DOC_TOPICS.map((t) => `docs/${t}.md`);
+
+  /** True when the paragraph around a doc mention states applicability and warn-and-continue. */
+  const qualified = (paragraph: string): boolean =>
+    /\b(when|if)\b[^.]*\b(present|exists|adopted|applies|applicable|relevant|touch)/i.test(
+      paragraph,
+    ) && /warn/i.test(paragraph);
+
+  function unqualifiedMentions(): string[] {
+    return corpus().flatMap(({ file, text }) =>
+      text
+        .split(/\n\s*\n/)
+        .filter((paragraph) => docPaths.some((doc) => paragraph.includes(doc)))
+        .filter((paragraph) => !qualified(paragraph))
+        .map((paragraph) => `${file}: ${paragraph.trim().slice(0, 100)}`),
+    );
+  }
+
+  it("allows qualified project document reads and rejects mandatory template dependencies", () => {
+    const names = forbiddenNames();
+    // The ten starters are project documents now: a named, qualified read is allowed.
+    for (const doc of docPaths) expect(names, doc).not.toContain(doc);
+    // Executable and configuration templates stay forbidden dependencies.
+    for (const rel of [".husky/", "scripts/", "bkit-ci.yml", ".graphifyignore"]) {
+      expect(names, rel).toContain(rel);
+    }
+
+    // The qualification rule itself.
+    expect(
+      qualified(
+        "Read `docs/testing.md` when present and the step touches tests; warn and continue if it is missing.",
+      ),
+    ).toBe(true);
+    expect(qualified("Read `docs/testing.md` first.")).toBe(false);
+
+    const unqualified = unqualifiedMentions();
+    expect(unqualified).toEqual([]);
+  });
+});

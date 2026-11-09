@@ -240,6 +240,84 @@ describe("audit templates — managed block plus consumer stub", () => {
   });
 });
 
+describe("#864 — documentation references resolve against their ownership source", () => {
+  const TOPICS = [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ];
+
+  function unresolvedAuditAnchors(): string[] {
+    const unresolved: string[] = [];
+    for (const rel of listAuditTemplates()) {
+      const content = fs.readFileSync(path.join(CORE_ROOT, rel), "utf-8");
+      for (const [, doc, refs] of content.matchAll(
+        /^- bkit block of `docs\/([a-z-]+\.md)` \([^)]*\): (.+)$/gm,
+      )) {
+        const starter = templatePath("docs", doc!);
+        if (!fs.existsSync(starter)) {
+          unresolved.push(`${rel}: docs/${doc}`);
+          continue;
+        }
+        const headings = new Set(
+          [...fs.readFileSync(starter, "utf-8").matchAll(/^#{2,3} (.+)$/gm)].map((m) =>
+            m[1]!.trim(),
+          ),
+        );
+        for (const ref of refs!.split("; ")) {
+          if (ref.startsWith("§ ") && !headings.has(ref.slice(2))) {
+            unresolved.push(`${rel}: docs/${doc} ${ref}`);
+          }
+        }
+      }
+    }
+    return unresolved;
+  }
+
+  function guidesLinkingRetiredDocs(): string[] {
+    const dangling: string[] = [];
+    const walk = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, entry.name);
+        const skip = entry.name === "engine" || entry.name === "node_modules";
+        const retired =
+          entry.name.endsWith(".md") && fs.readFileSync(abs, "utf-8").includes("shared/docs/");
+        dangling.push(...(retired ? [path.relative(CORE_ROOT, abs)] : []));
+        const next = entry.isDirectory() && !skip ? [abs] : [];
+        next.forEach(walk);
+      }
+    };
+    walk(CORE_ROOT);
+    return dangling;
+  }
+
+  function startersStillManaged(): string[] {
+    return TOPICS.flatMap((topic) => {
+      const starter = templatePath("docs", `${topic}.md`);
+      const text = fs.existsSync(starter) ? fs.readFileSync(starter, "utf-8") : "<missing>";
+      const bad =
+        text === "<missing>" ||
+        text.includes("{{BKIT_MANAGED_MARKER}}") ||
+        text.includes("<!-- bkit:start -->");
+      const shared = fs.existsSync(path.join(SHARED_ROOT, "docs", `${topic}.md`));
+      return bad || shared ? [topic] : [];
+    });
+  }
+
+  it("resolves documentation references against the correct ownership sources", () => {
+    expect(startersStillManaged()).toEqual([]);
+    expect(unresolvedAuditAnchors()).toEqual([]);
+    expect(guidesLinkingRetiredDocs()).toEqual([]);
+  });
+});
+
 describe("Group A templates — html-comment markers (md/mdc files)", () => {
   for (const [root, relPath] of [...GROUP_A_MD_FILES, ...GROUP_A_MDC_FILES]) {
     const read = () => fs.readFileSync(path.join(root, relPath), "utf-8");
