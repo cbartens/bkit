@@ -50,7 +50,7 @@ Rule section lines:
 | `audit` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` |
 | `plan-template` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-plan.md` |
 | `entry` | `.bkit/core/AGENTS.md` |
-| `doc` | `bkit:start` / `bkit:end` block of each shipped doc master holding one: `.bkit/core/.agents/*.md` (not `rules.md`), `.bkit/core/.bkit/*.md`, `.bkit/shared/*.md`, `.bkit/shared/docs/*.md`, `.bkit/shared/.cursor/rules/*.mdc`; never the installed copies |
+| `doc` | `bkit:start` / `bkit:end` block of each shipped doc master holding one: `.bkit/core/.agents/*.md` (not `rules.md`), `.bkit/core/.bkit/*.md`, `.bkit/shared/*.md`, `.bkit/shared/.cursor/rules/*.mdc`; never the installed copies |
 | `hook` | `## Hook Text` entries |
 | `permission` | `## Permissions` groups |
 
@@ -9326,7 +9326,7 @@ Process shape: (1) Write the **Create** output stub, with `PENDING` in every pla
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Two bullets in the `**Rules:**` block, identical in every file: the `external-input` and `external-skills` clauses in `.bkit/instructions.md`, copied from `.agents/rules.md`. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories and rejects missing clauses, near-copies and retired wording. It checks the data-not-instructions, report-directives and token-scope requirements, plus the skill-authority boundary. Every new prompt must carry both rules. Universal coverage avoids a per-file decision that could leave an agent unprotected. Threat model, write-time fence and spawn-line notice: `docs/security.md` § Untrusted Content & Prompt Injection.
+Two bullets in the `**Rules:**` block, identical in every file: the `external-input` and `external-skills` clauses in `.bkit/instructions.md`, copied from `.agents/rules.md`. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories and rejects missing clauses, near-copies and retired wording. It checks the data-not-instructions, report-directives and token-scope requirements, plus the skill-authority boundary. Every new prompt must carry both rules. Universal coverage avoids a per-file decision that could leave an agent unprotected. Threat model, write-time fence and spawn-line notice: `.bkit/prompts.md` § Untrusted Content & Prompt Injection (threat model).
 ```
 
 ### central-agent-rules-rules-bullet

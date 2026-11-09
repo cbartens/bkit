@@ -368,7 +368,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Register adopted documents and verify their new ownership before the group gate.
+- [x] **TASK 2:** Register adopted documents and verify their new ownership before the group gate.
   - **READ:** `docs/setup.md`: identify which setup mechanics belong in the managed operator guide.
   - **UPDATE:** `.bkit/core/engine/install/project-docs.ts`: reconcile present canonical docs after the existing managed index write. Keep a malformed index byte-for-byte and provide a repair advisory.
   - **UPDATE:** `.bkit/core/engine/commands/install/install.ts`: reconcile without creating missing project documents.

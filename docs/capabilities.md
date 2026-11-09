@@ -64,13 +64,13 @@ and re-read the notes to dismiss them.
 
 ## Register
 
-3 capabilities: 1 `bypassed` · 2 `one`.
+3 capabilities: 2 `bypassed` · 1 `one`.
 
 <!-- prettier-ignore -->
 | Lane | Capability | Owner | Marker | Surface | Status | Bypasses | Budget | Issue |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Install | Managed-version marker | `.bkit/core/engine/install/version-file.ts` | `do not edit; run` | `product` | `bypassed` | 2 of 3 | — |  |
 | Providers | Cursor API access | `.bkit/core/engine/shared/egress.ts` | `api.cursor.com` | `product` | `bypassed` | 1 of 2 | — |  |
-| Install | Managed-version marker | `.bkit/core/engine/install/version-file.ts` | `do not edit; run` | `product` | `one` | 0 of 1 | — |  |
 | Install | Tracker block substitution | `.bkit/core/engine/render/trackers.ts` | `bkit:tracker` | `product` | `one` | 0 of 1 | — |  |
 
 ## Unreachable API calls
@@ -79,7 +79,7 @@ Not scanned; run the rollup with `--reachability`.
 
 ## Import-time side effects
 
-15 module-scope side effects in 6 of 119 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
+15 module-scope side effects in 6 of 120 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
 
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
@@ -164,17 +164,17 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>253 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1719 symbols · 51 files"]
-    n_bkit_core_engine_install["install<br/>310 symbols · 20 files"]
+    n_bkit_core_engine_commands["commands<br/>1718 symbols · 51 files"]
+    n_bkit_core_engine_install["install<br/>340 symbols · 21 files<br/>1 open finding"]
     n_bkit_core_engine_ledgers["ledgers<br/>187 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>150 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|388| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|386| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|384| n_bkit_core_engine_ledgers
-  n_bkit_core_engine_commands -->|204| n_bkit_core_engine_install
-  n_bkit_core_engine_install -->|172| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|210| n_bkit_core_engine_install
+  n_bkit_core_engine_install -->|174| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|138| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|83| n_bkit_core_engine_checks
   n_bkit_core_engine_install -->|64| n_bkit_core_engine_render
@@ -200,8 +200,8 @@ flowchart LR
   style n_bkit_core_engine_checks stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_cli stroke:#8250df,stroke-width:2px,fill:#8250df14
   style n_bkit_core_engine_commands stroke:#0969da,stroke-width:2px,fill:#0969da14
-  style n_bkit_core_engine_install stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
-  style n_bkit_core_engine_ledgers stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_install stroke:#cf222e,stroke-width:4px,stroke-dasharray:8 4,fill:#cf222e26
+  style n_bkit_core_engine_ledgers stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
   style n_bkit_core_engine_render stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
   style n_bkit_core_engine_shared stroke:#cf222e,stroke-width:4px,stroke-dasharray:8 4,fill:#cf222e26
   style nscripts_harvest stroke:#8250df,stroke-width:2px,fill:#8250df14
@@ -257,7 +257,7 @@ flowchart LR
   subgraph gncustom_install_engine["Install engine"]
     n_bkit_core_engine_cli[".bkit/core/engine/cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands_install_install[".bkit/core/engine/commands/install/install<br/>12 symbols · 1 files"]
-    n_bkit_core_engine_commands_install_uninstall[".bkit/core/engine/commands/install/uninstall<br/>31 symbols · 1 files"]
+    n_bkit_core_engine_commands_install_uninstall[".bkit/core/engine/commands/install/uninstall<br/>30 symbols · 1 files"]
     n_bkit_core_engine_commands_install_upgrade[".bkit/core/engine/commands/install/upgrade<br/>17 symbols · 1 files"]
     n_bkit_core_engine_install_cloud_env[".bkit/core/engine/install/cloud-env<br/>52 symbols · 1 files"]
     n_bkit_core_engine_install_manifest[".bkit/core/engine/install/manifest<br/>34 symbols · 1 files"]
@@ -340,7 +340,7 @@ flowchart LR
       end
     end
     subgraph gn_bkit_core_engine_install[".bkit/core/engine/install"]
-      n_bkit_core_engine_install_managed_block["managed-block<br/>16 symbols · 1 files"]
+      n_bkit_core_engine_install_managed_block["managed-block<br/>21 symbols · 1 files"]
       subgraph gn_bkit_core_engine_install_modules[".bkit/core/engine/install/modules"]
         n_bkit_core_engine_install_modules_antigravity["antigravity<br/>7 symbols · 1 files"]
         n_bkit_core_engine_install_modules_claude["claude<br/>6 symbols · 1 files"]
@@ -349,6 +349,7 @@ flowchart LR
         n_bkit_core_engine_install_modules_cursor["cursor<br/>3 symbols · 1 files"]
         n_bkit_core_engine_install_modules_opencode["opencode<br/>10 symbols · 1 files"]
       end
+      n_bkit_core_engine_install_project_docs["project-docs<br/>25 symbols · 1 files"]
       n_bkit_core_engine_install_template_copies["template-copies<br/>10 symbols · 1 files"]
     end
     subgraph gn_bkit_core_engine_ledgers[".bkit/core/engine/ledgers"]
@@ -453,7 +454,6 @@ flowchart LR
   n_bkit_core_engine_install_modules_core -->|12| n_bkit_core_engine_shared_json
   n_bkit_core_engine_checks_after_index -->|11| n_bkit_core_engine_checks_after_tools
   n_bkit_core_engine_commands_analysis -->|11| n_bkit_core_engine_ledgers_telemetry
-  n_bkit_core_engine_commands_install_uninstall -->|11| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_commands_install_uninstall -->|11| n_bkit_core_engine_install_write
   n_bkit_core_engine_commands_workflow_branches -->|11| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_steps -->|11| n_bkit_core_engine_commands_workflow_ledgers
@@ -483,6 +483,7 @@ flowchart LR
   n_bkit_core_engine_checks_after_index -->|9| n_bkit_core_engine_checks_before_env
   n_bkit_core_engine_checks_before_index -->|9| n_bkit_core_engine_checks_before_files
   n_bkit_core_engine_commands_install_install -->|9| n_bkit_core_engine_checks_after_index
+  n_bkit_core_engine_commands_install_uninstall -->|9| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_commands_workflow_branches -->|9| n_bkit_core_engine_shared_branches
   n_bkit_core_engine_commands_workflow_decisions -->|9| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_ledgers -->|9| n_bkit_core_engine_commands_workflow_plan_blocks
@@ -547,6 +548,7 @@ flowchart LR
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_render_hosts
   n_bkit_core_engine_install_modules_opencode -->|7| n_bkit_core_engine_install_cloud_env
+  n_bkit_core_engine_install_project_docs -->|7| n_bkit_core_engine_install_managed_block
   n_bkit_core_engine_install_template_copies -->|7| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_commands_workflow_completeness -->|7| n_bkit_core_engine_checks_status_holes
   n_bkit_core_engine_commands_workflow_runtime -->|7| n_bkit_core_engine_commands_workflow_status
@@ -669,6 +671,7 @@ flowchart LR
   style n_bkit_core_engine_install_modules_core stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_install_modules_cursor stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_install_modules_opencode stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_install_project_docs stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_install_template_copies stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_ledgers_compact stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_ledgers_journal stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
@@ -887,4 +890,5 @@ flowchart LR
   linkStyle 201 stroke:#59636e80,stroke-width:2px
   linkStyle 202 stroke:#59636e80,stroke-width:2px
   linkStyle 203 stroke:#59636e80,stroke-width:2px
+  linkStyle 204 stroke:#59636e80,stroke-width:2px
 ```

@@ -60,7 +60,7 @@ Everything a senior team would otherwise write down over years, in files you can
 | [Writing rules](.bkit/authoring.md) | 50+ | How every prompt, workflow, rule and doc is worded, [matched practice by practice](.bkit/authoring.md#who-says-what) against Anthropic's, OpenAI's and Google's prompting guides, so one text works on every model. |
 | [Guardrails](.bkit/providers.md#guardrails) | 10+ hook files | Block dangerous commands and secret reads, and make agents investigate before they edit, on all five AI tools. |
 | [Audits](.bkit/pipeline.md#audits) | 35 | Security, privacy, accessibility, performance, reliability, database, LLM usage, cost and more. Findings feed straight into a plan. |
-| [Project docs](.bkit/shared/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
+| [Project docs](.bkit/templates/docs/) | 10 + [index](.agents/docs.md) | Architecture, data schema, deployments, testing, security, monitoring, design system, tech stack, setup, and an index telling each agent what to read at each step. |
 | [Templates](.bkit/templates.md) | 60+ | A full CI pipeline, cloud agents, git hooks, linters, dependency updates, secrets sync, code search, a map of your code that marks likely problems, and 10+ ready-made connectors for your platforms. |
 
 **These are the files your agents read, so they're written for agents,** to the writing rules above: short, dense, tables over prose. For day-to-day use, start with [`.bkit/README.md`](.bkit/README.md); for every agent in the order it runs, see the [pipeline reference](.bkit/pipeline.md).
@@ -347,17 +347,17 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>253 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1719 symbols · 51 files"]
-    n_bkit_core_engine_install["install<br/>310 symbols · 20 files"]
+    n_bkit_core_engine_commands["commands<br/>1718 symbols · 51 files"]
+    n_bkit_core_engine_install["install<br/>340 symbols · 21 files<br/>1 open finding"]
     n_bkit_core_engine_ledgers["ledgers<br/>187 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>150 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|388| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|386| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|384| n_bkit_core_engine_ledgers
-  n_bkit_core_engine_commands -->|204| n_bkit_core_engine_install
-  n_bkit_core_engine_install -->|172| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|210| n_bkit_core_engine_install
+  n_bkit_core_engine_install -->|174| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|138| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|83| n_bkit_core_engine_checks
   n_bkit_core_engine_install -->|64| n_bkit_core_engine_render
@@ -383,8 +383,8 @@ flowchart LR
   style n_bkit_core_engine_checks stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_cli stroke:#8250df,stroke-width:2px,fill:#8250df14
   style n_bkit_core_engine_commands stroke:#0969da,stroke-width:2px,fill:#0969da14
-  style n_bkit_core_engine_install stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
-  style n_bkit_core_engine_ledgers stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_install stroke:#cf222e,stroke-width:4px,stroke-dasharray:8 4,fill:#cf222e26
+  style n_bkit_core_engine_ledgers stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
   style n_bkit_core_engine_render stroke:#0a7b83,stroke-width:2px,fill:#0a7b8314
   style n_bkit_core_engine_shared stroke:#cf222e,stroke-width:4px,stroke-dasharray:8 4,fill:#cf222e26
   style nscripts_harvest stroke:#8250df,stroke-width:2px,fill:#8250df14
