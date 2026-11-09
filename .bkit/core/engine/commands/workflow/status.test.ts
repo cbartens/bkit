@@ -1232,6 +1232,40 @@ describe("bkit status invocation", () => {
     expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
   });
 
+  it("refuses to issue an invocation into a status file outside the issuing checkout", async () => {
+    const mine = runRepo();
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    const mineBefore = fs.readFileSync(path.join(mine, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${otherFile}`,
+      ],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(path.join(mine, REL), "utf-8")).toBe(mineBefore);
+    const relative = path.relative(mine, otherFile);
+    const viaRelative = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${relative}`,
+      ],
+      mine,
+    );
+    expect(viaRelative.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+  });
+
   it("records the issued invocation in the run status log and rebuilds a deleted receipt", async () => {
     const root = runRepo();
     const statusFile = path.join(root, REL);
