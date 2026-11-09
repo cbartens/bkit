@@ -433,7 +433,7 @@ Arbitrary custom or MCP tools are not inferred from a generic tool name.
 
 These are conservative limits, not measured visibility guarantees. A target whose block does not fit is left unacknowledged, so a later exact edit warns again. The shell path inspects at most 256 KiB of command text, 64 KiB per directly named script, nesting depth 3 and 64 exact targets, with a cooperative 200 ms deadline. Each rendered shell hook must finish within the smaller of one second and a quarter of its host's documented timeout.
 
-**Diagnostic signatures.** These are local labels carried by the advisory itself. They are not a counter, a service or a command log, and they never include raw commands, inline source or environment values.
+**Diagnostic signatures.** These are the six recovery cases, named here so an agent can match what it sees. The hooks emit no signature string: the advisory carries plain prose for `analysis-unavailable` ("could not be safely read"), `analysis-limit` ("Analysis limit reached") and `output-limit` ("omitted (output limit)"). The other three have no advisory text; the recovery column is the only guidance. None is a counter, a service or a command log, and none includes raw commands, inline source or environment values.
 
 <!-- prettier-ignore -->
 | Signature | Meaning | Recovery |
