@@ -1581,9 +1581,19 @@ function hasEditEvidence(ev) {
 /** Shared advisory string, identical on every host. */
 function shellEditAdvisory(ev) {
   const named = ev.targets.length > 0;
+  // The introduction counts against the host's response budget, so it names only as many
+  // targets as fit a fixed character cap; the per-file blocks carry the full list.
+  const shown = [];
+  let used = 0;
+  for (const t of ev.targets) {
+    if (shown.length > 0 && used + t.length > 200) break;
+    shown.push(t);
+    used += t.length + 2;
+  }
+  const more = ev.targets.length - shown.length;
   const lines = [
     named
-      ? `bkit guardrails: this command edits files through the shell (targets: ${ev.targets.join(", ")}). The command is allowed.`
+      ? `bkit guardrails: this command edits files through the shell (targets: ${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""}). The command is allowed.`
       : "bkit guardrails: this command may edit files through the shell. The command is allowed.",
     "Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.",
   ];

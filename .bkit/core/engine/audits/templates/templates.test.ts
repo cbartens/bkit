@@ -95,7 +95,6 @@ function unresolvedBkitDocAnchors(content: string): string[] {
 
 /** Shipped doc sections no audit can check, keyed `<doc> § <heading>`, each with its reason. */
 const UNAUDITED_DOC_SECTIONS: Record<string, string> = {
-  "setup.md § Templates": "pointer to `.bkit/templates.md`; Contract rows are covered below",
   "setup.md § Agent hosts": "operator terminal habit; nothing in the repo to check",
   "setup.md § Remote access": "operator machine and VPN setup; nothing in the repo to check",
 };
