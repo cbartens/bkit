@@ -198,6 +198,22 @@ export function fold(events) {
     }
     return runs;
 }
+/** True for a parsed `status.jsonl` row that is a complete `invocation` event. */
+export function isInvocationEvent(value) {
+    if (value === null || typeof value !== "object")
+        return false;
+    const v = value;
+    return (v["type"] === "invocation" &&
+        typeof v["id"] === "string" &&
+        typeof v["workflow"] === "string" &&
+        typeof v["step"] === "string" &&
+        typeof v["number"] === "number" &&
+        typeof v["title"] === "string" &&
+        typeof v["run"] === "number" &&
+        typeof v["statusPath"] === "string" &&
+        typeof v["bookRoot"] === "string" &&
+        typeof v["worktree"] === "string");
+}
 // Serialize one event to the NDJSON line appended to `status.jsonl`, newline included.
 export function appendLine(event) {
     return `${JSON.stringify(event)}\n`;

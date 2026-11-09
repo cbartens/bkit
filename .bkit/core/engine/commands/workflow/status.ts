@@ -14,6 +14,7 @@ import {
   ciSelectionIdentity,
   allRunsDoneSteps,
   appendLine,
+  type InvocationEvent,
   fold,
   lastDoneStepAllRuns,
   lastRun,
@@ -711,6 +712,29 @@ export const statusCommand: CommandSpec = {
           worktree: top,
           issuedAt: statusTimestamp(),
         };
+        if (issued.scope === "run" && fs.existsSync(issued.statusPath!)) {
+          // The run's status log is the authority; the receipt is an index rebuilt from it.
+          const event: InvocationEvent = {
+            type: "invocation",
+            workflow: issued.workflow!,
+            at: issued.issuedAt,
+            id,
+            step: issued.step!,
+            number: issued.number!,
+            title: issued.title!,
+            run: issued.run!,
+            statusPath: issued.statusPath!,
+            bookRoot: issued.bookRoot!,
+            group: issued.group,
+            attempt: issued.attempt,
+            agent: issued.agent,
+            host: issued.host,
+            configuredModel: issued.configuredModel,
+            observedModel: issued.observedModel,
+            worktree: top,
+          };
+          fs.appendFileSync(issued.statusPath!, appendLine(event));
+        }
         const receipt = writeInvocation(ctx.cwd, issued);
         const {
           id: _id,

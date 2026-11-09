@@ -605,6 +605,29 @@ export const statusCommand = {
                     worktree: top,
                     issuedAt: statusTimestamp(),
                 };
+                if (issued.scope === "run" && fs.existsSync(issued.statusPath)) {
+                    // The run's status log is the authority; the receipt is an index rebuilt from it.
+                    const event = {
+                        type: "invocation",
+                        workflow: issued.workflow,
+                        at: issued.issuedAt,
+                        id,
+                        step: issued.step,
+                        number: issued.number,
+                        title: issued.title,
+                        run: issued.run,
+                        statusPath: issued.statusPath,
+                        bookRoot: issued.bookRoot,
+                        group: issued.group,
+                        attempt: issued.attempt,
+                        agent: issued.agent,
+                        host: issued.host,
+                        configuredModel: issued.configuredModel,
+                        observedModel: issued.observedModel,
+                        worktree: top,
+                    };
+                    fs.appendFileSync(issued.statusPath, appendLine(event));
+                }
                 const receipt = writeInvocation(ctx.cwd, issued);
                 const { id: _id, version: _v, worktree: _w, issuedAt: _at, standalone: _s, name: _n, ...out } = issued;
                 ctx.emit({ invocation: id, receipt, ...out });

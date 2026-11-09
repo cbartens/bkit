@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { appendFrictionRow, appendJournalRow, engineCallRow, frictionRow, journalEnabled, launchedByGit, rebasePaused, shouldRecordFriction, } from "../ledgers/journal.js";
-import { fold } from "../ledgers/status.js";
+import { fold, isInvocationEvent } from "../ledgers/status.js";
 import { gitEnv, resolveGitSha } from "../ledgers/telemetry.js";
 import { parseJson } from "../shared/json.js";
 import { renderText } from "../shared/text.js";
@@ -369,6 +369,67 @@ export function writeInvocation(cwd, inv) {
     return file;
 }
 /**
+ * Rebuild the outbox receipt of run-scoped invocation `id` from its `invocation` event in a
+ * `status.jsonl` under this checkout. Reads only this checkout's books, so another
+ * worktree's run is never found. Returns whether a receipt now exists.
+ */
+function rebuildInvocation(cwd, id) {
+    const top = git(cwd, ["rev-parse", "--show-toplevel"]);
+    if (top === null)
+        return false;
+    let read = 0;
+    for (const month of subdirs(path.join(top, "docs", "plans"))) {
+        for (const fid of subdirs(path.join(top, "docs", "plans", month, "logs"))) {
+            if (++read > ACTIVE_RUN_SCAN_CAP)
+                return false;
+            const statusPath = path.join(top, statusRelPath(month, fid));
+            if (!fs.existsSync(statusPath))
+                continue;
+            for (const line of fs.readFileSync(statusPath, "utf-8").split("\n")) {
+                if (!line.includes(id))
+                    continue;
+                const row = parseJson(line);
+                if (!row.ok || !isInvocationEvent(row.value) || row.value.id !== id)
+                    continue;
+                const e = row.value;
+                if (e.worktree !== top || e.statusPath !== statusPath)
+                    return false;
+                try {
+                    writeInvocation(cwd, {
+                        id,
+                        version: 1,
+                        scope: "run",
+                        workflow: e.workflow,
+                        step: e.step,
+                        number: e.number,
+                        title: e.title,
+                        run: e.run,
+                        statusPath,
+                        bookRoot: e.bookRoot,
+                        group: e.group,
+                        attempt: e.attempt,
+                        agent: e.agent,
+                        host: e.host,
+                        configuredModel: e.configuredModel,
+                        observedModel: e.observedModel,
+                        standalone: null,
+                        name: null,
+                        declaredStep: null,
+                        allowedAgent: null,
+                        worktree: top,
+                        issuedAt: e.at,
+                    });
+                }
+                catch {
+                    // A concurrent rebuild already wrote the receipt; the caller reads it either way.
+                }
+                return true;
+            }
+        }
+    }
+    return false;
+}
+/**
  * Resolve `--invocation` against the outbox and refuse (exit 2) a forged, unissued,
  * other-checkout or stale id, and any asserted `--workflow`, `--step`, `--agent` or
  * `--file` that disagrees with it. A run-scoped id is stale once a newer run of its
@@ -382,7 +443,10 @@ export function resolveInvocation(cwd, id, flags) {
         return refuse("not an id issued by `bkit status invocation`");
     const dir = invocationDir(cwd);
     const file = dir === null ? null : path.join(dir, `${id}.json`);
-    if (file === null || !fs.existsSync(file))
+    if (file === null)
+        return refuse("not issued in this repository");
+    // The run's status log is the authority; a missing receipt is rebuilt from its event.
+    if (!fs.existsSync(file) && !rebuildInvocation(cwd, id))
         return refuse("not issued in this repository");
     const parsed = parseJson(fs.readFileSync(file, "utf-8"));
     const inv = parsed.ok ? parsed.value : null;
@@ -554,10 +618,17 @@ export async function runCommand(argv, commands, options) {
         }
         input = { noun: cmd.noun, verb, argv: rest, flags: ctx.flags, cwd: ctx.cwd };
         const entered = input;
-        // An invocation-bound call is attributed by its receipt; it appends no engine-call row,
-        // so resuming or reading under an invocation never changes the run's status file.
-        if (ctx.invocation === undefined)
+        // An invocation-bound call writes its engine-call row into the issuing run's own status
+        // log (never another worktree's); a runless call has no run to write to.
+        // `status invocation` records itself as the run's `invocation` event, so it adds no second row.
+        const bound = ctx.invocation;
+        const selfRecorded = cmd.noun === "status" && verb === "invocation";
+        if (bound === undefined && !selfRecorded)
             guarded(() => journal.call(entered));
+        else if (bound?.scope === "run" && bound.statusPath !== null) {
+            const own = { ...entered, flags: { ...entered.flags, file: bound.statusPath } };
+            guarded(() => journal.call(own));
+        }
         outcome = null;
         const code = await spec.run(ctx);
         outcome = code;

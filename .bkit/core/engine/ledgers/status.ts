@@ -279,8 +279,50 @@ export function fold(events: StatusEvent[]): WorkflowRun[] {
 // rows it skips (runtime-resolved, transport-fallback, close-transport, ...).
 export type StatusRow = { type: string } & Record<string, unknown>;
 
+/**
+ * The `invocation` row a run's `status.jsonl` carries for one engine-issued workflow-mode
+ * invocation: the durable authority the outbox receipt is rebuilt from. The fold skips it.
+ */
+export type InvocationEvent = {
+  type: "invocation";
+  workflow: string;
+  at: string;
+  id: string;
+  step: string;
+  number: number;
+  title: string;
+  run: number;
+  statusPath: string;
+  bookRoot: string;
+  group: string | null;
+  attempt: string | null;
+  agent: string | null;
+  host: string | null;
+  configuredModel: string | null;
+  observedModel: string | null;
+  worktree: string;
+};
+
+/** True for a parsed `status.jsonl` row that is a complete `invocation` event. */
+export function isInvocationEvent(value: unknown): value is InvocationEvent {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v["type"] === "invocation" &&
+    typeof v["id"] === "string" &&
+    typeof v["workflow"] === "string" &&
+    typeof v["step"] === "string" &&
+    typeof v["number"] === "number" &&
+    typeof v["title"] === "string" &&
+    typeof v["run"] === "number" &&
+    typeof v["statusPath"] === "string" &&
+    typeof v["bookRoot"] === "string" &&
+    typeof v["worktree"] === "string"
+  );
+}
+
 // Serialize one event to the NDJSON line appended to `status.jsonl`, newline included.
-export function appendLine(event: StatusEvent | StatusRow): string {
+export function appendLine(event: StatusEvent | StatusRow | InvocationEvent): string {
   return `${JSON.stringify(event)}\n`;
 }
 
