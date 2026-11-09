@@ -332,6 +332,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Inputs carry distinct lenses. Merge across them, and do not collapse them to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present — superseded design, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
+   Project documents: a design needs no plan, so the subagent reads the `.agents/docs.md` index and consults `docs/architecture.md` (boundaries and topology), plus `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/design.md`, `docs/observability.md` or `docs/deployments.md` when the design touches them. A missing index or a missing, empty or starter-only document is a warning: continue from repository evidence, and record the gap in `## Documentation Warnings` (one `jsonl` record per gap with `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`).
 2. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-generate --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md --message="chore({FID}): design-generate" --number=5 --post --title="Generate Design" --link-ref=dev
@@ -451,6 +452,7 @@ description: "Design Feature — Autonomous design phase"
    "{BKIT}" workflows summary --workflow=design --file="{STATUS}"
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
+   The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
 3. Finish, then push with exactly one command:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --post --title=Summary --link-ref=dev --comment-body

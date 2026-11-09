@@ -158,7 +158,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
 - [ ] **User Context:** access to the files is confirmed, and missing user information is requested.
 - [ ] **Project Context:** the relevant `docs/knowledge.jsonl` and `docs/decisions.jsonl` rows are read.
-- [ ] **Testing & Quality:** the testing strategy matches `docs/testing.md`.
+- [ ] **Project Documents:** `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md` are assessed through the `.agents/docs.md` index (a missing or starter-only document is a warning, not a stop), and the plan's strategy matches `docs/testing.md`. Record each source in `Documentation Consultation`.
 - [ ] **Prerequisite Plans:** [the plans to finish first. **If** none → `None`.]
 
 ### Conditional
@@ -167,6 +167,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Schema State:** the database state is confirmed against `docs/data-schema.md`.
 - [ ] **Architecture & UI:** the topology is checked against `docs/architecture.md`, and any UI against `docs/design.md`.
 - [ ] **Observability:** logs, audit tables and traces follow `docs/observability.md`.
+- [ ] **Deployments & Setup:** release, CI and branch behaviour follows `docs/deployments.md`, and local-setup changes follow `docs/setup.md`.
 - [ ] **Notifications:** the alert or toast tier follows the notifications doc.
 
 ### 🔒 Gate 1: Prerequisites Check
@@ -178,6 +179,31 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 - [ ] **Reuse Inventory complete:** every capability has a row with `Search performed` and `Decision` filled in.
 - [ ] **Reuse reasons:** every `NEW` row cites its reason.
 - [ ] **Gate 1 — Verified:** every item above, every Core item and every applicable Conditional item is checked.
+
+## Documentation Consultation
+
+[Read the `.agents/docs.md` index when it exists, and consult each applicable topic's recommended document or a valid indexed equivalent. Always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`. Consult `docs/data-schema.md` for database changes, `docs/design.md` for UI, `docs/observability.md` for logging, `docs/deployments.md` for release or CI behaviour, and `docs/noise.md` or `docs/setup.md` when relevant. A missing index, a missing or empty document, or a starter-only document is a warning: continue from repository evidence, and never stop the plan. Mark an irrelevant topic not applicable with the reason. Initially set to `PENDING`.]
+
+<!-- prettier-ignore -->
+| Topic | Recommended path | Applies | Source used (path and section) | Coverage | Gap and action |
+| --- | --- | --- | --- | --- | --- |
+| [architecture] | `docs/architecture.md` | [yes / no — reason] | [the path and section actually read, or `none`] | [covered / partial / none] | [the gap, the alternative evidence, the action. **If** none → `None`.] |
+
+Carry each required read and each doc update into the runbook task that needs it (`READ:` and `UPDATE:` lines).
+
+## Documentation Warnings
+
+[One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
+
+```jsonl
+{
+  "topic": "security",
+  "gap": "starter-only",
+  "recommendedPath": "docs/security.md",
+  "alternativeEvidence": "The CI configuration defines token permissions.",
+  "action": "Populate the security document with the project's credential and permission boundaries."
+}
+```
 
 ## Data Schema Integration
 

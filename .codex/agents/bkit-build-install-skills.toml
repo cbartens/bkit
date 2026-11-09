@@ -39,7 +39,7 @@ developer_instructions = """
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 3. Identify the technologies that the feature requires.
 4. List the folder names under `.agents/skills/`, without reading the folders' contents. Each folder name is the identity of one installed skill when you look for gaps.
 5. Identify each skill gap: a required technology that no folder name matches.

@@ -51,7 +51,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** after each substep: append the log entry at EOF with Bash `echo {log entry} >> {output}`.
 5. Confirm the merge state the caller left:
    - Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.

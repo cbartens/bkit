@@ -57,7 +57,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/security.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/security.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** after each finding: append the entry at EOF with Bash `echo {log entry} >> {output}`.
    - **If** the entry spans several lines → append it with a heredoc instead.
    - **If** any finding is `CRITICAL` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.

@@ -83,7 +83,19 @@ autoCompactWindow: 300000
    ```
    **If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read the `.agents/docs.md` index, and load the docs it lists for this task. Keep the plan's `Documentation Consultation` and `Documentation Warnings` sources as recorded.
+   - **If** a finding changes a topic the plan covers (architecture, technology, security, testing, data schema, UI, logging, release or setup) → re-consult its recommended document or indexed equivalent, update that topic's source, coverage, gap and action, and carry any new `READ` / `UPDATE` line into the task it touches.
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "security",
+       "gap": "starter-only",
+       "recommendedPath": "docs/security.md",
+       "alternativeEvidence": "The CI configuration defines token permissions.",
+       "action": "Populate the security document with the project's credential and permission boundaries."
+     }
+     ```
+   - Never drop an earlier warning the review did not resolve.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
 5. Keep every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` intact through the merge:
    - A critique may edit the task text around them.

@@ -57,7 +57,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Trace the surface area of each `Agent Execution Runbook` task:
    - The files and modules it edits directly.

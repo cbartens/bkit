@@ -1160,6 +1160,44 @@ It writes only the report and the template's consumer-owned `Project Instruction
 
 **CI-class skip conditions:** one tracker no-op line, then exit 0. Only real failures (missing args, tracker unreachable, malformed state) → Failure Path. Loop bound: `/bkit-debug` enforces `debug.fix` and `debug.soak` `maxAttempts` across every debug run of the feature; cloud counts only `dev` dispatches.
 
+## Documentation Consultation Coverage
+
+Every rule group, workflow step and plan-template section was reviewed for the project documents it should consult. A project document path is a recommendation: read the `.agents/docs.md` index, use the recommended path or an indexed equivalent (`Equivalent to docs/{topic}.md` in the Scope cell), and **if** the index or a document is missing, empty or still the starter, warn and continue from repository evidence. Outcomes: `added` (a named reference or section was added), `retained` (the source already cited it), `corrected` (an inappropriate or silent-skip reference was fixed) and `not-applicable` (no project document applies, with the reason). Each producing prompt writes gaps as `jsonl` records under `## Documentation Warnings`, and `bkit workflows summary` lists the current run's records once per topic and gap without changing the verdict. `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts` checks that every source has a record.
+
+<!-- prettier-ignore -->
+| Source | Recommended documents | Outcome | Applicability and reason |
+| --- | --- | --- | --- |
+| `.bkit/core/.agents/rules.md` § New files | `docs/architecture.md` | retained | Places new files per the architecture document when present; a missing or starter-only document warns and the nearest structure applies. |
+| `.bkit/core/.agents/rules.md` § UI design | `docs/design.md` | retained | Applies when the change touches UI; warns and follows existing UI conventions when the document is missing. |
+| `.bkit/core/.agents/rules.md` § Explicit logging | `docs/observability.md` | retained | Applies to logging changes; warns and follows existing logging conventions when the document is missing. |
+| `.bkit/core/.agents/rules.md` § CI and deployments | `docs/deployments.md` | retained | Pushes, tags and CI behaviour point at the deployments document; the managed guides carry the bkit mechanics. |
+| `.bkit/core/.agents/rules.md` § Server-side validation, security and schema | `docs/security.md`, `docs/data-schema.md` | retained | Boundary notes name the security and schema documents; applicability follows the changed surface. |
+| `.bkit/core/.agents/rules.md` § Testing | `docs/testing.md` | retained | Tier rules and file inventory point at the testing document; `Tests discriminate` and `Test-first` stay in force without it. |
+| `.bkit/core/.agents/rules.md` § all other rules | n/a | not-applicable | Ledger, git, tracker, authoring and tool rules govern bkit operations and have no project-document topic. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Pre-Flight / Dependencies | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md`, `docs/deployments.md`, `docs/design.md`, `docs/observability.md`, `docs/data-schema.md` | added | Core and Conditional items name each document, with the warn-and-continue rule. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Documentation Consultation | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md`, `docs/data-schema.md`, `docs/design.md`, `docs/observability.md`, `docs/deployments.md` | added | New section records topic, applicability, source used, coverage, gap and action for every plan. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Documentation Warnings | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | New section holds the structured warning records that the workflow summary aggregates. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Data Schema Integration | `docs/data-schema.md` | retained | Reads and writes of the schema document stay explicit; absent schema documents warn through the consultation table. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Documentation Updates | `docs/architecture.md`, `docs/technology.md`, `docs/data-schema.md`, `docs/design.md`, `docs/testing.md`, `docs/observability.md` | retained | Lists the documents a change touches; the runbook carries each as an UPDATE line. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Agent Execution Runbook | `docs/architecture.md`, `docs/testing.md` | added | Tasks that touch an assessed topic carry READ and UPDATE lines for its document. |
+| `.bkit/core/docs/templates/bkit-plan.md` § Verification Plan | `docs/testing.md`, `docs/observability.md` | retained | Gate items verify tests and logging against the named documents. |
+| `.bkit/core/docs/templates/bkit-plan.md` § all other sections | n/a | not-applicable | Context, scenario, matrix, scope and rollback sections describe the change itself and cite no project document. |
+| `.bkit/core/workflows/bkit-design.md` § Step 3 Grill and Step 5 Generate Design | `docs/architecture.md`, `docs/technology.md`, `docs/security.md` | added | A design needs no plan: the generator reads the index, consults the documents and records warnings. |
+| `.bkit/core/workflows/bkit-design.md` § Step 10 Summary | `docs/architecture.md` | added | The summary carries Documentation Warnings from the run unchanged. |
+| `.bkit/core/workflows/bkit-design.md` § all other steps | n/a | not-applicable | Worktree, review, spike, organise and close steps handle files and verdicts, not project facts. |
+| `.bkit/core/workflows/bkit-plan.md` § Step 3 Generate Plan | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Plan generation fills Documentation Consultation and Documentation Warnings. |
+| `.bkit/core/workflows/bkit-plan.md` § Step 7 Summary | `docs/testing.md` | added | Summary shows attributed warnings once per topic and gap, advisory only. |
+| `.bkit/core/workflows/bkit-plan.md` § all other steps | n/a | not-applicable | Start, fetch, review, apply and close steps move artifacts; reviewers consult through their prompts. |
+| `.bkit/core/workflows/bkit-build.md` § Step 4 Plan Convert | `docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/testing.md` | added | Issue-to-plan conversion carries the same consultation contract as generation. |
+| `.bkit/core/workflows/bkit-build.md` § Step 15 Summary | `docs/testing.md` | added | Summary carries warnings from the applicable tasks without changing the verdict. |
+| `.bkit/core/workflows/bkit-build.md` § all other steps | n/a | not-applicable | Group loop, tests, diagnosis and PR steps follow the plan; task prompts consult their documents. |
+| `.bkit/core/workflows/bkit-debug.md` § Step 5 Failure Reproduce | `docs/testing.md`, `docs/noise.md` | added | A debug run has no plan: subagents consult the testing and noise documents and warn when missing. |
+| `.bkit/core/workflows/bkit-debug.md` § Step 10 Summary | `docs/testing.md` | added | Summary and handover keep unresolved warnings. |
+| `.bkit/core/workflows/bkit-debug.md` § all other steps | n/a | not-applicable | Run-tests, context, push and close steps are mechanical and read no project document. |
+| `.bkit/core/workflows/bkit-ship.md` § Step 6 Update Docs and Summary | `docs/architecture.md`, `docs/deployments.md`, `docs/testing.md` | added | Documentation maintenance findings stay in the ship summary next to the edits. |
+| `.bkit/core/workflows/bkit-ship.md` § all other steps | n/a | not-applicable | Verify, integrate, merge and update steps handle git and CI state, not project facts. |
+| `.bkit/core/workflows/bkit-auto.md` § Step 2 Dispatch | n/a | not-applicable | Dispatch only routes to a phase; it forwards the phase summary and its warnings unchanged. |
+
 ## Test and release mechanics
 
 These mechanics belong to bkit, so they live in this managed guide and do not depend on the project adopting `docs/testing.md` or `docs/deployments.md`. The project's own choices (its tiers, lanes, rollback and deploy decisions) go in those documents, copied from `.bkit/templates/docs/`. Test-first, `bkit:test:file`, `bkit:lint:file` and the JUnit failure count are described in § Local gate scripts and § Test-first above, and the wrapper script is in `.bkit/templates.md` § Local test sleep prevention.

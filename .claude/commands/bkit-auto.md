@@ -116,6 +116,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 2. `REF` is the issue as `runs context` printed it (`#N` on GitHub, the key uppercased on Linear / Jira, empty with no tracker).
    - Never pass a bare `FID` or bare number: the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
 3. Invoke the matching phase skill with the `Skill` tool, then exit.
+   The dispatched phase writes its own `## Documentation Warnings` in its summary. Forward that output as it is; do not collect or repeat it here.
    Route:
    - `PHASE` = `ship` → `/bkit-ship {FID} {REF}`
    - `PHASE` = `debug` → `/bkit-debug {FID} {REF} https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID}` when `RUN_ID` is held; otherwise `/bkit-debug {FID} {REF}`.

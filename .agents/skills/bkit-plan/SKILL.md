@@ -221,6 +221,7 @@ description: "Plan Feature — Autonomous plan generation"
    Context: You are a subagent in the Plan phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
+   Project documents: `@bkit-plan-generate` fills `Documentation Consultation` and `Documentation Warnings` in the plan. The review and apply-review steps keep those sources; a gap is a warning that continues the run, never a stop.
    **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
 2. Check the draft's groups and task blocks, and that every symbol it names exists:
    ```bash
@@ -388,6 +389,7 @@ description: "Plan Feature — Autonomous plan generation"
    "{BKIT}" workflows summary --workflow=plan --file="{STATUS}" --plan={PLAN_FINAL}
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
+   The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
 4. Finish, then push the summary commit:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=7 --post --title=Summary --link-ref=dev --comment-body

@@ -46,7 +46,7 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` and `docs/technology.md` when they are present (warn and continue if any is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 3. Propose 2-3 approaches from the current constraints: existing code, minimal new infrastructure and the fastest path to ship.
    - Lead with the recommended approach.
    - Keep each approach in the existing stack, with no greenfield build and no hypothetical infrastructure.

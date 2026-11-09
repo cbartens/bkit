@@ -100,7 +100,21 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Take its sections from `docs/templates/bkit-plan.md`.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
+3. Read the `.agents/docs.md` index, and consult the project documents the plan needs. Always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`. Consult `docs/data-schema.md` for database changes, `docs/design.md` for UI, `docs/observability.md` for logging, `docs/deployments.md` for release or CI behaviour, and `docs/noise.md` or `docs/setup.md` when relevant.
+   - Read the recommended path or a valid indexed equivalent (`Equivalent to docs/{topic}.md` in its Scope cell).
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently.
+   - Mark an irrelevant topic not applicable, with the reason.
+   - Record each topic, the path and section actually used, coverage, gap, action, alternative evidence and remaining uncertainty in `Documentation Consultation`.
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "security",
+       "gap": "starter-only",
+       "recommendedPath": "docs/security.md",
+       "alternativeEvidence": "The CI configuration defines token permissions.",
+       "action": "Populate the security document with the project's credential and permission boundaries."
+     }
+     ```
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
    - Write each section group below before you read for the next group. Do not leave the writing to a final pass.
    - **If** a section has nothing to hold → `None`.
@@ -114,6 +128,7 @@ tools:
 7. Investigation & prerequisites:
    - `Open Questions & Assumptions`.
    - `Pre-Flight / Dependencies`.
+   - `Documentation Consultation` and `Documentation Warnings`, from step 3.
 8. Design:
    - `Alternative Approaches & Recommendations`.
    - `Data Schema Integration`.
@@ -137,6 +152,7 @@ tools:
       - Keep each group and task within the plan caps your Context names (`bkit.workflows.tasks`: tasks and `TEST FIRST` tests per group, tests and test files per task).
       - Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
       - `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
+      - Give each task that touches an assessed topic a `READ` line for its recommended document (or the indexed equivalent), and an `UPDATE` line for each document the task changes. A gap that the task cannot close stays in `Documentation Warnings`.
       - NEVER write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an input writes into its task, word for word.
     - `Verification Plan` from Test Matrix and Execution Runbook.
 

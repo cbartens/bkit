@@ -63,10 +63,24 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
+   - Read the `.agents/docs.md` index, and consult the project documents the converted tasks need: always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`; add `docs/data-schema.md` when a task changes the database, `docs/design.md` for UI work, `docs/observability.md` for logging, `docs/deployments.md` for release or CI work, and `docs/noise.md` or `docs/setup.md` when a task touches them.
+     - Read the recommended path or a valid indexed equivalent (`Equivalent to docs/{topic}.md` in its Scope cell).
+     - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Mark an irrelevant topic not applicable, with the reason.
+     - Record each topic, the path and section used, coverage, gap and action in the plan's `Documentation Consultation`, and put each `READ` / `UPDATE` line for these documents in the task that needs it.
+     - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+       ```jsonl
+       {
+         "topic": "security",
+         "gap": "starter-only",
+         "recommendedPath": "docs/security.md",
+         "alternativeEvidence": "The CI configuration defines token permissions.",
+         "action": "Populate the security document with the project's credential and permission boundaries."
+       }
+       ```
 2. Read `docs/templates/bkit-plan.md` § `Agent Execution Runbook` for the shape of a group and of a task block. The rules for filling them are the **Runbook tasks**, **TEST FIRST** and **TEST EXCEPTION** clauses above.
 3. Set up the plan file:
-   - **If** the plan file exists → keep every section except `Agent Execution Runbook` as written, and rewrite the runbook.
-   - **Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Reuse Inventory` and `## Agent Execution Runbook`.
+   - **If** the plan file exists → keep every section except `Agent Execution Runbook` as written (add or refresh `Documentation Consultation` and `Documentation Warnings` from step 1), and rewrite the runbook.
+   - **Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Documentation Consultation`, `## Documentation Warnings`, `## Reuse Inventory` and `## Agent Execution Runbook`.
    - In both cases, carry over every end state and test that the inputs name, in their order. You may tighten them, but never weaken them.
 4. Split the work into tasks, each one a testable change, and group the tasks in build order:
    - Keep each group within the per-group plan caps that your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all).

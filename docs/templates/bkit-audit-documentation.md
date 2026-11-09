@@ -88,7 +88,26 @@ The failure this audit targets is a claim the code has left behind. Examples: a 
 
 - [ ] **Step 1 — Previous Run:** **Done when:** `Previous Run` holds the closure rate, or the run is marked baseline.
 - [ ] **Step 2 — Scope:** **If** there are no live docs → write one `N/A` row with evidence, then **STOP**. Otherwise take every live doc, and rank them by drift: for each live doc, count the commits to the repo paths it cites since the doc last changed, and add a column for the cited paths that no longer resolve. Record the ranking. Start from an up-to-date default branch with a clean `git status`. Historical records are citers. A pointer in one that leads nowhere is a finding, fixed at the target. A stale fact inside one is history, not a defect. **Done when:** `Scope` holds every live doc and the drift ranking.
-- [ ] **Step 3 — Catalogue:** Check `.agents/docs.md`. Every file on disk under `docs/`, outside `plans/`, `archive/` and `audits/`, has a row, and every row's file exists. No doc is listed twice. Two docs on one topic is a bug, and that includes one doc in both tables with different reading columns. Each row's one-line scope still matches the doc. The root `README.md` works as the entry point: it says what the project is, links the setup doc, the architecture doc and `.agents/docs.md`, and says how to report a security issue. A missing community-health file with no README substitute is a finding. **Done when:** `Catalogue` names every mismatch, and every clean check.
+- [ ] **Step 3 — Catalogue:** Check `.agents/docs.md`. Every file on disk under `docs/`, outside `plans/`, `archive/` and `audits/`, has a row, and every row's file exists. No doc is listed twice. Two docs on one topic is a bug, and that includes one doc in both tables with different reading columns. Each row's one-line scope still matches the doc. The root `README.md` works as the entry point: it says what the project is, links the setup doc, the architecture doc and `.agents/docs.md`, and says how to report a security issue. A missing community-health file with no README substitute is a finding. Then check the project's own documentation, topic by topic, for the ten recommended documents (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) and `docs/components.md` when the project has shared UI components:
+  - **Presence:** a topic the project needs with no file (absent or missing) is a finding. An equivalent document counts when its `Project Documents` row names the recommended path in its Scope cell (`Equivalent to docs/{topic}.md`).
+  - **Index accuracy:** a present file with no `Project Documents` row, and a row whose file is missing, are findings.
+  - **Project content:** compare each file with `.bkit/templates/docs/{topic}.md`. An empty file or one that still matches the starter is a finding. A file that differs is a candidate: read it against the code and name the undercovered topics. Never call a topic covered from a mechanical comparison alone.
+  - **Not applicable:** a topic the project does not need (for example `docs/design.md` for a project with no UI) is irrelevant and recorded as not applicable with the reason. Absence, incomplete coverage and an irrelevant topic are three different outcomes; report each one apart.
+  - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Never report the surface as clean.
+  - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+
+    ```jsonl
+    {
+      "topic": "security",
+      "gap": "starter-only",
+      "recommendedPath": "docs/security.md",
+      "alternativeEvidence": "The CI configuration defines token permissions.",
+      "action": "Populate the security document with the project's credential and permission boundaries."
+    }
+    ```
+
+  **Done when:** `Catalogue` names every mismatch and every clean check, and `Project Documentation` holds one row per topic: path, state (populated, starter-only, empty, absent or not applicable), index accuracy and evidence.
+
 - [ ] **Step 4 — Mechanical:** Run prose lint, the format check and the managed-block check. Then:
   - Check that every backticked repo path in a live doc exists, and that every `*.md` name in a live doc resolves, backticked or not. The output is candidates. A path named on purpose as removed is not a finding. A path that moved is a finding. Section anchors and `file:line` wait for `Claims`.
   - Check relative links and heading anchors offline across every doc, plans and archive included, because they are citers. Then check external URLs in live docs, with a cache. The anchor builder must match the host (e.g., GitHub). Open a failed fragment before calling it broken. The path check cannot see Markdown links.
@@ -190,6 +209,12 @@ Within a severity, list destructive steps and contradictions first.
 
 **If** the run finds nothing → write one row: `None`.
 
+## Documentation Warnings
+
+PENDING
+
+**If** every topic is covered and indexed → write `None`; Step 3's records belong in this section.
+
 ## Report
 
 ### Summary
@@ -205,6 +230,10 @@ PENDING
 PENDING
 
 ### Catalogue
+
+PENDING
+
+### Project Documentation
 
 PENDING
 
@@ -278,6 +307,7 @@ PENDING
 ### 🔒 Gate 3: Report Check
 
 - [ ] **No placeholders:** no `PENDING` is left.
+- [ ] **Project documents:** `Project Documentation` has a row for every topic, and no absent, starter-only or undercovered topic reads as clean.
 - [ ] **Summary:** `Summary` gives the count per severity.
 - [ ] **Series:** the report shows load size, and setup-walk times when the walk ran, beside the previous report's numbers, or marks the run as baseline.
 - [ ] **Writes:** this run changed only this report, the template's `Project Instructions` and its own `docs/failures.jsonl` rows.

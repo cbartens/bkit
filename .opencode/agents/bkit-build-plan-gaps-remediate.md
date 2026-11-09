@@ -79,7 +79,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` and `docs/testing.md` when they are present (warn and continue if any is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Read the inputs, and find where to resume:
    - **If** Context `Mode` = `Holistic` → read the holistic verify report and every log. Each line of its `Identified Gaps Log` is one gap. Read the plan's task block of each task a gap names; no group gate log is supplied.
    - **Else** → read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log. Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
