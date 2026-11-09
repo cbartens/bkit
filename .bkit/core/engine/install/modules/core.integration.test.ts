@@ -2564,4 +2564,97 @@ describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
     expect(pkgAfter.dependencies).toBeUndefined();
     expect(pkgAfter.devDependencies).toEqual(pkgFresh.devDependencies);
   });
+
+  it("upgrades shipped registrations without dropping consumer hook groups or permissions", () => {
+    const BASE = "da97be38";
+    const shipped = (rel: string): string => {
+      const r = spawnSync("git", ["show", `${BASE}:.bkit/shared/${rel}`], {
+        cwd: getPkgRoot(),
+        encoding: "utf-8",
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      expect(r.status, `git show ${rel}`).toBe(0);
+      return r.stdout;
+    };
+    const modules = new Set<import("../../cli").ModuleFlag>([
+      "core",
+      "claude",
+      "cursor",
+      "antigravity",
+    ] as never);
+
+    const claudePath = path.join(tmpDir, ".claude", "settings.json");
+    const cursorPath = path.join(tmpDir, ".cursor", "hooks.json");
+    const agyPath = path.join(tmpDir, ".agents", "plugins", "bkit", "hooks.json");
+    for (const [p, rel] of [
+      [claudePath, ".claude/settings.json"],
+      [cursorPath, ".cursor/hooks.json"],
+      [agyPath, ".agents/plugins/bkit/hooks.json"],
+    ] as const) {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, shipped(rel), "utf-8");
+    }
+
+    const claudeGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    const agyGroup = {
+      matcher: "consumer_tool",
+      hooks: [{ type: "command", command: "node scripts/consumer-agy.js" }],
+    };
+    const cursorEntry = { command: "node scripts/consumer-cursor.js", matcher: "ConsumerTool" };
+    const ownAllow = "Bash(consumer-own-command:*)";
+
+    const claude = JSON.parse(fs.readFileSync(claudePath, "utf-8"));
+    claude.hooks.PreToolUse.push(claudeGroup);
+    claude.permissions.allow = [...claude.permissions.allow, ownAllow];
+    fs.writeFileSync(claudePath, JSON.stringify(claude, null, 2) + "\n", "utf-8");
+    const cursor = JSON.parse(fs.readFileSync(cursorPath, "utf-8"));
+    cursor.hooks.preToolUse.push(cursorEntry);
+    fs.writeFileSync(cursorPath, JSON.stringify(cursor, null, 2) + "\n", "utf-8");
+    const agy = JSON.parse(fs.readFileSync(agyPath, "utf-8"));
+    agy.hooks.PreToolUse.push(agyGroup);
+    fs.writeFileSync(agyPath, JSON.stringify(agy, null, 2) + "\n", "utf-8");
+
+    const ctx = (): ModuleContext => {
+      const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+      return makeCtx({
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+      });
+    };
+    dispatchModules(modules, ctx());
+
+    const read = (p: string) => fs.readFileSync(p, "utf-8");
+    const count = (text: string, needle: string): number => text.split(needle).length - 1;
+
+    // New matchers arrive.
+    const claudeAfter = JSON.parse(read(claudePath));
+    expect(JSON.stringify(claudeAfter.hooks.PreToolUse)).toContain("NotebookEdit");
+    expect(read(cursorPath)).toContain("Write|Delete");
+    expect(read(agyPath)).toContain("multi_replace_file_content");
+
+    // Consumer-owned entries survive, byte-for-byte.
+    expect(claudeAfter.hooks.PreToolUse).toContainEqual(claudeGroup);
+    expect(claudeAfter.permissions.allow).toContain(ownAllow);
+    expect(JSON.parse(read(cursorPath)).hooks.preToolUse).toContainEqual(cursorEntry);
+    expect(JSON.parse(read(agyPath)).hooks.PreToolUse).toContainEqual(agyGroup);
+
+    // No duplicate bkit group: each bkit hook command is registered once per event.
+    expect(count(JSON.stringify(claudeAfter.hooks.PreToolUse), "bkit-gateguard.cjs")).toBe(1);
+    expect(
+      count(JSON.stringify(JSON.parse(read(cursorPath)).hooks.preToolUse), "bkit-gateguard.cjs"),
+    ).toBe(1);
+    expect(
+      count(JSON.stringify(JSON.parse(read(agyPath)).hooks.PreToolUse), "bkit-gateguard.cjs"),
+    ).toBe(1);
+
+    // A second install is a no-op.
+    const snapshot = [claudePath, cursorPath, agyPath].map(read);
+    dispatchModules(modules, ctx());
+    expect([claudePath, cursorPath, agyPath].map(read)).toEqual(snapshot);
+  });
 });
