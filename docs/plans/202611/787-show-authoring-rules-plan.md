@@ -524,7 +524,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Prove fresh-install and upgrade footprints with preserved drivers
+- [x] **TASK 11:** Prove fresh-install and upgrade footprints with preserved drivers
   - **READ:** `.bkit/core/engine/render/parts.ts`: use the existing shared-part renderer; runtime hooks remain standalone.
   - **READ:** `.bkit/core/engine/install/modules/core.ts`: use existing canonical authoring-doc and template installation.
   - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: extend real temporary consumer fixtures for fresh install and upgrade from the shipped layout across hosts, including default/customized outer drivers and custom registration groups.
@@ -549,7 +549,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Keep consumer-added list entries when a managed JSON file reconverges
+- [x] **TASK 13:** Keep consumer-added list entries when a managed JSON file reconverges
   - **READ:** `.bkit/core/engine/install/write.ts`: `deepMergeJson` stays as it is (its array-replaces contract is tested); `writeTier2JsonContained` is the only caller that needs list-aware merging.
   - **UPDATE:** `.bkit/core/engine/install/write.ts`: add one exported helper (`mergeManagedJson`) that `writeTier2JsonContained` calls in place of `deepMergeJson` on drift. It merges objects the same way, and merges lists as follows: a list of plain values (such as `permissions.allow`) keeps the template's entries in template order, then appends consumer-only entries; a list of objects (hook groups) replaces a consumer group when it holds a hook `command` that the template group also holds, and keeps every other consumer group after the template's groups.
   - **UPDATE:** `.bkit/core/.bkit/install.md`: in the JSON ownership model section, state the list rule beside the existing deep-containment rules.
