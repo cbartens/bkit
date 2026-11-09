@@ -438,3 +438,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T21:51:33Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-09T21:51:39Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-09T21:51:39Z","parentSha":"f0c0f3b32f61d8f6c43cd5c2b01aa96840ee894b","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-tasks-3-log.md"],"verdict":"PASS","attempt":2,"group":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T21:51:52Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T21:51:53Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T21:54:09Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T21:54:20Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T21:57:30Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/3/3/comment","hash":"5581c051601bdb77e976dad371e01048c39b672162fef6803c1ee064f9caa0b7","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6752374031","at":"2026-11-09T21:57:35Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T21:57:35Z","parentSha":"55aba84450e7438b5c14f220989bed69a4cbbd33","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-3-3.md"],"verdict":"CONCERNS","attempt":3,"group":3,"failures":4}
