@@ -73,6 +73,7 @@
 | `.bkit/instructions.md` | — | ○ | ○ | ○ | ○ | Every shipped agent instruction and the files carrying it — rules, shared clauses, hook text, permissions. |
 | `docs/migrations.md` | ○ | ○ | ○ | ○ | ○ | Register of every upgrade migration in the engine — what it rewrites, release range, where it runs. |
 | `docs/capabilities.md` | ● | ● | ● | — | ○ | Capability ownership & drift — authoritative register, Graphify diagrams, CI freshness checks. |
+| `docs/components.md` | ○ | ○ | ○ | ○ | ○ | Purpose-based overview — repository responsibilities, relationships and main journeys, independent of code layout. |
 | `floorplan/README.md` | ○ | ○ | ○ | ○ | ○ | Architecture walkthrough — onboarding, system boundaries, file & route descriptions, guided flows. |
 | `.bkit/friction.jsonl` | ○ | ○ | ○ | ○ | ○ | Observed workflow friction. Drained by `pnpm harvest`. |
 | `.bkit/stats.jsonl` | ○ | ○ | ○ | ○ | ○ | Run telemetry — `compliance`, `outcome`, `counter`. Append-only. |

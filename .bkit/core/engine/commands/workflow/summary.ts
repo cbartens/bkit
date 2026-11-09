@@ -68,6 +68,7 @@ const RESOLVED_BY: Readonly<Record<string, readonly string[]>> = {
   "design/design-review": ["design-apply-review"],
   "build/build-plan-tasks": ["build-plan-verify"],
   "build/build-plan-gaps-remediate": ["build-plan-verify"],
+  "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
 };
 
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);

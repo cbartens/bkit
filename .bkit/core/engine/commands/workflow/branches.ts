@@ -74,6 +74,7 @@ import {
   addAllButCopied,
   copyExcludes,
   hasLeftovers,
+  rebaseNoteFile,
   recordRebase,
   removeWorktree,
   worktreeDir,
@@ -605,16 +606,15 @@ export function resolveRebase(
       } else {
         return refuse("REFUSE — git rebase --skip failed", null, "git rebase --skip failed");
       }
-    } else if (!quietGit(top, ["rebase", "--continue"]).ok) {
+    } else {
+      const cont = quietGit(top, ["rebase", "--continue"]);
       // The next commit conflicted (next round handles it), or the rebase is stuck.
-      if (unmergedPaths(top).length === 0) {
-        return refuse(
-          "REFUSE — git rebase --continue failed with no unmerged paths",
-          null,
-          "git rebase --continue failed with no unmerged paths",
-        );
+      if (!cont.ok && unmergedPaths(top).length === 0) {
+        const why = (cont.stderr || cont.stdout).replace(/\s*\n\s*/g, " ");
+        const reason = `git rebase --continue failed with no unmerged paths: ${why || "git gave no reason"}`;
+        return refuse(`REFUSE — ${reason}`, null, reason);
       }
-      continue;
+      if (!cont.ok) continue;
     }
 
     if (!rebaseInProgress(top)) {
@@ -771,11 +771,21 @@ function topLevel(cwd: string): string {
   return top;
 }
 
-function appendLog(ctx: RunContext, file: string | undefined, lines: string[]): void {
-  if (file === undefined || lines.length === 0) return;
+/**
+ * Appends the resolution lines to the run's log, after the note `worktrees setup`
+ * held outside the tree while the rebase was paused (`rebaseNoteFile`), then drops
+ * the note. Called only once the rebase has finished or been aborted.
+ */
+function appendLog(ctx: RunContext, top: string, file: string | undefined, lines: string[]): void {
+  if (file === undefined) return;
+  const noteFile = rebaseNoteFile(top);
+  const note =
+    noteFile !== null && fs.existsSync(noteFile) ? fs.readFileSync(noteFile, "utf-8") : "";
+  if (note === "" && lines.length === 0) return;
   const abs = path.resolve(ctx.cwd, file);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
-  fs.appendFileSync(abs, lines.map((l) => `[bkit-rebase] ${l}\n`).join(""));
+  fs.appendFileSync(abs, note + lines.map((l) => `[bkit-rebase] ${l}\n`).join(""));
+  if (noteFile !== null) fs.rmSync(noteFile, { force: true });
 }
 
 function rebaseVerb(ctx: RunContext): number {
@@ -814,7 +824,7 @@ function rebaseVerb(ctx: RunContext): number {
       },
     );
   }
-  appendLog(ctx, str(ctx.flags.logFile), result.log);
+  appendLog(ctx, top, str(ctx.flags.logFile), result.log);
   if (!result.ok && sentinelPath) {
     fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
     fs.writeFileSync(sentinelPath, "");

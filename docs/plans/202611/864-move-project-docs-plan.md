@@ -99,7 +99,7 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the testable contract above.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the testable contract above.
 
 ## 👤 ⚠️ Breaking Changes & Naming Review
 
@@ -109,7 +109,7 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed the breaking changes and naming decisions.
+- [x] **Breaking Changes confirmed:** I have reviewed the breaking changes and naming decisions.
 
 ## 👤 ⚠️ Open Questions & Assumptions
 
@@ -120,7 +120,7 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have reviewed the open questions and assumptions.
+- [x] **Open Questions & Assumptions confirmed:** I have reviewed the open questions and assumptions.
 
 ## Alternative Approaches & Recommendations
 
@@ -178,9 +178,9 @@ No new secrets, services or notification channels apply.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Owner confirmation is recorded above.
-- [ ] **Breaking Changes confirmed:** Owner confirmation is recorded above.
-- [ ] **Open Questions confirmed:** Owner confirmation is recorded above.
+- [x] **Acceptance Scenario confirmed:** Owner confirmation is recorded above.
+- [x] **Breaking Changes confirmed:** Owner confirmation is recorded above.
+- [x] **Open Questions confirmed:** Owner confirmation is recorded above.
 - [ ] **Security & Privacy checked:** Verify the filesystem boundaries and safe warning output in the runbook.
 - [ ] **Reuse Inventory complete:** Verify each changed capability against its named source.
 - [ ] **Reuse reasons:** Verify each new file has its reuse reason.

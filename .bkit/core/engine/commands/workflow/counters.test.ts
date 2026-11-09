@@ -714,6 +714,103 @@ describe("bkit counters grant", () => {
   });
 });
 
+describe("bkit counters route --since-clean", () => {
+  const start = started("build", "2026-10-01T00:00:00Z");
+  const holistic = (at: string, verdict: string, failures: number) =>
+    done("build", "build-plan-verify-holistic", at, { verdict, failures });
+  const grantRow = (at: string, group?: number) => ({
+    type: "allowance-granted",
+    workflow: "build",
+    at,
+    point: "build.verify",
+    ...(group === undefined ? {} : { group }),
+  });
+  const route = (file: string, cwd: string, ...extra: string[]) =>
+    run(
+      [
+        "counters",
+        "route",
+        "--name=HOLISTIC_ROUNDS",
+        "--of=build-plan-verify-holistic:current",
+        `--file=${file}`,
+        "--workflow=build",
+        "--point=build.verify",
+        ...extra,
+      ],
+      cwd,
+    );
+
+  it("counts only the rounds after the step's last clean round", async () => {
+    const cwd = pkgDir({});
+    const file = log([
+      start,
+      holistic("2026-10-01T00:10:00Z", "FAIL", 2),
+      holistic("2026-10-01T00:20:00Z", "CONCERNS", 1),
+      holistic("2026-10-01T00:30:00Z", "PASS", 0),
+      holistic("2026-10-01T00:40:00Z", "FAIL", 1),
+    ]);
+    expect((await route(file, cwd)).json).toMatchObject({ value: 4, exceeded: true });
+    expect((await route(file, cwd, "--since-clean")).json).toMatchObject({
+      value: 1,
+      max: 2,
+      exceeded: false,
+    });
+  });
+
+  it("a CONCERNS round with 0 failures is clean, one with failures is not", async () => {
+    const cwd = pkgDir({});
+    const rounds = (verdict: string, failures: number) =>
+      log([
+        start,
+        holistic("2026-10-01T00:10:00Z", "FAIL", 1),
+        holistic("2026-10-01T00:20:00Z", verdict, failures),
+        holistic("2026-10-01T00:30:00Z", "FAIL", 1),
+      ]);
+    expect((await route(rounds("CONCERNS", 0), cwd, "--since-clean")).json.value).toBe(1);
+    expect((await route(rounds("CONCERNS", 1), cwd, "--since-clean")).json.value).toBe(3);
+  });
+
+  it("counts only the grants after the last clean round, and only those without a group", async () => {
+    const cwd = pkgDir({});
+    const file = log([
+      start,
+      holistic("2026-10-01T00:10:00Z", "FAIL", 1),
+      grantRow("2026-10-01T00:11:00Z"),
+      holistic("2026-10-01T00:20:00Z", "PASS", 0),
+      grantRow("2026-10-01T00:25:00Z", 3),
+      holistic("2026-10-01T00:30:00Z", "FAIL", 1),
+      grantRow("2026-10-01T00:31:00Z"),
+    ]);
+    expect((await route(file, cwd)).json).toMatchObject({ grants: 3, max: 8 });
+    expect((await route(file, cwd, "--since-clean")).json).toMatchObject({
+      value: 1,
+      grants: 1,
+      max: 4,
+    });
+  });
+
+  it("refuses --since-clean without one --of step, or with --all-runs", async () => {
+    const cwd = pkgDir({});
+    const file = log([start, holistic("2026-10-01T00:10:00Z", "FAIL", 1)]);
+    const value = await run(
+      [
+        "counters",
+        "route",
+        "--name=X",
+        "--value=1",
+        `--file=${file}`,
+        "--workflow=build",
+        "--point=build.verify",
+        "--since-clean",
+      ],
+      cwd,
+    );
+    expect(value.code).toBe(2);
+    expect(value.out).toBe("");
+    expect((await route(file, cwd, "--since-clean", "--all-runs")).code).toBe(2);
+  });
+});
+
 describe("bkit counters progress", () => {
   const verify = (at: string, failures: number, sha: string, extra: Record<string, unknown> = {}) =>
     done("build", "build-plan-verify", at, { failures, parentSha: sha, group: 1, ...extra });

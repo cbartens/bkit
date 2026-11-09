@@ -6,7 +6,7 @@
  *   related  → vitest related --run: the Vitest tests that import a changed file
  *   named    → each test file that names a changed path, by runner (vitest / node --test / bats)
  *   lint     → oxlint on the changed engine .ts files (the `lint` script's scope)
- *   format   → prettier --check on every changed file it knows
+ *   format   → prettier --check on every changed file it knows, symlinks excluded
  *   types    → pnpm typecheck when a .ts file changed (tsc checks whole projects only)
  * Exit: 0 when every stage passed or no file was named; 1 when any stage failed.
  */
@@ -93,7 +93,10 @@ if (engineTs.length > 0)
     ]),
   );
 
-stage("format", run("format", bin("prettier"), ["--check", "--ignore-unknown", ...files]));
+// prettier refuses an explicitly named symlink, so pass only real files.
+const formattable = files.filter((f) => !fs.lstatSync(path.join(ROOT, f)).isSymbolicLink());
+if (formattable.length > 0)
+  stage("format", run("format", bin("prettier"), ["--check", "--ignore-unknown", ...formattable]));
 
 if (files.some((f) => f.endsWith(".ts"))) stage("types", run("types", "pnpm", ["typecheck"]));
 

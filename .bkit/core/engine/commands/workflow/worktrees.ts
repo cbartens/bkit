@@ -12,6 +12,7 @@
 // use local `dev` when it is a fast-forward of `origin/dev`: dev pushes wait for
 // a human, so local dev is routinely ahead, and a worktree without those commits
 // builds against superseded work.
+// Debug preserves the adopted branch's history for CI evidence ancestry checks.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -311,6 +312,16 @@ function rebaseInProgress(wt: string): boolean {
 }
 
 /**
+ * Where setup holds its "rebase stopped" note while it leaves a rebase in progress:
+ * inside the worktree's git dir, never in the tree. `--continue` refuses while a
+ * tracked file has unstaged changes, and the run's rebase log is tracked once a run
+ * committed it. `branches rebase` writes the note ahead of its own log lines.
+ */
+export function rebaseNoteFile(wt: string): string | null {
+  return git(wt, ["rev-parse", "--path-format=absolute", "--git-path", "bkit-rebase-note.md"]);
+}
+
+/**
  * bkit's own worktree copy entry, excluded from every bkit commit beside
  * `bkit.workflows.worktree.copy`: it holds the sign-in tokens, and a consumer whose
  * `.gitignore` lost bkit's `.bkit/.env` line would otherwise commit a link to them.
@@ -510,6 +521,8 @@ function copyListed(root: string, wt: string, entries: string[], log: (m: string
   const copyMissing: string[] = [];
   for (const entry of entries) {
     const rel = path.normalize(entry);
+    // bkit's own env is managed by linkBkitEnv, including on resume.
+    if (BKIT_OWN_COPY.some((owned) => path.normalize(owned) === rel)) continue;
     if (!insideCheckout(rel)) {
       log(`worktree copy: ${entry} is outside the main checkout — skipped`);
       continue;
@@ -1005,6 +1018,8 @@ export const worktreesCommand: CommandSpec = {
               detail: "a rebase is already in progress",
               onto: worktreeBase(wt, workflow),
             };
+          } else if (workflow === "debug") {
+            ctx.log("debug resume: preserving branch history for CI evidence; no rebase");
           } else {
             fetchBranch(wt, DEV);
             const onto = worktreeBase(wt, workflow, ctx.log);
@@ -1039,11 +1054,13 @@ export const worktreesCommand: CommandSpec = {
             }
           }
           if (failure) {
-            fs.mkdirSync(logDir, { recursive: true });
-            fs.appendFileSync(
-              path.join(logDir, "rebase-resolve-log.md"),
-              `[bkit-worktrees] ${new Date().toISOString()} rebase onto ${failure.onto} stopped\n${failure.detail}\n`,
-            );
+            const note = `[bkit-worktrees] ${new Date().toISOString()} rebase onto ${failure.onto} stopped\n${failure.detail}\n`;
+            const held = rebaseInProgress(wt) ? rebaseNoteFile(wt) : null;
+            if (held !== null) fs.appendFileSync(held, note);
+            else {
+              fs.mkdirSync(logDir, { recursive: true });
+              fs.appendFileSync(path.join(logDir, "rebase-resolve-log.md"), note);
+            }
             fs.writeFileSync(sentinelPath, "");
             ctx.log(
               `rebase onto ${failure.onto} failed in ${wt}: ${failure.detail.split("\n")[0]}`,

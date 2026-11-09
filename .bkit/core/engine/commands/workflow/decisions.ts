@@ -170,12 +170,23 @@ interface ComposeItem {
   noRecommendation?: string;
 }
 
-const LOOPS: Record<string, { title: string; check: string; fix: string; point: string }> = {
+const LOOPS: Record<
+  string,
+  { title: string; check: string; fix: string; point: string; sinceClean?: true }
+> = {
   verify: {
     title: "Verify",
     check: "build-plan-verify",
     fix: "build-plan-gaps-remediate",
     point: "verify",
+  },
+  // The whole-feature check reopens after each clean round, so its loop starts there.
+  holistic: {
+    title: "Holistic verify",
+    check: "build-plan-verify-holistic",
+    fix: "build-plan-gaps-remediate-holistic",
+    point: "verify",
+    sinceClean: true,
   },
   tests: {
     title: "Tests",
@@ -335,7 +346,7 @@ export const decisionsCommand: CommandSpec = {
         {
           name: "loop",
           type: "string",
-          help: "verify | tests: add the progress block and the loop question as Q1",
+          help: "verify | holistic | tests: add the progress block and the loop question as Q1",
         },
         { name: "file", type: "string", help: "status.jsonl, with --loop" },
         { name: "group", type: "string", help: "with --loop=verify: the task group" },
@@ -366,7 +377,7 @@ export const decisionsCommand: CommandSpec = {
         if (loopName !== undefined) {
           const loop = LOOPS[loopName];
           if (loop === undefined)
-            throw new CommandError(EXIT.USAGE, "--loop must be verify or tests");
+            throw new CommandError(EXIT.USAGE, "--loop must be verify, holistic or tests");
           if (ctx.flags.file === undefined)
             throw new CommandError(EXIT.USAGE, "--loop needs --file");
           const p = loopProgress(
@@ -376,6 +387,7 @@ export const decisionsCommand: CommandSpec = {
             loop.check,
             loop.fix,
             positiveInt(ctx.flags.group, "group"),
+            loop.sinceClean === true,
           );
           const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
           const max = str(ctx.flags.max) ?? "?";

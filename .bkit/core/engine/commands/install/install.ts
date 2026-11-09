@@ -7,11 +7,7 @@ import { OPENCODE_PROVIDERS } from "../../shared/egress.js";
 import { type ModuleFlag, type CloudVariant } from "../../cli.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { type ModuleContext, dispatchModules } from "../../install/modules/index.js";
-import {
-  type IssueTracker,
-  DEFAULT_ISSUE_TRACKER,
-  type ModuleName,
-} from "../../install/manifest.js";
+import { type IssueTracker, type ModuleName } from "../../install/manifest.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
@@ -113,27 +109,18 @@ export function modulesToCliFlags(
 }
 
 /**
- * Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4): cloud=claude and
- * cloud=opencode both require tracker=github (both use the bkit-cloud.yml template);
- * cloud=cursor requires tracker=linear. Mismatch is a hard error — checked BEFORE
- * any package.json write so no state is recorded on mismatch ("no files written
- * on hard error" invariant). Returns the error message to print, or `null` when
- * the tracker matches (or no cloud module/variant is in play).
+ * Cloud automation needs a wired tracker. Returns the pre-write error message,
+ * or null when a tracker is wired or no cloud module/variant is being installed.
  */
-export function validateCloudTrackerMatch(
+export function validateCloudTrackerWired(
   cloudVariant: CloudVariant | null,
   hasCloudModule: boolean,
   issueTracker: IssueTracker,
 ): string | null {
-  if (cloudVariant === null || !hasCloudModule) return null;
-  const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
-  if (issueTracker === requiredTracker) return null;
+  if (cloudVariant === null || !hasCloudModule || issueTracker !== "none") return null;
   return (
-    `[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
-    `but the resolved tracker is "${issueTracker}". ` +
-    (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
-      ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
-      : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`)
+    `[bkit] --auto=${cloudVariant} needs a wired tracker: ` +
+    `bkit install --tracker=<github|linear|jira> --auto=${cloudVariant}`
   );
 }
 
@@ -387,10 +374,8 @@ export async function runInstall(
 
   const postDispatch: Array<() => void> = [];
 
-  // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4) — see
-  // validateCloudTrackerMatch for the full rationale. Checked BEFORE any
-  // package.json write so no state is recorded on mismatch.
-  const cloudTrackerError = validateCloudTrackerMatch(
+  // Reject missing tracker wiring before any package.json write.
+  const cloudTrackerError = validateCloudTrackerWired(
     cloudVariant,
     modules.has("cloud"),
     issueTracker,
@@ -402,12 +387,24 @@ export async function runInstall(
   if (cloudVariant !== null && modules.has("cloud")) {
     // auto=opencode additionally requires the local opencode host to be installed first
     // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
-    if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+    if (
+      cloudVariant === "opencode" &&
+      !modules.has("opencode") &&
+      !fs.existsSync(path.join(process.cwd(), ".opencode"))
+    ) {
       console.error(
         `[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
           `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode-zen)\n` +
           `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
       );
+      process.exit(1);
+    }
+    if (
+      cloudVariant === "codex" &&
+      !modules.has("codex") &&
+      !fs.existsSync(path.join(process.cwd(), ".codex"))
+    ) {
+      console.error(`[bkit] --auto=codex requires the local Codex host. Run: bkit install --codex`);
       process.exit(1);
     }
   }

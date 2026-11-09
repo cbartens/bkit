@@ -134,6 +134,8 @@ export const EXIT_SOURCE_TOUCHED = 15;
 export const PLAN_TESTS_STEP = "build-plan-tests";
 /** The step whose subagent closes the group's verification gaps: a code step, like plan-execute. */
 export const PLAN_REMEDIATE_STEP = "build-plan-gaps-remediate";
+/** The step whose subagent closes the whole-feature verification gaps, across every group. */
+export const PLAN_REMEDIATE_HOLISTIC_STEP = "build-plan-gaps-remediate-holistic";
 
 /** Where `finish` puts the derived attempt in `--artifact` / `--message` / `--clamp-log`. */
 export const ATTEMPT_TOKEN = "<attempt>";
@@ -362,6 +364,7 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "build/build-group-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate": ["attempt", "strategy"],
   "build/build-plan-verify-holistic": ["attempt"],
+  "build/build-plan-gaps-remediate-holistic": ["attempt", "strategy"],
   "build/build-challenge": ["attempt"],
   "build/build-decision": ["attempt"],
   "build/build-run-tests": ["attempt", "scope"],
@@ -1249,11 +1252,11 @@ async function finish(ctx: RunContext): Promise<number> {
 
   // A code step never edits a planned test case: each one's own lines must still be the
   // lines the group's tests step recorded at its red. Every other edit to the file is
-  // ordinary code-step work the verifier reads in the diff.
+  // ordinary code-step work the verifier reads in the diff. The holistic fix spans every group.
   if (
     workflow === "build" &&
-    (step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) &&
-    group !== undefined
+    (((step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) && group !== undefined) ||
+      step === PLAN_REMEDIATE_HOLISTIC_STEP)
   ) {
     const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
     const tests = touchedTests(top, file, workflow, group);

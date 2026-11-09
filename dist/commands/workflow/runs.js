@@ -66,7 +66,7 @@ export function ciDeclared(root) {
 /** Only the winning reference kind is actionable; a run takes precedence over a PR. */
 export function parseCiReference(input) {
     const references = [];
-    const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`]+/g)].map((match) => match[0].replace(/[),.;\]]+$/, ""));
+    const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`\[\]()]+/g)].map((match) => match[0].replace(/[),.;\]]+$/, ""));
     const parsed = urls.flatMap((url) => {
         const ref = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/(actions\/runs|pull)\/([^/?#]*)([^?#]*)/.exec(url);
         return ref ? [{ url, ref }] : [];

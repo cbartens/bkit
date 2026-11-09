@@ -23,6 +23,7 @@ import {
   stampAnchor,
 } from "./branches";
 import { appendRecordCommit, newRecord, writeRecord } from "./ledgers";
+import { rebaseNoteFile } from "./worktrees";
 
 useGateRunner();
 
@@ -492,6 +493,37 @@ describe("branches rebase: behaviour", { timeout: GIT_TIMEOUT }, () => {
     expect(rows).toMatchObject([
       { type: "engine-action", action: "rebase", key: `rebase/${before}`, ref: sha(dir) },
     ]);
+  });
+
+  it("writes the note worktrees setup held during the pause ahead of its own lines, then drops it", async () => {
+    const dir = makeRepo("held-note");
+    diverge(dir, { "src.txt": "feat\n" }, { "src.txt": "main\n" });
+    const note = rebaseNoteFile(dir)!;
+    fs.writeFileSync(note, "[bkit-worktrees] rebase onto main stopped\n");
+    const r = await run(dir, ["rebase", "--log-file=logs/rebase-resolve-log.md"]);
+    expect(r.code).toBe(3);
+    const log = read(dir, "logs/rebase-resolve-log.md");
+    expect(
+      log.startsWith("[bkit-worktrees] rebase onto main stopped\n[bkit-rebase] REFUSE src.txt"),
+    ).toBe(true);
+    expect(fs.existsSync(note)).toBe(false);
+  });
+
+  it("a refused --continue carries git's own reason", async () => {
+    const dir = makeRepo("continue-refused");
+    diverge(
+      dir,
+      { "docs/knowledge.jsonl": '{"key":"B","ts":2}\n' },
+      { "docs/knowledge.jsonl": '{"key":"C","ts":3}\n' },
+    );
+    // A tracked file edited during the pause: git will not continue past it.
+    fs.appendFileSync(path.join(dir, "src.txt"), "edited mid-rebase\n");
+    const r = await run(dir, ["rebase", "--log-file=logs/rebase-resolve-log.md"]);
+    expect(r.code).toBe(3);
+    expect(r.json?.reason).toMatch(/^git rebase --continue failed with no unmerged paths: .+/);
+    expect(read(dir, "logs/rebase-resolve-log.md")).toContain(
+      "REFUSE — git rebase --continue failed with no unmerged paths: ",
+    );
   });
 
   it("--file records nothing for a refused rebase", async () => {

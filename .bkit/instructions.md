@@ -1138,7 +1138,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:407`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:419`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:202`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1235,7 +1235,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:407`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:419`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:202`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -9780,9 +9780,11 @@ Orchestrator exits and the dispatched skill owns the session
 **If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
 [workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
 Derive the decision number:
+**If** `PAUSE_QUESTION` = `VERIFY_GAPS` **and** `PAUSE_STEP` = 10 → write one item per `Identified Gaps Log` line of `build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-holistic-*-log.md` when it has one.
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
+For either `VERIFY_GAPS` list:
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened` logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
+Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
 A group-gate failure is never an item, because it is always fixed.
 **If** `PAUSE_QUESTION` = `CHALLENGE`:
 **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
@@ -9792,14 +9794,19 @@ Title each item with its task number, when it has one, followed by its `Location
 **Else** → options `["Accept", "Fix now"]`, with a recommendation per finding.
 **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items, because failing suites are always fixed.
 **If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
-`{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; empty otherwise.
-`{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
+`{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; `--loop=holistic --attempt={HOLISTIC_ROUNDS} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `holistic`; empty otherwise.
+`{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|holistic|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
 **If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}"` to `{HEADER_FLAGS}`.
+**If** the pause comes from holistic → add `--header="Holistic attempt={HOLISTIC_ATTEMPT}"` to `{HEADER_FLAGS}`.
 **If** the pause comes from tests → add `--header="Test attempt={TEST_ATTEMPT}"` to `{HEADER_FLAGS}`.
 **If** `decisions compose` exits non-zero → **Failure Path**.
 **If** exit 4 **and** `RUNTIME_HEADLESS` = true → **Failure Path** naming each printed `hardBlockers` question.
 **If** exit 4 → step 4, asking only the printed `hardBlockers` questions.
 Route — first match wins:
+**If** `From: holistic`, `From: tests` **or** `From: challenge` → put it in a new last group, keeping each new group within the caps.
+**If** `From: holistic` → `DECISION_ROUTE` = `holistic`.
+Clear `PAUSE_LOOP`. **If** `From: verify`, `From: holistic` **or** `From: tests` → the owner chose to go on, so give that loop one more full allowance when its limit is used up. Below the limit, or with `ask` = false, the command grants nothing and exits 1; both exits go on:
+**If** `From: holistic` → count the allowance from the last holistic round that found no problems:
 Route — first match wins:
 **If** the owner says stop, **or** answers `Stop` → step 8.
 **If** the loop question is answered `Try again` → step 6. The items then need no decision.
@@ -9829,7 +9836,6 @@ Shape the task by the owner's direction, when the owner gave one.
 Place the task block:
 **If** `From: verify` **and** group `{GROUP}` stays within `MAX_TASKS_PER_GROUP` tasks and `MAX_TESTS_PER_GROUP` `TEST FIRST` tests with it → put it inside group `{GROUP}`.
 **If** `From: verify` **and** it would take group `{GROUP}` over either cap → put it in a new group right after `{GROUP}`. Add 1 to every later group's number, in its markers and its `### TASK GROUP` heading.
-**If** `From: tests` **or** `From: challenge` → put it in a new last group, keeping each new group within the caps.
 Then check the plan:
 **If** exit non-zero → **Failure Path** naming each problem in the report.
 Write the decisions into the decision file:
@@ -9839,6 +9845,22 @@ Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `
 [commits] **If** a `TEST EXCEPTION` was written → commit the plan alone first:
 **If** `From: challenge` **and** either an item was answered `Fix now` **or** a task of `CHALLENGE_TASKS` was not an item:
 `DECISION_ROUTE` = `fix`.
+**If** `DECISION_ROUTE` = `retry` **and** `From: holistic` → Step 10 sub-step 7.
+**If** `DECISION_ROUTE` = `holistic` → re-run Step 10.
+Used-up verify, holistic or tests loop given its allowance on a go-on answer (`counters grant`)
+Derive the attempt the holistic report is named for:
+**If** `HOLISTIC_VERDICT` = PASS → Step 11.
+**If** `HOLISTIC_VERDICT` = CONCERNS **and** `HOLISTIC_FAILURES` = 0 → Step 11. No gap is open: the report's concern is a group count, which the summary lists.
+**If** `HOLISTIC_VERDICT` = CONCERNS **or** `HOLISTIC_VERDICT` = FAIL → sub-step 6.
+Route on the holistic rounds since the last one that found no problems:
+**If** `LIMIT_ASK` = true **and** either exit 1 **or** `HOLISTIC_ROUNDS` = `PAUSE_MAX` → `PAUSE_LOOP` = `holistic`, so the pause also asks whether to try another round.
+**If** exit 0 **and** either `HOLISTIC_FIXABLE` = false **or** `HOLISTIC_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+**Run only if** sub-step 6 **or** the **Decision Pause** routed here. Read status.jsonl and derive the next `STRATEGY`:
+**If** `HOLISTIC_ATTEMPT` is not held (resumed into this sub-step) → read the last holistic round's attempt back:
+**If** exit 1 **or** `HOLISTIC_FIXED` = 0 → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+Holistic gaps routed: fixed in a holistic round, or asked at the **Decision Pause**
+Holistic fix invoked (`@bkit-build-plan-gaps-remediate`, holistic, no inline work), or no round run
+No-progress holistic round routed
 **If** `CHALLENGE_ROUND` = `CHALLENGE_MAX` already → `CHALLENGE_DONE` = true.
 **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1.
 **If** any item was answered `Fix now` → `DECISION_ROUTE` = `fix`.
@@ -9846,7 +9868,6 @@ Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `
 **If** `From: verify` → `DECISION_ROUTE` = `verify`.
 **If** `From: summary` → `DECISION_ROUTE` = `summary`.
 **Else** → `DECISION_ROUTE` = `tests`. This covers `From: tests` and `From: challenge`.
-Clear `PAUSE_LOOP`. **If** `From: verify` **or** `From: tests` → the owner chose to go on, so give that loop one more full allowance when its limit is used up. Below the limit, or with `ask` = false, the command grants nothing and exits 1; both exits go on:
 **If** `From: verify`:
 **If** exit >= 2 → **Failure Path**.
 **If** `DECISION_ROUTE` = `fix` → Step 7.
@@ -9864,7 +9885,6 @@ Hard blockers asked in a session, or sent to the Failure Path when headless
 Acceptances written only on the owner's approval
 Assumed acceptances left without a ledger row or `TEST EXCEPTION`
 Fix now tasks checked (`tests plan-check`)
-Used-up verify or tests loop given its allowance on a go-on answer (`counters grant`)
 Resolve the repo, the branch and how far the branch is behind `dev`:
 **If** `open` > 0 → **Failure Path** naming the open `blockers`.
 **If** exit 80:
@@ -9964,10 +9984,7 @@ Check that the attempt changed source files, not only logs and ledgers:
 Strategy computed before invocation
 Verify round read back on resume
 No-progress attempt routed
-Check whether this step already ran in this run:
-**If** `verdict` non-null → Step 11.
 Tick each group's satisfied tasks, with one call per task group. Set `{GROUP}` to that group and `{VERIFIED_TASKS}` to the numbers `Tasks:` names for it:
-[fit `workflow-summary-route` 0.80; keep: routes on the printed `verdict`, not `SUMMARY_VERDICT`] **If** `verdict` = PASS **or** CONCERNS → Step 11.
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
 Set the challenge round — first match wins:
 **If** `CHALLENGE_DONE` = true → Step 12.
@@ -10741,8 +10758,8 @@ Honour the brief's `Reuse Inventory rows` and `Architecture entries`:
 ```text
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 Read the inputs, and find where to resume:
-Read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log.
-Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
+**If** Context `Mode` = `Holistic` → read the holistic verify report and every log. Each line of its `Identified Gaps Log` is one gap. Read the plan's task block of each task a gap names; no group gate log is supplied.
+**Else** → read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log. Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
 Resume at the first gap that is not `DONE`.
 **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
 Skip each gap logged `test-loosened`, and write no log line for it: the tests step restores that test, because a code step never edits a planned test.
@@ -10823,6 +10840,9 @@ The API contracts match.
 Shared state is consistent.
 Cross-domain boundaries are respected.
 [local-pre-commit] Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
+Log each integration gap and each failing test as one gap: append `INTEGRATION: {what does not work together, naming the groups or tasks} — Fixable: true|false` with Bash `echo >>`, and describe it under `Integration Gaps`.
+`Fixable: false` only when closing the gap needs a choice the plan does not make; the owner then decides. Every other gap is `Fixable: true`, because the holistic fix round closes it.
+**If** a supplied decision record accepts the gap → no gap. Name the record in `Notes`.
 **If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
 `delete-still-referenced` → read each hit:
 **If** the hit is a different thing with the same name → no gap.

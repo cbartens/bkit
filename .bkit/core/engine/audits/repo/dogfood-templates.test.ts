@@ -227,6 +227,13 @@ const ADOPTED: Record<string, Entry> = {
         what: "runner",
         fill: "runs-on: {{CLOUD_RUNNER}}",
         with: "runs-on: ubuntu-latest",
+        count: 4,
+      },
+      {
+        kind: "placeholder",
+        what: "Node version from .nvmrc",
+        fill: "node-version: {{NODE_VERSION}}\n",
+        with: "node-version-file: .nvmrc\n",
         count: 3,
       },
     ],
@@ -474,6 +481,24 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   "docs/capabilities.md": { status: "generated", what: "pnpm bkit:graph:rollup writes it" },
+  "docs/components.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "remove the template's copy instructions",
+        region: { template: ["> Example document.", "# Components"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
+        what: "the project's purpose, responsibilities and journeys",
+        region: {
+          template: ["## Repository purpose", null],
+          copy: ["## Repository purpose", null],
+        },
+      },
+    ],
+  },
   "scripts/graphify/bkit-graph-drift-rules.json": {
     status: "adopted",
     edits: [

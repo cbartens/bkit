@@ -31,7 +31,7 @@ import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName, testSource } from "./test-blocks.js";
-import { addAllButCopied, copyExcludes, hasLeftovers, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
+import { addAllButCopied, copyExcludes, hasLeftovers, rebaseNoteFile, recordRebase, removeWorktree, worktreeDir, } from "./worktrees.js";
 import { COULD_NOT_RUN_EXIT_CODES, LOCKFILE_REGENERATE, installCommand, scriptCommand, } from "../../shared/package-manager.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { str } from "./status.js";
@@ -472,12 +472,16 @@ export function resolveRebase(top, onLog = () => undefined) {
                 return refuse("REFUSE — git rebase --skip failed", null, "git rebase --skip failed");
             }
         }
-        else if (!quietGit(top, ["rebase", "--continue"]).ok) {
+        else {
+            const cont = quietGit(top, ["rebase", "--continue"]);
             // The next commit conflicted (next round handles it), or the rebase is stuck.
-            if (unmergedPaths(top).length === 0) {
-                return refuse("REFUSE — git rebase --continue failed with no unmerged paths", null, "git rebase --continue failed with no unmerged paths");
+            if (!cont.ok && unmergedPaths(top).length === 0) {
+                const why = (cont.stderr || cont.stdout).replace(/\s*\n\s*/g, " ");
+                const reason = `git rebase --continue failed with no unmerged paths: ${why || "git gave no reason"}`;
+                return refuse(`REFUSE — ${reason}`, null, reason);
             }
-            continue;
+            if (!cont.ok)
+                continue;
         }
         if (!rebaseInProgress(top)) {
             log(`COMPLETE — rebase finished after ${result.rounds} auto-resolved round(s)`);
@@ -601,12 +605,23 @@ function topLevel(cwd) {
         throw new CommandError(EXIT.USAGE, `not inside a git work tree: ${cwd}`);
     return top;
 }
-function appendLog(ctx, file, lines) {
-    if (file === undefined || lines.length === 0)
+/**
+ * Appends the resolution lines to the run's log, after the note `worktrees setup`
+ * held outside the tree while the rebase was paused (`rebaseNoteFile`), then drops
+ * the note. Called only once the rebase has finished or been aborted.
+ */
+function appendLog(ctx, top, file, lines) {
+    if (file === undefined)
+        return;
+    const noteFile = rebaseNoteFile(top);
+    const note = noteFile !== null && fs.existsSync(noteFile) ? fs.readFileSync(noteFile, "utf-8") : "";
+    if (note === "" && lines.length === 0)
         return;
     const abs = path.resolve(ctx.cwd, file);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.appendFileSync(abs, lines.map((l) => `[bkit-rebase] ${l}\n`).join(""));
+    fs.appendFileSync(abs, note + lines.map((l) => `[bkit-rebase] ${l}\n`).join(""));
+    if (noteFile !== null)
+        fs.rmSync(noteFile, { force: true });
 }
 function rebaseVerb(ctx) {
     const top = topLevel(ctx.cwd);
@@ -639,7 +654,7 @@ function rebaseVerb(ctx) {
             ctx.log(line);
         });
     }
-    appendLog(ctx, str(ctx.flags.logFile), result.log);
+    appendLog(ctx, top, str(ctx.flags.logFile), result.log);
     if (!result.ok && sentinelPath) {
         fs.mkdirSync(path.dirname(sentinelPath), { recursive: true });
         fs.writeFileSync(sentinelPath, "");

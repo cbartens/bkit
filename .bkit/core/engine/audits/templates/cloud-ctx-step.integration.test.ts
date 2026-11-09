@@ -15,24 +15,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { requireTsx } from "../../../../../vitest.tsx-bin";
+
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const TEMPLATE_PATH = path.join(REPO_ROOT, ".bkit/templates/.github/workflows/bkit-cloud.yml");
-
-// The ctx step's dev-arm FID extraction relies on `sed -E ... \w+ ...`, a GNU
-// sed extension. GH Actions runners (ubuntu-latest) ship GNU sed, but macOS
-// dev machines ship BSD sed (silently no-ops on `\w`, unrelated to the code
-// under test). GNU sed is used via a PATH-shimmed `sed` that shells out to `gsed`.
-const nativeSedVersion = spawnSync("sed", ["--version"], { encoding: "utf8" });
-const nativeSedIsGnu = nativeSedVersion.status === 0 && /GNU sed/.test(nativeSedVersion.stdout);
-const gsedWhich = spawnSync("which", ["gsed"], { encoding: "utf8" });
-const gsedPath = gsedWhich.status === 0 ? gsedWhich.stdout.trim() : "";
-const hasGnuSed = nativeSedIsGnu || Boolean(gsedPath);
 
 const hasTools =
   spawnSync("git", ["--version"]).status === 0 &&
   spawnSync("jq", ["--version"]).status === 0 &&
-  spawnSync("bash", ["--version"]).status === 0 &&
-  hasGnuSed;
+  spawnSync("bash", ["--version"]).status === 0;
 
 // ---------------------------------------------------------------------------
 // Extraction — pull a named step's `run: |` block out of the raw template. Both
@@ -67,6 +58,7 @@ function extractStepScript(yaml: string, stepName: string): string {
 const rawTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const CTX_SCRIPT = hasTools ? extractStepScript(rawTemplate, "Resolve phase + brief context") : "";
 const GATE_SCRIPT = extractStepScript(rawTemplate, "Check runner credentials");
+const SELECT_SCRIPT = extractStepScript(rawTemplate, "Select agent job");
 const hasBash = spawnSync("bash", ["--version"]).status === 0;
 
 // ---------------------------------------------------------------------------
@@ -74,6 +66,7 @@ const hasBash = spawnSync("bash", ["--version"]).status === 0;
 // so one binary serves every scenario below without per-test file churn.
 // ---------------------------------------------------------------------------
 const GH_STUB = `#!/usr/bin/env bash
+[ -n "\${STUB_GH_LOG:-}" ] && printf '%s\\n' "$*" >> "$STUB_GH_LOG"
 case "$*" in
   "run list "*"--workflow bkit-ci.yml"*)
     printf '%s' "\${STUB_LATEST_CI_SHA:-}"
@@ -89,6 +82,11 @@ case "$*" in
     ;;
   "api repos/"*"/pulls"*)
     printf '%s' "\${STUB_API_PR_BODY:-}"
+    ;;
+  "api --paginate "*"/comments"*)
+    ;;
+  "api repos/"*"/issues/"*)
+    printf '%s' "\${STUB_ISSUE_LABELS:-}" | jq -Rn '{title:"t",state:(env.STUB_ISSUE_STATE // "open"),html_url:"u",body:"",labels:[inputs | select(. != "") | {name: .}]}'
     ;;
   *)
     echo "gh-stub: unhandled invocation: $*" >&2
@@ -123,7 +121,10 @@ function setupFixture(tmpRoot: string): Fixture {
 
   fs.mkdirSync(path.join(workspaceDir, "docs/plans"), { recursive: true });
   fs.writeFileSync(path.join(workspaceDir, "README.md"), "fixture\n");
-  fs.writeFileSync(path.join(workspaceDir, "package.json"), JSON.stringify({ name: "c" }));
+  fs.writeFileSync(
+    path.join(workspaceDir, "package.json"),
+    JSON.stringify({ name: "c", bkit: { tracker: { default: "github" } } }),
+  );
   git(workspaceDir, "add", "-A");
   git(workspaceDir, "commit", "-qm", "base");
   git(workspaceDir, "push", "-u", "-q", "origin", "dev");
@@ -132,13 +133,22 @@ function setupFixture(tmpRoot: string): Fixture {
   const ghPath = path.join(stubBinDir, "gh");
   fs.writeFileSync(ghPath, GH_STUB, { mode: 0o755 });
 
-  if (!nativeSedIsGnu && gsedPath) {
-    fs.writeFileSync(
-      path.join(stubBinDir, "sed"),
-      `#!/usr/bin/env bash\nexec "${gsedPath}" "$@"\n`,
-      { mode: 0o755 },
-    );
-  }
+  // The consumer's own bkit, as the runner's lockfile install leaves it. `issues fetch` answers
+  // with a recorded reply when STUB_FETCH_EXIT is set, else runs the real CLI (against the
+  // stub gh); every other verb is the real CLI.
+  const bkitPath = path.join(workspaceDir, "node_modules/.bin/bkit");
+  fs.mkdirSync(path.dirname(bkitPath), { recursive: true });
+  fs.writeFileSync(
+    bkitPath,
+    `#!/usr/bin/env bash
+if [ "$1" = "issues" ] && [ "$2" = "fetch" ] && [ -n "\${STUB_FETCH_EXIT+x}" ]; then
+  printf '%s' "\${STUB_FETCH_OUT-}"
+  exit "$STUB_FETCH_EXIT"
+fi
+exec "${requireTsx()}" "${path.join(REPO_ROOT, ".bkit/core/engine/cli.ts")}" "$@"
+`,
+    { mode: 0o755 },
+  );
 
   return { workspaceDir, originDir, stubBinDir };
 }
@@ -158,7 +168,27 @@ interface RunResult {
   summary: string;
 }
 
+/**
+ * The dev arm names the FID through `bkit fids parse --prompt-file` (a `logs/{FID}/` folder) and
+ * takes the issue from the FID's feature row in `.bkit/issues.jsonl`. A dev run whose subject
+ * scopes a slug-shaped FID gets both, unless the test seeded its own `.bkit/issues.jsonl`.
+ */
+function seedDevFeature(workspaceDir: string, subject: string): void {
+  const fid = /^\w+\(([a-z0-9][a-z0-9-]*)\):/.exec(subject.split("\n")[0] ?? "")?.[1];
+  if (!fid) return;
+  if (statusDirs(workspaceDir, fid).length === 0) {
+    fs.mkdirSync(path.join(workspaceDir, "docs/plans/202611/logs", fid), { recursive: true });
+  }
+  const rows = path.join(workspaceDir, ".bkit/issues.jsonl");
+  if (fs.existsSync(rows)) return;
+  fs.mkdirSync(path.dirname(rows), { recursive: true });
+  fs.writeFileSync(rows, JSON.stringify({ schema: 2, kind: "feature", key: fid }) + "\n");
+}
+
 function runCtxStep(fixture: Fixture, env: Record<string, string>): RunResult {
+  if (env.BRANCH === "dev" && env.COMMIT_MSG !== undefined) {
+    seedDevFeature(fixture.workspaceDir, env.COMMIT_MSG);
+  }
   const outputFile = path.join(fixture.workspaceDir, `.gh-output-${Math.random()}`);
   const summaryFile = path.join(fixture.workspaceDir, `.gh-summary-${Math.random()}`);
   fs.writeFileSync(outputFile, "");
@@ -318,7 +348,11 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   // -------------------------------------------------------------------------
   // T16 — dev-path FID recovery is shape-tolerant (GitHub + Linear slugs)
   // -------------------------------------------------------------------------
-  it("T16: a Linear-shaped commit scope (bar-123-slug) is admitted by the FID regex, not silently no-op'd on shape alone", () => {
+  it("T16: a Linear-shaped commit scope (bar-123-slug) under the linear tracker dispatches", () => {
+    fs.writeFileSync(
+      path.join(fixture.workspaceDir, "package.json"),
+      JSON.stringify({ name: "c", bkit: { tracker: { default: "linear" } } }),
+    );
     const result = runCtxStep(fixture, {
       EVENT: "workflow_run",
       CONCLUSION: "failure",
@@ -326,15 +360,24 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       COMMIT_MSG: "feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]",
       HEAD_SHA: "sha-linear",
       STUB_LATEST_CI_SHA: "sha-linear",
-      STUB_ISSUE_LABELS: "bkit:auto",
+      STUB_FETCH_EXIT: "0",
+      STUB_FETCH_OUT: JSON.stringify({
+        title: "t",
+        url: "u",
+        state: "In Progress",
+        labels: ["bkit:auto"],
+        terminal: false,
+        files: {},
+      }),
     });
     expect(result.outputs.skip).toBe("false");
     expect(result.outputs.arg).toBe("bar-123-auth");
   });
 
-  // Jira is local-only: a Jira key holding a digit (ab1-123-slug) matches neither cloud
-  // shape, so the dev arm no-ops on shape before any label check or counter write.
-  it("T16: a Jira-shaped commit scope with a digit in the key (ab1-123-slug) no-ops — no dispatch", () => {
+  // The tracker comes from package.json, never from the FID's shape: under the github tracker a
+  // Jira-shaped key (ab1-123-slug) has no issue id, so the gate stops before any counter write.
+  // Under jira the same shape dispatches (see the ab2-12 test below).
+  it("T16: a Jira-shaped commit scope under the github tracker has no issue — no dispatch", () => {
     const result = runCtxStep(fixture, {
       EVENT: "workflow_run",
       CONCLUSION: "failure",
@@ -352,31 +395,382 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 
   // -------------------------------------------------------------------------
-  // Tracker gate — bkit-cloud.yml serves the GitHub tracker only
+  // Tracker-agnostic gate — the label is read through the consumer's own bkit
+  // (`issues fetch`); every outcome is a log line plus one summary row.
   // -------------------------------------------------------------------------
-  it.each(["linear", "jira"])(
-    "a %s tracker in package.json no-ops before FID recovery — no dispatch, no counter write",
-    (tracker) => {
+  describe("feat/** path — bkit_gate outcomes", () => {
+    const FEAT_FID = "363-widen-bkit-cloud-trigger";
+    const featRun = (
+      env: Record<string, string>,
+      marker: string = `<!-- bkit:issue=#363 bkit:fid=${FEAT_FID} -->`,
+      branch: string = `feat/${FEAT_FID}`,
+    ) =>
+      runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: branch,
+        COMMIT_MSG: "chore: summary bkit [auto route]",
+        HEAD_SHA: "gate-sha",
+        STUB_PR_NUMBER: "77",
+        STUB_PR_BODY: marker,
+        ...env,
+      });
+    const setTracker = (tracker: string) =>
       fs.writeFileSync(
         path.join(fixture.workspaceDir, "package.json"),
-        JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }, null, 2),
+        JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }),
       );
-      const result = runCtxStep(fixture, {
+    const verdictRow = (summary: string, verdict: string) =>
+      new RegExp(`^\\|.*\\|\\s*${verdict}\\s*\\|`, "m").test(summary);
+    const recorded = (labels: string[]) =>
+      JSON.stringify({ title: "t", url: "u", state: "Todo", labels, terminal: false, files: {} });
+
+    it("github feat run passes the gate through the real bkit and stub gh", () => {
+      const ghLog = path.join(tmpRoot, "gh.log");
+      const result = featRun({ STUB_ISSUE_LABELS: "bkit:auto", STUB_GH_LOG: ghLog });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe("77");
+      const calls = fs.readFileSync(ghLog, "utf8");
+      expect(calls).toMatch(/api repos\/[^ ]*\/issues\/363/);
+      expect(calls).not.toContain("issue view");
+      expect(verdictRow(result.summary, "pass")).toBe(true);
+    });
+
+    it("label removed gives label-absent, skip and a summary row", () => {
+      const result = featRun({ STUB_ISSUE_LABELS: "bkit:ship" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain("::notice::");
+      expect(result.stdout).toContain("label-absent");
+      expect(verdictRow(result.summary, "label-absent")).toBe(true);
+    });
+
+    it("%s recorded fetch reply carrying bkit:auto passes the gate", () => {
+      const cases: Array<[string, string, string]> = [
+        ["linear", "<!-- bkit:issue=BAR-123 bkit:fid=bar-123-auth -->", "feat/bar-123-auth"],
+        [
+          "jira",
+          "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+          "feat/ab2-12-login-retry",
+        ],
+      ];
+      for (const [tracker, marker, branch] of cases) {
+        const ctx = `case ${tracker}`;
+        setTracker(tracker);
+        const result = featRun(
+          { STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: recorded(["bkit:auto"]) },
+          marker,
+          branch,
+        );
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("false");
+        expect(result.outputs.phase, ctx).toBe("debug");
+        expect(result.stdout, ctx).not.toContain("serves the GitHub tracker only");
+      }
+    });
+
+    it("jira marker AB2-12 dispatches", () => {
+      setTracker("jira");
+      const result = featRun(
+        { STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: recorded(["bkit:auto", "other"]) },
+        "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+        "feat/ab2-12-login-retry",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe("77");
+    });
+
+    it("exit 80 reason=auth with BKIT_JIRA_API_KEY empty warns naming the secret and exits green", () => {
+      setTracker("jira");
+      const result = featRun(
+        {
+          STUB_FETCH_EXIT: "80",
+          STUB_FETCH_OUT: JSON.stringify({ reason: "auth" }),
+          BKIT_JIRA_API_KEY: "",
+        },
+        "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+        "feat/ab2-12-login-retry",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain("::warning::");
+      expect(result.stdout).toContain("BKIT_JIRA_API_KEY");
+      expect(verdictRow(result.summary, "unreadable")).toBe(true);
+    });
+
+    it("exit 80 reason=auth with BKIT_JIRA_API_KEY set names the secret but never prints its value", () => {
+      setTracker("jira");
+      const result = featRun(
+        {
+          STUB_FETCH_EXIT: "80",
+          STUB_FETCH_OUT: JSON.stringify({ reason: "auth" }),
+          BKIT_JIRA_API_KEY: "jira-secret-value",
+        },
+        "<!-- bkit:issue=AB2-12 bkit:fid=ab2-12-login-retry -->",
+        "feat/ab2-12-login-retry",
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.stdout).toContain("BKIT_JIRA_API_KEY");
+      expect(result.stdout).toContain("set but rejected");
+      expect(result.stdout).not.toContain("jira-secret-value");
+      expect(result.stderr).not.toContain("jira-secret-value");
+      expect(result.summary).not.toContain("jira-secret-value");
+    });
+
+    it("exit 80 reason=%s is unreadable with that reason and exits green", () => {
+      for (const reason of ["network", "not-found"]) {
+        const ctx = `reason ${reason}`;
+        const result = featRun({
+          STUB_FETCH_EXIT: "80",
+          STUB_FETCH_OUT: JSON.stringify({ reason }),
+        });
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("true");
+        expect(result.outputs.phase, ctx).toBeUndefined();
+        expect(result.stdout, ctx).toContain("unreadable");
+        expect(result.stdout, ctx).toContain(reason);
+        expect(result.stdout, ctx).not.toContain("label-absent");
+        expect(verdictRow(result.summary, "unreadable"), ctx).toBe(true);
+        expect(result.summary, ctx).toContain(reason);
+        expect(verdictRow(result.summary, "label-absent"), ctx).toBe(false);
+      }
+    });
+
+    it("%s fetch output is unreadable reason=output-unparseable", () => {
+      const cases: Array<[string, string]> = [
+        ["empty", ""],
+        ["non-array", JSON.stringify({ title: "t", labels: "bkit:auto" })],
+      ];
+      for (const [name, out] of cases) {
+        const ctx = `case ${name}`;
+        const result = featRun({ STUB_FETCH_EXIT: "0", STUB_FETCH_OUT: out });
+        expect(result.status, `${ctx}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, ctx).toBe("true");
+        expect(result.outputs.phase, ctx).toBeUndefined();
+        expect(result.stdout, ctx).toContain("output-unparseable");
+        expect(verdictRow(result.summary, "unreadable"), ctx).toBe(true);
+        expect(verdictRow(result.summary, "label-absent"), ctx).toBe(false);
+        expect(verdictRow(result.summary, "pass"), ctx).toBe(false);
+      }
+    });
+
+    it("absent node_modules/.bin/bkit warns bkit unavailable and exits green", () => {
+      fs.rmSync(path.join(fixture.workspaceDir, "node_modules"), { recursive: true, force: true });
+      const result = featRun({ STUB_ISSUE_LABELS: "bkit:auto" });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain("::warning::");
+      expect(result.stdout).toMatch(/bkit[ -]unavailable/);
+    });
+
+    it("feat branch with no marker and no feature row gives no-issue", () => {
+      const ghLog = path.join(tmpRoot, "gh.log");
+      fs.writeFileSync(ghLog, "");
+      const result = featRun({ STUB_ISSUE_LABELS: "bkit:auto", STUB_GH_LOG: ghLog }, "");
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain("no-issue");
+      expect(verdictRow(result.summary, "no-issue")).toBe(true);
+      const calls = fs.readFileSync(ghLog, "utf8");
+      expect(calls).not.toMatch(/\/issues\/363/);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Dev arm — FID through `bkit fids parse --prompt-file`, issue through the feature row.
+  // -------------------------------------------------------------------------
+  describe("dev path — engine parse of the squash subject and merged-PR body", () => {
+    const seedFeature = (fid: string) => {
+      fs.mkdirSync(path.join(fixture.workspaceDir, "docs/plans/202611/logs", fid), {
+        recursive: true,
+      });
+      fs.mkdirSync(path.join(fixture.workspaceDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, ".bkit/issues.jsonl"),
+        JSON.stringify({ schema: 2, kind: "feature", key: fid }) + "\n",
+      );
+    };
+    const setTracker = (tracker: string) =>
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, "package.json"),
+        JSON.stringify({ name: "c", bkit: { tracker: { default: tracker } } }),
+      );
+    const spyBkit = (logFile: string) => {
+      const bin = path.join(fixture.workspaceDir, "node_modules/.bin/bkit");
+      fs.renameSync(bin, `${bin}-real`);
+      fs.writeFileSync(
+        bin,
+        `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${logFile}"\nexec "${bin}-real" "$@"\n`,
+        { mode: 0o755 },
+      );
+    };
+    const devRun = (commitMsg: string, env: Record<string, string> = {}) =>
+      runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
         BRANCH: "dev",
-        COMMIT_MSG: "feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]",
-        HEAD_SHA: "sha-tracker",
-        STUB_LATEST_CI_SHA: "sha-tracker",
+        COMMIT_MSG: commitMsg,
+        HEAD_SHA: "dev-sha",
+        STUB_LATEST_CI_SHA: "dev-sha",
         STUB_ISSUE_LABELS: "bkit:auto",
+        ...env,
       });
-      expect(result.status).toBe(0);
+    const recorded = (state: string, terminal: boolean) =>
+      JSON.stringify({
+        title: "t",
+        url: "u",
+        state,
+        labels: ["bkit:auto"],
+        terminal,
+        files: {},
+      });
+    const FID = "363-widen-bkit-cloud-trigger";
+    /** Every file and directory under the workspace, minus run scratch, .git and node_modules. */
+    const tree = (): string[] => {
+      const out: string[] = [];
+      const walk = (dir: string) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (e.name === ".git" || e.name === "node_modules" || e.name.startsWith(".gh-")) continue;
+          const p = path.join(dir, e.name);
+          out.push(path.relative(fixture.workspaceDir, p));
+          if (e.isDirectory()) walk(p);
+        }
+      };
+      walk(fixture.workspaceDir);
+      return out.sort();
+    };
+
+    it("dev subject feat(<fid>): resolves the FID via --prompt-file and the issue via the feature row", () => {
+      seedFeature(FID);
+      const bkitLog = path.join(tmpRoot, "bkit.log");
+      const ghLog = path.join(tmpRoot, "gh.log");
+      fs.writeFileSync(bkitLog, "");
+      spyBkit(bkitLog);
+      const result = devRun(`feat(${FID}): widen trigger (#500) bkit [auto route]`, {
+        STUB_GH_LOG: ghLog,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(FID);
+      const bkitCalls = fs.readFileSync(bkitLog, "utf8");
+      expect(bkitCalls).toMatch(/fids parse --prompt-file \S+ --json/);
+      expect(bkitCalls).toContain(`--branch feat/${FID}`);
+      const ghCalls = fs.readFileSync(ghLog, "utf8");
+      expect(ghCalls).toMatch(/issues\/363/);
+      expect(ghCalls).not.toMatch(/issues\/500/);
+    });
+
+    it("linear-shaped FID under the github tracker gives no-issue and no dispatch", () => {
+      seedFeature("bar-123-auth");
+      const ghLog = path.join(tmpRoot, "gh.log");
+      fs.writeFileSync(ghLog, "");
+      const result = devRun("feat(bar-123-auth): add OAuth flow (#9) bkit [auto route]", {
+        STUB_GH_LOG: ghLog,
+      });
+      expect(result.status, result.stderr).toBe(0);
       expect(result.outputs.skip).toBe("true");
       expect(result.outputs.phase).toBeUndefined();
-      expect(result.stdout).toContain(`bkit.tracker.default is '${tracker}'`);
+      expect(result.stdout).toContain("no-issue");
+      expect(fs.readFileSync(ghLog, "utf8")).not.toMatch(/\/issues\//);
       expect(readStatusRows(fixture.workspaceDir, "bar-123-auth")).toEqual([]);
-    },
-  );
+    });
+
+    it("dev subject naming several issues is a no-FID no-op", () => {
+      seedFeature(FID);
+      const result = devRun(
+        `feat(${FID}): handle issue #11 and issue #12 (#500) bkit [auto route]`,
+        { STUB_API_PR_BODY: "" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(readStatusRows(fixture.workspaceDir, FID)).toEqual([]);
+    });
+
+    it("dev arm with absent node_modules/.bin/bkit warns bkit unavailable and exits green", () => {
+      seedFeature(FID);
+      fs.rmSync(path.join(fixture.workspaceDir, "node_modules"), { recursive: true, force: true });
+      const result = devRun(`feat(${FID}): x bkit [auto route]`);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("true");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(result.stdout).toContain(
+        "::warning::[bkit-cloud] gate: unreadable (bkit-unavailable)",
+      );
+      expect(result.stdout).not.toContain("Cannot derive FID");
+      expect(result.summary).toMatch(/^\|.*\|\s*unreadable\s*\|\s*bkit-unavailable\s*\|/m);
+      expect(JSON.stringify(readStatusRows(fixture.workspaceDir, FID))).not.toContain(
+        "dev-dispatch",
+      );
+    });
+
+    it("dev arm passes the gate for a closed issue that still carries bkit:auto", () => {
+      seedFeature(FID);
+      const result = devRun(`feat(${FID}): widen trigger (#500) bkit [auto route]`, {
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: recorded("Done", true),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(FID);
+      expect(new RegExp(`^\\|.*\\|\\s*pass\\s*\\|`, "m").test(result.summary)).toBe(true);
+      expect(readStatusRows(fixture.workspaceDir, FID)).toHaveLength(1);
+    });
+
+    it("dev subject feat(ab2-12-login-retry) under jira passes bkit_dev_dispatch_guard and dispatches", () => {
+      const jiraFid = "ab2-12-login-retry";
+      setTracker("jira");
+      seedFeature(jiraFid);
+      const result = devRun(`feat(${jiraFid}): retry login (#9) bkit [auto route]`, {
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: recorded("In Progress", false),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.outputs.skip).toBe("false");
+      expect(result.outputs.phase).toBe("debug");
+      expect(result.outputs.arg).toBe(jiraFid);
+      expect(result.stdout).not.toContain("Invalid FID");
+      expect(readStatusRows(fixture.workspaceDir, jiraFid)).toHaveLength(1);
+    });
+
+    it("traversal FID from the subject or the merged-PR body is a no-FID no-op that writes nothing outside docs/plans/", () => {
+      seedFeature(FID);
+      const before = tree();
+      const cases: Array<[string, string, string]> = [
+        ["subject", "feat(../x): sneaky (#9) bkit [auto route]", ""],
+        [
+          "merged-PR body",
+          "Manual push straight to dev bkit [auto route]",
+          "<!-- bkit:issue=363 bkit:fid=../x -->",
+        ],
+        [
+          "merged-PR body slash path",
+          "Manual push straight to dev bkit [auto route]",
+          "<!-- bkit:issue=363 bkit:fid=a/../../x -->",
+        ],
+      ];
+      for (const [name, subject, body] of cases) {
+        const result = devRun(subject, { STUB_API_PR_BODY: body });
+        expect(result.status, `${name}: ${result.stderr}`).toBe(0);
+        expect(result.outputs.skip, name).toBe("true");
+        expect(result.outputs.phase, name).toBeUndefined();
+        expect(tree(), name).toEqual(before);
+        expect(readStatusRows(fixture.workspaceDir, "x"), name).toEqual([]);
+        expect(readStatusRows(fixture.workspaceDir, FID), name).toEqual([]);
+      }
+    });
+  });
 
   it("a github tracker in package.json passes the tracker gate and dispatches", () => {
     fs.writeFileSync(
@@ -409,16 +803,29 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): fix (#501) bkit [auto route]",
         HEAD_SHA: headSha,
         STUB_LATEST_CI_SHA: headSha,
-        STUB_ISSUE_LABELS: "bkit:auto",
+        // The gate reads the label through bkit; a recorded reply keeps it independent of
+        // the package.json each cap test writes.
+        STUB_FETCH_EXIT: "0",
+        STUB_FETCH_OUT: JSON.stringify({
+          title: "t",
+          url: "u",
+          state: "Todo",
+          labels: ["bkit:auto"],
+          terminal: false,
+          files: {},
+        }),
       });
     const writePkg = (text: string) =>
       fs.writeFileSync(path.join(fixture.workspaceDir, "package.json"), text);
 
     it("refuses to dispatch uncounted when package.json cannot be read", () => {
+      // The engine cannot read the wired tracker from a broken package.json either, so the run
+      // stops before the cap read; either way nothing dispatches and no counter row is written.
       writePkg("{ broken");
       const result = devFailure("new-sha");
       expect(result.outputs.skip).toBe("true");
-      expect(`${result.stdout}${result.stderr}`).toContain("refusing to dispatch uncounted");
+      expect(result.outputs.phase).toBeUndefined();
+      expect(readStatusRows(fixture.workspaceDir, "363-widen-bkit-cloud-trigger")).toEqual([]);
     });
 
     it("4 dev-dispatch rows with the SAME headSha count as ONE cycle — cap not tripped", () => {
@@ -453,7 +860,10 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
       writePkg(
         JSON.stringify({
           name: "c",
-          bkit: { workflows: { debug: { fix: { maxAttempts: 1 }, soak: { maxAttempts: 0 } } } },
+          bkit: {
+            tracker: { default: "github" },
+            workflows: { debug: { fix: { maxAttempts: 1 }, soak: { maxAttempts: 0 } } },
+          },
         }),
       );
       seedDevDispatchRows(fixture.workspaceDir, fid, ["sha-1", "sha-2"]);
@@ -503,6 +913,12 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   // -------------------------------------------------------------------------
   describe("feat/** path — FID recovery + cap exemption (T13, H1 regression)", () => {
     it("T13/H1: a marker-less feat/** PR recovers the FULL FID slug from the branch (not truncated to '363')", () => {
+      // The branch's issue id counts only when a feature row for it is logged.
+      fs.mkdirSync(path.join(fixture.workspaceDir, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(fixture.workspaceDir, ".bkit/issues.jsonl"),
+        `${JSON.stringify({ kind: "feature", key: "363-widen-bkit-cloud-trigger" })}\n`,
+      );
       const result = runCtxStep(fixture, {
         EVENT: "workflow_run",
         CONCLUSION: "failure",
@@ -539,7 +955,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         });
         expect(result.status, `step aborted: ${result.stderr}`).toBe(0);
         expect(result.outputs.skip).toBe("true");
-        expect(result.stdout).toContain("Cannot derive FID/ISSUE for branch");
+        expect(result.stdout).toContain("no-issue");
       },
     );
 
@@ -574,7 +990,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: "feat(363-widen-bkit-cloud-trigger): widen trigger bkit [auto route]",
         HEAD_SHA: "feat-sha-1",
         STUB_PR_NUMBER: "79",
-        STUB_PR_BODY: "<!-- bkit:issue=#363 --><!-- bkit:fid=363-widen-bkit-cloud-trigger -->",
+        STUB_PR_BODY: "<!-- bkit:issue=#363 bkit:fid=363-widen-bkit-cloud-trigger -->",
         STUB_ISSUE_LABELS: "bkit:auto",
       });
       expect(result.outputs.skip).toBe("false");
@@ -607,7 +1023,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         path.join(dir, "status.jsonl"),
         rows.map((r) => JSON.stringify(r)).join("\n") + "\n",
       );
-      git(ws, "add", "-A");
+      git(ws, "add", "docs");
       git(ws, "commit", "-qm", "build rows");
       git(ws, "push", "-q", "origin", BRANCH);
       git(ws, "checkout", "-q", "dev");
@@ -622,7 +1038,7 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
         COMMIT_MSG: `chore(${FID}): summary bkit [auto route]`,
         HEAD_SHA: "feat-sha-457",
         STUB_PR_NUMBER: "91",
-        STUB_PR_BODY: `<!-- bkit:issue=#457 --><!-- bkit:fid=${FID} -->`,
+        STUB_PR_BODY: `<!-- bkit:issue=#457 bkit:fid=${FID} -->`,
         STUB_ISSUE_LABELS: "bkit:auto",
       });
     }
@@ -805,12 +1221,153 @@ describe.skipIf(!hasTools)("bkit-cloud.yml ctx step — extracted bash (#363)", 
   });
 });
 
+describe.skipIf(!hasTools)(
+  "bkit-cloud.yml summary row — jobs field from the Select hand-off",
+  () => {
+    let tmpRoot: string;
+    let fixture: Fixture;
+
+    beforeEach(() => {
+      tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-jobs-"));
+      fixture = setupFixture(tmpRoot);
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    });
+
+    /** Runs `Select agent job` for the recorded agent and secrets; returns its step outputs. */
+    function runSelectStep(agent: string, secrets: Record<string, string>): Record<string, string> {
+      const cwd = fs.mkdtempSync(path.join(tmpRoot, "select-"));
+      fs.writeFileSync(
+        path.join(cwd, "package.json"),
+        JSON.stringify({ name: "c", bkit: { cloud: { agent } } }),
+      );
+      const outputFile = path.join(cwd, "github-output");
+      fs.writeFileSync(outputFile, "");
+      const res = spawnSync("bash", ["-c", SELECT_SCRIPT], {
+        cwd,
+        encoding: "utf8",
+        env: { ...process.env, ...secrets, GITHUB_OUTPUT: outputFile },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const outputs: Record<string, string> = {};
+      for (const line of fs.readFileSync(outputFile, "utf8").split("\n")) {
+        const eq = line.indexOf("=");
+        if (eq !== -1) outputs[line.slice(0, eq)] = line.slice(eq + 1);
+      }
+      return outputs;
+    }
+
+    /** The env the ctx step maps from `steps.select.outputs.*`, filled from the Select outputs. */
+    function handoffEnv(outputs: Record<string, string>): Record<string, string> {
+      const start = rawTemplate.indexOf("- name: Resolve phase + brief context");
+      const block = rawTemplate.slice(start, rawTemplate.indexOf("run: |", start));
+      const env: Record<string, string> = {};
+      for (const m of block.matchAll(
+        /^\s+(\w+):\s*\$\{\{\s*steps\.select\.outputs\.(\w+)\s*\}\}/gm,
+      )) {
+        env[m[1]!] = outputs[m[2]!] ?? "";
+      }
+      expect(Object.keys(env), "ctx step maps no steps.select.outputs.* into its env").not.toEqual(
+        [],
+      );
+      return env;
+    }
+
+    function runFeatCtx(selectOutputs: Record<string, string>): RunResult {
+      return runCtxStep(fixture, {
+        EVENT: "workflow_run",
+        CONCLUSION: "failure",
+        BRANCH: "feat/363-widen-bkit-cloud-trigger",
+        COMMIT_MSG: "chore: summary bkit [auto route]",
+        HEAD_SHA: "jobs-sha",
+        STUB_PR_NUMBER: "77",
+        STUB_PR_BODY: "<!-- bkit:issue=#363 bkit:fid=363-widen-bkit-cloud-trigger -->",
+        STUB_ISSUE_LABELS: "bkit:auto",
+        ...handoffEnv(selectOutputs),
+      });
+    }
+
+    it("pass row's jobs field names codex:BKIT_OPENAI_API_KEY and the ignored claude job with its reason", () => {
+      const selected = runSelectStep("codex", {
+        BKIT_OPENAI_API_KEY: "k",
+        BKIT_ANTHROPIC_API_KEY: "k",
+      });
+      const result = runFeatCtx(selected);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.summary).toMatch(/^\|.*\|\s*pass\s*\|/m);
+      expect(result.summary).toContain("codex:BKIT_OPENAI_API_KEY");
+      expect(result.summary).toContain("claude: not bkit.cloud.agent");
+      expect(result.summary).not.toContain("codex:OPENAI_API_KEY");
+      expect(result.summary).not.toMatch(/(?<!BKIT_)ANTHROPIC_API_KEY/);
+    });
+
+    it("no-agent row's jobs field names the recorded agent's missing BKIT_ secret and the ignored secrets", () => {
+      const selected = runSelectStep("codex", { BKIT_ANTHROPIC_API_KEY: "k" });
+      expect(selected.dispatched).toBe("");
+      const result = runFeatCtx(selected);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.summary).toMatch(/^\|.*\|\s*no-agent\s*\|/m);
+      expect(result.summary).not.toMatch(/^\|.*\|\s*pass\s*\|/m);
+      expect(result.summary).toContain("BKIT_OPENAI_API_KEY");
+      expect(result.summary).toContain("BKIT_ANTHROPIC_API_KEY");
+    });
+  },
+);
+
+describe.skipIf(!hasBash)("bkit-cloud.yml Select agent job — routing config source", () => {
+  it("Select agent job dispatches the agent recorded on dev for a feat branch that predates the recording", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-select-dev-"));
+    try {
+      const headDir = path.join(tmp, "pr-head");
+      fs.mkdirSync(headDir);
+      fs.writeFileSync(path.join(headDir, "package.json"), JSON.stringify({ name: "c" }));
+      fs.writeFileSync(
+        path.join(tmp, "package.json"),
+        JSON.stringify({ name: "c", bkit: { cloud: { agent: "codex" } } }),
+      );
+      const outputFile = path.join(tmp, "github-output");
+      fs.writeFileSync(outputFile, "");
+      const res = spawnSync("bash", ["-c", SELECT_SCRIPT], {
+        cwd: tmp,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BKIT_ANTHROPIC_API_KEY: "",
+          ANTHROPIC_FEDERATION_RULE_ID: "",
+          ANTHROPIC_ORGANIZATION_ID: "",
+          BKIT_OPENCODE_API_KEY: "",
+          BKIT_OPENROUTER_API_KEY: "",
+          BKIT_OLLAMA_API_KEY: "",
+          BKIT_OPENAI_API_KEY: "k",
+          HEAD_DIR: "pr-head",
+          GITHUB_OUTPUT: outputFile,
+        },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const out = fs.readFileSync(outputFile, "utf8");
+      expect(out).toMatch(/^codex=true$/m);
+      expect(out).toMatch(/^dispatched=codex$/m);
+      expect(res.stdout).not.toContain("Run bkit install --auto=");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detection", () => {
   const CREDENTIAL_VARS = [
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_FEDERATION_RULE_ID",
     "ANTHROPIC_ORGANIZATION_ID",
     "OPENCODE_PROVIDER_KEY",
+    "OPENAI_API_KEY",
+    "BKIT_ANTHROPIC_API_KEY",
+    "BKIT_OPENCODE_API_KEY",
+    "BKIT_OPENROUTER_API_KEY",
+    "BKIT_OLLAMA_API_KEY",
+    "BKIT_OPENAI_API_KEY",
   ];
   let tmp: string;
 
@@ -822,17 +1379,24 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  function runGate(env: Record<string, string>): {
-    stdout: string;
-    outputs: Record<string, string>;
-  } {
+  function runScript(
+    script: string,
+    env: Record<string, string>,
+    agent?: string | null,
+  ): { stdout: string; outputs: Record<string, string> } {
     const outputFile = path.join(tmp, "github-output");
     fs.writeFileSync(outputFile, "");
+    const cwd = path.join(tmp, "workspace");
+    fs.mkdirSync(cwd, { recursive: true });
+    const bkit: Record<string, unknown> = {};
+    if (agent !== undefined && agent !== null) bkit.cloud = { agent };
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ name: "c", bkit }));
     const base = Object.fromEntries(
       Object.entries(process.env).filter(([k]) => !CREDENTIAL_VARS.includes(k)),
     );
-    const res = spawnSync("bash", ["-c", GATE_SCRIPT], {
+    const res = spawnSync("bash", ["-c", script], {
       encoding: "utf8",
+      cwd,
       env: { ...base, GITHUB_OUTPUT: outputFile, ...env },
     });
     expect(res.status).toBe(0);
@@ -844,17 +1408,29 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     return { stdout: res.stdout ?? "", outputs };
   }
 
-  it("ANTHROPIC_API_KEY alone enables the claude job", () => {
-    const { outputs } = runGate({ ANTHROPIC_API_KEY: "k" });
-    expect(outputs).toMatchObject({ claude: "true", opencode: "false", enabled: "true" });
+  function runGate(env: Record<string, string>) {
+    return runScript(GATE_SCRIPT, env);
+  }
+
+  function runSelect(agent: string | null, env: Record<string, string>) {
+    return runScript(SELECT_SCRIPT, env, agent);
+  }
+
+  function selectedJobs(outputs: Record<string, string>): string[] {
+    return ["claude", "opencode", "codex"].filter((j) => outputs[j] === "true");
+  }
+
+  it("BKIT_ANTHROPIC_API_KEY alone enables the run", () => {
+    const { outputs } = runGate({ BKIT_ANTHROPIC_API_KEY: "k" });
+    expect(outputs).toMatchObject({ enabled: "true" });
   });
 
-  it("both federation variables, no key, enable the claude job", () => {
+  it("both federation variables, no key, enable the run", () => {
     const { outputs, stdout } = runGate({
       ANTHROPIC_FEDERATION_RULE_ID: "fdrl_x",
       ANTHROPIC_ORGANIZATION_ID: "00000000-0000-0000-0000-000000000000",
     });
-    expect(outputs).toMatchObject({ claude: "true", enabled: "true" });
+    expect(outputs).toMatchObject({ enabled: "true" });
     expect(stdout).not.toContain("claude job no-op");
   });
 
@@ -863,14 +1439,98 @@ describe.skipIf(!hasBash)("bkit-cloud.yml gate step — per-job credential detec
     ["ANTHROPIC_ORGANIZATION_ID", "ANTHROPIC_FEDERATION_RULE_ID"],
   ])("only %s set: claude job no-ops with a notice naming %s", (set, missing) => {
     const { outputs, stdout } = runGate({ [set]: "x" });
-    expect(outputs).toMatchObject({ claude: "false", enabled: "false" });
+    expect(outputs).toMatchObject({ enabled: "false" });
     expect(stdout).toMatch(new RegExp(`::notice::${missing} repo variable not set`));
   });
 
   it("no claude credential: notice names both the secret and the federation variables", () => {
-    const { outputs, stdout } = runGate({ OPENCODE_PROVIDER_KEY: "k" });
-    expect(outputs).toMatchObject({ claude: "false", opencode: "true", enabled: "true" });
-    expect(stdout).toContain("ANTHROPIC_API_KEY");
+    const { outputs, stdout } = runGate({ BKIT_OPENCODE_API_KEY: "k" });
+    expect(outputs).toMatchObject({ enabled: "true" });
+    expect(stdout).toContain("BKIT_ANTHROPIC_API_KEY");
     expect(stdout).toContain("ANTHROPIC_FEDERATION_RULE_ID");
+  });
+
+  it.each([
+    ["BKIT_ANTHROPIC_API_KEY"],
+    ["BKIT_OPENCODE_API_KEY"],
+    ["BKIT_OPENROUTER_API_KEY"],
+    ["BKIT_OLLAMA_API_KEY"],
+    ["BKIT_OPENAI_API_KEY"],
+  ])("%s alone sets enabled true", (name) => {
+    expect(runGate({ [name]: "k" }).outputs.enabled).toBe("true");
+  });
+
+  it("enabled is true when any agent BKIT_ secret is set and false when none is", () => {
+    for (const legacy of ["ANTHROPIC_API_KEY", "OPENCODE_PROVIDER_KEY", "OPENAI_API_KEY"]) {
+      expect(runGate({ [legacy]: "k" }).outputs.enabled).toBe("false");
+      expect(runGate({ [legacy]: "k", BKIT_OPENAI_API_KEY: "k" }).outputs.enabled).toBe("true");
+    }
+    expect(runGate({}).outputs.enabled).toBe("false");
+  });
+
+  it("absent bkit.cloud.agent selects no job and the notice names bkit install --auto=", () => {
+    const { outputs, stdout } = runSelect(null, {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENROUTER_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
+    expect(stdout).toContain("bkit install --auto=");
+  });
+
+  it("recorded claude with BKIT_ANTHROPIC_API_KEY selects only the claude job", () => {
+    const { outputs } = runSelect("claude", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual(["claude"]);
+    expect(outputs.agent).toBe("claude");
+  });
+
+  it("recorded claude with both federation variables and no API key selects the claude job", () => {
+    const { outputs } = runSelect("claude", {
+      ANTHROPIC_FEDERATION_RULE_ID: "fdrl_x",
+      ANTHROPIC_ORGANIZATION_ID: "00000000-0000-0000-0000-000000000000",
+    });
+    expect(selectedJobs(outputs)).toEqual(["claude"]);
+    expect(outputs.dispatched).toBe("claude");
+  });
+
+  it.each([["BKIT_OPENCODE_API_KEY"], ["BKIT_OPENROUTER_API_KEY"], ["BKIT_OLLAMA_API_KEY"]])(
+    "recorded opencode with %s selects only the opencode job",
+    (key) => {
+      const { outputs } = runSelect("opencode", { [key]: "k", BKIT_ANTHROPIC_API_KEY: "k" });
+      expect(selectedJobs(outputs)).toEqual(["opencode"]);
+      expect(outputs.dispatched).toBe("opencode");
+      expect(outputs.ignored).toContain("claude");
+    },
+  );
+
+  it("recorded codex selects only codex while BKIT_ANTHROPIC_API_KEY is also set", () => {
+    const { outputs } = runSelect("codex", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual(["codex"]);
+    expect(outputs.agent).toBe("codex");
+  });
+
+  it("recorded agent without its secret selects no job and names the missing secret", () => {
+    const { outputs, stdout } = runSelect("codex", {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
+    expect(stdout).toContain("BKIT_OPENAI_API_KEY");
+  });
+
+  it.each([["cursor"], ["none"]])("recorded %s selects no router job", (agent) => {
+    const { outputs } = runSelect(agent, {
+      BKIT_ANTHROPIC_API_KEY: "k",
+      BKIT_OPENAI_API_KEY: "k",
+      BKIT_OPENCODE_API_KEY: "k",
+    });
+    expect(selectedJobs(outputs)).toEqual([]);
   });
 });

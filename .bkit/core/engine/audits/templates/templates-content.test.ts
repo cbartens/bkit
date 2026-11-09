@@ -653,6 +653,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
       "BKIT_LINEAR_API_KEY",
       "BKIT_JIRA_API_KEY",
       "BKIT_ANTHROPIC_API_KEY",
+      "BKIT_OPENAI_API_KEY",
       "BKIT_CURSOR_API_KEY",
       "BKIT_OPENCODE_API_KEY",
       "BKIT_OPENROUTER_API_KEY",
@@ -664,6 +665,7 @@ describe(".bkit/.env.example keys are BKIT_-prefixed (direnv isolation)", () => 
     expect(assigned).not.toContain("LINEAR_API_KEY");
     expect(assigned).not.toContain("JIRA_API_TOKEN");
     expect(assigned).not.toContain("ANTHROPIC_API_KEY");
+    expect(assigned).not.toContain("OPENAI_API_KEY");
     expect(assigned).not.toContain("OPENCODE_API_KEY");
   });
 });

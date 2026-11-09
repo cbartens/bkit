@@ -47,6 +47,7 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 864-move-project-docs | 864-move-project-docs | 1794046674228 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 
 ### Build
 
@@ -54,7 +55,6 @@ _(refreshed 2026-11-09T09:57:50Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1794135472246 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
 
@@ -67,6 +67,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
@@ -76,7 +77,6 @@ _(none)_
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
-| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

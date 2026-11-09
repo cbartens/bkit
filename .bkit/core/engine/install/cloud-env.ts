@@ -38,6 +38,11 @@ export const SESSION_HIJACK_KEYS = [
   "ANTHROPIC_AUTH_TOKEN",
 ] as const;
 
+// Router-only keys: used by a router job as a repo Actions secret, never by a cloud agent
+// session. Pasting them would hand a paid key to every session that reads untrusted issue /
+// PR text. Always dropped from the paste block.
+export const ROUTER_ONLY_KEYS = ["BKIT_OPENAI_API_KEY"] as const;
+
 // bkit baseline env-var NAMES every cloud environment needs, whatever the tracker:
 // `gh` and the GitHub MCP server read BKIT_GH_TOKEN on every host. Emitted as a
 // placeholder ONLY when absent from the resolved `.envrc` set — a present value keeps
@@ -59,6 +64,8 @@ export interface CloudEnvResolution {
   unset: string[];
   /** Session-hijack keys that were present and were dropped. */
   hijackDropped: string[];
+  /** Router-only keys that were present and were dropped. */
+  routerOnlyDropped: string[];
   /** Keys whose resolved value was empty (skipped from the paste block). */
   emptySkipped: string[];
   /** Baseline token names absent from sources — emitted as placeholders. */
@@ -135,6 +142,7 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
     included: [],
     unset: [],
     hijackDropped: [],
+    routerOnlyDropped: [],
     emptySkipped: [],
     placeholders: [],
     sources: [],
@@ -173,6 +181,14 @@ export function resolveCloudEnvVars(cwd: string): CloudEnvResolution {
   for (const k of SESSION_HIJACK_KEYS) {
     if (map.has(k)) {
       res.hijackDropped.push(k);
+      map.delete(k);
+    }
+  }
+
+  // Drop router-only keys.
+  for (const k of ROUTER_ONLY_KEYS) {
+    if (map.has(k)) {
+      res.routerOnlyDropped.push(k);
       map.delete(k);
     }
   }
@@ -232,6 +248,11 @@ export function renderCloudEnvNotes(res: CloudEnvResolution): string {
   if (res.hijackDropped.length) {
     bullets.push(
       `- **Dropped — session-billing hijack:** ${fmtList(res.hijackDropped)} — would redirect the agent's own model calls onto API-key billing instead of your subscription.`,
+    );
+  }
+  if (res.routerOnlyDropped.length) {
+    bullets.push(
+      `- **Dropped — router-only secret:** ${fmtList(res.routerOnlyDropped)} — set it as a repo Actions secret; no cloud agent session needs it.`,
     );
   }
   if (res.emptySkipped.length) {

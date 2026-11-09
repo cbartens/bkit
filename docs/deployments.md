@@ -525,7 +525,7 @@ Fine-grained permissions for this repo:
 
 When Renovate is the updater, leave alerts on and turn security updates and version updates off so Dependabot does not open competing PRs.
 
-**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in both jobs: replace it with a label (e.g. `ubuntu-latest`).
+**Runner labels for bkit workflows.** `bkit-ci.yml`, `bkit-cloud.yml`, `bkit-renovate.yml` and `bkit-trivy.yml` are templates you copy and own; edit `runs-on` in your copy. The `bkit-cloud.yml` template ships the `{{CLOUD_RUNNER}}` placeholder in all four jobs (`context`, `claude`, `opencode`, `codex`): replace it with a label (e.g. `ubuntu-latest`).
 
 ### Manual CVE handling (when an alert fires)
 
@@ -662,23 +662,26 @@ Or Actions tab → CI → Run workflow → select branch. Same pattern as consum
 
 `pnpm bkit install` — all three phases. `pnpm bkit check` / `pnpm bkit doctor` — Phase 1 + 3; write only `.bkit/advisories.md`. `check` exits 1 on Tier-1 / Tier-2 drift. `pnpm bkit upgrade` — diff vs `canonicalHashes`; conflicts stderr (`--auto-apply` non-zero). Offline re-render at installed version; `--latest`/`--to=<version>` bump + re-exec atomically. Also re-renders output outside `.bkit/templates/` — host agents / commands + `.bkit/*.md` (`runBkitDocs`) per installed host (by `agents/` dir). Force-overwritten; `.bkit/prompts.md` markered — consumer overrides below `bkit:end` block-merge-preserved.
 
-### `bkit-cloud.yml` — dual-job cloud-agent lane
+### `bkit-cloud.yml` — cloud-agent lane (one agent per run)
 
-The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it to `.github/workflows/bkit-cloud.yml`) carries two runtime-gated dispatch jobs so one GitHub-tracker repo can run claude and OpenCode cloud agents from one file (additive):
+The `bkit-cloud.yml` template (`bkit install --auto=…` points at it; copy it to `.github/workflows/bkit-cloud.yml`) carries one dispatch job per router agent (claude, OpenCode, codex). A `context` job reads `bkit.cloud.agent` and starts only that agent's job, on any wired tracker (GitHub, Linear or Jira):
 
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM credential |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | `context` job's `Check runner credentials` step sets `claude=true` when `ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
-| `opencode` | `opencode run` CLI (installed in-job) | same step sets `opencode=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
+| `claude` | `claude-code-action` (OIDC via Claude GitHub App) | agent is `claude` and `Select agent job` sets `claude=true`: `BKIT_ANTHROPIC_API_KEY` is non-empty or both `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` vars are; absent / one var alone → `::notice::… no-op` | `BKIT_ANTHROPIC_API_KEY` secret, or workload identity federation (vars → OIDC exchange for a short-lived token; set key wins) |
+| `opencode` | `opencode run` CLI (installed in-job, after the repo's dependencies) | agent is `opencode` and one of `BKIT_OPENCODE_API_KEY` / `BKIT_OPENROUTER_API_KEY` / `BKIT_OLLAMA_API_KEY` is non-empty; absent → no-op | the provider's `BKIT_` secret |
+| `codex` | `openai/codex-action` (`sandbox: danger-full-access`, workspace trusted through codex-home) | agent is `codex` and `BKIT_OPENAI_API_KEY` is non-empty; absent → no-op | `BKIT_OPENAI_API_KEY` secret |
 
 **Rules:**
 
-- **Credential-gated, never branch-gated.** Missing credential → no-op (not fail). Both → both jobs; serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`).
-- **`--auto=opencode` requires `tracker=github`.**
-- **Single fanned-out `OPENCODE_PROVIDER_KEY`** under committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in OpenCode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
+- **Credential-gated, never branch-gated.** Missing credential → no-op (not fail). Only the recorded agent's job starts; a credential set for another agent is ignored and named in the log. Serialise via `concurrency.group` (`bkit-auto-${{ inputs.issue || …head_branch }}`, `-codex` suffix on the codex job).
+- **The `context` job installs bkit from the consumer's lockfile.** The gate reads the issue id with `bkit fids parse` and the `bkit:auto` label with `bkit issues fetch`; an unreadable label starts no agent and the log + job summary name the reason.
+- **Tracker keys** (`BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`) are set at step scope, never job-wide.
+- **Every router secret carries its `BKIT_` name.** The OpenCode job passes each provider key under its own name to the committed `opencode.json` `envVar`; no `BKIT_ANTHROPIC_API_KEY` in the OpenCode job. GHA-injection hardened, with `PHASE` / `ARG` via `env:`; `ARG` validated `^[0-9A-Za-z.*/-]+$`.
+- **The `codex` job runs `drop-sudo`** (irreversible on a reused self-hosted runner): use an ephemeral runner.
 - **SHA pins** follow § GitHub Actions pinning; your updater refreshes them in your copy. **`bkit [auto route]` gate** — commit-tag taxonomy.
-- **Disabled in bkit's own repo.** `.github/workflows/bkit-cloud.yml` (the dogfood copy of the template) is disabled in repo settings (`gh workflow list --all` shows `disabled_manually`); no `ANTHROPIC_API_KEY` / `OPENCODE_PROVIDER_KEY` secret or federation variable is set. Re-enable with `gh workflow enable bkit-cloud.yml` after setting a credential.
+- **Disabled in bkit's own repo.** `.github/workflows/bkit-cloud.yml` (the dogfood copy of the template) is disabled in repo settings (`gh workflow list --all` shows `disabled_manually`); no `BKIT_ANTHROPIC_API_KEY` / provider `BKIT_` / `BKIT_OPENAI_API_KEY` secret or federation variable is set. Re-enable with `gh workflow enable bkit-cloud.yml` after setting a credential.
 
 ### Release test runs
 
