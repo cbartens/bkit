@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T21:17:40Z)_
+_(refreshed 2026-11-09T23:14:28Z)_
 
 ### Design
 
@@ -67,7 +67,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
-| 842-ship-fails-local | 842-ship-fails-local | 1794259060187 |
+| 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |

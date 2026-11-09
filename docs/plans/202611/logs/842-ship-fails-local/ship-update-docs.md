@@ -2,28 +2,27 @@
 
 ## Files Modified
 
-- `docs/deployments.md`
+- `docs/testing.md`
+- `docs/deployments.md` (edited earlier in this ship; no further change this round)
 
 ## Drift Resolved
 
-- `docs/deployments.md` (sync, compress, cross-reference passes):
-  - § Ship gate + bookkeeping intro: added the feature reconciliation step (`branches sync --reconcile-feature`), the inherited-`dev` refusal and the new-PR rule for a merged PR with newer work.
-  - Gate paragraph: now names `--fresh-base` (stale `dev` exits 19, missing evidence exits 20), `prs merge --ship-retry` routing (moved head to validation, new conflict to integration, other refusals terminal), the shared `ship.merge.maxAttempts` allowance and the residual base race. It links to `docs/observability.md` § `[bkit-runs]` prefix — ship merge gate.
-  - "No duplicate dispatch" paragraph: codes 10 / 11 / 14 re-enter probe-and-poll only. Codes 17, 19 and 21 now return to Step 3 or Step 4.
-  - Carry-forward bullet: code 17 now returns to Step 3 reconciliation.
-- Already in sync, no change: `docs/testing.md` and `docs/observability.md` (updated in Task 8), `.bkit/workflows.md`, `.bkit/prompts.md`, `.bkit/cli.md`, `docs/capabilities.md`. The `docs/deployments.md` § Autonomous phase-close prerequisites text on `--delete-branch` covers the design/plan close, not ship, so it is still accurate.
+- `docs/testing.md` (sync pass): the `worktrees.integration.test.ts` row in the ship test-coverage table now says the remote ref is deleted with a lease-guarded push at its proved tip (kept and reported when origin refuses). The row still said only "expected-tip deletion", which no longer covered the remote delete restored in commit `8c24ba7a6`.
+- `docs/deployments.md` (earlier edit, unchanged now): § Ship gate + bookkeeping covers feature reconciliation, the inherited-`dev` refusal, the new-PR rule, `--fresh-base` exits 19 / 20, `prs merge --ship-retry` routing and the shared `ship.merge.maxAttempts` allowance.
+- Already in sync after commit `8c24ba7a6`, no change: `docs/observability.md` (`remote origin/{branch} not deleted — preserved`), `.bkit/workflows.md`, `.bkit/cli.md`, `.bkit/prompts.md`, `.bkit/instructions.md`, `docs/capabilities.md`. No doc still says the remote branch is retained for lack of conditional deletion (searched `docs/`, `.bkit/*.md`, `.bkit/core/`, `.agents/skills/bkit-ship`).
+- `docs/deployments.md:144` (the "Automatically delete head branches" setting) describes the PR-path close and stays accurate, so it was left alone.
 - Agent memory: `MEMORY.md` holds only pointers and nothing about #842, so no change.
+- History check: the repository is not shallow (`git rev-parse --is-shallow-repository` printed `false`), so the history is complete.
 
 ## Pending Items
 
-From `ship-pending-items.md`. One row is duplicated in the file.
+From `ship-pending-items.md`, deduplicated by key (latest row per key).
 
-- `842-sync-with-origin-dev` (needs-decision, OPEN, listed twice). The deferred sweep notes it is moot now: `origin/dev` is an ancestor of HEAD after the Step 4 merge. Human review can close it.
+- `842-sync-with-origin-dev` (needs-decision, OPEN, listed twice). Moot: `origin/dev` is an ancestor of HEAD after the Step 4 merge. Human review can close it.
 - `842-cloud-concurrency-queue-non-goal` (scope-declared, OPEN). The cloud Actions concurrency group is out of scope per the plan.
 - `842-docs-only-dev-movement-ci-optimization` (scope-declared, OPEN). Skipping full CI for docs-only `dev` movement is out of scope per the plan.
+- `842-remote-branch-retention-owner-approval`: the latest row is CLOSED (owner chose deletion), but an older OPEN row from the deferred sweep is also in the file. Nothing is left to review.
 
 ## Blockers
 
 None
-
-Note: the repository is not shallow (`git rev-parse --is-shallow-repository` printed `false`), so the history is complete.
