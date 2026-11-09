@@ -1,4 +1,5 @@
 // bkit status route|resume|meta|path|row — read and annotate a workflow's `status.jsonl`.
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
@@ -6,7 +7,7 @@ import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledge
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, } from "../lib.js";
+import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, writeInvocation, } from "../lib.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -461,6 +462,125 @@ export const statusCommand = {
                 for (const [k, v] of differ)
                     ctx.log(`${k} is ${String(out[k])}, expected ${v}`);
                 return failed.length === 0 && differ.length === 0 ? EXIT.OK : EXIT_ROUTE_MISSING;
+            },
+        },
+        invocation: {
+            summary: "Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call.",
+            use: "workflow",
+            flags: [
+                { ...WORKFLOW_FLAG, required: false, help: "workflow name, with --step and --file" },
+                { ...STEP_FLAG, required: false, help: "registered step of the workflow" },
+                { ...FILE_FLAG, required: false, help: "the run's status.jsonl, relative to the cwd" },
+                { name: "agent", type: "string", help: "the subagent this invocation is for" },
+                { name: "host", type: "string", help: "the host running the agent" },
+                {
+                    name: "configured-model",
+                    type: "string",
+                    help: "the pin the agent was launched with; kept apart from the observed model",
+                },
+                {
+                    name: "observed-model",
+                    type: "string",
+                    help: "the model the host reported, or `unavailable`",
+                },
+                { name: "standalone", type: "string", help: "audit|utility: a call with no run" },
+                { name: "name", type: "string", help: "with --standalone: the audit or utility name" },
+            ],
+            output: {
+                invocation: "the id to pass as --invocation to later commands",
+                receipt: "the outbox file holding the issued context",
+                scope: "run (bound to a status.jsonl) or outbox (runless audit or utility)",
+                workflow: "the workflow, or null",
+                step: "the registered step, or null",
+                number: "the step's registered number, or null",
+                title: "the step's registered title, or null",
+                run: "the workflow's run number, or null without a run",
+                statusPath: "absolute path to the run's status.jsonl, or null",
+                bookRoot: "root the run's books live under, or null",
+                agent: "the agent, or null",
+                host: "the host, or null",
+                configuredModel: "the launch pin, or null",
+                observedModel: "the reported model or `unavailable`, or null",
+            },
+            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+            run: (ctx) => {
+                const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+                if (top === null)
+                    throw new CommandError(EXIT.USAGE, "not inside a git repository");
+                const standalone = str(ctx.flags.standalone);
+                const workflow = str(ctx.flags.workflow);
+                const step = str(ctx.flags.step);
+                const file = str(ctx.flags.file);
+                const base = {
+                    agent: str(ctx.flags.agent) ?? null,
+                    host: str(ctx.flags.host) ?? null,
+                    configuredModel: str(ctx.flags.configuredModel) ?? null,
+                    observedModel: str(ctx.flags.observedModel) ?? null,
+                };
+                let inv;
+                if (standalone !== undefined) {
+                    oneOf(standalone, ["audit", "utility"], "--standalone");
+                    if ([workflow, step, file].some((v) => v !== undefined))
+                        throw new CommandError(EXIT.USAGE, "--standalone has no run: drop --workflow, --step and --file");
+                    const name = str(ctx.flags.name);
+                    if (name === undefined || name === "")
+                        throw new CommandError(EXIT.USAGE, "--standalone needs --name");
+                    inv = {
+                        scope: "outbox",
+                        workflow: null,
+                        step: null,
+                        number: null,
+                        title: null,
+                        run: null,
+                        statusPath: null,
+                        bookRoot: null,
+                        standalone,
+                        name,
+                        ...base,
+                    };
+                }
+                else {
+                    if (workflow === undefined || step === undefined || file === undefined)
+                        throw new CommandError(EXIT.USAGE, "give --workflow, --step and --file, or --standalone=audit|utility with --name");
+                    if (ctx.flags.name !== undefined)
+                        throw new CommandError(EXIT.USAGE, "--name is for --standalone");
+                    if (!isResumable(workflow))
+                        throw new CommandError(EXIT.USAGE, `--workflow must be ${Object.keys(WORKFLOW_STEPS).join("|")}, got "${workflow}"`);
+                    const registered = WORKFLOW_STEPS[workflow].find((s) => s.step === step);
+                    if (registered === undefined)
+                        throw new CommandError(EXIT.USAGE, `--step ${step} is not a registered ${workflow} step`);
+                    const statusPath = path.resolve(ctx.cwd, file);
+                    const logs = path.dirname(path.dirname(statusPath));
+                    if (path.basename(statusPath) !== "status.jsonl" ||
+                        path.basename(logs) !== "logs" ||
+                        path.basename(path.dirname(path.dirname(logs))) !== "plans")
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is not a docs/plans/<month>/logs/<fid>/status.jsonl`);
+                    inv = {
+                        scope: "run",
+                        workflow,
+                        step,
+                        number: registered.number,
+                        title: registered.title,
+                        run: runNumber(readRuns(statusPath), workflow),
+                        statusPath,
+                        bookRoot: path.dirname(path.dirname(path.dirname(path.dirname(logs)))),
+                        standalone: null,
+                        name: null,
+                        ...base,
+                    };
+                }
+                const id = `inv-${randomBytes(16).toString("hex")}`;
+                const issued = {
+                    id,
+                    version: 1,
+                    ...inv,
+                    worktree: top,
+                    issuedAt: statusTimestamp(),
+                };
+                const receipt = writeInvocation(ctx.cwd, issued);
+                const { id: _id, version: _v, worktree: _w, issuedAt: _at, standalone: _s, name: _n, ...out } = issued;
+                ctx.emit({ invocation: id, receipt, ...out });
+                return EXIT.OK;
             },
         },
         resume: {

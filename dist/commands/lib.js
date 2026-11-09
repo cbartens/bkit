@@ -347,6 +347,82 @@ export function resolveActiveRun(opts) {
     }
     return found.length === 1 ? found[0] : undefined;
 }
+export const INVOCATION_FLAG = {
+    name: "invocation",
+    type: "string",
+    help: "invocation id from `bkit status invocation`; must be issued by this checkout, and any --workflow, --step, --agent or --file given must agree with it",
+};
+const INVOCATION_ID = /^inv-[0-9a-f]{32}$/;
+/** `<git common dir>/bkit-outbox/invocation-context`: one receipt per issued invocation. */
+export function invocationDir(cwd) {
+    const root = outboxRoot(cwd);
+    return root === null ? null : path.join(root, "invocation-context");
+}
+/** Persist an issued invocation; returns its receipt path. */
+export function writeInvocation(cwd, inv) {
+    const dir = invocationDir(cwd);
+    if (dir === null)
+        throw new CommandError(EXIT.USAGE, `not inside a git repository: ${cwd}`);
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${inv.id}.json`);
+    fs.writeFileSync(file, `${JSON.stringify(inv)}\n`, { mode: 0o600, flag: "wx" });
+    return file;
+}
+/**
+ * Resolve `--invocation` against the outbox and refuse (exit 2) a forged, unissued,
+ * other-checkout or stale id, and any asserted `--workflow`, `--step`, `--agent` or
+ * `--file` that disagrees with it. A run-scoped id is stale once a newer run of its
+ * workflow has started.
+ */
+export function resolveInvocation(cwd, id, flags) {
+    const refuse = (why) => {
+        throw new CommandError(EXIT.USAGE, `invocation ${id}: ${why}`);
+    };
+    if (!INVOCATION_ID.test(id))
+        return refuse("not an id issued by `bkit status invocation`");
+    const dir = invocationDir(cwd);
+    const file = dir === null ? null : path.join(dir, `${id}.json`);
+    if (file === null || !fs.existsSync(file))
+        return refuse("not issued in this repository");
+    const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+    const inv = parsed.ok ? parsed.value : null;
+    if (inv === null || typeof inv !== "object" || inv.id !== id || inv.version !== 1)
+        return refuse("receipt is unreadable");
+    const top = git(cwd, ["rev-parse", "--show-toplevel"]);
+    if (top === null || top !== inv.worktree)
+        return refuse(`issued in another checkout (${inv.worktree})`);
+    if (inv.scope === "run") {
+        if (inv.statusPath === null || inv.workflow === null || inv.run === null)
+            return refuse("run receipt lacks its status file");
+        if (!fs.existsSync(inv.statusPath))
+            return refuse(`stale: ${inv.statusPath} is gone`);
+        const events = [];
+        for (const line of fs.readFileSync(inv.statusPath, "utf-8").split("\n")) {
+            const row = line.trim() === "" ? null : parseJson(line);
+            if (row?.ok && row.value !== null && typeof row.value === "object") {
+                const type = row.value.type;
+                if (typeof type === "string" && FOLD_TYPES.has(type))
+                    events.push(row.value);
+            }
+        }
+        const started = fold(events).filter((r) => r.workflow === inv.workflow).length;
+        if (started > inv.run)
+            return refuse(`stale: a newer ${inv.workflow} run has started`);
+        if (started < inv.run - 1)
+            return refuse("stale: its run is gone");
+    }
+    const text = (v) => (typeof v === "string" ? v : undefined);
+    const conflict = (flag, given, bound) => refuse(`conflict: --${flag}=${given} disagrees with the invocation (${bound ?? "none"})`);
+    for (const flag of ["workflow", "step", "agent"]) {
+        const given = text(flags[flag]);
+        if (given !== undefined && given !== inv[flag])
+            conflict(flag, given, inv[flag]);
+    }
+    const file2 = text(flags["file"]);
+    if (file2 !== undefined && path.resolve(cwd, file2) !== inv.statusPath)
+        conflict("file", file2, inv.statusPath);
+    return inv;
+}
 /** The journal `runCommand` uses unless a caller injects one: writes into the active run's own books. */
 function engineJournal() {
     let resolved = false;
@@ -471,9 +547,17 @@ export async function runCommand(argv, commands, options) {
         }
         ctx.json = own.length !== rest.length;
         ctx.flags = parseFlags(own, spec.flags);
+        const invocationId = ctx.flags["invocation"];
+        if (typeof invocationId === "string" &&
+            spec.flags.some((f) => f.name === INVOCATION_FLAG.name)) {
+            ctx.invocation = resolveInvocation(ctx.cwd, invocationId, ctx.flags);
+        }
         input = { noun: cmd.noun, verb, argv: rest, flags: ctx.flags, cwd: ctx.cwd };
         const entered = input;
-        guarded(() => journal.call(entered));
+        // An invocation-bound call is attributed by its receipt; it appends no engine-call row,
+        // so resuming or reading under an invocation never changes the run's status file.
+        if (ctx.invocation === undefined)
+            guarded(() => journal.call(entered));
         outcome = null;
         const code = await spec.run(ctx);
         outcome = code;

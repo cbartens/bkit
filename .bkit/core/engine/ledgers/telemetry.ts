@@ -141,7 +141,22 @@ export interface RowBy {
    * exactly when `subagent` is set.
    */
   model?: string;
+  /**
+   * Where `model` came from: `observed` (the host reported it) or `unavailable` (the host
+   * reported nothing, so `model` is absent). Absent on rows written before provenance.
+   */
+  modelSource?: ModelSource;
+  /** The pin the subagent was launched with; never the model it ran on. Subagent rows only. */
+  configuredModel?: string;
+  /** The host that ran the subagent, when known. */
+  host?: string;
+  /** Fields a newer writer adds survive normalization. */
+  [field: string]: unknown;
 }
+
+/** Provenance of a subagent row's model: the host reported it, or reported nothing. */
+export type ModelSource = "observed" | "unavailable";
+export const MODEL_SOURCES: ReadonlySet<string> = new Set<ModelSource>(["observed", "unavailable"]);
 
 /** The bkit that wrote a row; `chat` rows add what the chat did with bkit. */
 export interface BkitBlock {
@@ -182,6 +197,8 @@ export interface TelemetryEnvelope {
    * never an identity: `ts` (with `key` for keyed kinds) identifies the row.
    */
   references?: string[];
+  /** Lifecycle or triage status on the kinds that carry one; narrowed by each payload. */
+  status?: string;
 }
 
 /** The identity block of every row that belongs to one workflow run. */
@@ -472,7 +489,8 @@ export function writerProblem(row: Record<string, unknown>): string | undefined 
     if (typeof subagent !== "string" || subagent === "") {
       return "by.subagent must be a non-empty string";
     }
-    if (typeof by["model"] !== "string" || by["model"] === "") {
+    const unavailable = by["modelSource"] === "unavailable" && by["model"] === undefined;
+    if (!unavailable && (typeof by["model"] !== "string" || by["model"] === "")) {
       return `subagent ${subagent} row missing by.model (its prompt's frontmatter model:)`;
     }
     if (writers.subagents === ANY_WRITER || writers.subagents.has(subagent)) return undefined;
@@ -1571,13 +1589,33 @@ export function validate(event: unknown): ValidationResult {
   if (typeof by["step"] !== "string" || by["step"] === "") {
     return { ok: false, reason: "by.step must be a non-empty string" };
   }
-  for (const f of ["workflow", "subagent", "model"]) {
+  for (const f of ["workflow", "subagent", "model", "configuredModel", "host"]) {
     if (by[f] !== undefined && (typeof by[f] !== "string" || by[f] === "")) {
       return { ok: false, reason: `by.${f} must be a non-empty string when present` };
     }
   }
   if (by["model"] !== undefined && by["subagent"] === undefined) {
     return { ok: false, reason: "by.model is set only on subagent rows" };
+  }
+  if (by["modelSource"] !== undefined) {
+    if (typeof by["modelSource"] !== "string" || !MODEL_SOURCES.has(by["modelSource"])) {
+      return { ok: false, reason: "by.modelSource must be observed|unavailable when present" };
+    }
+    if (by["subagent"] === undefined) {
+      return { ok: false, reason: "by.modelSource is set only on subagent rows" };
+    }
+    if (by["modelSource"] === "unavailable" && by["model"] !== undefined) {
+      return {
+        ok: false,
+        reason: "by.model must be absent when by.modelSource is unavailable",
+      };
+    }
+    if (by["modelSource"] === "observed" && by["model"] === undefined) {
+      return { ok: false, reason: "by.modelSource observed needs by.model" };
+    }
+  }
+  if (by["configuredModel"] !== undefined && by["subagent"] === undefined) {
+    return { ok: false, reason: "by.configuredModel is set only on subagent rows" };
   }
   if (e["references"] !== undefined && !Array.isArray(e["references"])) {
     return { ok: false, reason: "references must be an array when present" };
@@ -1928,6 +1966,68 @@ export function fold(events: TelemetryEvent[]): FoldedState {
     state.set(key, event);
   }
   return state;
+}
+
+// ---------------------------------------------------------------------------
+// Query — canonical winners, filtered after the fold, with located line diagnostics
+// ---------------------------------------------------------------------------
+
+/** A ledger line the query could not read as a row. */
+export interface LineDiagnostic {
+  /** 1-based line number in the file as read. */
+  line: number;
+  reason: "malformed-json" | "not-an-object";
+}
+
+export interface LedgerQuery {
+  key?: string;
+  status?: string;
+}
+
+export interface LedgerQueryResult {
+  /** The fold winners that pass the filter, oldest `ts` first, equal `ts` by identity. */
+  rows: TelemetryEvent[];
+  diagnostics: LineDiagnostic[];
+  /** Non-blank lines read. */
+  lines: number;
+  /** Rows read before folding. */
+  readRows: number;
+}
+
+/** Statuses of the keyed lifecycle kinds: a row with no `status` is ACTIVE. */
+const DEFAULT_ACTIVE_KINDS: ReadonlySet<string> = new Set(["decision", "knowledge"]);
+
+/**
+ * The canonical ledger read: parse every line (reporting each unreadable one with its line
+ * number), fold with {@link fold}, and only then apply `filter` to the winners, so an older
+ * row a newer winner superseded is never resurrected. Pure and read-only.
+ */
+export function queryLedger(raw: string, filter: LedgerQuery = {}): LedgerQueryResult {
+  const diagnostics: LineDiagnostic[] = [];
+  const events: TelemetryEvent[] = [];
+  let lines = 0;
+  raw.split("\n").forEach((text, i) => {
+    const trimmed = text.trim();
+    if (trimmed === "") return;
+    lines++;
+    const obj = parseJson(trimmed);
+    if (!obj.ok) diagnostics.push({ line: i + 1, reason: "malformed-json" });
+    else if (obj.value === null || typeof obj.value !== "object" || Array.isArray(obj.value))
+      diagnostics.push({ line: i + 1, reason: "not-an-object" });
+    else events.push(obj.value as TelemetryEvent);
+  });
+  const winners = [...fold(events).entries()].sort(
+    ([ia, a], [ib, b]) => compareTs(a, b) || (ia < ib ? -1 : ia > ib ? 1 : 0),
+  );
+  const rows = winners
+    .map(([, e]) => e)
+    .filter((e) => {
+      if (filter.key !== undefined && e.key !== filter.key) return false;
+      if (filter.status === undefined) return true;
+      const status = e.status ?? (DEFAULT_ACTIVE_KINDS.has(String(e.kind)) ? "ACTIVE" : undefined);
+      return status === filter.status;
+    });
+  return { rows, diagnostics, lines, readRows: events.length };
 }
 
 // ---------------------------------------------------------------------------

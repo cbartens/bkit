@@ -10,6 +10,7 @@
 // everything already in the index, not nothing.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,6 +23,7 @@ import {
   UNJUSTIFIED_REASON,
   gitEnv,
   parse,
+  queryLedger,
   mintTs,
   resolveRepoSlug,
   validate,
@@ -33,11 +35,14 @@ import { COMPACT_LEDGERS, compactLedgers, type CompactLedger } from "../../ledge
 import {
   CommandError,
   EXIT,
+  INVOCATION_FLAG,
   isIgnoredPath,
   isSharedBranch,
   parseJson,
+  wholeNumber,
   type CommandSpec,
   type FlagSpec,
+  type Invocation,
   type RunContext,
 } from "../lib.js";
 import { str } from "./status.js";
@@ -61,6 +66,9 @@ export const EXIT_EMPTY = 6;
 export const EXIT_NOT_BOOKKEEPING = 7;
 /** append: a row was refused (supplied `ts`, wrong kind, invalid, unlisted writer). */
 export const EXIT_ROW_REFUSED = 8;
+
+/** Rows per `ledgers query` page unless --limit says otherwise. */
+const QUERY_PAGE = 200;
 
 const SCOPES = ["core", "full", "pr"] as const;
 export type Scope = (typeof SCOPES)[number];
@@ -806,6 +814,10 @@ export const ledgersCommand: CommandSpec = {
           required: true,
           help: "file holding a JSON array of rows without schema, ts or bkit, or - for stdin",
         },
+        {
+          ...INVOCATION_FLAG,
+          help: `${INVOCATION_FLAG.help}; fills each row's by block (workflow, step, subagent, model, provenance) and refuses a row whose own by disagrees`,
+        },
       ],
       output: {
         ledger: "the ledger appended to",
@@ -819,6 +831,44 @@ export const ledgersCommand: CommandSpec = {
           "a row carries ts, has the wrong kind, fails validation, or names a writer not listed for its kind — nothing written",
       },
       run: (ctx) => append(ctx),
+    },
+    query: {
+      summary:
+        "Read one ledger's canonical winners (filtered after the fold), paged, with line diagnostics and coverage. Writes nothing.",
+      use: "by-hand",
+      flags: [
+        { name: "root", type: "string", help: "checkout whose ledger to read (default: cwd)" },
+        {
+          name: "ledger",
+          type: "string",
+          required: true,
+          help: Object.keys(APPEND_LEDGERS).join(" | "),
+        },
+        { name: "key", type: "string", help: "only the winner with this key" },
+        { name: "status", type: "string", help: "only winners whose status is this (e.g. ACTIVE)" },
+        {
+          name: "limit",
+          type: "string",
+          help: `rows per page (default ${QUERY_PAGE}, at least 1)`,
+        },
+        {
+          name: "cursor",
+          type: "string",
+          help: "nextCursor of the previous page; refused when the ledger or the filter changed",
+        },
+      ],
+      output: {
+        ledger: "the ledger read",
+        file: "its path, relative to --root",
+        rows: "this page of fold winners, oldest ts first (equal ts by identity)",
+        nextCursor: "pass as --cursor for the next page, or null on the last page",
+        snapshot: "digest of the bytes read; every page of one scan shares it",
+        total: "winners that pass the filter, across all pages",
+        diagnostics: "each unreadable line: {line, reason}; on every page",
+        coverage:
+          "{status: complete|partial|missing|unreadable, clean, malformedLines, lines}; clean is true only for a complete scan with no unreadable line",
+      },
+      run: (ctx) => query(ctx),
     },
     triage: {
       summary:
@@ -1268,6 +1318,64 @@ const TOP_ORDER = [
   "references",
 ];
 
+/** The `by` fields an invocation owns; a row may repeat them but never disagree. */
+const INVOCATION_BY_KEYS = [
+  "workflow",
+  "step",
+  "subagent",
+  "model",
+  "modelSource",
+  "configuredModel",
+  "host",
+] as const;
+
+/**
+ * `row` with its `by` block completed from the verified invocation. A field the row
+ * asserts that differs from the invocation's, or that the invocation cannot vouch for,
+ * is refused rather than overwritten. A configured pin is recorded as `configuredModel`
+ * only, never as the model that ran.
+ */
+function withInvocationBy(
+  row: Record<string, unknown>,
+  inv: Invocation,
+  refuse: (why: string) => CommandError,
+): Record<string, unknown> {
+  const unavailable = inv.observedModel === "unavailable";
+  const expected: Record<string, string | undefined> = {
+    workflow: inv.workflow ?? inv.standalone ?? undefined,
+    step: inv.step ?? undefined,
+    subagent: inv.agent ?? undefined,
+    model:
+      inv.agent !== null && inv.observedModel !== null && !unavailable
+        ? inv.observedModel
+        : undefined,
+    modelSource:
+      inv.agent === null || inv.observedModel === null
+        ? undefined
+        : unavailable
+          ? "unavailable"
+          : "observed",
+    configuredModel: inv.agent !== null ? (inv.configuredModel ?? undefined) : undefined,
+    host: inv.agent !== null ? (inv.host ?? undefined) : undefined,
+  };
+  const asserted = row["by"];
+  if (
+    asserted !== undefined &&
+    (asserted === null || typeof asserted !== "object" || Array.isArray(asserted))
+  )
+    throw refuse("by must be an object");
+  const by: Record<string, unknown> = { ...(asserted as Record<string, unknown> | undefined) };
+  for (const key of INVOCATION_BY_KEYS) {
+    if (by[key] !== undefined && by[key] !== expected[key]) {
+      throw refuse(
+        `conflict: by.${key}=${JSON.stringify(by[key])} disagrees with invocation ${inv.id} (${expected[key] === undefined ? "none" : JSON.stringify(expected[key])})`,
+      );
+    }
+    if (by[key] === undefined && expected[key] !== undefined) by[key] = expected[key];
+  }
+  return { ...row, by };
+}
+
 /**
  * Append `rows` to one ledger. Every row is checked before any is written, so a
  * refused row leaves the file byte-identical. Each row gets `schema` and a `ts`
@@ -1277,7 +1385,12 @@ const TOP_ORDER = [
  * Never rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED /
  * EXIT_STAGE).
  */
-export function appendLedgerRows(root: string, ledger: string, rows: unknown): AppendResult {
+export function appendLedgerRows(
+  root: string,
+  ledger: string,
+  rows: unknown,
+  invocation?: Invocation,
+): AppendResult {
   if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
     throw new CommandError(
       EXIT.USAGE,
@@ -1299,7 +1412,10 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
       throw refuse("not a JSON object");
     }
-    const r = raw as Record<string, unknown>;
+    const r =
+      invocation === undefined
+        ? (raw as Record<string, unknown>)
+        : withInvocationBy(raw as Record<string, unknown>, invocation, refuse);
     if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
     if (Object.hasOwn(r, "schema")) throw refuse("carries schema; it is set at append time");
     if (!takes.includes(String(r["kind"]))) {
@@ -1370,9 +1486,87 @@ function append(ctx: RunContext): number {
   if (text.trim() === "") throw new CommandError(EXIT.USAGE, "--rows holds no rows");
   const parsed = parseJson(text);
   if (!parsed.ok) throw new CommandError(EXIT.USAGE, "--rows is not JSON");
-  const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value);
+  const bound = ctx.invocation?.bookRoot;
+  if (bound !== undefined && bound !== null && bound !== root)
+    throw new CommandError(
+      EXIT.USAGE,
+      `conflict: --root ${root} is not the invocation's book root ${bound}`,
+    );
+  const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value, ctx.invocation);
   ctx.log(`appended ${r.appended} row(s) to ${r.file}`);
   ctx.emit({ ...r });
+  return EXIT.OK;
+}
+
+/** Page cursor: the snapshot and filter it was cut from, and the offset of the next row. */
+function encodeCursor(c: { s: string; f: string; o: number }): string {
+  return Buffer.from(JSON.stringify(c)).toString("base64url");
+}
+
+function decodeCursor(text: string): { s: string; f: string; o: number } | null {
+  const parsed = parseJson(Buffer.from(text, "base64url").toString("utf-8"));
+  if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") return null;
+  const v = parsed.value as Record<string, unknown>;
+  return typeof v["s"] === "string" && typeof v["f"] === "string" && Number.isInteger(v["o"])
+    ? { s: v["s"], f: v["f"], o: v["o"] as number }
+    : null;
+}
+
+function query(ctx: RunContext): number {
+  const root = rootOf(ctx);
+  const ledger = String(ctx.flags.ledger);
+  if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--ledger must be one of ${Object.keys(APPEND_LEDGERS).join(", ")} (got '${ledger}')`,
+    );
+  }
+  const { file } = APPEND_LEDGERS[ledger as AppendLedger];
+  const filter = { key: str(ctx.flags.key), status: str(ctx.flags.status) };
+  const limit = wholeNumber(ctx.flags.limit, "limit", QUERY_PAGE, 1);
+  const filterId = JSON.stringify([filter.key ?? null, filter.status ?? null]);
+  const cursorText = str(ctx.flags.cursor);
+  const cursor = cursorText === undefined ? null : decodeCursor(cursorText);
+  if (cursorText !== undefined && cursor === null)
+    throw new CommandError(EXIT.USAGE, "--cursor is not a cursor from this command");
+
+  const abs = path.join(root, file);
+  const read = readText(abs);
+  const missing = !read.ok && !fs.existsSync(abs);
+  const raw = read.ok ? read.text : "";
+  const snapshot = createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  if (cursor !== null && (cursor.s !== snapshot || cursor.f !== filterId))
+    throw new CommandError(
+      EXIT.USAGE,
+      "stale cursor: the ledger or the filter changed since this scan began; start again without --cursor",
+    );
+  const result = queryLedger(raw, filter);
+  const offset = cursor?.o ?? 0;
+  const page = result.rows.slice(offset, offset + limit);
+  const next = offset + limit < result.rows.length ? offset + limit : null;
+  const status = missing
+    ? "missing"
+    : !read.ok
+      ? "unreadable"
+      : result.diagnostics.length > 0
+        ? "partial"
+        : "complete";
+  ctx.emit({
+    ledger,
+    file,
+    rows: page,
+    nextCursor: next === null ? null : encodeCursor({ s: snapshot, f: filterId, o: next }),
+    snapshot,
+    total: result.rows.length,
+    diagnostics: result.diagnostics,
+    coverage: {
+      status,
+      clean: status === "complete",
+      malformedLines: result.diagnostics.length,
+      lines: result.lines,
+      ...(!read.ok && !missing ? { error: read.error } : {}),
+    },
+  });
   return EXIT.OK;
 }
 

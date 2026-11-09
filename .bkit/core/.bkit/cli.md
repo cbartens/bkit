@@ -220,7 +220,8 @@ Stage and commit bookkeeping by allow-list; union ledgers; check a range is book
 | `commit` | workflow | `--root` **`--month`** **`--fid`** `--scope` **`--mode`** `--stage-tracked-updates` `--path` `--squash-of` `--only-if-dirty-tracked` `--message` | Stage (and commit) the bookkeeping allow-list for one feature. |
 | `union` | workflow | **`--src`** **`--dst`** | Append a worktree's new ledger rows into another checkout (never .bkit/issues.jsonl). |
 | `only-bookkeeping` | by hand | `--root` **`--month`** **`--fid`** **`--from`** **`--to`** | Exit 0 when every path changed in from..to is on the --scope=pr allow-list. |
-| `append` | by hand | `--root` **`--ledger`** **`--rows`** | Append validated rows to one ledger, minting each row's ts at append time. |
+| `append` | by hand | `--root` **`--ledger`** **`--rows`** `--invocation` | Append validated rows to one ledger, minting each row's ts at append time. |
+| `query` | by hand | `--root` **`--ledger`** `--key` `--status` `--limit` `--cursor` | Read one ledger's canonical winners (filtered after the fold), paged, with line diagnostics and coverage. Writes nothing. |
 | `triage` | workflow | `--root` **`--fid`** **`--plan`** | Bucket each deferral row the FID declared by the four Deferral Reason tests, and write the unjustified ones. |
 | `check` | by hand | `--root` **`--plan`** | Check that every decision / deferral key on a plan's `**Ledger rows:**` line is on disk. |
 | `compact` | by hand | `--root` `--ledger` `--dry-run` | Rewrite keyed ledgers to their fold winners, stamping each winner's firstTs + updates. |
@@ -337,6 +338,7 @@ Read and annotate a workflow's status.jsonl.
 | --- | --- | --- | --- |
 | `path` | by hand | **`--workflow`** **`--fid`** **`--month`** | Where this workflow's status.jsonl lives. |
 | `route` | workflow | `--file` **`--workflow`** `--step` `--group` `--require` `--expect` `--prompt-file` `--fid` `--month` | Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions. |
+| `invocation` | workflow | `--workflow` `--step` `--file` `--agent` `--host` `--configured-model` `--observed-model` `--standalone` `--name` | Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call. |
 | `resume` | by hand | **`--file`** **`--workflow`** | The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside. |
 | `meta` | workflow | **`--file`** **`--workflow`** `--debug-mode` `--push-mode` `--debug-attempt` `--opened-pr` `--ci-selection-file` | Append a workflow-meta row (run-level routing state). |
 | `row` | workflow | **`--file`** **`--workflow`** **`--type`** `--field` | Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row. |
