@@ -44,6 +44,7 @@ import {
   type KindWriters,
   type TelemetryEvent,
 } from "./telemetry";
+import { compactLedgerText } from "./compact";
 import { getBkitDocsRoot } from "../shared/package-roots";
 import { testRunProblem } from "./status";
 
@@ -3064,5 +3065,45 @@ describe("queryLedger — canonical winners before filtering", () => {
     expect(queryLedger(raw, {}).rows.map((r) => r.key)).toEqual(
       queryLedger(raw, {}).rows.map((r) => r.key),
     );
+  });
+});
+
+describe("provenance compatibility through the ledger read paths", () => {
+  const by = (extra: Row) => ({
+    workflow: "build",
+    step: "build-plan-tests",
+    subagent: "bkit-build-plan-tests",
+    ...extra,
+  });
+
+  it.each([
+    ["old row with no provenance", { model: "opus" }],
+    ["observed model", { model: "opus", modelSource: "observed", configuredModel: "sonnet" }],
+    ["unavailable model", { modelSource: "unavailable", configuredModel: "sonnet" }],
+    ["unknown optional field", { model: "opus", modelSource: "observed", futureField: "kept" }],
+  ] as const)("keeps a %s row intact through validate, normalize, fold and compact", (_n, b) => {
+    const ev = knowledgeEvent("compat", { ts: 1_700_000_000_001, by: by(b) });
+    expect(validate(ev).ok).toBe(true);
+    expect(normalizeEvent(ev).by).toMatchObject(b);
+    const winner = [...fold([ev]).values()][0]!;
+    expect(winner.by).toMatchObject(b);
+    const compacted = compactLedgerText(`${JSON.stringify(ev)}\n`);
+    const kept = JSON.parse(compacted.text.trim().split("\n")[0]!) as { by: unknown };
+    expect(kept.by).toMatchObject(b);
+    const queried = queryLedger(`${JSON.stringify(ev)}\n`, { key: "compat" });
+    expect(queried.rows).toHaveLength(1);
+    expect(queried.diagnostics).toEqual([]);
+  });
+
+  it("diagnoses a row with no timestamp or no key instead of reading it as clean", () => {
+    const raw = [
+      JSON.stringify({ kind: "knowledge", key: "no-ts", summary: "s" }),
+      JSON.stringify({ kind: "knowledge", ts: 1_700_000_000_001, summary: "s" }),
+      JSON.stringify({ kind: "knowledge", key: "ok", ts: 1_700_000_000_003, summary: "s" }),
+    ].join("\n");
+    expect(queryLedger(raw).diagnostics).toEqual([
+      { line: 1, reason: "invalid-timestamp" },
+      { line: 2, reason: "invalid-identity" },
+    ]);
   });
 });

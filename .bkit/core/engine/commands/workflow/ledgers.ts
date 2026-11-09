@@ -1318,6 +1318,12 @@ const TOP_ORDER = [
   "references",
 ];
 
+/** A row's `by` block when it is an object, else an empty one. */
+const byOfRow = (row: Record<string, unknown>): Record<string, unknown> =>
+  row["by"] !== null && typeof row["by"] === "object" && !Array.isArray(row["by"])
+    ? (row["by"] as Record<string, unknown>)
+    : {};
+
 /** The `by` fields an invocation owns; a row may repeat them but never disagree. */
 const INVOCATION_BY_KEYS = [
   "workflow",
@@ -1416,6 +1422,10 @@ export function appendLedgerRows(
       invocation === undefined
         ? (raw as Record<string, unknown>)
         : withInvocationBy(raw as Record<string, unknown>, invocation, refuse);
+    if (invocation === undefined && byOfRow(r)["modelSource"] === "unavailable")
+      throw refuse(
+        "by.modelSource unavailable needs a validated --invocation; the engine records it, a caller cannot assert it",
+      );
     if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
     if (Object.hasOwn(r, "schema")) throw refuse("carries schema; it is set at append time");
     if (!takes.includes(String(r["kind"]))) {

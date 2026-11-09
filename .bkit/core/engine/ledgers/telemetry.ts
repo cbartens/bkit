@@ -1976,7 +1976,7 @@ export function fold(events: TelemetryEvent[]): FoldedState {
 export interface LineDiagnostic {
   /** 1-based line number in the file as read. */
   line: number;
-  reason: "malformed-json" | "not-an-object";
+  reason: "malformed-json" | "not-an-object" | "invalid-timestamp" | "invalid-identity";
 }
 
 export interface LedgerQuery {
@@ -2014,7 +2014,18 @@ export function queryLedger(raw: string, filter: LedgerQuery = {}): LedgerQueryR
     if (!obj.ok) diagnostics.push({ line: i + 1, reason: "malformed-json" });
     else if (obj.value === null || typeof obj.value !== "object" || Array.isArray(obj.value))
       diagnostics.push({ line: i + 1, reason: "not-an-object" });
-    else events.push(obj.value as TelemetryEvent);
+    else {
+      const row = obj.value as Record<string, unknown>;
+      const ts = row["ts"];
+      if (typeof ts !== "number" || !Number.isFinite(ts))
+        diagnostics.push({ line: i + 1, reason: "invalid-timestamp" });
+      else if (
+        typeof row["kind"] !== "string" ||
+        (AGED_KINDS.has(row["kind"]) && (typeof row["key"] !== "string" || row["key"] === ""))
+      )
+        diagnostics.push({ line: i + 1, reason: "invalid-identity" });
+      events.push(obj.value as TelemetryEvent);
+    }
   });
   const winners = [...fold(events).entries()].sort(
     ([ia, a], [ib, b]) => compareTs(a, b) || (ia < ib ? -1 : ia > ib ? 1 : 0),

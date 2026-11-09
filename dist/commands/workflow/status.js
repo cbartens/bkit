@@ -471,6 +471,8 @@ export const statusCommand = {
                 { ...WORKFLOW_FLAG, required: false, help: "workflow name, with --step and --file" },
                 { ...STEP_FLAG, required: false, help: "registered step of the workflow" },
                 { ...FILE_FLAG, required: false, help: "the run's status.jsonl, relative to the cwd" },
+                { name: "group", type: "string", help: "the task group a group-scoped step runs for" },
+                { name: "attempt", type: "string", help: "the attempt of that group or remediation round" },
                 { name: "agent", type: "string", help: "the subagent this invocation is for" },
                 { name: "host", type: "string", help: "the host running the agent" },
                 {
@@ -497,6 +499,10 @@ export const statusCommand = {
                 run: "the workflow's run number, or null without a run",
                 statusPath: "absolute path to the run's status.jsonl, or null",
                 bookRoot: "root the run's books live under, or null",
+                group: "the task group, or null",
+                attempt: "the attempt, or null",
+                declaredStep: "audit|utility:<name> for a runless call, or null",
+                allowedAgent: "the one agent a runless call may write as, or null",
                 agent: "the agent, or null",
                 host: "the host, or null",
                 configuredModel: "the launch pin, or null",
@@ -511,11 +517,25 @@ export const statusCommand = {
                 const workflow = str(ctx.flags.workflow);
                 const step = str(ctx.flags.step);
                 const file = str(ctx.flags.file);
+                const agent = str(ctx.flags.agent) ?? null;
+                if (agent !== null && !/^[a-z0-9][a-z0-9._-]*$/.test(agent))
+                    throw new CommandError(EXIT.USAGE, `--agent "${agent}" is not an agent name`);
+                const group = str(ctx.flags.group);
+                const attempt = str(ctx.flags.attempt);
+                for (const [flag, v] of [
+                    ["group", group],
+                    ["attempt", attempt],
+                ])
+                    if (v !== undefined && !/^[A-Za-z0-9._-]+$/.test(v))
+                        throw new CommandError(EXIT.USAGE, `--${flag} "${v}" is not a ${flag} id`);
                 const base = {
-                    agent: str(ctx.flags.agent) ?? null,
+                    group: group ?? null,
+                    attempt: attempt ?? null,
+                    agent,
                     host: str(ctx.flags.host) ?? null,
                     configuredModel: str(ctx.flags.configuredModel) ?? null,
-                    observedModel: str(ctx.flags.observedModel) ?? null,
+                    // An agent whose host reported no model is recorded `unavailable`, so its rows stay writable.
+                    observedModel: str(ctx.flags.observedModel) ?? (agent !== null ? "unavailable" : null),
                 };
                 let inv;
                 if (standalone !== undefined) {
@@ -525,6 +545,10 @@ export const statusCommand = {
                     const name = str(ctx.flags.name);
                     if (name === undefined || name === "")
                         throw new CommandError(EXIT.USAGE, "--standalone needs --name");
+                    if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
+                        throw new CommandError(EXIT.USAGE, `--name "${name}" is not an audit or utility name`);
+                    if (group !== undefined || attempt !== undefined)
+                        throw new CommandError(EXIT.USAGE, "--standalone has no group or attempt");
                     inv = {
                         scope: "outbox",
                         workflow: null,
@@ -536,6 +560,8 @@ export const statusCommand = {
                         bookRoot: null,
                         standalone,
                         name,
+                        declaredStep: `${standalone}:${name}`,
+                        allowedAgent: agent,
                         ...base,
                     };
                 }
@@ -566,6 +592,8 @@ export const statusCommand = {
                         bookRoot: path.dirname(path.dirname(path.dirname(path.dirname(logs)))),
                         standalone: null,
                         name: null,
+                        declaredStep: null,
+                        allowedAgent: null,
                         ...base,
                     };
                 }

@@ -527,6 +527,10 @@ export interface Invocation {
   run: number | null;
   statusPath: string | null;
   bookRoot: string | null;
+  /** The task group a group-scoped step runs for (build); null otherwise. */
+  group: string | null;
+  /** The attempt of that group or of a remediation round; null otherwise. */
+  attempt: string | null;
   agent: string | null;
   host: string | null;
   /** The pin the agent was launched with; never the model it ran on. */
@@ -536,6 +540,10 @@ export interface Invocation {
   /** `audit` or `utility` for an `outbox` scope call. */
   standalone: string | null;
   name: string | null;
+  /** `<standalone>:<name>` for an `outbox` call: the one step it declared; null for a run. */
+  declaredStep: string | null;
+  /** The only agent an `outbox` call may write as; null when it declared none. */
+  allowedAgent: string | null;
   /** Git toplevel of the checkout that issued it; resolution is refused anywhere else. */
   worktree: string;
   issuedAt: string;

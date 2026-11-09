@@ -338,7 +338,7 @@ Read and annotate a workflow's status.jsonl.
 | --- | --- | --- | --- |
 | `path` | by hand | **`--workflow`** **`--fid`** **`--month`** | Where this workflow's status.jsonl lives. |
 | `route` | workflow | `--file` **`--workflow`** `--step` `--group` `--require` `--expect` `--prompt-file` `--fid` `--month` | Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions. |
-| `invocation` | workflow | `--workflow` `--step` `--file` `--agent` `--host` `--configured-model` `--observed-model` `--standalone` `--name` | Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call. |
+| `invocation` | workflow | `--workflow` `--step` `--file` `--group` `--attempt` `--agent` `--host` `--configured-model` `--observed-model` `--standalone` `--name` | Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call. |
 | `resume` | by hand | **`--file`** **`--workflow`** | The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside. |
 | `meta` | workflow | **`--file`** **`--workflow`** `--debug-mode` `--push-mode` `--debug-attempt` `--opened-pr` `--ci-selection-file` | Append a workflow-meta row (run-level routing state). |
 | `row` | workflow | **`--file`** **`--workflow`** **`--type`** `--field` | Append a typed audit row the fold does not model (ship's gate refusals, CI probes, merge CI); an owner-pause row also logs a human-confirm friction row. |
