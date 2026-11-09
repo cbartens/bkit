@@ -928,3 +928,190 @@ describe("gateguard plugin — docs/*.md density advisory (#422)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Shared general reminder, normalized warning identity and state semantics (#787)
+// ---------------------------------------------------------------------------
+
+describe("gateguard shared advice — general authoring reminder and identity", () => {
+  const ENV = { BKIT_GATEGUARD: undefined } as const;
+
+  it("prepares complete advice without acknowledging it", async () => {
+    const AGENT_READ = [
+      ".agents/rules.md",
+      ".bkit/workflows.md",
+      ".bkit/core/hooks/gateguard-engine.js",
+      "docs/testing.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "GEMINI.md",
+    ];
+    for (const file of AGENT_READ) {
+      const session = newSession();
+      const { hookInput, output } = editHookInput(file, session);
+      const r = await invokeHook(plugin, orchestratorClient(), hookInput, output, ENV);
+      // The existing checklist is kept, then one general reminder pointing at the authoring guide.
+      expect({ file, checklist: r.advice.includes("First edit to") }).toEqual({
+        file,
+        checklist: true,
+      });
+      expect({ file, reminder: r.advice.includes("Which Sections Apply") }).toEqual({
+        file,
+        reminder: true,
+      });
+      expect(r.advice).toContain("authoring.md");
+      expect(r.advice.indexOf("First edit to")).toBeLessThan(
+        r.advice.indexOf("Which Sections Apply"),
+      );
+    }
+
+    // A new agent-read file keeps the reuse checklist and still gets the reminder.
+    const fresh = writeHookInput(".agents/no-such-file-for-reminder.md", newSession());
+    const created = await invokeHook(
+      plugin,
+      orchestratorClient(),
+      fresh.hookInput,
+      fresh.output,
+      ENV,
+    );
+    expect(created.advice).toContain("Evolve existing code first");
+    expect(created.advice).toContain("Which Sections Apply");
+
+    // A path outside the agent-read set gets no authoring reminder.
+    for (const file of ["src/index.ts", "README.md"]) {
+      const { hookInput, output } = editHookInput(file, newSession());
+      const r = await invokeHook(plugin, orchestratorClient(), hookInput, output, ENV);
+      expect({ file, reminder: r.advice.includes("Which Sections Apply") }).toEqual({
+        file,
+        reminder: false,
+      });
+    }
+
+    // Preparing advice (the before hook in advisory mode) leaves warning state untouched,
+    // so the after hook still delivers the full advice.
+    const session = newSession();
+    const hooks: Record<string, HookFn> = {};
+    await plugin.setup({
+      tool: {
+        hook: async (name: string, cb: HookFn) => {
+          hooks[name] = cb;
+        },
+      },
+    });
+    const event = {
+      tool: "edit",
+      sessionID: session,
+      id: "prep-only",
+      input: { path: "docs/testing.md" },
+    };
+    await withEnv(ENV, async () => {
+      await hooks["execute.before"]!(event, {});
+    });
+    expect(fs.existsSync(stateFile(session))).toBe(false);
+    expect(isWarned(session, "docs/testing.md")).toBe(false);
+    const result: { content: { type: string; text: string }[] } = { content: [] };
+    await withEnv(ENV, async () => {
+      await hooks["execute.after"]!({ ...event, status: "completed", result }, {});
+    });
+    expect(result.content.map((c) => c.text).join("")).toContain("Which Sections Apply");
+  });
+
+  it("shares normalized warning identity across edit channels", async () => {
+    const rel = "docs/testing.md";
+    const abs = path.resolve(rel);
+
+    // Relative first, then every other spelling of the same file: silent.
+    const session = newSession();
+    const first = editHookInput(rel, session);
+    const r1 = await invokeHook(plugin, orchestratorClient(), first.hookInput, first.output, ENV);
+    expect(r1.advice).toContain("Which Sections Apply");
+    for (const spelling of [abs, `./${rel}`, `docs/../${rel}`]) {
+      const again = editHookInput(spelling, session);
+      const r = await invokeHook(plugin, orchestratorClient(), again.hookInput, again.output, ENV);
+      expect({ spelling, advice: r.advice }).toEqual({ spelling, advice: "" });
+    }
+    // The other channels agree: the 1.x driver and the multi-file patch tool.
+    const v1 = await invokeHookV1(
+      plugin,
+      orchestratorClient(),
+      { tool: "edit", sessionID: session, callID: "v1-ident" },
+      { args: { path: abs } },
+      ENV,
+    );
+    expect(v1.advice).toBe("");
+    const patch = await invokeHook(
+      plugin,
+      orchestratorClient(),
+      { tool: "apply_patch", sessionID: session, callID: "patch-ident" },
+      {
+        args: { patchText: `*** Begin Patch\n*** Update File: ${abs}\n@@\n-a\n+b\n*** End Patch` },
+      },
+      ENV,
+    );
+    expect(patch.advice).toBe("");
+
+    // Absolute first, then relative: still one reminder.
+    const session2 = newSession();
+    const a = editHookInput(abs, session2);
+    expect(
+      (await invokeHook(plugin, orchestratorClient(), a.hookInput, a.output, ENV)).advice,
+    ).toContain("Which Sections Apply");
+    const b = editHookInput(rel, session2);
+    expect(
+      (await invokeHook(plugin, orchestratorClient(), b.hookInput, b.output, ENV)).advice,
+    ).toBe("");
+
+    // Another session (a subagent has its own) is never suppressed by this one.
+    const other = editHookInput(rel, newSession());
+    const r3 = await invokeHook(plugin, subagentClient(), other.hookInput, other.output, ENV);
+    expect(r3.advice).toContain("Which Sections Apply");
+  });
+
+  it("preserves off deny and state-fallback semantics", async () => {
+    // off: no advice and no state written.
+    const offSession = newSession();
+    const off = editHookInput("docs/testing.md", offSession);
+    const offResult = await invokeHook(plugin, orchestratorClient(), off.hookInput, off.output, {
+      BKIT_GATEGUARD: "off",
+    });
+    expect(offResult).toMatchObject({ threw: false, advice: "" });
+    expect(fs.existsSync(stateFile(offSession))).toBe(false);
+
+    // deny: the first touch throws with the full advice, the retry passes.
+    const denySession = newSession();
+    const deny = editHookInput("docs/testing.md", denySession);
+    const denied = await invokeHook(plugin, orchestratorClient(), deny.hookInput, deny.output, {
+      BKIT_GATEGUARD: "deny",
+    });
+    expect(denied.threw).toBe(true);
+    expect(String(denied.error?.message)).toContain("Which Sections Apply");
+    const retry = await invokeHook(plugin, orchestratorClient(), deny.hookInput, deny.output, {
+      BKIT_GATEGUARD: "deny",
+    });
+    expect(retry.threw).toBe(false);
+
+    // Unavailable state (the temp dir is a plain file): advisory still delivers, and a deny
+    // cannot loop, because the process remembers what it warned about.
+    const blocker = path.join(GENERATED, "not-a-dir");
+    fs.writeFileSync(blocker, "x");
+    const brokenTmp = { TMPDIR: blocker } as const;
+    const fbSession = newSession();
+    const fb = editHookInput("docs/testing.md", fbSession);
+    const advised = await invokeHook(plugin, orchestratorClient(), fb.hookInput, fb.output, {
+      BKIT_GATEGUARD: undefined,
+      ...brokenTmp,
+    });
+    expect(advised.threw).toBe(false);
+    expect(advised.advice).toContain("Which Sections Apply");
+    const fbDeny = editHookInput("docs/testing.md", newSession());
+    const first = await invokeHook(plugin, orchestratorClient(), fbDeny.hookInput, fbDeny.output, {
+      BKIT_GATEGUARD: "deny",
+      ...brokenTmp,
+    });
+    const second = await invokeHook(plugin, orchestratorClient(), fbDeny.hookInput, fbDeny.output, {
+      BKIT_GATEGUARD: "deny",
+      ...brokenTmp,
+    });
+    expect({ first: first.threw, second: second.threw }).toEqual({ first: true, second: false });
+  });
+});

