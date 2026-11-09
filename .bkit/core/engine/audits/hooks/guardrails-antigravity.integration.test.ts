@@ -212,3 +212,113 @@ describe("antigravity guardrails.cjs — network allowlist from the plugin dir",
     ).toBe("deny");
   });
 });
+
+describe("antigravity gateguard — multi-replace, shell targets and retry transport", () => {
+  const GATE = path.join(GENERATED, "gateguard.cjs");
+  fs.writeFileSync(
+    GATE,
+    readTemplate(path.resolve(".bkit/core/.agents/plugins/bkit/hooks/bkit-gateguard.cjs")),
+  );
+  const UID = process.getuid!();
+
+  function edit(
+    name: string,
+    target: string,
+    conversationId: string,
+    env: Record<string, string | undefined> = {},
+  ): { decision?: string; reason?: string } {
+    const res = spawnSync("node", [GATE], {
+      input: JSON.stringify({
+        conversationId,
+        toolCall: {
+          name,
+          args: {
+            TargetFile: target,
+            ReplacementChunks: [{ TargetContent: "a", ReplacementContent: "b" }],
+            toolAction: "Editing file",
+          },
+        },
+        workspacePaths: [GENERATED],
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, BKIT_GATEGUARD: undefined, ...env },
+    });
+    expect(res.status).toBe(0);
+    return JSON.parse(res.stdout.trim()) as { decision?: string; reason?: string };
+  }
+
+  it("routes Antigravity multi-replace and shell targets", () => {
+    // Matcher and payload agree.
+    const hooks = JSON.parse(
+      fs.readFileSync(path.resolve(".bkit/shared/.agents/plugins/bkit/hooks.json"), "utf-8"),
+    ) as { hooks: { PreToolUse: { matcher: string; hooks: { command: string }[] }[] } };
+    const gate = hooks.hooks.PreToolUse.find((g) =>
+      g.hooks.some((h) => h.command.includes("bkit-gateguard.cjs")),
+    );
+    expect(String(gate?.matcher).split("|")).toEqual(
+      expect.arrayContaining([
+        "write_to_file",
+        "replace_file_content",
+        "multi_replace_file_content",
+      ]),
+    );
+
+    // A multi-replace keeps its target: deny once with the checklist, identical retry passes.
+    const conversation = newConversation();
+    const target = path.join(GENERATED, "src", "multi.ts");
+    const first = edit("multi_replace_file_content", target, conversation);
+    expect(first.decision).toBe("deny");
+    expect(first.reason).toContain("multi.ts");
+    expect(first.reason).toContain("First edit to");
+    expect(first.reason).toContain("Repeat the same call to proceed.");
+    expect(edit("multi_replace_file_content", target, conversation)).toEqual({ decision: "allow" });
+
+    // A shell edit of an exact target gets the per-file checklist inside the same deny-once
+    // transport, and its acknowledgement silences the edit tool for that file.
+    const shellConversation = newConversation();
+    const shell = run("sed -i s/a/b/ docs/shell-ag.md", shellConversation);
+    expect(shell.decision).toBe("deny");
+    expect(shell.reason).toContain("edits files through the shell");
+    expect(shell.reason).toContain("First edit to");
+    expect(shell.reason).toContain("Which Sections Apply");
+    expect(run("sed -i s/a/b/ docs/shell-ag.md", shellConversation)).toEqual({
+      decision: "allow",
+    });
+    expect(
+      edit("replace_file_content", path.join(GENERATED, "docs", "shell-ag.md"), shellConversation),
+    ).toEqual({ decision: "allow" });
+
+    // Neither retry store keeps raw command or path text.
+    const store = path.join(os.tmpdir(), `bkit-antigravity-retry-${UID}`);
+    const stored = fs
+      .readdirSync(store)
+      .filter((f) => f.includes(shellConversation))
+      .map((f) => fs.readFileSync(path.join(store, f), "utf-8"));
+    for (const text of stored) {
+      expect(text).not.toContain("sed -i");
+      expect(text).not.toContain("shell-ag.md");
+    }
+  });
+
+  it("leaves Antigravity targets eligible when retry transport cannot deliver", () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const retryDir = path.join(tmp, `bkit-antigravity-retry-${UID}`);
+    fs.mkdirSync(retryDir, { mode: 0o555 });
+    const env = { TMPDIR: tmp };
+    const conversation = newConversation();
+    const target = path.join(GENERATED, "src", "undeliverable.ts");
+
+    // The retry store cannot be written: the established fail-open bare allow, twice.
+    expect(edit("replace_file_content", target, conversation, env)).toEqual({ decision: "allow" });
+    expect(edit("replace_file_content", target, conversation, env)).toEqual({ decision: "allow" });
+
+    // Nothing was delivered, so nothing was acknowledged: once the store works, the
+    // target still gets its deny-once checklist.
+    fs.chmodSync(retryDir, 0o755);
+    const later = edit("replace_file_content", target, conversation, env);
+    expect(later.decision).toBe("deny");
+    expect(later.reason).toContain("undeliverable.ts");
+    expect(later.reason).toContain("First edit to");
+    expect(edit("replace_file_content", target, conversation, env)).toEqual({ decision: "allow" });
+  });
+});

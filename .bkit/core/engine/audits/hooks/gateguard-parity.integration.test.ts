@@ -847,3 +847,259 @@ describe("codex gateguard — complete-block batching", () => {
     expect(codexPatch(session, [small], tmp)).toBe("");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 8: Codex complete patches and initial shell commands.
+// ---------------------------------------------------------------------------
+
+const CODEX_GUARD = path.join(GENERATED, "codex-guardrails.cjs");
+fs.writeFileSync(
+  CODEX_GUARD,
+  readTemplate(path.resolve(".bkit/core/.codex/hooks/bkit-guardrails.cjs")),
+);
+
+function codexBash(session: string, command: string, tmp: string, toolName = "Bash") {
+  const res = spawnSync("node", [CODEX_GUARD], {
+    input: JSON.stringify({
+      tool_name: toolName,
+      tool_input: { command },
+      session_id: session,
+      cwd: process.cwd(),
+    }),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_GATEGUARD: undefined, TMPDIR: tmp },
+  });
+  const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
+  return {
+    context: String(out.hookSpecificOutput?.additionalContext ?? ""),
+    denied: out.hookSpecificOutput?.permissionDecision === "deny",
+  };
+}
+
+describe("codex gateguard — complete patches and shell", () => {
+  it("routes Codex complete patches and initial shell commands", () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const root = process.cwd();
+
+    // Every add / update / delete / move target of one patch is prepared; each is either
+    // shown as a complete block or counted as omitted and left eligible.
+    const session = newSession();
+    const command = [
+      "*** Begin Patch",
+      "*** Add File: src/p-add.ts",
+      "+x",
+      "*** Delete File: src/p-del.ts",
+      "*** Update File: src/p-upd.ts",
+      "*** Move to: src/p-moved.ts",
+      "@@",
+      "-a",
+      "+b",
+      "*** End Patch",
+    ].join("\n");
+    const res = spawnSync("node", [CODEX_HOOK], {
+      input: JSON.stringify({
+        tool_name: "apply_patch",
+        tool_input: { command },
+        session_id: session,
+        cwd: root,
+      }),
+      encoding: "utf-8",
+      env: { ...process.env, BKIT_GATEGUARD: undefined, TMPDIR: tmp },
+    });
+    const patchAdvice = String(JSON.parse(res.stdout.trim()).hookSpecificOutput.additionalContext);
+    const names = ["p-add.ts", "p-del.ts", "p-upd.ts", "p-moved.ts"];
+    const shown = names.filter((n) => patchAdvice.includes(n));
+    expect(Buffer.byteLength(patchAdvice, "utf-8")).toBeLessThanOrEqual(CODEX_BUDGET_BYTES);
+    expect(shown.length + Number(omittedCount(patchAdvice))).toBe(names.length);
+    expect(warnedFiles(tmp, session)).toHaveLength(shown.length);
+    // The omitted targets are still eligible for a later patch.
+    const hidden = names.filter((n) => !shown.includes(n));
+    for (const n of hidden) expect(codexPatch(session, [`src/${n}`], tmp)).toContain(n);
+
+    // Initial Bash payloads reach the shared formatter: exact targets get the per-file
+    // checklist, the shell notice stays advisory, and the warning record is shared.
+    const shellSession = newSession();
+    const shell = codexBash(shellSession, "sed -i s/a/b/ src/from-shell.ts", tmp);
+    expect(shell.denied).toBe(false);
+    expect(shell.context).toContain("edits files through the shell");
+    expect(shell.context).toContain("from-shell.ts");
+    expect(shell.context).toContain("First edit to");
+    expect(warnedFiles(tmp, shellSession)).toEqual([path.resolve(root, "src/from-shell.ts")]);
+    expect(codexPatch(shellSession, ["src/from-shell.ts"], tmp)).toBe("");
+
+    // Uncertain script effects stay explicit.
+    const unknown = codexBash(newSession(), "python3 gen.py", tmp);
+    expect(unknown.context).toContain("cannot be determined");
+
+    // Interactive input is outside the pre-tool coverage: not registered, not advised.
+    const hooks = JSON.parse(
+      fs.readFileSync(path.resolve(".bkit/shared/.codex/hooks.json"), "utf-8"),
+    ) as { hooks: { PreToolUse: { matcher: string }[] } };
+    const matchers = hooks.hooks.PreToolUse.map((g) => g.matcher);
+    expect(matchers).toEqual(expect.arrayContaining(["apply_patch", "Bash"]));
+    expect(matchers.join("|")).not.toContain("write_stdin");
+    expect(codexBash(newSession(), "sed -i s/a/b/ src/x.ts", tmp, "write_stdin").context).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 9: OpenCode edit coverage and the after-execute boundary, on the real V1 and V2
+// drivers.
+// ---------------------------------------------------------------------------
+
+interface OpencodeDrivers {
+  v1After: (input: object, output: { output: string }) => Promise<void>;
+  v1Before: (input: object, output: object) => Promise<void>;
+  v2: Record<string, (event: object) => Promise<void>>;
+}
+
+async function opencodeDrivers(): Promise<OpencodeDrivers> {
+  const { default: plugin } = await import(pathToFileURL(OPENCODE_PLUGIN).href);
+  const v2: Record<string, (event: object) => Promise<void>> = {};
+  await plugin.setup({
+    tool: {
+      hook: async (name: string, cb: (event: object) => Promise<void>) => {
+        v2[name] = cb;
+      },
+    },
+  });
+  const v1 = await plugin.server();
+  return {
+    v1Before: v1["tool.execute.before"],
+    v1After: v1["tool.execute.after"],
+    v2,
+  };
+}
+
+describe("opencode gateguard — edit coverage and boundary", () => {
+  it("preserves OpenCode edit coverage and after-execute boundary", async () => {
+    const d = await opencodeDrivers();
+    const root = process.cwd();
+    const patch = (names: string[]) =>
+      [
+        "*** Begin Patch",
+        ...names.flatMap((n) => [`*** Update File: src/${n}`, "@@", "-a", "+b"]),
+        "*** End Patch",
+      ].join("\n");
+
+    // V2: before never advises (no shell interception, no before-edit claim); the after
+    // hook appends one complete block per patch target, each exactly once.
+    const v2Session = newSession();
+    const v2Names = ["oc2-a.ts", "oc2-b.ts", "oc2-c.ts"];
+    const v2Event = {
+      tool: "apply_patch",
+      sessionID: v2Session,
+      id: "oc-v2-1",
+      input: { patchText: patch(v2Names) },
+    };
+    await d.v2["execute.before"](v2Event);
+    const v2Result: { content: { type: string; text: string }[] } = { content: [] };
+    await d.v2["execute.after"]({ ...v2Event, status: "completed", result: v2Result });
+    const v2Text = v2Result.content.map((c) => c.text).join("");
+    for (const n of v2Names) expect(v2Text).toContain(n);
+    expect(v2Text.split("[bkit GateGuard] First edit to")).toHaveLength(v2Names.length + 1);
+
+    // A later edit that reaches the same file by an absolute alias is silent.
+    const alias: { content: { type: string; text: string }[] } = { content: [] };
+    await d.v2["execute.after"]({
+      tool: "edit",
+      sessionID: v2Session,
+      id: "oc-v2-2",
+      status: "completed",
+      input: { path: path.join(root, "src", v2Names[0]!) },
+      result: alias,
+    });
+    expect(alias.content).toEqual([]);
+
+    // V1: same coverage through the server() hooks, output on `output.output`.
+    const v1Session = newSession();
+    const v1Names = ["oc1-a.ts", "oc1-b.ts"];
+    const v1Args = { patchText: patch(v1Names) };
+    await d.v1Before(
+      { tool: "apply_patch", sessionID: v1Session, callID: "oc-v1-1" },
+      { args: v1Args },
+    );
+    const v1Out = { output: "" };
+    await d.v1After(
+      { tool: "apply_patch", sessionID: v1Session, callID: "oc-v1-1", args: v1Args },
+      v1Out,
+    );
+    for (const n of v1Names) expect(v1Out.output).toContain(n);
+    const v1Alias = { output: "" };
+    await d.v1After(
+      {
+        tool: "edit",
+        sessionID: v1Session,
+        callID: "oc-v1-2",
+        args: { filePath: path.join(root, "src", v1Names[1]!) },
+      },
+      v1Alias,
+    );
+    expect(v1Alias.output).toBe("");
+
+    // A relative spelling after an absolute one is also the same file.
+    const v1Rel = { output: "" };
+    const absFirst = path.join(root, "src", "oc1-abs.ts");
+    await d.v1After(
+      { tool: "edit", sessionID: v1Session, callID: "oc-v1-3", args: { filePath: absFirst } },
+      { output: "" },
+    );
+    await d.v1After(
+      {
+        tool: "edit",
+        sessionID: v1Session,
+        callID: "oc-v1-4",
+        args: { filePath: "src/oc1-abs.ts" },
+      },
+      v1Rel,
+    );
+    expect(v1Rel.output).toBe("");
+
+    // A large patch stays inside the widest conservative host budget (8,000 characters):
+    // only whole blocks are shown, the omitted count is exact, and anything a block did
+    // not show stays eligible for its own later edit.
+    const manySession = newSession();
+    const many = Array.from({ length: 60 }, (_, i) => `oc-many-${i}.ts`);
+    const manyResult: { content: { type: string; text: string }[] } = { content: [] };
+    await d.v2["execute.after"]({
+      tool: "apply_patch",
+      sessionID: manySession,
+      id: "oc-v2-many",
+      status: "completed",
+      input: { patchText: patch(many) },
+      result: manyResult,
+    });
+    const manyText = manyResult.content.map((c) => c.text).join("");
+    expect(manyText.length).toBeLessThanOrEqual(8000);
+    const { started, finished } = completeBlocks(manyText);
+    expect(finished).toBe(started);
+    expect(omittedCount(manyText)).toBe(many.length - started);
+    const missing = many.filter((n) => !manyText.includes(n));
+    expect(missing).toHaveLength(many.length - started);
+    for (const n of missing.slice(0, 3)) {
+      const one: { content: { type: string; text: string }[] } = { content: [] };
+      await d.v2["execute.after"]({
+        tool: "edit",
+        sessionID: manySession,
+        id: `oc-v2-${n}`,
+        status: "completed",
+        input: { path: `src/${n}` },
+        result: one,
+      });
+      expect(one.content.map((c) => c.text).join("")).toContain(n);
+    }
+
+    // The plugin registers edit hooks only: no shell hook and no extra phase.
+    expect(Object.keys(d.v2).sort()).toEqual(["execute.after", "execute.before"]);
+    const shellResult: { content: { type: string; text: string }[] } = { content: [] };
+    await d.v2["execute.after"]({
+      tool: "bash",
+      sessionID: newSession(),
+      id: "oc-shell",
+      status: "completed",
+      input: { command: "sed -i s/a/b/ src/oc-shell.ts" },
+      result: shellResult,
+    });
+    expect(shellResult.content).toEqual([]);
+  });
+});

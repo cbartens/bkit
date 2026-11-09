@@ -300,3 +300,112 @@ describe("gateguard hook — docs/*.md density advisory (#422)", () => {
     expect(hookOutput(r)["additionalContext"]).toContain("docs/*.md authoring");
   });
 });
+
+const GUARD = path.join(GENERATED, "guardrails.cjs");
+fs.writeFileSync(GUARD, readTemplate(path.resolve(".bkit/core/.claude/hooks/bkit-guardrails.cjs")));
+
+function runGuard(payload: unknown): { status: number | null; raw: string; context: string } {
+  const res = spawnSync("node", [GUARD], {
+    input: JSON.stringify(payload),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_GATEGUARD: undefined },
+  });
+  const out = res.stdout.trim()
+    ? (JSON.parse(res.stdout.trim()) as { hookSpecificOutput: Record<string, unknown> })
+    : { hookSpecificOutput: { additionalContext: "" } };
+  expect(out.hookSpecificOutput["permissionDecision"]).toBeUndefined();
+  return {
+    status: res.status,
+    raw: res.stdout,
+    context: String(out.hookSpecificOutput["additionalContext"]),
+  };
+}
+
+describe("gateguard hook — shell and notebook advice (shared identity)", () => {
+  it("routes Claude notebook and shell targets through shared advice", () => {
+    // Matcher and payload agree: the registered edit matcher names NotebookEdit.
+    const settings = JSON.parse(
+      fs.readFileSync(path.resolve(".bkit/shared/.claude/settings.json"), "utf-8"),
+    ) as { hooks: { PreToolUse: { matcher?: string; hooks: { command: string }[] }[] } };
+    const gate = settings.hooks.PreToolUse.find((g) =>
+      g.hooks.some((h) => h.command.includes("bkit-gateguard.cjs")),
+    );
+    expect(String(gate?.matcher).split("|")).toEqual(
+      expect.arrayContaining(["Edit", "Write", "MultiEdit", "NotebookEdit"]),
+    );
+
+    const ws = fs.mkdtempSync(path.join(GENERATED, "ws-"));
+    const session = newSession();
+
+    // NotebookEdit carries `notebook_path`, not `file_path`.
+    const nb = path.join(ws, "docs", "analysis.ipynb");
+    const notebook = run({
+      session_id: session,
+      hook_event_name: "PreToolUse",
+      tool_name: "NotebookEdit",
+      tool_input: { notebook_path: nb, new_source: "x = 1", edit_mode: "replace" },
+    });
+    expect(notebook.status).toBe(0);
+    const nbCtx = String(hookOutput(notebook)["additionalContext"]);
+    expect(nbCtx).toContain("analysis.ipynb");
+    expect(nbCtx).toContain("First edit to");
+    expect(hookOutput(notebook)["permissionDecision"]).toBeUndefined();
+    // Acknowledged: the same notebook is silent next time.
+    expect(
+      run({
+        session_id: session,
+        tool_name: "NotebookEdit",
+        tool_input: { notebook_path: nb, new_source: "y", edit_mode: "replace" },
+      }).raw.trim(),
+    ).toBe("");
+
+    // A shell edit of two exact targets gets the per-file checklist for each, plus the
+    // general authoring reminder, in one response.
+    const shell = runGuard({
+      session_id: session,
+      tool_name: "Bash",
+      cwd: ws,
+      tool_input: { command: "sed -i s/a/b/ docs/one.md docs/two.md" },
+    });
+    expect(shell.status).toBe(0);
+    expect(shell.context).toContain("edits files through the shell");
+    expect(shell.context).toContain("one.md");
+    expect(shell.context).toContain("two.md");
+    expect(shell.context.split("First edit to")).toHaveLength(3);
+    expect(shell.context).toContain(".bkit/authoring.md");
+    expect(shell.context).toContain("Which Sections Apply");
+
+    // The shell acknowledgement and the edit tool share one warning record.
+    const afterShell = run(editPayload(path.join(ws, "docs", "one.md"), session));
+    expect(afterShell.raw.trim()).toBe("");
+
+    // And the other direction: an edit-tool warning silences the shell checklist.
+    run(editPayload(path.join(ws, "docs", "three.md"), session));
+    const again = runGuard({
+      session_id: session,
+      tool_name: "Bash",
+      cwd: ws,
+      tool_input: { command: "sed -i s/a/b/ docs/three.md" },
+    });
+    expect(again.context).toContain("three.md");
+    expect(again.context).not.toContain("First edit to");
+
+    // Uncertain script effects stay explicit and read-only commands stay quiet.
+    const unknown = runGuard({
+      session_id: newSession(),
+      tool_name: "Bash",
+      cwd: ws,
+      tool_input: { command: "python3 gen.py" },
+    });
+    expect(unknown.context).toContain("cannot be determined");
+    expect(unknown.context).toContain(".bkit/authoring.md");
+    expect(
+      runGuard({
+        session_id: newSession(),
+        tool_name: "Bash",
+        cwd: ws,
+        tool_input: { command: "cat docs/one.md" },
+      }).raw.trim(),
+    ).toBe("");
+  });
+});
