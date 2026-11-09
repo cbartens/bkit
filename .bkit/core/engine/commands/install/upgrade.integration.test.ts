@@ -2468,7 +2468,15 @@ describe("#864 — upgrade migrates legacy project document ownership", () => {
     const dry = runCli(["upgrade", "--dry-run"]);
     expect(dry.status, combinedOutput(dry)).toBe(0);
 
-    expect(combinedOutput(dry)).toContain("docs/architecture.md");
+    const out = combinedOutput(dry);
+    // The preview names the document in a line that says it is being migrated to project ownership.
+    expect(out).toMatch(
+      /^.*docs\/architecture\.md.*migrat.*$|^.*migrat.*docs\/architecture\.md.*$/im,
+    );
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*project).*$/im);
+    // The preview also announces the project index registration for that path.
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*\.agents\/docs\.md).*$/im);
     expect(snapshot()).toEqual(before);
+    expect(read("docs/architecture.md")).toContain("<!-- bkit:start -->");
   });
 });
