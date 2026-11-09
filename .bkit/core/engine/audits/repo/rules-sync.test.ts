@@ -84,19 +84,23 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     expect(block).toContain("Use the narrowest-scoped token");
   });
 
-  it("the docs/security.md threat-model section exists in both the repo doc and the template", () => {
-    // `.agents/docs.md`'s scope cell and `.bkit/prompts.md`'s doctrine row both
-    // point consumers at this section. Deleting it must fail here, not six
-    // months from now when someone follows the pointer.
-    for (const securityPath of [
-      path.join(pkgRoot, "docs", "security.md"),
-      path.join(pkgRoot, ".bkit", "shared", "docs", "security.md"),
-    ]) {
-      const block = extractManagedBlock(securityPath, fs.readFileSync(securityPath, "utf-8"));
-      expect(block, `dangling pointer: ${securityPath}`).toContain(
-        "## Untrusted Content & Prompt Injection",
-      );
-    }
+  it("the untrusted-content threat model sits in the managed prompts guide and the rule stays in the managed block", () => {
+    // The project's `docs/security.md` is an optional, copy-and-own document, so the threat
+    // model every workflow depends on lives in the managed `.bkit/prompts.md` § Special
+    // Behaviors. Deleting it must fail here, not when someone follows a pointer to it.
+    const promptsGuide = fs.readFileSync(
+      path.join(pkgRoot, ".bkit", "core", ".bkit", "prompts.md"),
+      "utf-8",
+    );
+    expect(promptsGuide).toContain("### Untrusted Content & Prompt Injection");
+    expect(promptsGuide).toContain("**Threat model.**");
+    // The rule the guide describes stays in the managed rules block.
+    const block = extractManagedBlock(
+      templateRulesPath,
+      fs.readFileSync(templateRulesPath, "utf-8"),
+    );
+    expect(block).toContain("**External input:**");
+    expect(block).toContain("**External skills:**");
   });
 
   it("the template ships NO project rules below bkit:end — only the empty group scaffold", () => {

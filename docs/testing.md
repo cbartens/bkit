@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Testing
 
 > [!CAUTION]
@@ -547,8 +543,6 @@ See `deployments.md` § Commit-message force tags for the marker mechanics. That
 **Hostile gap: Playwright `--reporter=line` override.** **If** your `playwright test` invocation passes `--reporter=line` → drop it. With the marker on, traces are written but no reporter surfaces them, so the artifact upload is wasted. `bkit install` flags this as an advisory.
 
 **Artifact paths** (already in `.gitignore` via the bkit template): `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.auth/`. Never commit these, because traces alone run 1-50MB each.
-
-<!-- bkit:end -->
 
 ## Stack
 

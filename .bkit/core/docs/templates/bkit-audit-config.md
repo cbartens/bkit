@@ -35,7 +35,8 @@ Code is reviewed, but dashboards are not. A dashboard change (hosting, database,
 - TLS certificate validity schedule (e.g., CA/Browser Forum Baseline Requirements, Ballot SC-081v3).
 - DNS CAA (RFC 8659); MTA-STS (RFC 8461) and TLS reporting (RFC 8460).
 - Mailbox-provider sender requirements (e.g., Gmail, Yahoo) and one-click unsubscribe (RFC 8058).
-- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Autonomous phase-close prerequisites; § Post-merge dev CI auto-routing; § Promotion-lag warning (`Check Default Branch Lags Dev`)
+- bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Promotion-lag warning (`Check Default Branch Lags Dev`)
+- `.bkit/workflows.md` § Test and release mechanics (Autonomous phase-close prerequisites; Post-merge dev CI auto-routing)
 
 ### Scope
 

@@ -53,7 +53,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory. The bug report in `debug-input-*.md` is the primary signal.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
 4. Choose where the tests go:
    - Pick the lowest tier that reaches the reported behaviours: unit before integration before e2e.
    - Co-locate them with the tests that cover the affected areas, and match those tests' imports, helpers and naming.

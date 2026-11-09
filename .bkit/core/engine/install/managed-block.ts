@@ -246,3 +246,92 @@ export function updateManagedBlock(
   if (!dryRun) fs.writeFileSync(filePath, result.content, "utf-8");
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Wrapper-only removal — the ownership metadata of a document that becomes the project's own
+// ---------------------------------------------------------------------------
+
+/** The generated notice line a managed block carries: `<!-- bkit:managed vX — do not edit; … -->`. */
+const MANAGED_NOTICE_RE =
+  /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/;
+
+/** Why a wrapper could not be removed without guessing. */
+export type WrapperProblem =
+  "missing-partner" | "inverted" | "multiple" | "inside-fence" | "multiple-notices";
+
+export type StripManagedWrapperResult =
+  | { status: "none"; content: string }
+  | { status: "removed"; content: string; removedLines: number }
+  | { status: "ambiguous"; content: string; problem: WrapperProblem };
+
+/** Lines with their terminators, so removing a line keeps every other byte, CRLF included. */
+function splitKeepingEol(content: string): string[] {
+  return content.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+}
+
+const bareLine = (line: string): string => line.replace(/\r?\n$/, "");
+
+/**
+ * Remove the ownership wrapper of a markdown document: the one ordered pair of exact
+ * `<!-- bkit:start -->` / `<!-- bkit:end -->` lines and the generated `bkit:managed` notice line
+ * between them. Every other byte stays, original line endings included. The enclosed text is
+ * the project's. When both markers are absent the content is returned as it is. Anything that
+ * cannot be told apart from project text (one marker alone, reversed or repeated markers, a
+ * marker-looking line inside a Markdown fence, more than one notice) is `ambiguous` and the
+ * content is returned unchanged.
+ */
+export function stripManagedWrapper(content: string): StripManagedWrapperResult {
+  const lines = splitKeepingEol(content);
+  const starts: number[] = [];
+  const ends: number[] = [];
+  const notices: number[] = [];
+  let fence: string | null = null;
+  let inFenceHit = false;
+  lines.forEach((line, i) => {
+    const text = bareLine(line);
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(text);
+    if (fenceMatch) {
+      const mark = fenceMatch[1]![0]!;
+      if (fence === null) fence = mark;
+      else if (fence === mark) fence = null;
+      return;
+    }
+    const isStart = text === START_MARKER;
+    const isEnd = text === END_MARKER;
+    const isNotice = MANAGED_NOTICE_RE.test(text);
+    if (fence !== null) {
+      if (isStart || isEnd || isNotice) inFenceHit = true;
+      return;
+    }
+    if (isStart) starts.push(i);
+    else if (isEnd) ends.push(i);
+    else if (isNotice) notices.push(i);
+  });
+  const ambiguous = (problem: WrapperProblem): StripManagedWrapperResult => ({
+    status: "ambiguous",
+    content,
+    problem,
+  });
+
+  if (inFenceHit) return ambiguous("inside-fence");
+  if (starts.length === 0 && ends.length === 0) return { status: "none", content };
+  if (starts.length === 0 || ends.length === 0) return ambiguous("missing-partner");
+  if (starts.length > 1 || ends.length > 1) return ambiguous("multiple");
+  const start = starts[0]!;
+  const end = ends[0]!;
+  if (start >= end) return ambiguous("inverted");
+  const inside = notices.filter((n) => n > start && n < end);
+  if (inside.length > 1 || notices.length > inside.length) return ambiguous("multiple-notices");
+
+  const drop = new Set<number>([start, end, ...inside]);
+  // The writer pads each wrapper line with one blank line (`start`, blank, notice, blank,
+  // content, blank, `end`). That padding goes with the wrapper, one line each.
+  const isBlank = (i: number): boolean => i >= 0 && i < lines.length && bareLine(lines[i]!) === "";
+  for (const i of [start, ...inside]) if (isBlank(i + 1) && i + 1 < end) drop.add(i + 1);
+  if (isBlank(end - 1) && end - 1 > start) drop.add(end - 1);
+  return {
+    status: "removed",
+    content: lines.filter((_, i) => !drop.has(i)).join(""),
+    removedLines: drop.size,
+  };
+}

@@ -52,6 +52,27 @@ function payloadPaths(): string[] {
 }
 
 /**
+ * The ten project documents ship as starters under `docs/`. They are the project's documents
+ * once copied, so a prompt or rule may name them (and their file names) in a qualified read
+ * (applicability, equivalents, warn and continue); `#864 — qualified project document reads`
+ * below checks the qualification. Executable and configuration templates stay forbidden.
+ */
+const PROJECT_DOC_NAMES: ReadonlySet<string> = new Set(
+  [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ].flatMap((topic) => [`docs/${topic}.md`, `${topic}.md`]),
+);
+
+/**
  * Literal strings that name a template path:
  * - every template's full path (`.github/workflows/bkit-ci.yml`, `docs/capabilities.md`);
  * - every top-level folder holding only templates, with its slash (`.husky/`, `scripts/`);
@@ -68,7 +89,9 @@ function forbiddenNames(): string[] {
   const fileNames = templates
     .map((rel) => path.posix.basename(rel))
     .filter((name) => name.slice(1).includes(".") && !ownedNames.has(name));
-  return [...new Set([...templates, ...topFolders.map((top) => `${top}/`), ...fileNames])];
+  return [...new Set([...templates, ...topFolders.map((top) => `${top}/`), ...fileNames])].filter(
+    (name) => !PROJECT_DOC_NAMES.has(name),
+  );
 }
 
 /**
@@ -122,7 +145,9 @@ describe("no workflow or prompt names a template path", () => {
     const names = forbiddenNames();
     const templates = shippedPaths();
     expect(templates.length).toBeGreaterThan(0);
-    for (const rel of templates) expect(names, rel).toContain(rel);
+    for (const rel of templates.filter((t) => !PROJECT_DOC_NAMES.has(t))) {
+      expect(names, rel).toContain(rel);
+    }
     for (const rel of [
       ".prettierignore",
       ".cursor/Dockerfile",

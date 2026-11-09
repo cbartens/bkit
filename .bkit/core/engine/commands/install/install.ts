@@ -24,6 +24,7 @@ import type { SuppressionNote } from "../../checks/after/suppression.js";
 import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
+import { syncProjectDocs } from "../../install/project-docs.js";
 import {
   type EffortMap,
   parseModelLookup,
@@ -511,6 +512,11 @@ export async function runInstall(
   } finally {
     discardAllStaging();
   }
+
+  // The ten project documents belong to the project: drop a legacy ownership wrapper and list
+  // each present document in `Project Documents`. Runs after the managed index is rendered and
+  // before the advisories read the result. `check` is read-only, so it never gets here.
+  if (!dryRun) syncProjectDocs(process.cwd(), { dryRun: false });
 
   const totalWrites = ws.writes.length;
 

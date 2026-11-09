@@ -214,22 +214,14 @@ export function listCoreTemplateFiles(root: string = getCoreRoot()): CoreTemplat
 
 /**
  * The shared payload files core writes, sourced from `root` (defaults to the
- * resolved shared root): the `docs/*.md` managed blocks and the two shared-root
- * files the core manifest owns.
+ * resolved shared root): the two shared-root files the core manifest owns. The ten project
+ * documents are copy-and-own starters under `templates/docs/`, never written here.
  */
 export function listSharedTemplateFiles(root: string = getSharedRoot()): CoreTemplateFile[] {
   const out: CoreTemplateFile[] = [];
   for (const [rel, dst] of CORE_SHARED_FILES) {
     const src = path.join(root, rel);
     if (fs.existsSync(src)) out.push({ src, dst, scope: "block", marker: "html-comment" });
-  }
-  for (const name of listMdFiles(path.join(root, "docs"))) {
-    out.push({
-      src: path.join(root, "docs", name),
-      dst: path.join("docs", name),
-      scope: "block",
-      marker: "html-comment",
-    });
   }
   return out;
 }

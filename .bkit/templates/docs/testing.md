@@ -1,8 +1,6 @@
-<!-- bkit:start -->
-
-{{BKIT_MANAGED_MARKER}}
-
 # Testing
+
+> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/testing.md` and add its row to `.agents/docs.md` `## Project Documents`.
 
 > [!CAUTION]
 > **Purpose:** The testing strategy: tier boundaries, framework choices, naming conventions and CI execution.
@@ -21,13 +19,14 @@
 > - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).
 > - Never bypass the hooks with `--no-verify`.
 
-## Local test sleep prevention
+## Project facts to record
 
-`bkit tests run`, `bkit tests changed` and the individual-file runs in `bkit tests red` / `bkit tests green` hold a macOS sleep assertion while the command runs. They use `caffeinate -is`: idle sleep is prevented on battery and AC power, and system-sleep prevention applies on AC power. The assertion ends when the command finishes or is cancelled. Other platforms run the original command.
+Replace the generic text below with the project's own tiers and lanes where they differ.
 
-For direct test commands and package scripts, adopt `scripts/ci/bkit-test-awake.mjs` as described in `.bkit/templates.md` § Local test sleep prevention. Wrap every test entry point and the complete gate chain. CI calls those same scripts. A raw runner command outside these entry points needs the wrapper too.
-
-Keep the existing test timeouts. Keep the Mac's lid open; the assertion does not guarantee protection against lid closure or an explicit sleep request. The display may sleep normally.
+- Which tiers exist, the framework for each and where its tests live.
+- The gate scripts in `package.json` and what each one runs.
+- The CI lanes, their `needs` and when each runs.
+- The runner, gate, lock and JUnit requirements bkit adds are in `.bkit/workflows.md` § Test and release mechanics.
 
 ## CI test tiers (the bkit scaffold)
 
@@ -253,7 +252,7 @@ The same expression-context trap has a neighbour outside composites. The `env` c
 
 There are two PR-time E2E concerns. Both are gated on real preconditions (event, head ref), never on a kill-switch flag:
 
-- **Parity — PR and push run the full suite.** `pull_request` runs the same E2E spec set as the `dev`/`{{DEFAULT_BRANCH}}` push. Scale a slow suite by sharding (parallel lanes, more workers). PR and push runs differ only in their DB target (below) and in push-only tiers (for example, `@live`).
+- **Parity — PR and push run the full suite.** `pull_request` runs the same E2E spec set as the `dev`/`main` push. Scale a slow suite by sharding (parallel lanes, more workers). PR and push runs differ only in their DB target (below) and in push-only tiers (for example, `@live`).
 - **Correctness — migration-coupled PRs.** When preview deploys share one `dev` database, that database does not yet carry a PR's unmerged migration, because the migration applies only on the post-merge push. A PR that adds or renames a column and also uses it therefore fails with a 500 every time before the merge. A force-all-E2E marker does not help, because it hits the same migration-less DB.
   - On feature→`dev` PRs, run E2E against a local DB that has applied this PR's migrations: reset local → prod build → run against `localhost`.
   - Keep preview-backed E2E for `dev`/`main` pushes, for deploy fidelity.
@@ -297,43 +296,6 @@ Assign every behaviour its **lowest sufficient tier(s)**: the lowest tier that a
 | Post-deploy health of a deployed surface | **Smoke** (post-CI or post-deploy — see `deployments.md`) |
 
 A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubric to one feature: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above: reach the boundary, assert a signal only it can produce, and use no `as unknown as` at the call-site.
-
-## Test first
-
-`/bkit-build` writes each group's tests before its code and proves them: one subagent writes the planned tests and may touch nothing else, the engine records each one failing (red), and only then does another subagent write the code, which may touch no planned test, until each passes (green). This covers the unit and integration tiers only. E2E and `@live` rows run in CI and stay planned in the `Derived Test Matrix`. Each plan task names its tests on a `**TEST FIRST:**` field, one sub-bullet per test, or `n/a — {reason}`.
-
-- **Declare `bkit:test:file`:** it runs the one test file bkit appends as its argument (a repo-relative path), and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`. pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`. jest needs the `jest-junit` reporter.
-  - **If** it is undeclared → the build reports test-first as not enforced.
-  - **If** the test files belong to more than one runner (for example, `.bats` and `node:test`) → point it at a script that picks the runner by file type.
-  - **If** `$BKIT_TEST_REPORT` is unset → pass no report flag. An empty `--outputFile.junit=` takes the next argument, the test file, as the report path, and overwrites it.
-- **Declare `bkit:lint:file`:** it lints the one test file bkit appends (a repo-relative path) with the static gate's linter config, and exits 0 when clean. ESLint: `eslint --max-warnings=0`. Ruff: `ruff check`.
-  - **If** the linter does not cover the test file (for example, `.bats`) → exit 0 (Oxlint: `--no-error-on-unmatched-pattern`).
-  - The build lints each planned test file before running it for its red. **If** `bkit:lint:file` is undeclared → the red is recorded unlinted, and a lint rewrite after it changes a frozen test file, which the code step's finish refuses.
-- **Call the runner directly:** a task runner that caches results, or runs dependent packages' suites first, breaks the one-file contract. A monorepo routes the path to the package and config that own it. An integration file gets the same environment setup that the integration suite gets.
-- **Judged by the report, never the exit code:** a misspelled path, a syntax error and an import of unwritten code all exit non-zero, just like a real failure. A red counts when the named test ran and failed, or when its file failed to load with no case of its own in the report (the tests step writes no source, so an import of unwritten code is the expected shape of a red); a green only when it ran and passed.
-- **Test name:** use the name as the runner reports it, or its last segment (`clamp > keeps a value inside the range` → `keeps a value inside the range`).
-- **The red test stays:** after the red, the test may gain tests or formatting. A weakened, removed or rewritten assertion fails the build's verify.
-
-## Tests lock
-
-Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bkit/templates.md` § Machine lock). The wrapped script holds the `tests` lock for the whole gate, across repositories. An unwired repository takes no lock.
-
-- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` as `LOCAL_STACK_LOCK_WAIT_S` and their run name as `LOCAL_STACK_LOCK_WHO`; they run the declared gate without executing the lock script itself.
-- `bkit branches push` passes the same wait budget and its run name to Git. When its pre-push hook's gate gives up on the tests lock, it exits 81 with `lockHolder` and reports nothing pushed; the workflow ends the turn and re-runs the block.
-- A tests-lock give-up of this run becomes exit 81 with `lockHolder`, and a tests-lock refusal becomes exit 4. A lock wait writes no `test-run` status row. A gate's own failure or a nested lock's give-up remains a test failure. A raw gate caller sees exit 75 and the holder line.
-- Light runs (`bkit tests red`, `green` and `bkit:test:file`) take no tests lock. Nested wraps reuse the live parent's tests lock. `CI=true` / `CI=1` bypasses locking.
-- `BKIT_TEST_SLOTS` sets the number of tests slots (default 1). The lock exports `BKIT_TEST_WORKERS` for the consumer to pass to its runner.
-- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands).
-- The script defaults to 60 seconds without a TTY when no wait is set. Waiting notes name the holders and their checkouts' earlier run times.
-
-## JUnit reports for bkit
-
-`bkit tests run` counts a gate's failures from JUnit XML, not from its log. It empties a report folder before each run and passes its absolute path to the gate as `$BKIT_TEST_REPORT_DIR`.
-
-- **Every runner in a gate writes JUnit there** when the variable is set: one file per runner or per run, `*.xml`, with any name. Two runs in one gate never write the same file name.
-- **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
-- **No reports:** `failures` is `null` (count unknown), and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
-- **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
 
 ## What each tier must do
 
@@ -530,7 +492,7 @@ The E2E tier (`bkit-stub:e2e-coverage`) reports Playwright coverage in the same 
 
 ## CI verbosity (`[verbose ci]`)
 
-See `deployments.md` § Commit-message force tags for the marker mechanics. That covers where to put it: the PR title for feature-branch pushes, and the commit message for a direct push to `dev` / `{{DEFAULT_BRANCH}}`. This section covers the testing-specific knobs.
+See `.bkit/workflows.md` § Test and release mechanics (Commit-message force tags) for the marker mechanics. That covers where to put it: the PR title for feature-branch pushes, and the commit message for a direct push to `dev` / `main`. This section covers the testing-specific knobs.
 
 **Knobs flipped under the marker.** The shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs. Add your stack's equivalents.
 
@@ -547,5 +509,3 @@ See `deployments.md` § Commit-message force tags for the marker mechanics. That
 **Hostile gap: Playwright `--reporter=line` override.** **If** your `playwright test` invocation passes `--reporter=line` → drop it. With the marker on, traces are written but no reporter surfaces them, so the artifact upload is wasted. `bkit install` flags this as an advisory.
 
 **Artifact paths** (already in `.gitignore` via the bkit template): `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.auth/`. Never commit these, because traces alone run 1-50MB each.
-
-<!-- bkit:end -->

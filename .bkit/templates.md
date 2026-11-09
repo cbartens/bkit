@@ -648,6 +648,10 @@ Issues are the first input every workflow reads. There is one form per way work 
 - Never add `bkit:*` labels, because workflows own them.
 - **If** the repo has existing forms → copy only the `bkit-*` files you want. The names never collide.
 
+## Project documents — starters and the index
+
+The ten project docs (architecture, technology, security, data-schema, testing, deployments, observability, design, noise, setup) ship as starters in `.bkit/templates/docs/`. Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not.
+
 ## Component map — purpose and responsibilities
 
 Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, worked examples, document registration and completion checks.

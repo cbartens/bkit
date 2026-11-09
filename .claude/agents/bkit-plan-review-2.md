@@ -33,7 +33,7 @@ autoCompactWindow: 300000
 - **Parallel run:** **If** Context indicates parallel run → do not reference other agents' outputs.
 - **Lens discipline:** Stay within the lens that your Process defines. A finding outside that lens is outside your remit.
 - **Output header:** Every line above `<!-- verdict:end -->` MUST stay machine-parseable.
-- **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it, picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
+- **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it when that document is present (if it is missing, warn and use the tiers the repo's gate scripts show), picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
 - **Runbook tasks:** The runbook is groups of task blocks in build order (schema, then API, then UI). A group is `<!-- bkit:group N start -->`, `### TASK GROUP N: {title}`, its task blocks and `<!-- bkit:group N end -->`, holding tasks and `TEST FIRST` tests within the per-group plan caps your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all); bigger → split the group. A task is `<!-- bkit:task N start -->`, `- [ ] **TASK N:** {title}`, one sub-bullet per field and `<!-- bkit:task N end -->`, its number unique across the plan. Fields, uppercase: `**CREATE:**` / `**READ:**` / `**UPDATE:**` / `**DELETE:**` (`` `{symbol}` in `{file}`: {what} `` or `` `{file}`: {what} ``, one line per reference), `**DEPENDS ON:**` (task numbers, same or earlier group), `**DONE WHEN:**`, `**TEST FIRST:**`, `**TEST EXCEPTION:**`; `bkit tests plan-check` refuses task-like text outside every block. `DONE WHEN` is short, testable and checkable in the codebase (a file exists, a signature matches, a test passes, a behaviour shows). A task that adds or changes logic names its own tests and fixes the tests it breaks; no task leaves its tests to a later one. Behaviour tests come only from `Derived Test Matrix` rows, and a task crossing a boundary (DB, API, model, network, migration) pairs them with non-mock tests. An audit plan has one task per in-scope finding id; tasks group findings only on one shared root cause and still name every id.
 
 **Rules:** Copied word for word from `.agents/rules.md`.
@@ -59,7 +59,7 @@ autoCompactWindow: 300000
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Trace the surface area of each `Agent Execution Runbook` task:
    - The files and modules it edits directly.

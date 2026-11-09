@@ -16,6 +16,20 @@ const TEMPLATES_ROOT = path.resolve(".bkit/templates");
 const CORE_ROOT = path.resolve(".bkit/core");
 const SHARED_ROOT = path.resolve(".bkit/shared");
 
+/** The ten project-document starters under `.bkit/templates/docs/`. */
+const PROJECT_DOC_TOPICS = [
+  "architecture",
+  "technology",
+  "security",
+  "data-schema",
+  "testing",
+  "deployments",
+  "observability",
+  "design",
+  "noise",
+  "setup",
+];
+
 function templatePath(...parts: string[]): string {
   return path.join(TEMPLATES_ROOT, ...parts);
 }
@@ -67,7 +81,7 @@ function listAuditCatalogue(): string[] {
 
 /**
  * Anchor refs in `- bkit block of `docs/<doc>` (…): <ref>; <ref>` lines that the shipped
- * `.bkit/shared/docs/<doc>` cannot satisfy. A ref is `§ <## or ### heading>`, `Rules`
+ * starter `.bkit/templates/docs/<doc>` cannot satisfy. A ref is `§ <## or ### heading>`, `Rules`
  * (the doc's caution-block rules), or `every rule and section`.
  */
 function unresolvedBkitDocAnchors(content: string): string[] {
@@ -75,7 +89,7 @@ function unresolvedBkitDocAnchors(content: string): string[] {
   for (const [, doc, refs] of content.matchAll(
     /^- bkit block of `docs\/([a-z-]+\.md)` \([^)]*\): (.+)$/gm,
   )) {
-    const docPath = path.join(SHARED_ROOT, "docs", doc!);
+    const docPath = path.join(TEMPLATES_ROOT, "docs", doc!);
     if (!fs.existsSync(docPath)) {
       unresolved.push(`docs/${doc}`);
       continue;
@@ -93,22 +107,23 @@ function unresolvedBkitDocAnchors(content: string): string[] {
   return unresolved;
 }
 
-/** Shipped doc sections no audit can check, keyed `<doc> § <heading>`, each with its reason. */
-const UNAUDITED_DOC_SECTIONS: Record<string, string> = {
-  "setup.md § Templates": "pointer to `.bkit/templates.md`; Contract rows are covered below",
-  "setup.md § Agent hosts": "operator terminal habit; nothing in the repo to check",
-  "setup.md § Remote access": "operator machine and VPN setup; nothing in the repo to check",
-};
+/** Starter sections no audit can check, keyed `<doc> § <heading>`, each with its reason. */
+const UNAUDITED_DOC_SECTIONS: Record<string, string> = Object.fromEntries(
+  ["architecture", "data-schema", "deployments", "setup", "technology", "testing"].map((doc) => [
+    `${doc}.md § Project facts to record`,
+    "prompts for the project's own facts; the project's content is checked by the documentation audit",
+  ]),
+);
 
 /**
- * `<doc> § <heading>` for each `##` / `###` section of `.bkit/shared/docs/*.md` that no audit
+ * `<doc> § <heading>` for each `##` / `###` section of the ten starters in `.bkit/templates/docs/` that no audit
  * template names: by doc path plus section title, by its parent `##` section, or by an
  * `every rule and section` anchor.
  */
 function uncoveredBkitDocSections(audits: string[]): string[] {
   const uncovered: string[] = [];
-  const docsDir = path.join(SHARED_ROOT, "docs");
-  for (const doc of fs.readdirSync(docsDir).filter((name) => name.endsWith(".md"))) {
+  const docsDir = path.join(TEMPLATES_ROOT, "docs");
+  for (const doc of PROJECT_DOC_TOPICS.map((topic) => `${topic}.md`)) {
     const citing = audits.filter((content) => content.includes(`docs/${doc}`));
     const whole = citing.some((content) =>
       [...content.matchAll(/^- bkit block of `docs\/([a-z-]+\.md)` \([^)]*\): (.+)$/gm)].some(

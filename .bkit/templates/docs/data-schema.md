@@ -1,8 +1,6 @@
-<!-- bkit:start -->
-
-{{BKIT_MANAGED_MARKER}}
-
 # Data Schema
+
+> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/data-schema.md` and add its row to `.agents/docs.md` `## Project Documents`.
 
 > [!CAUTION]
 > **Purpose:** The active production database schema: entities / tables, fields, access policies (e.g. RLS), indices and triggers.
@@ -13,4 +11,9 @@
 > - Give each table one section, holding a `Field | Type | Unique | Notes` table, `Indices` and `Pending`.
 > - For a field whose existence is a decision, link its ADR in `decisions.jsonl`, and do not restate the rationale.
 
-<!-- bkit:end -->
+## Project facts to record
+
+Replace this section with the project's own schema. Leave it out when the project has no database.
+
+- One section per table: the `Field | Type | Unique | Notes` table, `Indices` and `Pending`.
+- Access policies, functions and triggers.

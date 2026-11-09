@@ -1,8 +1,6 @@
-<!-- bkit:start -->
-
-{{BKIT_MANAGED_MARKER}}
-
 # Design
+
+> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/design.md` and add its row to `.agents/docs.md` `## Project Documents`.
 
 > [!CAUTION]
 > **Purpose:** The design system: palette, typography, components, spacing, a11y and layout tokens.
@@ -34,5 +32,3 @@ An example shape follows. Choose your own columns, then pin them, because the he
 | Primary (`--primary`) | `#2563EB` | `#2563EB` | Aligned L+D — buttons / active. **Transcribed-not-ratified**: read from source, pending human confirmation |
 
 Lane map, tagging, cache rules: `testing.md` § "Design assertions are a dimension, not a lane".
-
-<!-- bkit:end -->

@@ -1,8 +1,6 @@
-<!-- bkit:start -->
-
-{{BKIT_MANAGED_MARKER}}
-
 # Deployments
+
+> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/deployments.md` and add its row to `.agents/docs.md` `## Project Documents`.
 
 > [!CAUTION]
 > **Purpose:** The rules for deployment, environment config and the CI/CD pipeline: secrets sync, branch protection and run-level tiers.
@@ -12,6 +10,15 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - Pre-push runs the project's gate set locally (see "Pre-push checklist" below).
 > - Never use `--no-verify`.
+
+## Project facts to record
+
+Replace the generic text below with the project's own deployment facts where they differ.
+
+- Hosts, environments and how a release reaches production.
+- Secrets sync and branch protection.
+- Rollback and deploy decisions specific to this project.
+- Commit-message tags, phase-close prerequisites, post-merge routing and the ship gate are bkit mechanics in `.bkit/workflows.md` § Test and release mechanics.
 
 ## Production rollback runbook
 
@@ -103,48 +110,6 @@
 - The migration ledger must match the reverted tree's migration files. For example, on Supabase, compare `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` with `ls supabase/migrations/`.
 - Re-run the schema-aware test suite (e.g. `pnpm test:integration`) to confirm DB and code agree.
 
-## Commit-message force tags
-
-bkit's `bkit-ci.yml` recognises the tags below. They are case-sensitive and use the literal `[...]` form. A tag may appear anywhere in its source string. Tags compose: several on the same commit or PR title each fire independently.
-
-**Where to put the tag:**
-
-- **Direct push to `dev` or `{{DEFAULT_BRANCH}}`** (no PR): put the tag in the commit message (`github.event.head_commit.message`).
-- **Feature branch with an open PR** (open, synchronize or edit): put the tag in the PR title (`github.event.pull_request.title`). The commit message is not read, because the workflow fires on `pull_request`, not `push`.
-- **Both surfaces** are checked by `contains()` in the env block, and a marker in either one wins for its event. Pick the right one: `[verbose ci]` in a feature-branch commit message has no effect, because only the PR title is read.
-- **`workflow_dispatch`**: neither field is filled, so every marker is inert. The planner sets `MSG=""` for events other than `push` and `pull_request`, and silently drops `[force full]`, `[force build]` and `[verbose ci]`. Steer a dispatch with inputs, never a marker. Inputs are mandatory when the dispatch default is expensive, for example when a dispatch forces the metered native build lanes past their reuse gate and spends build quota on every run. Gate the lookup behind an input that defaults to `false`.
-
-<!-- prettier-ignore -->
-| Tag | Effect | Scope |
-| --- | --- | --- |
-| `[force cache]` | Busts the task-runner cache for the run — recompute instead of replaying cache hits (e.g. turbo: `TURBO_FORCE=1`). Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` |
-| `[force build]` | The lighter hammer. Exposes `should_force_build=true` + `run_level=full`. It does not bypass `web_affected`, so integration, e2e and @live run only when web is genuinely affected. Use it to rebuild without paying @live's side effects. Deploy steps act on it only when they gate on the output. | Read by `Detect Direct Push` |
-| `[force full]` | The hammer. Sets `run_level=full` and bypasses `web_affected`, so integration, `bkit-tests-e2e-web`, and `bkit-tests-live-web` run on any commit, including docs-only. The E2E spec set does not change, because a PR already runs the full suite. `@live` stays push-only: a docs-only `[force full]` push reaches it through the effective `web_affected`, but a PR or a dispatch never does. | Read by `Detect Direct Push` step |
-| `[verbose ci]` | Escalates log detail for one run. Shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation` (a job-level `env:` key, never a `$GITHUB_ENV` write, which the runner rejects while still reporting success), `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Add your stack's equivalents to the same `env:`. Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by the job-level `env:` of `bkit-tests-static` (copy the same `env:` onto each lane) |
-| `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions, so it suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
-
-**Two deploy-forcing markers only: `[force build]` and `[force full]`.** There is no granular `[force e2e]` or `[force live]`, because they would be silent no-ops gated behind `web_affected`. `[force full]` is the single gate bypass ("validate everything"): one effective `web_affected` drives integration, e2e and @live the same way.
-
-- **Precedence: `[skip ci]` / `[skip actions]` vetoes any force marker.** A `[skip ci]` commit never dispatches, because GitHub suppresses it natively before `bkit-ci.yml` runs. No force marker undoes that. To validate a commit that would be skipped, drop `[skip ci]` and push with `[force full]`.
-- **`[force cache]` is a separate axis.** It busts task-runner replay (for example, turbo `TURBO_FORCE=1`), which is a different axis from which lanes run. It is never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
-- **Marker parity (deploy-forcing set).** The e2e and @live lanes resolve a per-SHA deployment, so a marker that force-runs them must also force the host build. Otherwise the lane dies at "resolve deployment URL". The host build-cancel script (for example, Vercel `ignoreCommand`) must honor every marker in the deploy-forcing set: the shipped `[force build]` and `[force full]`, plus any consumer marker that widens a deploy-backed lane. Assert this in CI (`grep -qF` over the cancel script). `[force cache]`, `[verbose ci]` and `[skip ci]` act on the test plane only, and the cancel script does not honor them.
-- **Match a signature, not a spelling.** A value-list marker (`[platform web ios]`) is invisible to a substring test for `[platform web]`. Match the opening token (`[platform `) on both sides. An assertion pinned to one spelling stays green while the cancel script kills the build the marker asked for.
-- **A widening marker is an or term, never a condition.** A marker that adds a lane the affected graph missed must only widen. Used as a condition (`contains(plan.platforms, 'web')` in a lane `if:`), it also removes: `[platform ios]` on a web-touching commit silently drops the web lane, and the run goes green. Guard the direction with a check over the workflow text, and mutation-prove it both ways. Intent alone does not hold this shape.
-- **Widen the job gate and the step gates together, or not at all.** A job-level `if:` alone starts the lane while every step inside it skips. The result is a green lane that ran nothing, which is the capstone's own failure mode, arriving where the capstone cannot see it. Step-level readers of a plan value can far outnumber its job-level readers, so count them before you widen a shared plan value.
-- **Forcing a subset** (builds without their tests): do not widen the shared value. Derive a new boolean beside it (`build_forced` next to `web_affected`), and gate only the lanes it owns. This is valid only for a lane with no step-level reader of that value. Assert that directly, with an error message that names what breaks when someone adds one.
-- **Invoke the marker parser unconditionally.** A substring pre-gate in front of a parser is a silent no-op. A pre-gate on the literal `[screenshots ` with a trailing space never matches a bare `[screenshots]`, so the step exits 0 with an empty plan, and the run goes green having captured nothing. Run the parser every time, and let it own every failure class (unknown value, invalid combination, arguments to a bare flag), loudly, in the planner, before any lane starts.
-
-A direct push to `dev` (no merged PR ancestry) auto-busts the task-runner cache (for example, turbo `TURBO_FORCE=1`) regardless of tags. See the `bkit-debug` runbook for why the cache is busted.
-
-## Autonomous phase-close prerequisites
-
-The design and plan Close Workflow lands docs on `dev` in one of two ways. Every runtime first builds the close commit off `origin/dev` and pushes it straight to `dev`. When that push goes through, no repo setting is required, and no PR is created. When GitHub refuses it (branch protection or a ruleset on `dev`), the close opens a PR and squash-merges it, which adds two repo prerequisites. Neither is pre-flighted, because no admin-scope token is required. Instead, a missing prerequisite shows itself when the close's own merge fails loudly.
-
-- **Branch protection on `dev` permits the autonomous merge**, because no human review is required. The PR-path merge does not wait for checks: its merge subject carries `bkit [skip ci]`, so a docs-only close dispatches no run to wait for. A rule requiring status checks to pass will block it.
-- **"Automatically delete head branches" is enabled** (repo Settings → General). The PR-path close deliberately does not pass `--delete-branch`, because `gh` would also delete the local branch. That fails when the branch is checked out in a worktree, and returns non-zero after a successful merge. Head-branch cleanup relies on the repo setting instead.
-
-Confirm both before running phase closes from a cloud agent session.
-
 ## Run-level decision matrix
 
 bkit ships a mostly flat, wide scaffold. `bkit-tests-scope` always runs. It reads the markers once, computes `run_level`, the optional `run_migration` and `tenant_target`, and emits the `bkit-test-plan` JSON. It fans out to every lane (`bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup`), and `bkit-tests-check` joins them. `bkit-tests-deploy` runs on a push to the default branch only, promotes the release before the E2E / `@live` lanes run, and is not required. Static/unit/integration/build wait only on the planner.
@@ -164,7 +129,7 @@ Adopt only the lanes this repo has. Lane names and the adopt order are in `testi
 | --- | --- | --- | --- |
 | `none` | `[skip ci]` / `[skip actions]`; or release-PR mirror mode (the capstone copies the `dev` push run — § One CI run per dev commit). | Planner, then stop. | Every test lane. |
 | `partial` | Push to `dev` that came from a merged PR, and no `[force build]` / `[force full]`. | Static, unit, integration when `web_affected`, build lanes, migration. `@live` (`bkit-tests-live-web`) still runs on this push when `web_affected`. | `bkit-tests-e2e-web`. Deploy (not the default branch). |
-| `full` | Pull request; `workflow_dispatch`; push to `{{DEFAULT_BRANCH}}`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. On a default-branch push, `bkit-tests-deploy` promotes before the E2E / `@live` lanes run. It is not required, and its own `concurrency:` group stops two releases overlapping. Health runs as `workflow_run` after CI. |
+| `full` | Pull request; `workflow_dispatch`; push to `main`; direct push to `dev` (no merged PR); `[force build]` / `[force full]`. | Partial's lanes, plus `bkit-tests-e2e-web` when `web_affected`. Same spec set as a push (`testing.md` § E2E on PRs). | `@live` off a PR and off a dispatch. On a default-branch push, `bkit-tests-deploy` promotes before the E2E / `@live` lanes run. It is not required, and its own `concurrency:` group stops two releases overlapping. Health runs as `workflow_run` after CI. |
 
 Device lanes follow `plan.run_native_*`, not `run_level`. The same rule holds on a PR, a push (including `partial`), and a dispatch.
 
@@ -172,7 +137,7 @@ Device lanes follow `plan.run_native_*`, not `run_level`. The same rule holds on
 
 ```yaml
 group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
-cancel-in-progress: ${{ github.ref != 'refs/heads/{{DEFAULT_BRANCH}}' }}
+cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 ```
 
 A newer run cancels the older one on every event except the default branch, which queues. That run promotes the deployment, so cancelling it mid-promote could strand production across two releases (§ Promote before the lanes). A pull request keys on its number, and a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
@@ -258,7 +223,7 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 
 1. **A `dev` push resolves `run_level=full`.** Drop the merged-PR → `partial` arm from `Decide Run Level`. A `partial` push run skips E2E, and the release PR inherits that.
 2. **A push run diffs against the last green push run's head**, not `github.event.before`. Otherwise a red run N followed by an unrelated commit N+1 plans a green N+1 that never re-tests what N broke, and the mirror copies that green.
-3. **Promotion hangs off the push to `{{DEFAULT_BRANCH}}`** (`bkit-tests-deploy`; § Promote before the lanes), never off the PR check. The mirror is the merge gate, and the default-branch push run is the release gate.
+3. **Promotion hangs off the push to `main`** (`bkit-tests-deploy`; § Promote before the lanes), never off the PR check. The mirror is the merge gate, and the default-branch push run is the release gate.
 
 **Operating it:**
 
@@ -282,75 +247,6 @@ The cap is undocumented and invisible to the toolchain, because the file stays v
 - **A comment inside a `run: |` body is part of the expression.** A `#` comment above the step is free. Keep that comment to the rule plus a pointer at this section. The essay stays here. Pasting it into `run:` is what trips the cap.
 - **Guard below the cap, not at it.** 20,999 leaves the next edit no room, and it fails unreadably. In the static lane, scan `.github/workflows/*.{yml,yaml}`, measure every block scalar containing `${{`, and fail with a margin (for example, at 20,000).
 - **A long `run:` body is the symptom.** The fix is rarely compression. Move the logic into a script the step calls (`node scripts/ci/…`), which also makes it unit-testable.
-
-## Post-merge dev CI auto-routing
-
-`bkit-cloud.yml`'s `workflow_run` trigger fires when CI completes on `feat/**` and `dev`, never on `main`. The per-branch success / failure matrix lives in `.bkit/cloud.md` § Branch-aware routing. The post-merge surfaces add the following on top of it:
-
-- **Trigger scope.** Dispatch jobs gate on `workflow_run.head_repository` being this repo, so a fork PR's CI completion never boots one. On `dev`, the same gate excludes `conclusion == 'success'` outright, so a green post-merge run costs zero runner minutes. The merge already happened, so that run only confirms the regression check passed.
-- **FID recovery on `dev`.** No open PR exists, so `{FID}` comes from the squash-merge commit scope (`feat({FID}): …`) first. The fallback is the `bkit:fid` marker in the body of the merged same-repo PR for that SHA. **If** neither resolves → it does nothing and dispatches nothing.
-- **Loop bound.** A `dev` CI failure dispatches `/bkit-debug` until the `{FID}` has `bkit.workflows.debug.fix.maxAttempts` + `bkit.workflows.debug.soak.maxAttempts` distinct failed CI SHAs (2 + 2 by default). `/bkit-debug` creates no branch of its own, so on this surface it remediates on `dev` itself, and its push re-triggers this same router. The cap is what ends that loop. `feat/**` is not capped here. `/bkit-debug` bounds it with the same two limits, counted across every debug run of the feature.
-
-**Auto-route contract:** whenever the issue carries `bkit:auto`, `/bkit-ship` adds the `bkit [auto route]` free-tier gate marker to the squash-merge `--subject` (not just the sync-merge commit). That marker is what lets `dev`-triggered runs through the existing `bkit-cloud.yml` gate, and there is no second gate path. The `[skip ci]` ship-DONE close commit that follows the squash merge never carries the marker and never triggers CI, so it cannot interact with this trigger. The trust surface, the kill switch and the cap's tamper caveat are in `docs/security.md` § CI Auto-Route Trust.
-
-**Docs-only-diff precondition:** the `dev`-trigger path routes every post-merge CI failure to `/bkit-debug`. That is correct for docs-only diffs only when the consumer's `bkit-ci.yml` deploy-await step treats a host-cancelled build as a skip, not a red (skip e2e and stay green; for example, Vercel `CANCELED`). **If** a consumer reds on a host-cancelled build → every docs-only squash-merge to `dev` falsely dispatches `/bkit-debug` and burns loop-cap budget. Verify this for each consumer before you rely on the `dev` trigger.
-
-**Consumer-repo acceptance note:** the full happy-path loop (squash-merge → post-merge CI → `workflow_run` → `/bkit-debug` dispatch → fix PR → re-merge) can only be exercised on consumer repos that have `bkit-cloud.yml` installed and its dispatch secrets wired (see the cloud-agent auth surfaces in `docs/security.md`). A consumer without `bkit-cloud.yml` installed, or without CI running on `push: branches: [dev]`, never emits the `workflow_run` event this trigger depends on. The feature then becomes a silent no-op, not a failure.
-
-## Ship gate + bookkeeping
-
-`/bkit-ship` is keyed on `bkit branches sync --head=<PR head>`, which reports whether `origin/dev` is an ancestor of the PR head (`basePath`).
-
-- **Path A** (`dev` has not moved) resumes read-only: no merge, no bookkeeping commits, no push. Then it merges.
-- **Path B** (`dev` moved) merges `origin/dev` into the feature branch locally with `bkit branches sync --merge`, pushes it plain, and re-validates the merged head. The block commits the run's uncommitted work first, unions the append-only ledgers, takes a conflicted lockfile from `dev` before regenerating it, takes a conflicted generated register (`docs/capabilities.md`) from `dev` before rebuilding it, with `dev`'s copy of the generated block in a doc the register's script copies that block into, and merges a conflicted install record (`.bkit/version`) entry by entry, with `dev`'s value where both sides changed an entry; a conflict outside those goes to `@bkit-ship-conflict-resolve`, which hand-resolves it and re-runs the block. A server-side update-branch is never used, because GitHub ignores `merge=union` and reports a ledger-only divergence as a conflict.
-
-Both paths end at the same gate: `bkit runs gate --head=<current>` exits 0 (capstone concluded `success`) at the current PR head.
-
-### Consumer CI contract — `pull_request` resolves to `run_level=full`
-
-The merge gate (`bkit runs gate`) asserts the capstone job's `conclusion=success` at the head being merged. That assertion only means something while `pull_request => run_level=full` holds: the capstone is green because every expected tier ran and passed, not because the lanes were skipped (see `## Run-level decision matrix` above). A consumer that narrows CI on `pull_request` has, by doing so, opted out of the merge-gate guarantee:
-
-- **`paths-ignore` / `paths` filters** that skip `pull_request` on some changes mean the capstone may not run at all. With no workflow run at the head, the gate refuses with code 10.
-- **A docs-only short-circuit** in the host's build-cancel (Vercel `ignoreCommand` / Netlify) that cancels the run mid-flight means the capstone may land `cancelled` (gate code 15) or never complete (code 11).
-- **A `[skip ci]` token** in a feature-branch commit subject when the PR opens makes GitHub suppress the `pull_request` run entirely. The PR's `statusCheckRollup` is then vacuously empty, so there is no run at the head (gate code 10).
-
-`bkit runs gate` covers the common violation shapes. It reports a skipped non-capstone lane but does not refuse it, because the judgement of planned versus vacuous belongs to the capstone, which takes every lane result as an input and already asserts it per lane. The gate cannot make that judgement itself, because the jobs API reports no reason for a skip: a job skipped by a job-level `if:` never reaches a runner, so it carries an empty `steps` array.
-
-**Code 16 is opt-in, and must stay that way.** It fires only for lanes named in `bkit.testing.ciRequired` (a package.json array), and the default empty list never refuses. A blanket refuse-on-any-skip can never be satisfied with the CI shape bkit ships. A lane whose `if:` is event-scoped cannot run pre-merge at any head: `bkit-tests-live-web` runs on a push to `dev` or the default branch only. A pre-merge gate that demands such a lane refuses every PR forever. Device lanes (`-ios` / `-android`) use the same rule on a pull request and a push, so do not treat them as post-merge canaries. Name a lane in `bkit.testing.ciRequired` only when your capstone does not assert it and the lane genuinely can run pre-merge. `BKIT_SHIP_GATE_OVERRIDE` remains the audited per-head escape hatch.
-
-**Code 12 on generated files gets one fix round (`bkit.testing.ciGenerated`).** When CI fails at the head, the gate reads the run's jobs and prints each failed step outside the capstone as `{job}/{step}` (`failedSteps`). A job that failed, timed out or was cancelled with no failed step prints as `{job}/`, which matches no entry. `regenerable` = true when every failed step is on the list: the fixed floor `CI_GENERATED_FLOOR` (`bkit-tests-static/Check Capability Register`, `bkit-tests-static/Run bkit Check`, the two template steps a stale `bkit:generate` output fails) plus the repo's `bkit.testing.ciGenerated`. Ship Step 10 then runs `bkit branches regenerate`, commits only what `bkit:generate` changed, pushes and lets CI re-check, within `bkit.workflows.ship.merge.maxAttempts`. One failed step off the list sends the whole refusal to the Failure Path, because fixing half of it still leaves CI red.
-
-- **Add** a step to `bkit.testing.ciGenerated` (a package.json array of `{job}/{step}`, the job id and the step's `name:` in your CI workflow) only when `bkit:generate` writes what that step checks. bkit's own repo lists `bkit-tests-static/Assert Dist Freshness`, because `bkit:generate` rebuilds `dist/`.
-- **A missing, malformed or empty list** leaves the floor alone. The key adds to the floor and cannot remove from it.
-- **A repo without a `bkit:generate` script** → `regenerate` reports `undeclared` and ship goes to the Failure Path.
-
-Codes 10-15 still carry the guarantee that a green result is not vacuous: a run exists, at this head, completed, not cancelled, with the capstone present and green. Code 14 (green at a superseded head) requires `--branch`. The head-keyed run query is filtered server-side, so a moved head returns the same empty list as a head that never ran, and only a second branch-scoped query separates them.
-
-A run that is present and degraded but not skipped (for example, a required lane ran a reduced test set because of a consumer config the gate cannot see) is a residual risk. It is named here, and not claimed as covered. The capstone is green because bkit's own `run_level` planner computed `full`, and a consumer narrowing inside a lane bkit does not own is invisible to the gate. Keep the capstone (`bkit-tests-check`) as the sole branch-protection required check, so `green == validated` survives a docs-only push. Do not add per-lane required checks, because a hollow lane then green-bars the capstone.
-
-**No duplicate dispatch on an already-triggered head (ship Step 9):** a branch push fires `pull_request` at the new SHA on its own, unless its HEAD carries `[skip ci]`. Ship's Step 4 merge push carries no skip token, so it fires a run there. The scaffold keys a pull request on `pr-{number}` and a `workflow_dispatch` on `github.ref`. The two are separate groups, so a redundant dispatch is never cancelled and burns a full duplicate run. Ship probes the head whose CI the gate will check (`VALIDATED_HEAD`) with `bkit runs wait --head=<VALIDATED_HEAD> --branch=<branch> --until=present --dispatch-if-absent`, which dispatches only when no run appears. The probe is not a pass condition. The completion wait (`bkit runs wait --head=<VALIDATED_HEAD> --until=completed`) reads only runs at that exact head, so a completed run from a superseded head never answers it. Gate codes 10 / 11 / 14 / 17 re-enter that probe-and-poll only, never the deferred sweep. `bkit.workflows.ship.merge.maxAttempts` bounds the retries, and it counts gate refusals and failed merges together.
-
-**No CI run for ship's own docs commit (validated-head carry-forward):** ship's pre-merge `[skip ci]` bookkeeping commit (docs, summaries, ledgers, skill removals) runs no CI.
-
-- **If** every path between the last CI-tested commit and the PR head is on the bookkeeping allow-list (`bkit ledgers only-bookkeeping`) → `bkit runs gate --validated=<sha>` checks CI at the tested commit.
-- **Else** → the gate refuses with code 17.
-
-The merge still pins the exact head (`--match-head-commit`). A green PR costs zero extra runs. The bookkeeping commit merges untested, and post-merge `dev` CI (the `ship-merge-ci` row) is the backstop. **If** `dev` requires status checks (classic branch protection or a ruleset) → GitHub refuses a head with no run, so ship runs CI at the PR head.
-
-### Consumer rollback path
-
-To unwind a bad ship surface (the gate command, managed config, or a rewritten `bkit-ship.md`) without downgrading unrelated fixes:
-
-1. **Pin the previous `@cbartens/bkit`** in `package.json`. The sliding `@v{N}` tag receives patches automatically, so a regression lands through the tag. Pin to the last known-good immutable `v{N}.x.y` or `@<sha>` (see § Sliding major-version tag). Re-install, and confirm that `bkit check` reports no drift.
-2. **Hold `bkit upgrade` for `.bkit/core/workflows/bkit-ship.md`** until the regression is fixed upstream. The gate (`bkit runs gate`) and ship's waits ship inside the `@cbartens/bkit` package (`dist/`), not as files in your repo, so the version pin in step 1 is what rolls them back. Other bkit upgrades are independent.
-3. **Audit any `BKIT_SHIP_GATE_OVERRIDE` rows** written in the meantime in `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`. Each `type:"ship-gate-override"` row is a sanctioned escape that turned a refusal into a merge. Treat every row as a PR whose capstone was not green at the merged head, and re-verify it against the pinned-good gate (`bkit runs gate --head=<sha>`). `[bkit-runs] override honoured for head …` is the matching `docs/observability.md` grep key.
-4. **No per-workflow pin or revert exists.** The package pin plus the selective `bkit upgrade` hold is the recovery path. Document any incident in `docs/failures.jsonl`.
-
-Ship's docs sync, summaries, `SHIPPED` roadmap row and skill removals ride the PR as one `[skip ci]` commit on the feature branch before the merge. The other pre-merge pushes are opening a missing PR, the Path B merge push, a `bkit:generate` commit (Path A, and the regenerate round after a red CI run) and a Failure Remediate fix. Status rows (`status.jsonl`) go to the feature worktree's tree on every runtime (`BOOK_ROOT` = `{WORKTREE_PATH}`), and ship never checks out `dev`. See `.bkit/workflows.md` § `status.jsonl` — workflow state SoT. The post-merge tail is one `[skip ci]` close commit, built in a throwaway checkout of `origin/dev`, that carries the book:
-
-- Ship pushes it to `dev`.
-- **If** `dev` moved → ship rebuilds the commit and pushes again.
-- **If** the push is refused → ship opens a `ship-close/{FID}` PR.
 
 ## Smoke trigger plumbing
 
@@ -394,7 +290,7 @@ The race stays hidden until the first build-time DB read lands, so flag it in re
 
 ## Promote before the lanes (`bkit-tests-deploy`)
 
-With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it until it is ready, and publishes `deployment_url` + `deployment_id`. The production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published, without looking the deployment up again by SHA. A `409` counts as success only when the body says this id is already current production. On `{{DEFAULT_BRANCH}}` it runs before the E2E / `@live` lanes. Each of those lanes `needs:` it and starts by proving, by deployment id, that production serves this run's build. A re-run after a rollback therefore refuses, instead of testing the old build and going green. A red deploy job means the release did not happen, and production still serves the previous deployment.
+With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it until it is ready, and publishes `deployment_url` + `deployment_id`. The production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published, without looking the deployment up again by SHA. A `409` counts as success only when the body says this id is already current production. On `main` it runs before the E2E / `@live` lanes. Each of those lanes `needs:` it and starts by proving, by deployment id, that production serves this run's build. A re-run after a rollback therefore refuses, instead of testing the old build and going green. A red deploy job means the release did not happen, and production still serves the previous deployment.
 
 Before it promotes, the job refuses and moves nothing in either of these cases:
 
@@ -406,7 +302,7 @@ A re-run of an old run then cannot move production back to an older release.
 - **If** production is unreadable, or its deployment records no commit → refuse.
 - **If** it is the same commit → promote, because the re-run is idempotent.
 
-Two guards keep a release honest. The deploy job carries its own `concurrency:` group (`cancel-in-progress: false`), so two releases never overlap. The workflow-level block queues on `{{DEFAULT_BRANCH}}` (§ One run per branch or pull request), so a newer push waits instead of cancelling a switch in flight. `bkit-tests-migration` waits for static / unit / integration / `build-web` before it touches production's database.
+Two guards keep a release honest. The deploy job carries its own `concurrency:` group (`cancel-in-progress: false`), so two releases never overlap. The workflow-level block queues on `main` (§ One run per branch or pull request), so a newer push waits instead of cancelling a switch in flight. `bkit-tests-migration` waits for static / unit / integration / `build-web` before it touches production's database.
 
 Do not add a host-side "hold promotion until a named check passes" setting (for example, Vercel Deployment Checks). That list stays empty, because this job is the promotion. On Vercel, for example, `git.deploymentEnabled` is false for the default branch, and auto-assign of production domains is off.
 
@@ -537,5 +433,3 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs against `dev` imm
    - **If** the parent itself cannot upgrade → override the transitive to a fixed version (for example, a `pnpm.overrides` entry; with Renovate, fence it, see **Fence a `pnpm.overrides` pin**), or add the transitive as a direct dev dependency (for example, in `devDependencies`) to force the resolution.
 4. Open a PR against `dev` titled `fix(security): bump <pkg> >=<fixed-version> (CVE-XXXX-YYYY)`. After the merge to `dev → main`, the alert closes automatically once GitHub re-scans the default branch.
 5. **If** a CVE has no impact on your usage pattern (for example, a dev-server-only vuln in a build tool that you never run as a server) → dismiss it in the GitHub UI with the "Vulnerable code is not actually used" reason and a one-line justification. Do not dismiss an alert without documenting why.
-
-<!-- bkit:end -->

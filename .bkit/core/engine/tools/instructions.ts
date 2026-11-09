@@ -252,7 +252,6 @@ const DOC_DIRS = [
   ".bkit/core/.agents",
   ".bkit/core/.bkit",
   ".bkit/shared",
-  ".bkit/shared/docs",
   ".bkit/shared/.cursor/rules",
 ];
 const DOC_FILE = /\.mdc?$/;

@@ -7,8 +7,9 @@
 //      - "byte-equal-text" : delete only if unchanged since bkit wrote it (canonicalHashes)
 //   2. package.json: the `bkit` install-state block (full/core uninstall). Scripts and
 //      devDeps are the consumer's — the bkit:gate:* names included — and are left alone.
-//   2b. docs/ (full/core uninstall): bkit's managed block stripped from every installed
-//      `docs/*.md`, the owned `docs/templates/bkit-*.md` deleted.
+//   2b. docs/ (full/core uninstall): the owned `docs/templates/bkit-*.md` deleted. The ten
+//      project documents (`docs/architecture.md` …) and their `Project Documents` index rows
+//      belong to the project and stay.
 //   3. .agents/ mirror files (bkit-prefix .md files in .claude/ .cursor/)
 //
 // Flags:
@@ -44,7 +45,6 @@ import {
 import {
   getBkitDocsRoot,
   getPkgRoot,
-  getSharedRoot,
   findTemplateSource,
   TEMPLATE_COPIES_DIR,
 } from "../../shared/package-roots.js";
@@ -385,26 +385,6 @@ const CORE_TEMPLATE_DOCTRINE: ManifestEntry[] = [
   { path: ".bkit/lite.md", format: "markered-text", module: "core" },
 ];
 
-/**
- * The top-level `docs/*.md` the core payload pass installs: each carries bkit's managed
- * block (`bkit:start` / `bkit:end`, managed marker inside), so uninstall strips the block
- * and keeps the consumer's content, exactly like `.agents/*.md`. The payload's
- * `shared/docs/` holds only these block docs; `docs/capabilities.md` is a template
- * (copied, never installed) and is left alone.
- */
-function coreDocEntries(): ManifestEntry[] {
-  const dir = path.join(getSharedRoot(), "docs");
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".md"))
-    .map((e): ManifestEntry => ({
-      path: path.join("docs", e.name),
-      format: "markered-text",
-      module: "core",
-    }));
-}
-
 /** Prefix of the bkit-owned files under `docs/templates/`; uninstall deletes them whole. */
 const DOCS_TEMPLATES_DIR = path.join("docs", "templates");
 const isOwnedDocsTemplate = (name: string) => name.startsWith("bkit-") && name.endsWith(".md");
@@ -423,7 +403,7 @@ export function buildDecisionTable(
 
   const entries = [
     ...getInstallManifest(moduleList),
-    ...(moduleList.includes("core") ? [...CORE_TEMPLATE_DOCTRINE, ...coreDocEntries()] : []),
+    ...(moduleList.includes("core") ? CORE_TEMPLATE_DOCTRINE : []),
   ];
 
   // The hash of every owned file as bkit last wrote it.

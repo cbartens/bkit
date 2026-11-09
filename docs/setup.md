@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Setup
 
 > [!CAUTION]
@@ -48,8 +44,6 @@ Set it up as follows:
 - Client CLI: `OPENCODE_PASSWORD=<password> opencode --server https://<host>.<tailnet>.ts.net`.
 - Browser / app pairing: `opencode pair --url https://<host>.<tailnet>.ts.net` returns a one-time link with a 5-minute expiry.
 - Pin the port. The service port is dynamic, but `serve` targets a fixed port, so pin it or the proxy breaks on restart.
-
-<!-- bkit:end -->
 
 > Consumer first-time install / upgrade → `.bkit/install.md`. Upgrade paste + ongoing CLI → `.bkit/README.md`. Cloud-agent setup (Claude on the web, Codex Cloud, Cursor Cloud Agents) → `.bkit/cloud.md`; paste-ready values → generated `.claude/bkit-cloud.md` / `.codex/bkit-cloud.md` / `.cursor/bkit-cloud.md`.
 

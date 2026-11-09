@@ -32,15 +32,6 @@
 | `.bkit/router.md` | — | — | — | — | — | `bkit-{command}` workflow router — picks the workflow and each host's command file. |
 | `.agents/skills.md` | ○ | ○ | ● | ○ | ○ | Permanent skill registry, installation checks and activation boundaries. |
 | `.agents/context.md` | ○ | ○ | ○ | ● | ○ | How to reach information outside repo — deployment logs, CI runs, e2e evidence, web search, cloud egress allowlist, CLI provisioning. |
-| `docs/architecture.md` | ● | ● | ● | ○ | ○ | System design — service boundaries, deployment topology, integration sketch. |
-| `docs/technology.md` | ● | ● | ○ | ○ | ○ | Chosen frameworks, libraries, styling systems, coding conventions. Why a choice was made goes in `decisions.jsonl`. |
-| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, functions, triggers. |
-| `docs/security.md` | ● | ● | ● | ○ | ○ | Authentication, authorization, input validation, rate limiting, secrets management, PII handling, untrusted-content threat model and skill-guidance boundary. |
-| `docs/design.md` | ○ | ○ | ○ | — | — | Design system — palette, typography, components, spacing, a11y, layout tokens. |
-| `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy — tier boundaries, framework choices, naming conventions, CI lane graph (names, needs, when a lane runs). |
-| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment / CI/CD — secrets, branch protection, one-run concurrency, push base, promote after the capstone. |
-| `docs/observability.md` | ○ | ○ | ● | ● | ○ | Logging architecture, correlation tracing, telemetry pipelines, log drains. |
-| `docs/noise.md` | — | — | ○ | ● | ○ | Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds. |
 | `docs/decisions.jsonl` | ● | ● | ○ | ○ | ○ | ADRs — what was decided, why, discarded alternatives. Append-only. |
 | `docs/knowledge.jsonl` | ○ | ● | ● | ● | ○ | Lessons, traps, post-mortems, gotchas (symptom → root cause → fix). Append-only. |
 | `docs/failures.jsonl` | ○ | ○ | ○ | ○ | ○ | Ledger of discovered bugs. Append-only. |
@@ -53,9 +44,8 @@
 | `docs/templates/bkit-audit-*.md` | — | ○ | — | — | — | Audit templates. Use with `@bkit-audit-generate` to generate reports. |
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
 | `.bkit/authoring.md` | ○ | ○ | ○ | ○ | ○ | Authoring rules for agent-read markdown — docs, prompts, workflows; punctuation and capitals. |
-| `docs/setup.md` | — | — | — | — | — | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
 
-> `Project Documents` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it. Add project-specific docs there.
+> `Project Documents` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it. Add project-specific docs there. The ten recommended project documents (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) start as copies of `.bkit/templates/docs/`. Copy one into `docs/` and add its row there; an indexed document at another path stands in for its topic when its Scope names the recommended path (`Equivalent to docs/security.md`).
 
 <!-- bkit:end -->
 

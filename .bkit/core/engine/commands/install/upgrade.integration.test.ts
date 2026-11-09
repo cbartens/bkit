@@ -314,10 +314,9 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.existsSync(path.join(tmpDir, ".graphifyignore"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".serena", "project.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, "docs", "capabilities.md"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(true);
-    expect(fs.readFileSync(path.join(tmpDir, "docs", "setup.md"), "utf-8")).toContain(
-      ".bkit/templates.md",
-    );
+    // Project docs are copied from `.bkit/templates/docs/` by the project, never written.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "templates", "docs", "setup.md"))).toBe(true);
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
@@ -377,9 +376,8 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     );
     writeVersionFile();
 
-    // docs/*.md have NO manifest entry — this proves the full CLI wiring
-    // (collectTemplates → no format → content-detected block-merge) protects the
-    // consumer's project prose written AFTER the end marker. End-to-end, not a unit stub.
+    // A real `bkit upgrade` migrates the legacy wrapper and keeps every other byte of the
+    // project's prose. End-to-end, not a unit stub.
     const consumerDoc =
       "<!-- bkit:start -->\n# Testing\n\n> stale bkit guidance to be replaced\n<!-- bkit:end -->\n\n" +
       "## Our project testing notes — MUST SURVIVE\n\n- Custom Vitest + Playwright suite.\n";
@@ -392,8 +390,10 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     // Consumer prose after bkit:end is intact.
     expect(after).toContain("## Our project testing notes — MUST SURVIVE");
     expect(after).toContain("Custom Vitest + Playwright suite.");
-    // bkit block was updated to the shipped template (not whole-file-overwritten).
-    expect(after).not.toContain("stale bkit guidance to be replaced");
+    // The project owns the whole file: only the old wrapper lines go, the text inside stays.
+    expect(after).toContain("stale bkit guidance to be replaced");
+    expect(after).not.toContain("bkit:start");
+    expect(after).not.toContain("bkit:end");
   });
 });
 

@@ -38,7 +38,7 @@ Three kinds of failure do not show up in a source read. A row-security denial lo
 - Penetration Testing Execution Standard (PTES): pre-engagement, intelligence gathering, threat modelling, vulnerability analysis, exploitation, post-exploitation, reporting.
 - When a probe drives a model: OWASP GenAI Red Teaming Guide, OWASP AI Testing Guide, MITRE ATLAS.
 - OWASP Mobile Application Security Testing Guide (MASTG), when the native build is in scope.
-- bkit block of `docs/security.md` (bkit version from `.bkit/version`): § Untrusted Content & Prompt Injection
+- `.bkit/prompts.md` § Special Behaviors: § Untrusted Content & Prompt Injection
 
 ### Scope
 

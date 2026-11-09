@@ -2,7 +2,7 @@
  * audits/repo/shipped-docs-refs.test.ts — shipped docs carry no internal identifiers.
  *
  * Every `.md` in the install manifest, plus the `docs/` payload templates and
- * the canonical copies that seed them, lands in a consumer repo. Those docs
+ * the project-document starters, lands in a consumer repo. Those docs
  * describe the CURRENT setup and carry no tracker issue number, ledger key, or
  * review-finding id. Decisions belong in `docs/decisions.jsonl`, incidents in
  * `docs/knowledge.jsonl`.
@@ -48,14 +48,10 @@ function walkMarkdown(dir: string): string[] {
   return out;
 }
 
-/** The `docs/` payload templates + the canonical copies that seed them. */
+/** The `docs/` payload: the project-document starters and the managed audit and plan templates. */
 const PAYLOAD_DOCS = [
   ...walkMarkdown(path.join(REPO_ROOT, ".bkit/templates/docs")),
-  ...walkMarkdown(path.join(REPO_ROOT, ".bkit/shared/docs")),
   ...walkMarkdown(path.join(REPO_ROOT, ".bkit/core/docs/templates")),
-  "docs/deployments.md",
-  "docs/testing.md",
-  "docs/security.md",
 ];
 
 /**

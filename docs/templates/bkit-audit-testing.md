@@ -39,7 +39,8 @@ A green suite means the tests passed. It does not mean they could fail, that eve
 - Test-smell catalogue (e.g., xUnit Test Patterns, Meszaros 2007).
 - Test lint (e.g., `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 - Network mock that fails closed (e.g., MSW); record the major read.
-- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § Tests lock; § Local test sleep prevention; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+- bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+- `.bkit/workflows.md` § Test and release mechanics (Tests lock; Local test sleep prevention); `.bkit/workflows.md` § Test-first
 
 ### Scope
 

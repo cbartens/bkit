@@ -57,7 +57,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/security.md`. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/security.md` when it is present (warn and continue if it is missing). Skip any listed doc that does not exist.
 4. Update **Create** after each finding: append the entry at EOF with Bash `echo {log entry} >> {output}`.
    - **If** the entry spans several lines → append it with a heredoc instead.
    - **If** any finding is `CRITICAL` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
@@ -90,7 +90,7 @@ tools:
    - A finding with an empty field does not count toward `Failures`.
    - `class: mechanical` = a surgical edit with no redesign, such as a missing soft-delete filter, auth check, input validator or redaction, or a hardcoded secret to move into an env var → `fixable: true`.
    - `class: architectural` = a redesign, such as a wrong auth model, a tenancy boundary in the wrong layer, a data-access policy broken by design, or work that needs the plan or design redone → `fixable: false`. Its `done when` names why no agent can settle it and the decision the owner must make.
-8. Cross-reference each finding against the relevant docs that `.agents/docs.md` lists, always including `docs/security.md`.
+8. Cross-reference each finding against the relevant docs that `.agents/docs.md` lists, including `docs/security.md` when it is present (warn and continue if it is missing).
 9. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
 10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no findings.

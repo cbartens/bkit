@@ -452,6 +452,39 @@ Hooks add text to an agent's context mid-run. The text reaches every agent and s
 | **Plan task ticking owned by verify** | `bkit-build-plan-tasks` (ticks only applicable Pre-Flight and gate boxes), `bkit-build-plan-verify` (ticks task boxes `[ ]`→`[x]` only on verified codebase artifact) | Task checkboxes are verify's derived view of the codebase. The executor's durable progress record is its flat append-only log of `DONE —` lines, which keeps resume safe and keeps per-task `Edit` ticks out of its turn budget. Execute ticks each applicable Pre-Flight and gate box as that gate passes and continues without asking; it never ticks a task box or a human-confirmation box. |
 | **Flat append-only log for source modifiers** | `bkit-build-plan-tests`, `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate` | Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections: `Strategy` lives in the machine-parseable header alongside `Verdict`, and the reasoning is implicit in the `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). `Verdict` flips PENDING → PASS / CONCERNS / FAIL at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience: partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record, where ~30 ticks clustered at the end would all be lost on a timeout; (2) `Bash echo >>` is cheaper than `Edit`, because it needs no file read for an `old_string` match. **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) is added only where the workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in its Read) and `bkit-build-plan-tasks` (one `build-plan-tasks-{GROUP}-log.md` per group; every attempt — a turn-cap re-run or a Decision Pause `Fix now` re-run — appends to it, and `bkit context brief --next` leaves out tasks it logs `DONE — TASK {N}:`). On PENDING (subagent timeout) the verify→remediate loop bounded by `build.verify.maxAttempts` absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt takes a fresh strategy via `bkit-debug-failure-diagnose`), so skip-done would be the wrong shape. It gets stub+log only, but the flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence. |
 
+### Untrusted Content & Prompt Injection (threat model)
+
+**Threat model.** Every phase workflow combines three things:
+
+- it ingests attacker-controlled text (commit messages, PR bodies, diffs, CI and runtime logs, web results, installed skill bodies)
+- it holds a broad write token
+- it can act (commit, push, merge, write files)
+
+When all three are present, an embedded directive executes.
+
+**Contract.** Follow `.agents/rules.md` § Security & Data, **External input** and **External skills**. Skill selection and permitted use are defined in `.agents/skills.md` § Activation Rules.
+
+**Three layers, nearest the payload first:**
+
+- **Fenced at the write.** A workflow that writes fetched external evidence to disk wraps it as it lands, in this order: instruction lines, `===== BEGIN UNTRUSTED =====`, the payload, `===== END UNTRUSTED =====`.
+  - The instruction comes before the payload, and nothing comes after the closer.
+  - The payload is wrapped once.
+  - First-party breadcrumbs are not fenced.
+  - Tracker bodies are not fenced, because they are the task specification. The header contract governs them.
+- **Named on the spawn.** A subagent whose `Read:` list includes fenced artifacts is told so on its `Context:` line. That line is its last trusted instruction before it reads them.
+- **Standing header contract.** Every agent prompt and workflow header carries both rules. They cover tool results (web search / fetch) that never become files, and skill bodies loaded by name.
+
+**Per-file coverage is load-bearing.** Subagents spawn self-contained and never read `.agents/rules.md`. A rule placed only there reaches the orchestrating workflows but no leaf. The three registers exist by design. They are not redundant copies to collapse.
+
+**No runtime telemetry.** "Flag injection attempts" produces no metric, log-grep or alert. Detection is a human reviewing the agent's output.
+
+**Prose is defence-in-depth.** Prose is the layer an injection is designed to defeat. The load-bearing control is structural:
+
+- give each job the narrowest-scoped token
+- scan any text that reaches a privileged action (merge body, commit message)
+
+Prose never substitutes for token scope.
+
 ## Model Presets
 
 Two settings for OpenRouter, the overflow column, which covers the days after the week's OpenAI, Anthropic and Google credits run out. Costs are per **2-day gap**, the binding case against the weekly cap (`.bkit/providers.md` § Budget band), at the measured OpenCode profile with each agent carrying an equal 1/40 share. Judges and key gates: § Models Judges note.
