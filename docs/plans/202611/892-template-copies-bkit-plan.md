@@ -124,7 +124,7 @@ After `bkit upgrade`, the sample configs `.bkit/templates/.lintstagedrc.json` an
 <!-- bkit:task 5 end -->
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** A consumer whose own commit config is `lint-staged.config.ts` (or `.lintstagedrc.ts` / `.mts` / `.cts`, `lint-staged.config.mts` / `.cts`, or a `lint-staged` key in `package.yaml`) upgrades; `hasLintStagedConfig` does not know those names, so the migration writes `.lintstagedrc.json` beside it, and lint-staged, which sorts same-folder configs alphabetically and gives each folder to the first, silently runs bkit's sample instead of the consumer's own tasks
+- [x] **TASK 6:** A consumer whose own commit config is `lint-staged.config.ts` (or `.lintstagedrc.ts` / `.mts` / `.cts`, `lint-staged.config.mts` / `.cts`, or a `lint-staged` key in `package.yaml`) upgrades; `hasLintStagedConfig` does not know those names, so the migration writes `.lintstagedrc.json` beside it, and lint-staged, which sorts same-folder configs alphabetically and gives each folder to the first, silently runs bkit's sample instead of the consumer's own tasks
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/template-copies.ts:162` · **Round:** 2
   - **DONE WHEN:** `LINT_STAGED_CONFIGS` in `.bkit/core/engine/checks/tips/detect.ts:129` lists every name in lint-staged 17's `CONFIG_FILE_NAMES` (`node_modules/lint-staged/lib/configFiles.js`), including the `.ts` / `.mts` / `.cts` forms, and `hasLintStagedConfig` also reads a `lint-staged` key from `package.yaml` / `package.yml`; the task 5 upgrade line is then never printed for a repo that already has any lint-staged config.
   - **TEST FIRST:**
@@ -134,7 +134,7 @@ After `bkit upgrade`, the sample configs `.bkit/templates/.lintstagedrc.json` an
 <!-- bkit:task 6 end -->
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Every consumer that never adopted lint-staged gets an unrequested `.lintstagedrc.json` at its root on upgrade, and the "Quick tidy-up on commit" tip stops firing, because install seeds `bkit:gate:format` = `pnpm lint-staged` into every consumer, so the migration's gate check is true for all of them and nothing checks that lint-staged is installed
+- [x] **TASK 7:** Every consumer that never adopted lint-staged gets an unrequested `.lintstagedrc.json` at its root on upgrade, and the "Quick tidy-up on commit" tip stops firing, because install seeds `bkit:gate:format` = `pnpm lint-staged` into every consumer, so the migration's gate check is true for all of them and nothing checks that lint-staged is installed
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/template-copies.ts:161` · **Round:** 2
   - **DONE WHEN:** The task 5 upgrade line is not printed, and no root `.lintstagedrc.json` is written, when lint-staged is not in `readDependencyNames(cwd)`, or when the format gate passes lint-staged an explicit `--config` / `-c` path (lint-staged then reads only that file).
   - **TEST FIRST:**

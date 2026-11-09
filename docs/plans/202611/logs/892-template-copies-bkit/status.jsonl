@@ -210,3 +210,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T07:13:10Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/3/1/comment","hash":"d9bef94585d15be3cb2d97d7ad975158e9bdae27f2fc6226df7c98ce5778ed18","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6734125342","at":"2026-11-09T07:13:12Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T07:13:12Z","parentSha":"714e2abb53c10ea9978d7b180df384c639c28c8c","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-verify-3-1.md"],"verdict":"CONCERNS","attempt":1,"group":3,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:13:19Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:13:19Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:13:23Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:13:55Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:21:54Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T07:33:14Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/3/1/comment","hash":"26fa6ca33a603126b5bf3c9faf4bd81fc675686aa3a7eecaccc57dd7c6fdcd12","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6734125342","at":"2026-11-09T07:33:17Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-09T07:33:17Z","parentSha":"093b8697454bacb3b0e71aaef7deefb78acc9dfb","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-gaps-remediate-3-1-log.md"],"verdict":"PASS","attempt":1,"group":3,"strategy":"STANDARD"}

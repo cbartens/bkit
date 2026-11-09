@@ -84,7 +84,7 @@ Not scanned; run the rollup with `--reachability`.
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
 | --- | --- | --- | --- |
-| `.bkit/core/engine/shared/text.ts` | `Symbol` | 199 | 119 |
+| `.bkit/core/engine/shared/text.ts` | `Symbol` | 203 | 122 |
 | `.bkit/core/engine/checks/after/ci-yml.ts` | `CI_SCRIPT_UNITS.flat` | 187 | 112 |
 | `.bkit/core/engine/checks/tips/index.ts` | `STAR_TIP.replace` | 187 | 112 |
 | `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 187 | 112 |
@@ -165,7 +165,7 @@ flowchart LR
     n_bkit_core_engine_checks["checks<br/>252 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1714 symbols · 51 files"]
-    n_bkit_core_engine_install["install<br/>308 symbols · 20 files"]
+    n_bkit_core_engine_install["install<br/>311 symbols · 20 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>184 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>150 symbols · 13 files<br/>1 open finding"]
@@ -174,7 +174,7 @@ flowchart LR
   n_bkit_core_engine_commands -->|388| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|379| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|205| n_bkit_core_engine_install
-  n_bkit_core_engine_install -->|170| n_bkit_core_engine_shared
+  n_bkit_core_engine_install -->|176| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|132| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|83| n_bkit_core_engine_checks
   n_bkit_core_engine_install -->|61| n_bkit_core_engine_render
@@ -182,10 +182,10 @@ flowchart LR
   n_bkit_core_engine_commands -->|42| n_bkit_core_engine_render
   n_bkit_core_engine_cli -->|34| n_bkit_core_engine_commands
   n_bkit_core_engine_checks -->|18| n_bkit_core_engine_commands
+  n_bkit_core_engine_install -->|17| n_bkit_core_engine_checks
   n_bkit_core_engine_ledgers -->|17| n_bkit_core_engine_shared
   n_bkit_core_engine_shared -->|15| n_bkit_core_engine_install
   n_bkit_core_engine_commands -->|15| n_bkit_core_engine_cli
-  n_bkit_core_engine_install -->|14| n_bkit_core_engine_checks
   nscripts_harvest -->|14| n_bkit_core_engine_ledgers
   n_bkit_core_engine_checks -->|12| n_bkit_core_engine_cli
   n_bkit_core_engine_render -->|12| n_bkit_core_engine_shared
@@ -349,7 +349,7 @@ flowchart LR
         n_bkit_core_engine_install_modules_cursor["cursor<br/>3 symbols · 1 files"]
         n_bkit_core_engine_install_modules_opencode["opencode<br/>10 symbols · 1 files"]
       end
-      n_bkit_core_engine_install_template_copies["template-copies<br/>10 symbols · 1 files"]
+      n_bkit_core_engine_install_template_copies["template-copies<br/>13 symbols · 1 files"]
     end
     subgraph gn_bkit_core_engine_ledgers[".bkit/core/engine/ledgers"]
       n_bkit_core_engine_ledgers_compact["compact<br/>8 symbols · 1 files"]
@@ -510,6 +510,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_workflows -->|8| n_bkit_core_engine_commands_workflow_worktrees
   n_bkit_core_engine_install_modules_antigravity -->|8| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_codex -->|8| n_bkit_core_engine_install_write
+  n_bkit_core_engine_install_template_copies -->|8| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_checks_after_github -->|7| n_bkit_core_engine_shared_settings
   n_bkit_core_engine_checks_after_github -->|7| n_bkit_core_engine_shared_json
   n_bkit_core_engine_checks_after_index -->|7| n_bkit_core_engine_checks_tips_index
@@ -544,10 +545,10 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_steps -->|7| n_bkit_core_engine_ledgers_journal
   n_bkit_core_engine_commands_workflow_tests -->|7| n_bkit_core_engine_shared_package_manager
   n_bkit_core_engine_commands_workflow_workflows -->|7| n_bkit_core_engine_commands_workflow_summary
+  n_bkit_core_engine_install_modules_core -->|7| n_bkit_core_engine_install_template_copies
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_install_write
   n_bkit_core_engine_install_modules_cursor -->|7| n_bkit_core_engine_render_hosts
   n_bkit_core_engine_install_modules_opencode -->|7| n_bkit_core_engine_install_cloud_env
-  n_bkit_core_engine_install_template_copies -->|7| n_bkit_core_engine_shared_package_roots
   n_bkit_core_engine_commands_workflow_completeness -->|7| n_bkit_core_engine_checks_status_holes
   n_bkit_core_engine_commands_workflow_runtime -->|7| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_checks_before_files -->|6| n_bkit_core_engine_shared_package_roots
@@ -751,16 +752,16 @@ flowchart LR
   linkStyle 65 stroke:#59636e,stroke-width:6px
   linkStyle 66 stroke:#59636e,stroke-width:6px
   linkStyle 67 stroke:#59636e,stroke-width:6px
-  linkStyle 68 stroke:#59636eb3,stroke-width:3px
-  linkStyle 69 stroke:#59636eb3,stroke-width:3px
-  linkStyle 70 stroke:#59636eb3,stroke-width:3px
-  linkStyle 71 stroke:#59636eb3,stroke-width:3px
-  linkStyle 72 stroke:#59636eb3,stroke-width:3px
-  linkStyle 73 stroke:#59636eb3,stroke-width:3px
-  linkStyle 74 stroke:#59636eb3,stroke-width:3px
-  linkStyle 75 stroke:#59636eb3,stroke-width:3px
-  linkStyle 76 stroke:#59636eb3,stroke-width:3px
-  linkStyle 77 stroke:#59636eb3,stroke-width:3px
+  linkStyle 68 stroke:#59636e,stroke-width:6px
+  linkStyle 69 stroke:#59636e,stroke-width:6px
+  linkStyle 70 stroke:#59636e,stroke-width:6px
+  linkStyle 71 stroke:#59636e,stroke-width:6px
+  linkStyle 72 stroke:#59636e,stroke-width:6px
+  linkStyle 73 stroke:#59636e,stroke-width:6px
+  linkStyle 74 stroke:#59636e,stroke-width:6px
+  linkStyle 75 stroke:#59636e,stroke-width:6px
+  linkStyle 76 stroke:#59636e,stroke-width:6px
+  linkStyle 77 stroke:#59636e,stroke-width:6px
   linkStyle 78 stroke:#59636eb3,stroke-width:3px
   linkStyle 79 stroke:#59636eb3,stroke-width:3px
   linkStyle 80 stroke:#59636eb3,stroke-width:3px
@@ -820,7 +821,7 @@ flowchart LR
   linkStyle 134 stroke:#59636eb3,stroke-width:3px
   linkStyle 135 stroke:#59636eb3,stroke-width:3px
   linkStyle 136 stroke:#59636eb3,stroke-width:3px
-  linkStyle 137 stroke:#59636e80,stroke-width:2px
+  linkStyle 137 stroke:#59636eb3,stroke-width:3px
   linkStyle 138 stroke:#59636e80,stroke-width:2px
   linkStyle 139 stroke:#59636e80,stroke-width:2px
   linkStyle 140 stroke:#59636e80,stroke-width:2px
@@ -887,4 +888,5 @@ flowchart LR
   linkStyle 201 stroke:#59636e80,stroke-width:2px
   linkStyle 202 stroke:#59636e80,stroke-width:2px
   linkStyle 203 stroke:#59636e80,stroke-width:2px
+  linkStyle 204 stroke:#59636e80,stroke-width:2px
 ```

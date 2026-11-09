@@ -2469,6 +2469,16 @@ describe("#892 — upgrade warns about a missing root lint-staged config instead
     expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
   });
 
+  it("upgrade --dry-run names the missing root lint-staged config once and writes none", () => {
+    seedNestedSampleConsumer();
+
+    const up = runCli(["upgrade", "--dry-run"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+
   it("upgrade prints no missing lint-staged config line when the consumer's config is lint-staged.config.ts", () => {
     seedNestedSampleConsumer({
       rootFile: ["lint-staged.config.ts", "export default { '*': 'prettier -w' };\n"],
