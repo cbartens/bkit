@@ -317,7 +317,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Move the project documentation starters and migrate legacy ownership.
+- [x] **TASK 1:** Move the project documentation starters and migrate legacy ownership.
   - **READ:** `docs/architecture.md`: verify install and package boundaries.
   - **READ:** `docs/security.md`: apply the untrusted content and filesystem constraints.
   - **READ:** `docs/testing.md`: apply the lifecycle integration tier.
@@ -397,7 +397,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Narrow the second-upgrade idempotency check to the files the migration owns.
+- [x] **TASK 8:** Narrow the second-upgrade idempotency check to the files the migration owns.
   - **READ:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: find the closing snapshot of `migrates legacy ownership without changing project text or core ownership`.
   - **READ:** `.bkit/core/engine/install/cloud-env.ts`: `renderCloudCacheBust` bumps the `# cache-bust` counter in `.claude/bkit-cloud.md` on every upgrade, by design.
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: make the closing "second run changes nothing" comparison skip `.claude/bkit-cloud.md` and `.bkit/advisories.md` (its `_Mode:` line differs between `check` and `upgrade`). Compare every other file.
@@ -460,7 +460,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Add actionable project documentation advisories.
+- [x] **TASK 5:** Add actionable project documentation advisories.
   - **READ:** `docs/observability.md`: follow advisory checklist and migration findings conventions.
   - **UPDATE:** `.bkit/core/engine/checks/after/tools.ts`: detect file and index states using the shared topic resolver.
   - **UPDATE:** `.bkit/core/engine/checks/after/index.ts`: integrate detection, rendering and existing suppression.
@@ -517,7 +517,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Make the indexed-equivalent advisory test observe file reads in a way the test tool allows.
+- [x] **TASK 9:** Make the indexed-equivalent advisory test observe file reads in a way the test tool allows.
   - **READ:** `.bkit/core/engine/checks/after/tools.test.ts`: the test `resolves an indexed equivalent without a missing default warning` calls `vi.spyOn(fs, "readFileSync")` on its own `import * as fs from "node:fs"` namespace, which vitest rejects ("Module namespace is not configurable in ESM") before the detector runs.
   - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: rewrite how that one test watches file reads (for example `vi.mock("node:fs", ...)` with a pass-through wrapper) and keep every assertion it makes: an indexed equivalent raises no missing-default warning and no read leaves the project tree. Make the same change to any other test in the file that spies on the `node:fs` namespace.
   - **DEPENDS ON:** 5

@@ -1798,7 +1798,7 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:77`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-debug-failure-remediate:87`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -3355,7 +3355,7 @@ Read `.agents/docs.md` → load docs for workflow / step / task{{focus?}}; skip 
 - prompt: where-used
 - audit: where-used
 - tags: review-docs-first
-- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`; audit `bkit-audit-adoption`, `bkit-audit-documentation`
+- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`; audit `bkit-audit-adoption`, `bkit-audit-documentation`
 
 ```text
 Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
@@ -10901,7 +10901,7 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
 Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
 [scope-discipline] Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
-[scope-discipline] Collect the `## Documentation Warnings` records from the diagnose, remediate and verify logs of the run, and copy them verbatim into the handover's `Documentation Warnings` section, dropping exact duplicates. Take no records from raw `*-input-*.md` files.
+[scope-discipline] Collect the `## Documentation Warnings` records from the diagnose, remediate and reproduce logs of the run, and copy them verbatim into the handover's `Documentation Warnings` section, dropping exact duplicates. Take no records from raw `*-input-*.md` files.
 ```
 
 #### bkit-debug-failure-diagnose
