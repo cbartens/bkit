@@ -116,6 +116,8 @@ The quoted names are planned test cases, parameterized over the variants in each
 | `keeps shipped authoring pointers in their editor context`: rules, every current template note and retired lite | Unit | `.bkit/core/engine/install/modules/core.test.ts` | 10 |
 | `installs and upgrades shared hook behavior without replacing owned drivers`: fresh/default/customized footprint | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 11 |
 | `keeps rendered classification advice and acknowledgement equivalent`: corpus across adapters and diagnostics | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 12 |
+| `merges managed lists while keeping consumer-added entries`: plain-value lists, hook-group lists, duplicates and order | Unit | `.bkit/core/engine/install/write.test.ts` | 13 |
+| `upgrades shipped registrations without dropping consumer hook groups or permissions`: Claude, Cursor and Antigravity from the shipped layout | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 13 |
 | `bounds rendered cold-start time and complete response size`: maximum/unavailable source inputs per adapter | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 12 |
 
 ### 👤 ✅ Human Confirmation
@@ -471,7 +473,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Ship accurate authoring pointers and coverage guidance
+- [x] **TASK 10:** Ship accurate authoring pointers and coverage guidance
   - **UPDATE:** `.bkit/core/.agents/rules.md`: clarify that script/bulk exceptions preserve authoring reads and template editing also follows Doc Templates.
   - **UPDATE:** `.bkit/instructions.md`: use instructions:show/sync to align shared wording and its current source copies.
   - **UPDATE:** `.bkit/core/docs/templates/bkit-audit-accessibility.md`: add the template-editor pointer to the opening HTML note inside its managed block, preserving filling-agent rules.
@@ -535,7 +537,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Prove rendered parity, bounds and fresh-consumer dogfood
+- [x] **TASK 12:** Prove rendered parity, bounds and fresh-consumer dogfood
   - **UPDATE:** `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts`: run the common detection/advice/acknowledgement corpus across every adapter and measure cold-start maximum-input/unavailable-source cases. Keep host-specific envelopes, budgets and explicit exceptions visible.
   - **DEPENDS ON:** 11.
   - **DONE WHEN:** Both named cases pass; each rendered adapter finishes within min(1 second, one quarter of its documented timeout), with version/timeout/elapsed/complete-response-size evidence. Measure cold starts serially in a controlled run with no parallel audit/test workers, record runtime, machine/load and repetition count, and keep any contention failures visible. Reduce internal limits if needed. Every response respects its budget and complete-block reserve; existing parity/dogfood tests pass. `pnpm build`, a real built-CLI fresh scratch-consumer install under tmp/, on-disk inspection and `pnpm bkit check` pass, with all planned Unit and Integration cases passing and live delivery claims explicitly unverified. Report known load-dependent failures from the full suite; an isolated or retry pass does not establish full-suite success.
@@ -544,6 +546,21 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
     - `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` `bounds rendered cold-start time and complete response size` fails on a maximum or unavailable-source input exceeding the adapter's time or complete-response bound.
 
 <!-- bkit:task 12 end -->
+
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** Keep consumer-added list entries when a managed JSON file reconverges
+  - **READ:** `.bkit/core/engine/install/write.ts`: `deepMergeJson` stays as it is (its array-replaces contract is tested); `writeTier2JsonContained` is the only caller that needs list-aware merging.
+  - **UPDATE:** `.bkit/core/engine/install/write.ts`: add one exported helper (`mergeManagedJson`) that `writeTier2JsonContained` calls in place of `deepMergeJson` on drift. It merges objects the same way, and merges lists as follows: a list of plain values (such as `permissions.allow`) keeps the template's entries in template order, then appends consumer-only entries; a list of objects (hook groups) replaces a consumer group when it holds a hook `command` that the template group also holds, and keeps every other consumer group after the template's groups.
+  - **UPDATE:** `.bkit/core/.bkit/install.md`: in the JSON ownership model section, state the list rule beside the existing deep-containment rules.
+  - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: add one upgrade case that starts from the shipped (pre-change) Claude, Cursor and Antigravity registration files plus a custom hook group and a custom `permissions.allow` entry, runs the install, and asserts the new matchers arrive while the custom group and entry survive.
+  - **DEPENDS ON:** 11.
+  - **DONE WHEN:** After an upgrade from the shipped layout, the new matchers (Claude `NotebookEdit`, Cursor `Write|Delete`, Antigravity `multi_replace_file_content`) are present, a consumer's own hook group and own `permissions.allow` entries are byte-preserved, no duplicate bkit group appears, a second install is a no-op, `deepMergeJson` behaves as before, and `.bkit/core/.bkit/install.md` states the list rule. No migration is added. Task 11's named case still passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/write.test.ts` `merges managed lists while keeping consumer-added entries` fails on a drift merge that drops a consumer's own list entry, duplicates a bkit entry or reorders the template's entries.
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades shipped registrations without dropping consumer hook groups or permissions` fails on an upgrade from the shipped layout that loses a custom hook group or custom permission entry on any host.
+
+<!-- bkit:task 13 end -->
 
 <!-- bkit:group 3 end -->
 
