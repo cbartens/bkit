@@ -828,6 +828,96 @@ describe("buildSummary", () => {
     ]);
   });
 
+  it("consolidates documentation warnings from the active run without changing its verdict", () => {
+    const record = (r: Record<string, string>) => JSON.stringify(r);
+    const report = (...records: string[]) =>
+      [
+        "Verdict: PASS",
+        "",
+        "## Documentation Warnings",
+        "",
+        "```jsonl",
+        ...records,
+        "```",
+        "",
+      ].join("\n");
+    const sec = {
+      topic: "security",
+      gap: "starter-only",
+      recommendedPath: "docs/security.md",
+      action: "Populate the security document with credential boundaries.",
+    };
+    const files = {
+      "log/build-plan-tasks-1-log.md": report(
+        record({ ...sec, alternativeEvidence: "EVIDENCE-FROM-TASKS-AGENT" }),
+      ),
+      "log/build-plan-verify-1-1.md": report(
+        record({ ...sec, topic: "Security", alternativeEvidence: "EVIDENCE-FROM-VERIFY-AGENT" }),
+        record({
+          topic: "testing",
+          gap: "missing",
+          recommendedPath: "docs/testing.md",
+          alternativeEvidence: "None available",
+          action: "Copy the testing starter and fill in the CI lanes.",
+        }),
+        "{ this line is not json",
+        record({ topic: "design", gap: "missing" }),
+      ),
+      // Untrusted raw input carrying a warning-shaped section.
+      "log/build-input-1.md": report(
+        record({ ...sec, topic: "deployments", gap: "RAW-INPUT-GAP", alternativeEvidence: "x" }),
+      ),
+      // A file of an earlier run: not one of this run's step artifacts.
+      "log/build-plan-tasks-0-log.md": report(
+        record({ ...sec, topic: "observability", gap: "OLD-RUN-GAP", alternativeEvidence: "y" }),
+      ),
+    };
+    const rows = [
+      {
+        type: "step-done",
+        step: "build-plan-tasks",
+        verdict: "PASS",
+        artifacts: ["log/build-plan-tasks-1-log.md", "log/missing-optional.md"],
+      },
+      {
+        type: "step-done",
+        step: "build-plan-verify",
+        verdict: "PASS",
+        artifacts: ["log/build-plan-verify-1-1.md", "log/build-input-1.md"],
+      },
+    ];
+    const baseline = buildSummary(input({ rows }));
+    const s = buildSummary(input({ rows, read: reader(files) }));
+
+    // Verdict, failures and next step are untouched.
+    expect(s.verdict).toBe(baseline.verdict);
+    expect(s.failures).toBe(baseline.failures);
+    expect(s.reasons).toEqual(baseline.reasons);
+    expect(s.nextStep).toBe(baseline.nextStep);
+    expect(s.markdown.split("\n").slice(0, 3)).toEqual([
+      "Verdict: PASS",
+      "Failures: 0",
+      "<!-- verdict:end -->",
+    ]);
+
+    expect(s.markdown).toContain("## Documentation Warnings");
+    // The same topic and gap from two agents appears once, with both pieces of evidence kept.
+    expect(s.markdown.split("Populate the security document").length - 1).toBe(1);
+    expect(s.markdown).toContain("EVIDENCE-FROM-TASKS-AGENT");
+    expect(s.markdown).toContain("EVIDENCE-FROM-VERIFY-AGENT");
+    // A distinct gap stays visible.
+    expect(s.markdown).toContain("Copy the testing starter and fill in the CI lanes.");
+    expect(s.markdown).toContain("docs/testing.md");
+    // Untrusted input, earlier runs and malformed records never surface as a current gap.
+    expect(s.markdown).not.toContain("RAW-INPUT-GAP");
+    expect(s.markdown).not.toContain("OLD-RUN-GAP");
+    expect(s.markdown).not.toContain("not json");
+    expect(s.markdown).not.toContain("docs/design.md");
+
+    // No warnings in the run: no section.
+    expect(baseline.markdown).not.toContain("## Documentation Warnings");
+  });
+
   it("counts a lettered Accept decision as accepted at the Decision Pause", () => {
     const decision = [
       "Status: ASSUMED",
