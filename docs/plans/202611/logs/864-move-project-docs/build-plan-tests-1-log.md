@@ -21,3 +21,4 @@ SOURCE — TASK 1: Project Documents section after last bkit:end from .agents/do
 WROTE — TASK 1: `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `previews project document migration without mutating the checkout`
 SOURCE — TASK 8: changing-every-run files from .bkit/core/engine/install/cloud-env.ts (renderCloudCacheBust) and .bkit/advisories.md _Mode: line
 WROTE — TASK 8: `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `leaves project docs, the index and the version file unchanged when upgrade runs twice`
+PASSES — TASK 8: `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `leaves project docs, the index and the version file unchanged when upgrade runs twice`: the file ran 68/68 green; the existing upgrade migration already leaves docs, index and version unchanged, and the two excluded files are skipped by the test itself
