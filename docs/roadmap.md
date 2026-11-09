@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T11:03:28Z)_
+_(refreshed 2026-11-09T12:13:07Z)_
 
 ### Design
 
@@ -34,6 +34,7 @@ _(refreshed 2026-11-09T11:03:28Z)_
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
+| 849-keep-local-dev | 849-keep-local-dev | 1794226387201 |
 
 ### Plan
 

@@ -1,0 +1,53 @@
+=== LC_ALL=C: server refusal (pre-receive hook declines a fast-forward push) ===
+$ git push --porcelain origin 32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev
+remote: dev is protected        
+error: failed to push some refs to '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git'
+To /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git
+!	32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev	[remote rejected] (pre-receive hook declined)
+Done
+[exit 1]
+=== LC_ALL=de_DE.UTF-8: server refusal (pre-receive hook declines a fast-forward push) ===
+$ git push --porcelain origin 32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev
+remote: dev is protected        
+Fehler: Fehler beim Versenden einiger Referenzen nach '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git'
+To /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git
+!	32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev	[remote rejected] (pre-receive hook declined)
+Done
+[exit 1]
+=== LC_ALL=C: stale (origin/dev moved; push is not a fast-forward) ===
+$ git push --porcelain origin 32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev
+error: failed to push some refs to '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git'
+hint: Updates were rejected because the remote contains work that you do not
+hint: have locally. This is usually caused by another repository pushing to
+hint: the same ref. If you want to integrate the remote changes, use
+hint: 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+To /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git
+!	32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev	[rejected] (fetch first)
+Done
+[exit 1]
+=== LC_ALL=de_DE.UTF-8: stale (origin/dev moved; push is not a fast-forward) ===
+$ git push --porcelain origin 32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev
+Fehler: Fehler beim Versenden einiger Referenzen nach '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git'
+Hinweis: Aktualisierungen wurden zurückgewiesen, weil das Remote-Repository Commits enthält,
+Hinweis: die lokal nicht vorhanden sind. Das wird üblicherweise durch einen "push" von
+Hinweis: Commits auf dieselbe Referenz von einem anderen Repository aus verursacht.
+Hinweis: Wenn Sie die externen Änderungen integrieren wollen, verwenden Sie 'git pull'
+Hinweis: bevor Sie erneut push ausführen.
+Hinweis: Siehe auch den Abschnitt 'Note about fast-forwards' in 'git push --help' für
+Hinweis: weitere Informationen.
+To /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git
+!	32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev	[rejected] (fetch first)
+Done
+[exit 1]
+=== LC_ALL=C: stale after fetching the moved origin/dev first ===
+$ git push --porcelain origin 32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev
+error: failed to push some refs to '/Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git'
+hint: Updates were rejected because the tip of your current branch is behind
+hint: its remote counterpart. If you want to integrate the remote changes,
+hint: use 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+To /Users/christian/Documents/GitHub/bkit/.worktrees/849-keep-local-dev/docs/plans/202611/logs/849-keep-local-dev/spike/_work/c8/origin.git
+!	32e0880e671a1ccb34e69c53f7793abe0861fd84:refs/heads/dev	[rejected] (non-fast-forward)
+Done
+[exit 1]
