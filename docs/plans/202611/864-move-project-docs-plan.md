@@ -93,6 +93,7 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 | Ownership audits resolve relocated starter paths and the managed destinations of operational guidance | Unit | `.bkit/core/engine/audits/templates/templates.test.ts` | 2 |
 | The template-path guard accepts a named project-document read with applicability, equivalents and warning-and-continue behavior, and rejects a mandatory document read and hard dependencies on executable or configuration templates | Unit | `.bkit/core/engine/audits/templates/template-path-refs.test.ts` | 2 |
 | Adoption advisories distinguish missing, zero-content, unchanged starters, populated and indexed equivalent docs; remain non-blocking and respect existing advisory controls | Unit | `.bkit/core/engine/checks/after/tools.test.ts`, `.bkit/core/engine/checks/after/index.test.ts` | 5 |
+| An indexed equivalent raises no missing-default warning and no read leaves the project tree, observed without spying on the `node:fs` module namespace | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 9 |
 | Shipped rules/prompts/plan/audit templates consistently preserve explicit relevant references with warning-and-continue behavior, including no-plan paths and output reporting | Unit | `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts` | 6 |
 | Repeated reports merge by topic and gap within one run, and a subsequent run can report an unresolved gap | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 6 |
 | The real summary command reads attributed files from the active run, excludes raw input and prior-run files, tolerates missing optional artifacts, preserves the verdict, and reports unresolved gaps again on a later run. If handover selects files independently, exercise the real handover command against the same fixture. | Integration | `.bkit/core/engine/commands/workflow/workflows.integration.test.ts` | 6 |
@@ -509,6 +510,24 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 7 end -->
 
 <!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Repair the blocked advisory test
+
+<!-- bkit:task 9 start -->
+
+- [ ] **TASK 9:** Make the indexed-equivalent advisory test observe file reads in a way the test tool allows.
+  - **READ:** `.bkit/core/engine/checks/after/tools.test.ts`: the test `resolves an indexed equivalent without a missing default warning` calls `vi.spyOn(fs, "readFileSync")` on its own `import * as fs from "node:fs"` namespace, which vitest rejects ("Module namespace is not configurable in ESM") before the detector runs.
+  - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: rewrite how that one test watches file reads (for example `vi.mock("node:fs", ...)` with a pass-through wrapper) and keep every assertion it makes: an indexed equivalent raises no missing-default warning and no read leaves the project tree. Make the same change to any other test in the file that spies on the `node:fs` namespace.
+  - **DEPENDS ON:** 5
+  - **DONE WHEN:** `resolves an indexed equivalent without a missing default warning` passes and still asserts the equivalent is resolved with no missing-default finding and no out-of-tree read. No source file changes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/checks/after/tools.test.ts` `keeps an indexed equivalent warning-free and in-tree without spying on the fs namespace` fails on a missing-default warning for a valid indexed equivalent, or on a read outside the project tree.
+
+<!-- bkit:task 9 end -->
+
+<!-- bkit:group 3 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
