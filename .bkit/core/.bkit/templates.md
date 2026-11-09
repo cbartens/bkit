@@ -33,6 +33,7 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Secrets sync | One local file → every secret store; proves copies match without printing values. | Hand-copied secrets drift: "works for me, broken in production". |
 | Issue forms | Three forms (idea, well-defined change, bug) asking for what design, plan / build and debug read first. | Issues arrive as a title and a line; agents guess at scope, "done" and repro steps. |
 | graphify | Code map (`docs/capabilities.md`) agents check before building something again. | Agents rediscover structure each run; ripple effects missed. |
+| Component map | Purpose-based overview of the repository's responsibilities and main journeys. | Readers have to infer what the system does from implementation details. |
 | Dependabot / Renovate | Small grouped update PRs; pinned Actions; security fixes skip the queue. | Updates pile into one large risky upgrade. |
 | Trivy | Fails CI on a known-vulnerable package in any language, a risky container or cluster setting, or a committed secret; a daily run catches advisories with no fix yet. | A vulnerable package or leaked key merges unnoticed; an advisory with no fixed release never shows up anywhere. |
 | Prettier tables | One edited cell = one changed row in the diff. | A one-word table edit diffs as the whole table. |
@@ -67,6 +68,7 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Serena | `.bkit/templates/scripts/serena/`, `.bkit/templates/.serena/project.yml` | `scripts/serena/`, `.serena/project.yml`, merge `bkit-serena.mcp.json` into `.mcp.json` | `project.yml` only |
 | Issue forms | `.bkit/templates/.github/ISSUE_TEMPLATE/` | `.github/ISSUE_TEMPLATE/` | the forms you use |
 | graphify | `.bkit/templates/scripts/graphify/`, `.bkit/templates/.graphifyignore`, `.bkit/templates/docs/capabilities.md` | same paths at the repo root | `docs/capabilities.md` |
+| Component map | `.bkit/templates/docs/components.md` | `docs/components.md` | the populated document |
 | Secrets sync | `.bkit/templates/scripts/secrets/` | `scripts/secrets/` | both files; never `bkit-secrets-state.json` |
 | Prettier tables | `.bkit/templates/scripts/prettier/bkit-insert-ignore.mjs` | `scripts/prettier/` | that file |
 | tmp/ prune | `.bkit/templates/scripts/cleanup/bkit-tmp-prune.mjs` | `scripts/cleanup/` | that file |
@@ -83,7 +85,7 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 | --- | --- | --- | --- |
 | `{{DEFAULT_BRANCH}}` | `bkit-ci.yml` (`on.push` / `on.pull_request` branches; stub comments), `bkit-trivy.yml` (`on.push` / `on.pull_request` branches), `bkit-health.yml` (`on.workflow_run` branches) | your production branch | `origin/HEAD` unless it is `dev`, else `main` |
 | `{{PRODUCTION_URL}}` | `bkit-health.yml` (`env.PRODUCTION_URL`) | the origin production serves | `https://example.com` |
-| `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
+| `{{NODE_VERSION}}` | `bkit-ci.yml` (`actions/setup-node` `node-version`, both lanes), `bkit-cloud.yml` (`actions/setup-node` `node-version`, the context job's bkit install) | your Node major, or swap the line for `node-version-file: .nvmrc` | `.nvmrc`, then `engines.node`, then `22` |
 | `{{CLOUD_RUNNER}}` | `bkit-cloud.yml` (`runs-on`, all three jobs) | a runner label | `ubuntu-latest` |
 | `{{SCRIPT_PATH}}` | `bkit-launchd.plist` (`ProgramArguments`) | absolute path to the loader script, outside a TCC-protected folder (see § Launchd GUI environment) | `/Users/<you>/.config/bkit/bkit-launchd-env.sh` |
 | `{{ENV_FILE}}` | `bkit-launchd.plist` (`ProgramArguments`, `WatchPaths`) | absolute path to your env file | `/Users/<you>/.config/bkit/launchd.env` |
@@ -269,13 +271,16 @@ A post-CI router that runs bkit workflows:
 - Failed `dev` CI → `/bkit-debug {FID}`.
 - `workflow_dispatch` runs any phase.
 
-A `context` job resolves the phase and argument once. Then two runner jobs follow, each skipped without its secret: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action) and `opencode` (`opencode run`, https://opencode.ai/docs/github/). `bkit install --auto=claude|opencode` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
+A `context` job resolves the phase and argument once. Then three runner jobs follow, and only the one `bkit.cloud.agent` names starts, when its secret is set: `claude` (`claude-code-action`, https://github.com/anthropics/claude-code-action), `opencode` (`opencode run`, https://opencode.ai/docs/github/) and `codex` (`openai/codex-action`, https://github.com/openai/codex-action). `bkit install --auto=claude|opencode|codex` points at this file. The full recipe is in `.bkit/cloud.md` § Post-CI auto-routing.
 
-- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template) or `--auto=opencode` (needs `--opencode=<provider>` first). Both need `--tracker=github`.
-- Secrets for `claude`: `ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
-- Secrets for `opencode`: `OPENCODE_PROVIDER_KEY`.
+- Install: `bkit install --auto=claude` (points at the `.claude/hooks/bkit-cloud-bootstrap.sh` template), `--auto=opencode` (needs `--opencode=<provider>` first) or `--auto=codex` (needs `--codex`). Each works with any wired tracker (GitHub, Linear or Jira).
+- Secrets for `claude`: `BKIT_ANTHROPIC_API_KEY`, or keyless with the `ANTHROPIC_FEDERATION_RULE_ID` and `ANTHROPIC_ORGANIZATION_ID` repo variables, plus the Claude GitHub App (`/install-github-app`).
+- Secrets for `opencode`: the installed provider's key, one of `BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`.
+- Secrets for `codex`: `BKIT_OPENAI_API_KEY`.
+- Tracker secrets: `BKIT_LINEAR_API_KEY` under Linear, `BKIT_JIRA_API_KEY` under Jira. The workflow reads them at step scope.
 - Repo Actions permissions: read and write, with PR creation allowed.
-- Adapt: `{{CLOUD_RUNNER}}` in all three jobs.
+- Adapt: `{{CLOUD_RUNNER}}` in all four jobs.
+- The `codex` job runs `drop-sudo` on the runner (irreversible), so use an ephemeral runner.
 - Traps:
   - The file runs bkit by command name, so a changed invocation reaches you only as a changed template path on `bkit upgrade`. Diff it on every upgrade.
   - The OpenCode install version is a plain argument. The `# renovate:` comment above it lets the example `renovate.json5` bump it.
@@ -623,7 +628,7 @@ The PyPI name is `serena-agent`, and the CLI is `serena`. PyPI `serena` is an un
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. The forms are for the GitHub tracker only, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. These forms serve the GitHub tracker alone, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |
@@ -642,6 +647,12 @@ Issues are the first input every workflow reads. There is one form per way work 
 - `labels:` applies `enhancement` / `bug` only when the repo has them. Missing labels are skipped, never created.
 - Never add `bkit:*` labels, because workflows own them.
 - **If** the repo has existing forms → copy only the `bkit-*` files you want. The names never collide.
+
+## Component map — purpose and responsibilities
+
+Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, worked examples, document registration and completion checks.
+
+The project owns the populated document. Installation and upgrades refresh the template source without overwriting the adopted copy. Neither graphify nor Floorplan is required; the template's rules header defines the boundaries between the purpose-based overview and other documentation.
 
 ## graphify — map
 

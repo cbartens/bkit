@@ -57,10 +57,10 @@ First install, upgrade and uninstall: `.bkit/install.md`. Upgrade prompt to past
 <!-- prettier-ignore -->
 | Command | Flags | What it does |
 | --- | --- | --- |
-| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
+| `bkit install` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--tracker=<name>` `--auto-revert` | Install or re-sync the named modules plus the core files. |
 | `bkit check` | — | Drift gate: exit 1 when a managed file needs re-rendering. The CI gate. |
 | `bkit upgrade` | `--to=<version>` `--latest` `--auto-apply` `--dry-run` | Re-render everything installed; --to / --latest bump @cbartens/bkit first. |
-| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
+| `bkit uninstall` | `--claude` `--codex` `--antigravity` `--cursor` `--opencode=<provider>` `--auto=<claude\|cursor\|opencode\|codex>` `--dry-run` `--force` `--nuke` `--yes` | Remove bkit-managed files and strip managed blocks; no flags = everything. |
 | `bkit doctor` | — | Preflight and advisory replay; rewrites .bkit/advisories.md only. Exits 0. |
 | `bkit tips` | `--workflow=<name>` `--all` | What this repo has not set up yet, most useful first. Exits 0. |
 | `bkit status` | — | Current host and provider. Writes nothing. Exits 0. |
@@ -156,10 +156,10 @@ Attempt counters derived from status.jsonl, and the ask points' limits.
 | --- | --- | --- | --- |
 | `derive` | workflow | **`--file`** **`--workflow`** **`--step`** `--group` **`--position`** `--all-runs` | Count a step's DONE rows in the active run, at one of three positions. |
 | `run` | workflow | **`--file`** **`--workflow`** | Which run of the workflow this invocation is (1-based; a resume keeps its number). |
-| `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
-| `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
+| `route` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--since-clean` `--max` `--point` `--continue` `--exceeded` | Compare a counter to its max: exit 0 continue, exit 1 exceeded; with --point, also whether to ask. |
+| `grant` | workflow | **`--name`** `--value` `--of` `--rows` `--file` `--workflow` `--group` `--all-runs` `--since-clean` **`--point`** | Give one loop one more full allowance after the owner chose to continue at its used-up limit: exit 0 granted, exit 1 not (below the limit, ask off or headless). |
 | `max` | workflow | `--point` `--file` `--workflow` `--group` | The ask points' limits and ask settings: one by --point, or all. |
-| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
+| `progress` | workflow | **`--file`** **`--workflow`** **`--check`** **`--fix`** `--group` `--since-clean` | Progress report for a fix loop in the active run: counts per round, code change, strategy, trend. |
 | `rows` | workflow | **`--file`** **`--workflow`** **`--type`** **`--position`** | Count rows of one audit type in the active run (since its workflow-started row). |
 
 ### `decisions`
@@ -208,7 +208,7 @@ Tracker payloads (issue text, label transitions, comments); --post / --write sen
 | `related` | workflow | **`--hits-file`** **`--out`** `--top` `--fid` `--issue` | Fetch each hit of the orchestrator's related-issue search and write the related-issues file. |
 | `blocked-by` | by hand | `--fid` `--issue` | The issues blocking the run's issue, with their states and the ones still open. |
 | `labels` | workflow | `--label` `--phase` `--failed` `--board` `--issue` `--owner-repo` `--write` `--fid` | Label arithmetic for a transition, the tracker state, and the board payload. |
-| `comment` | workflow | `--kind` `--audit-slug` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment. |
+| `comment` | workflow | `--kind` `--purpose` `--audit-slug` `--step-number` `--step-title` `--workflow` `--workflow-heading` `--verdict` `--failures` `--scope` `--group` `--group-count` `--attempt` `--strategy` `--field` `--owner-repo` `--tree` `--pr-number` `--pr-url` `--run-id` `--artifact` `--ref` `--line` `--body-file` `--section` `--sub-step` `--error` `--error-file` `--stderr-file` `--post` `--session-dir` `--fid` `--issue` `--file` | The exact body of a ###### bkit:generated step, failure, handover, or audit comment. |
 
 ### `ledgers`
 
@@ -385,7 +385,7 @@ Start, fail, hand over, summarize and close a phase workflow run; promote and li
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `start` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--lock-held` `--token` `--branch` | Take the feature lock and open a run (workflow-started unless resuming). |
+| `start` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--session-dir` `--lock-held` `--token` `--branch` | Take the feature lock and open a run (workflow-started unless resuming). |
 | `fail` | workflow | **`--workflow`** `--fid` `--month` `--file` `--token` `--max-exceeded` `--label` `--pr` `--step-number` `--step-title` `--sub-step` `--error-file` `--error` `--stderr-file` `--post` `--issue` `--session-dir` | Failure Path: workflow-failed row, abort rebase, release lock, clear sentinels (with --token); the bkit:failed labels and the failure comment. |
 | `handover` | workflow | **`--workflow`** **`--fid`** `--month` `--push` `--flush` `--open-pr` `--ref` `--list-stray` `--worktree` `--owner-repo` `--post` | Keep a failed run's record: commit and push it on the feature branch, or land its logs and ledgers on dev (--push from dev / main, ship's --flush); print the handover comment. |
 | `close` | workflow | **`--workflow`** **`--fid`** `--month` `--file` `--pr-number` `--squash-sha` `--ref` `--owner-repo` `--outbox` `--record-step` `--message` `--label` `--verbose-ci-local` `--number` `--title` `--post` `--tree` `--ending` `--publish` `--flush` `--token` `--branch` `--session-dir` `--final-return` `--summary-file` `--summary` `--summary-missing` `--warning` `--line` `--suggest` | Grade compliance, workflow-done row, counter + outcome telemetry, report, artifact links; --flush lands ship's close on dev. |

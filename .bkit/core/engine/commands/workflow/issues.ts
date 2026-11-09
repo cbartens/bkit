@@ -28,7 +28,9 @@ import {
   TRACKER_OUTPUT,
   attempt,
   classifyFailure,
+  commentDiagnostic,
   commentFileOf,
+  endedRunActionKey,
   fetchIssue,
   moveOnBoard,
   postForVerb,
@@ -733,7 +735,13 @@ async function fetchVerb(ctx: RunContext): Promise<number> {
     comments: path.join(dir, "issue-comments.json"),
     facts: path.join(dir, "issue-facts.json"),
   };
-  const facts = { title: issue.title, url: issue.url, state: issue.state, labels: issue.labels };
+  const facts = {
+    title: issue.title,
+    url: issue.url,
+    state: issue.state,
+    labels: issue.labels,
+    terminal: issue.terminal,
+  };
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(files.description, issue.body);
   const comments = sortOldestFirst(issue.comments).comments;
@@ -854,12 +862,15 @@ export const issuesCommand: CommandSpec = {
         title: "issue title",
         url: "issue URL",
         state: "tracker state name (GitHub: open | closed)",
-        labels: "label names",
+        labels: "label names (the bkit-cloud.yml router reads bkit:auto here)",
+        terminal:
+          "true when the tracker's state category is finished (GitHub closed, Linear completed / canceled, Jira done), whatever the state is named",
         files:
-          "{description, comments, facts}: raw description, comments oldest first as JSON, {title, url, state, labels} as JSON",
-        skipped: "no-issue | tracker-none: nothing read, nothing written",
+          "{description, comments, facts}: raw description, comments oldest first as JSON, {title, url, state, labels, terminal} as JSON",
+        skipped:
+          "no-issue | tracker-none: nothing read, nothing written (the bkit-cloud.yml router reads this as skipped)",
         reason:
-          "exit 80: network | auth | scope | rate-limit | not-found | http-<n>; read the issue via the tracker MCP",
+          "exit 80 (the bkit-cloud.yml router fails closed on it): network | auth | scope | rate-limit | not-found | http-<n>; read the issue via the tracker MCP",
       },
       exitCodes: {},
       run: fetchVerb,
@@ -964,6 +975,11 @@ export const issuesCommand: CommandSpec = {
       use: "workflow",
       flags: [
         { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
+        {
+          name: "purpose",
+          type: "string",
+          help: "routine | attention | terminal; defaults from kind, never from PR metadata",
+        },
         { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
         { name: "step-number", type: "string", help: "step number in the heading" },
         { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
@@ -1019,6 +1035,11 @@ export const issuesCommand: CommandSpec = {
           help: "failure: captured stderr (last 20 lines kept)",
         },
         POST_FLAG,
+        {
+          name: "session-dir",
+          type: "string",
+          help: "explicit repo info session for fileless workflow progress ownership",
+        },
         { name: "fid", type: "string", help: "with --post: the run's FID (names the issue)" },
         { name: "issue", type: "string", help: "with --post: the issue id (instead of --fid)" },
         {
@@ -1028,17 +1049,48 @@ export const issuesCommand: CommandSpec = {
         },
       ],
       output: {
-        comment: "the comment body",
+        comment: "the comment body; null when --post source preparation is unavailable",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: TRACKER_OUTPUT,
       },
       exitCodes: {
         [EXIT_BAD_INPUT]:
-          "a --body-file / --section / --stderr-file / --error-file file is missing",
+          "without --post: a --body-file / --section / --stderr-file / --error-file file is missing",
       },
       run: async (ctx) => {
-        const comment = commentBody(ctx);
-        const commentFile = commentFileOf(ctx.cwd, comment);
+        const explicitPurpose = str(ctx.flags.purpose);
+        if (
+          explicitPurpose !== undefined &&
+          !["routine", "attention", "terminal"].includes(explicitPurpose)
+        )
+          throw new CommandError(EXIT.USAGE, "--purpose must be routine, attention or terminal");
+        const purpose =
+          explicitPurpose ??
+          (["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
+            ? "attention"
+            : "routine");
+        let comment: string;
+        try {
+          comment = commentBody(ctx);
+        } catch (err) {
+          if (
+            ctx.flags.post !== true ||
+            (err instanceof CommandError && err.code !== EXIT_BAD_INPUT)
+          )
+            throw err;
+          commentDiagnostic(
+            { cwd: ctx.cwd, workflow: str(ctx.flags.workflow), log: (line) => ctx.log(line) },
+            "[bkit-tracker] comment preparation unavailable; continuing workflow",
+            [],
+          );
+          ctx.emit({
+            comment: null,
+            commentFile: null,
+            tracker: { done: false, action: "comment", reason: "preparation" },
+          });
+          return EXIT.OK;
+        }
+        const commentFile = commentFileOf(ctx.cwd, comment, ctx);
         if (ctx.flags.post !== true) {
           ctx.emit({ comment, commentFile });
           return EXIT.OK;
@@ -1046,18 +1098,22 @@ export const issuesCommand: CommandSpec = {
         const file = str(ctx.flags.file)
           ? path.resolve(ctx.cwd, String(ctx.flags.file))
           : undefined;
-        const key = runActionKey(
-          file,
-          str(ctx.flags.workflow),
+        const keyParts = [
           str(ctx.flags.kind) ?? "step",
           str(ctx.flags.stepNumber),
           str(ctx.flags.subStep),
           str(ctx.flags.attempt),
-        );
+        ];
+        const workflow = str(ctx.flags.workflow);
+        const key =
+          purpose === "terminal" && workflow !== undefined
+            ? endedRunActionKey(file, workflow, ...keyParts)
+            : runActionKey(file, workflow, ...keyParts);
         const tracker = await postForVerb(ctx, comment, {
           fid: str(ctx.flags.fid),
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file, key }),
+          purpose,
         });
         ctx.emit({ comment, commentFile, tracker });
         return EXIT.OK;

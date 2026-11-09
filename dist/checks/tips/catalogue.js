@@ -39,6 +39,34 @@ const hosts = (cwd) => detectInstalledHostModules(cwd);
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
 /** Every `bkit tips --workflow=` context: the phase workflows, then the two agent closes. */
 export const EVERY_CONTEXT = [...ALL_WORKFLOWS, "audit", "utility"];
+const CLOUD_STEPS = "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.";
+/** The `cloud` tip's `ask` / `steps` for the recorded `bkit.cloud.agent`. */
+function cloudTipText(agent) {
+    const copy = "copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml";
+    const tail = "then tell me which dashboard settings are left.";
+    switch (agent) {
+        case "claude":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: install the Claude GitHub App on the repo, ${copy} and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/, run \`gh secret set BKIT_ANTHROPIC_API_KEY\` (or, keyless, \`gh variable set\` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        case "codex":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: confirm bkit was installed with --codex, ${copy}, run \`gh secret set BKIT_OPENAI_API_KEY\`, ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        case "opencode":
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: ${copy}, set the opencode provider's BKIT_ API key as a repo secret (the name is in .bkit/cloud.md), ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+        default:
+            return {
+                ask: `Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/, ${tail}`,
+                steps: CLOUD_STEPS,
+            };
+    }
+}
 export const SETUP_TIPS = [
     // --- current: is bkit itself up to date ---------------------------------------------
     {
@@ -199,8 +227,9 @@ export const SETUP_TIPS = [
         title: "Finish cloud setup",
         line: "You've turned on cloud agents, but setup isn't finished, so cloud runs will stop partway. Finish the remaining steps.",
         why: "With cloud agents, bkit runs on its own: a change that passes its checks gets shipped and one that fails gets investigated, with nobody at the keyboard. That only works once every piece is in place.",
-        ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml and .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh to .claude/hooks/ (for Cursor: .bkit/templates/.cursor/environment.json and .bkit/templates/.cursor/Dockerfile to .cursor/), run `gh secret set ANTHROPIC_API_KEY` (or, keyless, `gh variable set` ANTHROPIC_FEDERATION_RULE_ID and ANTHROPIC_ORGANIZATION_ID from a Claude Console federation rule), then tell me which dashboard settings are left.",
+        ask: "Check my cloud-agent setup against .bkit/cloud.md: copy .bkit/templates/.github/workflows/bkit-cloud.yml to .github/workflows/bkit-cloud.yml, set the agent's credential as a repo secret under its BKIT_ name, then tell me which dashboard settings are left.",
         steps: "`.bkit/cloud.md`; `.bkit/templates.md` § Cloud-agent workflow and § Cursor.",
+        resolve: (cwd) => cloudTipText(readBkitConfig(cwd).cloudAgents),
         fires: (cwd) => {
             const cloud = readBkitConfig(cwd).cloudAgents;
             if (cloud === "none")
@@ -373,10 +402,10 @@ export const SETUP_TIPS = [
     {
         id: "share-friction",
         title: "Tell bkit what slowed you down",
-        line: "Your workflows have noted problems with bkit itself that its makers never see. Send them, with your stats, as one issue on bkit's issue page.",
+        line: "Your workflows logged problems its makers never see. Send them with your stats as one issue.",
         why: "Workflows note every place bkit got in the way: a command that failed, rework, a manual step. Those notes stay in this repo, so the people who fix bkit never learn about them. One report from you is how they reach the fix list.",
-        caution: "bkit's issue page is public. Your agent removes project names, paths and links first, and shows you the exact text before anything is posted.",
-        ask: "Share this repo's bkit friction and stats with bkit's makers as one new issue: follow the paste block in .bkit/README.md § Share friction with bkit, show me the exact title and text, and post only after I say yes.",
+        caution: "bkit's issues are public. Your agent strips project names, paths and links first.",
+        ask: "Share this repo's bkit friction and stats as one issue per .bkit/README.md § Share friction with bkit. Show me the exact text; post only after I say yes.",
         steps: "`.bkit/README.md` § Share friction with bkit.",
         fires: hasUnsharedFriction,
     },

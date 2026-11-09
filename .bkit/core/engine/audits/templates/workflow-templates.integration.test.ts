@@ -2,9 +2,34 @@
 // workflow templates.
 
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
+
+/** A step's directory with the workspace prefix and slashes stripped; "." when unset. */
+function normStepDir(v: unknown): string {
+  const dir = (typeof v === "string" ? v : ".")
+    .replace(/^\$\{\{\s*github\.workspace\s*\}\}\/?/, "")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+  return dir.length > 0 ? dir : ".";
+}
+
+/** Evaluates a checkout `ref` expression for a workflow_run event on the given head branch. */
+function evalCheckoutRef(ref: string, headBranch: string): unknown {
+  const expr = /^\$\{\{([\s\S]*)\}\}$/.exec(ref.trim())?.[1];
+  const github = {
+    event_name: "workflow_run",
+    event: { workflow_run: { head_branch: headBranch } },
+  };
+  const startsWith = (a: unknown, b: unknown) => String(a).startsWith(String(b));
+  return new Function("github", "startsWith", `return (${expr ?? JSON.stringify(ref)});`)(
+    github,
+    startsWith,
+  );
+}
 
 describe("bkit-cloud.yml template — GitHub-only content", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
@@ -14,17 +39,131 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
     "utf-8",
   );
 
-  it("carries id-token: write, GitHub MCP only and no tracker sentinels", () => {
+  it("carries id-token: write, GitHub MCP only and the tracker read keys in the context step", () => {
     expect(yml).toContain("id-token: write");
-    expect(yml).not.toContain("BKIT_LINEAR_API_KEY");
     expect(yml).not.toContain("mcp__linear__*");
-    expect(yml).not.toContain("BKIT_JIRA_API_KEY");
     expect(yml).not.toContain("mcp__jira__*");
+    const ctxStart = yml.indexOf("- name: Resolve phase + brief context");
+    for (const name of ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"]) {
+      expect(yml.indexOf(`${name}: \${{ secrets.${name} }}`)).toBeGreaterThan(ctxStart);
+    }
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
-    expect(yml).toMatch(
-      /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
+    expect(yml).toMatch(/secrets\.BKIT_ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/);
+  });
+
+  it("claude job reads secrets.BKIT_ANTHROPIC_API_KEY and no step names secrets.ANTHROPIC_API_KEY", () => {
+    expect(yml).toContain("secrets.BKIT_ANTHROPIC_API_KEY");
+    expect(yml).not.toMatch(/secrets\.ANTHROPIC_API_KEY/);
+  });
+
+  it("opencode dispatch maps each provider BKIT_ secret to its own env name", () => {
+    const start = yml.indexOf("- name: Dispatch /bkit-auto on opencode runner");
+    expect(start).toBeGreaterThan(-1);
+    const step = yml.slice(start);
+    for (const name of [
+      "BKIT_OPENCODE_API_KEY",
+      "BKIT_OPENROUTER_API_KEY",
+      "BKIT_OLLAMA_API_KEY",
+    ]) {
+      expect(step).toContain(`${name}: \${{ secrets.${name} }}`);
+    }
+    expect(yml).not.toContain("OPENCODE_PROVIDER_KEY");
+  });
+
+  it("context checkout ref is the workflow_run head branch on feat/** and dev for dev runs and workflow_dispatch", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };
+    };
+    const checkout = doc.jobs.context.steps
+      .filter((st) => st.uses?.startsWith("actions/checkout@"))
+      .find((st) => st.with?.path === "pr-head");
+    expect(checkout, "context job has no pr-head actions/checkout step").toBeDefined();
+    const ref = String(checkout!.with!.ref);
+    const expr = /^\$\{\{([\s\S]*)\}\}$/.exec(ref.trim())?.[1];
+    expect(expr, `ref is not a single expression: ${ref}`).toBeDefined();
+    const evaluate = (eventName: string, headBranch: string | undefined): unknown => {
+      const github = {
+        event_name: eventName,
+        event: { workflow_run: { head_branch: headBranch } },
+      };
+      const startsWith = (a: unknown, b: unknown) => String(a).startsWith(String(b));
+      return new Function("github", "startsWith", `return (${expr});`)(github, startsWith);
+    };
+    expect(evaluate("workflow_run", "feat/363-widen-bkit-cloud-trigger")).toBe(
+      "feat/363-widen-bkit-cloud-trigger",
     );
+    expect(evaluate("workflow_run", "dev")).toBe("dev");
+    expect(evaluate("workflow_dispatch", undefined)).toBe("dev");
+  });
+
+  it("context job installs and runs bkit from dev, never from the feat/** PR head", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: {
+        context: {
+          steps: Array<{
+            name?: string;
+            uses?: string;
+            "working-directory"?: string;
+            with?: Record<string, unknown>;
+          }>;
+        };
+      };
+    };
+    const steps = doc.jobs.context.steps;
+    const installIdx = steps.findIndex((st) => st.name === "Install bkit");
+    expect(installIdx, "context job has no Install bkit step").toBeGreaterThan(-1);
+    const installDir = normStepDir(steps[installIdx]!["working-directory"]);
+    const checkoutsBeforeInstall = steps
+      .slice(0, installIdx)
+      .filter((st) => st.uses?.startsWith("actions/checkout@"));
+    const intoInstallDir = checkoutsBeforeInstall.filter(
+      (st) => normStepDir(st.with?.path) === installDir,
+    );
+    expect(intoInstallDir.length, "no checkout feeds the Install bkit directory").toBeGreaterThan(
+      0,
+    );
+    const head = "feat/363-widen-bkit-cloud-trigger";
+    for (const co of intoInstallDir) {
+      expect(evalCheckoutRef(String(co.with?.ref), head)).toBe("dev");
+    }
+    // The checkout that populates the install directory last decides what runs; it resolves to dev.
+    const last = intoInstallDir[intoInstallDir.length - 1]!;
+    expect(evalCheckoutRef(String(last.with?.ref), head)).not.toBe(head);
+  });
+
+  it("context job tooling setup steps before Install bkit cannot fail the job", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: {
+        context: {
+          steps: Array<{ name?: string; uses?: string; "continue-on-error"?: unknown }>;
+        };
+      };
+    };
+    const steps = doc.jobs.context.steps;
+    const installIdx = steps.findIndex((st) => st.name === "Install bkit");
+    expect(installIdx, "context job has no Install bkit step").toBeGreaterThan(-1);
+    const tooling = steps
+      .slice(0, installIdx)
+      .filter((st) => /^(pnpm\/action-setup|actions\/setup-node)@/.test(String(st.uses)));
+    expect(tooling.length, "no pnpm / setup-node step before Install bkit").toBe(2);
+    for (const st of tooling) {
+      expect(st["continue-on-error"], `${st.uses} can fail the context job`).toBe(true);
+    }
+  });
+
+  it("context job runs the workspace-root checkout before every nested `path:` checkout", () => {
+    const doc = parseYaml(yml.replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")) as {
+      jobs: { context: { steps: Array<{ uses?: string; with?: Record<string, unknown> }> } };
+    };
+    const checkouts = doc.jobs.context.steps.filter((st) =>
+      st.uses?.startsWith("actions/checkout@"),
+    );
+    const rootIdx = checkouts.findIndex((st) => normStepDir(st.with?.path) === ".");
+    const nestedIdx = checkouts.findIndex((st) => normStepDir(st.with?.path) !== ".");
+    expect(rootIdx, "no root checkout").toBeGreaterThan(-1);
+    expect(nestedIdx, "no nested checkout").toBeGreaterThan(-1);
+    expect(rootIdx).toBeLessThan(nestedIdx);
   });
 
   it("claude step passes the four workload identity federation inputs from repo variables", () => {
@@ -41,12 +180,17 @@ describe("bkit-cloud.yml template — GitHub-only content", () => {
 
   it("every job's runs-on is the {{CLOUD_RUNNER}} placeholder the consumer fills in", () => {
     const runsOn = [...yml.matchAll(/^ {4}runs-on: (.+)$/gm)].map((m) => m[1]);
-    expect(runsOn).toEqual(["{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}", "{{CLOUD_RUNNER}}"]);
+    expect(runsOn).toEqual([
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+      "{{CLOUD_RUNNER}}",
+    ]);
   });
 
-  it("one context job resolves phase + arg; both runner jobs need it and read its outputs", () => {
+  it("one context job resolves phase + arg; every runner job needs it and read its outputs", () => {
     expect(yml.match(/- name: Resolve phase \+ brief context/g)).toHaveLength(1);
-    expect(yml.match(/^ {4}needs: context$/gm)).toHaveLength(2);
+    expect(yml.match(/^ {4}needs: context$/gm)).toHaveLength(3);
     expect(yml).toContain(
       "if: needs.context.outputs.claude == 'true' && needs.context.outputs.skip != 'true'",
     );
@@ -180,27 +324,15 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out).toMatch(/workflow_dispatch[\s\S]{0,400}bkit \[auto route\]/);
   });
 
-  it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
+  it("(c) the label gate is bkit_gate, defined after SHARED-DERIV and called on both arms; no gh issue view remains", () => {
     const out = rawTemplate;
-    // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
-    // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
-    expect(out).toContain('gh issue view "$ISSUE"');
-    // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
-    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
-    // SHARED-DERIV fallback sets ISSUE from FID (branch-derived numeric id): FID stays
-    // the FULL slug (shared status.jsonl key with the dev path) and the short ISSUE
-    // prefix is derived FROM it.
-    // `|| true` is required — on the fix/** arm this runs before the slug allowlist, so
-    // a non-FID branch yields no grep match and pipefail would kill the step.
-    expect(out).toContain(
-      "ISSUE=$(printf '%s' \"$FID\" | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1 || true)",
-    );
-    // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
-    // gh issue view must appear AFTER the SHARED-DERIV machinery (uses its output).
+    expect(out).not.toContain("gh issue view");
     const sharedDerivStart = out.indexOf("# SHARED-DERIV:");
     expect(sharedDerivStart).toBeGreaterThan(-1);
-    const ghIssueViewPos = out.indexOf('gh issue view "$ISSUE"');
-    expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
+    expect(out.indexOf("bkit_gate() {")).toBeGreaterThan(sharedDerivStart);
+    expect(out.match(/bkit_gate "\$ISSUE" \|\|/g)).toHaveLength(2);
+    // The feat arm recovers FID + issue through bkit, not a marker regex.
+    expect(out).toContain('bkit_cli fids parse --marker "$PR_BODY" --branch "$BRANCH" --json');
   });
 
   it("(c) the free-tier marker check lives in the context job's if: gate, which both runner jobs need", () => {
@@ -247,9 +379,10 @@ describe("KN-3 regression: bkit-ci.yml files must NOT set `with.version:` for pn
 // ---------------------------------------------------------------------------
 // SHARED-DERIV portability + pipefail safety
 //
-// The SHARED-DERIV grep region of bkit-cloud.yml uses portable `grep -oE` + `sed`
-// (no `grep -oP` PCRE lookbehind), with `|| true` guards on the ISSUE/FID assignments
-// so a no-match exits 0 under `set -euo pipefail` and reaches the skip=true path.
+// The SHARED-DERIV region of bkit-cloud.yml reads the FID and issue id from
+// `bkit fids parse` + `jq` (no `grep -oP` PCRE lookbehind), with `|| true` guards on the
+// ISSUE/FID assignments so a no-match exits 0 under `set -euo pipefail` and reaches the
+// skip=true path.
 // ---------------------------------------------------------------------------
 
 describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {
@@ -278,114 +411,281 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
     expect(template).not.toContain("grep -oP");
   });
 
-  it("(1b) ISSUE assignment in canonical has || true failure guard (pipefail safety)", () => {
-    // Finding 1 (challenge-1): without || true, `set -euo pipefail` aborts the step
-    // when grep exits 1 on a no-match PR body, making fallback/fail-safe dead code.
-    // The ISSUE assignment must end with `|| true` so a no-match exits 0.
+  it("(1b) feat-arm FID/ISSUE parse lines in canonical and template carry a || true failure guard (pipefail safety)", () => {
+    for (const text of [readBkitCloudYml(), readBkitCloudTemplate()]) {
+      expect(text).toMatch(/PARSED=\$\(bkit_cli fids parse[^\n]*\|\| true\)/);
+      expect(text).toMatch(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
+      expect(text).toMatch(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]*\|\| true\)/);
+    }
+  });
+
+  it("(1c) the FID/ISSUE extraction lines exit 0 under set -euo pipefail on an empty parse and read a recorded parse (real-tool validation)", () => {
     const canonical = readBkitCloudYml();
-    // The form: grep -oE ... | sed ... | head -1 || true
-    expect(canonical).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+    // The feat/** arm reads the marker + branch parse (`.fid` / `.issueId`); the dev arm above
+    // it reads `.fidNamed` from the subject parse.
+    const block = canonical.slice(canonical.indexOf("# feat/** pre-merge path"));
+    const fidLine = block.match(/FID=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
+    const issueLine = block.match(/ISSUE=\$\(printf '%s' "\$PARSED" \| jq[^\n]+\)/)![0].trim();
+    const run = (parsed: string) =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          [
+            "set -euo pipefail",
+            `PARSED='${parsed}'`,
+            fidLine,
+            issueLine,
+            'echo "FID=$FID ISSUE=$ISSUE"',
+          ].join("\n"),
+        ],
+        { encoding: "utf-8", timeout: 10_000 },
+      );
+    const empty = run("");
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(empty.stdout).toContain("FID= ISSUE=");
+    const parsed = run(
+      '{"fid":"141-cloud-app","issueId":"141","source":"marker","tracker":"github"}',
+    );
+    expect(parsed.status, parsed.stderr).toBe(0);
+    expect(parsed.stdout).toContain("FID=141-cloud-app ISSUE=141");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Router dispatch jobs — tracker secrets at step scope, the codex job, the install blocks.
+// ---------------------------------------------------------------------------
+
+interface CloudStep {
+  name?: string;
+  id?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  env?: Record<string, unknown>;
+  with?: Record<string, unknown>;
+}
+interface CloudJob {
+  needs?: string | string[];
+  if?: string;
+  env?: Record<string, unknown>;
+  permissions?: Record<string, string>;
+  steps: CloudStep[];
+}
+interface CloudDoc {
+  env?: Record<string, unknown>;
+  jobs: Record<string, CloudJob>;
+}
+
+const secretMapped = (env: Record<string, unknown> | undefined, name: string): boolean =>
+  env?.[name] === `\${{ secrets.${name} }}`;
+const isDispatchStep = (st: CloudStep): boolean =>
+  Boolean(
+    st.uses?.startsWith("anthropics/claude-code-action@") ||
+    st.uses?.startsWith("openai/codex-action@") ||
+    st.name?.startsWith("Dispatch /bkit-auto on opencode"),
+  );
+const dispatchSteps = (doc: CloudDoc): Array<[string, CloudStep]> =>
+  Object.entries(doc.jobs)
+    .filter(([id]) => id !== "context")
+    .flatMap(([id, job]) =>
+      job.steps.filter(isDispatchStep).map((st): [string, CloudStep] => [id, st]),
+    );
+const withOf = (st: CloudStep): Record<string, unknown> => st.with ?? {};
+const writesConfigToml = (st: CloudStep): boolean => /config\.toml/.test(st.run ?? "");
+const isAlwaysRun = (st: CloudStep): boolean => st.if?.trim() === "always()" && Boolean(st.run);
+const dummyEnv = (st: CloudStep): Record<string, string> =>
+  Object.fromEntries(Object.keys(st.env ?? {}).map((k) => [k, `value-${k}`]));
+
+describe("bkit-cloud.yml template — dispatch jobs", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+  const raw = fs.readFileSync(
+    path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+  const filled = raw
+    .replaceAll("{{CLOUD_RUNNER}}", "ubuntu-latest")
+    .replaceAll("{{NODE_VERSION}}", "22");
+  const doc = parseYaml(filled) as CloudDoc;
+  const codexJob = (): CloudJob => {
+    const job = doc.jobs.codex;
+    expect(job, "no codex job").toBeDefined();
+    return job!;
+  };
+  const codexActionIndex = (job: CloudJob) =>
+    job.steps.findIndex((st) => st.uses?.startsWith("openai/codex-action@"));
+  const installIndex = (job: CloudJob) =>
+    job.steps.findIndex((st) => /pnpm install --frozen-lockfile/.test(st.run ?? ""));
+  const has = (cmd: string, args: string[]) =>
+    spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
+
+  it("tracker secrets sit in the ctx and every dispatch step env and in no job or workflow env", () => {
+    const secrets = ["BKIT_LINEAR_API_KEY", "BKIT_JIRA_API_KEY"];
+    const mapped = secretMapped;
+    const ctx = doc.jobs.context!.steps.find((st) => st.id === "ctx");
+    expect(ctx, "no ctx step").toBeDefined();
+    for (const name of secrets) expect(mapped(ctx!.env, name), `ctx ${name}`).toBe(true);
+
+    const dispatch = dispatchSteps(doc);
+    expect(dispatch.map(([id]) => id).sort()).toEqual(expect.arrayContaining(["opencode", "run"]));
+    for (const [id, st] of dispatch) {
+      for (const name of secrets) expect(mapped(st.env, name), `${id} ${name}`).toBe(true);
+    }
+    for (const [id, job] of Object.entries(doc.jobs)) {
+      for (const name of secrets) expect(job.env?.[name], `job ${id} env ${name}`).toBeUndefined();
+    }
+    for (const name of secrets) expect(doc.env?.[name], `workflow env ${name}`).toBeUndefined();
   });
 
-  it("(1b) FID assignment in canonical has || true failure guard (pipefail safety)", () => {
-    const canonical = readBkitCloudYml();
-    expect(canonical).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  it("codex job runs only when the context job selects codex and skip is not true", () => {
+    const job = codexJob();
+    expect(job.if?.trim()).toBe(
+      "needs.context.outputs.codex == 'true' && needs.context.outputs.skip != 'true'",
+    );
+    expect(job.needs).toBe("context");
+    expect(job.permissions).toEqual(doc.jobs.opencode!.permissions);
   });
 
-  it("(1b) ISSUE assignment in template has || true failure guard (pipefail safety)", () => {
-    const template = readBkitCloudTemplate();
-    expect(template).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  it("codex job installs dependencies before openai/codex-action", () => {
+    const job = codexJob();
+    const action = codexActionIndex(job);
+    const install = installIndex(job);
+    expect(action, "no openai/codex-action step").toBeGreaterThan(-1);
+    expect(install, "no pnpm install --frozen-lockfile step").toBeGreaterThan(-1);
+    expect(install).toBeLessThan(action);
+    const before = job.steps.slice(0, install);
+    expect(before.some((st) => st.uses?.startsWith("actions/setup-node@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("pnpm/action-setup@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("actions/checkout@"))).toBe(true);
   });
 
-  it("(1b) FID assignment in template has || true failure guard (pipefail safety)", () => {
-    const template = readBkitCloudTemplate();
-    expect(template).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  it("codex-action is SHA-pinned with a v1 comment and codex-version is pinned under a renovate annotation", () => {
+    const action = codexJob().steps.find((st) => st.uses?.startsWith("openai/codex-action@"));
+    expect(action, "no openai/codex-action step").toBeDefined();
+    expect(action!.uses).toMatch(/^openai\/codex-action@[0-9a-f]{40}$/);
+    expect(raw).toMatch(/uses: openai\/codex-action@[0-9a-f]{40} # v1\s*$/m);
+    expect(String(action!.with?.["codex-version"])).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(raw).toMatch(
+      /# renovate: datasource=npm depName=@openai\/codex\n\s*codex-version: "\d+\.\d+\.\d+"/,
+    );
   });
 
-  it("(1c) SHARED-DERIV extraction snippet exits 0 under set -euo pipefail when PR body is empty (real-tool validation)", () => {
-    // Finding 1 (challenge-1): the original code aborted on empty PR body.
-    // This test extracts the actual ISSUE/FID assignment commands from the canonical
-    // workflow and executes them under `set -euo pipefail` with an empty PR body to
-    // prove the || true guards make the step exit 0 (not exit 1).
-    const canonical = readBkitCloudYml();
-
-    // Extract the two assignment lines from the SHARED-DERIV machinery.
-    const sharedDerivStart = canonical.indexOf("# SHARED-DERIV:");
-    expect(sharedDerivStart).toBeGreaterThan(-1);
-    const sharedDerivBlock = canonical.slice(sharedDerivStart);
-
-    // Pull out the ISSUE= and FID= lines (they contain the grep commands).
-    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    expect(
-      issueLineMatch,
-      "ISSUE= assignment line must be found after SHARED-DERIV",
-    ).not.toBeNull();
-    expect(fidLineMatch, "FID= assignment line must be found after SHARED-DERIV").not.toBeNull();
-
-    const issueLine = issueLineMatch![0]!.trim();
-    const fidLine = fidLineMatch![0]!.trim();
-
-    // Build a minimal shell script that runs both assignments under strict mode
-    // with an empty PR_BODY and asserts the variables are empty (no-match, no abort).
-    const script = [
-      "set -euo pipefail",
-      'PR_BODY=""',
-      issueLine,
-      fidLine,
-      // Assert variables are empty (grep found nothing, || true kept us alive)
-      '[ -z "$ISSUE" ] || { echo "FAIL: ISSUE should be empty, got: $ISSUE"; exit 2; }',
-      '[ -z "$FID" ]   || { echo "FAIL: FID should be empty, got: $FID"; exit 2; }',
-      'echo "OK: both empty, script did not abort"',
-    ].join("\n");
-
-    const result = spawnSync("bash", ["-c", script], {
-      encoding: "utf-8",
-      timeout: 10_000,
-    });
-
-    expect(
-      result.status,
-      `SHARED-DERIV snippet aborted under set -euo pipefail with empty PR body.\n` +
-        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    ).toBe(0);
-    expect(result.stdout).toContain("OK: both empty, script did not abort");
+  it("codex-action passes danger-full-access, allow-bots, BKIT_OPENAI_API_KEY and the $bkit-auto prompt", () => {
+    const action = codexJob().steps.find((st) => st.uses?.startsWith("openai/codex-action@"));
+    expect(action, "no openai/codex-action step").toBeDefined();
+    const w = withOf(action!);
+    expect(w["sandbox"]).toBe("danger-full-access");
+    expect(String(w["allow-bots"])).toBe("true");
+    expect(w["openai-api-key"]).toBe("${{ secrets.BKIT_OPENAI_API_KEY }}");
+    expect(w["prompt"]).toBe(
+      "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}",
+    );
+    expect(String(w["codex-home"])).toContain("codex-home");
+    expect(raw).not.toMatch(/secrets\.OPENAI_API_KEY/);
   });
 
-  it("(1c) SHARED-DERIV extraction snippet correctly parses a well-formed PR body (positive case)", () => {
-    // Complementary positive case: a PR body WITH the markers must yield the correct values.
-    const canonical = readBkitCloudYml();
+  it("trust step writes a codex-home config.toml trusting the workspace", () => {
+    const step = codexJob().steps.find(writesConfigToml);
+    expect(step, "no step writes config.toml").toBeDefined();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-codex-trust-"));
+    try {
+      const runnerTemp = path.join(dir, "runner-temp");
+      const workspace = path.join(dir, "ws");
+      fs.mkdirSync(runnerTemp);
+      fs.mkdirSync(workspace);
+      const res = spawnSync("bash", ["-eo", "pipefail", "-c", step!.run!], {
+        cwd: workspace,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+          GITHUB_WORKSPACE: workspace,
+          GITHUB_ENV: path.join(dir, "env"),
+          GITHUB_OUTPUT: path.join(dir, "out"),
+        },
+      });
+      expect(res.status, res.stderr).toBe(0);
+      const config = path.join(runnerTemp, "codex-home", "config.toml");
+      expect(fs.existsSync(config), "no codex-home/config.toml").toBe(true);
+      const toml = fs.readFileSync(config, "utf8");
+      expect(toml).toContain(`[projects."${workspace}"]`);
+      expect(toml).toMatch(/trust_level\s*=\s*"trusted"/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-    const sharedDerivBlock = canonical.slice(canonical.indexOf("# SHARED-DERIV:"));
+  it.skipIf(!has("actionlint", ["-version"]))("filled bkit-cloud.yml passes actionlint", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-cloud-lint-"));
+    try {
+      const file = path.join(dir, "bkit-cloud.yml");
+      fs.writeFileSync(file, filled);
+      const r = spawnSync("actionlint", ["-no-color", file], { encoding: "utf-8" });
+      expect(r.status, `${r.stdout}${r.stderr}`).toBe(0);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
-    expect(issueLineMatch).not.toBeNull();
-    expect(fidLineMatch).not.toBeNull();
+  it("codex summary step runs under if: always() and writes action, commits and comments", () => {
+    const job = codexJob();
+    const action = codexActionIndex(job);
+    expect(action, "no openai/codex-action step").toBeGreaterThan(-1);
+    const step = job.steps.slice(action + 1).find(isAlwaysRun);
+    expect(step, "no if: always() summary step after the action").toBeDefined();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-codex-summary-"));
+    try {
+      const stubBin = path.join(dir, "bin");
+      fs.mkdirSync(stubBin);
+      fs.writeFileSync(path.join(stubBin, "gh"), "#!/usr/bin/env bash\necho 0\n", { mode: 0o755 });
+      const ws = path.join(dir, "ws");
+      fs.mkdirSync(ws);
+      for (const args of [
+        ["init", "-q", "-b", "dev"],
+        ["config", "user.email", "t@t.co"],
+        ["config", "user.name", "t"],
+        ["commit", "-q", "--allow-empty", "-m", "base"],
+      ]) {
+        spawnSync("git", args, { cwd: ws });
+      }
+      const summary = path.join(dir, "summary");
+      fs.writeFileSync(summary, "");
+      const stepEnv = dummyEnv(step!);
+      spawnSync("bash", ["-c", step!.run!], {
+        cwd: ws,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${stubBin}:${process.env.PATH}`,
+          GITHUB_STEP_SUMMARY: summary,
+          GITHUB_WORKSPACE: ws,
+          GITHUB_REPOSITORY: "owner/repo",
+          RUNNER_TEMP: dir,
+          GH_TOKEN: "dummy",
+          ...stepEnv,
+        },
+      });
+      const text = fs.readFileSync(summary, "utf8");
+      for (const field of ["action", "commits", "comments"]) {
+        expect(text.toLowerCase(), `summary lacks ${field}`).toContain(field);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-    const issueLine = issueLineMatch![0]!.trim();
-    const fidLine = fidLineMatch![0]!.trim();
-
-    const script = [
-      "set -euo pipefail",
-      'PR_BODY="<!-- bkit:issue=#141 bkit:fid=141-cloud-app -->"',
-      issueLine,
-      fidLine,
-      '[ "$ISSUE" = "141" ] || { echo "FAIL: expected ISSUE=141, got: $ISSUE"; exit 2; }',
-      '[ "$FID" = "141-cloud-app" ] || { echo "FAIL: expected FID=141-cloud-app, got: $FID"; exit 2; }',
-      'echo "OK: ISSUE=$ISSUE FID=$FID"',
-    ].join("\n");
-
-    const result = spawnSync("bash", ["-c", script], {
-      encoding: "utf-8",
-      timeout: 10_000,
-    });
-
-    expect(
-      result.status,
-      `SHARED-DERIV snippet failed to parse well-formed PR body.\n` +
-        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    ).toBe(0);
-    expect(result.stdout).toContain("OK: ISSUE=141 FID=141-cloud-app");
+  it("opencode job installs dependencies before its dispatch step", () => {
+    const job = doc.jobs.opencode!;
+    const install = installIndex(job);
+    const dispatch = job.steps.findIndex((st) =>
+      st.name?.startsWith("Dispatch /bkit-auto on opencode"),
+    );
+    expect(dispatch, "no opencode dispatch step").toBeGreaterThan(-1);
+    expect(install, "no pnpm install --frozen-lockfile step").toBeGreaterThan(-1);
+    expect(install).toBeLessThan(dispatch);
+    const before = job.steps.slice(0, install);
+    expect(before.some((st) => st.uses?.startsWith("actions/setup-node@"))).toBe(true);
+    expect(before.some((st) => st.uses?.startsWith("pnpm/action-setup@"))).toBe(true);
   });
 });

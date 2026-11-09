@@ -142,6 +142,7 @@ import {
   attempt,
   commentFileOf,
   postForVerb,
+  bindRunPublication,
   issueRef,
   readLabels,
   endedRunActionKey,
@@ -463,6 +464,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
           fid,
           issue: str(ctx.flags.issue),
           ...(key === undefined ? {} : { file: state.status, key }),
+          purpose: "attention",
         })
       : undefined;
   const labelsWrite =
@@ -481,7 +483,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
     trackerState: failedState,
     prState,
     comment,
-    commentFile: commentFileOf(ctx.cwd, comment),
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
     ...(labelsWrite === undefined ? {} : { labelsWrite }),
     ...sessionRemoval(ctx),
@@ -928,7 +930,7 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   if (rec !== null) removeRecord(tree, fid);
   const tracker =
     ctx.flags.post === true && comment !== null
-      ? await postForVerb(ctx, comment, { fid })
+      ? await postForVerb(ctx, comment, { fid, purpose: "attention" })
       : undefined;
   ctx.emit({
     handover: present ? artifact : null,
@@ -936,7 +938,7 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
     ref: pushed ? ref : null,
     skipped,
     comment,
-    commentFile: commentFileOf(ctx.cwd, comment),
+    commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
   });
   return code;
@@ -2040,10 +2042,10 @@ async function postClose(
   out: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const comment = typeof out.comment === "string" ? out.comment : null;
-  const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment) };
+  const withFile = { ...out, commentFile: commentFileOf(ctx.cwd, comment, ctx) };
   if (ctx.flags.post !== true) return withFile;
   if (comment === null) throw new CommandError(EXIT.USAGE, "--post needs --number");
-  return { ...withFile, tracker: await postForVerb(ctx, comment, { fid }) };
+  return { ...withFile, tracker: await postForVerb(ctx, comment, { fid, purpose: "terminal" }) };
 }
 
 export const workflowsCommand: CommandSpec = {
@@ -2059,6 +2061,7 @@ export const workflowsCommand: CommandSpec = {
         FID_FLAG,
         MONTH_FLAG,
         STATUS_FILE_FLAG,
+        SESSION_DIR_FLAG,
         {
           name: "lock-held",
           type: "boolean",
@@ -2161,6 +2164,7 @@ export const workflowsCommand: CommandSpec = {
         recordChat(file, workflow, process.env);
         const runs = fold(readStatusEvents(file));
         const run = runNumber(runs, workflow);
+        bindRunPublication(ctx, file, workflow, run);
         const current = resumed ? lastRun(runs, workflow) : undefined;
         ctx.emit({
           lock,
@@ -2483,7 +2487,14 @@ export const workflowsCommand: CommandSpec = {
           squashSha: str(f.squashSha),
           ref: str(f.ref),
           ownerRepo: str(f.ownerRepo),
-          outbox: str(f.outbox),
+          outbox:
+            str(f.outbox) ??
+            (str(f.sessionDir)
+              ? path.join(
+                  path.dirname(path.dirname(path.resolve(ctx.cwd, String(f.sessionDir)))),
+                  String(f.fid),
+                )
+              : undefined),
           recordStep: f.recordStep === true,
           message: str(f.message),
           labels: list(f.label),

@@ -121,7 +121,7 @@ type CiReference = { kind: "run" | "pr"; repo: string; id: string; attempt?: num
 /** Only the winning reference kind is actionable; a run takes precedence over a PR. */
 export function parseCiReference(input: string): CiReference | undefined {
   const references: CiReference[] = [];
-  const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`]+/g)].map((match) =>
+  const urls = [...input.matchAll(/https:\/\/github\.com\/[^\s<>"`\[\]()]+/g)].map((match) =>
     match[0].replace(/[),.;\]]+$/, ""),
   );
   const parsed = urls.flatMap((url) => {

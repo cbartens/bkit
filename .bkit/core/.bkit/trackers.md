@@ -18,6 +18,27 @@
 >   - Add a `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site, and extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`.
 > - There is no `none` marker. No-tracker content goes in a `false` block.
 
+## Workflow comment delivery
+
+The engine may append routine reports to its own eligible progress comment. Ownership comes from an explicit repo-info session or an exact workflow run, never another active run. A later human or unrelated comment, missing ownership evidence, or a capacity rollover starts a new comment. Attention reports and terminal summaries always use new comments.
+
+The optional progress cache and run association live under the repository's Git-common `bkit-outbox` directory, shared by linked worktrees. Losing this state starts fresh. Remote text can confirm an owned comment, but never becomes the source of a replacement body. Reconciliation reads a bounded newest-created window, including paginated provider responses.
+
+Preparation, delivery, reconciliation, receipt and friction failures are nonfatal. When `tracker.done` is false and `commentFile` exists, attempt one new MCP comment from that file byte-for-byte. MCP fallback never edits prior tracker content. Record best-effort redacted friction and continue substantive work even when the file or fallback is unavailable.
+
+### Verified provider contracts
+
+Live contract evidence version 1 verified the following boundaries through the production transports. Every selected body budget counts the complete Markdown source in UTF-16 code units, including markers and part labels. These budgets are conservative delivery ceilings, rather than promises of each provider's maximum.
+
+<!-- prettier-ignore -->
+| Provider | Selected body budget | Observed counting boundary | Inspection and edit contract |
+| --- | --- | --- | --- |
+| GitHub | 65,536 | 262,144 UTF-8 body bytes accepted; the next byte rejected for ASCII and non-BMP text. | REST create/edit and GraphQL read agree on numeric comment/author IDs, timestamps and Markdown fingerprints. `last`/`before` pagination retains newest-created order after an older edit. |
+| Linear | 100,000 | 100,000 Unicode scalars accepted; the next scalar rejected for ASCII and non-BMP text. UTF-16 counting stays conservative. | GraphQL create/edit/read return stable comment/user IDs, timestamps and Markdown fingerprints. Cursor pages are sorted by creation time before selecting the newest comments. |
+| Jira Rovo | 32,767 | The selected ASCII/non-BMP payloads pass. Markdown-to-ADF conversion changes the raw-source boundary; larger payloads can fail with `CONTENT_LIMIT_EXCEEDED`. No universal raw-source maximum is claimed. | Deployed tool schemas accept ID-based edits and `responseContentFormat: markdown`, `view: evidence`, creation ordering and offset pagination. Require returned Markdown format, stable author/comment IDs and matching fingerprints before editing. |
+
+All three preserve the generated h6 marker on the tested bodies. Repeated reads remain stable, an external edit starts fresh progress, and a terminal report creates a separate comment. Discarded acknowledgments can be recognized by bounded reads; inconclusive recognition tries a new comment and can duplicate an accepted report. Exhausted writes produce real best-effort friction and allow later reporting to continue. These probes do not establish universal notification silence: GitHub and Linear subscriber settings and Jira project notification schemes still apply.
+
 ## Marker contract
 
 Workflow and prompt sources carry the variant for each wired tracker inline. The installer reads `bkit.tracker.default` from the consumer's manifest, and resolves the markers when it mirrors `.bkit/core/workflows/bkit-*.md` to every host's commands / skills and `.bkit/core/prompts/bkit-*.md` to every host's agents (`.bkit/core/engine/render/trackers.ts`). The mirrors are clean: no marker survives.
@@ -95,7 +116,7 @@ This renders `N. <body>` when a tracker is wired, and `N. _No tracker connected,
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue_label` per new label, then `save_issue` labels, then `save_issue` state `bkit.tracker.linear.review` | `editJiraIssue` full label set, then transition to `bkit.tracker.jira.review` | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add / update item | no-op (state carries) | no-op (status carries) | skip |
-| `comment-post-step` | new comment per workflow step | `add_issue_comment` | `save_comment` | `addOrEditJiraIssueComment` | skip |
+| `comment-post-step` | engine-owned routine progress; create-only fallback | `add_issue_comment` | `save_comment` without `id` | `addOrEditJiraIssueComment` without `commentId` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue / FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
@@ -236,6 +257,17 @@ bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which g
 2. Each person opens https://id.atlassian.com/manage-profile/security/api-tokens → **Create API token with scopes** (not classic) → app **Atlassian MCP V2** (not **Jira**, not **Atlassian MCP**) → the Jira read / write / search scopes (`read:jira:agent-interface`, `write:jira:agent-interface`, `search:jira:agent-interface`). Copy the token, which is shown once, into `BKIT_JIRA_API_KEY` in `.bkit/.env`, then run `direnv allow`. The token works on MCP only, and the Jira REST API answers 401.
 3. Run `bkit install --tracker=jira`, then set `bkit.tracker.jira.site` and `bkit.tracker.jira.project`. In Claude, approve the project `.mcp.json` once in an interactive `claude` session. Until then, `claude mcp list` shows "Pending approval".
 
+### Authentication troubleshooting
+
+The scoped **Atlassian MCP V2** token is a personal API token used as `Bearer` by bkit's Rovo transport. It needs no account email. The API-token management page alone does not identify the token's app or scopes. Jira REST guidance about `Basic` authentication with an email does not establish the authentication contract for this MCP endpoint.
+
+For an authentication failure:
+
+1. Read this section and the project's active `docs/knowledge.jsonl` entries before asking for credentials. Check related tracker decisions and comments when the owner says the setup worked previously.
+2. Check that the running process loads `BKIT_JIRA_API_KEY` from the intended `.bkit/.env`, including in a linked worktree. After a credential update, compare the loaded and saved values without printing either value, and check for surrounding whitespace. Report presence and equality only.
+3. Verify the setup above: the token's app and scopes, the org's API-token permission, the `/v2/mcp` endpoint, the `Bearer` header and a non-default `User-Agent`. A scripted probe must use the engine's `initialize` handshake before tool calls.
+4. **If** initialization still returns HTTP 401 with `invalid_token` → record that the endpoint rejected the configured credential and which checks passed. Ask the owner to verify or replace the scoped token locally. Do not infer a missing email, switch to `Basic`, or add an email setting from this response. Tool schemas and write behaviour remain unverified until authentication succeeds.
+
 **Behaviour workflows rely on:**
 
 - Status changes only by transition. Workflows list the issue's transitions (`executeRead` `listJiraIssueTransitions`) and fire the one whose `to.name` = the target status. When none matches, the status change is `Unapplied`, and the labels still land. Basic team-managed boards may lack `In Review`, so set `bkit.tracker.jira.review` to a status the board has.
@@ -247,6 +279,7 @@ bkit supports Jira Cloud only. `ISSUE_ID` is the issue key (`PROJ-123`), which g
 <!-- prettier-ignore -->
 | Symptom | Fix |
 | --- | --- |
+| HTTP 401 with `invalid_token` during initialization | Follow § Authentication troubleshooting; the response alone does not identify why the credential was rejected. |
 | Only 4 tools listed (`getTeamworkGraphContext` …), no Jira tools | URL `/v2/mcp`, not `/v1/mcp` |
 | Every call: `Cloud id: … isn't explicitly granted by the user` | Scoped **Atlassian MCP V2** token sent as `Bearer`, not classic token or `Basic` |
 | `missing the scope claim` | Classic token → create token with scopes |

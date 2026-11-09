@@ -1613,7 +1613,7 @@ export const contextCommand = {
                     commit: written.commit,
                     ...(written.progressLine === undefined ? {} : { progressLine: written.progressLine }),
                     comment,
-                    commentFile: commentFileOf(ctx.cwd, comment),
+                    commentFile: commentFileOf(ctx.cwd, comment, ctx),
                 });
                 return written.code;
             },

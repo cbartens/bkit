@@ -23,13 +23,15 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-05T14:08:43Z)_
+_(refreshed 2026-11-08T12:52:29Z)_
+_(refreshed 2026-11-08T13:07:27Z)_
 
 ### Design
 
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
@@ -42,11 +44,11 @@ _(refreshed 2026-11-05T14:08:43Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1793249397536 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
-| 826-append-routine-workflow | 826-append-routine-workflow | 1793618138004 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
+| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
 
 ### Build
 
@@ -65,6 +67,8 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
+| 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
@@ -73,8 +77,6 @@ _(none)_
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 | 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 | 705-build-plan-convert | 705-build-plan-convert | 1793100657723 |
-| 703-standardise-question-option | 703-standardise-question-option | 1793090828870 |
-| 700-session-start-nudge | 700-session-start-nudge | 1793054973314 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

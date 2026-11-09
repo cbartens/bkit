@@ -38,27 +38,28 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 **Contract:** The terms between this agent and whoever runs it.
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
+- **Invocation ownership:** Auto keeps a separate invocation from its dispatched phase; each phase obtains its own `repo info` session.
 - **External tools:** `gh` reads the PR and its CI run. **If** `gh` is missing or unauthenticated (exit 80) → **Failure Path**. Tracker reads and writes go through `bkit` verbs. Use the tracker MCP only when a verb prints `tracker.done` = false or exits 80.
 
 <!-- bkit:tracker github start -->
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. Assert `{ISSUE_ID}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
-- **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
 - **Tracker:** Linear — `bkit` verbs read and write it; MCP server `linear` (`.mcp.json` `mcpServers.linear`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_issue_label`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; `save_*` writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue. `save_issue` ALWAYS includes `id` and is all-or-nothing (one state or label name the team lacks rejects the whole call) → labels and state in separate calls, labels first; create each printed `add` entry first via `save_issue_label({ name })` (`already exists` = done). `Could not find state` / `Could not find label` → log `Unapplied: <state|label> "<name>" not in team`, no retry, continue.
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
-- **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 
 <!-- bkit:tracker linear end -->
 <!-- bkit:tracker jira start -->
 
 - **Tracker:** Jira — `bkit` verbs read and write it over the same Rovo MCP endpoint; MCP server `jira` (`.mcp.json` `mcpServers.jira`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__jira__getJiraIssue`, `mcp__jira__editJiraIssue`, `mcp__jira__transitionJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue. `getJiraIssue` ALWAYS passes `view: "evidence"` (other views omit labels). `editJiraIssue` `fields.labels` replaces the whole set → pass full printed `LABELS`; labels and status in separate calls, labels first; NEVER pass `fields` / `update` to `transitionJiraIssue`. Status change: `executeRead({ name: "listJiraIssueTransitions", inputs: { issueIdOrKey } })` → transition whose `to.name` = target status → `transitionJiraIssue({ issueIdOrKey, transitionId })`; none → log `Unapplied: status "<name>" not reachable`, no retry, continue. Comment reads: `executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first, raise `startAt` while `isLast` is false; page with `appliedContentFormat` = `html` → re-read it one comment per call (`maxResults: 1`).
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
-- **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content. Fallback body over 32,767 characters → post as consecutive comments split at line breaks, in order (the engine splits its own posts the same way).
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held. Fallback body over 32,767 characters → post as consecutive comments split at line breaks, in order (the engine splits its own posts the same way).
 
 <!-- bkit:tracker jira end -->
 
@@ -74,7 +75,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 1. <!-- bkit:tracker true start -->
    Write the error message / tool response to `{OUTBOX_ROOT}/error.md`. `{STDERR_FILE}` = a file holding the failed shell command's stderr — drop `--stderr-file` when the failure was not a shell command. Post the printed `comment` — **Skip if** `{ISSUE_ID}` or `{OUTBOX_ROOT}` is not held:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}"
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --kind=failure --step-number={N} --step-title="{Step Name}" --sub-step={M} --error-file="{OUTBOX_ROOT}/error.md" --stderr-file="{STDERR_FILE}" --session-dir="{SESSION_DIR}"
    ```
    <!-- bkit:tracker true end -->
 2. <!-- bkit:tracker true start -->
@@ -122,7 +123,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 4. <!-- bkit:tracker true start -->
    Comment. `MODE` = BRIEF drops `--tree`, `--pr-number`, `--pr-url`, `--run-id`. `MODE` = CI_DEV drops `--pr-number`, `--pr-url`, `--run-id`:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=auto --workflow-heading --step-number=1 --step-title="Start Workflow" --field=Phase={PHASE} --owner-repo={OWNER_REPO} --tree={BRANCH} --pr-number={PR_NUMBER} --pr-url={PR_URL} --run-id={RUN_ID}
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=auto --workflow-heading --step-number=1 --step-title="Start Workflow" --field=Phase={PHASE} --owner-repo={OWNER_REPO} --tree={BRANCH} --pr-number={PR_NUMBER} --pr-url={PR_URL} --run-id={RUN_ID} --session-dir="{SESSION_DIR}"
    ```
    <!-- bkit:tracker true end -->
 
@@ -136,6 +137,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 
 - [ ] Mechanical checks passed (`steps gate`)
 - [ ] Run context recovered
+- [ ] Issue comment attempted when applicable
 
 ---
 
@@ -144,7 +146,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 1. <!-- bkit:tracker true start -->
    Comment:
    ```bash
-   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --step-number=2 --step-title=Dispatch --field=Phase={PHASE}
+   "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=auto --step-number=2 --step-title=Dispatch --field=Phase={PHASE} --session-dir="{SESSION_DIR}"
    ```
    <!-- bkit:tracker true end -->
 2. `REF` is the issue as `runs context` printed it (`#N` on GitHub, the key uppercased on Linear / Jira, empty with no tracker).
@@ -161,5 +163,6 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 ### 🔒 Gate 2 — Dispatch
 
 - [ ] Reference derived
+- [ ] Issue comment attempted when applicable
 - [ ] Phase skill invoked
 - [ ] Orchestrator exits and the dispatched skill owns the session

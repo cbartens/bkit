@@ -124,7 +124,7 @@ export function collectTips(cwd: string, catalogue: readonly SetupTip[] = SETUP_
   for (const tip of catalogue) {
     if (!tip.fires(base)) continue;
     if (isTipSilenced(tip, ignored)) suppressed.push({ id: tip.id, scope: "." });
-    else tips.push(tip);
+    else tips.push(tip.resolve ? { ...tip, ...tip.resolve(base) } : tip);
   }
   const star = !ignored.has(STAR_TIP_ID) && !ignored.has(STAR_TIP_OLD_ID);
   return { tips, suppressed, star };

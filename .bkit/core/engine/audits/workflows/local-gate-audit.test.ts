@@ -165,7 +165,11 @@ describe("bkit-local-gate-audit (#437)", () => {
     expect(body.lastIndexOf("roadmap mirror", pushAt)).toBeGreaterThanOrEqual(0);
     const retained = body.slice(closeAt + close.block.length, pushAt);
     expect(retained).toMatch(/`commentFile`[^\n]*`CLOSE_COMMENT_FILE`/);
-    expect(retained).toMatch(/`tracker`[^\n]*`CLOSE_TRACKER`/);
+    expect(close.block).not.toContain("--post");
+    expect(body).toMatch(
+      /issues comment[^\n]*--step-title="Create PR"[^\n]*--body-file="\{CLOSE_COMMENT_FILE\}"/,
+    );
+    expect(body).toMatch(/Hold this report's `commentFile`[^\n]*`tracker`[^\n]*`CLOSE_TRACKER`/);
     expect(retained).toMatch(/`finalReturn`[^\n]*`FINAL_RETURN`/);
     const release = commandRoutes(body.slice(pushAt), /\blocks release\b/);
     expect(release).toHaveLength(1);

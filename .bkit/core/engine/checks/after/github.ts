@@ -376,60 +376,101 @@ export function buildGithubProjectTokenScopeAdvisory(cwd: string): PreflightFind
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
  * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
- * `bkit install --auto=claude`; it does NOT ship with a default install. This nudges
- * consumers to make the choice post-install.
+ * `bkit install --auto=<claude|opencode|codex|cursor>`; it does NOT ship with a default
+ * install. This nudges consumers to make the choice post-install.
  *
- * Also performs the cloud=claude config-consistency assertion: when
- * `bkit.cloud.agent === "claude"` but the installed `bkit-cloud.yml` lacks
- * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
- * the `blocker` severity in the checks/before/index.ts caller).
+ * Resolution order (file presence is authoritative, package.json field is the opt-out):
+ *   - router present, claude without `id-token: write`        → `cloud-claude-missing-id-token` (blocker)
+ *   - router present, linear / jira, copy says it serves GitHub only → `cloud-router-tracker-stale`
+ *   - router present, `cloud.agent` codex, no `openai/codex-action`   → `cloud-router-codex-missing`
+ *   - router present, `cloud.agent` absent                            → `cloud-router-agent-unset`
+ *   - router present, `cloud.agent` none / cursor                     → `cloud-router` (router starts nothing)
+ *   - router present otherwise                                        → `cloud-router` (informational)
+ *   - `bkit.cloud.agent === "none"` (explicit)                        → null (opt-out — stay quiet)
+ *   - otherwise (undecided)                                           → `cloud-router-none` (nudge)
  *
- * Resolution order (file presence is authoritative, package.json field is the
- * opt-out):
- *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
- *   - `bkit.cloud.agent === "none"`                  → null (opt-out — stay quiet)
- *   - `bkit.tracker.default === "jira"`                 → null (Jira runs locally only)
- *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
- *
- * Only fires when there is a `.github/workflows/` dir (the router wakes on a CI
+ * Only nudges when there is a `.github/workflows/` dir (the router wakes on a CI
  * completion event).
  */
 export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
   const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
 
   if (fs.existsSync(routerPath)) {
-    // Config-consistency assertion: cloud=claude requires id-token: write.
-    // If the recorded variant is "claude" and the workflow file lacks id-token: write,
-    // surface a consistency finding.
-    if (readBkitConfig(cwd).cloudAgents === "claude") {
-      const workflowContent = fs.readFileSync(routerPath, "utf-8");
-      if (!workflowContent.includes("id-token: write")) {
-        return {
-          id: "cloud-claude-missing-id-token",
-          severity: "blocker",
-          detect:
-            "`bkit.cloud.agent` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
-          action:
-            "Re-run `pnpm bkit install --auto=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
-        };
-      }
+    const { cloudAgents, cloudAgentsExplicit, issueTracker } = readBkitConfig(cwd);
+    const content = fs.readFileSync(routerPath, "utf-8");
+    const recopy =
+      "Re-copy the template: `cp .bkit/templates/.github/workflows/bkit-cloud.yml .github/workflows/bkit-cloud.yml`, then re-apply your own edits (the `runs-on` runner and the `{{NODE_VERSION}}` value).";
+
+    if (cloudAgents === "claude" && !content.includes("id-token: write")) {
+      return {
+        id: "cloud-claude-missing-id-token",
+        severity: "blocker",
+        detect:
+          "`bkit.cloud.agent` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
+        action: `${recopy} Also verify the Claude GitHub App is installed (\`/install-github-app\`). See bkit's \`cloud.md\` § Post-CI auto-routing.`,
+      };
+    }
+    if (
+      (issueTracker === "linear" || issueTracker === "jira") &&
+      content.includes("serves the GitHub tracker only")
+    ) {
+      return {
+        id: "cloud-router-tracker-stale",
+        severity: "advisory",
+        detect: `\`bkit.tracker.default\` is \`${issueTracker}\` but the adopted \`.github/workflows/bkit-cloud.yml\` serves the GitHub tracker only: it never dispatches an agent for ${issueTracker} issues.`,
+        action: recopy,
+      };
+    }
+    if (cloudAgents === "codex" && !content.includes("openai/codex-action")) {
+      return {
+        id: "cloud-router-codex-missing",
+        severity: "advisory",
+        detect:
+          "`bkit.cloud.agent` is `codex` but the adopted `.github/workflows/bkit-cloud.yml` has no `openai/codex-action` job, so no Codex run starts.",
+        action: recopy,
+      };
+    }
+    if (!cloudAgentsExplicit) {
+      return {
+        id: "cloud-router-agent-unset",
+        severity: "advisory",
+        detect:
+          "`.github/workflows/bkit-cloud.yml` is present but `bkit.cloud.agent` is not recorded, so the router cannot tell which agent job to start.",
+        action:
+          "Record the variant: `pnpm bkit install --auto=claude`, `--auto=opencode` or `--auto=codex` (the agent whose credential you set).",
+      };
     }
 
+    if (cloudAgents === "none" || cloudAgents === "cursor") {
+      return {
+        id: "cloud-router",
+        severity: "advisory",
+        detect: `\`.github/workflows/bkit-cloud.yml\` is present but \`bkit.cloud.agent\` is \`${cloudAgents}\`: the router starts no agent job for \`${cloudAgents}\`, so CI results dispatch nothing.`,
+        action:
+          "Record the agent whose credential you set: `pnpm bkit install --auto=claude`, `--auto=opencode` or `--auto=codex`.",
+      };
+    }
+
+    const claude = cloudAgents === "claude";
+    const secret =
+      cloudAgents === "codex"
+        ? "`BKIT_OPENAI_API_KEY` repo secret"
+        : cloudAgents === "opencode"
+          ? "opencode provider's `BKIT_` repo secret"
+          : "`BKIT_ANTHROPIC_API_KEY` repo secret OR the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables (keyless workload identity federation)";
     return {
       id: "cloud-router",
       severity: "advisory",
-      detect:
-        "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-      action: `The workflow requires: the \`ANTHROPIC_API_KEY\` repo secret OR the \`ANTHROPIC_FEDERATION_RULE_ID\` + \`ANTHROPIC_ORGANIZATION_ID\` repo variables (keyless workload identity federation), the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
+      detect: `Cloud agents: post-CI auto-routing is configured for \`${cloudAgents}\` (\`.github/workflows/bkit-cloud.yml\` present).${claude ? " The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done." : ""}`,
+      action: `The workflow requires: the ${secret}${claude ? ", the Claude GitHub App (`/install-github-app`)" : ""}, and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=${cloudAgents}\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.\n\nbkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".`,
     };
   }
 
   // No router present — distinguish opt-out from undecided.
-  const { cloudAgents, cloudAgentsExplicit, issueTracker } = readBkitConfig(cwd);
+  const { cloudAgents, cloudAgentsExplicit } = readBkitConfig(cwd);
   if (cloudAgents === "none" && cloudAgentsExplicit) {
     return null; // consumer explicitly chose `none` — stay quiet
   }
-  if (issueTracker === "jira") return null; // no cloud setup exists for a Jira tracker
 
   // Only nudge if there's a workflows dir for the router to wake on.
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
@@ -440,8 +481,8 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
     detect:
       "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
     action:
-      "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
-      "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret (or the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables for keyless workload identity federation) + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+      "Optional post-install decision: `pnpm bkit install --auto=<claude|opencode|codex|cursor>` (any variant works with your wired tracker; `codex` also needs `--codex`).\n\n" +
+      "Prerequisites: the variant's `BKIT_` repo secret (`BKIT_ANTHROPIC_API_KEY`, `BKIT_OPENAI_API_KEY` or the opencode provider's key; claude may use the `ANTHROPIC_FEDERATION_RULE_ID` + `ANTHROPIC_ORGANIZATION_ID` repo variables instead), the tracker key under Linear / Jira, the Claude GitHub App (`/install-github-app`) for claude, and GitHub Actions write permissions.\n\n" +
       'To opt out and silence this advisory, set `bkit.cloud.agent` to `"none"` in package.json.',
   };
 }

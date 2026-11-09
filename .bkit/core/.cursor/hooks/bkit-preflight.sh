@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # bkit-preflight.sh — Cursor Cloud sessionStart hook (failClosed: true)
 #
-# Validates Linear issue state before any background/cloud session does bkit
+# Validates tracker issue state before any background/cloud session does bkit
 # work. Refuses the session if the issue isn't approved for automation.
 #
 # Trigger:  is_background_agent === true (received via stdin JSON).
-# Guards:   `bkit:auto` label present; issue state not in {Cancelled, Done}.
-# Setup:    See `.bkit/README.md` § Linear setup.
+# Guards:   `bkit:auto` label present; issue state not terminal by category.
+# Setup:    See `.bkit/README.md` for the configured tracker.
 #
 # Cursor honours non-zero exit as a hard stop (failClosed: true) — non-zero
 # blocks the session before the agent starts. Failures are also surfaced via
 # `additional_context` so the user sees the reason.
 #
-# bkit generates the managed block at install: the Linear guard and the rules-read
-# advisory are shared with the Claude hook (bkit's `hooks/preflight-linear.sh` and
+# bkit generates the managed block at install: the tracker guard and the rules-read
+# advisory are shared with the Claude hook (bkit's `hooks/preflight-tracker.sh` and
 # `hooks/preflight-rules.sh`); the trigger, the runtime marker and the output shape
 # below are Cursor's own.
 
@@ -29,7 +29,7 @@ INPUT=$(cat)
 
 # emit_context — Cursor sessionStart expects ONE JSON document { additional_context: ... }
 # on stdout. Each call accumulates its string; the EXIT trap writes the document once, so
-# the advisory and the Linear guard result ride one document. Defined above the bail so an
+# the advisory and the tracker guard result ride one document. Defined above the bail so an
 # IDE session gets the advisory too, and built with no python3: failClosed:true blocks the
 # session on a non-zero exit, and an IDE session may not have python3 at all.
 # (Claude variant: wraps in { hookSpecificOutput: { hookEventName, additionalContext } }.)
@@ -73,7 +73,7 @@ trap bkit_write_document EXIT
 # IDE session bailout — grep only, no python3 on the skip path (failClosed:true in
 # .cursor/hooks.json blocks the session if this exits non-zero). Background-agent
 # sessions run inside the bkit Dockerfile, where python3 is present for the code below.
-# (Claude variant: uses empty LINEAR_ISSUE_ID env var as the proxy.)
+# (Claude variant: uses the issue env vars as the proxy.)
 if ! printf '%s' "$INPUT" | grep -q '"is_background_agent"[[:space:]]*:[[:space:]]*true'; then
   exit 0
 fi
@@ -93,6 +93,6 @@ fi
 # pre-installed via .cursor/Dockerfile, so the laptop-side brew check makes no sense here.
 # (Claude variant: validates required CLIs are on PATH; missing → HARD STOP with brew install hint.)
 
-# {{BKIT_PART preflight-linear.sh}}
+# {{BKIT_PART preflight-tracker.sh}}
 
 # <!-- bkit:end -->

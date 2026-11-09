@@ -134,6 +134,14 @@ const LOOPS = {
         fix: "build-plan-gaps-remediate",
         point: "verify",
     },
+    // The whole-feature check reopens after each clean round, so its loop starts there.
+    holistic: {
+        title: "Holistic verify",
+        check: "build-plan-verify-holistic",
+        fix: "build-plan-gaps-remediate-holistic",
+        point: "verify",
+        sinceClean: true,
+    },
     tests: {
         title: "Tests",
         check: "build-run-tests",
@@ -273,7 +281,7 @@ export const decisionsCommand = {
                 {
                     name: "loop",
                     type: "string",
-                    help: "verify | tests: add the progress block and the loop question as Q1",
+                    help: "verify | holistic | tests: add the progress block and the loop question as Q1",
                 },
                 { name: "file", type: "string", help: "status.jsonl, with --loop" },
                 { name: "group", type: "string", help: "with --loop=verify: the task group" },
@@ -306,10 +314,10 @@ export const decisionsCommand = {
                 if (loopName !== undefined) {
                     const loop = LOOPS[loopName];
                     if (loop === undefined)
-                        throw new CommandError(EXIT.USAGE, "--loop must be verify or tests");
+                        throw new CommandError(EXIT.USAGE, "--loop must be verify, holistic or tests");
                     if (ctx.flags.file === undefined)
                         throw new CommandError(EXIT.USAGE, "--loop needs --file");
-                    const p = loopProgress(path.resolve(ctx.cwd, String(ctx.flags.file)), ctx.cwd, "build", loop.check, loop.fix, positiveInt(ctx.flags.group, "group"));
+                    const p = loopProgress(path.resolve(ctx.cwd, String(ctx.flags.file)), ctx.cwd, "build", loop.check, loop.fix, positiveInt(ctx.flags.group, "group"), loop.sinceClean === true);
                     const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
                     const max = str(ctx.flags.max) ?? "?";
                     const changed = p.codeChanged === null ? "unknown" : p.codeChanged ? "yes" : "no";

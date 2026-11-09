@@ -250,7 +250,9 @@ describe("Step 1 FID check", () => {
 describe("resume facts", () => {
   it("build resumes an open decision from `openDecision`, not a file scan", () => {
     const text = workflow("build");
-    expect(text).toContain("**If** Step 2's `workflows start` printed `openDecision` != null");
+    expect(text).toContain(
+      '**If** Step 2\'s `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null',
+    );
     expect(text).not.toContain("holds `Status: OPEN` → resume");
     for (const field of [
       "decision",
@@ -630,6 +632,7 @@ describe("build", () => {
       ["build-close-workflow", "build-create-pr"],
       ["build-group-gate", "build-plan-verify"],
       ["build-group-start", "build-plan-tasks", "build-plan-tests"],
+      ["build-plan-gaps-remediate-holistic", "build-plan-verify-holistic"],
     ]);
     // Each finish line posts the number and title of its own table row.
     expect(commentNumberProblems(build)).toEqual([]);
@@ -932,7 +935,7 @@ describe("verdict headers re-ask on PENDING (exit 5) as well as invalid (exit 6)
 });
 
 describe("status route --require=strategy", () => {
-  it("is used at exactly the four strategy-routing sites", () => {
+  it("is used at exactly the five strategy-routing sites", () => {
     const sites = ["build", "debug", "ship"].flatMap((name) =>
       commandLines(workflow(name), "status route")
         .filter((l) => l.includes("--require=strategy"))
@@ -941,6 +944,7 @@ describe("status route --require=strategy", () => {
     expect(sites.sort()).toEqual([
       "build-failure-diagnose",
       "build-plan-gaps-remediate",
+      "build-plan-gaps-remediate-holistic",
       "debug-failure-diagnose",
       "ship-failure-remediate",
     ]);

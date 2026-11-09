@@ -72,7 +72,22 @@ export const WORKFLOW_STEPS = {
             title: "Plan Gaps Remediate",
             resumeAt: "build-plan-verify",
         },
-        { step: "build-plan-verify-holistic", number: 10, title: "Plan Verify Holistic" },
+        // Holistic verify passes on to the challenge; its gaps loop back through its fix to it.
+        {
+            step: "build-plan-verify-holistic",
+            number: 10,
+            title: "Plan Verify Holistic",
+            resumeOnVerdict: {
+                CONCERNS: "build-plan-verify-holistic",
+                FAIL: "build-plan-verify-holistic",
+            },
+        },
+        {
+            step: "build-plan-gaps-remediate-holistic",
+            number: 10,
+            title: "Plan Verify Holistic",
+            resumeAt: "build-plan-verify-holistic",
+        },
         // The reports are written: Step 11 continues at `bkit challenge merge`.
         { step: "build-challenge", number: 11, title: "Build Challenge", resumeAt: "build-challenge" },
         // Run Tests routes on its own verdict, and a fix loops back to it.
@@ -186,11 +201,14 @@ export const DECISION_ROUTES = {
         routes: {
             fix: "build-plan-tasks",
             verify: "build-plan-verify",
+            holistic: "build-plan-verify-holistic",
             tests: "build-run-tests",
-            // Try again: a verify loop goes on to its gaps fix (Step 9), a tests loop to Step 13.
+            // Try again: a verify loop goes on to its gaps fix (Step 9 or Step 10's), a tests loop to Step 13.
             retry: {
                 "build-plan-verify": "build-plan-gaps-remediate",
                 "build-group-gate": "build-plan-gaps-remediate",
+                "build-plan-verify-holistic": "build-plan-gaps-remediate-holistic",
+                "build-plan-gaps-remediate-holistic": "build-plan-gaps-remediate-holistic",
                 "build-run-tests": "build-failure-diagnose",
             },
         },

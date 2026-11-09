@@ -50,7 +50,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
-- **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 
 
 - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: Warning: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
@@ -167,7 +167,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Then hold `path` as `STATUS` and `bookRoot` as `BOOK_ROOT`.
    Open the run and record the runtime. The block refuses a checkout not on `SHIP_BRANCH` (15), clears stale sentinels, and writes the `workflow-started` and `ship-start-workflow` rows:
    ```bash
-   "{BKIT}" workflows start --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --branch="{SHIP_BRANCH}" --lock-held --token="{LOCK_TOKEN}" || exit 1
+   "{BKIT}" workflows start --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --branch="{SHIP_BRANCH}" --session-dir="{SESSION_DIR}" --lock-held --token="{LOCK_TOKEN}" || exit 1
    "{BKIT}" steps done --workflow=ship --step=ship-start-workflow --file="{STATUS}" --commit=none >/dev/null || exit 1
    "{BKIT}" runtime row --workflow=ship --file="{STATUS}" >/dev/null || exit 1
    "{BKIT}" runtime assert --workflow=ship --file="{STATUS}" >/dev/null
@@ -197,6 +197,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue comment attempted when applicable
 - [ ] Issue resolved
 - [ ] Worktree ready and run opened
 - [ ] Outbox created

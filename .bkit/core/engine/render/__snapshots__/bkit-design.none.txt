@@ -115,6 +115,7 @@ _No tracker connected, skip step._
 ```
 
 - [ ] Mechanical checks passed (`steps gate`)
+- [ ] Issue comment attempted when applicable
 - [ ] Issue resolved
 
 
@@ -142,7 +143,7 @@ _No tracker connected, skip step._
 3. Enter the worktree, open the run and record the runtime:
    ```bash
    cd "{WORKTREE_PATH}" && mkdir -p "{OUTBOX}" || exit 1
-   "{BKIT}" workflows start --workflow=design --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} || exit 1
+   "{BKIT}" workflows start --workflow=design --fid={FID} --month={YYYYMM} --lock-held --token={LOCK_TOKEN} --session-dir="{SESSION_DIR}" || exit 1
    "{BKIT}" runtime row --workflow=design --base-sha="{BASE_SHA}" --file="{LOG_DIR}/status.jsonl" >/dev/null || exit 2
    "{BKIT}" runtime assert --file="{LOG_DIR}/status.jsonl" --workflow=design >/dev/null
    ```

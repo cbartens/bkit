@@ -14,13 +14,22 @@ import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import { branchesCommand } from "./branches";
 import { workflowsCommand } from "./workflows";
-import { ownershipMarker, worktreesCommand } from "./worktrees";
+import { ownershipMarker, rebaseNoteFile, worktreesCommand } from "./worktrees";
 
 /**
  * Filesystem refusals on demand: `symlink` refuses every symlink (Windows without
  * Developer Mode), `bkitEnvCopy` fails a copy onto `.bkit/.env`. Off, both pass through.
  */
 const fsFaults = vi.hoisted(() => ({ symlink: false, bkitEnvCopy: false }));
+const pathPlatform = vi.hoisted(() => ({ windows: false }));
+vi.mock("node:path", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:path")>();
+  return {
+    ...real,
+    normalize: (value: string) =>
+      pathPlatform.windows ? real.win32.normalize(value) : real.normalize(value),
+  };
+});
 vi.mock("node:fs", async (importOriginal) => {
   const real = await importOriginal<typeof import("node:fs")>();
   const refused = (what: string) =>
@@ -66,6 +75,7 @@ beforeEach(() => {
   delete process.env.DIRENV_EXIT;
 });
 afterEach(() => {
+  pathPlatform.windows = false;
   fsFaults.symlink = false;
   fsFaults.bkitEnvCopy = false;
   process.env.PATH = savedPath;
@@ -582,7 +592,9 @@ describe("bkit worktrees setup — mint (resume)", () => {
       const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
       expect(r.json.sentinel).toBe(path.join(logDir, ".rebase-failed"));
       expect(fs.existsSync(r.json.sentinel)).toBe(true);
-      expect(fs.readFileSync(path.join(logDir, "rebase-resolve-log.md"), "utf-8")).toContain(
+      // Held outside the tree until `branches rebase` writes the run's log.
+      expect(fs.existsSync(path.join(logDir, "rebase-resolve-log.md"))).toBe(false);
+      expect(fs.readFileSync(rebaseNoteFile(wtOf(f))!, "utf-8")).toContain(
         "rebase onto origin/dev stopped",
       );
       expect(git(wtOf(f), "diff", "--name-only", "--diff-filter=U")).toBe("a.txt");
@@ -592,6 +604,11 @@ describe("bkit worktrees setup — mint (resume)", () => {
       const again = await setup(f.repo, workflow, "--worktrees");
       expect(again.code).toBe(3);
       expect(again.err).toContain("already in progress");
+
+      const debug = await setup(f.repo, "debug", "--worktrees");
+      expect(debug.code).toBe(3);
+      expect(debug.json).toMatchObject({ rebaseConflict: true, installed: false });
+      expect(debug.err).toContain("already in progress");
 
       // Once resolved, a re-run clears the sentinel.
       fs.writeFileSync(path.join(wtOf(f), "a.txt"), "resolved\n");
@@ -603,6 +620,39 @@ describe("bkit worktrees setup — mint (resume)", () => {
       const after = await setup(f.repo, workflow, "--worktrees");
       expect(after.code).toBe(0);
       expect(fs.existsSync(path.join(logDir, ".rebase-failed"))).toBe(false);
+    },
+  );
+
+  it.each(["build", "plan", "design"])(
+    "%s: a branch that tracks its rebase log can continue the paused rebase",
+    async (workflow) => {
+      const f = await minted(workflow);
+      const logDir = path.join(wtOf(f), "docs/plans", MONTH, "logs", FID);
+      const log = path.join(logDir, "rebase-resolve-log.md");
+      fs.writeFileSync(log, "earlier run\n");
+      git(wtOf(f), "add", log);
+      git(wtOf(f), "commit", "-q", "-m", "an earlier run's log");
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "feature\n");
+      git(wtOf(f), "commit", "-q", "-am", "feature edit");
+      advanceDev(f, "a.txt", "dev\n");
+
+      const r = await setup(f.repo, workflow, "--worktrees");
+      expect(r.code).toBe(3);
+      // Only the conflict: no tracked file changed while the rebase is paused.
+      expect(git(wtOf(f), "status", "--porcelain", "--untracked-files=no")).toBe("UU a.txt");
+      expect(fs.readFileSync(log, "utf-8")).toBe("earlier run\n");
+      const again = await setup(f.repo, "debug", "--worktrees");
+      expect(again.code).toBe(3);
+      expect(git(wtOf(f), "status", "--porcelain", "--untracked-files=no")).toBe("UU a.txt");
+
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "resolved\n");
+      git(wtOf(f), "add", "a.txt");
+      const cont = spawnSync("git", ["-c", "core.editor=true", "rebase", "--continue"], {
+        cwd: wtOf(f),
+        encoding: "utf-8",
+      });
+      expect(cont.stderr).not.toContain("You must edit all merge conflicts");
+      expect(cont.status).toBe(0);
     },
   );
 
@@ -639,7 +689,36 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(build.json).toMatchObject({ mode: "resumed" });
   });
 
-  it.each(["debug", "build"])(
+  it.each(["b.txt", "a.txt"])(
+    "debug preserves failed CI ancestry when dev changes %s",
+    async (upstreamFile) => {
+      const f = await minted();
+      fs.writeFileSync(path.join(wtOf(f), "a.txt"), "failed feature\n");
+      git(wtOf(f), "add", "a.txt");
+      git(wtOf(f), "commit", "-qm", "failed CI head");
+      const failedHead = git(wtOf(f), "rev-parse", "HEAD");
+      advanceDev(f, upstreamFile, "upstream change\n");
+      fs.writeFileSync(path.join(wtOf(f), "pending.txt"), "pending work\n");
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const r = await setup(f.repo, "debug", "--worktrees");
+        expect(r.code).toBe(0);
+        expect(r.json).toMatchObject({
+          mode: "resumed",
+          sentinel: null,
+          rebaseConflict: false,
+          carriedSha: null,
+        });
+        expect(git(wtOf(f), "rev-parse", "HEAD")).toBe(failedHead);
+        expect(g(wtOf(f), "merge-base", "--is-ancestor", failedHead, "HEAD").status).toBe(0);
+        expect(fs.readFileSync(path.join(wtOf(f), "a.txt"), "utf8")).toBe("failed feature\n");
+        expect(fs.readFileSync(path.join(wtOf(f), "pending.txt"), "utf8")).toBe("pending work\n");
+        expect(r.json.installed).toBe(true);
+      }
+    },
+  );
+
+  it.each(["build"])(
     "%s: commits a failed ship's leftovers, drops the logs dev already holds, then rebases",
     async (workflow) => {
       const f = await minted();
@@ -763,6 +842,60 @@ describe("bkit worktrees setup — mint (resume)", () => {
     expect(git(wtOf(f), "ls-files", ".bkit")).toBe("");
     expect(fs.lstatSync(path.join(wtOf(f), ".bkit/.env")).isSymbolicLink()).toBe(true);
   });
+
+  it.each([".bkit/.env", "./.bkit/.env"])(
+    "resumes with bkit's own env in the copy list (%s)",
+    async (entry) => {
+      const f = fixture();
+      fs.writeFileSync(
+        path.join(f.repo, "package.json"),
+        JSON.stringify({
+          bkit: { workflows: { worktree: { copy: [entry], install: false } } },
+        }),
+      );
+      fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+      const source = path.join(f.repo, ".bkit/.env");
+      fs.writeFileSync(source, "TEST_VALUE=fixture\n");
+      expect((await setup(f.repo, "build", "--worktrees")).code).toBe(0);
+      const dest = path.join(wtOf(f), ".bkit/.env");
+      expect(fs.lstatSync(dest).isSymbolicLink()).toBe(true);
+
+      const again = await setup(f.repo, "build", "--worktrees");
+      expect(again.code).toBe(0);
+      expect(again.json).toMatchObject({ mode: "resumed", bkitEnv: "unchanged" });
+      expect(fs.realpathSync(dest)).toBe(fs.realpathSync(source));
+      expect(fs.readFileSync(source, "utf-8")).toBe("TEST_VALUE=fixture\n");
+    },
+  );
+
+  it.each([".bkit/.env", "./.bkit/.env", ".bkit\\.env", ".\\.bkit\\.env"])(
+    "skips the owned env with Windows path normalization (%s)",
+    async (entry) => {
+      const f = fixture();
+      fs.writeFileSync(
+        path.join(f.repo, "package.json"),
+        JSON.stringify({
+          bkit: { workflows: { worktree: { copy: [entry, "app.env"], install: false } } },
+        }),
+      );
+      fs.mkdirSync(path.join(f.repo, ".bkit"), { recursive: true });
+      const source = path.join(f.repo, ".bkit/.env");
+      fs.writeFileSync(source, "TEST_VALUE=fixture\n");
+      fs.writeFileSync(path.join(f.repo, "app.env"), "APP_VALUE=fixture\n");
+      pathPlatform.windows = true;
+
+      for (const expectedEnv of ["linked", "unchanged"]) {
+        const r = await setup(f.repo, "build", "--worktrees");
+        expect(r.code).toBe(0);
+        expect(r.json.copyMissing).toEqual([]);
+        expect(r.json.copied).toEqual(["app.env"]);
+        expect(r.json.bkitEnv).toBe(expectedEnv);
+        expect(fs.realpathSync(path.join(wtOf(f), ".bkit/.env"))).toBe(source);
+        expect(fs.readFileSync(source, "utf8")).toBe("TEST_VALUE=fixture\n");
+        expect(fs.readFileSync(path.join(wtOf(f), "app.env"), "utf8")).toBe("APP_VALUE=fixture\n");
+      }
+    },
+  );
 
   it("re-links bkit's own .bkit/.env on resume, so a worktree made earlier heals itself", async () => {
     const f = fixture();

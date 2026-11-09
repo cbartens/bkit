@@ -829,93 +829,83 @@ describe("MCP config — fresh install and a consumer's own file", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Constraint-before-write: the cloud/tracker constraint check runs BEFORE the
-// package.json write, so a hard error writes no state.
-//
-// Invariant:
-//   (a) `bkit install --tracker=github --auto=cursor` exits non-zero.
-//   (b) package.json is NOT mutated (issueTracker NOT written on mismatch).
-// Jira is local-only, so every cloud lane refuses `--tracker=jira` the same way.
+// Cloud opt-in validation runs before writes; any wired tracker is supported.
 // ---------------------------------------------------------------------------
 
-describe("Challenge Finding 3 — cloud/tracker constraint-before-write regression", () => {
+describe("cloud variants — wired trackers and host prerequisites", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
-  // [tracker, cloud lane, the tracker that lane requires]
-  const MISMATCHES = [
-    ["github", "cursor", "linear"],
-    ["jira", "claude", "github"],
-    ["jira", "cursor", "linear"],
-    ["jira", "opencode", "github"],
-  ] as const;
 
-  it.each(MISMATCHES)(
-    "--tracker=%s --auto=%s exits non-zero (constraint mismatch)",
-    (tracker, cloud, required) => {
-      // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
+  function runCloudInstall(args: string[]) {
+    return spawnSync(requireTsx(), [getInstallPath(), "install", ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+  }
 
-      const initialPkg = { name: "constraint-test", version: "0.0.0" };
-      fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
-      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  function seedConsumer() {
+    const initialPkg = JSON.stringify({ name: "cloud-test", version: "0.0.0" });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkg, "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    return initialPkg;
+  }
 
-      const result = spawnSync(
-        requireTsx(),
-        [getInstallPath(), "install", `--tracker=${tracker}`, `--auto=${cloud}`],
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: { ...process.env, NODE_NO_WARNINGS: "1" },
-          timeout: 30_000,
-        },
-      );
-
-      // Must exit non-zero (the constraint hard-error path).
-      expect(
-        result.status,
-        `Expected non-zero exit for tracker/cloud mismatch.\n` +
-          `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
-      ).not.toBe(0);
-
-      // Error output must mention the mismatch.
-      const combined = combinedOutput(result);
-      expect(combined).toContain(`--auto=${cloud} requires tracker=${required}`);
-    },
-  );
-
-  it.each(MISMATCHES)(
-    "--tracker=%s --auto=%s does NOT write bkit.tracker.default to package.json (no partial write)",
-    (tracker, cloud) => {
-      // Finding 3 (b): the "no state written on hard error" invariant.
-      // The pre-remediation code wrote issueTracker BEFORE the constraint check,
-      // meaning package.json was mutated even on a failed install.
-
-      const initialPkg = { name: "constraint-test", version: "0.0.0" };
-      const initialPkgJson = JSON.stringify(initialPkg);
-      fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkgJson, "utf-8");
-      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-      spawnSync(
-        requireTsx(),
-        [getInstallPath(), "install", `--tracker=${tracker}`, `--auto=${cloud}`],
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: { ...process.env, NODE_NO_WARNINGS: "1" },
-          timeout: 30_000,
-        },
-      );
-
-      // package.json must NOT have bkit.tracker.default set (no partial write).
-      const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { tracker?: { default?: string } };
+  function installedFacts() {
+    return JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: {
+        tracker?: { default?: string };
+        cloud?: { agent?: string };
+        providers?: { opencode?: { default?: string } };
       };
+    };
+  }
 
-      expect(
-        afterPkg.bkit?.tracker?.default,
-        "bkit.tracker.default must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
-      ).toBeUndefined();
-    },
-  );
+  it("--auto=codex without .codex/ exits 1 naming --codex and writes nothing", () => {
+    const initialPkg = seedConsumer();
+    const before = fs.readdirSync(tmpDir).sort();
+    const result = runCloudInstall(["--tracker=github", "--auto=codex"]);
+    expect(result.status, combinedOutput(result)).toBe(1);
+    expect(combinedOutput(result)).toContain("--codex");
+    expect(combinedOutput(result)).not.toContain("Unknown cloud variant");
+    expect(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")).toBe(initialPkg);
+    expect(fs.readdirSync(tmpDir).sort()).toEqual(before);
+  });
+
+  it("--tracker=jira --codex --auto=codex exits 0 and records codex", () => {
+    seedConsumer();
+    const result = runCloudInstall(["--tracker=jira", "--codex", "--auto=codex"]);
+    expect(result.status, combinedOutput(result)).toBe(0);
+    const facts = installedFacts();
+    expect(facts.bkit?.tracker?.default).toBe("jira");
+    expect(facts.bkit?.cloud?.agent).toBe("codex");
+    expect(fs.existsSync(path.join(tmpDir, ".codex", "hooks.json"))).toBe(true);
+  });
+
+  it("--tracker=github --auto=cursor exits 0 and records cursor", () => {
+    seedConsumer();
+    const result = runCloudInstall(["--tracker=github", "--auto=cursor"]);
+    expect(result.status, combinedOutput(result)).toBe(0);
+    const facts = installedFacts();
+    expect(facts.bkit?.tracker?.default).toBe("github");
+    expect(facts.bkit?.cloud?.agent).toBe("cursor");
+  });
+
+  it("--tracker=github --opencode --auto=opencode in one run exits 0 and records opencode", () => {
+    seedConsumer();
+    const result = runCloudInstall([
+      "--tracker=github",
+      "--opencode=openrouter",
+      "--auto=opencode",
+    ]);
+    expect(result.status, combinedOutput(result)).toBe(0);
+    const facts = installedFacts();
+    expect(facts.bkit?.tracker?.default).toBe("github");
+    expect(facts.bkit?.cloud?.agent).toBe("opencode");
+    expect(facts.bkit?.providers?.opencode?.default).toBe("openrouter");
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(true);
+  });
 
   it("--tracker=linear --auto=cursor exits 0 and writes bkit.tracker.default=linear (matching pair)", () => {
     // Complementary positive case: the matching pair must succeed and persist state.

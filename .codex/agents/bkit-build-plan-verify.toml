@@ -71,6 +71,9 @@ developer_instructions = """
      - Cross-domain boundaries are respected.
    - Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
      - **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
+   - Log each integration gap and each failing test as one gap: append `INTEGRATION: {what does not work together, naming the groups or tasks} — Fixable: true|false` with Bash `echo >>`, and describe it under `Integration Gaps`.
+     - `Fixable: false` only when closing the gap needs a choice the plan does not make; the owner then decides. Every other gap is `Fixable: true`, because the holistic fix round closes it.
+     - **If** a supplied decision record accepts the gap → no gap. Name the record in `Notes`.
 8. **If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:
    - `delete-still-referenced` → read each hit:
      - **If** the hit is a different thing with the same name → no gap.

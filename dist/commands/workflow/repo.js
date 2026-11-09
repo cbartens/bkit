@@ -143,7 +143,7 @@ export const repoCommand = {
                 repoRoot: "the main checkout (the same from any worktree)",
                 bkit: "the bkit binary the workflow blocks call: <repoRoot>/node_modules/.bin/bkit, else `bkit` on PATH",
                 outboxRoot: "<git common dir>/bkit-outbox: per-run scratch files, never committed",
-                sessionDir: "<outboxRoot>/sessions/<utc-time>-<random>/: a new, empty folder per call for this run's prompt.md and issue files; folders older than 7 days are pruned",
+                sessionDir: "<outboxRoot>/sessions/<utc-time>-<random>/: a new, empty folder per invocation for prompt.md and issue files; pass it explicitly as --session-dir for workflow progress ownership; folders older than 7 days are pruned",
                 bkitVersion: ".bkit/version pinnedVersion: the release this repo's bkit files came from (null when unpinned)",
                 bkitLatest: "newest published @cbartens/bkit, asked at most once a day (null when offline, opted out via BKIT_NO_UPDATE_CHECK, or unpinned)",
                 bkitOutdated: "true when bkitVersion is older than bkitLatest (null when either is unknown)",

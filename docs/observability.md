@@ -25,6 +25,14 @@ The workflow commits every captured payload inside an untrusted fence (`===== BE
 
 No server-side telemetry pipeline, log drains, or tracing. Observability limited to CLI stdout / stderr — `bkit install` / `bkit check` in consumer environments, and the `bkit <noun> <verb>` workflow commands during agent runs.
 
+## Tracker reporting diagnostics
+
+The tracker helper emits bounded `[bkit-tracker]` diagnostics and best-effort `tool-failure` friction for preparation, source, lock, delivery, reconciliation and receipt failures. Rows identify the workflow phase and failure stage; a known comment URL may be included. They exclude comment bodies, credentials, personal data and raw provider errors. Stable phase and stage identity groups recurrences across invocations.
+
+Unavailable fallback-source files and invalid or unreadable session associations attempt their own friction records even when the current provider write succeeds. Missing optional association arguments do not count as an association failure.
+
+Write friction in the active worktree's ledger. A failed friction write emits one bounded diagnostic without recursively attempting friction. Reporting and diagnostic failures remain nonfatal. If a provider accepts a write but its response is lost, an unprovable reconciliation can produce a duplicate new comment; diagnostics must not claim an exactly-once guarantee.
+
 ## Log Format
 
 All bkit CLI output uses bracketed context prefixes:
@@ -177,6 +185,21 @@ Release-PR capstone in mirror mode (`docs/deployments.md` § One CI run per dev 
 - `[bkit-runs] dev push run at %s is in progress — waiting (up to %sm).` — logged once per state change, not per poll.
 - `[bkit-runs] no dev push run exists at %s after %sm.` — exit 3.
 
+### `[bkit-cloud] gate:` annotations — router label gate
+
+`bkit-cloud.yml`'s context job reads `bkit:auto` through the consumer's own bkit (`bkit issues fetch`) on every tracker. Each run logs one GitHub annotation and writes one `$GITHUB_STEP_SUMMARY` row `tracker | issue | verdict | reason | jobs`. Every outcome other than `pass` starts no agent and leaves the run green. Brackets load-bearing — log-drain grep key.
+
+<!-- prettier-ignore -->
+| Verdict | Annotation | Reason column |
+| --- | --- | --- |
+| `pass` | `::notice::[bkit-cloud] gate: pass` | `bkit:auto present` |
+| `label-absent` | `::notice::[bkit-cloud] gate: label-absent` | `bkit:auto not on the issue` |
+| `no-issue` | `::notice::[bkit-cloud] gate: no-issue` | no issue recorded in the marker or a feature row |
+| `no-agent` | `::notice::[bkit-cloud] gate: no-agent` | label present but `bkit.cloud.agent` selected no job |
+| `unreadable` | `::warning::[bkit-cloud] gate: unreadable (…)` | `bkit-unavailable` (lockfile install failed), `reason=auth` (names `BKIT_LINEAR_API_KEY` / `BKIT_JIRA_API_KEY` / `GH_TOKEN`), `reason=network`, `reason=not-found`, `reason=exit-N`, `reason=output-unparseable` |
+
+The `jobs` column holds the `Select agent job` hand-off: the dispatched job with its `BKIT_` secret (`codex:BKIT_OPENAI_API_KEY`) and each ignored job with its reason (`claude: not bkit.cloud.agent`); a `no-agent` row names the recorded agent's missing `BKIT_` secret and the ignored secrets.
+
 ## Advisory Checklist Output
 
 Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/checks/after/index.ts`). Each `PreflightFinding`: `{ id, severity, detect, action }`. Primary human-readable observability surface.
@@ -194,7 +217,8 @@ Phase 3 emits credential findings as advisory text. Finding ids = audit trail:
 | --- | --- | --- |
 | `detectShellGhMcpToken` | `checks/after/auth.ts` | `BKIT_GH_TOKEN` missing / empty in the shell — gated on a configured `github` MCP server |
 | `detectGhSecret` | `checks/after/auth.ts` | GitHub Actions repo secret presence (`gh secret list`) |
-| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed and: no claude credential (`anthropic-api-key-secret-missing`; repo variables read via `gh variable list` — unlistable → still raised when the key is missing, naming the unchecked variables); key set alongside federation vars (`anthropic-api-key-shadows-federation`); federation vars set but adopted copy lacks the federation inputs (`anthropic-federation-template-stale`) |
+| `detectCiRouterSecrets` | `checks/after/auth.ts` | `bkit-cloud.yml` installed and: no claude credential (`anthropic-api-key-secret-missing`; repo variables read via `gh variable list` — unlistable → still raised when the key is missing, naming the unchecked variables); key set alongside federation vars (`anthropic-api-key-shadows-federation`); federation vars set but adopted copy lacks the federation inputs (`anthropic-federation-template-stale`). The Anthropic findings fire for `cloud.agent` claude only, under `BKIT_ANTHROPIC_API_KEY` (legacy `ANTHROPIC_API_KEY` for a copy that predates the `BKIT_` names). Also: Linear / Jira tracker key unset (`cloud-router-tracker-secret-missing`); codex without `BKIT_OPENAI_API_KEY` (`codex-api-key-secret-missing`); legacy secret set without its `BKIT_` twin (`cloud-router-secret-renamed`) |
+| `buildCloudSetupAdvisory` | `checks/after/github.ts` | Router setup advisory, first match wins: `cloud-claude-missing-id-token` (claude, no `id-token: write`), `cloud-router-tracker-stale` (Linear / Jira, copy serves GitHub only), `cloud-router-codex-missing` (codex, no `openai/codex-action`), `cloud-router-agent-unset` (no recorded agent), `cloud-router` (informational; for `none` / `cursor` it says the router starts nothing), `cloud-router-none` (no router, undecided) |
 | `buildCloudDashboardsAdvisory` | `checks/after/auth.ts` | Cloud-dashboard secret checklist (GitHub Actions + Claude + Cursor) |
 
 ## Runtime capability row

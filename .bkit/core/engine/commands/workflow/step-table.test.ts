@@ -310,12 +310,54 @@ describe("bkit status resume", () => {
   it("a retry decision with no loop row before it places no resume point", async () => {
     const file = log([
       ...setUp("build"),
-      done("build", "build-plan-verify-holistic"),
+      done("build", "build-plan-current"),
       done("build", "build-decision", { route: "retry" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      step: "build-challenge",
+      step: "build-install-skills",
+      after: "build-plan-current",
+    });
+  });
+
+  it.each([
+    ["PASS", { step: "build-challenge", number: 11 }],
+    ["CONCERNS", { step: "build-plan-verify-holistic", number: 10 }],
+    ["FAIL", { step: "build-plan-verify-holistic", number: 10 }],
+  ])("a holistic verify %s row resumes at %o", async (verdict, expected) => {
+    const file = log([...setUp("build"), done("build", "build-plan-verify-holistic", { verdict })]);
+    expect((await resume("build", file)).json).toMatchObject({
+      ...expected,
       after: "build-plan-verify-holistic",
+    });
+  });
+
+  it("a holistic gaps fix resumes at the holistic verify that judges it", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "FAIL" }),
+      done("build", "build-plan-gaps-remediate-holistic", { strategy: "STANDARD" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-verify-holistic",
+      number: 10,
+      after: "build-plan-gaps-remediate-holistic",
+    });
+  });
+
+  it.each([
+    ["build-plan-verify-holistic", "retry", "build-plan-gaps-remediate-holistic"],
+    ["build-plan-gaps-remediate-holistic", "retry", "build-plan-gaps-remediate-holistic"],
+    ["build-plan-verify-holistic", "holistic", "build-plan-verify-holistic"],
+  ])("a decision after %s with route %s resumes at %s", async (prior, route, step) => {
+    const file = log([
+      ...setUp("build"),
+      done("build", prior, { verdict: "FAIL" }),
+      done("build", "build-decision", { route }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step,
+      number: 10,
+      after: "build-decision",
     });
   });
 
