@@ -167,11 +167,6 @@ function evidenceExpired(st) {
   return false;
 }
 
-/** True when a word still depends on the shell's expansion (set by the lexer). */
-function isDynamicWord(cmd, text) {
-  return cmd.dyn.has(text);
-}
-
 function isQuietLiteral(literal) {
   return (
     /^\/(dev|tmp|var\/folders|var\/tmp)\//.test(literal) ||
@@ -211,7 +206,7 @@ function addEvidenceTarget(st, literal, cwd, force) {
 
 /** A target word: dynamic ones are uncertain when they could name a source file. */
 function addWordTarget(st, cmd, text, cwd, force) {
-  if (isDynamicWord(cmd, text)) {
+  if (cmd.dyn.has(text)) {
     if (force || SOURCE_EXT_RE.test(text.replace(/\u0000/g, ""))) {
       if (!/^\$[A-Za-z_{][A-Za-z0-9_}]*$/.test(text) || force)
         st.uncertain.add("unresolved-target");
@@ -664,7 +659,7 @@ function awkFiles(args) {
 function evalCommand(cmd, st, depth, cwd) {
   const { words, viaXargs } = stripCommandPrefix(cmd.words);
   for (const target of cmd.redirects) {
-    if (isDynamicWord(cmd, target)) {
+    if (cmd.dyn.has(target)) {
       if (
         SOURCE_EXT_RE.test(target.replace(/\u0000/g, "")) &&
         !/^\$[A-Za-z_{][A-Za-z0-9_}]*$/.test(target)
@@ -681,11 +676,11 @@ function evalCommand(cmd, st, depth, cwd) {
     if (viaXargs) st.uncertain.add("unknown-stdin");
   };
 
-  if (isDynamicWord(cmd, words[0])) return cwd;
+  if (cmd.dyn.has(words[0])) return cwd;
   switch (program) {
     case "cd": {
       const arg = operands(args)[0];
-      if (!arg || arg === "-" || isDynamicWord(cmd, arg)) return null;
+      if (!arg || arg === "-" || cmd.dyn.has(arg)) return null;
       return resolveCwd(cwd, arg);
     }
     case "pushd":
@@ -735,7 +730,7 @@ function evalCommand(cmd, st, depth, cwd) {
       const c = args.findIndex((w) => /^-[a-z]*c$/.test(w));
       if (c < 0 || args[c + 1] === undefined) return cwd;
       const script = args[c + 1];
-      if (isDynamicWord(cmd, script)) {
+      if (cmd.dyn.has(script)) {
         st.uncertain.add("unknown-script-effect");
         return cwd;
       }
@@ -884,14 +879,14 @@ function evalPatch(cmd, st, kind, args, cwd) {
     else files.push(a);
   }
   let base = cwd;
-  if (dir !== null) base = isDynamicWord(cmd, dir) ? null : resolveCwd(cwd, dir);
+  if (dir !== null) base = cmd.dyn.has(dir) ? null : resolveCwd(cwd, dir);
   const texts = [];
   if (kind === "git") {
     for (const f of files) {
       if (f === "-") {
         const t = knownStdin(cmd, st, cwd);
         if (t !== null) texts.push(t);
-      } else if (isDynamicWord(cmd, f)) st.uncertain.add("unavailable-source");
+      } else if (cmd.dyn.has(f)) st.uncertain.add("unavailable-source");
       else {
         const t = readBoundedSource(st, f, cwd);
         if (t !== null) texts.push(t);
@@ -903,7 +898,7 @@ function evalPatch(cmd, st, kind, args, cwd) {
       else if (!cmd.piped) st.uncertain.add("unknown-stdin");
     }
   } else {
-    if (input !== null && !isDynamicWord(cmd, input)) {
+    if (input !== null && !cmd.dyn.has(input)) {
       const t = readBoundedSource(st, input, cwd);
       if (t !== null) texts.push(t);
     } else {
@@ -959,13 +954,13 @@ function evalInterpreter(cmd, st, lang, args, cwd) {
   }
   let source = null;
   if (code !== null) {
-    if (isDynamicWord(cmd, code)) {
+    if (cmd.dyn.has(code)) {
       st.uncertain.add("unknown-script-effect");
       return;
     }
     source = code;
   } else if (file !== null) {
-    if (isDynamicWord(cmd, file)) {
+    if (cmd.dyn.has(file)) {
       st.uncertain.add("unavailable-source");
       return;
     }

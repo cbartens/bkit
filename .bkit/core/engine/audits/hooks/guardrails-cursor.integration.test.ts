@@ -552,12 +552,15 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
       // The CommonJS fs object is the one the loaded hook part reads; the ESM namespace is frozen.
       const cjsFs = createRequire(import.meta.url)("node:fs") as typeof fs;
       const realLstat = cjsFs.lstatSync;
+      const bPath = path.join(dir, "b.js");
+      // Index 1 (the swapped-in file) is chosen exactly when the path ends in a.js.
       const spy = vi
         .spyOn(cjsFs, "lstatSync")
         .mockImplementation(((p: fs.PathLike, o?: object) =>
-          String(p).endsWith("a.js")
-            ? realLstat(path.join(dir, "b.js"), o)
-            : realLstat(p, o)) as typeof fs.lstatSync);
+          realLstat(
+            [p, bPath][Number(String(p).endsWith("a.js"))] as fs.PathLike,
+            o,
+          )) as typeof fs.lstatSync);
       try {
         const ev = evidence("node a.js", { cwd: dir, root: dir });
         expect(ev.targets).not.toContain("src/raced.ts");
@@ -571,10 +574,10 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
       const dir = workDir("deadline");
       const evidence = loadEvidence();
       const base = Date.now();
-      let calls = 0;
       const spy = vi
         .spyOn(Date, "now")
-        .mockImplementation(() => (calls++ < 1 ? base : base + 1000));
+        .mockReturnValueOnce(base)
+        .mockReturnValue(base + 1000);
       try {
         const ev = evidence("echo x > src/one.ts; echo x > src/two.ts; echo x > src/three.ts", {
           cwd: dir,

@@ -360,7 +360,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Bound inspection and preserve enforcement composition
+- [x] **TASK 3:** Bound inspection and preserve enforcement composition
   - **UPDATE:** `.bkit/core/hooks/guardrails-shell.js`: inspect only directly named safe regular descriptors with bounded reads; do not execute source, follow imports, traverse directories or wait on special files. Use 256 KiB command input, 64 KiB plus one byte per source, depth 3, 64 exact targets and a cooperative 200 ms deadline. Stop at the first limit, retain prior targets and report analysis-limit; unavailable/racy/symlink-dependent source reports uncertainty.
   - **UPDATE:** `.bkit/core/hooks/guardrails-tiers.js`: preserve deny/ask/secret precedence and allowed fetch+edit composition, with safe uncertainty diagnostics and no new blocking.
   - **UPDATE:** `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs`: consume the composed fetch/edit evidence in this task so an allowed fetch cannot hide a later edit. Preserve the established return envelope and retry transport; task 9 adds richer shared advice and new edit-tool coverage.
@@ -388,7 +388,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Select complete blocks before truthful acknowledgement
+- [x] **TASK 5:** Select complete blocks before truthful acknowledgement
   - **UPDATE:** `.bkit/core/hooks/gateguard-engine.js`: batch complete blocks within 8,000 characters for Claude and 2,000 UTF-8 bytes for Codex, Cursor and Antigravity. Count all composed advice and reserve 512 units for uncertainty/output-limit notices. Emit omitted-target counts, handle a zero-fit block and acknowledge only selected complete blocks on verified routes. Unknown, omitted, truncated and unverified paths remain eligible. Preserve off mode, edit deny-once, shell advisory under deny and in-process fallback.
   - **DEPENDS ON:** 4.
   - **DONE WHEN:** The three named cases pass at budget boundaries and with corrupt/unavailable state; no path without a complete selected verified block is acknowledged. Existing reminder semantics survive on established transports, while fixture output never promotes an unverified route to verified.
