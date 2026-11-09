@@ -360,7 +360,7 @@ Code-only — `git revert` of the implementation commits is sufficient after act
 
 ## Agent Execution Runbook
 
-Nine tasks in three groups. Maximum actual group size is three tasks and ten TEST FIRST cases, below the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate.
+Nine tasks in three groups. Maximum actual group size is three tasks and ten TEST FIRST cases, below the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate. Shared pieces with #836 (`docs/plans/202611/836-record-host-model-plan.md`) are built once: before Tasks 1, 4 and the commit-helper wiring in Task 4, check what #836 has landed (invocation record and receipt, the locked read-back status/ledger append boundary, current operation context for commit helpers); whichever lands first creates it, and this plan extends it without a second copy. Build #860 Task 4 and #836 Task 6 one after the other, never in parallel.
 
 <!-- bkit:group 1 start -->
 
@@ -369,9 +369,9 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 <!-- bkit:task 1 start -->
 
 - [ ] **TASK 1:** Bind managed commands to engine-issued invocation context (deterministic-bookkeeping-4; R1–R7, R21–R22).
-  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add common explicit invocation resolution, conflict/path validation and help/spec support without using implicit journal discovery as authority.
+  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add common explicit invocation resolution (one `--invocation` flag/receipt shared with #836's host pass-through), conflict/path validation and help/spec support without using implicit journal discovery as authority.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: specialize typed workflow invocation issuance/lookup plus explicit standalone audit/utility issuance into the existing outbox; return validated scope and operation/correction inputs without inventing a run/FID.
-  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation events and exact run/step occurrence resolution; retain existing reducer contracts.
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation events and exact run/step occurrence resolution; retain existing reducer contracts. One record per agent call carries run, step and agent (this plan) plus host and configured model at start (#836); reuse whatever #836 has landed and add no second invocation type to `status.jsonl`.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: lifecycle integration/cache rehydration and existing book-root/path output reuse.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.ts`: derive registered number/title and supported step/agent artifact metadata.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.ts`: consume the current #836 authoritative observation contract or explicit unavailable state; no new detector.
@@ -433,9 +433,9 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 <!-- bkit:task 4 start -->
 
 - [ ] **TASK 4:** Reconcile ledger operations with durable receipts (deterministic-bookkeeping-7; R3, R8, R16, R20–R21, R25).
-  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: strict ledger operation/receipt helpers on existing action key/hash primitives, preserving tracker changed-hash behavior; cycle-free exclusive-create helper.
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: strict ledger operation/receipt helpers on existing action key/hash primitives, preserving tracker changed-hash behavior; cycle-free exclusive-create helper. This is the single lock-and-confirm helper (append, flush, read-back, interrupted-write check) shared by `status.jsonl` and the `docs/*.jsonl` ledgers; extend #836's boundary if it landed first.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.ts`: delegate only low-level exclusive creation while preserving workflow lock public behavior and ownership.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: engine-issued operation preparation, immutable request hash, target lock, exact prepared bytes, fsync/completion receipt and explicit reconciliation; make union/compact coordinate pending target effects.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: engine-issued operation preparation (the same operation context that #836 passes through `commitOwnSet`, `ownPathCommit`, `commitBookkeeping` and `retriggerCommit`; issue the ID into that context or read it from there), immutable request hash, target lock, exact prepared bytes, fsync/completion receipt and explicit reconciliation; make union/compact coordinate pending target effects.
   - **UPDATE:** `.bkit/core/engine/ledgers/journal.ts`: coordinate appendFrictionRow and its dispatcher/owner-pause callers with the shared cycle-free target lock; retain append-only recurrence and optional telemetry failure policy; inventory and coordinate all other direct managed-target writers.
   - **READ:** `.bkit/core/engine/commands/workflow/tracker.ts`: keep existing changed-body action contract.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.test.ts`: separate strict ledger collision policy from generic action hash reuse.
