@@ -2644,13 +2644,18 @@ describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
     expect(JSON.parse(read(agyPath)).hooks.PreToolUse).toContainEqual(agyGroup);
 
     // No duplicate bkit group: each bkit hook command is registered once per event.
-    expect(count(JSON.stringify(claudeAfter.hooks.PreToolUse), "bkit-gateguard.cjs")).toBe(1);
-    expect(
-      count(JSON.stringify(JSON.parse(read(cursorPath)).hooks.preToolUse), "bkit-gateguard.cjs"),
-    ).toBe(1);
-    expect(
-      count(JSON.stringify(JSON.parse(read(agyPath)).hooks.PreToolUse), "bkit-gateguard.cjs"),
-    ).toBe(1);
+    const countCommands = (node: unknown, needle: string): number => {
+      if (Array.isArray(node)) return node.reduce((n, x) => n + countCommands(x, needle), 0);
+      if (node === null || typeof node !== "object") return 0;
+      const obj = node as Record<string, unknown>;
+      const own = typeof obj.command === "string" && obj.command.includes(needle) ? 1 : 0;
+      return own + Object.values(obj).reduce<number>((n, v) => n + countCommands(v, needle), 0);
+    };
+    expect(countCommands(claudeAfter.hooks.PreToolUse, "bkit-gateguard.cjs")).toBe(1);
+    expect(countCommands(JSON.parse(read(cursorPath)).hooks.preToolUse, "bkit-gateguard.cjs")).toBe(
+      1,
+    );
+    expect(countCommands(JSON.parse(read(agyPath)).hooks.PreToolUse, "bkit-gateguard.cjs")).toBe(1);
 
     // A second install is a no-op.
     const snapshot = [claudePath, cursorPath, agyPath].map(read);

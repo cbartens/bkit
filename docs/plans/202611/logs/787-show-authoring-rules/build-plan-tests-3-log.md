@@ -16,3 +16,4 @@ WROTE — TASK 12: `.bkit/core/engine/audits/hooks/gateguard-parity.integration.
 SOURCE — TASK 13: shipped registrations from git show da97be38:.bkit/shared/.claude/settings.json, .cursor/hooks.json, .agents/plugins/bkit/hooks.json; drift merge call at .bkit/core/engine/install/write.ts:304
 WROTE — TASK 13: `.bkit/core/engine/install/write.test.ts` `merges managed lists while keeping consumer-added entries`
 WROTE — TASK 13: `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades shipped registrations without dropping consumer hook groups or permissions`
+UPDATED — TASK 13: `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades shipped registrations without dropping consumer hook groups or permissions`: bkit-gateguard.cjs count changed from substring count in PreToolUse JSON to a count of hook commands naming it (expect 1 per host); all other assertions unchanged
