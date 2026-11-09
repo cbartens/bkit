@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T09:39:09Z)_
+_(refreshed 2026-11-09T09:57:50Z)_
 
 ### Design
 
@@ -56,6 +56,7 @@ _(refreshed 2026-11-09T09:39:09Z)_
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
+| 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
 
 ### Debug
 
