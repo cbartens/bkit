@@ -2392,3 +2392,72 @@ describe("#892 — upgrade replaces the old sample config names", () => {
     expect(runCli(["check"]).status).toBe(0);
   });
 });
+
+describe("#892 — upgrade copies the lint-staged sample to the root", () => {
+  const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cli, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        GIT_DIR: path.join(tmpDir, ".git"),
+        GIT_WORK_TREE: tmpDir,
+      },
+      timeout: 90_000,
+    });
+  }
+
+  /** A consumer holding the old sample, gating format on lint-staged, with no root lint-staged config. */
+  function seedOldLintStagedConsumer(): void {
+    expect(spawnSync("git", ["init", "-q"], { cwd: tmpDir }).status).toBe(0);
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "consumer",
+          version: "0.0.0",
+          scripts: { "bkit:gate:format": "pnpm lint-staged" },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf-8",
+    );
+    const templates = path.join(tmpDir, ".bkit", "templates");
+    fs.writeFileSync(path.join(templates, ".lintstagedrc.json"), "{}\n", "utf-8");
+    fs.rmSync(path.join(templates, "lintstagedrc.example.json"), { force: true });
+    fs.rmSync(path.join(tmpDir, ".lintstagedrc.json"), { force: true });
+  }
+
+  it("upgrade copies the lint-staged sample to the root when the format gate runs lint-staged with no root config", () => {
+    seedOldLintStagedConsumer();
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    const rootConfig = path.join(tmpDir, ".lintstagedrc.json");
+    expect(fs.existsSync(rootConfig)).toBe(true);
+    const shipped = path.join(tmpDir, ".bkit", "templates", "lintstagedrc.example.json");
+    expect(fs.readFileSync(rootConfig, "utf-8")).toBe(fs.readFileSync(shipped, "utf-8"));
+    expect(combinedOutput(up)).toContain(".lintstagedrc.json");
+  });
+
+  it("upgrade dry run reports the lint-staged config copy without writing it", () => {
+    seedOldLintStagedConsumer();
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+
+    expect(combinedOutput(dry)).toContain(".lintstagedrc.json");
+    expect(fs.existsSync(path.join(tmpDir, ".lintstagedrc.json"))).toBe(false);
+  });
+});

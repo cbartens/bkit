@@ -13,6 +13,7 @@ Plan: `docs/plans/202611/892-template-copies-bkit-plan.md`. Caps: 5 tasks and 25
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
 | 1 | Rename the sample configs and prove the fix | 3 | 3 | 4.4 |
+| 2 | Challenge round 1 findings | 1 | 2 | 2.4 |
 
 ## Tasks
 
@@ -22,6 +23,7 @@ Plan: `docs/plans/202611/892-template-copies-bkit-plan.md`. Caps: 5 tasks and 25
 | 1 | 1 | 3 | 2 |
 | 2 | 1 | 0 | 0 |
 | 3 | 1 | 0 | 0 |
+| 4 | 2 | 2 | 1 |
 
 ## Problems
 
