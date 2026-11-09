@@ -146,3 +146,13 @@
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/2/1/comment","hash":"04dd017f3baf962851388a045304c57174f47721251f5df272cae7bb0e3b8e32","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6733204499","at":"2026-11-09T06:16:55Z"}
 {"type":"engine-call","workflow":"build","at":"2026-11-09T06:17:03Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-09T06:17:03Z","parentSha":"628310047bb01e549f06bfbea5a928b9506db9f8","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-tasks-2-log.md"],"verdict":"PASS","attempt":1,"group":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:17:10Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:17:10Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:17:11Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:18:54Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:18:54Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:26Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/2/1/comment","hash":"e429e09712776b57edd70b9160622890cadb98c4525a48b1d2512f18340389ac","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6733204499","at":"2026-11-09T06:22:28Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:28Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:34Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T06:22:35Z","parentSha":"86fa787ff7d6068f62006653a9b0a6f72fe99953","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-verify-2-1.md"],"verdict":"PASS","attempt":1,"group":2,"failures":0}
