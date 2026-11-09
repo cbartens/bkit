@@ -8743,18 +8743,44 @@ If that output is no longer in your context (summarised, or read by another agen
 Advisory: proceed once satisfied.
 ```
 
+### gateguard-authoring-reminder
+
+- hook: GateGuard
+- fires: Edit to an agent-read file
+- hosts: All five
+- source: `.bkit/core/hooks/gateguard-engine.js` `authoringReminder`
+
+```text
+[bkit GateGuard] Agent-read file. Before you edit it:
+- Find this file in `.bkit/authoring.md` § Which Sections Apply, and read the sections its row lists.
+- Follow those rules in the edit.
+```
+
+### gateguard-advice-omitted
+
+- hook: GateGuard
+- fires: Advice for some targets does not fit the host's output limit
+- hosts: All five
+- source: `.bkit/core/hooks/gateguard-engine.js` `deliverAdvice`
+
+```text
+[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}
+```
+
 ### guardrails-shell-edit
 
 - hook: Guardrails
 - fires: Shell edit (`sed -i`, redirect into a source file)
 - hosts: Claude, Cursor, Codex, Antigravity
 - source: `.bkit/core/hooks/guardrails-shell.js` `shellEditAdvisory`
-- rule: edit-tools-only (text lines 2, 3)
+- rule: edit-tools-only (text paragraphs 1, 2, 3)
 
 ```text
-bkit guardrails: this command edits files through the shell (${hits.join("; ")}). The command is allowed. Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.
-Use the edit or write tool instead.
-If this is one of the exceptions in .agents/rules.md (generating files from a script, a bulk mechanical rewrite, or appending a log line to your own step output file with `>>`), proceed.
+bkit guardrails: this command edits files through the shell (targets: ${ev.targets.join(", ")}). The command is allowed.
+
+bkit guardrails: this command may edit files through the shell. The command is allowed.
+
+Pre-edit gates see only the edit and write tools, so a shell edit gets past every one of them.
 ```
 
 ### guardrails-force-push
