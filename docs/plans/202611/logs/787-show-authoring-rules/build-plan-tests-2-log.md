@@ -17,3 +17,5 @@ SOURCE — TASK 9: OpenCode V1/V2 hooks and patch parsing from .bkit/core/.openc
 WROTE — TASK 9: `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` `routes Antigravity multi-replace and shell targets`
 WROTE — TASK 9: `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` `leaves Antigravity targets eligible when retry transport cannot deliver`
 SOURCE — TASK 9: deny-once transport, digest store and fail-open allow from .bkit/core/hooks/antigravity-hook.js:62-90; gateguard acknowledges before adviseOnce at .bkit/core/.agents/plugins/bkit/hooks/bkit-gateguard.cjs:68-73; matcher from .bkit/shared/.agents/plugins/bkit/hooks.json:5
+SOURCE — TASK 7: ternary-form emit and single process.stdout.write in driver from .bkit/core/.cursor/hooks/bkit-gateguard.cjs:97-101
+PASSES — TASK 7: `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `routes Cursor delete and shell targets while keeping its driver untouched`: renamed from the old case with the contradictory single-line emit assertion dropped; the code already exists and satisfies it (driver has only the ternary form), so it passes now

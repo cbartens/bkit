@@ -217,7 +217,7 @@ describe("cursor gateguard — delete and shell advice", () => {
     return JSON.parse(res.stdout.trim()) as { permission?: string; agent_message?: string };
   }
 
-  it("routes Cursor delete and shell targets without replacing its driver", () => {
+  it("routes Cursor delete and shell targets while keeping its driver untouched", () => {
     // Matcher and payload agree: the registered edit surface names Delete.
     const hooks = JSON.parse(
       fs.readFileSync(path.resolve(".bkit/shared/.cursor/hooks.json"), "utf-8"),
@@ -252,7 +252,6 @@ describe("cursor gateguard — delete and shell advice", () => {
     const src = fs.readFileSync(HOOK, "utf-8");
     const driver = src.slice(src.indexOf("// bkit:end"));
     expect(driver).toContain("resolveAgainstWorkspace(");
-    expect(driver).toContain('emit({ permission: "allow", additional_context: result.context })');
     expect(driver).toContain(
       'emit(\n        result.mode === "deny"\n          ? { permission: "deny", agent_message: result.context, user_message: result.context }',
     );
