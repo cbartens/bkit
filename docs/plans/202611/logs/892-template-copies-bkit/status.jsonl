@@ -156,3 +156,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:28Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:34Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-09T06:22:35Z","parentSha":"86fa787ff7d6068f62006653a9b0a6f72fe99953","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-verify-2-1.md"],"verdict":"PASS","attempt":1,"group":2,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:43Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:50Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:50Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:22:51Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:23:44Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T06:33:32Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/3/comment","hash":"111208893a7c57b69accff3d456f0b64fac85d7d7855652ab9e202bdf293a438","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6733204499","at":"2026-11-09T06:33:34Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-09T06:33:34Z","parentSha":"3e50c0b091f141a0d3dc6e6f0c975836e72709db","artifacts":["docs/plans/202611/logs/892-template-copies-bkit/build-plan-verify-holistic-3.md"],"verdict":"PASS","attempt":3,"failures":0}
