@@ -58,10 +58,11 @@ function deny(reason) {
 /**
  * @param {string} cmd
  * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs) {
+function decideShell(cmd, dirs, ctx) {
   const c = String(cmd || "").trim();
-  const v = classifyShell(c, dirs);
+  const v = classifyShell(c, dirs, ctx);
   if (!v) return allow();
   switch (v.tier) {
     case "deny":
@@ -77,7 +78,8 @@ function decideShell(cmd, dirs) {
       );
     case "fetch":
       return ask(
-        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}`,
+        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}` +
+          (v.edits ? `\n\n${shellEditAdvisory(v.edits)}` : ""),
       );
     default:
       // Shell-as-edit-channel: advisory on every host, never a block.
@@ -103,7 +105,7 @@ function bkitGuardrails(payload) {
   // Codex passes the command as a string, or as an argv array for some shells.
   const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd, hookDirs(payload));
+  const decision = decideShell(cmd, hookDirs(payload), hookContext(payload));
   return decision.verdict === "allow" ? null : decision;
 }
 

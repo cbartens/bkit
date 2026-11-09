@@ -59,10 +59,11 @@ function deny(userMessage, agentMessage) {
 /**
  * @param {string} cmd
  * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
+ * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs) {
+function decideShell(cmd, dirs, ctx) {
   const c = cmd.trim();
-  const v = classifyShell(c, dirs);
+  const v = classifyShell(c, dirs, ctx);
   if (!v) return allow();
   switch (v.tier) {
     case "deny":
@@ -117,7 +118,7 @@ function bkitGuardrails(payload) {
     payload.tool_name == null &&
     payload.tool_input == null
   ) {
-    return decideShell(payload.command, hookDirs(payload));
+    return decideShell(payload.command, hookDirs(payload), hookContext(payload));
   }
 
   // preToolUse Read/TabRead: { tool_name, tool_input: { path|file_path|target_file|... } }

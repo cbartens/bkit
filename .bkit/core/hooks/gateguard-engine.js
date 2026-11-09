@@ -107,6 +107,27 @@ function docAuthoringAdvisory() {
   );
 }
 
+// Agent-read files: the files below `.agents/`, `.bkit/` and `docs/` plus the root agent
+// files, matching the scope `.bkit/authoring.md` states. Plan artifacts under `docs/plans/`
+// keep their own template contract and get no general reminder.
+const AGENT_READ_ROOT_FILES = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
+
+function isAgentReadPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (AGENT_READ_ROOT_FILES.has(p.split("/").pop() || "")) return true;
+  if (p.startsWith("docs/plans/") || p.includes("/docs/plans/")) return false;
+  return ["docs/", ".agents/", ".bkit/"].some((d) => p.startsWith(d) || p.includes("/" + d));
+}
+
+// The one general authoring reminder, identical for every edit channel and host.
+function authoringReminder() {
+  return (
+    `[bkit GateGuard] Agent-read file. Before you edit it:\n` +
+    `- Find this file in \`.bkit/authoring.md\` § Which Sections Apply, and read the sections its row lists.\n` +
+    `- Follow those rules in the edit.`
+  );
+}
+
 function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
@@ -136,6 +157,13 @@ const warnedInProcess = new Set();
 
 function inProcessKey(sessionId, filePath) {
   return JSON.stringify([sessionId, filePath]);
+}
+
+// Normalized warning identity: an absolute path resolved against the call's effective
+// directory, so a relative, absolute or `..` spelling of one file shares one record.
+function normalizeIdentity(filePath, cwd) {
+  const base = typeof cwd === "string" && cwd ? cwd : process.cwd();
+  return path.resolve(base, filePath);
 }
 
 // Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
@@ -168,10 +196,13 @@ function alreadyWarned(sessionId, filePath) {
   return Boolean(readState(sessionId).files[filePath]);
 }
 
-function markWarned(sessionId, filePath) {
+// `spelling` is the path as the host wrote it; it is recorded beside the normalized key so
+// state readers that look a file up by its original spelling still find it.
+function markWarned(sessionId, filePath, spelling) {
   fs.mkdirSync(stateDir(), { recursive: true });
   const state = readState(sessionId);
   state.files[filePath] = true;
+  if (typeof spelling === "string" && spelling) state.files[spelling] = true;
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
@@ -190,39 +221,120 @@ function gcOldState() {
   }
 }
 
-// The advisory for the first touch of `filePath` this session, or null when GateGuard
-// is off, the path is unusable, or this session was already warned about it. Records
-// the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
-// Fail-open: a state-file write error still returns the checklist and the process
-// remembers it, as advisory only — a deny no later call can see was given would block
-// every retry of the edit.
-function firstTouchAdvice(filePath, sessionId, isNewFile) {
+// Host-declared: true when the hook process outlives one call (the opencode plugin), so a
+// deny whose state file cannot be written is still remembered in process and cannot loop.
+function processPersists() {
+  return typeof GATEGUARD_PROCESS_PERSISTS !== "undefined" && GATEGUARD_PROCESS_PERSISTS === true;
+}
+
+// Pure preparation: the advice for the first touch of `filePath` this session, or null when
+// GateGuard is off, the path is unusable, or the session was already warned about it.
+// Writes nothing; `acknowledgeAdvice` records the touch once the advice is delivered.
+// `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function prepareAdvice(filePath, sessionId, isNewFile, cwd) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
   if (!filePath || typeof filePath !== "string") return null;
 
   const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  const key = normalizeIdentity(filePath, cwd);
 
   // Warn once per (session, file).
-  if (alreadyWarned(sid, filePath)) return null;
+  if (alreadyWarned(sid, key)) return null;
 
-  const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
+  const gated = isGateConfig(key) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
   const baseContext = gated
-    ? configAdvisory(filePath)
+    ? configAdvisory(key)
     : isNewFile
-      ? reuseChecklist(filePath)
-      : investigationChecklist(filePath);
-  const context = isDocsPath(filePath)
-    ? `${baseContext}\n\n${docAuthoringAdvisory()}`
-    : baseContext;
+      ? reuseChecklist(key)
+      : investigationChecklist(key);
+  const parts = [baseContext];
+  if (isDocsPath(key)) parts.push(docAuthoringAdvisory());
+  if (isAgentReadPath(key)) parts.push(authoringReminder());
 
+  return {
+    sid,
+    key,
+    mode: mode === "deny" ? "deny" : "advisory",
+    context: parts.join("\n\n"),
+    spelling: filePath,
+    agentRead: isAgentReadPath(key),
+  };
+}
+
+// Records a prepared touch. Fail-open: a state-file write error remembers the touch in
+// this process and returns false (not durable). Only a durable record, or a process that
+// outlives the call, can back a deny: a deny no later call can see was given would block
+// every retry of the edit.
+function acknowledgeAdvice(prepared) {
   try {
-    markWarned(sid, filePath);
+    markWarned(prepared.sid, prepared.key, prepared.spelling);
     gcOldState();
+    return true;
   } catch {
-    warnedInProcess.add(inProcessKey(sid, filePath));
-    return { mode: "advisory", context };
+    warnedInProcess.add(inProcessKey(prepared.sid, prepared.key));
+    return false;
   }
+}
 
-  return { mode: mode === "deny" ? "deny" : "advisory", context };
+// The advisory for the first touch of `filePath` this session, or null. Prepares and
+// acknowledges in one step, for callers that deliver the advice themselves.
+function firstTouchAdvice(filePath, sessionId, isNewFile, cwd) {
+  const prepared = prepareAdvice(filePath, sessionId, isNewFile, cwd);
+  if (!prepared) return null;
+  const durable = acknowledgeAdvice(prepared);
+  const mode = durable || processPersists() ? prepared.mode : "advisory";
+  return { mode, context: prepared.context };
+}
+
+// Conservative per-host output budgets for delivered advice (reviewed under decision
+// `787-conservative-host-advisory-budgets`; complete-block visibility is unverified).
+const ADVICE_BUDGETS = {
+  claude: { limit: 8000, unit: "chars" },
+  codex: { limit: 2000, unit: "bytes" },
+  cursor: { limit: 2000, unit: "bytes" },
+  antigravity: { limit: 2000, unit: "bytes" },
+};
+const ADVICE_NOTICE_RESERVE = 512;
+
+function adviceSize(text, unit) {
+  return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
+}
+
+// Delivers prepared advice blocks inside `budget`: only whole blocks, in order, with
+// `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Acknowledges exactly
+// the selected blocks, and only when `verified` says the route reaches the model. Returns
+// `{ mode, context }` or null when there is nothing to say.
+function deliverAdvice(blocks, budget, verified) {
+  if (blocks.length === 0) return null;
+  const sep = "\n\n";
+  const room = budget.limit - ADVICE_NOTICE_RESERVE;
+  const selected = [];
+  const omitted = [];
+  let used = 0;
+  for (const b of blocks) {
+    const cost = adviceSize(b.context, budget.unit) + (selected.length > 0 ? sep.length : 0);
+    if (used + cost <= room) {
+      selected.push(b);
+      used += cost;
+    } else {
+      omitted.push(b);
+    }
+  }
+  const texts = selected.map((b) => b.context);
+  if (omitted.length > 0) {
+    const reminder = omitted.some((b) => b.agentRead)
+      ? " Agent-read files: see `.bkit/authoring.md` § Which Sections Apply."
+      : "";
+    texts.push(
+      `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`,
+    );
+  }
+  let mode = "advisory";
+  if (verified) {
+    let durable = true;
+    for (const b of selected) if (!acknowledgeAdvice(b)) durable = false;
+    mode = selected.length > 0 && (durable || processPersists()) ? selected[0].mode : "advisory";
+  }
+  return { mode, context: texts.join(sep) };
 }

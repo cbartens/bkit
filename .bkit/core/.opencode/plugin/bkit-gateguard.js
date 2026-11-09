@@ -56,6 +56,10 @@ import * as path from "node:path";
 // The terminal tool (`shell` in v2, `bash` before v2) is NOT in this list.
 const EDIT_TOOLS = new Set(["write", "edit", "patch", "apply_patch"]);
 
+// The plugin process outlives a tool call, so a deny whose state file cannot be written is
+// remembered in process and the retry passes.
+const GATEGUARD_PROCESS_PERSISTS = true;
+
 // {{BKIT_PART gateguard-engine.js}}
 
 // Pure: takes the tool name, the already-extracted file path, and the session id

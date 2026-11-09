@@ -96,7 +96,7 @@ function bkitGuardrails(payload) {
   if (typeof raw !== "string") return null;
 
   const cmd = raw.trim();
-  const tier = classifyShell(cmd, hookDirs(p));
+  const tier = classifyShell(cmd, hookDirs(p), hookContext(p));
   if (!tier) return null;
   if (tier.tier === "deny") {
     return {
@@ -118,7 +118,8 @@ function bkitGuardrails(payload) {
   }
   const advisory =
     tier.tier === "fetch"
-      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
+      ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}` +
+        (tier.edits ? `\n\n${shellEditAdvisory(tier.edits)}` : "")
       : shellEditAdvisory(tier.edits);
   return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
 }

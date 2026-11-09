@@ -62,8 +62,8 @@ function bkitGuardrails(payload) {
         "If the host is a standing dependency, add it to allowed-domains.",
     );
   }
-  const edits = shellEditTargets(c);
-  if (edits.length > 0) notes.push(shellEditAdvisory(edits));
+  const edits = shellEditTargets(c, hookContext(payload));
+  if (hasEditEvidence(edits)) notes.push(shellEditAdvisory(edits));
 
   return notes.length > 0 ? { context: notes.join("\n\n") } : null;
 }
