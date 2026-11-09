@@ -949,4 +949,48 @@ describe("explicit invocation context", () => {
     expect(wrongFile.err).toMatch(/conflict/i);
     expect(wrongFile.out).toBe("");
   });
+
+  it("writes the engine-call row for an invocation-bound command", async () => {
+    const a = invocationRepo();
+    const issued = await call(a, COMMANDS, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-branch-sync",
+      `--file=${REL}`,
+    ]);
+    expect(issued.code).toBe(0);
+    const id = (JSON.parse(issued.out) as { invocation: string }).invocation;
+
+    const seen: Array<{ noun: string; verb: string; cwd: string; invocation: unknown }> = [];
+    const journal = {
+      call: (i: { noun: string; verb: string; cwd: string; flags: Record<string, unknown> }) => {
+        seen.push({ noun: i.noun, verb: i.verb, cwd: i.cwd, invocation: i.flags["invocation"] });
+      },
+      failure: () => {},
+    };
+    const io = { stdout: () => {}, stderr: () => {} };
+    const bound = await runCommand(["probe", "show", `--invocation=${id}`, "--json"], [PROBE], {
+      classicVerbs: new Set(["status"]),
+      cwd: a,
+      io,
+      journal,
+    });
+    expect(bound).toBe(0);
+    expect(seen).toEqual([{ noun: "probe", verb: "show", cwd: a, invocation: id }]);
+
+    // A refused invocation never reaches the journal.
+    const refused = await runCommand(
+      ["probe", "show", "--invocation=inv-forged", "--json"],
+      [PROBE],
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: a,
+        io,
+        journal,
+      },
+    );
+    expect(refused).toBe(EXIT.USAGE);
+    expect(seen).toHaveLength(1);
+  });
 });

@@ -314,7 +314,6 @@ describe("explicit invocation on real worktrees", () => {
       `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-branch-sync", status: "DONE", at: "2026-10-29T10:05:00Z", parentSha: "a".repeat(40), artifacts: [] })}\n`,
     );
     const bytesA = fs.readFileSync(statusA, "utf-8");
-    const bytesB = fs.readFileSync(otherStatus, "utf-8");
 
     const resumedA = await call(worktree, [PROBE], ["probe", "show", `--invocation=${idA}`]);
     expect(resumedA.code).toBe(0);
@@ -328,6 +327,8 @@ describe("explicit invocation on real worktrees", () => {
     const resumedB = await call(other, [PROBE], ["probe", "show", `--invocation=${idB}`]);
     expect(resumedB.json!["invocation"]).toMatchObject({ id: idB, statusPath: otherStatus });
 
+    const afterB = fs.readFileSync(otherStatus, "utf-8");
+
     // Each id is refused anywhere but its own worktree: the other worktree and the main checkout.
     for (const [cwd, id] of [
       [other, idA],
@@ -338,8 +339,76 @@ describe("explicit invocation on real worktrees", () => {
       expect(leaked.code).toBe(2);
       expect(leaked.json).toBeUndefined();
     }
-    expect(fs.readFileSync(statusA, "utf-8")).toBe(bytesA);
-    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(bytesB);
+    // Only the issuing run's own status log grows, and only by engine-call rows; refused ids write nowhere.
+    const afterA = fs.readFileSync(statusA, "utf-8");
+    expect(afterA.startsWith(bytesA)).toBe(true);
+    const grown = afterA
+      .slice(bytesA.length)
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(grown.length).toBeGreaterThan(0);
+    expect(grown.every((r) => r["type"] === "engine-call")).toBe(true);
+    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(afterB);
+  });
+
+  it("keeps invocation events and engine-call rows inside the issuing worktree after receipt loss", async () => {
+    const other = path.join(main, ".worktrees", "902-other");
+    git(main, ["worktree", "add", "-q", "-b", "feat/902-other", other]);
+    const otherStatus = path.join(other, STATUS_REL);
+    fs.mkdirSync(path.dirname(otherStatus), { recursive: true });
+    fs.writeFileSync(
+      otherStatus,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T11:00:00Z" })}\n`,
+    );
+    const statusA = path.join(worktree, STATUS_REL);
+    const mainStatusDir = path.join(main, "docs");
+    const otherBytes = fs.readFileSync(otherStatus, "utf-8");
+    const startA = fs.readFileSync(statusA, "utf-8");
+
+    const id = await issue(worktree);
+
+    // The invocation is an event in the issuing run's own status log, and nowhere else.
+    const issuedA = fs.readFileSync(statusA, "utf-8");
+    expect(issuedA.startsWith(startA)).toBe(true);
+    const events = issuedA
+      .slice(startA.length)
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events.filter((r) => JSON.stringify(r).includes(id))).toHaveLength(1);
+    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(otherBytes);
+
+    // Receipt loss: the resumed command still resolves from the status log, and writes its engine-call row.
+    const receipt = path.join(
+      git(worktree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+      "bkit-outbox",
+      "invocation-context",
+      `${id}.json`,
+    );
+    expect(fs.existsSync(receipt)).toBe(true);
+    fs.rmSync(receipt);
+    const resumed = await call(worktree, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(resumed.code).toBe(0);
+    expect(resumed.json!["invocation"]).toMatchObject({
+      id,
+      workflow: "build",
+      step: "build-plan-tests",
+      statusPath: statusA,
+    });
+
+    const calls = rows(statusA).filter((r) => r["type"] === "engine-call");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ workflow: "build", noun: "probe", verb: "show" });
+
+    // Nothing leaked: the other worktree's status and the main checkout's docs are untouched.
+    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(otherBytes);
+    expect(fs.existsSync(path.join(other, "docs", "knowledge.jsonl"))).toBe(false);
+    expect(fs.existsSync(mainStatusDir)).toBe(false);
+    // The id is still refused in the other worktree even after the receipt came back.
+    const leaked = await call(other, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(leaked.code).toBe(2);
+    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(otherBytes);
   });
 
   it("completes missing subagent attribution before a real append", async () => {

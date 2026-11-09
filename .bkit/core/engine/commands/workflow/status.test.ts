@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandError, runCommand } from "../lib";
+import { CommandError, resolveInvocation, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { runStatusRows, stepsBlock } from "./run-facts";
 import { readRuns, readStatusEvents, readStatusRows } from "./status";
@@ -1199,8 +1199,11 @@ describe("bkit status invocation", () => {
     });
     expect(typeof r.json.invocation).toBe("string");
     expect(r.json.invocation).not.toBe("");
-    // Issuing mutates no run state; the receipt lives in the outbox.
-    expect(fs.readFileSync(path.join(root, REL), "utf-8")).toBe(statusBefore);
+    // Issuing appends only the invocation event to the issuing run's own status log; the receipt is an outbox index.
+    const statusAfter = fs.readFileSync(path.join(root, REL), "utf-8");
+    expect(statusAfter.startsWith(statusBefore)).toBe(true);
+    expect(statusAfter.length).toBeGreaterThan(statusBefore.length);
+    expect(statusAfter.slice(statusBefore.length)).toContain(String(r.json.invocation));
     expect(fs.existsSync(String(r.json.receipt))).toBe(true);
     expect(String(r.json.receipt)).toContain("bkit-outbox");
 
@@ -1227,6 +1230,61 @@ describe("bkit status invocation", () => {
     expect(audit.json).toMatchObject({ scope: "outbox", run: null, statusPath: null });
     expect(fs.existsSync(String(audit.json.receipt))).toBe(true);
     expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
+  });
+
+  it("records the issued invocation in the run status log and rebuilds a deleted receipt", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    // The run's own status log gains exactly one additive row, and it names the invocation.
+    const after = fs.readFileSync(statusFile, "utf-8");
+    expect(after.startsWith(before)).toBe(true);
+    const added = after
+      .slice(before.length)
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(added).toHaveLength(1);
+    expect(JSON.stringify(added[0])).toContain(id);
+    expect(added[0]).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+    });
+
+    // Losing the receipt does not lose the live run's id: the lookup rebuilds it from the event.
+    fs.rmSync(String(issued.json.receipt));
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(false);
+    const resolved = resolveInvocation(root, id, {});
+    expect(resolved).toMatchObject({
+      id,
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+      statusPath: statusFile,
+      run: 1,
+    });
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(true);
+
+    // A forged id with no event stays refused, and the lookup adds nothing to the log.
+    expect(() => resolveInvocation(root, `inv-${"0".repeat(32)}`, {})).toThrow(/invocation/);
+    expect(fs.readFileSync(statusFile, "utf-8")).toBe(after);
   });
 
   it("binds group and attempt and registers setup, remediation and ship steps", async () => {
