@@ -108,7 +108,7 @@ The quoted names are planned test cases, parameterized over the variants in each
 | `reserves notices inside conservative host budgets`: omitted counts, zero-fit block and composed response | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 5 |
 | `preserves off deny and state-fallback semantics`: advisory shell, edit deny-once and corrupt/unavailable state | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 5 |
 | `routes Claude notebook and shell targets through shared advice`: NotebookEdit/notebook_path and existing tools | Integration | `.bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts` | 6 |
-| `routes Cursor delete and shell targets without replacing its driver`: payload/matcher and envelope limit | Integration | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | 7 |
+| `routes Cursor delete and shell targets while keeping its driver untouched`: payload/matcher and envelope limit | Integration | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | 7 |
 | `routes Codex complete patches and initial shell commands`: all patch paths, initial Bash and interactive boundary | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 8 |
 | `routes Antigravity multi-replace and shell targets`: matcher/payload and established deny-once transport | Integration | `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` | 9 |
 | `preserves OpenCode edit coverage and after-execute boundary`: real V1/V2 drivers retain all patch targets, normalize alias paths and leave omitted blocks eligible | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 9 |
@@ -429,7 +429,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
   - **DEPENDS ON:** 6.
   - **DONE WHEN:** The named case passes for matcher+payload and shell advice; default/customized outer driver bytes remain preserved. The exact `.cursor/hooks/bkit-gateguard.cjs` additional_context envelope remains documented as unverified, with no guessed replacement field or new acknowledgement claim.
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `routes Cursor delete and shell targets without replacing its driver` fails on Delete missing advice or a managed change overwriting the outer driver/envelope.
+    - `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `routes Cursor delete and shell targets while keeping its driver untouched` fails on Delete missing advice or a managed change overwriting the outer driver/envelope.
 
 <!-- bkit:task 7 end -->
 
