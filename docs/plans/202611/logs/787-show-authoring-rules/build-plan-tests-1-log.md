@@ -1,4 +1,4 @@
-Verdict: FAIL
+Verdict: PASS
 
 <!-- verdict:end -->
 
@@ -26,3 +26,6 @@ SOURCE — TASK 1: advisory text 'edits files through the shell' and target list
 SOURCE — TASK 4: warning state keyed files[filePath] in stateFile from .bkit/core/hooks/gateguard-engine.js:148-178
 SOURCE — TASK 3: Antigravity deny-once via adviseOnce from .bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs:122
 SOURCE — TASK 3: cooperative 200 ms deadline not asserted (no deterministic fixture); other bounds covered
+SOURCE — TASK 5: Codex multi-target apply_patch parsing and single-target advice from .bkit/core/.codex/hooks/bkit-gateguard.cjs:55-85; state file layout from .bkit/core/hooks/gateguard-engine.js:148-178
+WROTE — TASK 5: `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` `reserves notices inside conservative host budgets` (moved from opencode file: opencode applies no host budget; Codex 2,000-byte budget is observable)
+WROTE — TASK 5: `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` `acknowledges only complete selected blocks on verified routes` (moved to Codex hook for the same reason)

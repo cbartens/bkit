@@ -104,8 +104,8 @@ The quoted names are planned test cases, parameterized over the variants in each
 | `preserves stronger shell decisions and compound advice`: deny/ask, secrets, fetch plus edit and quiet sinks | Integration | `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` | 3 |
 | `prepares complete advice without acknowledging it`: existing/new/config checklists and general agent-read reminder | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 4 |
 | `shares normalized warning identity across edit channels`: both call orders and session/agent separation | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 4 |
-| `acknowledges only complete selected blocks on verified routes`: unknown/omitted/truncated/unverified remain eligible | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 5 |
-| `reserves notices inside conservative host budgets`: omitted counts, zero-fit block and composed response | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 5 |
+| `acknowledges only complete selected blocks on verified routes`: unknown/omitted/truncated/unverified remain eligible | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 5 |
+| `reserves notices inside conservative host budgets`: omitted counts, zero-fit block and composed response | Integration | `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` | 5 |
 | `preserves off deny and state-fallback semantics`: advisory shell, edit deny-once and corrupt/unavailable state | Unit | `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` | 5 |
 | `routes Claude notebook and shell targets through shared advice`: NotebookEdit/notebook_path and existing tools | Integration | `.bkit/core/engine/audits/hooks/gateguard-claude.integration.test.ts` | 6 |
 | `routes Cursor delete and shell targets without replacing its driver`: payload/matcher and envelope limit | Integration | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | 7 |
@@ -393,8 +393,8 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
   - **DEPENDS ON:** 4.
   - **DONE WHEN:** The three named cases pass at budget boundaries and with corrupt/unavailable state; no path without a complete selected verified block is acknowledged. Existing reminder semantics survive on established transports, while fixture output never promotes an unverified route to verified.
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` `acknowledges only complete selected blocks on verified routes` fails on an unshown path suppressing a later reminder.
-    - `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` `reserves notices inside conservative host budgets` fails on partial blocks, an incorrect omitted count or a complete response exceeding its budget.
+    - `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` `acknowledges only complete selected blocks on verified routes` fails on an unshown path suppressing a later reminder.
+    - `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` `reserves notices inside conservative host budgets` fails on partial blocks, an incorrect omitted count or a complete response exceeding its budget.
     - `.bkit/core/engine/audits/hooks/gateguard-opencode.test.ts` `preserves off deny and state-fallback semantics` fails on off mutating state, shell advice adding a denial or unavailable state causing a blocking retry loop.
 
 <!-- bkit:task 5 end -->

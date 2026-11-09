@@ -728,3 +728,101 @@ describe("gateguard parity — documented deviations", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 5: complete-block batching inside conservative host budgets. Codex is the host
+// whose multi-file patch envelope reaches the shared engine today and which has a 2,000
+// UTF-8 byte budget; opencode applies no host budget, so it cannot observe batching.
+// ---------------------------------------------------------------------------
+
+const CODEX_BUDGET_BYTES = 2000;
+
+function codexPatch(session: string, targets: string[], tmp: string) {
+  const command = [
+    "*** Begin Patch",
+    ...targets.flatMap((t) => [`*** Update File: ${t}`, "@@", "-a", "+b"]),
+    "*** End Patch",
+  ].join("\n");
+  const res = spawnSync("node", [CODEX_HOOK], {
+    input: JSON.stringify({
+      tool_name: "apply_patch",
+      tool_input: { command },
+      session_id: session,
+      cwd: process.cwd(),
+    }),
+    encoding: "utf-8",
+    env: { ...process.env, BKIT_GATEGUARD: undefined, TMPDIR: tmp },
+  });
+  const out = res.stdout.trim() ? JSON.parse(res.stdout.trim()) : {};
+  return String(out.hookSpecificOutput?.additionalContext ?? "");
+}
+
+function warnedFiles(tmp: string, session: string): string[] {
+  const dir = path.join(
+    tmp,
+    typeof process.getuid === "function" ? `bkit-gateguard-${process.getuid()}` : "bkit-gateguard",
+  );
+  const file = path.join(dir, `${session.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 128)}.json`);
+  if (!fs.existsSync(file)) return [];
+  return Object.keys(JSON.parse(fs.readFileSync(file, "utf-8")).files);
+}
+
+function omittedCount(advice: string): number | null {
+  const m =
+    /\b(\d+)\b[^\n]{0,40}omitted/i.exec(advice) ?? /omitted[^\n]{0,40}?\b(\d+)\b/i.exec(advice);
+  return m ? Number(m[1] ?? m[2]) : null;
+}
+
+function completeBlocks(advice: string): { started: number; finished: number } {
+  return {
+    started: (advice.match(/\[bkit GateGuard\] (?:First edit to|New file)/g) ?? []).length,
+    finished: (advice.match(/Advisory: proceed once satisfied\./g) ?? []).length,
+  };
+}
+
+describe("codex gateguard — complete-block batching", () => {
+  it("reserves notices inside conservative host budgets", () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const targets = ["src/aa.ts", "src/bb.ts", "src/cc.ts", "src/dd.ts"];
+    const advice = codexPatch(newSession(), targets, tmp);
+
+    // The whole composed response fits the byte budget, and only complete blocks appear.
+    expect(Buffer.byteLength(advice, "utf-8")).toBeLessThanOrEqual(CODEX_BUDGET_BYTES);
+    const { started, finished } = completeBlocks(advice);
+    expect(started).toBeGreaterThanOrEqual(1);
+    expect(finished).toBe(started);
+    // The omitted-target count is exact.
+    expect(omittedCount(advice)).toBe(targets.length - started);
+
+    // Zero-fit block: one multi-byte basename whose single block exceeds the budget by bytes
+    // (but not by characters). It is dropped whole, never cut, and counted as omitted.
+    const wide = `src/${"é".repeat(700)}.ts`;
+    const zero = codexPatch(newSession(), [wide], tmp);
+    expect(Buffer.byteLength(zero, "utf-8")).toBeLessThanOrEqual(CODEX_BUDGET_BYTES);
+    expect(zero).not.toContain("First edit to");
+    expect(omittedCount(zero)).toBe(1);
+  });
+
+  it("acknowledges only complete selected blocks on verified routes", () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const session = newSession();
+    const root = process.cwd();
+    const small = "src/shown-first.ts";
+    const huge = `src/${"é".repeat(700)}.ts`;
+    const later = "src/later-reminder.ts";
+
+    const first = codexPatch(session, [small, huge, later], tmp);
+    expect(first).toContain("shown-first.ts");
+    expect(first).not.toContain("later-reminder.ts");
+    expect(omittedCount(first)).toBe(2);
+
+    // Only the complete shown block is acknowledged; unshown paths stay eligible.
+    expect(warnedFiles(tmp, session)).toEqual([path.resolve(root, small)]);
+
+    // A later patch still reminds for the path that was not shown.
+    const second = codexPatch(session, [later], tmp);
+    expect(second).toContain("later-reminder.ts");
+    // The acknowledged path is silent.
+    expect(codexPatch(session, [small], tmp)).toBe("");
+  });
+});
