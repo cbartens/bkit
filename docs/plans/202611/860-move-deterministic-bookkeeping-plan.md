@@ -121,7 +121,7 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** Owner review required.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ## 👤 ⚠️ Breaking Changes & Naming Review
 
@@ -137,7 +137,7 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** Owner review required.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 ## 👤 ⚠️ Open Questions & Assumptions
 
@@ -151,7 +151,7 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** Owner review required.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ## Alternative Approaches & Recommendations
 
@@ -214,9 +214,9 @@ Open failures/deferrals were scanned for overlapping bookkeeping/counter/ledger/
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmation remains unchecked.
-- [ ] **Breaking Changes confirmed:** Human confirmation remains unchecked.
-- [ ] **Open Questions confirmed:** Human confirmation remains unchecked.
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
+- [x] **Open Questions confirmed:** Human confirmed `👤 Open Questions & Assumptions` section (checkbox is `[x]`).
 - [x] **Security & Privacy checked:** Applicable input/authorship/path boundaries are identified below.
 - [x] **Reuse Inventory complete:** All introduced capabilities map to existing files and tasks.
 - [x] **Reuse reasons:** No new source file or parallel module is proposed.
