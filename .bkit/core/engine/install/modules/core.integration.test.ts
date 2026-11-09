@@ -34,6 +34,12 @@ import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
+import {
+  parseEffortMap,
+  parseModelLookup,
+  buildOpencodeModelLookup,
+  buildAntigravityModelLookup,
+} from "../../render/models";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2439,5 +2445,123 @@ describe("migrateValeHouseStyle (via runBkitDocs)", () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fresh install and upgrade keep shared hook behaviour and consumer-owned drivers
+// ---------------------------------------------------------------------------
+
+describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
+  const HOOKS: Record<string, string[]> = {
+    claude: [".claude/hooks/bkit-gateguard.cjs", ".claude/hooks/bkit-guardrails.cjs"],
+    cursor: [".cursor/hooks/bkit-gateguard.cjs", ".cursor/hooks/bkit-guardrails.cjs"],
+    codex: [".codex/hooks/bkit-gateguard.cjs", ".codex/hooks/bkit-guardrails.cjs"],
+    antigravity: [
+      ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
+      ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    ],
+  };
+  const START = "// bkit:" + "start";
+  const END = "// bkit:" + "end";
+
+  const split = (text: string): { head: string; managed: string; tail: string } => {
+    const a = text.indexOf(START);
+    const b = text.indexOf(END);
+    return {
+      head: text.slice(0, a),
+      managed: text.slice(a, b + END.length),
+      tail: text.slice(b + END.length),
+    };
+  };
+
+  const installCtx = (): ModuleContext => {
+    const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+    return makeCtx({
+      modelLookup: parseModelLookup(promptsMd),
+      codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+      antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+    });
+  };
+
+  it("installs and upgrades shared hook behavior without replacing owned drivers", () => {
+    const hosts = Object.keys(HOOKS);
+    const modules = new Set<import("../../cli").ModuleFlag>(["core", ...hosts] as never);
+
+    // Fresh install: shared shell and edit behaviour arrives, and the pointer resolves locally.
+    dispatchModules(modules, installCtx());
+    const fresh: Record<string, string> = {};
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      fresh[rel] = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+      expect(fresh[rel], rel).toContain(START);
+      expect(fresh[rel], rel).toContain(END);
+    }
+    for (const host of hosts) {
+      const guard = split(fresh[HOOKS[host][1]]).managed;
+      expect(guard, `${host} guardrails shell advice`).toContain("edits files through the shell");
+      expect(guard, `${host} guardrails unknown-target`).toContain("cannot be determined");
+      expect(guard, `${host} guardrails authoring pointer`).toContain(".bkit/authoring.md");
+    }
+    const authoring = fs.readFileSync(path.join(tmpDir, ".bkit", "authoring.md"), "utf-8");
+    expect(authoring).toContain("Which Sections Apply");
+    expect(authoring).toContain("Doc Templates");
+
+    // No runtime package dependency is added to the consumer.
+    const pkgFresh = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgFresh.dependencies).toBeUndefined();
+
+    // Upgrade from the shipped layout: an old managed block, a customised outer driver (and
+    // one untouched default), and a custom registration group alongside bkit's own.
+    const customised = new Map<string, { head: string; tail: string }>();
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const parts = split(fresh[rel]);
+      // The gateguard driver is customised; the guardrails driver stays the shipped default.
+      const edits: Record<string, { head: string; tail: string }> = {
+        "bkit-gateguard.cjs": {
+          head: `// consumer-owned driver note \u00e9 ${rel}\n`,
+          tail: `\n// consumer tail ${rel}\n`,
+        },
+        "bkit-guardrails.cjs": { head: "", tail: "" },
+      };
+      const edit = edits[path.basename(rel)];
+      const head = parts.head + edit.head;
+      const tail = parts.tail + edit.tail;
+      fs.writeFileSync(
+        path.join(tmpDir, rel),
+        `${head}${START}\n// stale managed engine from the shipped layout\n${END}${tail}`,
+        "utf-8",
+      );
+      customised.set(rel, { head, tail });
+    }
+    const settingsPath = path.join(tmpDir, ".claude", "settings.json");
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: object[] };
+    };
+    const customGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    settings.hooks.PreToolUse.push(customGroup);
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+
+    dispatchModules(modules, installCtx());
+
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const now = split(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
+      const before = customised.get(rel) as { head: string; tail: string };
+      // Owned bytes identical; managed behaviour restored to the current shared engine.
+      expect(now.head, `${rel} head`).toBe(before.head);
+      expect(now.tail, `${rel} tail`).toBe(before.tail);
+      expect(now.managed, `${rel} managed`).toBe(split(fresh[rel]).managed);
+    }
+    const after = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: { matcher?: string }[] };
+    };
+    expect(after.hooks.PreToolUse).toContainEqual(customGroup);
+    expect(JSON.stringify(after.hooks.PreToolUse)).toContain("bkit-gateguard.cjs");
+    const pkgAfter = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgAfter.dependencies).toBeUndefined();
+    expect(pkgAfter.devDependencies).toEqual(pkgFresh.devDependencies);
   });
 });

@@ -1103,3 +1103,258 @@ describe("opencode gateguard — edit coverage and boundary", () => {
     expect(shellResult.content).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 12: rendered parity of classification, advice and acknowledgement, and the
+// cold-start and response-size bounds, across every adapter that sees shell commands.
+// ---------------------------------------------------------------------------
+
+type ShellHost = "claude" | "cursor" | "codex" | "antigravity";
+const SHELL_HOSTS: ShellHost[] = ["claude", "cursor", "codex", "antigravity"];
+
+const GUARDS: Record<ShellHost, string> = {
+  claude: path.join(GENERATED, "claude-guardrails.cjs"),
+  cursor: path.join(GENERATED, "cursor-guardrails.cjs"),
+  codex: CODEX_GUARD,
+  antigravity: path.join(GENERATED, "antigravity-guardrails.cjs"),
+};
+fs.writeFileSync(
+  GUARDS.claude,
+  readTemplate(path.resolve(".bkit/core/.claude/hooks/bkit-guardrails.cjs")),
+);
+fs.writeFileSync(
+  GUARDS.cursor,
+  readTemplate(path.resolve(".bkit/core/.cursor/hooks/bkit-guardrails.cjs")),
+);
+fs.writeFileSync(
+  GUARDS.antigravity,
+  readTemplate(path.resolve(".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs")),
+);
+
+interface ShellResult {
+  text: string;
+  blocked: boolean;
+  status: number | null;
+  stdoutBytes: number;
+  elapsedMs: number;
+}
+
+function shellPayload(host: ShellHost, command: string, session: string, ws: string): unknown {
+  if (host === "claude") {
+    return {
+      session_id: session,
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      cwd: ws,
+      tool_input: { command },
+    };
+  }
+  if (host === "codex") {
+    return { tool_name: "Bash", tool_input: { command }, session_id: session, cwd: ws };
+  }
+  if (host === "cursor") {
+    return {
+      command,
+      cwd: ws,
+      conversation_id: session,
+      session_id: session,
+      workspace_roots: [ws],
+      hook_event_name: "beforeShellExecution",
+    };
+  }
+  return {
+    conversationId: session,
+    toolCall: { name: "run_command", args: { CommandLine: command, Cwd: ws, toolAction: "Run" } },
+    workspacePaths: [ws],
+  };
+}
+
+function runShellHost(
+  host: ShellHost,
+  command: string,
+  session: string,
+  ws: string,
+  env: Record<string, string | undefined> = {},
+): ShellResult {
+  const started = performance.now();
+  const res = spawnSync("node", [GUARDS[host]], {
+    input: JSON.stringify(shellPayload(host, command, session, ws)),
+    encoding: "utf-8",
+    cwd: fs.existsSync(ws) ? ws : process.cwd(),
+    env: { ...process.env, BKIT_GATEGUARD: undefined, ...env },
+  });
+  const elapsedMs = performance.now() - started;
+  const raw = res.stdout.trim();
+  const out = (raw ? JSON.parse(raw) : {}) as Record<string, unknown>;
+  const hso = (out.hookSpecificOutput ?? {}) as Record<string, unknown>;
+  const text = String(
+    hso.additionalContext ?? out.agent_message ?? (out.decision === "deny" ? out.reason : ""),
+  );
+  return {
+    text: text === "undefined" ? "" : text,
+    blocked: hso.permissionDecision === "deny" || out.permission === "deny",
+    status: res.status,
+    stdoutBytes: Buffer.byteLength(res.stdout, "utf-8"),
+    elapsedMs,
+  };
+}
+
+function shellSentence(text: string): string {
+  return (text.split("\n").find((l) => l.includes("edits files through the shell")) ?? "").trim();
+}
+
+describe("gateguard parity — rendered shell advice", () => {
+  it("keeps rendered classification advice and acknowledgement equivalent", async () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const ws = fs.mkdtempSync(path.join(GENERATED, "ws-"));
+    const sentences = new Set<string>();
+
+    for (const host of SHELL_HOSTS) {
+      const env = { TMPDIR: tmp };
+
+      // Exact target: the per-file checklist plus the shared general reminder.
+      const session = newSession();
+      const exact = runShellHost(host, "sed -i s/a/b/ docs/parity-exact.md", session, ws, env);
+      expect(exact.status, host).toBe(0);
+      expect(exact.text, host).toContain("edits files through the shell");
+      expect(exact.text, host).toContain("parity-exact.md");
+      expect(exact.text, host).toContain("First edit to");
+      expect(exact.text, host).toContain("Which Sections Apply");
+      expect(exact.text, host).toContain(".bkit/authoring.md");
+      sentences.add(shellSentence(exact.text));
+
+      // Acknowledgement happened because the block was shown: the same target is silent
+      // on a shell retry and on the edit tool (antigravity retries pass as a bare allow).
+      const retry = runShellHost(host, "sed -i s/a/b/ docs/parity-exact.md", session, ws, env);
+      expect(retry.text, host).not.toContain("First edit to");
+      const afterEdit = await run(host, {
+        file: path.join(ws, "docs", "parity-exact.md"),
+        session,
+        env,
+      });
+      expect(afterEdit.advisory, host).not.toContain("First edit to");
+
+      // Uncertain script effects stay explicit and keep the authoring pointer.
+      const unknown = runShellHost(host, "python3 gen.py", newSession(), ws, env);
+      expect(unknown.text, host).toContain("cannot be determined");
+      expect(unknown.text, host).toContain(".bkit/authoring.md");
+      expect(unknown.text, host).not.toContain("First edit to");
+
+      // Clearly read-only commands are excluded.
+      const readOnly = runShellHost(host, "cat docs/parity-exact.md", newSession(), ws, env);
+      expect(readOnly.text, host).toBe("");
+      expect(readOnly.blocked, host).toBe(false);
+    }
+
+    // The shared reminder sentence is byte-identical across hosts.
+    expect(sentences.size).toBe(1);
+    expect([...sentences][0]).toContain("edits files through the shell");
+
+    // Explicit exception: OpenCode registers no shell hook, so a shell edit gets nothing,
+    // while its edit tool carries the same per-file checklist.
+    const oc = await run("opencode", { file: "src/parity-oc.ts", session: newSession() });
+    expect(oc.advisory).toContain("First edit to");
+  });
+
+  it("bounds rendered cold-start time and complete response size", async () => {
+    // Per-adapter ceiling: min(1 second, a quarter of the host's hook timeout). The shipped
+    // hook registrations set no timeout, so the 1-second cap is the binding bound here.
+    const BOUND_MS = 1000;
+    const chars = (t: string): number => t.length;
+    const bytes = (t: string): number => Buffer.byteLength(t, "utf-8");
+    const BUDGETS: Record<
+      ShellHost,
+      { limit: number; unit: string; measure: (t: string) => number }
+    > = {
+      claude: { limit: 8000, unit: "chars", measure: chars },
+      cursor: { limit: 2000, unit: "bytes", measure: bytes },
+      codex: { limit: 2000, unit: "bytes", measure: bytes },
+      antigravity: { limit: 2000, unit: "bytes", measure: bytes },
+    };
+    const blockedBy: { host: string; blocked: boolean }[] = [];
+    const ws = fs.mkdtempSync(path.join(GENERATED, "ws-"));
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+
+    // Maximum input: many long multi-byte targets in one command.
+    const targets = Array.from({ length: 80 }, (_, i) => `docs/${"é".repeat(60)}-${i}.md`);
+    const maximum = `sed -i s/a/b/ ${targets.join(" ")}`;
+    // Unavailable source: the state folder and the working directory both cannot be used.
+    const missingTmp = path.join(tmp, "does", "not", "exist");
+    const evidence: string[] = [];
+
+    for (const host of SHELL_HOSTS) {
+      const cases: { label: string; result: ShellResult }[] = [
+        {
+          label: "maximum",
+          result: runShellHost(host, maximum, newSession(), ws, { TMPDIR: tmp }),
+        },
+        {
+          label: "unavailable-state",
+          result: runShellHost(host, maximum, newSession(), ws, { TMPDIR: missingTmp }),
+        },
+        {
+          label: "unavailable-cwd",
+          result: runShellHost(
+            host,
+            "sed -i s/a/b/ docs/x.md",
+            newSession(),
+            path.join(ws, "gone"),
+            {
+              TMPDIR: tmp,
+            },
+          ),
+        },
+      ];
+      for (const { label, result } of cases) {
+        const budget = BUDGETS[host];
+        const size = budget.measure(result.text);
+        evidence.push(
+          `${host}/${label} node=${process.version} bound=${BOUND_MS}ms elapsed=${Math.round(result.elapsedMs)}ms size=${size}${budget.unit} bytes=${result.stdoutBytes}`,
+        );
+        const where = `${host}/${label}`;
+        expect(result.elapsedMs, evidence.join("\n")).toBeLessThan(BOUND_MS);
+        expect(size, where).toBeLessThanOrEqual(budget.limit);
+        // Never a crash, never a block, and only complete blocks (no cut-off checklist).
+        expect(result.status, where).toBe(0);
+        blockedBy.push({ host, blocked: result.blocked });
+        const { started, finished } = completeBlocks(result.text);
+        // The shell reminder closes with the same advisory line, so finished may exceed started.
+        expect(finished, where).toBeGreaterThanOrEqual(started);
+      }
+    }
+
+    // Only Antigravity delivers advice as a one-time deny; no other adapter ever blocks.
+    expect(
+      blockedBy
+        .filter((e) => e.blocked)
+        .map((e) => e.host)
+        .filter((h) => h !== "antigravity"),
+    ).toEqual([]);
+
+    // The edit-tool adapters answer within the same bound with a bounded complete response.
+    const patchTargets = targets.map((t) => `src/${t.slice(5)}`);
+    const codexStart = performance.now();
+    const codexAdvice = codexPatch(newSession(), patchTargets, tmp);
+    const codexMs = performance.now() - codexStart;
+    expect(codexMs, `codex patch ${Math.round(codexMs)}ms`).toBeLessThan(BOUND_MS);
+    expect(Buffer.byteLength(codexAdvice, "utf-8")).toBeLessThanOrEqual(CODEX_BUDGET_BYTES);
+    expect(completeBlocks(codexAdvice).finished).toBe(completeBlocks(codexAdvice).started);
+
+    for (const host of ["claude", "cursor", "antigravity"] as Host[]) {
+      const started = performance.now();
+      const out = await run(host, {
+        file: path.join(ws, `${"é".repeat(300)}.ts`),
+        session: newSession(),
+        env: { TMPDIR: missingTmp },
+      });
+      const ms = performance.now() - started;
+      expect(ms, `${host} edit ${Math.round(ms)}ms`).toBeLessThan(BOUND_MS);
+      expect(BUDGETS[host as ShellHost].measure(out.advisory), host).toBeLessThanOrEqual(
+        BUDGETS[host as ShellHost].limit,
+      );
+      expect(completeBlocks(out.advisory).finished, host).toBe(
+        completeBlocks(out.advisory).started,
+      );
+    }
+  });
+});
