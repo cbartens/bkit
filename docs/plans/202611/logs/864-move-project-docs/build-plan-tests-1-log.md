@@ -19,3 +19,5 @@ WROTE — TASK 2: `.bkit/core/engine/audits/templates/template-path-refs.test.ts
 SOURCE — TASK 1: legacy wrapper/marker text from .bkit/shared/docs/setup.md (HEAD):1-3
 SOURCE — TASK 1: Project Documents section after last bkit:end from .agents/docs.md:60-62
 WROTE — TASK 1: `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `previews project document migration without mutating the checkout`
+SOURCE — TASK 8: changing-every-run files from .bkit/core/engine/install/cloud-env.ts (renderCloudCacheBust) and .bkit/advisories.md _Mode: line
+WROTE — TASK 8: `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `leaves project docs, the index and the version file unchanged when upgrade runs twice`

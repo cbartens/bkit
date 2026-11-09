@@ -151,3 +151,9 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T12:14:09Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"19413254d6868f1d0a07949ad1b7cceefb4340a1ab9d65420fb3fb5ce92d8c57","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6739786368","at":"2026-11-09T12:14:10Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-09T12:14:10Z","parentSha":"06266982187b605951a538f90bc33ea1c3be2bc6","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-decision-1-1.md"],"attempt":1,"route":"fix"}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:14:22Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:14:26Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:14:26Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T12:18:12Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/1/3/comment","hash":"88f78748c3d515ca037669618784e2215248e0d827b72436b7b322f6d98d96d1","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6739866174","at":"2026-11-09T12:18:13Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-09T12:18:13Z","parentSha":"4925c4122dd820005cfc381c0b8bfc883675a413","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-tests-1-log.md"],"verdict":"PASS","attempt":3,"group":1}

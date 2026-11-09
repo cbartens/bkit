@@ -2395,6 +2395,33 @@ describe("#864 — upgrade migrates legacy project document ownership", () => {
     return out;
   }
 
+  // These two change on every upgrade by design: the cache-bust counter and the `_Mode:` line.
+  const CHANGES_EVERY_RUN = new Set([".claude/bkit-cloud.md", ".bkit/advisories.md"]);
+  function stableSnapshot(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(snapshot()).filter(([rel]) => !CHANGES_EVERY_RUN.has(rel)),
+    );
+  }
+
+  it("leaves project docs, the index and the version file unchanged when upgrade runs twice", () => {
+    seedInstalled();
+    write(
+      "docs/testing.md",
+      `<!-- bkit:start -->\n${MARKER}\n# Testing\nOur table\n<!-- bkit:end -->\n`,
+    );
+    const first = runCli(["upgrade", "--auto-apply"]);
+    expect(first.status, combinedOutput(first)).toBe(0);
+    const settled = stableSnapshot();
+    expect(settled["docs/testing.md"]).toBe("# Testing\nOur table\n");
+    const again = runCli(["upgrade", "--auto-apply"]);
+    expect(again.status, combinedOutput(again)).toBe(0);
+    const after = stableSnapshot();
+    expect(after["docs/testing.md"]).toBe(settled["docs/testing.md"]);
+    expect(after[".agents/docs.md"]).toBe(settled[".agents/docs.md"]);
+    expect(after[".bkit/version"]).toBe(settled[".bkit/version"]);
+    expect(after).toEqual(settled);
+  });
+
   it("migrates legacy ownership without changing project text or core ownership", () => {
     seedInstalled();
     const pre = "Intro the team wrote above the block\r\n";
@@ -2430,10 +2457,10 @@ describe("#864 — upgrade migrates legacy project document ownership", () => {
     expect(runCli(["check"]).status).toBe(0);
 
     // A second run changes nothing.
-    const settled = snapshot();
+    const settled = stableSnapshot();
     const again = runCli(["upgrade", "--auto-apply"]);
     expect(again.status, combinedOutput(again)).toBe(0);
-    expect(snapshot()).toEqual(settled);
+    expect(stableSnapshot()).toEqual(settled);
   });
 
   it("preserves ambiguous legacy markers and reports cleanup without blocking check", () => {
