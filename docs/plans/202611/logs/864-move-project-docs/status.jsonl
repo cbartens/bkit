@@ -68,3 +68,8 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T08:23:53Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"5c01fa6c35587f5024c076778d8e507f9a4713d2adfe6527848e2dc710916eb1","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6735505754","at":"2026-11-09T08:23:55Z"}
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-09T08:23:55Z","parentSha":"653b7bc4f0b03c120ed4181b23f9ff16a9d6ace9","artifacts":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:24:02Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:24:26Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:24:39Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","optional-artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-convert/-/1/comment","hash":"1fa0653a20627a2842072f352cc90a45ecfcc2659062cdd7bf2bc37f8a993a3d","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6735505754","at":"2026-11-09T08:24:42Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-convert","status":"DONE","at":"2026-11-09T08:24:42Z","parentSha":"f36faaa91f837b3a4126b207208a7cd9d9a39ee4","artifacts":["docs/plans/202611/864-move-project-docs-plan.md","docs/plans/202611/logs/864-move-project-docs/build-plan-check.md"],"attempt":1}
