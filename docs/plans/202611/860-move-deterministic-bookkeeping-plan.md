@@ -121,6 +121,8 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | records the issued invocation in the run status log and rebuilds a deleted receipt | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 10 |
 | writes the engine-call row for an invocation-bound command | Unit | `.bkit/core/engine/commands/lib.test.ts` | 10 |
 | keeps invocation events and engine-call rows inside the issuing worktree after receipt loss | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 10 |
+| refuses to issue an invocation into a status file outside the issuing checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 11 |
+| starts a step clock at the previous step row, not at an invocation row | Unit | `.bkit/core/engine/commands/workflow/run-facts.test.ts` | 11 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -445,6 +447,19 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps invocation events and engine-call rows inside the issuing worktree after receipt loss` fails on a missing event or row in the issuing worktree's status log, any write to the other worktree, or a resumed command failing after the receipt is deleted.
 
 <!-- bkit:task 10 end -->
+
+<!-- bkit:task 11 start -->
+
+- [ ] **TASK 11:** Keep invocation issuance inside the issuing checkout and out of step timing (owner decision, build decision 2; closes verify attempt 5 gaps).
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` refuses a `--file` outside the issuing checkout's top folder before any write, so an invocation row never lands in another worktree's `status.jsonl` and an id is never tied to another worktree's run.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.ts`: add the `invocation` row type to `MARK_ROWS` so a step's minutes start at the previous step's row, not at an invocation row.
+  - **DEPENDS ON:** 10.
+  - **DONE WHEN:** `status invocation` with a `--file` from another worktree exits non-zero and changes no file, an id issued for one worktree's run is not accepted from another, step minutes ignore `invocation` rows, and the two tests below pass.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `refuses to issue an invocation into a status file outside the issuing checkout` fails on the command exiting 0 or appending a row to the other worktree's log.
+    - `.bkit/core/engine/commands/workflow/run-facts.test.ts` `starts a step clock at the previous step row, not at an invocation row` fails on the step reporting fewer minutes than it took.
+
+<!-- bkit:task 11 end -->
 <!-- bkit:group 1 end -->
 
 <!-- bkit:group 2 start -->
