@@ -2629,7 +2629,6 @@ describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
     dispatchModules(modules, ctx());
 
     const read = (p: string) => fs.readFileSync(p, "utf-8");
-    const count = (text: string, needle: string): number => text.split(needle).length - 1;
 
     // New matchers arrive.
     const claudeAfter = JSON.parse(read(claudePath));
