@@ -586,7 +586,15 @@ export const statusCommand = {
                         return path.join(fs.realpathSync(dir), ...tail);
                     })();
                     const realTop = fs.realpathSync(top);
-                    if (realFile !== realTop && !realFile.startsWith(realTop + path.sep))
+                    // The checkout that owns the file: a worktree nested under this one has its own top
+                    // folder, so a plain path-prefix test would accept it.
+                    let ownerDir = path.dirname(realFile);
+                    while (!fs.existsSync(ownerDir) && path.dirname(ownerDir) !== ownerDir)
+                        ownerDir = path.dirname(ownerDir);
+                    const fileTop = git(ownerDir, ["rev-parse", "--show-toplevel"]);
+                    const ownerTop = fileTop === null ? null : fs.realpathSync(fileTop);
+                    if ((realFile !== realTop && !realFile.startsWith(realTop + path.sep)) ||
+                        (ownerTop !== null && ownerTop !== realTop))
                         throw new CommandError(EXIT.USAGE, `--file ${file} is outside this checkout (${top}); issue the invocation from the checkout that owns the run`);
                     const logs = path.dirname(path.dirname(statusPath));
                     if (path.basename(statusPath) !== "status.jsonl" ||
