@@ -340,7 +340,7 @@ pnpm add -D prettier@^3.5.3
 
 ## lint-staged — `.lintstagedrc.json`
 
-Copy `.bkit/templates/lintstagedrc.example.json` to `.lintstagedrc.json`. The samples under `.bkit/templates/` carry non-dotfile names so prettier and lint-staged do not read them as live config; `bkit upgrade` removes the old dotfile-named samples (`.lintstagedrc.json`, `.prettierignore`) from `.bkit/templates/`.
+Copy `.bkit/templates/lintstagedrc.example.json` to `.lintstagedrc.json`. The samples under `.bkit/templates/` carry non-dotfile names so prettier and lint-staged do not read them as live config; `bkit upgrade` removes the old dotfile-named samples (`.lintstagedrc.json`, `.prettierignore`) from `.bkit/templates/`. bkit writes no lint-staged config into your repo: when `bkit:gate:format` runs `lint-staged` without a `--config` path, lint-staged is a dependency and no config exists, install and upgrade print `bkit upgrade: no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json`.
 
 It runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls it. Reference: https://github.com/lint-staged/lint-staged.
 

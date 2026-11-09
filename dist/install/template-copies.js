@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { NPM_STRIP_REMAP, getPkgRoot, getTemplatesRoot, TEMPLATE_COPIES_DIR, } from "../shared/package-roots.js";
 import { hasLintStagedConfig } from "../checks/tips/detect.js";
-import { readPackageJson } from "../shared/package-json.js";
+import { readDependencyNames, readPackageJson } from "../shared/package-json.js";
 export function listFilesRecursive(dir) {
     if (!fs.existsSync(dir))
         return [];
@@ -121,33 +121,29 @@ export function formatTemplateChanges(changes) {
         TEMPLATES_POINTER,
     ].join("\n");
 }
-const OLD_LINT_STAGED_SAMPLE = ".lintstagedrc.json";
-const LINT_STAGED_SAMPLE = "lintstagedrc.example.json";
-// Migration (installs up to 6.1.x, `docs/migrations.md`): until the sample rename, lint-staged
-// found `.bkit/templates/.lintstagedrc.json` as its config in a repo with none at the root. The
-// sync prunes that file, so a consumer holding it, gating format on `lint-staged` and with no
-// lint-staged config of its own gets the shipped sample copied to `.lintstagedrc.json` first.
-// Idempotent (a root config, once written, ends the trigger); dry-run pushes the same write
-// without touching disk. Returns true when it copied. Call before `syncTemplateCopies`.
-export function migrateLintStagedSample(cwd, opts) {
+/** The one line install and upgrade print when a gating lint-staged has no config to read. */
+export const MISSING_LINT_STAGED_CONFIG_LINE = "bkit upgrade: no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
+// True when `bkit:gate:format` runs `lint-staged` without a `--config` / `-c` path.
+function formatGateRunsBareLintStaged(cwd) {
+    const pkg = readPackageJson(cwd);
+    const scripts = pkg.ok ? pkg.pkg.scripts : undefined;
+    const format = scripts?.["bkit:gate:format"];
+    if (typeof format !== "string" || !/\blint-staged\b/.test(format))
+        return false;
+    return !/(?:^|\s)(?:--config(?:[=\s]|$)|-c(?:[=\s]|$))/.test(format);
+}
+// bkit writes no lint-staged config into a consumer repo. When the format gate runs lint-staged
+// bare, lint-staged is installed and no config exists, the commit hook fails: print the one-line
+// fix. Prints in a dry run too; writes nothing. Returns true when it printed. No-op in dogfood.
+export function warnMissingLintStagedConfig(cwd) {
     if (path.resolve(cwd) === getPkgRoot())
         return false;
-    if (!fs.existsSync(path.join(cwd, TEMPLATE_COPIES_DIR, OLD_LINT_STAGED_SAMPLE)))
+    if (!formatGateRunsBareLintStaged(cwd))
         return false;
-    const src = path.join(getTemplatesRoot(), LINT_STAGED_SAMPLE);
-    if (!fs.existsSync(src))
-        return false;
-    const pkg = readPackageJson(cwd);
-    const gate = pkg.ok ? pkg.pkg.scripts : undefined;
-    const format = gate?.["bkit:gate:format"];
-    if (typeof format !== "string" || !/\blint-staged\b/.test(format))
+    if (!readDependencyNames(cwd).includes("lint-staged"))
         return false;
     if (hasLintStagedConfig(cwd))
         return false;
-    const tag = opts.dryRun ? "[dry-run] " : "";
-    if (!opts.dryRun)
-        fs.copyFileSync(src, path.join(cwd, ".lintstagedrc.json"));
-    opts.ws.writes.push({ path: ".lintstagedrc.json", action: "write" });
-    console.log(`${opts.logPrefix} ${tag}lint-staged config copied from the sample: .lintstagedrc.json`);
+    console.log(MISSING_LINT_STAGED_CONFIG_LINE);
     return true;
 }

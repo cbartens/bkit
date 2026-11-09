@@ -118,11 +118,17 @@ const LINT_STAGED_CONFIGS = [
     ".lintstagedrc.yaml",
     ".lintstagedrc.yml",
     ".lintstagedrc.mjs",
-    ".lintstagedrc.cjs",
+    ".lintstagedrc.mts",
     ".lintstagedrc.js",
+    ".lintstagedrc.ts",
+    ".lintstagedrc.cjs",
+    ".lintstagedrc.cts",
     "lint-staged.config.mjs",
-    "lint-staged.config.cjs",
+    "lint-staged.config.mts",
     "lint-staged.config.js",
+    "lint-staged.config.ts",
+    "lint-staged.config.cjs",
+    "lint-staged.config.cts",
 ];
 /** True when any `.github/workflows/*.yml` / `*.yaml` contains `needle`. */
 export function anyWorkflowMentions(cwd, needle) {
@@ -134,9 +140,11 @@ export function anyWorkflowMentions(cwd, needle) {
         .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
         .some((f) => readText(cwd, path.join(".github", "workflows", f)).includes(needle));
 }
-/** True when lint-staged is configured: any of its config files, or `package.json` `lint-staged`. */
+/** True when lint-staged is configured: any of its config files, `package.json` or `package.yaml` / `package.yml` `lint-staged` key. */
 export function hasLintStagedConfig(cwd) {
     if (LINT_STAGED_CONFIGS.some((rel) => exists(cwd, rel)))
+        return true;
+    if (["package.yaml", "package.yml"].some((rel) => /^lint-staged\s*:/m.test(readText(cwd, rel))))
         return true;
     const pkg = readPackageJson(cwd);
     return pkg.ok && pkg.pkg["lint-staged"] !== undefined;

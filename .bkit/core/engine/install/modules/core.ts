@@ -21,7 +21,7 @@ import {
 import type { TokenMap } from "../placeholders.js";
 import {
   listFilesRecursive,
-  migrateLintStagedSample,
+  warnMissingLintStagedConfig,
   syncTemplateCopies,
 } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
@@ -1891,13 +1891,13 @@ export function runCoreModule(ctx: ModuleContext): void {
   // 3b2. Template copies — the whole templates root into the consumer's
   // `.bkit/templates/` (never applied to the repo; no-op in dogfood).
   console.log(`${logPrefix} ${tag}Running template copies pass`);
-  migrateLintStagedSample(cwd, { dryRun, ws, logPrefix });
   const templateChanges = syncTemplateCopies(cwd, { dryRun, ws });
   for (const [verb, paths] of Object.entries(templateChanges)) {
     for (const p of paths) {
       console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
     }
   }
+  warnMissingLintStagedConfig(cwd);
 
   // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
   // installed package (browse-only, gitignored; no-op in dogfood). A real
