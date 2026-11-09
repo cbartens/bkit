@@ -1155,3 +1155,77 @@ describe("bkit status row owner-pause friction", () => {
     expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
   });
 });
+
+describe("bkit status invocation", () => {
+  const REL = "docs/plans/202611/logs/860-x/status.jsonl";
+  const runRepo = (rows: object[] = [started("build", "2026-11-09T10:00:00Z")]) => {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.mkdirSync(path.dirname(path.join(root, REL)), { recursive: true });
+    fs.writeFileSync(path.join(root, REL), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return root;
+  };
+
+  it("issues invocation metadata from an explicit run and registered step", async () => {
+    const root = runRepo();
+    const statusBefore = fs.readFileSync(path.join(root, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(r.code).toBe(0);
+    // Number, title and paths come from the step table and the explicit run, not the caller.
+    expect(r.json).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      number: 3,
+      title: "Branch Sync",
+      run: 1,
+      scope: "run",
+      statusPath: path.join(root, REL),
+      bookRoot: root,
+      agent: "bkit-build-plan-tests",
+      host: "claude",
+      configuredModel: "sonnet",
+    });
+    expect(typeof r.json.invocation).toBe("string");
+    expect(r.json.invocation).not.toBe("");
+    // Issuing mutates no run state; the receipt lives in the outbox.
+    expect(fs.readFileSync(path.join(root, REL), "utf-8")).toBe(statusBefore);
+    expect(fs.existsSync(String(r.json.receipt))).toBe(true);
+    expect(String(r.json.receipt)).toContain("bkit-outbox");
+
+    // An unregistered step, and a step of another workflow, are refused.
+    const bad = await run(
+      ["status", "invocation", "--workflow=build", "--step=not-a-step", `--file=${REL}`],
+      root,
+    );
+    expect(bad.code).toBe(2);
+    const cross = await run(
+      ["status", "invocation", "--workflow=build", "--step=plan-generate", `--file=${REL}`],
+      root,
+    );
+    expect(cross.code).toBe(2);
+
+    // A runless audit gets scoped outbox authority without a fabricated run or status file.
+    const bare = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: bare });
+    const audit = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-example"],
+      bare,
+    );
+    expect(audit.code).toBe(0);
+    expect(audit.json).toMatchObject({ scope: "outbox", run: null, statusPath: null });
+    expect(fs.existsSync(String(audit.json.receipt))).toBe(true);
+    expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
+  });
+});

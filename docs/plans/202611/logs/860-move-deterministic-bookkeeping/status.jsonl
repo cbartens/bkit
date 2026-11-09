@@ -78,3 +78,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-09T08:29:20Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-install-skills/-/1/comment","hash":"89999e27e175ec3408266f8fad1bd1c4051b3617ce7232240a2dfbd1648336a5","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6735474887","at":"2026-11-09T08:29:23Z"}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","at":"2026-11-09T08:29:23Z","parentSha":"0be030b32cfe7f4ad8894e44774055a559a005f8","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-install-skills.md"],"attempt":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:29:31Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:29:35Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:29:35Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-09T08:29:35Z","parentSha":"4a9321e17ab2e045ed0b6397f2f68e2bc7876e75","artifacts":[],"group":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:29:36Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-09T08:36:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/1/1/comment","hash":"9310cfa62083d556caa88849341d51b7dd83a489769ffbcb0c95a8b69b85e947","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6735474887","at":"2026-11-09T08:36:35Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-09T08:36:35Z","parentSha":"4a9321e17ab2e045ed0b6397f2f68e2bc7876e75","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-tests-1-log.md"],"verdict":"PASS","attempt":1,"group":1}

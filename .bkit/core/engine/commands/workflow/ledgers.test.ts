@@ -16,6 +16,7 @@ import {
   readRecord,
   writeRecord,
 } from "./ledgers";
+import { COMMANDS } from "../registry";
 import { NO_MARKERS_REASON } from "./plan-blocks";
 
 const dirs: string[] = [];
@@ -1785,5 +1786,186 @@ describe("bkit ledgers triage", () => {
       "701-declared",
       "701-own-declaration",
     ]);
+  });
+});
+
+describe("bkit ledgers append --invocation", () => {
+  const STATUS = "docs/plans/202611/logs/860-x/status.jsonl";
+  const knowledge = (o: Record<string, unknown> = {}) => ({
+    kind: "knowledge",
+    key: "gotcha",
+    summary: "a gotcha worth keeping",
+    ...o,
+  });
+
+  async function issue(r: string, extra: string[] = []) {
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-plan-tests",
+        `--file=${STATUS}`,
+        "--host=claude",
+        "--configured-model=sonnet",
+        ...extra,
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    return (JSON.parse(out.join("")) as { invocation: string }).invocation;
+  }
+
+  function buildRepo() {
+    const r = repo();
+    put(
+      r,
+      STATUS,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-09T10:00:00Z" })}\n`,
+    );
+    return r;
+  }
+
+  async function appendWith(r: string, ledger: string, rows: unknown, flags: string[]) {
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify(rows));
+    return run(r, ["append", `--root=${r}`, `--ledger=${ledger}`, `--rows=${file}`, ...flags]);
+  }
+
+  it("rejects conflicting attribution and retains legacy writer restrictions", async () => {
+    const r = buildRepo();
+    const id = await issue(r, ["--agent=bkit-build-plan-tests", "--observed-model=opus-observed"]);
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+
+    // Control: a row with no `by` is completed from the invocation and written.
+    const filled = await appendWith(r, "knowledge", [knowledge()], [`--invocation=${id}`]);
+    expect(filled.code).toBe(0);
+    const written = fs.readFileSync(ledgerFile, "utf-8");
+
+    // An asserted actor, step or run that disagrees with the invocation is refused, not overwritten.
+    for (const by of [
+      { workflow: "debug", step: "build-plan-tests" },
+      { workflow: "build", step: "build-plan-tests", subagent: "bkit-build-plan-gaps-remediate" },
+      {
+        workflow: "build",
+        step: "build-plan-tests",
+        subagent: "bkit-build-plan-tests",
+        model: "other",
+      },
+      { workflow: "build", step: "build-close-workflow", subagent: "bkit-build-plan-tests" },
+    ]) {
+      const res = await appendWith(
+        r,
+        "knowledge",
+        [knowledge({ key: "second", by })],
+        [`--invocation=${id}`],
+      );
+      expect(res.code).toBe(EXIT_ROW_REFUSED);
+      expect(res.err).toMatch(/conflict/i);
+      expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+    }
+
+    // Legacy callers keep their restrictions: no invocation, an unlisted orchestrator is refused.
+    const legacy = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "third", by: { workflow: "build", step: "build-close-workflow" } })],
+      [],
+    );
+    expect(legacy.code).toBe(EXIT_ROW_REFUSED);
+    expect(legacy.err).toContain("does not write knowledge rows");
+
+    // An invocation whose agent may not write the kind cannot launder the row.
+    const other = await issue(r, ["--agent=bkit-build-challenge", "--observed-model=m"]);
+    const unauthorized = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "fourth" })],
+      [`--invocation=${other}`],
+    );
+    expect(unauthorized.code).toBe(EXIT_ROW_REFUSED);
+    expect(unauthorized.err).toContain("does not write knowledge rows");
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+  });
+});
+
+describe("bkit ledgers query", () => {
+  const dec = (key: string, ts: number, status: string) =>
+    JSON.stringify({
+      schema: 3,
+      ts,
+      kind: "decision",
+      key,
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { workflow: "build", step: "manual" },
+      summary: `${key} at ${ts}`,
+      status,
+    });
+  const FILE = "docs/decisions.jsonl";
+
+  const fixture = () => {
+    const r = repo();
+    put(
+      r,
+      FILE,
+      [
+        dec("k1", 1001, "ACTIVE"),
+        dec("k2", 1002, "ACTIVE"),
+        "{not json",
+        dec("k2", 1003, "SUPERSEDED"),
+        dec("k3", 1004, "ACTIVE"),
+        dec("k4", 1005, "ACTIVE"),
+        dec("k5", 1006, "ACTIVE"),
+      ].join("\n") + "\n",
+    );
+    return r;
+  };
+  const q = (r: string, ...flags: string[]) =>
+    run(r, ["query", `--root=${r}`, "--ledger=decisions", ...flags]);
+
+  it("pages canonical winners with diagnostics and rejects stale cursors", async () => {
+    const r = fixture();
+    const bytes = fs.readFileSync(path.join(r, FILE), "utf-8");
+
+    const whole = await q(r, "--status=ACTIVE");
+    expect(whole.code).toBe(0);
+    const expected = whole.json.rows.map((x: { key: string }) => x.key);
+    // The superseded k2 winner is filtered out, and its older ACTIVE row is not resurrected.
+    expect([...expected].sort()).toEqual(["k1", "k3", "k4", "k5"]);
+
+    const page1 = await q(r, "--status=ACTIVE", "--limit=2");
+    expect(page1.code).toBe(0);
+    const page2 = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${page1.json.nextCursor}`);
+    expect(page2.code).toBe(0);
+    for (const page of [page1, page2]) {
+      expect(page.json.rows).toHaveLength(2);
+      // The malformed line is reported with its line number on every page, never as a clean scan.
+      expect(page.json.diagnostics).toEqual([expect.objectContaining({ line: 3 })]);
+      expect(page.json.coverage).toMatchObject({ clean: false, malformedLines: 1 });
+    }
+    expect(page2.json.nextCursor).toBeNull();
+    const seen = [...page1.json.rows, ...page2.json.rows].map((x: { key: string }) => x.key);
+    expect(seen).toEqual(expected);
+
+    // A cursor from before the ledger changed is refused.
+    const first = await q(r, "--status=ACTIVE", "--limit=2");
+    fs.appendFileSync(path.join(r, FILE), `${dec("k6", 1007, "ACTIVE")}\n`);
+    const stale = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${first.json.nextCursor}`);
+    expect(stale.code).toBe(2);
+    expect(stale.err).toMatch(/cursor|stale|snapshot/i);
+    expect(stale.json).toBeUndefined();
+
+    // Reading never writes.
+    fs.writeFileSync(path.join(r, FILE), bytes);
+    await q(r, "--key=k1");
+    expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
   });
 });

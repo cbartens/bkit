@@ -36,6 +36,7 @@ import {
   normalizeEvent,
   parse,
   placeLineage,
+  queryLedger,
   totalsProblem,
   validate,
   withLineage,
@@ -2964,5 +2965,104 @@ describe("validate — schema-2 top section", () => {
     const r = validate(make());
     expect(r.ok).toBe(false);
     expect(r.reason).toContain("bkit.version");
+  });
+});
+
+describe("verified model attribution", () => {
+  const subagentBy = (extra: Row) => ({
+    workflow: "build",
+    step: "build-plan-tests",
+    subagent: "bkit-build-plan-tests",
+    ...extra,
+  });
+
+  it("accepts verified unavailable model without confusing configured and observed models", () => {
+    // Unavailable: authoritative provenance and the configured pin, but no model value.
+    const unavailable = knowledgeEvent("k", {
+      by: subagentBy({ modelSource: "unavailable", configuredModel: "sonnet" }),
+    });
+    expect(validate(unavailable).ok).toBe(true);
+    expect(writerProblem(unavailable as unknown as Record<string, unknown>)).toBeUndefined();
+
+    // The configured pin is never recorded as the runtime model.
+    const pinAsRuntime = knowledgeEvent("k", {
+      by: subagentBy({ model: "sonnet", modelSource: "unavailable", configuredModel: "sonnet" }),
+    });
+    expect(validate(pinAsRuntime).ok).toBe(false);
+
+    // Observed and configured stay two distinct fields through normalize and fold.
+    const observed = knowledgeEvent("k2", {
+      by: subagentBy({
+        model: "opus-observed",
+        modelSource: "observed",
+        configuredModel: "sonnet",
+      }),
+    });
+    expect(validate(observed).ok).toBe(true);
+    const winner = [...fold([observed]).values()][0]!;
+    expect(winner.by).toMatchObject({
+      model: "opus-observed",
+      modelSource: "observed",
+      configuredModel: "sonnet",
+    });
+
+    // An unknown source is refused, and an unknown optional field survives normalization.
+    expect(validate(knowledgeEvent("k3", { by: subagentBy({ modelSource: "guessed" }) })).ok).toBe(
+      false,
+    );
+    const extra = knowledgeEvent("k4", {
+      by: subagentBy({ model: "m", modelSource: "observed", futureField: "kept" }),
+    });
+    expect((normalizeEvent(extra).by as Record<string, unknown>)["futureField"]).toBe("kept");
+
+    // Legacy: a subagent row with neither a model nor a provenance is still refused.
+    expect(writerProblem({ kind: "knowledge", by: subagentBy({}) })).toContain("by.model");
+    // Legacy: an old row with only `model` still validates.
+    expect(validate(knowledgeEvent("k5", { by: subagentBy({ model: "m" }) })).ok).toBe(true);
+  });
+});
+
+describe("queryLedger — canonical winners before filtering", () => {
+  const line = (key: string, ts: number, status: string) =>
+    JSON.stringify(decisionEvent(key, { ts, status }));
+
+  it("folds numeric timestamps and equal timestamp ties before filtering", () => {
+    const raw = [
+      line("k1", 1000, "ACTIVE"),
+      line("k1", 2000, "SUPERSEDED"),
+      // Equal ts: the later line wins the tie.
+      line("k2", 3000, "ACTIVE"),
+      line("k2", 3000, "SUPERSEDED"),
+      // Numeric, not string, order: 10 is newer than 9.
+      line("k3", 10, "SUPERSEDED"),
+      line("k3", 9, "ACTIVE"),
+      "{not json",
+      line("k4", 5000, "ACTIVE"),
+    ].join("\n");
+
+    // Control: the canonical fold alone already picks these winners.
+    const winners = [...fold(parse(raw).events).values()].map((e) => [e.key, e["status"]]);
+    expect(winners).toEqual(
+      expect.arrayContaining([
+        ["k1", "SUPERSEDED"],
+        ["k2", "SUPERSEDED"],
+        ["k3", "SUPERSEDED"],
+        ["k4", "ACTIVE"],
+      ]),
+    );
+
+    // Filtering applies to the winners: no older ACTIVE row is resurrected.
+    const active = queryLedger(raw, { status: "ACTIVE" });
+    expect(active.rows.map((r) => r.key)).toEqual(["k4"]);
+    const superseded = queryLedger(raw, { status: "SUPERSEDED" });
+    expect(superseded.rows.map((r) => r.key).sort()).toEqual(["k1", "k2", "k3"]);
+    expect(queryLedger(raw, { key: "k1" }).rows.map((r) => r["status"])).toEqual(["SUPERSEDED"]);
+
+    // The malformed line is a located diagnostic, never silently dropped.
+    expect(active.diagnostics).toEqual([expect.objectContaining({ line: 7 })]);
+    // The same input gives the same order each time.
+    expect(queryLedger(raw, {}).rows.map((r) => r.key)).toEqual(
+      queryLedger(raw, {}).rows.map((r) => r.key),
+    );
   });
 });

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   CommandError,
   EXIT,
+  INVOCATION_FLAG,
   SKIP_CI_TOKEN,
   commandHelp,
   ghUnavailable,
@@ -842,5 +843,110 @@ describe("resolveActiveRun", () => {
     const { cwd, status } = treeWithOneRun();
     const run = resolveActiveRun({ cwd, fid: "901-x", month: "202611" });
     expect(run).toEqual({ workflow: "build", file: status, bookRoot: cwd });
+  });
+});
+
+describe("explicit invocation context", () => {
+  const PROBE: CommandSpec = {
+    noun: "probe",
+    summary: "invocation probe",
+    verbs: {
+      show: {
+        summary: "emits the invocation the shared flag resolved",
+        use: "workflow",
+        flags: [
+          INVOCATION_FLAG,
+          { name: "workflow", type: "string", help: "asserted workflow" },
+          { name: "file", type: "string", help: "asserted status.jsonl" },
+        ],
+        output: { invocation: "the resolved invocation, or null" },
+        run: (ctx) => {
+          ctx.emit({ invocation: ctx.invocation ?? null });
+          return 0;
+        },
+      },
+    },
+  };
+  const REL = "docs/plans/202611/logs/860-x/status.jsonl";
+
+  const invocationRepo = () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lib-inv-")));
+    cleanups.push(root);
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.mkdirSync(path.dirname(path.join(root, REL)), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, REL),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-09T10:00:00Z" })}\n`,
+    );
+    return root;
+  };
+  const cleanups: string[] = [];
+  afterEach(() => {
+    for (const d of cleanups.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  async function call(cwd: string, specs: CommandSpec[], argv: string[]) {
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runCommand([...argv, "--json"], specs, {
+      classicVerbs: new Set(["status"]),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+    });
+    return { code, out: out.join(""), err: err.join("") };
+  }
+
+  it("rejects stale cross-worktree invocation and conflicting overrides", async () => {
+    const a = invocationRepo();
+    const b = invocationRepo();
+    const issued = await call(a, COMMANDS, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-branch-sync",
+      `--file=${REL}`,
+    ]);
+    expect(issued.code).toBe(0);
+    const id = (JSON.parse(issued.out) as { invocation: string }).invocation;
+    expect(id).not.toBe("");
+
+    // Control: the checkout that issued it resolves it to its own run and status file.
+    const ok = await call(a, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(ok.code).toBe(0);
+    expect(
+      (JSON.parse(ok.out) as { invocation: Record<string, unknown> }).invocation,
+    ).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      statusPath: path.join(a, REL),
+    });
+
+    // Another checkout, a forged id and each conflicting override are refused, with no output.
+    const other = await call(b, [PROBE], ["probe", "show", `--invocation=${id}`]);
+    expect(other.code).toBe(EXIT.USAGE);
+    expect(other.err).toMatch(/invocation/i);
+    expect(other.out).toBe("");
+
+    const forged = await call(a, [PROBE], ["probe", "show", "--invocation=inv-forged"]);
+    expect(forged.code).toBe(EXIT.USAGE);
+    expect(forged.out).toBe("");
+
+    const wrongWorkflow = await call(
+      a,
+      [PROBE],
+      ["probe", "show", `--invocation=${id}`, "--workflow=debug"],
+    );
+    expect(wrongWorkflow.code).toBe(EXIT.USAGE);
+    expect(wrongWorkflow.err).toMatch(/conflict/i);
+    expect(wrongWorkflow.out).toBe("");
+
+    const wrongFile = await call(
+      a,
+      [PROBE],
+      ["probe", "show", `--invocation=${id}`, `--file=${path.join(b, REL)}`],
+    );
+    expect(wrongFile.code).toBe(EXIT.USAGE);
+    expect(wrongFile.err).toMatch(/conflict/i);
+    expect(wrongFile.out).toBe("");
   });
 });

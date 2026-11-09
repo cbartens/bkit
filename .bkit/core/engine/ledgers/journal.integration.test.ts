@@ -13,8 +13,10 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runCommand, type CommandSpec } from "../commands/lib";
+import { INVOCATION_FLAG, runCommand, type CommandSpec } from "../commands/lib";
+import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
+import { ledgersCommand } from "../commands/workflow/ledgers";
 
 const FID = "901-journal";
 const STATUS_REL = path.join("docs", "plans", "202610", "logs", FID, "status.jsonl");
@@ -240,5 +242,230 @@ describe("the dispatch seam on a real worktree", () => {
     const calls = rows(path.join(worktree, STATUS_REL)).filter((r) => r["type"] === "engine-call");
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({ workflow: "build", noun: "branches", verb: "anchor-read" });
+  });
+});
+
+const PROBE: CommandSpec = {
+  noun: "probe",
+  summary: "invocation probe",
+  verbs: {
+    show: {
+      summary: "emits the invocation the shared flag resolved",
+      use: "workflow",
+      flags: [INVOCATION_FLAG],
+      output: { invocation: "the resolved invocation, or null" },
+      run: (ctx) => {
+        ctx.emit({ invocation: ctx.invocation ?? null });
+        return 0;
+      },
+    },
+  },
+};
+
+async function call(cwd: string, specs: readonly CommandSpec[], argv: string[]) {
+  const out: string[] = [];
+  const err: string[] = [];
+  const code = await runCommand([...argv, "--json"], specs, {
+    classicVerbs: new Set(["status"]),
+    cwd,
+    io: { stdout: (t) => out.push(t), stderr: (t) => err.push(t) },
+  });
+  return {
+    code,
+    json: out.length > 0 ? (JSON.parse(out.join("")) as Record<string, any>) : undefined,
+    err: err.join(""),
+  };
+}
+
+async function issue(cwd: string, extra: string[] = [], step = "build-plan-tests") {
+  const res = await call(cwd, COMMANDS, [
+    "status",
+    "invocation",
+    "--workflow=build",
+    `--step=${step}`,
+    `--file=${STATUS_REL}`,
+    "--host=claude",
+    "--configured-model=sonnet",
+    ...extra,
+  ]);
+  expect(res.code).toBe(0);
+  return res.json!["invocation"] as string;
+}
+
+describe("explicit invocation on real worktrees", () => {
+  it("resumes explicit invocation across two real worktrees without identity leakage", async () => {
+    const other = path.join(main, ".worktrees", "902-other");
+    git(main, ["worktree", "add", "-q", "-b", "feat/902-other", other]);
+    const otherStatus = path.join(other, STATUS_REL);
+    fs.mkdirSync(path.dirname(otherStatus), { recursive: true });
+    fs.writeFileSync(
+      otherStatus,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T11:00:00Z" })}\n`,
+    );
+    const statusA = path.join(worktree, STATUS_REL);
+
+    const idA = await issue(worktree);
+    const idB = await issue(other);
+    expect(idA).not.toBe(idB);
+
+    // The run moves on between two commands: resume must keep the same identity.
+    fs.appendFileSync(
+      statusA,
+      `${JSON.stringify({ type: "step-done", workflow: "build", step: "build-branch-sync", status: "DONE", at: "2026-10-29T10:05:00Z", parentSha: "a".repeat(40), artifacts: [] })}\n`,
+    );
+    const bytesA = fs.readFileSync(statusA, "utf-8");
+    const bytesB = fs.readFileSync(otherStatus, "utf-8");
+
+    const resumedA = await call(worktree, [PROBE], ["probe", "show", `--invocation=${idA}`]);
+    expect(resumedA.code).toBe(0);
+    expect(resumedA.json!["invocation"]).toMatchObject({
+      id: idA,
+      run: 1,
+      workflow: "build",
+      step: "build-plan-tests",
+      statusPath: statusA,
+    });
+    const resumedB = await call(other, [PROBE], ["probe", "show", `--invocation=${idB}`]);
+    expect(resumedB.json!["invocation"]).toMatchObject({ id: idB, statusPath: otherStatus });
+
+    // Each id is refused anywhere but its own worktree: the other worktree and the main checkout.
+    for (const [cwd, id] of [
+      [other, idA],
+      [worktree, idB],
+      [main, idA],
+    ] as const) {
+      const leaked = await call(cwd, [PROBE], ["probe", "show", `--invocation=${id}`]);
+      expect(leaked.code).toBe(2);
+      expect(leaked.json).toBeUndefined();
+    }
+    expect(fs.readFileSync(statusA, "utf-8")).toBe(bytesA);
+    expect(fs.readFileSync(otherStatus, "utf-8")).toBe(bytesB);
+  });
+
+  it("completes missing subagent attribution before a real append", async () => {
+    const id = await issue(worktree, [
+      "--agent=bkit-build-plan-tests",
+      "--observed-model=opus-observed",
+    ]);
+    const rowsFile = path.join(main, "rows.json");
+    fs.writeFileSync(
+      rowsFile,
+      JSON.stringify([{ kind: "knowledge", key: "gotcha", summary: "a gotcha worth keeping" }]),
+    );
+    const appended = await call(
+      worktree,
+      [ledgersCommand],
+      [
+        "ledgers",
+        "append",
+        `--root=${worktree}`,
+        "--ledger=knowledge",
+        `--rows=${rowsFile}`,
+        `--invocation=${id}`,
+      ],
+    );
+    expect(appended.code).toBe(0);
+    const ledger = rows(path.join(worktree, "docs", "knowledge.jsonl"));
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]!["by"]).toEqual({
+      workflow: "build",
+      step: "build-plan-tests",
+      subagent: "bkit-build-plan-tests",
+      model: "opus-observed",
+      modelSource: "observed",
+      configuredModel: "sonnet",
+      host: "claude",
+    });
+    expect(fs.existsSync(path.join(main, "docs", "knowledge.jsonl"))).toBe(false);
+
+    // An unavailable observation is accepted with provenance and the pin kept apart from it.
+    const unavailableId = await issue(worktree, [
+      "--agent=bkit-build-plan-tests",
+      "--observed-model=unavailable",
+    ]);
+    fs.writeFileSync(
+      rowsFile,
+      JSON.stringify([{ kind: "knowledge", key: "second", summary: "a second gotcha" }]),
+    );
+    const second = await call(
+      worktree,
+      [ledgersCommand],
+      [
+        "ledgers",
+        "append",
+        `--root=${worktree}`,
+        "--ledger=knowledge",
+        `--rows=${rowsFile}`,
+        `--invocation=${unavailableId}`,
+      ],
+    );
+    expect(second.code).toBe(0);
+    const by = rows(path.join(worktree, "docs", "knowledge.jsonl"))[1]!["by"] as Record<
+      string,
+      unknown
+    >;
+    expect(by).toMatchObject({ modelSource: "unavailable", configuredModel: "sonnet" });
+    expect(by).not.toHaveProperty("model");
+  });
+});
+
+describe("canonical ledger reads on real files", () => {
+  const dec = (key: string) =>
+    JSON.stringify({
+      schema: 3,
+      ts: 1_700_000_000_001,
+      kind: "decision",
+      key,
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { workflow: "build", step: "manual" },
+      summary: key,
+      status: "ACTIVE",
+    });
+  const query = (extra: string[] = []) =>
+    call(
+      worktree,
+      [ledgersCommand],
+      ["ledgers", "query", `--root=${worktree}`, "--ledger=decisions", ...extra],
+    );
+
+  it("distinguishes unreadable missing malformed and clean ledger coverage without writing", async () => {
+    const file = path.join(worktree, "docs", "decisions.jsonl");
+    const porcelain = () => git(worktree, ["status", "--porcelain"]);
+    const before = porcelain();
+
+    // Missing: no rows, and not a clean scan.
+    const missing = await query();
+    expect(missing.code).toBe(0);
+    expect(missing.json!["rows"]).toEqual([]);
+    expect(missing.json!["coverage"]).toMatchObject({ status: "missing", clean: false });
+    expect(fs.existsSync(file)).toBe(false);
+
+    // Unreadable: the path is a directory, so the read fails.
+    fs.mkdirSync(file, { recursive: true });
+    const unreadable = await query();
+    expect(unreadable.code).toBe(0);
+    expect(unreadable.json!["rows"]).toEqual([]);
+    expect(unreadable.json!["coverage"]).toMatchObject({ status: "unreadable", clean: false });
+    fs.rmSync(file, { recursive: true });
+
+    // Malformed: valid rows come back with a located diagnostic; the bytes are untouched.
+    const body = `${dec("a")}\n{broken\n${dec("b")}\n`;
+    fs.writeFileSync(file, body);
+    const malformed = await query();
+    expect(malformed.json!["rows"].map((r: { key: string }) => r.key)).toEqual(["a", "b"]);
+    expect(malformed.json!["diagnostics"]).toEqual([expect.objectContaining({ line: 2 })]);
+    expect(malformed.json!["coverage"]).toMatchObject({ status: "partial", clean: false });
+    expect(fs.readFileSync(file, "utf-8")).toBe(body);
+
+    // Clean: only now is the scan reported clean.
+    fs.writeFileSync(file, `${dec("a")}\n${dec("b")}\n`);
+    const clean = await query();
+    expect(clean.json!["diagnostics"]).toEqual([]);
+    expect(clean.json!["coverage"]).toMatchObject({ status: "complete", clean: true });
+
+    // Reads wrote nothing beyond the ledger fixture this test itself created.
+    fs.rmSync(file);
+    expect(porcelain()).toBe(before);
   });
 });
