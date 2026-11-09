@@ -330,7 +330,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Replace description-only shell detection with structured lexical evidence
+- [x] **TASK 1:** Replace description-only shell detection with structured lexical evidence
   - **UPDATE:** `.bkit/core/hooks/guardrails-shell.js`: extend the existing scanner and detector with ordered unique exact targets, independent uncertainty, operation/existence evidence and effective-directory resolution. Preserve quote context, escaped separators, nested commands, heredoc association, existing quiet sinks and supported literal cd. Cover redirects, tee, sed/perl/awk/ruby in-place forms, cp destinations and both mv endpoints; unresolved directory/recursive/computed effects stay unknown.
   - **UPDATE:** `.bkit/core/hooks/guardrails-tiers.js`: update the existing detector-result consumer without changing stronger decisions.
   - **UPDATE:** `.bkit/core/.claude/hooks/bkit-guardrails.cjs`: adapt the direct shellEditTargets caller to structured evidence in this contract-changing task; preserve its existing context/output interface and shell-edit advice. Remove every existing array-result assumption across the callers before group 1 closes.
@@ -346,7 +346,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Recognize bounded patch and script effects
+- [x] **TASK 2:** Recognize bounded patch and script effects
   - **UPDATE:** `.bkit/core/hooks/guardrails-shell.js`: inspect literal patch input/direct patch files with supported strip/directory options; preserve add/delete/move targets. Recognize inline Python/Node, associated heredocs and directly named interpreter/scripts. Recognized writes yield literal targets; only the whole supported positive grammar establishes readOnly. Allow literals/comments/understood bindings/direct reads/stdout and recognized Node fs syntax; unknown imports, dynamic calls, subprocesses or unsupported control flow remain uncertain.
   - **DEPENDS ON:** 1.
   - **DONE WHEN:** The four named cases pass for positive, read-only and uncertain variants of every supported script/patch form; mixed exact and unknown results persist without source, command or environment text in output/state.
@@ -375,7 +375,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Prepare one shared general reminder and normalized identity
+- [x] **TASK 4:** Prepare one shared general reminder and normalized identity
   - **UPDATE:** `.bkit/core/hooks/gateguard-engine.js`: preserve existing/new/config checklists and extend agent-read matching to the design's directories/root files. Point to authoring.md and Which Sections Apply. Separate pure preparation from acknowledgement and normalize absolute/relative identity against effective cwd in both channels; preserve session/agent scope and existing state storage.
   - **READ:** `.bkit/core/.opencode/plugin/bkit-gateguard.js`: preserve the existing firstTouchAdvice call/return interface while introducing the shared preparation seam; replace its implementation in place rather than retaining a second record-before-return path. Later host tasks consume the new batching seam without leaving current callers broken at this group boundary.
   - **DEPENDS ON:** 3.

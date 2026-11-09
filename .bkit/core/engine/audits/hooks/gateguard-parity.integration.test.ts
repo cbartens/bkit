@@ -463,6 +463,27 @@ function stateRoot(...unwritable: string[]): string {
   return root;
 }
 
+describe("gateguard behaviour parity — corrupt state", () => {
+  for (const host of ["claude", "cursor", "opencode", "codex"] as Host[]) {
+    it(`${host}: unparseable session state still advises, and deny does not loop`, async () => {
+      const tmp = stateRoot();
+      const session = newSession();
+      const dir = path.join(tmp, `bkit-gateguard-${UID}`);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, `${session}.json`), "{not json");
+      const advised = await run(host, { file: "package.json", session, env: { TMPDIR: tmp } });
+      expect(advised.advisory).toContain("[bkit GateGuard]");
+
+      const denySession = newSession();
+      fs.writeFileSync(path.join(dir, `${denySession}.json`), "{not json");
+      const env = { BKIT_GATEGUARD: "deny", TMPDIR: tmp };
+      const first = await run(host, { file: "package.json", session: denySession, env });
+      expect(first.blocked).toBe(true);
+      expect(first.advisory).toContain("[bkit GateGuard]");
+    });
+  }
+});
+
 describe("gateguard behaviour parity — state folders", () => {
   for (const host of HOSTS) {
     it(`${host}: dedup state lives in a per-user folder`, async () => {

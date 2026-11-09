@@ -5,7 +5,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterAll, describe, expect, it } from "vitest";
+import { createRequire } from "node:module";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { writeNetworkAllowlist } from "../../install/network-allowlist";
 import { applyTokens } from "../../install/placeholders";
 import { readTemplate } from "../../render/parts";
@@ -525,6 +526,66 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     const huge = advise(`echo x > src/huge.ts; : ${"a".repeat(300 * 1024)}`, dir);
     expect(huge.permission).toBe("allow");
     expect(huge.text).toMatch(LIMIT);
+  });
+
+  describe("in-process evidence seams", () => {
+    type Evidence = { targets: string[]; uncertain: string[]; limit: string | null };
+    function loadEvidence(): (cmd: string, ctx: { cwd: string; root: string }) => Evidence {
+      const part = path.join(GENERATED, "shell-evidence-part.cjs");
+      fs.writeFileSync(
+        part,
+        'const fs = require("node:fs");\nconst path = require("node:path");\n' +
+          fs.readFileSync(path.resolve(".bkit/core/hooks/guardrails-shell.js"), "utf-8") +
+          "\nmodule.exports = { shellEditTargets };\n",
+      );
+      return (createRequire(import.meta.url)(part) as { shellEditTargets: never }).shellEditTargets;
+    }
+
+    it("rejects a source swapped between lstat and open", () => {
+      const dir = workDir("race");
+      fs.writeFileSync(
+        path.join(dir, "a.js"),
+        "require('fs').writeFileSync('src/raced.ts','x');\n",
+      );
+      fs.writeFileSync(path.join(dir, "b.js"), "// other file\n");
+      const evidence = loadEvidence();
+      // The CommonJS fs object is the one the loaded hook part reads; the ESM namespace is frozen.
+      const cjsFs = createRequire(import.meta.url)("node:fs") as typeof fs;
+      const realLstat = cjsFs.lstatSync;
+      const spy = vi
+        .spyOn(cjsFs, "lstatSync")
+        .mockImplementation(((p: fs.PathLike, o?: object) =>
+          String(p).endsWith("a.js")
+            ? realLstat(path.join(dir, "b.js"), o)
+            : realLstat(p, o)) as typeof fs.lstatSync);
+      try {
+        const ev = evidence("node a.js", { cwd: dir, root: dir });
+        expect(ev.targets).not.toContain("src/raced.ts");
+        expect(ev.uncertain).toContain("unavailable-source");
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("stops at the cooperative deadline and keeps earlier targets", () => {
+      const dir = workDir("deadline");
+      const evidence = loadEvidence();
+      const base = Date.now();
+      let calls = 0;
+      const spy = vi
+        .spyOn(Date, "now")
+        .mockImplementation(() => (calls++ < 1 ? base : base + 1000));
+      try {
+        const ev = evidence("echo x > src/one.ts; echo x > src/two.ts; echo x > src/three.ts", {
+          cwd: dir,
+          root: dir,
+        });
+        expect(ev.limit).toBe("deadline");
+        expect(ev.targets).not.toContain("src/three.ts");
+      } finally {
+        spy.mockRestore();
+      }
+    });
   });
 });
 

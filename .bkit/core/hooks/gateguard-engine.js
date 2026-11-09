@@ -179,12 +179,17 @@ function stateFile(sessionId) {
 }
 
 // Returns the per-session warned-file map. Absent state file is the NORMAL
-// first-touch case (guarded, no throw); a corrupt file throws to the top-level
-// fail-open boundary and that one call no-ops.
+// first-touch case (guarded, no throw); a corrupt file reads as empty.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
-  const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch {
+    // Unparseable state is treated as empty; the in-process set still prevents a deny loop.
+    return { files: {} };
+  }
   if (parsed && typeof parsed === "object" && parsed.files && typeof parsed.files === "object") {
     return parsed;
   }
