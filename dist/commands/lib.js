@@ -421,7 +421,9 @@ function rebuildInvocation(cwd, id) {
                     });
                 }
                 catch {
-                    // A concurrent rebuild already wrote the receipt; the caller reads it either way.
+                    // A concurrent rebuild may already have written the receipt; report whether one exists.
+                    const dir = invocationDir(cwd);
+                    return dir !== null && fs.existsSync(path.join(dir, `${id}.json`));
                 }
                 return true;
             }
