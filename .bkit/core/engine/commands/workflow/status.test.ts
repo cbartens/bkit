@@ -1297,4 +1297,18 @@ describe("bkit status invocation", () => {
       observedModel: "unavailable",
     });
   });
+  it("registers the no-plan conversion step", async () => {
+    const root = runRepo([started("build", "2026-11-09T10:00:00Z")]);
+    const convert = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-plan-convert", `--file=${REL}`],
+      root,
+    );
+    expect(convert.code).toBe(0);
+    expect(convert.json).toMatchObject({
+      workflow: "build",
+      step: "build-plan-convert",
+      number: 4,
+      bookRoot: root,
+    });
+  });
 });
