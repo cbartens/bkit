@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
 import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
-import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
+import { listFilesRecursive, migrateLintStagedSample, syncTemplateCopies, } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
@@ -1696,6 +1696,7 @@ export function runCoreModule(ctx) {
     // 3b2. Template copies — the whole templates root into the consumer's
     // `.bkit/templates/` (never applied to the repo; no-op in dogfood).
     console.log(`${logPrefix} ${tag}Running template copies pass`);
+    migrateLintStagedSample(cwd, { dryRun, ws, logPrefix });
     const templateChanges = syncTemplateCopies(cwd, { dryRun, ws });
     for (const [verb, paths] of Object.entries(templateChanges)) {
         for (const p of paths) {

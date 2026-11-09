@@ -70,7 +70,11 @@ import {
   writeCursorCloudDoc,
   writeCursorCliPermissionsArtifact,
 } from "../../install/cloud-env.js";
-import { syncTemplateCopies, formatTemplateChanges } from "../../install/template-copies.js";
+import {
+  migrateLintStagedSample,
+  syncTemplateCopies,
+  formatTemplateChanges,
+} from "../../install/template-copies.js";
 import { formatPayloadLinkChanges, syncPayloadLinks } from "../../install/payload-links.js";
 import { renderOpencodeJson, reconcileOpencodeJson } from "../../install/modules/opencode.js";
 import { type ModuleContext, renderManagedOutputs } from "../../install/modules/index.js";
@@ -807,6 +811,11 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
   // Refresh the consumer's `.bkit/templates/` copies and name what changed. The
   // list is computed before overwriting, so it is exactly the package's template
   // diff. The copies carry no hash, so nothing here feeds `.bkit/version`.
+  migrateLintStagedSample(process.cwd(), {
+    dryRun: upgradeFlags.dryRun,
+    ws: { writes: [] },
+    logPrefix: LOG_PREFIX,
+  });
   const templateChanges = syncTemplateCopies(process.cwd(), {
     dryRun: upgradeFlags.dryRun,
     ws: { writes: [] },

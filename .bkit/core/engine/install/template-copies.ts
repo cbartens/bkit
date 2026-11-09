@@ -9,6 +9,8 @@ import {
   getTemplatesRoot,
   TEMPLATE_COPIES_DIR,
 } from "../shared/package-roots.js";
+import { hasLintStagedConfig } from "../checks/tips/detect.js";
+import { readPackageJson } from "../shared/package-json.js";
 import type { WriteSet } from "./write.js";
 
 export function listFilesRecursive(dir: string): string[] {
@@ -134,4 +136,35 @@ export function formatTemplateChanges(changes: TemplateCopyChanges): string {
     ...lines,
     TEMPLATES_POINTER,
   ].join("\n");
+}
+
+const OLD_LINT_STAGED_SAMPLE = ".lintstagedrc.json";
+const LINT_STAGED_SAMPLE = "lintstagedrc.example.json";
+
+// Migration (installs up to 6.1.x, `docs/migrations.md`): until the sample rename, lint-staged
+// found `.bkit/templates/.lintstagedrc.json` as its config in a repo with none at the root. The
+// sync prunes that file, so a consumer holding it, gating format on `lint-staged` and with no
+// lint-staged config of its own gets the shipped sample copied to `.lintstagedrc.json` first.
+// Idempotent (a root config, once written, ends the trigger); dry-run pushes the same write
+// without touching disk. Returns true when it copied. Call before `syncTemplateCopies`.
+export function migrateLintStagedSample(
+  cwd: string,
+  opts: { dryRun: boolean; ws: WriteSet; logPrefix: string },
+): boolean {
+  if (path.resolve(cwd) === getPkgRoot()) return false;
+  if (!fs.existsSync(path.join(cwd, TEMPLATE_COPIES_DIR, OLD_LINT_STAGED_SAMPLE))) return false;
+  const src = path.join(getTemplatesRoot(), LINT_STAGED_SAMPLE);
+  if (!fs.existsSync(src)) return false;
+  const pkg = readPackageJson(cwd);
+  const gate = pkg.ok ? (pkg.pkg.scripts as Record<string, unknown> | undefined) : undefined;
+  const format = gate?.["bkit:gate:format"];
+  if (typeof format !== "string" || !/\blint-staged\b/.test(format)) return false;
+  if (hasLintStagedConfig(cwd)) return false;
+  const tag = opts.dryRun ? "[dry-run] " : "";
+  if (!opts.dryRun) fs.copyFileSync(src, path.join(cwd, ".lintstagedrc.json"));
+  opts.ws.writes.push({ path: ".lintstagedrc.json", action: "write" });
+  console.log(
+    `${opts.logPrefix} ${tag}lint-staged config copied from the sample: .lintstagedrc.json`,
+  );
+  return true;
 }
