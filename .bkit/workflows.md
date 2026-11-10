@@ -1536,12 +1536,14 @@ Each gate is the previous gate plus its own tier, so the name and the value desc
 | `bkit:gate:static` | `pnpm typecheck && pnpm lint && pnpm format:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta` | `@bkit-build-plan-tasks` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared), `.husky/pre-push` revert path |
 | `bkit:gate:static-unit` | `pnpm bkit:gate:static && pnpm test` | build Step 8 (group gate), build Step 12 and `.husky/pre-push` (no integration gate declared); `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify` and `@bkit-debug-failure-remediate` (through `bkit tests changed`, when `bkit:gate:changed` is undeclared) |
 | `bkit:gate:static-unit-integration` | not seeded — `pnpm bkit:gate:static-unit && pnpm test:integration` | build Step 12, debug Step 3, `.husky/pre-push` |
-| `bkit:gate:static-unit-integration-e2e` | not seeded — chains the gate above | debug Step 3 |
+| `bkit:gate:static-unit-integration-e2e` | not seeded — the gate above plus E2E; runs every tier after a red one (Tier order, below) | debug Step 3 |
 | `bkit:gate:static-unit-integration-e2e-live` | not seeded — chains the gate above | debug Step 3 |
 | `bkit:gate:changed` | not seeded — the stack's checks on the files passed as arguments | `bkit tests changed`, run by `@bkit-build-plan-tasks`, `@bkit-build-plan-gaps-remediate`, `@bkit-build-plan-verify` (Holistic) and `@bkit-debug-failure-remediate` |
 | `bkit:gate:install-static-unit-build` | `pnpm install --frozen-lockfile && pnpm bkit:gate:static-unit && pnpm build` | `@bkit-ship-conflict-resolve` |
 
 Gate contents: every gate but `bkit:gate:static-unit-integration-e2e` and `bkit:gate:static-unit-integration-e2e-live` runs on a push or inside `/bkit-build`, so it must not run tests that need a deployed boundary or remote service; local services (a database in Docker) are fine. Those tests go in the two deep gates, which only debug Step 3 runs. bkit cannot check this, because it never reads what a gate runs beyond its seeded default. That is why every gate advisory at install, upgrade and `bkit check` restates it.
+
+Tier order: a gate runs its tiers one after another, never two at once. Running tiers side by side overloads a laptop and times tests out, which reads as a test failure. A push gate is an `&&` chain and stops at the first red tier. `bkit:gate:static-unit-integration-e2e`, and the live gate that chains it, never stops at the first red: it runs every tier after a red one and reports each tier's result, and its E2E tier runs the whole suite, with no stop-after-N-failures setting. One run then names every red tier and every failing E2E test. Keep parallel work inside a tier: a task runner fans out across packages, and the consumer caps the test runner's workers. A task runner that replays a cached task reports the earlier run's result, not a fresh run.
 
 Push gates execute through `bkit ci push-gate --gate=<script>`. It records successful full checks for incremental bookkeeping classification (§ Git hooks in `.bkit/templates.md`). Minimum local validation does not suppress required CI, and workflow test gates retain their declared scope.
 
