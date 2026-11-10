@@ -895,14 +895,20 @@ export function checkPlanText(text: string, caps: TaskCaps = CONFIG_DEFAULTS.tas
   // matrix section yields no problem: the refusal is on a row, and issue-form plans carry none.
   const matrix = derivedTestMatrix(text);
   if (matrix !== null) {
-    if (matrix.taskColumn === null)
+    const expected = "Test description | Type | Target file | Task";
+    const header = (matrix.head[0] ?? "")
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) => c.trim().toLowerCase())
+      .join(" | ");
+    if (header !== expected.toLowerCase())
       problems.push({
         line: matrix.line,
         kind: "matrix",
-        message:
-          "the Derived Test Matrix header has no `Task` column; add one naming the task each row's test belongs to",
+        message: `the Derived Test Matrix header must be exactly \`${expected}\`, in that order with no other columns`,
       });
-    else {
+    if (matrix.taskColumn !== null) {
       const mapped = new Set<number>();
       for (const row of matrix.rows) {
         const named = row.tasks.map((n) => `TASK ${n}`);
