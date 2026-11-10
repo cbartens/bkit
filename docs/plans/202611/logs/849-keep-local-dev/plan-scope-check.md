@@ -1,0 +1,34 @@
+Verdict: CONCERNS
+Failures: 5
+Redesign: false
+
+<!-- verdict:end -->
+
+# Plan Scope Check
+
+Lens: Scope audit — scope, criteria, verification.
+
+## CRITICAL
+
+- **C1 (plan edit) — plan-check finding, `docs/plans/202611/logs/849-keep-local-dev/plan-v1-draft.md:634` TASK 3:** `.bkit/core/engine/audits/workflows/close-squash.integration.test.ts` already holds a test named "bkit-design.md local close squash > lands past another session's uncommitted edit to a file the close changes, and keeps the edit" — name the update to it in TEST FIRST, or give the new test a new name.
+- **C2 (plan edit) — plan-check finding, `docs/plans/202611/logs/849-keep-local-dev/plan-v1-draft.md:707` TASK 7:** `.bkit/core/engine/commands/workflow/workflows.test.ts` already holds a test named "bkit workflows handover > --push on dev hands the landed record back, so local dev fast-forwards onto it" — name the update to it in TEST FIRST, or give the new test a new name. Task 7 also has no `UPDATE` line for `workflows.test.ts`, `roadmap.test.ts` or `runs.test.ts`, so the extension of the existing test is not scoped anywhere.
+- **C3 (plan edit) — Reuse Inventory row "Fetch with ref-lock retry" is untraced.** Its `File` is `.bkit/core/engine/commands/land.ts` with Decision `EXTEND`, but `land.ts` has no `[MODIFY]` heading and no task changes it (Task 1 only `READ`s `fetchDev`, `devRefRace`, `landBackoffMs`). The file this capability really changes, `.bkit/core/engine/shared/timeouts.ts` (`[MODIFY]`, Task 1 `UPDATE` of `TIMEOUTS`), has no Reuse Inventory row naming it. Fix: set the row's `File` to `timeouts.ts`, and say that `land.ts` is used unchanged.
+- **C4 (plan edit) — the rows "Ahead / behind count" and "Frozen install after a move under the main checkout" are `EXTEND` rows whose `File` is `.bkit/core/engine/commands/workflow/local-dev.ts`, which is a `[NEW]` file.** An `EXTEND` row must trace to a `[MODIFY]` of the named file. The ahead / behind count is part of the `NEW` `syncLocalDev` capability. Its candidate, `unpushedDevCause`, stays unchanged, so nothing is extended. The install row is a move, which the Supersession Inventory already records as `DELETE (moved)` from `branches.ts:2723`. Fix: fold the count into the `local-dev.ts` `NEW` row, and point the install row's `File` at `branches.ts` (the `[MODIFY]` that removes it), or record it in the `NEW` row.
+- **C5 (plan edit) — capabilities whose changed files have no Reuse Inventory row.** (a) The row "Workflow display assertions" names the test file `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` as its `File`. The capability actually decided is the display of `localDev.line` in `.bkit/core/workflows/bkit-design.md`, `bkit-plan.md`, `bkit-debug.md`, `bkit-build.md` and `bkit-ship.md` (all `[MODIFY]`, Task 9), and none of those files has a row. (b) `[MODIFY] .bkit/core/engine/commands/workflow/roadmap.ts` and `[MODIFY] .bkit/core/engine/commands/workflow/runs.ts` (Task 7) are not named in any row's `File`, because the "`localDev` on every `dev`-pushing verb's output" row names only `branches.ts`. Fix: add rows, or extend the existing ones, so that each `[MODIFY]` file traces to a row that decides it.
+
+## OPTIONAL
+
+- **Concrete Example holds two scenarios.** The `Outcome` adds a second case ("On another day the owner has one unpushed commit on `dev` …"). The Concrete Example should be one scenario. Move the divergent case into Edge Cases or the Process Sketch; it is already covered there.
+- **Locale claim with no matrix row.** Two Edge Cases say `blocked: occupied` / `edited-files` hold "whatever git's locale", and the locale tests are an `Exempt` deferral (`849-local-dev-locale-tests`). The issue's newer Scope decision supports the exemption. Still, add a Derived Test Matrix row for the structural check that Task 2's DONE WHEN already states ("no code path in `local-dev.ts` reads git's stderr to pick a reason"), so the claim has a named verification.
+- **Install-failure exit 0 is tested for the ship close only.** Success Criterion 3 says "the close still exits 0 … No `friction` row". No row covers `branches land` (design / plan close), `branches push --mode=dev`, `workflows handover` or `roadmap mirror` when the frozen install fails after a move. No test asserts that no `friction` row is written. Add one land-path case, and a no-`friction`-row assertion to the Task 2 or Task 6 install test.
+- **Untested routes Task 6 and Task 7 change.** The abort-mode `workflows handover --push` route that forwards `r.out.localDev` (Task 7) and the debug non-flush close re-observe (Task 6; only the build close has a test) have no behaviour test. The Task 8 reachability test checks only the output spec, not the value.
+- **`sync-dev` stays `Use: workflow` in `.bkit/core/.bkit/cli.md:93`.** After Task 10, no workflow step runs `branches sync-dev`. Yet every `blocked`, `pending` and `unavailable` line, and Manual Verification Step 1, tell the owner to run it by hand. `cli.md:76` defines `workflow` as "a workflow step only". Change the verb spec's use to `by hand` in Task 3 (Task 8's `pnpm cli:sync` then regenerates the row). Otherwise agents reading the CLI catalog may refuse the retry the line names.
+- **`.bkit/instructions.md` not in scope.** It holds the ship sentence "Local `dev` synced (`branches sync-dev`)" (`.bkit/instructions.md:10456`). Tasks 9 and 10 edit workflow sentences without the `pnpm instructions:show --file {basename}` step that the Shared instructions rule requires. Task 11 runs `pnpm instructions:sync` but does not list `.bkit/instructions.md` among its updated files.
+- **Tests Task 6 may break.** Task 6 changes the `finalReturn` text and adds a fetch to every build / debug non-flush close. It names no existing `workflows.test.ts` `finalReturn` assertions it changes, and no fixture handling for existing close tests whose repo has no `origin` (they would now report `unavailable: fetch-failed` and may slow down on the retry backoff).
+- **Task 9 workflow-catalog edits are unverified.** The `.bkit/core/.bkit/workflows.md` edits at `:217`, `:132` and `:817` have no DONE WHEN check. Task 10's grep covers only the Step 14 renumbering.
+- **Success Criterion 4 (staged changes) has no fast-forward row.** No matrix row covers a staged change to a file the update does not change while the main checkout is on `dev`. The expected result is that the fast-forward happens and the index is kept. The existing row covers only the unstaged edit.
+- **Stale design on `origin/dev` (Open Question 1).** The committed design still makes P-2 (this scope) require P-1 (the recovery tool), and its Acceptance Scenario still describes `@bkit-utility-sync-dev`. Default A leaves that text in place. A build-phase agent that reads the design next to the plan meets a contradicting scope. Option B removes that risk.
+
+## OUT OF SCOPE
+
+None
