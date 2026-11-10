@@ -82,8 +82,10 @@ autoCompactWindow: 300000
 10. List the unknowns and blockers that need experimentation.
 11. Set `Spike` in **Create** with `Edit` = `true` when at least one `Unknowns & Blockers` item can be settled only by running code, and `false` when every open item resolves by reading docs or source.
 12. Set `Verdict` in **Create** with `Edit`:
-
-- **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-design-review-1 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only judgment fields (`Verdict`, `Spike`). - `PASS` = feasible as designed, and `CRITICAL` is `None`. - `CONCERNS` = `CRITICAL` lists at least one addressable caveat (a reuse caveat or a size caveat counts), and no `FAIL` condition holds. - `FAIL` = not feasible in the current stack or scope.
+    - **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-design-review-1 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only judgment fields (`Verdict`, `Spike`).
+    - `PASS` = feasible as designed, and `CRITICAL` is `None`.
+    - `CONCERNS` = `CRITICAL` lists at least one addressable caveat (a reuse caveat or a size caveat counts), and no `FAIL` condition holds.
+    - `FAIL` = not feasible in the current stack or scope.
 
 **Output format:**
 

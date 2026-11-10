@@ -267,8 +267,14 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🧠 Step 3 — Generate Plan
 
+Before generating, ask the engine for this step's invocation id and keep the printed `invocation` as `INVOCATION`:
+
+```bash
+"{BKIT}" status invocation --workflow=plan --step=plan-generate --file="{STATUS}"
+```
+
 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}.
+   Context: You are a subagent in the Plan phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}. Invocation id: `{INVOCATION}`.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
    **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
@@ -360,14 +366,23 @@ description: "Plan Feature — Autonomous plan generation"
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
+     Result: `{OUTBOX}/plan-review-1-result.json`.
    - **Subagent:** Invoke `@bkit-plan-review-2` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
+     Result: `{OUTBOX}/plan-review-2-result.json`.
    - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_CHECK}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
+     Result: `{OUTBOX}/plan-scope-check-result.json`.
+     Once all three subagents return, render the plan reviews and the scope check from their results:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-plan-review-1 --result-file="{OUTBOX}/plan-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md"
+   "{BKIT}" steps stub --agent=bkit-plan-review-2 --result-file="{OUTBOX}/plan-review-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md"
+   "{BKIT}" steps stub --agent=bkit-plan-scope-check --result-file="{OUTBOX}/plan-scope-check-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md"
+   ```
 3. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=next --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-scope-check --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md --message="chore({FID}): review-plan" --number=5 --post --title="Review Plan"
@@ -519,7 +534,11 @@ description: "Plan Feature — Autonomous plan generation"
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
-   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `plan-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+   - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
+     ```bash
+     "{BKIT}" status invocation --workflow=plan --step=plan-close-workflow --file="{STATUS}"
+     ```
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
    - Write `{OUTBOX}/plan-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`.
      - **If** that file is absent → create it with the heading.

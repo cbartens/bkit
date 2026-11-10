@@ -123,8 +123,10 @@ autoCompactWindow: 300000
 
 11. **If** the tasks are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 12. Set `Verdict` in **Create** with `Edit`:
-
-- `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header. - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass. - `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief. - `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header.
+    - `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.
+    - `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
+    - `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
 
 **Output format:**
 

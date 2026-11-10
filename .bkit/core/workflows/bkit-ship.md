@@ -477,8 +477,12 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
    ```
+   Get the sweep's own invocation id from the engine and keep the printed `invocation` as `INVOCATION`. The invocation, its operations and their receipts are recorded in the book-root status file (`{STATUS}` under `$BOOK_ROOT`), so a resumed ship run reuses them:
+   ```bash
+   "{BKIT}" status invocation --workflow=ship --step=ship-deferred-sweep --file="{STATUS}"
+   ```
    **Subagent:** Invoke `@bkit-ship-deferred-sweep` using `Agent` tool:
-   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. FID: `{FID}`. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
+   Context: You are a subagent in the Ship phase. Pre-merge completeness gate. FID: `{FID}`. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Its ledger appends run under invocation `{INVOCATION}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `docs/plans/{YYYYMM}/{FID}-design.md` (if present), `{STATUS}`, `docs/deferrals.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-plan-verify*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-challenge*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/*-summary.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-deferred-sweep.md`.
 3. Finish (bookkeeping to `$BOOK_ROOT`):
@@ -749,6 +753,11 @@ Asked from Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NEXT` held) 
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
+   Result: `{OUTBOX}/ship-failure-diagnose-{MERGE_ATTEMPT}-result.json`.
+   Once the diagnosing agent has answered, render the merge-failure diagnosis from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-debug-failure-diagnose --result-file="{OUTBOX}/ship-failure-diagnose-{MERGE_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md"
+   ```
 2. Finish (bookkeeping to `$BOOK_ROOT`):
    ```bash
    "{BKIT}" steps finish --workflow=ship --step=ship-failure-diagnose --file="{STATUS}" --attempt-of=ship-merge-pr:current --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-<attempt>.md" --commit=none --number=11 --post --title="Failure Diagnose"

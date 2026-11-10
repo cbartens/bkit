@@ -108,9 +108,10 @@ autoCompactWindow: 300000
       - Verify that each one is compatible, and never skip one silently.
     - **If** a break is unhandled → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 16. Set `Verdict` in **Create** with `Edit`:
-
-- **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-debug-failure-diagnose --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only judgment fields (`Verdict`, `Mode`, `Strategy`). - `PASS` = the root cause is identified, the fix is concrete, the blast radius is handled, and `Rot Signals` is `None`. - `CONCERNS` = no `FAIL` condition holds, and at least one of these holds: the root cause is ambiguous but the fix is plausible, **or** the fix is not concrete, **or** `Rot Signals` lists at least one slug. - `FAIL` = `Strategy` is missing, **or** you cannot diagnose, **or** the blast radius shows an unhandled break in any affected surface.
-
+    - **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-debug-failure-diagnose --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only judgment fields (`Verdict`, `Mode`, `Strategy`).
+    - `PASS` = the root cause is identified, the fix is concrete, the blast radius is handled, and `Rot Signals` is `None`.
+    - `CONCERNS` = no `FAIL` condition holds, and at least one of these holds: the root cause is ambiguous but the fix is plausible, **or** the fix is not concrete, **or** `Rot Signals` lists at least one slug.
+    - `FAIL` = `Strategy` is missing, **or** you cannot diagnose, **or** the blast radius shows an unhandled break in any affected surface.
 17. Escalation check: `Mode` defaults to `NORMAL`.
     - **If** `Verdict` != `PASS` **and** the root cause cannot be localised from the evidence (no stack-trace or failing-assertion pinpoint) **and** only iterative instrument-fix-reverify against the real boundary will crack it:
       - Set `Mode` = `SOAK` via `Edit`.

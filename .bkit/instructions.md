@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:590`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:594`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1682,7 +1682,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:590`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:594`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -7135,11 +7135,21 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-Set `by.step` = `{{workflow}}-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
 ```
 
 ```retired
+Set `by.step` = `{{workflow}}-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
 `rationale` = `answered by owner: {human's answer}`;
+```
+
+### workflow-owner-answers-invocation
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
 ```
 
 ### workflow-open-questions-decision-key
@@ -10160,6 +10170,7 @@ Verify round read back on resume
 No-progress attempt routed
 Tick each group's satisfied tasks, with one call per task group. Set `{GROUP}` to that group and `{VERIFIED_TASKS}` to the numbers `Tasks:` names for it:
 Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
+Once the subagents return, render each challenge report from its result. **If** `CHALLENGE_SIZE` = small → render only `bkit-build-challenge-2`:
 Set the challenge round — first match wins:
 **If** `CHALLENGE_DONE` = true → Step 12.
 **If** `CHALLENGE_ROUND` is held → keep it, skip the `status resume` block below, and read the round limit.
@@ -10367,7 +10378,7 @@ Set `TRIGGER_PR`:
 **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with the held `INVOCATION`.
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
-**If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `--invocation="{INVOCATION}"`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
+**If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr`, and record each poll with `runs handoff` passing `--pr=` empty (this dev push has no PR) and `--head="{DEV_SHA}"` → re-run this block with `--invocation="{INVOCATION}"`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
 [fit `workflow-verdict-fail` 0.67; keep: fails on a missing CI run, not on a FAIL verdict] **If** `result` != `found` → **Failure Path**.
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).

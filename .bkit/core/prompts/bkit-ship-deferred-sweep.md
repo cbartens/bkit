@@ -103,9 +103,9 @@ autoCompactWindow: 300000
      - **If** `bucket` = `Exempt` → record the row under `Exempt Deferrals`, or move it there. The row stands as written.
      - **Else** → record the row under `Lazy Deferrals`, or keep it there, naming the tests the verb reports for it.
 10. Set the counts in **Create** with `Edit`:
-
-- `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the artifact. - `Failures` = the number of `Blocking Deferrals` entries. - `Lazy` = the number of `Lazy Deferrals` entries.
-
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the artifact.
+    - `Failures` = the number of `Blocking Deferrals` entries.
+    - `Lazy` = the number of `Lazy Deferrals` entries.
 11. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, every scanner hit is adjudicated, and there are no `Blocking Deferrals`.
     - `FAIL` = any intended deliverable is `Blocked`, **or** there is a scan error or unresolved scanner hit, **or** there are any `Blocking Deferrals`.

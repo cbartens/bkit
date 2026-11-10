@@ -547,7 +547,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Persist CI handoff observations and derive reentry (deterministic-bookkeeping-5; R3, R17–R19).
+- [x] **TASK 7:** Persist CI handoff observations and derive reentry (deterministic-bookkeeping-5; R3, R17–R19).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: invocation-bound wait/dispatch observations, persistent phase/attempt/error/retrigger identity, nextAction output and stale evidence checks; preserve standalone provider contracts.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: own the extended target/observation union and validators for none/pending/success/failure/provider-error and unresolved retrigger intent, retained across fold/resume; preserve failed-only CiSelection/debug consumers unchanged.
   - **READ:** `.bkit/core/engine/commands/workflow/counters.ts`: reuse active-run event derivation and existing limits.

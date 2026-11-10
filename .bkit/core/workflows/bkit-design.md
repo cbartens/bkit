@@ -412,10 +412,17 @@ description: "Design Feature — Autonomous design phase"
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
+     Result: `{OUTBOX}/design-review-1-result.json`.
    - **Subagent:** Invoke `@bkit-design-review-2` using `Agent` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
+     Result: `{OUTBOX}/design-review-2-result.json`.
+     Once both subagents return, render the two design reviews from their results:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-design-review-1 --result-file="{OUTBOX}/design-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md"
+   "{BKIT}" steps stub --agent=bkit-design-review-2 --result-file="{OUTBOX}/design-review-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md"
+   ```
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the two (`FAIL > CONCERNS > PASS`):
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-review --attempt=1 --agent=bkit-design-review-1 --agent=bkit-design-review-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md --message="chore({FID}): design-review" --number=6 --post --title="Design Review"
@@ -442,6 +449,11 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code only under `docs/plans/{YYYYMM}/logs/{FID}/spike/`. Never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
+   Result: `{OUTBOX}/design-spike-result.json`.
+   Once the subagent returns, render the spike report from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-design-spike --result-file="{OUTBOX}/design-spike-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-spike.md"
+   ```
 2. Finish — refuses (exit 9) probe files outside the artifact tree:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-spike --attempt=1 --agent=bkit-design-spike --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --docs-only --message="chore({FID}): spike" --number=7 --post --title=Spike --link-ref=dev
@@ -611,7 +623,11 @@ description: "Design Feature — Autonomous design phase"
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
-   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `design-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+   - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
+     ```bash
+     "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{STATUS}"
+     ```
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
    - Write `{OUTBOX}/design-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`.
      - **If** that file is absent → create it with the heading.
