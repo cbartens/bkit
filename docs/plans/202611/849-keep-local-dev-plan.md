@@ -7,7 +7,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Keep Local `dev` Level With `origin/dev` After Every Landing Implementation Plan
@@ -241,18 +241,6 @@ Rows per task: Tasks 3 and 7 each own both a new test and an update of an existi
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question:** The design file on `origin/dev` (`3e69d12e3`, the last commit to touch it) still holds WS-1 to WS-4, P-1 and P-2 and the recovery-tool Acceptance Scenario; the in-place edit the issue comment of 2026-11-10 describes is not on `origin/dev` or in this worktree. This plan follows the issue's newer Scope decision and comment. → The owner resolves it.
-  - **Options:** A) Plan from the issue's narrowed scope and leave the design file as it is — the plan is self-contained and nothing waits; the design keeps stale recovery text that a later reader may take as backlog, and a build-phase agent that reads the design next to the plan meets a contradicting scope (P-2 requiring P-1, an Acceptance Scenario about `@bkit-utility-sync-dev`) · B) Plan from the issue and add a task that narrows the design file — the design matches the plan; a build task then edits a closed phase's canonical doc, which no workflow does today · C) Stop until the edited design is pushed, then re-plan — the plan cites the exact design; the fix waits on another round.
-  - **Recommended:** A) — the issue states the scope plainly and is newer than the design, so the plan does not need the design edit to be correct.
-  - **Default if unanswered:** A).
-- **Open Question:** Ship's Close Workflow is Step 14 today. With Step 13 removed, should it become Step 13? → The owner resolves it.
-  - **Options:** A) Renumber Close Workflow to Step 13 and Gate 13 — the step list stays gap-free, as it did when Worktree Cleanup was retired and Close moved from Step 15 to Step 14; about a dozen "Step 14" references in `bkit-ship.md`, `.bkit/core/.bkit/workflows.md`, `step-table.ts` and tests change, and `--number=14` becomes `--number=13` · B) Keep Close Workflow as Step 14 and leave 13 unused — the smallest change; readers and every "Step N" route must live with a gap.
-  - **Recommended:** A) — it follows the precedent, and the existing "`state` = MERGED → Step 13" routes then point at Close Workflow unchanged.
-  - **Default if unanswered:** A).
-- **Open Question:** The design writes one `friction` row when the sync's catch-all maps an exception to `unavailable: internal`. A `friction` row is a write to `.bkit/friction.jsonl` in a checkout, which the newer Success Criterion "working-tree edits … are never changed by the automatic sync" forbids, and the issue drops the `friction` row for install failures. → The owner resolves it.
-  - **Options:** A) No `friction` row; log the stack at warn level on stderr and report `unavailable: internal` in the line — no checkout is written; a bug the catch-all hides shows only in logs and in the line · B) Write the `friction` row into the run's own book root when the caller has one, else skip it — keeps the design's signal for `bkit stats`; design / plan / ship closes have removed their worktree by then, so the row is often skipped, and it adds a write path to a routine that otherwise only reads and fast-forwards.
-  - **Recommended:** A) — it keeps the routine read-and-fast-forward only, which is what Success Criterion 4 asks for.
-  - **Default if unanswered:** A).
 - **Assumption:** `syncLocalDev` runs from `pushBranch` whenever the pushed branch is `dev` (the record-based `pushOwnCommits` route and the plain `git push origin dev` route without a record), not only from `pushOwnCommits` as the design wrote. → If wrong, a `branches push` or `branches force-build` of `dev` without a shared-checkout record reports no `localDev` and the reachability test (Task 8) fails on it.
 - **Assumption:** The `not-applicable` state (design) stays alongside the six states the issue lists, for runtimes that cannot push `dev` and clones with no local `dev`. → If wrong, a cloud session reports a false `blocked` or `unavailable` where nothing could ever be synced.
 - **Assumption:** `blocked` reasons read from `git worktree list --porcelain`, `git diff --name-only` and `git ls-files --others --exclude-standard` are the same in every git locale, so the plan adds no non-English-locale test (the issue's Scope decision lists such tests among the cases nobody has seen). → If a porcelain field were ever localised, `occupied` or `edited-files` would fall through to `git-refused`: still `blocked`, still exit 0, only the reason wrong.
@@ -336,7 +324,7 @@ None — no new routes, DB writes, secrets, or user input. The sync only fast-fo
 - [ ] **Package Management:** No package is added. `node:child_process`, `node:fs` and `node:path` are built-ins, and the reachability test uses `prettier` and `prettier/plugins/typescript`, which `package.json` already declares (precedent: `.bkit/core/engine/audits/repo/json-parse-owner.test.ts`). `package.json` and `pnpm-lock.yaml` stay unchanged.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-10) lists `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@vitest/coverage-v8` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.90.0, `vitest` 5.0.5 → 5.1.0, `@types/node` 24.19.2 → 26.6.6 and `vite` 6.4.5 → 8.3.5, all dev-only; none blocks this build. Toolchain: git 2.56.0, Node v24.16.0, pnpm 10.34.7. Every git command the plan uses (`merge --ff-only`, `fetch . <sha>:refs/heads/dev`, `worktree list --porcelain`, `rev-list --left-right --count`, `diff --name-only`, `ls-files --others --exclude-standard`) exists in git 2.31, the floor the engine assumes (`.bkit/core/engine/commands/land.ts:102`).
 - [ ] **Existing-Solution Search (reuse over duplicate):** The in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
-- [ ] **User Context:** Read access to every file the runbook names was confirmed this session. Missing user information: the three Open Questions above; each has a default, so the build can proceed on the defaults.
+- [ ] **User Context:** Read access to every file the runbook names was confirmed this session. Missing user information: none. The owner answered the three open questions: the plan follows the issue's narrowed scope and leaves the design file as it is, ship's Close Workflow becomes Step 13 (decision `849-ship-close-renumbered-step-13`), and the sync's catch-all writes no `friction` row (decision `849-sync-catch-all-no-friction-row`).
 - [ ] **Project Context:** Read: decisions `ship-sync-dev-fast-forward-only-never-push-local-dev`, `ship-close-removes-worktree-after-landing` and `467-ship-step-names-frozen`; deferrals `849-local-dev-sync-outcome-telemetry` and `849-debug-on-dev-prefer-plain-push`; failure row `.bkit/core/engine/commands/workflow/workflows.test.ts bkit workflows handover > --push on dev hands the landed record back, so local dev fast-forwards onto it` (a pre-push timeout on a test Task 7 extends). `docs/knowledge.jsonl` holds no row on local `dev` sync.
 - [ ] **Testing & Quality:** Tiers follow `docs/testing.md` § Tiers: engine logic against real temporary git repositories is Unit (boundary: real temp git repo); the full workflow close is Integration, and runs `bkit branches land` from the repo's built `dist/cli.js` (`close-squash.integration.test.ts:23`), so every task that edits `.bkit/core/engine/**/*.ts` rebuilds `dist/` with `pnpm build` before its tests count as passing; markdown and source-shape assertions are Unit. Landing tests use `useGateRunner` from `vitest.gate-fixture.ts` (`docs/testing.md` § Stack, Package-runner fixtures), which also keeps the extended handover test inside its timeout.
 - [ ] **Prerequisite Plans:** None.
@@ -409,7 +397,7 @@ landing verb ──(landed sha, exit code fixed)──▶ syncLocalDev(root, opt
                                      verb JSON `localDev` ──▶ workflow final message
 ```
 
-**Ledger rows:** `849-sync-local-dev-after-every-dev-push`, `849-sync-in-pushbranch-for-dev`, `849-local-dev-module-avoids-cycle`, `849-blocked-reasons-from-git-state`, `849-close-exit-0-on-install-failure`, `849-retire-ship-switch-to-dev`, `ship-sync-dev-fast-forward-only-never-push-local-dev`, `467-ship-step-names-frozen`, `849-local-dev-recovery-tool`, `849-publish-dev-advice-stays-with-842`, `849-local-dev-locale-tests`, `849-local-dev-sync-outcome-telemetry`, `849-debug-on-dev-prefer-plain-push`
+**Ledger rows:** `849-sync-local-dev-after-every-dev-push`, `849-sync-in-pushbranch-for-dev`, `849-local-dev-module-avoids-cycle`, `849-blocked-reasons-from-git-state`, `849-close-exit-0-on-install-failure`, `849-retire-ship-switch-to-dev`, `849-ship-close-renumbered-step-13`, `849-sync-catch-all-no-friction-row`, `ship-sync-dev-fast-forward-only-never-push-local-dev`, `467-ship-step-names-frozen`, `849-local-dev-recovery-tool`, `849-publish-dev-advice-stays-with-842`, `849-local-dev-locale-tests`, `849-local-dev-sync-outcome-telemetry`, `849-debug-on-dev-prefer-plain-push`
 
 ### Database Migrations
 
@@ -822,7 +810,7 @@ Build order: the sync core (Group 1), then the two existing sync verbs and the r
 
 - [ ] **TASK 10:** Retire ship Step 13 and renumber Close Workflow to Step 13
   - **DELETE:** `.bkit/core/workflows/bkit-ship.md`: Step 13 — Update Local Dev, its Gate 13 (`:920-935`) and its checklist item
-  - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Close Workflow → Step 13 / Gate 13, `--number=13`; references to Step 14 (`:44`, `:46`, `:937`, `:949`, `:964`) renumbered; the "`state` = MERGED → Step 13" routes (`:318`, `:765`) kept (they now reach Close Workflow). Follows Open Question 2's default A
+  - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: Close Workflow → Step 13 / Gate 13, `--number=13`; references to Step 14 (`:44`, `:46`, `:937`, `:949`, `:964`) renumbered; the "`state` = MERGED → Step 13" routes (`:318`, `:765`) kept (they now reach Close Workflow). Follows decision `849-ship-close-renumbered-step-13`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.ts`: remove the `ship-switch-to-dev` entry; `ship-close-workflow` becomes number 13
   - **UPDATE:** `RETIRED_STEPS` in `.bkit/core/engine/commands/workflow/step-table.ts`: add `ship: { "ship-switch-to-dev": "ship-close-workflow" }`
   - **UPDATE:** `SHIP_STEP_ORDER` in `.bkit/core/engine/checks/status-holes.ts`: drop the key from the mandatory order and accept it as a retired key
