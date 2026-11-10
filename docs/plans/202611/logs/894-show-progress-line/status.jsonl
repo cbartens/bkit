@@ -26,3 +26,13 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T06:59:44Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-review/-/1/comment","hash":"81d4e03d84200a60669ecc6674b4d05364a3f3e85a012d8897767ce4fa8d364f","ref":"https://github.com/cbartens/bkit/issues/894#issuecomment-6760643072","at":"2026-11-10T06:59:48Z"}
 {"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-11-10T06:59:48Z","parentSha":"555c5e0f7cc6bacbfbf43995a6f5fdab83928dea","artifacts":["docs/plans/202611/logs/894-show-progress-line/plan-review-1.md","docs/plans/202611/logs/894-show-progress-line/plan-review-2.md","docs/plans/202611/logs/894-show-progress-line/plan-scope-check.md"],"verdict":"CONCERNS","attempt":1,"failures":12}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:00:19Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:00:44Z","noun":"steps","verb":"stub","flags":["from","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:09:56Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:10:21Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:10:33Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:10:44Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:32Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:37Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"b160ed42a88d8cb5416bc43e3dd435d90b84a1e0efc264b4627c1b21128b3c61","ref":"https://github.com/cbartens/bkit/issues/894#issuecomment-6760643072","at":"2026-11-10T07:11:40Z"}
+{"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T07:11:40Z","parentSha":"28cfdea4d0769e9adde8297e10d7a3233b70cadb","artifacts":["docs/plans/202611/logs/894-show-progress-line/plan-v2-reviewed.md","docs/plans/202611/logs/894-show-progress-line/plan-update-check.md"],"verdict":"PASS","attempt":1}
