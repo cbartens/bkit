@@ -9,3 +9,12 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T06:54:50Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"0934b07f927bd393c99f9929dc39e7105101b0c4a7009bdb807cecd44f3a77a2","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T06:54:53Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-10T06:54:53Z","parentSha":"f6914f3c9c88e68faa4b8806406c0d562d2d6c7c","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:16:34Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:16:55Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:20:27Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:20:50Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:20:59Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:22:15Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:22:20Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"ceafd291e9ecb3003cda59b324fa7c50ec569f70d93ec7da158c97359952d989","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T07:22:22Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-10T07:22:22Z","parentSha":"bbf5624336a51ceeb25c766d1bae86a600508ed1","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-v1-draft.md","docs/plans/202611/logs/911-ship-failed-merge/plan-generate-check.md"],"attempt":1}
