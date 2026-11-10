@@ -744,7 +744,6 @@ export function auditEntries(result: AuditResult): AuditEntry[] {
 export function auditLedgerRows(result: AuditResult): Array<Record<string, unknown>> {
   return auditEntries(result).map((e) => ({
     kind: "failure",
-    by: { workflow: "audit", step: `audit-${result.slug}` },
     key: e.key,
     summary: e.title,
     severity: e.severity,

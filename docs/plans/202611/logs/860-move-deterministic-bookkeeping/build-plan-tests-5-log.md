@@ -18,3 +18,5 @@ SOURCE — TASK 16: remote-movement guard and checkpoints from .bkit/core/engine
 WROTE — TASK 16: `.bkit/core/engine/ledgers/journal.integration.test.ts` `blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it`
 SOURCE — TASK 17: reconcile branches (whole / partial / nothing landed / prepare afresh) from .bkit/core/engine/commands/workflow/ledgers.ts:1708-1750; intent row shape (block, offset) from .bkit/core/engine/ledgers/status.ts:787-791
 WROTE — TASK 17: `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended`
+CORRECTED — TASK 13: `.bkit/core/engine/commands/workflow/steps.test.ts` `audit result render keeps an existing anchored report intact`: setup now creates docs/audits first
+PASSES — TASK 13: `.bkit/core/engine/commands/workflow/steps.test.ts` `audit result render keeps an existing anchored report intact`: the group 5 code is already built, so the corrected test passes at re-record

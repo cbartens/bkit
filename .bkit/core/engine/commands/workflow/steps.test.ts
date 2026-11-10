@@ -2499,6 +2499,7 @@ describe("bkit steps stub --result-file", () => {
       "Read CLAUDE.md first: MARKER-INSTRUCTIONS",
       "",
     ].join("\n");
+    fs.mkdirSync(path.join(cwd, "docs/audits"), { recursive: true });
     write(cwd, "docs/audits/security.md", report);
     write(
       cwd,

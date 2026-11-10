@@ -1568,7 +1568,9 @@ export function appendLedgerRows(
   const made = mkdirp(path.dirname(abs));
   if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
   const ops = path.join(root, LEDGER_OPERATIONS_FILE);
-  const hash = actionHash(JSON.stringify({ ledger, rows, invocation: invocation?.id ?? null }));
+  // The request is the ledger and rows alone: an operation stays reconcilable after its
+  // invocation goes stale, and replay writes the recorded bytes, never a re-derived `by`.
+  const hash = actionHash(JSON.stringify({ ledger, rows }));
   if (options.operation !== undefined && options.issueOperation === true)
     throw new CommandError(
       EXIT.USAGE,
@@ -1724,10 +1726,17 @@ export function appendLedgerRows(
             options.checkpoint?.("receipted");
             return result(intent, intent.block, true);
           }
-          if (seg.length > 0 && have.length === intent.offset + seg.length)
+          let landedBytes = 0;
+          while (
+            landedBytes < seg.length &&
+            landedBytes < want.length &&
+            seg[landedBytes] === want[landedBytes]
+          )
+            landedBytes++;
+          if (landedBytes > 0 || (seg.length > 0 && have.length === intent.offset + seg.length))
             throw new UncertainEffect(
               EXIT_STAGE,
-              `operation ${operation}: ${file} holds ${seg.length} of ${want.length} prepared bytes; the effect is uncertain, nothing was truncated or retried`,
+              `operation ${operation}: ${file} holds ${landedBytes} of ${want.length} prepared bytes at the recorded offset; the effect is uncertain, nothing was truncated or retried`,
             );
           if (have.length === intent.offset) {
             // Nothing landed: write the exact prepared bytes again.

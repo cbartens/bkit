@@ -785,9 +785,10 @@ export async function ciDispatchGate(o, deps) {
                     return false;
                 }
                 if (tip !== cur.commit) {
-                    const tracking = git(o.cwd, ["rev-parse", "-q", "--verify", `origin/${branch}`]);
+                    // Whatever `origin/<branch>` holds, a tip that is not behind the re-trigger commit is
+                    // someone else's work: a lease taken against an up-to-date tracking ref would overwrite it.
                     const fastForward = tip === "" || runGit(o.cwd, ["merge-base", "--is-ancestor", tip, cur.commit]).ok;
-                    if (!fastForward && tip !== tracking) {
+                    if (!fastForward) {
                         deps.log(`re-trigger push blocked: ${branch} moved on the remote to ${tip.slice(0, 12)} after the re-trigger commit was made`);
                         return false;
                     }

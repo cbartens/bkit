@@ -2297,7 +2297,8 @@ export const stepsCommand: CommandSpec = {
         },
       ],
       output: {
-        file: "the artifact written",
+        file: "the artifact written (an audit summary whose --to already holds a report goes to <result-file>.summary.md)",
+        reportKept: "audit result: the existing report at --to, left untouched",
         stripped: "the prior header was dropped (copy mode)",
         fingerprint: "with --result-file: the Fingerprint header value",
         ids: "audit result: the report-local finding IDs, in report order",
@@ -2323,11 +2324,24 @@ export const stepsCommand: CommandSpec = {
               String(ctx.flags.agent),
               readResult(ctx.cwd, String(ctx.flags.resultFile)),
             );
-            const to = path.resolve(ctx.cwd, String(ctx.flags.to));
+            const requested = path.resolve(ctx.cwd, String(ctx.flags.to));
+            // An audit's --to is the finished report; the summary never replaces it.
+            const keepsReport =
+              ctx.flags.agent === AUDIT_AGENT &&
+              fs.existsSync(requested) &&
+              fs.statSync(requested).size > 0;
+            const resultFile = path.resolve(ctx.cwd, String(ctx.flags.resultFile));
+            const to = keepsReport
+              ? path.join(
+                  path.dirname(resultFile),
+                  `${path.basename(resultFile, path.extname(resultFile))}.summary.md`,
+                )
+              : requested;
             fs.mkdirSync(path.dirname(to), { recursive: true });
             fs.writeFileSync(to, rendered.text);
             ctx.emit({
-              file: String(ctx.flags.to),
+              file: keepsReport ? path.relative(ctx.cwd, to) : String(ctx.flags.to),
+              ...(keepsReport ? { reportKept: String(ctx.flags.to) } : {}),
               fingerprint: rendered.fingerprint,
               ...rendered.extra,
             });
