@@ -605,7 +605,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** A legacy doc whose wrapper is ambiguous is reported once in upgrade output and then never again: `detectProjectDocs` has no cleanup finding, the doc is never registered, and check's only hint is the "run `bkit upgrade`" unindexed action that cannot resolve it.
+- [x] **TASK 15:** A legacy doc whose wrapper is ambiguous is reported once in upgrade output and then never again: `detectProjectDocs` has no cleanup finding, the doc is never registered, and check's only hint is the "run `bkit upgrade`" unindexed action that cannot resolve it.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/checks/after/tools.ts:456` · **Round:** 1
   - **DONE WHEN:** `detectProjectDocs` runs `stripManagedWrapper` read-only on each present target and emits a suppressible advisory (for example `project-docs-cleanup`) naming the path and the `WrapperProblem` with the by-hand fix, on every check / doctor run, not only at upgrade time. Plan Architecture § Consultation: "Return advisory findings for ... unresolved cleanup".
   - **TEST FIRST:**
@@ -614,7 +614,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 15 end -->
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** A plan written from `bkit-plan.md` that keeps the template's example record (a stub, or an agent that writes `None` above the fence) puts a fabricated "security (starter-only)" warning in the run summary, because the template places the illustrative jsonl record directly under `## Documentation Warnings`.
+- [x] **TASK 16:** A plan written from `bkit-plan.md` that keeps the template's example record (a stub, or an agent that writes `None` above the fence) puts a fabricated "security (starter-only)" warning in the run summary, because the template places the illustrative jsonl record directly under `## Documentation Warnings`.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/docs/templates/bkit-plan.md:194` · **Round:** 1
   - **DONE WHEN:** The unfilled template yields no aggregated record: the example sits inside the bracketed instruction (removed on fill) or the summary skips a record byte-equal to the template example, and a section reading `None` / `PENDING` contributes nothing.
   - **TEST FIRST:**
@@ -623,7 +623,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 16 end -->
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** A committed `Project Documents` row such as `` `README.md/security.md` `` (in-tree, no `..`, basename matches the topic) with `docs/security.md` absent makes `inspectRepoFile` throw `ENOTDIR` (also `ENAMETOOLONG` for a long path, `ERR_INVALID_ARG_VALUE` for a NUL byte, `EACCES` for an unreadable directory), so `detectProjectDocs` throws and `bkit check`, `bkit doctor`, install and upgrade abort on optional-document input.
+- [x] **TASK 17:** A committed `Project Documents` row such as `` `README.md/security.md` `` (in-tree, no `..`, basename matches the topic) with `docs/security.md` absent makes `inspectRepoFile` throw `ENOTDIR` (also `ENAMETOOLONG` for a long path, `ERR_INVALID_ARG_VALUE` for a NUL byte, `EACCES` for an unreadable directory), so `detectProjectDocs` throws and `bkit check`, `bkit doctor`, install and upgrade abort on optional-document input.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/checks/after/tools.ts:510` · **Round:** 1
   - **DONE WHEN:** `inspectRepoFile` (`.bkit/core/engine/install/project-docs.ts:190`) returns `{ unsafe: <reason> }` instead of throwing for any `lstatSync` / `realpathSync` error other than not-found, and `isInTreePath` rejects paths containing NUL or other control characters. A malformed or hostile index row yields a `project-docs-ambiguous` advisory and `runPostInstallCheck` completes, matching the plan's "Findings never make install, upgrade, check or doctor fail on optional-document grounds."
   - **TEST FIRST:**

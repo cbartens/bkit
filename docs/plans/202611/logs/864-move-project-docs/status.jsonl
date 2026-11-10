@@ -445,3 +445,15 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T02:39:15Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/5/1/comment","hash":"41f4298598c7704a25c760b30cccaff3856b0bc485bdd76a39d6d67658cc475c","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6755824020","at":"2026-11-10T02:39:17Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-10T02:39:17Z","parentSha":"184e4505c06071c4e82377ace3e326ba7444b28a","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-verify-5-1.md"],"verdict":"PASS","attempt":1,"group":5,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:39:23Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:39:23Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:39:24Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:39:35Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:40:07Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:40:08Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:40:19Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:40:19Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T02:41:16Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T03:04:56Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/3/comment","hash":"a46179d484d82659ebceaeec88f0d2afe5975a5fba9d0a0de0943ac49f165679","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6755824020","at":"2026-11-10T03:04:58Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-10T03:04:58Z","parentSha":"9237c752bbcd1521115df8e0207592582df5fe70","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-verify-holistic-3.md"],"verdict":"CONCERNS","attempt":3,"failures":7}
