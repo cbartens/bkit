@@ -38,7 +38,7 @@
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Name the exact matrix header in the plan-writing prompts and the issue shape
+- [x] **TASK 2:** Name the exact matrix header in the plan-writing prompts and the issue shape
   - **UPDATE:** `.bkit/core/prompts/bkit-plan-generate.md`: the Scenario detail bullet names the header `Test description | Type | Target file | Task`, in that order, with no extra columns
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-convert.md`: the Matrix shape bullet names the same header and bans extra columns
   - **UPDATE:** `.bkit/trackers.md`: the change-shape Derived Test Matrix line says the plan form is the four columns with `Task` last
