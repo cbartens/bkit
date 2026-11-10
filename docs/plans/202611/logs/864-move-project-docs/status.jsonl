@@ -630,3 +630,16 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T14:07:42Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","failures","scope","attempt","artifact","clamp-log","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-run-tests/-/2/comment","hash":"c14466632c2a0f490521552bdf2ff0c36bcfc377370e6345d3df43d061f83aae","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6769451658","at":"2026-11-10T14:07:43Z"}
 {"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE","at":"2026-11-10T14:07:43Z","parentSha":"1b90b26242bde062effd4f99b5fdccd38ce4cf0c","artifacts":["docs/plans/202611/logs/864-move-project-docs/run-tests-2.md"],"verdict":"PASS","attempt":2,"failures":0,"scope":"pnpm bkit:gate:static-unit-integration","clamped":[{"artifact":"docs/plans/202611/logs/864-move-project-docs/run-tests-2.md","clamped":true,"origLines":19264,"keptLines":2983,"origBytes":1395804,"keptBytes":212940,"lineCapped":0,"ceilingHit":false,"raw":".git/bkit-outbox/864-move-project-docs/run-tests-2.log","source":"pnpm bkit:gate:static-unit-integration","fetchedAt":"2026-11-10T13:47:47Z"}]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:07:50Z","noun":"tests","verb":"green","flags":["file","workflow","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:11:16Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:11:28Z","noun":"decisions","verb":"compose","flags":["out","header","items","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:11:29Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:11:29Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T14:11:33Z","noun":"status","verb":"row","flags":["file","workflow","type","field"]}
+{"type":"owner-pause","workflow":"build","at":"2026-11-10T14:11:33Z","reason":"decision"}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T22:46:49Z","noun":"status","verb":"row","flags":["file","workflow","type"]}
+{"type":"owner-answer","workflow":"build","at":"2026-11-10T22:46:49Z"}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T22:47:12Z","noun":"ledgers","verb":"commit","flags":["root","month","fid","mode","path","message"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T22:47:20Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-decision/-/6/comment","hash":"f1eb071e202ba1dd2157ae22705c9592f95cc238a8a7a2235c0680a0b2895243","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6781417425","at":"2026-11-10T22:47:21Z"}
+{"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-10T22:47:21Z","parentSha":"26a85779dbe68705147bdd3b8971e3e099675c0e","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-decision-1-6.md"],"attempt":6,"route":"summary"}
