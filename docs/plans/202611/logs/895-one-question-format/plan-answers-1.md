@@ -16,3 +16,18 @@
 - **Open Question Q3 — How a debug branch or CI-run answer reaches the re-run (#7, #8):** Write the owner's pick to `{SESSION_DIR}/owner-answer.md` and re-run the same command with `--prompt-file`?
   - **Answer:** Yes, all four (takes Recommended A)
   - Decision: 895-debug-branch-and-ci-stops-become-questions
+
+## Review of rendered samples
+
+The owner reviewed sample questions rendered from the plan and answered "fix the gaps in the plan now".
+
+- **Gap 1 — Branch check (#7), CI-run lookup (#8) and Step 1 issue question had no recommendation or default line:** each now carries `Recommended: none — only you know which {branch | run | issue} you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`; the reply line drops its "yes" half; the CI-run candidate option reads `Use {reference} — debug reads that run's failures instead of running the tests itself`.
+  - Decision: 895-debug-branch-and-ci-stops-become-questions, 895-start-step-issue-stops-question-and-action-lines
+- **Gap 2 — The debug Loop Question's reason was false when the soak limit fired:** that branch now reads `Recommended: A) Stop — the attempts set aside for this are used up`.
+  - Decision: 895-debug-branch-and-ci-stops-become-questions
+- **Gap 3 — `Stop` was worded four ways:** every mid-run `Stop` option reads `Stop — the run stops with a handover; the next run resumes here`.
+  - Decision: 895-shared-question-shape
+- **Gap 4 — The closed default set had no phrase for a stop or a blocked gate:** it gains `the run stops when nobody can be asked` (build hard blockers, with `the run waits for you; `) and `the plan stops at Gate 1 until you answer`.
+  - Decision: 895-shared-question-shape
+- **Gap 5 — Assumption A2 (each option line shows on its own line):** unchanged; still unverified.
+  - Decision: none
