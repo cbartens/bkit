@@ -584,7 +584,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Migrate maintained callers and generated consumers to engine bookkeeping (all eight findings; R1–R25).
+- [x] **TASK 9:** Migrate maintained callers and generated consumers to engine bookkeeping (all eight findings; R1–R25).
   - **UPDATE:** `.bkit/instructions.md`: master clauses and carrier registry for the exact approved four-paragraph recovery wording and deterministic ownership; retire conflicting blanket failure wording.
   - **UPDATE:** `.bkit/core/.agents/rules.md`: shared Commands/Failures/recovery rules with unambiguous precedence.
   - **UPDATE:** `.bkit/core/workflows/bkit-auto.md`: explicit invocation/recovery dispatch contract.
