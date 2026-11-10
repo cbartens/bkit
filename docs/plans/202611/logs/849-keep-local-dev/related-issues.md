@@ -1,4 +1,153 @@
-## #842 — Ship fails when the local feature branch differs from GitHub's (open)
+## #813 — Add a rollback path for shipped workflow changes; decide dev checks (open)
+
+### Problem
+
+Two deferrals that each name the other are open, and neither has an issue (#384 closed 2026-07-29):
+
+- **No rollback for shipped workflow changes:** when a released workflow change misbehaves in a consumer, there is no way to go back. `.bkit/core/engine/commands/install/upgrade.ts` has no revert or pin path (`git grep -E -- '--revert|revertWorkflow|pin.*workflow'` is empty, while the same file reads `upgradeFlags.dryRun` at `:1060`).
+- **No required status checks on `dev`:** `.bkit/core/engine/commands/setup/setup.ts:5` still says "`dev` is left unprotected", so a red change can land on `dev` unchecked.
+
+### Outcome
+
+A consumer can undo a bad workflow change without hand-editing, and there is a recorded stance on whether `dev` requires checks.
+
+### Success criteria
+
+- A documented, tested command takes a consumer back to the previous workflow version, or pins one.
+- `bkit protect` (or `setup`) either sets required checks on `dev` or records why not in `docs/decisions.jsonl`.
+
+### Constraints and non-goals
+
+- Stack-agnostic.
+- Branch-protection changes on a consumer need explicit owner confirmation.
+
+### Decisions already made
+
+None recorded.
+
+### Open questions
+
+- Rollback mechanism? A) Pin: `bkit upgrade` can hold a workflow at a named bkit version. B) Revert: `bkit upgrade --revert` restores the previous rendered copy. Recommended: B, because it needs no version store beyond the previous render.
+- `dev` stance? A) Require the `bkit-tests-check` capstone on `dev`. B) Keep `dev` unprotected and record why. Recommended: A, because the capstone already exists.
+
+### References
+
+- **Audit reports:** docs/audits/202611/deferrals.md (findings deferrals-10)
+- Audit parent: #344 — Deferrals triage
+- `docs/deferrals.jsonl` key `per-workflow-rollback-path-for-shipped-bkit-workflow-changes`
+- `docs/deferrals.jsonl` key `384-required-status-checks-on-dev-via-bkit-protect-main`
+
+## #661 — Ship re-runs CI after updating the branch from dev, even though code did not change (closed)
+
+## What happens
+
+When `dev` has moved since a feature branch went green, `/bkit-ship` merges `dev` into the branch and then waits for a whole new CI run, even though the feature's own changes are byte-identical. The only new code is code that came from `dev`. The push to `dev` after the merge runs CI on that combination anyway, so the second run before the merge costs time and buys nothing.
+
+## Example (a consumer repo, bkit 5.5.1, 2026-10-22)
+
+- A feature branch went green at `c217ea97`.
+- `dev` had already moved on with three commits (a bkit upgrade, an e2e test fix and a docs change) that the green run did not include.
+- Ship Step 3 (`bkit branches sync`) found `dev` was not part of the branch, so it took Path B. Step 4 B1 ran `bkit prs update-branch`. GitHub created merge commit `49fc6644` ("Merge branch 'dev' into ...", committed by GitHub), which started a new CI run eight seconds later.
+- The branch's own change is identical before and after the update: `git diff <old merge-base> c217ea97` and `git diff <new dev> 49fc6644` have the same `git patch-id --stable`.
+- That repo's `dev` requires no status checks and has no "branch must be up to date" rule; its only ruleset stops `dev` being deleted. The PR was already mergeable without the update.
+
+## Why it happens
+
+1. **Ship moves the tip itself.** Step 4 B1 (`.bkit/core/workflows/bkit-ship.md`, § Step 4 — Integrate) always runs `bkit prs update-branch` when `dev` has moved, whether or not `dev` requires the branch to be up to date.
+2. **Step 9 compares commits, not the branch's own changes.** `runRevalidate` in `.bkit/core/engine/commands/workflow/runs.ts` re-runs CI whenever the commit to validate differs from `ENTRY_HEAD` (the PR tip when ship started). The only exception is ship's own bookkeeping commits (`onlyBookkeeping`). A tip that moved only because `dev` was merged in counts as new code.
+3. The merge gate in Step 10 (`bkit runs gate`) has the same rule: anything past the validated commit other than bookkeeping returns exit 17 and sends ship back to Step 9.
+
+The only recorded reason for updating the branch is in the commit that added it, `4c785ccd` (fix(216), 2026-06-01): "so a base that moved during the ship window cannot fail the squash". GitHub refuses to merge an out-of-date PR only when there is a textual conflict (which updating the branch does not fix either) or when `dev` requires branches to be up to date. Neither applied here. No row in `docs/decisions.jsonl` covers the step.
+
+## Proposed fix
+
+Change Step 4 B1 so ship updates the branch only when the branch code has to change, or the repo asks for checks on `dev`:
+
+<!-- prettier-ignore -->
+| Situation | Behaviour |
+| --- | --- |
+| `MERGEABLE` = MERGEABLE (no textual conflict) and `dev` requires no status checks | **Skip `bkit prs update-branch`.** Merge the PR at the tip CI already passed on. The push to `dev` runs CI on the combined code. |
+| `MERGEABLE` = CONFLICTING (Path B2) | Unchanged: resolve, push, re-run CI. Someone edited files to resolve the conflict, so the branch code really did change. |
+| `dev` requires status checks (ruleset or branch protection) | Unchanged: update the branch and re-run CI. The repo has asked for checks to guard `dev`, so ship keeps the stricter behaviour. `devRequiresChecks` in `runs.ts` already detects this. (GitHub itself refuses an out-of-date branch only when the rule's "require branches to be up to date" setting is on.) |
+
+Likely touch points:
+
+- `.bkit/core/workflows/bkit-ship.md` § Step 4, sub-step 1 (B1) and Gate 4 (`B1: bkit prs update-branch attempted`), plus the mirrored command/skill renders.
+- `.bkit/core/engine/commands/workflow/runs.ts` (`runRevalidate`, `runs gate`), so that skipping the update leaves `CODE_HEAD` = `ENTRY_HEAD` and no re-run happens.
+- Tests for the three rows above, and the docs that describe Path B (`.bkit/workflows.md`, `docs/deployments.md`).
+
+## Trade-off (accepted)
+
+If `dev` and the branch break each other without a textual conflict (for example, `dev` renames a function the branch calls), the problem shows up as a red `dev` CI run after the merge, not as a red PR before it. This is accepted: the `dev` push run catches it.
+
+GitHub's `mergeable` answer is occasionally wrong on very large diffs. If it reports no conflict and there is one, the merge itself is refused and ship goes through its existing retry path (Steps 11-12): a wasted attempt, not a bad merge.
+
+Repos that want the stricter behaviour can turn on required status checks for `dev`. Ship then keeps updating the branch and re-running CI, as in the third row of the table.
+
+so the branch code DID change and ci is justified no? what are we talking about here?
+
+Yes, once ship had pulled dev in, the branch did change and the re-run was justified. The question in #661 is whether ship needed to pull dev in at all. I blurred this earlier by saying “the code on your branch didn’t change”; I should have said “your feature’s code didn’t change”.
+
+Two different things:
+
+Your feature’s code (what feat/1502 adds on top of dev) didn’t change. The update left it byte-identical.
+The branch as a whole did change, but only because ship merged dev into it. The only new code on the branch was dev’s.
+
+The chain:
+
+Ship pulls dev into the branch. This step wasn’t necessary in gether. The PR could already merge, and gether’s dev doesn’t require the branch to be up to date.
+That creates a new commit holding new code, the feature plus the latest dev.
+Given that new code, re-running CI is correct. I’m not proposing to skip CI on changed code.
+
+So #661 doesn’t say “this CI run was unjustified”. It says “don’t make the change that forces it”. If ship merges without pulling dev in first, the branch never changes, run 1’s green still applies, and there’s nothing to re-test.
+
+The one thing you give up: the second run was testing feature plus latest dev together before the merge. After #661 that same test happens once, as the CI run on the push to dev after the merge. That’s the trade-off you accepted: a clash shows up as a red dev instead of a red PR.
+
+> Ship pulls dev into the branch. This step wasn’t necessary in gether. The PR could already merge, and gether’s dev doesn’t require the branch to be up to date.
+
+so why did we pull the code if we did not need it?
+
+I traced the unconditional dev-pull step to commit 4c785ccd, which added it to prevent squash-merge failures from a base moving mid-ship — but that risk only matters if there’s a conflict or the repo enforces “up to date before merging,” neither of which applies here. I’d wrongly claimed in #661 that no reason was recorded (I’d only checked docs/decisions.jsonl); I’ll correct that now.
+
+Pushing the corrected line to the issue now.
+
+I’ve corrected #661: it now quotes the reason from commit 4c785ccd and explains why that reason didn’t apply here.
+
+To answer you directly: we pulled dev in because ship has done it on every ship since June, needed or not. It was added on the belief that GitHub won’t merge a PR once dev has moved past it. That’s only true when there’s a conflict or when the repo requires branches to be up to date, and gether has neither. #661 makes the step happen only in those two cases.
+
+> It was added on the belief that GitHub won’t merge a PR once dev has moved past it. That’s only true when there’s a conflict or when the repo requires branches to be up to date, and gether has neither.
+
+so we should be checking if there is a merge conflict? if yes, we re run ci, if not we skip ci and do not run it again, that it?
+
+Almost. There’s one more case to keep, and one correction to how you’ve put it: with no conflict, ship isn’t skipping a CI run that should happen. Nothing changes on the branch, so there’s nothing new to test.
+
+The rule after #661:
+
+Conflict with dev?	dev requires checks?	What ship does
+No	No (gether today)	Merges straight away on the green it already has. The branch isn’t touched, so CI doesn’t run again.
+Yes	Either	Resolves the conflict, pushes, and CI runs again. Someone edited files, so the code really changed.
+No	Yes	Updates the branch and re-runs CI, because the repo has asked for dev to be guarded that way.
+
+Ship already checks for conflicts. It reads GitHub’s “mergeable” answer at Step 1 and uses it to choose between B1 (no conflict) and B2 (conflict). #661 only changes what B1 does: today it pulls dev in, afterwards it does nothing.
+
+One caveat: GitHub’s “mergeable” answer is occasionally wrong on very large diffs. If it says “no conflict” and there is one, the merge itself fails, and ship goes into its existing retry path (Step 11). That would be a wasted attempt, not a bad merge. I’ll add a line about it to #661 if you want it recorded.
+
+Almost. There's one more case to keep, and one correction to how you've put it: with no conflict, ship isn't skipping a CI run that should happen. Nothing changes on the branch, so there's nothing new to test.
+
+**The rule after #661:**
+
+<!-- prettier-ignore -->
+| Conflict with `dev`? | `dev` requires checks? | What ship does |
+| --- | --- | --- |
+| No | No (gether today) | Merges straight away on the green it already has. The branch isn't touched, so CI doesn't run again. |
+| Yes | Either | Resolves the conflict, pushes, and CI runs again. Someone edited files, so the code really changed. |
+| No | Yes | Updates the branch and re-runs CI, because the repo has asked for `dev` to be guarded that way. |
+
+**Ship already checks for conflicts.** It reads GitHub's "mergeable" answer at Step 1 and uses it to choose between B1 (no conflict) and B2 (conflict). #661 only changes what B1 does: today it pulls `dev` in, afterwards it does nothing.
+
+**One caveat:** GitHub's "mergeable" answer is occasionally wrong on very large diffs. If it says "no conflict" and there is one, the merge itself fails, and ship goes into its existing retry path (Step 11). That would be a wasted attempt, not a bad merge. I'll add a line about it to #661 if you want it recorded.
+
+## #842 — Ship fails when the local feature branch differs from GitHub's (closed)
 
 ### Problem
 
@@ -144,212 +293,7 @@ Re-checked the "What ship already handles" table against the code and added two 
 
 The table now says where its rows stop holding (Path B red CI with no fix round, merged-on-entry, push timing, the `sync-dev` advice). Success criteria, Outcome, Open questions (with proposed answers) and References are extended to match. Labels, milestone and board fields are unchanged.
 
-## #813 — Add a rollback path for shipped workflow changes; decide dev checks (open)
-
-### Problem
-
-Two deferrals that each name the other are open, and neither has an issue (#384 closed 2026-07-29):
-
-- **No rollback for shipped workflow changes:** when a released workflow change misbehaves in a consumer, there is no way to go back. `.bkit/core/engine/commands/install/upgrade.ts` has no revert or pin path (`git grep -E -- '--revert|revertWorkflow|pin.*workflow'` is empty, while the same file reads `upgradeFlags.dryRun` at `:1060`).
-- **No required status checks on `dev`:** `.bkit/core/engine/commands/setup/setup.ts:5` still says "`dev` is left unprotected", so a red change can land on `dev` unchecked.
-
-### Outcome
-
-A consumer can undo a bad workflow change without hand-editing, and there is a recorded stance on whether `dev` requires checks.
-
-### Success criteria
-
-- A documented, tested command takes a consumer back to the previous workflow version, or pins one.
-- `bkit protect` (or `setup`) either sets required checks on `dev` or records why not in `docs/decisions.jsonl`.
-
-### Constraints and non-goals
-
-- Stack-agnostic.
-- Branch-protection changes on a consumer need explicit owner confirmation.
-
-### Decisions already made
-
-None recorded.
-
-### Open questions
-
-- Rollback mechanism? A) Pin: `bkit upgrade` can hold a workflow at a named bkit version. B) Revert: `bkit upgrade --revert` restores the previous rendered copy. Recommended: B, because it needs no version store beyond the previous render.
-- `dev` stance? A) Require the `bkit-tests-check` capstone on `dev`. B) Keep `dev` unprotected and record why. Recommended: A, because the capstone already exists.
-
-### References
-
-- **Audit reports:** docs/audits/202611/deferrals.md (findings deferrals-10)
-- Audit parent: #344 — Deferrals triage
-- `docs/deferrals.jsonl` key `per-workflow-rollback-path-for-shipped-bkit-workflow-changes`
-- `docs/deferrals.jsonl` key `384-required-status-checks-on-dev-via-bkit-protect-main`
-
-## #493 — Plan and design close can delete the feature branch after a failed squash merge (closed)
-
-## The problem
-
-When plan close (and design close) merges the feature branch into `dev`, it never checks whether the merge worked. If the merge fails, the close keeps going anyway. It commits, pushes `dev`, and then deletes the feature branch, both on your machine and on GitHub. Only after all that does it check whether the plan actually reached `dev`. By then the branch holding the plan is gone.
-
-Found by the October friction triage (#99, finding friction-1, CRITICAL). I read the code and the finding holds up. It has **not** been reproduced end to end.
-
-## Where it happens
-
-Plan close, local path, `.bkit/workflows/bkit-plan.md`:
-
-<!-- prettier-ignore -->
-| Line | What it does | What's wrong |
-| --- | --- | --- |
-| `:962` | `git merge --squash -X ours "feat/{FID}"` | No exit check. A merge that git refuses (for example because of local changes in the main checkout) doesn't stop the block. |
-| `:963-964` | `STRAY` check on staged files | Only rejects staged non-doc files. A failed merge stages nothing, so this passes. |
-| `:991` | `git commit --allow-empty -m "docs({FID}): plan DONE bkit [skip ci]"` | No file list. It commits whatever is staged in the main checkout, which breaks the rule in `.bkit/workflows.md:235` ("Main-checkout staging": every main-checkout `git commit` carries an explicit pathspec). With `--allow-empty`, it also succeeds when the merge brought nothing in. |
-| `:992` | `git push origin dev` | Pushes a `plan DONE` commit that carries only bookkeeping rows and no plan. |
-| `:996-999` | `git worktree remove --force`, `git branch -D "feat/{FID}"`, `git push origin --delete "feat/{FID}"` | Deletes the worktree and both copies of the branch. |
-| `:1040` | `git show "$CANONICAL_REF:docs/plans/{YYYYMM}/{FID}-plan.md"` | The "did the plan land?" check. It runs after the deletion, so a failure here comes too late to save anything. |
-
-After that sequence, the plan's commits exist only as unreachable git objects on the machine that ran the close, until git cleans them up.
-
-Design close has the same shape (`.bkit/workflows/bkit-design.md:837` merge, `:866` commit with no file list, `:872-874` deletion). Design does check the plan file before cleanup (`:868`), but that check also passes on a re-run whose **older** design is already on `dev`. So it doesn't prove that this run's merge landed.
-
-## How it shows up in practice
-
-Two friction rows from consumers describe the trigger: a concurrent session leaves the main checkout dirty, and plan close can't merge.
-
-- `plan-close-blocked-by-concurrent-session-dirty-dev-and-prepush-on-main-checkout` (app-gether-life, HIGH)
-- `friction-plan-close-blocked-by-concurrent-274-uncommitted-docs-in-ma-6e469ae` (visitfrasercoast-com, MEDIUM)
-
-In both cases the close stopped before reaching the deletion, for other reasons. Nothing in the close block itself guarantees that.
-
-## Fix (from the triage report)
-
-In both the plan and design close blocks:
-
-1. Stop before committing if `git merge --squash` exits non-zero, or if the main checkout has tracked changes that aren't from the merge.
-2. Commit only the files the squash brought in (an explicit pathspec), never the whole index.
-3. Before removing the worktree or deleting any branch, confirm that **this run's** plan or design file is on `dev`. Compare it against the feature branch's copy; don't just check that a file exists.
-
-Add a test that makes the squash fail (for example, a conflicting local change in the main checkout) and asserts that the feature branch still exists afterwards, locally and on the remote.
-
-## References
-
-- Triage report: `docs/audits/202610/friction.md` (friction-1)
-- Rule broken: `.bkit/workflows.md:235`
-- #99
-
-## Verified: reproduced end to end, for both plan close and design close
-
-The finding holds. I reproduced it in a throwaway repo (a local bare remote, a main checkout on `dev`, and a `feat/F1` branch with a worktree). I copied the local close path word for word from `.bkit/workflows/bkit-plan.md:957-1000` and `.bkit/workflows/bkit-design.md:832-875`, filling in only `{FID}` and `{YYYYMM}`. The real `bkit-book-commit.sh` did the staging. Two helper scripts were missing from the scratch repo: `bkit-workflow-telemetry.sh` and `bkit-roadmap-fold.sh`. Both only append rows, and the block carries on without them anyway. Nothing in these blocks sets `set -e`, as `.bkit/workflows.md:143` already says, so I ran them the same way an agent would.
-
-The trigger in every case is the one from the friction rows: another session has left a tracked doc changed in the main checkout. Git refuses the squash merge (`error: Your local changes to the following files would be overwritten by merge ... Aborting`), and the block keeps going.
-
-<!-- prettier-ignore -->
-| Scenario | Plan close | Design close |
-| --- | --- | --- |
-| **A.** Another session has an unstaged edit to `docs/roadmap.md` | Pushes `docs(F1): plan DONE` with no plan in it, then deletes the worktree, the local branch and the remote branch. The plan's commit is left only as an unreachable object (`git fsck --unreachable` lists it). | Pushes the empty `design DONE` commit, then stops at `:868` with "Canonical design missing on dev". The branch survives, but the bad commit is already on `dev`. |
-| **B.** Another session has *staged* `docs/roadmap.md` and its own `docs/plans/202610/OTHER-plan.md` | Same branch loss. The pushed commit also carries the other session's `OTHER-plan.md` and roadmap edit. | Same as A, plus the other session's files are in the pushed commit. |
-| **C.** Re-run: an older `F1-design.md` / `F1-plan.md` is already on `dev` | Branch lost; `dev` still has the old plan. | **Branch lost.** The `:868` check passes because the old design is on `dev`. This confirms the issue's point that the design check doesn't prove this run's merge landed. |
-
-## Line numbers
-
-All correct on current `dev`, with one small shift: in plan close, the deletion is `:997-999`, not `:996-999` (`:996` sets `CANONICAL_REF`). `.bkit/workflows.md:235` is the "Main-checkout staging" rule, as cited.
-
-## Two things the fix needs that the issue doesn't spell out
-
-1. **The leftover-changes check has to run before bookkeeping stages anything, not just before the commit.** In scenario A, nobody had staged the other session's `docs/roadmap.md` edit. `bkit-book-commit.sh --mode=stage` (`bkit-plan.md:989`) staged it, because `docs/roadmap.md` is one of the ledgers it adds. It then went out in the `plan DONE` commit (the pushed roadmap reads `row0` / `rowOTHER`). So an explicit file list on `git commit` (fix step 2) wouldn't stop this. The bookkeeping step adds the other session's edit to the index itself. The guard has to compare the main checkout against `HEAD` right after the merge, before line `:989` / `:864`.
-2. **Stopping before deletion isn't enough. It has to stop before the push.** Design close shows this. Its check at `:868` saved the branch in A and B, but `git push origin dev` at `:867` had already published the bad commit. Fix step 1 ("stop before committing") covers this if it's done as written. A fix that only moves the "did it land?" check ahead of the cleanup would still push the bad commit.
-
-The staged-docs case (B) also shows why the `STRAY` filter at `:963` / `:838` can't stand in for a merge-success check. It only rejects files outside `docs/`, so a concurrent session's staged plan or roadmap passes it.
-
-## Suggested regression test
-
-Use scenario A (an unstaged tracked edit to a file the feature branch also changes) and scenario C (an older copy of the plan/design already on `dev`). After the close, assert that:
-- `feat/F1` still exists locally and on the remote, and so does the worktree
-- `origin/dev` has not moved
-
-C is the case that gets past today's design check.
-
-## Fix applied (working tree only, not staged or committed)
-
-### What the close does now
-
-Both the plan close and the design close, local path only (`RUNTIME_DEVPUSHES=true`):
-
-1. **Stops if git refuses the squash.** `git merge --squash -X ours "feat/{FID}"` now has an exit check (`bkit-plan.md:962`, `bkit-design.md:837`). When it fails, the block exits before writing, committing or pushing anything. The branch, its remote copy and the worktree all stay.
-2. **Checks that this run's doc actually came in, before committing.** It compares the staged copy of `{FID}-plan.md` (plus any `{FID}-plan-N.md` sub-plans) or `{FID}-design.md` against the copy on `feat/{FID}` (`bkit-plan.md:965-968`, `bkit-design.md:840-842`). This catches two cases:
-   - the re-run case: an older doc is already on `dev`, so "the file exists" proves nothing
-   - the conflict case: `dev` also edited the doc, and `-X ours` quietly kept `dev`'s version
-
-   On a mismatch it stops before committing. The partial squash stays staged in the main checkout for a person to clear. Nothing is pushed or deleted.
-3. **Commits only its own files.** The pathless `git commit --allow-empty` is gone. The commit now goes through `bkit-book-commit.sh --mode=commit-allow-empty --squash-of="feat/{FID}"` (`bkit-plan.md:993`, `bkit-design.md:867`). That commits the bookkeeping ledgers plus the files the squash brought in, and nothing else. A file another session staged stays staged and stays out of the close commit.
-4. Branch and worktree deletion still come last, after the commit and push succeed.
-
-### A change of plan from my earlier comment
-
-My earlier comment suggested refusing the close whenever the bookkeeping files had changes the merge hadn't made. I dropped that. A successful close leaves its own `close-transport` row uncommitted in the main checkout (`bkit-plan.md:1041`). The next close is meant to sweep that row into its own commit. A guard like that would block every close after the first one. What protects against the scenario-A damage now is the exit check plus the doc check. In scenario A git refuses the merge, so the close stops before bookkeeping stages anything.
-
-### New option on `bkit-book-commit.sh`
-
-`--squash-of=<ref>` works in both commit modes. It adds the paths `<ref>` changed since its merge-base with `HEAD` to the commit's file list. Those paths are committed as the squash staged them and are never re-added, so a file the branch deleted is committed as a deletion. The option is refused in stage mode (exit 2), and an unknown ref exits 3. The template copy is updated to stay byte-identical.
-
-### Tests
-
-- **New: `.bkit/src/bkit-close-squash.integration.test.ts`.** It pulls the real local close block out of `bkit-plan.md` and `bkit-design.md` and runs it unchanged against a real remote, main checkout and worktree. Four cases per workflow:
-  1. Another session has an unstaged edit that clashes with the squash. The branch survives locally and on the remote, the worktree survives, and `origin/dev` doesn't move.
-  2. `dev` edited the same doc concurrently, so `-X ours` drops this run's version. Same assertions as case 1.
-  3. Another session has staged a doc. It is not in the pushed commit and is still staged afterwards.
-  4. Clean close, with an unrelated uncommitted edit in `src/`. The doc on `dev` matches the branch copy, the branch and worktree are removed, and the `src/` edit is untouched.
-
-  Before the fix, the three failure cases failed for both workflows (6 of 8 tests) and the clean close passed. After the fix, all 8 pass.
-- **`tests/book-commit.bats`:** 3 new tests for `--squash-of`, covering the deletion case, the "something to commit" check in `--mode=commit`, and the bad-input exits. All 23 pass under both zsh and bash.
-
-### Other changes
-
-- `.bkit/workflows.md:236`: a new **Close squash** row explaining the behaviour.
-- Gate checklists: a new line in Gate 12 (plan) and Gate 11 (design).
-- `bkit upgrade` re-rendered the 8 plan/design mirrors in `.claude/`, `.cursor/`, `.opencode/` and `.agents/skills/`.
-
-### Checks run
-
-- Full `pnpm vitest run`: 4137 passed, 2 failed. Both failures are in `bkit-ledger-integrity.test.ts` and come from `docs/deferrals.jsonl` rows another in-progress session wrote. Not related to this fix.
-- `tsc` is clean, and `bkit check` exits 0.
-- prettier and vale are clean on every file I touched.
-- `slop:delta`: zero findings in the new test file. The gate still fails overall, from other uncommitted work in the tree.
-- Test install with `--claude` into a fresh scratch repo: the installed `bkit-book-commit.sh` and both commands carry the fix.
-
-One intermittent result: `bkit-release-workflow.integration.test.ts` (the published-tarball check) failed once in the first full run, then passed alone and in a second full run. Its output wasn't captured. It's logged in `docs/failures.jsonl` as `release-workflow-tarball-test-intermittent-under-full-suite`.
-
-### Before review
-
-`bkit-book-commit.sh` (and its template copy), `tests/book-commit.bats`, `.bkit/workflows.md`, `.bkit/version` and `docs/failures.jsonl` already had another session's **staged** changes. My edits to those files are unstaged on top, so `git diff` (not `git diff --cached`) shows only this fix. `.bkit/version` is the exception: `bkit upgrade` re-recorded file hashes there for other in-progress files as well as mine.
-
-## Done: committed in 717f8d02 on `dev` (not pushed yet)
-
-This shipped in one commit together with #452, because both changes touch `bkit-book-commit.sh`, `tests/book-commit.bats` and `.bkit/workflows.md`.
-
-### What plan close and design close do now
-
-The local path (`RUNTIME_DEVPUSHES=true`) behaves as described in the earlier comment:
-
-1. **They stop if the squash merge fails.** Nothing is committed or pushed, and the feature branch and its worktree stay. This is the case from the friction reports, where another session's uncommitted edit makes git refuse the merge.
-2. **They check that this run's plan or design was actually staged.** The staged copy of `{FID}-plan.md` (plus any sub-plans) or `{FID}-design.md` has to be identical to the copy on `feat/{FID}`; finding a file on `dev` isn't enough. That catches both a re-run where an older copy is already on `dev` and a conflict where `-X ours` quietly kept `dev`'s version.
-3. **The commit holds only the close's own files.** It goes through `bkit-book-commit.sh --squash-of="feat/{FID}"`, which commits the bookkeeping ledgers plus the files the squash brought in. A file another session staged stays staged and out of the commit.
-4. **Branch and worktree deletion run only after the commit has been pushed.**
-
-### Changes since the last comment
-
-- The gate checklist lines now end with the condition, as the other gate lines do: `(if RUNTIME_DEVPUSHES = true)`.
-- `.bkit/workflows.md` § Close squash was tightened to the compress-markdown style.
-- `docs/testing.md` now lists `bkit-close-squash.integration.test.ts` in its Key test files table.
-
-### Verification
-
-Run against exactly what was committed:
-
-- **New close test (`bkit-close-squash.integration.test.ts`):** all 8 cases pass. Before the fix, 6 of them failed. It runs the real close block from both workflow files against a real remote and worktree.
-- **`tests/book-commit.bats`:** the `--squash-of` cases pass under both zsh and bash.
-- **Full Vitest suite:** 4197 pass.
-  - Two `bkit-ledger-integrity` tests fail. They fail on the previous `HEAD` too, from rows already in `docs/deferrals.jsonl`.
-  - The telemetry-script planSource test failed once in the full run, then passed when re-run.
-- **`roadmap-fold.bats` row 19 is a timing flake.** It builds the roadmap twice and expects identical files, but the board stamps the current second, so it fails whenever the two builds straddle a second boundary. It isn't logged in `docs/failures.jsonl` yet.
-- The pre-commit hooks (formatting and the stale-`dist/` check) passed on the commit.
+#842: ship fails when your local branch differs from GitHub’s. This one is already merged (259c7fc55), so it only matters as a lesson. The issue says “No ship run has reproduced them yet”: every gap came from reading the code. Gaps A–C and E fit how you actually work, building on the laptop and in the cloud at the same time, so they were worth fixing. Gap F (ship deletes commits made after a PR was merged by hand) is rare, but it loses work and the guard already existed, so it was cheap. Gap D (two ships at once, each passing CI alone but breaking dev together) was the most theoretical piece.
 
 ## #288 — Remove Step 1 local dev sync gate from phase workflows (closed)
 
@@ -414,6 +358,562 @@ Divergence is handled where it matters — at **Close Workflow**, when merging b
 
 - No auto-push of local `dev` at workflow start (avoids accidental CI runs)
 - Ship Step 9 close-time `[skip ci]` push behavior unchanged
+
+## #209 — Workflow state model: squash to dev, persistent feat branch (closed)
+
+## Problem
+
+Today the workflow state model has two friction points that hurt cloud-agent dispatch:
+
+1. **`status.json` is pushed to `dev`** (one `[skip ci]` snapshot per run, every phase). Nobody reads it on `dev` — it's a *rendezvous file*, written there only because the cloud runner checks out `ref: dev` (`.github/workflows/bkit-cloud.yml:114`) and that's the one ref a stateless runner is guaranteed to reach. It's the path of least resistance, not a requirement.
+2. **Per-phase branch lifecycle is inconsistent.** design and plan each create a throwaway `feat/{FID}` worktree, squash-merge their doc to `dev`, then **delete** the branch; build creates `feat/{FID}` and *keeps* it (the PR spine). So state lives in different places depending on phase.
+
+Considered and **rejected**: "a PR for every workflow" — design→plan→build is a strict chain, so a design PR would have to auto-merge before plan starts anyway (pure ceremony), and a doc-only PR either burns the full `bkit-tests` suite (`ci.yml` has no path filter) or is `[skip ci]` and un-gateable. Human review is already handled conversationally (agent walks through checkpoints, human approves), so a human-merged PR buys nothing.
+
+Also rejected: **one long-lived branch from design→ship** — design↔build can be days apart while `dev` moves on, so a branch spanning that whole window means constant rebasing.
+
+## Decision — the approach
+
+Keep squash-merge to `dev`. No PR ceremony for design/plan. Localize the persistent branch to the window that needs it.
+
+### 1. design & plan → squash-merge to `dev`, "dev always wins" on conflict
+
+design/plan are doc-only phases: the only files they add are FID-namespaced (`docs/plans/{YYYYMM}/{FID}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/**`), which `dev` never touches, so they **cannot conflict** (new files always land). The only genuinely-shared mutable file they touch is `.agents/friction.md` (the close-workflow sweep).
+
+Change the close-workflow merge (`bkit-design.md:764`, same in `bkit-plan.md`) from:
+
+```bash
+git merge --squash "feat/{FID}"
+```
+
+to:
+
+```bash
+git merge --squash -X ours "feat/{FID}"
+```
+
+`-X ours` keeps `dev`'s side on a conflicting hunk while **still bringing in non-conflicting** feat changes (the new doc + logs). Result: docs/logs always land, any shared-file collision silently resolves to `dev`, and the merge **never halts → Failure Path** on drift. This is the fix for the "days of `dev` movement → rebasing pain" concern: design/plan never hold a branch across that gap; they merge straight to `dev`.
+
+**Guard:** after the merge, assert the staged diff touches nothing outside `docs/plans/**` and `.agents/friction.md`. design/plan have no business changing code; if they did, surface a loud log rather than let "dev wins" silently drop it.
+
+Note on `.agents/friction.md`: it's the one shared file `-X ours` adjudicates. Non-colliding appends survive; a directly-colliding hunk resolves to `dev`. Acceptable for an append-mostly file.
+
+### 2. build creates the one persistent `feat/{FID}`, lasting build → debug → ship
+
+- build branches `feat/{FID}` from `dev`. Because design and plan already squash-merged their docs to `dev`, **build inherits the design + plan docs for free** by branching from `dev` — no cross-branch reading.
+- The branch persists through debug and ship; ship squash-merges it back to `dev` and deletes it (today's behavior). Rebasing during this window is already handled (`bkit-ship.md:249` rebases on `origin/dev` before merge).
+
+### 3. build/debug/ship state comes off the branch
+
+Because `feat/{FID}` now persists build→ship, those phases write `status.json` + logs **only on the branch** — no `[skip ci]` dev pushes mid-lifecycle. The state reaches `dev` exactly once, as an audit record, when ship squash-merges the branch.
+
+- The cloud runner for ship/debug reads state from `feat/{FID}` (it already knows `head_branch`) instead of `ref: dev`.
+- design/plan `status.json` *does* still land on `dev` (no persistent branch for those phases) — but that's now just a cheap one-commit archive, not a live state bus.
+
+## Absorbed from #203 — two related defects
+
+These defects were originally described under "Related defects" in #203. They are bkit-core orchestration plumbing (not CI-gate design) and do not flow from the gether-403 work. They belong here because the same branch/state lifecycle this issue redesigns is the root cause of both, and they share change surface with sections 1–3 above.
+
+### Defect A — status.json conflicts → unmergeable PRs → CI never runs
+
+**Root cause:** `status.json` for a given FID is committed on **both** `dev` (design/plan/build phases + the once-per-run dev commits) and `feat/{FID}` (per-step commits) → divergent content on the same path → conflict. A merge conflict on `docs/plans/{YYYYMM}/logs/{FID}/status.json` makes the PR unmergeable, so GitHub cannot build `refs/pull/N/merge` and **`pull_request` CI never runs** (`ci.yml` push triggers are `[main, dev]` only). Observed in gether — PR blocked on `docs/plans/202605/logs/313-url-monitor-v2/status.json` with "This branch has conflicts that must be resolved."
+
+**Primary fix — the state model above.** Keeping `status.json` writes on the branch (not pushed to `dev` mid-lifecycle) removes the divergence source. The conflict cannot arise if only one ref writes to a given FID's log files during build→ship.
+
+**Additive hardening — NDJSON event log + `merge=union` (if desired).** Convert `status.json` → append-only `status.jsonl`: one event per line (`workflow-started` / `step-done` / `workflow-done`), **never mutate prior lines**; derive current state by folding the log on read. Add `*.jsonl merge=union` to `.gitattributes` (+ template) so git auto-concatenates both branches' appended lines server-side — no conflict, PR stays mergeable. Union can interleave/duplicate lines, so the reader folds + dedupes by `(workflow, step, parentSha)` and orders by `at`. (Per-entry-file directory was the alternative; NDJSON+union chosen for consistency with the existing union-ledger pattern in `.gitattributes`.)
+
+NDJSON scope (if included):
+- `bkit-status.ts` becomes a **reducer** over the event log (current-state = fold of lines), + its tests.
+- Every status-write `jq` site across the 8 `.agents/workflows/*.md` rewrites from array-mutation to **line-append**.
+- `.gitattributes` **and** `.agents/templates/.gitattributes` gain the `*.jsonl merge=union` rule.
+- Resume / lock-staleness logic that reads `.[-1]` switches to "fold then inspect latest."
+
+> Note: this does **not** by itself make CI run on an *already*-conflicted PR; it removes the **cause** so PRs stop becoming unmergeable in the first place.
+
+### Defect B — `[skip ci]` status commit as the PR-branch tip suppresses ALL CI
+
+**Root cause.** When the **tip of `feat/{FID}` carries a CI-suppressing token**, GitHub skips the workflow natively and gether's gate sets `run_level=none` → **zero CI runs**. Observed in gether: `feat/313-url-monitor-v2` tip was `chore(313-url-monitor-v2): build DONE bkit [skip ci]` — a status.json-only commit. The `[skip ci]` is correct *for its intended home, `dev`*; the defect is a **dev-destined status commit becoming the tip of the PR branch**.
+
+Three defects compounding:
+1. bkit's `feat/{FID}` branch accumulates many `[skip ci]` / `[skip build]` status + docs commits.
+2. The terminal `build DONE` status commit leaked onto `feat` as well as `dev` (same message, two SHAs) — it should be `dev`-only per `bkit-build.md:1186` (`push origin dev`).
+3. A **status.json conflict** (Defect A above) forced a manual `git rebase origin/dev -X theirs` + force-push, which **replayed the skip-ci status commit back to the tip**, bypassing the build workflow's HEAD-Subject Assertion guard.
+
+**Fix — harden the "PR tip != suppressing token" invariant at every mutation point:**
+- **Don't leak the terminal `build DONE [skip ci]` onto `feat`.** Assert branch identity (`git branch --show-current` == `dev`) immediately before that commit/push in `bkit-build.md` Close.
+- **Re-run the HEAD-Subject Assertion after EVERY feat mutation** — at PR creation, and **after any conflict-resolution rebase/force-push** (both the `bkit-ship-conflict-resolve` agent path *and* documented manual recovery). If the feat tip carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]`/`[skip build]`, append an empty `[force build]` trigger commit before declaring the push complete.
+- This compounds with Defect A: removing the status.json conflict removes the rebase that re-exposed this. Fix together.
+
+Change surface: `bkit-build.md` (Close branch-identity assert + PR-creation guard), `bkit-ship.md` + `bkit-ship-conflict-resolve` (post-rebase guard) + mirrors.
+
+## Change surface (combined)
+
+- `bkit-design.md` / `bkit-plan.md` — close-workflow merge → `git merge --squash -X ours`; add the doc/log-namespace guard. Keep dev push + branch delete (throwaway branch).
+- All workflows — build/debug/ship drop the per-run `status.json` push to `dev` ("Status branch" rule); state stays on `feat/{FID}` until ship's final merge.
+- `bkit-ship.md` / `bkit-debug.md` — check out `feat/{FID}` *before* reading `status.json`; read `PRIOR_STRATEGY` / `DEBUG_ATTEMPT` from the branch.
+- `.github/workflows/bkit-cloud.yml` — `ref: dev` (line 114) stays correct for brief-class design/plan/build; ship/debug (CI-class) operate on the `feat/{FID}` checkout to read branch-local state.
+- `bkit-build.md` — branch-identity assert before terminal `build DONE` commit; PR-creation HEAD-Subject Assertion guard.
+- `bkit-ship-conflict-resolve` — post-rebase HEAD-Subject Assertion guard.
+- `bkit-status.ts` (+ tests, mirrors) — if NDJSON hardening is included.
+- `.gitattributes` + `.agents/templates/.gitattributes` — `*.jsonl merge=union` rule, if NDJSON hardening is included.
+- Regenerate `.claude/commands/*` and `.cursor/commands/*` mirrors after any workflow edits.
+
+## Sharp edges (small, non-blocking)
+
+1. **friction.md** is the one shared mutable file `-X ours` adjudicates — colliding hunks resolve to `dev`.
+2. **design/plan `status.json` stays on `dev`** — accepted as cheap archive; the original "pollutes dev" complaint is solved for the phases that have a branch (build→ship).
+3. **Cloud design/plan crash-resume is weak** — ephemeral worktree is gone and there's no dev snapshot until close, so a re-dispatch restarts the phase. This is true today too (not a regression); this change does not fix it.
+
+## Open product question
+
+Single-window branch means an **approved design/plan that never reaches build** still lands its doc on `dev` (because design/plan merge to `dev` regardless) — so this model *keeps* the "approved designs are on dev" property. Confirmed acceptable.
+
+## Related
+
+- #119 (cloud phase-routed dispatch) — the `ref: dev` checkout and CI-class vs brief-class routing this builds on.
+- #203 (CI verdicts / green != validated) — the two defects absorbed here were originally described under "Related defects" in that issue. #209 should land before #203.
+
+## Implementation design (1/3) — decisions + status.jsonl event model
+
+Recording the implementation design before/while building on `dev` (this is being done directly in `dev`, not via the bkit workflow — we cannot dogfood the workflow files we are editing).
+
+### Decisions locked
+
+<!-- prettier-ignore -->
+| Decision | Choice | Rationale |
+| --- | --- | --- |
+| Scope this pass | **Full**: state model (§1–3) + Defect B (skip-ci tip guard) + Defect A NDJSON hardening | Owner opted in to everything incl. NDJSON. |
+| NDJSON read/write mechanism | **Inline jq fold** — workflows stay pure bash+jq, no node/dist runtime dependency at status sites | Avoids coupling status ops to the compiled `dist/` (and to #160's bin relocation). Cost accepted: the fold filter is repeated at the ~10 read sites. |
+| `bkit-status.ts` | Stays as the **canonical reference reducer + `validateInvariants`**, now with a `fold` reducer + vitest coverage | The jq fold mirrors the TS reducer; TS is the unit-tested source of truth for fold semantics even though workflows execute jq. |
+| Execution | **Two movements in this branch** (see comment 3/3) | Movement 1 (state model + Defect B) is independently valuable AND structurally removes the Defect A conflict; Movement 2 (NDJSON) is additive hardening. |
+
+### Why the state-model change alone already fixes Defect A
+
+Once build/debug/ship stop pushing `status.json` to `dev` mid-lifecycle (state lives only on `feat/{FID}` until ship's final squash-merge), the same FID's `status.json` is no longer written on **both** `dev` and `feat/{FID}` → the divergent-path merge conflict that made PRs unmergeable cannot arise. NDJSON + `merge=union` is belt-and-braces on top.
+
+### status.jsonl event model
+
+One JSON object per line, append-only, **prior lines never mutated**. Replaces the single nested `status.json` array (`[{workflow, startedAt, status, steps:[...]}]`).
+
+**Event types:**
+
+```jsonc
+// opens a new run of a phase workflow
+{"type":"workflow-started","workflow":"build","at":"<iso8601>"}
+
+// one per completed step (the bulk — ~90 sites)
+{"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE",
+ "at":"<iso8601>","parentSha":"<sha>","artifacts":[],
+ "verdict":"PASS","attempt":1,"subPlan":1,"failures":0,"strategy":"STANDARD"}
+//   ^ verdict/attempt/subPlan/failures/strategy all optional, same as today's Step shape
+
+// workflow-level metadata merged onto the run (e.g. debug counters)
+{"type":"workflow-meta","workflow":"debug","at":"<iso8601>","debugAttempt":2}
+
+// terminal state — replaces `.[-1] |= (.+{status:"DONE"|"FAILED"})`
+{"type":"workflow-done","workflow":"build","at":"<iso8601>"}
+{"type":"workflow-failed","workflow":"build","at":"<iso8601>"}
+```
+
+**Dedup identity** (union can interleave/duplicate lines):
+- `step-done`: `(workflow, step, parentSha, at)`
+- `workflow-*`: `(type, workflow, at)`
+
+Keep first occurrence; then order by `at`.
+
+### Canonical fold (jq `-s` over `status.jsonl` → legacy shape)
+
+Reconstructs the exact `[{workflow, startedAt, status, steps:[...], <meta>}]` structure every existing read expects, so read queries downstream of the fold are unchanged.
+
+```jq
+# FOLD: array-of-events (from `jq -s` over status.jsonl) -> legacy status array.
+# Canonical logic lives in bkit-status.ts (unit-tested); this jq mirrors it.
+def lastIdx($w): [range(0;length) as $i | select(.[$i].workflow==$w) | $i] | last;
+def fold:
+  ( reduce .[] as $e ({seen:{},out:[]};
+      ( if $e.type=="step-done"
+        then "S^@\($e.workflow)^@\($e.step)^@\($e.parentSha)^@\($e.at)"
+        else "W^@\($e.type)^@\($e.workflow)^@\($e.at)" end ) as $k
+      | if .seen[$k] then . else .seen[$k]=true | .out += [$e] end )
+    | .out | sort_by(.at) ) as $ev
+  | reduce $ev[] as $e ([];
+      if $e.type=="workflow-started" then
+        . + [{workflow:$e.workflow, startedAt:$e.at, status:"IN_PROGRESS", steps:[]}]
+      elif $e.type=="step-done" then
+        (lastIdx($e.workflow)) as $i
+        | if $i==null
+          then . + [{workflow:$e.workflow, startedAt:$e.at, status:"IN_PROGRESS",
+                     steps:[($e|del(.type,.workflow))]}]
+          else .[$i].steps += [($e|del(.type,.workflow))] end
+      elif $e.type=="workflow-meta" then
+        (lastIdx($e.workflow)) as $i
+        | if $i==null then . else .[$i] += ($e|del(.type,.workflow,.at)) end
+      elif $e.type=="workflow-done" then
+        (lastIdx($e.workflow)) as $i | if $i==null then . else .[$i].status="DONE" end
+      elif $e.type=="workflow-failed" then
+        (lastIdx($e.workflow)) as $i | if $i==null then . else .[$i].status="FAILED" end
+      else . end );
+```
+
+**Read sites** become `jq -s 'fold | <existing query>' "$STATUS"` (with `def fold` prepended), e.g. resume logic's `[.[] | select(.workflow==$w)] | last` runs verbatim against `fold` output.
+
+**Write sites** become a single appended line, e.g.
+```bash
+jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERDICT" \
+  '{type:"step-done",workflow:"build",step:"build-run-tests",status:"DONE",
+    at:$t,parentSha:$p,artifacts:[],verdict:$v,attempt:1,failures:0}' >> "$STATUS"
+```
+
+Next: comment 2/3 = full site inventory; comment 3/3 = two-movement execution plan + per-file edit specs.
+
+## Implementation design (2/3) — complete status-site inventory
+
+Exhaustive map of every status read/write site driving the NDJSON conversion. Line numbers are against `dev` at time of writing (`bkit-design.md` 793L, `bkit-plan.md` 774L, `bkit-build.md` 1230L, `bkit-ship.md` 933L, `bkit-debug.md` 1093L, `bkit-cloud.md` ~210L). Reference counts: build 83, debug 71, ship 65, plan 53, design 50, cloud 21; `worktree-sync`/`worktree-prune` = none.
+
+### Write sites by event class
+
+**`workflow-started`** (`. + [{workflow:…, startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]`):
+design:245 · plan:249 · build:318 · debug:301 · ship:293 · cloud:159
+
+**`workflow-failed`** (Failure Path, `.[-1] |= (.+{status:"FAILED"})`):
+design:56 · plan:56 · build:58 · debug:58 · ship:58 · cloud:57
+
+**`workflow-done`** (Close Workflow, `.[-1] |= (.+{status:"DONE"})`, fused with the close step-done):
+design:728 · plan:710 · build:1152 · debug:948 · ship:881 · cloud:206
+
+**`step-done`** (`.[-1].steps += [{…}]`) — ~90 sites:
+- design: 249, 252, 305, 346, 397, 443, 489, 535, 674, 727
+- plan: 253, 256, 301, 353, 398, 448, 494, 540, 585, 635, 709
+- build: 322, 325, 368, 411, 463, 508, 574, 620, 672, 714, 768, 816, 868, 928, 976, 1022, 1103, 1151
+- debug: 305, 309, 422, 488, 536, 595, 639, 695, 762, 825, 883, 947, 995
+- ship: 297, 300, 367, 415, 490, 544, 602, 658, 714, 717, 775, 830, 880
+- cloud: 163, 204
+
+**`workflow-meta`** (fused metadata writes, `.[-1] |= (.+{…})`):
+- debug:305–307 (`debugAttempt` on start), debug:639–641 (`debugAttempt` on push-remediation)
+
+### Read sites
+
+**Resume / lock-staleness** (`[.[] | select(.workflow==$w)] | last` → `.status`, `.steps | last | .at`) — identical block in 5 files:
+design:105–114 · plan:106–114 · build:133–140 · debug:133–140 · ship:133–140
+
+**Strategy extraction** (`[.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""`):
+build:551–555 (plan-gaps-remediate, also keyed `.subPlan==$sp`) · build:906–910 (failure-diagnose) · debug:469 (failure-diagnose) · ship:579–583 (failure-remediate)
+
+**Debug metadata** (`[.[] | select(.workflow=="debug")] | last.debugAttempt // 0`; `…| .steps[] | select(.step=="worktree-setup")] | last.observeMode // "off"`):
+debug:172–174
+
+### Path / git-op references (rename `status.json` → `status.jsonl`)
+
+**`STATUS=`/`STATUS_REL=` assignments** (one per step + Step 1): every `STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"` and `STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.json"` across all 6 files (design ~12, plan ~12, build ~20, debug ~14, ship ~15, cloud ~3).
+
+**Markdown links** to status in the Step-1 issue comment: design:267 · plan:271 · build:340 · debug:324 · ship:315
+
+**`git add` of status:** design:62,737 · plan:62,719 · build:65,1166 · debug:65,1021 · ship:65 · cloud:208
+
+**`git merge --squash`** (design/plan close only): design:736 · plan:718  → become `git merge --squash -X ours` (§1)
+
+**`git push origin dev`** of status: design:739 · plan:721 · cloud:210; plus Failure-Path dev push design:64 / plan:64 / build:66 / debug:66 / ship:66 → build/debug/ship dev pushes of status are **dropped** (§3); design/plan retain (no persistent branch).
+
+**`.github/workflows/bkit-cloud.yml`:** `ref: dev` at line 114 (+ BAR-187 note ~line 78) — stays for brief-class design/plan/build; ship/debug (CI-class) read branch-local state from `feat/{FID}`.
+
+### Notes carried into edits
+
+- The close step-done + `workflow-done` are **fused** in one jq today (design:727–729 etc.); in NDJSON they become two appended lines (`step-done` then `workflow-done`).
+- debug fuses step-done + `workflow-meta` (debugAttempt) at 305–307 and 639–641 → two appended lines.
+- build's strategy read at 551–555 additionally filters `.subPlan==$sp` — fold output preserves `subPlan` on steps, so the query is unchanged post-fold.
+- Status-doc prose blocks to update: the `> - **Status:**` and `> - **Status branch:**` bullets (design:23–25, plan:23–25, and equivalents) describing the model.
+
+Next: comment 3/3 = two-movement execution plan + per-file edit specs + verification gates.
+
+## Implementation design (3/3) — two-movement execution plan
+
+All in one `dev` branch, but sequenced as two independently-verifiable movements. Mirrors (`.claude/commands/*`, `.cursor/commands/*`) regenerated once at the **end of each movement**, not per edit (per repo norm).
+
+---
+
+### Movement 1 — state model (§1–3) + Defect B  *(high-value, ~30 edits, lower risk)*
+
+**§1 — design/plan squash-merge "dev always wins"**
+- `bkit-design.md:736` & `bkit-plan.md:718`: `git merge --squash "feat/{FID}"` → `git merge --squash -X ours "feat/{FID}"`.
+- After the merge, add a **namespace guard**: assert the staged diff touches nothing outside `docs/plans/**` and `.agents/friction.md`; else loud log (do not let "dev wins" silently drop a code change).
+  ```bash
+  STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^\.agents/friction\.md$' || true)
+  [ -n "$STRAY" ] && { echo "design/plan close touched non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
+  ```
+- Keep the dev commit + branch delete (throwaway branch unchanged).
+
+**§2/§3 — build/debug/ship: state stays on `feat/{FID}`; no mid-lifecycle dev push of status**
+- Drop the `git pull/add/commit/push origin dev` of `status.json` in build/debug/ship **Failure Path** (build:61–64, debug:61–64, ship:61–64) and any once-per-run dev status push — status writes commit on `feat/{FID}` only.
+- ship/debug **read state from `feat/{FID}`**: ensure the `feat/{FID}` checkout happens *before* the Step-1 status read (resume/lock) and before `PRIOR_STRATEGY` / `DEBUG_ATTEMPT` reads. Today these read from the dev checkout.
+- Update the `> - **Status branch:**` prose bullet in build/debug/ship to state: per-step commit on `feat/{FID}`; state reaches `dev` once, at ship's final squash-merge.
+- `.github/workflows/bkit-cloud.yml`: ship/debug (CI-class) operate on the `feat/{FID}` checkout (it knows `head_branch`); `ref: dev` (line 114) stays for brief-class design/plan/build. `bkit-cloud.md:208–210` CI-class dev status push reconsidered accordingly.
+
+**Defect B — PR-tip must never carry a CI-suppressing token**
+- `bkit-build.md` Close: before the terminal `build DONE … [skip ci]` commit/push, assert `git branch --show-current` == `dev` (don't leak the dev-only status commit onto `feat`).
+- Re-run the **HEAD-Subject Assertion** after *every* `feat` mutation — at PR creation (`bkit-build.md`) and after any conflict-resolution rebase/force-push (`bkit-ship.md` + `bkit-ship-conflict-resolve`). If the `feat` tip subject matches `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]`/`[skip build]`, append an empty `[force build]` trigger commit before declaring the push complete.
+  ```bash
+  TIP=$(git log -1 --format=%s feat/{FID})
+  case "$TIP" in
+    *"[skip ci]"*|*"[ci skip]"*|*"[no ci]"*|*"[skip actions]"*|*"[actions skip]"*|*"[skip build]"*)
+      git commit --allow-empty -m "chore({FID}): [force build] re-trigger CI after status-commit tip" ;;
+  esac
+  ```
+
+**Movement 1 gate:** `pnpm bkit-trackers` render sweep clean (8×3); `pnpm test` green; regenerate mirrors; manual diff review of the 6 workflow files confirms no stray non-doc paths in §1 guard.
+
+---
+
+### Movement 2 — NDJSON (Defect A hardening)  *(~145 sites, mechanical, higher churn)*
+
+1. **`bkit-status.ts`** — add the `fold` reducer (events → legacy run array) + `appendEvent` helper + event type union; keep `validateInvariants`. **`bkit-status.test.ts`** — cover: single-run fold, multi-run/multi-phase fold, union dedup (duplicated + interleaved lines), `workflow-meta` merge, terminal state, invariant validation on folded steps.
+2. **`.gitattributes` + `.agents/templates/.gitattributes`** — add `*.jsonl merge=union` (alongside existing union-ledger entries).
+3. **Per-file conversion** (design → plan → cloud → ship → debug → build, simplest first):
+   - rename `status.json` → `status.jsonl` at every `STATUS=`/`STATUS_REL=`/`git add`/markdown-link/commit-path site;
+   - every write → appended event line(s) (fused writes split into 2 lines);
+   - every read → `jq -s 'def fold: …; fold | <existing query>' "$STATUS"`;
+   - resume/lock + strategy + debug-meta reads use the fold then the unchanged downstream query.
+   Each file is independent → may fan out to subagents with this exact spec, then reconcile.
+4. **One-time migration / coexistence** — reader tolerates a legacy `status.json` (single JSON array) OR new `status.jsonl`: if `status.jsonl` absent but `status.json` present, treat the array as already-folded; first write creates `status.jsonl`. (In-flight FIDs across the boundary.)
+
+**Movement 2 gate:** `pnpm test` green incl. new fold tests; render sweep clean; regenerate mirrors; spot-check a folded multi-phase `status.jsonl` reproduces the legacy nested shape byte-for-byte for the read queries.
+
+---
+
+### Out of scope (confirmed)
+- Cloud design/plan crash-resume weakness (pre-existing, not a regression — §"Sharp edges" #3).
+- design/plan `status.json` on `dev` (accepted cheap archive — §"Sharp edges" #2).
+
+### Cross-issue note
+This lands **before #203** (per roadmap #214). #203's CI-gate work builds on the settled branch/state model here. NDJSON `merge=union` + the dropped mid-lifecycle dev push together remove the unmergeable-PR class that blocked `pull_request` CI — a precondition #203's "assert `bkit-gate` on the PR's full run" relies on.
+
+## Implementation note (4/3) — §3 read-location + migration, decided during build
+
+Two details the plan left open, resolved while converting `bkit-build.md` (the reference file):
+
+### Where build/debug/ship status physically lives (the §3 crux)
+Today `STATUS="$REPO_ROOT/docs/.../status.json"` resolves to the **dev main worktree** (`$REPO_ROOT = dirname(git-common-dir)` = main repo, not the feat worktree). Per-step writes land on dev's working copy; the once-per-run dev push is how they reach history → the dev↔feat divergence behind Defect A.
+
+**Resolution (build/debug/ship):** status writes target the **feat worktree** copy (`$(git rev-parse --show-toplevel)/docs/.../status.jsonl`, cwd = worktree after Step 2), committed on `feat/{FID}` via the existing `git add -A` step commits. The mid-lifecycle dev push is **dropped** (Failure Path + close). State reaches dev once, at ship's squash-merge.
+
+**Step-1 lock/resume read** runs *before* the worktree is cd'd, and must see in-flight state. Resolution: read from the worktree copy when it exists, else the dev copy:
+```bash
+REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
+SRC="$REPO_ROOT/.worktrees/{FID}/$REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$REL"
+```
+design/plan keep dev-located status (no persistent branch — the accepted "cheap archive"), so their reads stay `$REPO_ROOT`-based.
+
+### Migrate-once at Step 1 (coexistence) — keeps every read uniform
+Rather than branching every read on `.jsonl` vs legacy `.json`, each workflow's Step 1 converts a legacy array to events **once**, so all downstream reads can assume `.jsonl` and just fold:
+```bash
+LEGACY="$REPO_ROOT/$DIR/status.json"; JSONL="$REPO_ROOT/$DIR/status.jsonl"
+if [ -f "$LEGACY" ] && [ ! -f "$JSONL" ]; then
+  jq -c '.[] as $w | ($w.workflow) as $wf
+    | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
+    , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
+    , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+       elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+       else empty end)' "$LEGACY" > "$JSONL"
+fi
+```
+(Mirrors `parseStatus` in `bkit-status.ts`, which already tolerates both forms for the install/upgrade boundary.)
+
+### Read sites inline the validated fold verbatim
+The `def lastIdx … def fold` block (comment 1/3), proven byte-equal to the TS reducer, is inlined at each of the ~10 read sites: `jq -s '<fold> | <existing query>' "$SRC"`. WRITE sites are a single appended event line (no fold). This is the accepted verbosity cost of the "inline jq fold, no node dependency" mechanism.
+
+### Progress (uncommitted on dev)
+Done + verified: `bkit-status.ts` reducer + 18 tests; jq-fold↔TS parity; `.gitattributes` ×2; §1 design/plan `-X ours` + guard; `bkit-build.md` Failure Path (§3 pattern: append `workflow-failed`, drop dev push, feat-located, `.jsonl`). Typecheck + tests green. Remaining: finish build (Step 1 migrate/resume, ~16 writes, 2 strategy reads, Step 2 start, close, PR, Defect B) then replicate to debug/ship/design/plan/cloud; cloud.yml `ref` for CI-class; regenerate mirrors.
+
+## Implementation note (5/3) — comment-block link permanence (branch-pruning)
+
+Surfaced while reviewing #209: the tracker `comment` blocks deep-link WIP artifacts by branch (`tree/{BRANCH}`, `blob/{BRANCH}/…`, where `{BRANCH}` = `feat/{FID}`). Those links **404 once `feat/{FID}` is pruned**, and the comments persist on the issue forever. §3 sharpened this for the `status.jsonl` link specifically — that file now lives on `feat` (not `dev`) for build/debug.
+
+### Rule adopted
+> **Link to `feat` while feat is alive and holds the artifact; link to `dev` once the artifact is permanently on `dev` (post-merge / post-close).**
+
+Per workflow:
+
+<!-- prettier-ignore -->
+| Workflow | Link base | Why |
+| --- | --- | --- |
+| `design` / `plan` | **`dev`** | They prune `feat` at close, so feat links break the moment the run ends. Their canonical doc + log artifacts land on `dev` via the `-X ours` squash-merge → `dev` links are permanent. (Trade: a `dev` link 404s *during* the short run, before the close merge — acceptable for a comment that lives forever.) |
+| `build` / `debug` | **`feat`** (unchanged) | Neither deletes `feat`; it lives across the whole build→debug→ship window — exactly when these WIP deep-links are clicked (live monitoring). They break only after ship prunes feat, by which point the PR + merged `dev` code are the durable references. Also §3-correct: build/debug `status.jsonl` genuinely lives on `feat` during the run. |
+| `ship` | **already split — leave it** | ship deletes `feat` mid-run (Step 5, `gh pr merge --delete-branch`). It correctly uses `feat` for pre-merge Steps 1-7 and `dev` for post-merge Steps 8-12. Blanket-hardcoding ship to `feat` would re-break its close/switch-to-dev comments. |
+
+The codebase already used this pattern for *final* links (ship close → `tree/dev` / `blob/dev/…`; canonical design/plan docs → `blob/main/…`); this just extends it to design/plan's per-step links.
+
+### Change applied (uncommitted, with #209)
+- `bkit-design.md` (7 link sites) + `bkit-plan.md` (8 link sites): `tree/{BRANCH}` → `tree/dev`, `blob/{BRANCH}/…` → `blob/dev/…` in the `comment` blocks only (bash `$BRANCH` / prose `{BRANCH}` untouched). `build`/`debug`/`ship` unchanged. Mirrors regenerated; tests green.
+
+### Considered, not taken
+- **Commit-SHA blobs** (`blob/{SHA}/…`) — the only zero-compromise option (live *and* permanent, survives prune). Rejected as too heavy for these glance-navigation links (capture+substitute a SHA per comment, uglier URLs). If the design/plan during-run 404 window ever matters, SHA-linking is the upgrade path.
+
+## Implementation note (6/3) — `merge=union` scoped to the status path (not blanket `*.jsonl`)
+
+Correction to the `.gitattributes` change: shipped `*.jsonl merge=union` was **too broad** — it would impose union-merge on *any* `.jsonl` a consumer has (datasets, fixtures, NDJSON logs). `merge=union` is **destructive for non-append-only files** (it concatenates both sides with no dedup → corrupt merge), and it also broke the file's own convention (every other entry is a specific path: `docs/pending.md`, `.agents/friction.md`).
+
+Scoped to bkit's status files only:
+```gitattributes
+docs/plans/**/status.jsonl merge=union
+```
+(`*/status.jsonl` was considered but wouldn't match — gitattributes anchors slashed patterns and `*` doesn't cross `/`, so it can't reach the 4-deep `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`; `**` is required.)
+
+Verified with `git check-attr merge`:
+- `docs/plans/202606/logs/foo-123/status.jsonl` → `union` ✓
+- `data/training.jsonl`, `fixtures/records.jsonl` → `unspecified` ✓ (consumer files untouched)
+
+Applied to both `.gitattributes` and `.agents/templates/.gitattributes` (identical); index refs in `workflows.md` updated. Tests green.
+
+## Implementation note (7/3) — ASCII-operator sweep + documented authoring rule
+
+The authoring audit surfaced pre-existing Unicode math operators in the workflow/prompt files (predate #209; I'd copied them verbatim per "match existing formatting"). Cleaned up codebase-wide and promoted to a written rule.
+
+**Converted** (`≠`→`!=`, `≥`→`>=`, `≤`→`<=`, `⇒`→`=>`, `×`→`x`) — **89 glyphs across 26 files**:
+- all `.agents/workflows/bkit-*.md` + `.agents/prompts/*.md`
+- index docs `.agents/workflows.md`, `.agents/prompts.md`
+- shipped templates (`.cursor/Dockerfile`, `docs/styles.md`, `docs/plans/template.md`)
+- bkit-authored `.agents/README.md`, `.agents/cloud.md`, `.agents/scripts/bkit-upgrade.ts`
+- `.claude`/`.cursor` mirrors regenerated → ASCII too
+
+**Deliberately NOT touched:**
+- The flow-arrow `→` (the documented `**If** … → …` / dispatch-table notation) — it's the one intentional non-ASCII glyph.
+- Em-dashes, smart quotes, emoji, `§` — typography/section-refs, not operators.
+- Vendored `.agents/skills/**` (Anthropic "superpowers" skills) — not bkit execution surfaces; editing them would diverge from upstream. Flagged, left as-is.
+
+**Documented as a rule** — new "ASCII operators" bullet in both `.agents/workflows.md § Workflow Authoring Rules` and `.agents/prompts.md § Prompt Authoring Rules`:
+> Use ASCII comparison/logic operators only — `!=`, `>=`, `<=`, `=>` — and `x` for "times"/dimensions. NEVER Unicode math glyphs. The flow-arrow `→` is the sole intentional non-ASCII glyph.
+
+Verify clean: `git grep -n '≠\|≥\|≤\|⇒\|×' .agents/workflows .agents/prompts` → empty. Tests green (1146).
+
+## Implementation note (7b/3) — `→` flow-arrow kept ASCII-exempt (decided)
+
+Decision on the one remaining non-ASCII glyph: **keep `→`, do not convert to `->`.**
+
+**Why:**
+- It's a different category from the operators we swept. `≥`/`⇒`/`×` were *stray* math operators inconsistently mixed into ASCII text. `→` is the **uniform, documented flow notation** — every `**If** {condition} → {action}.` conditional and dispatch table uses it consistently (the "Procedural conditionals" authoring rule literally specifies it). It's a typographic device, not a comparison operator.
+- Scale: ~1,200 occurrences in workflow/prompt sources (~1,564 across `.agents`) — ~14x the whole operator sweep, for a glyph that isn't a consistency or rendering problem.
+- `→` reads clearer than `->` for "leads to", and `->` is overloaded (member-access in C/PHP, type-signature arrows) — i.e. slightly *more* ambiguous, not less.
+
+**Documented:** the "ASCII operators" bullet in both `.agents/workflows.md` and `.agents/prompts.md § Authoring Rules` now states `→` is the sole intentional non-ASCII glyph and is deliberately kept (with the rationale), with an explicit "do NOT convert `→`". Memory rule updated to match.
+
+Net rule: **ASCII for operators that have expected ASCII forms; `→` is the one deliberate notation glyph.**
+
+## Shipped to `dev` — closing
+
+Implemented directly on `dev` (not via the bkit workflow — can't dogfood the workflow files being edited). Commit **`fc76776`** (`feat(209): NDJSON status.jsonl event log + branch-local state placement`, 96 files), pushed to `dev`.
+
+**Delivered (design-of-record in comments 1–7b):**
+- `status.jsonl` append-only NDJSON event log replacing the mutated `status.json` array; canonical `fold` reducer in `bkit-status.ts` (+ tests), inline jq fold mirrored across all 6 workflows; migrate-once for in-flight legacy files.
+- `docs/plans/**/status.jsonl merge=union` (path-scoped) — the git-layer guarantee.
+- Branch placement: build/debug write status on `feat/{FID}` (no mid-lifecycle dev push); ship splits feat (Steps 1-7) / dev (Steps 8-12); design/plan/cloud dev-located.
+- Defect B: `[skip build]` in the HEAD-Subject token set.
+- Comment-link permanence: design/plan → `dev`; build/debug keep `feat`; ship already split.
+- Authoring-rules remediation (53 violations cleared, 2 audit passes), `workflows.md` index rewrite, ASCII-operator sweep + documented rule.
+
+CI validates on the `dev` push. The two "related defects" originally bundled here were the actual scope — the CI-gate generalization stays in #203, which builds on this settled state model.
+
+## Re-opening: §3 feat-relocation incomplete for design/plan (surfaced via #216 friction reconciliation)
+
+The `status.jsonl` branch-placement model was not fully applied to **design** and **plan**. Current state:
+
+- **build / debug** — `status.jsonl` is **feat-located** (worktree): `bkit-build.md:318` `STATUS="$WT/.../status.jsonl"` (`$WT` = `git rev-parse --show-toplevel`). ✅ intended model.
+- **design / plan** — `status.jsonl` is **dev-located** (`$REPO_ROOT/...`): `bkit-design.md:25` ("design status.jsonl is dev-located"), written at `bkit-design.md:55,245`; `workflows.md:174` documents design/plan as a *"dev-located cheap archive, no persistent feat branch."* ❌ This contradicts the intended model — status + generated docs live on `feat/{FID}` and squash-merge to `dev` at close; the **only** thing hard-coded to `dev` should be the doc links inside tracker comment blocks (pretend-already-merged URLs).
+
+**Knock-on (also from #216):** design DOC artifacts *are* worktree-located (subagents `cd` into `.worktrees/{FID}`), but `bkit-design-summary` intermittently writes `design-summary.md` to the main checkout (`$REPO_ROOT`) instead of the worktree — friction #29/#43. Root cause: the subagent `Context:` `cd` uses the `dirname git-common-dir` idiom rather than the orchestrator's already-computed `WORKTREE_PATH` (`bkit-design.md:216`). Same dev-vs-feat path fragility.
+
+**To finish §3:** relocate design/plan `status.jsonl` (and the dev-located archive model in `workflows.md` / `bkit-design.md` / `bkit-plan.md`) onto `feat/{FID}` like build/debug, and pin subagent worktree paths to `WORKTREE_PATH`. Skipped in the #216 friction backlog and tracked here.
+
+## Implementation note (8/3) — re-open remediation plan: finish §3 for design/plan + align subagent cwd across all workflows
+
+Acting on the re-open (comment above). Confirmed the gap against current `dev` (post-`.bkit/` relocation, so line refs differ from the original inventory). Doing this directly on `dev` like the rest of #209 — can't dogfood the workflow files being edited.
+
+### Confirmed: §3 was applied to build/debug/ship but NOT design/plan
+
+- **build/debug/ship** write per-step status to the **feat worktree**: `STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"` (cwd is inside `.worktrees/{FID}`), committed per-step on `feat/{FID}`, reaching `dev` once via the squash-merge. ✅
+- **design/plan** write per-step status to the **dev main checkout**: every site is `STATUS="$REPO_ROOT/docs/plans/.../status.jsonl"` (`$REPO_ROOT = dirname(git-common-dir)` = main repo). ❌ — even though design/plan **do** create & `cd` into a `feat/{FID}` worktree (`bkit-design.md:216`) and write their **docs** there. So inside design/plan, docs are feat-located but status is dev-located: the exact inconsistency the re-open flags.
+- Docs encode the old decision: `.bkit/workflows.md:134/153/174/176` ("dev-located cheap archive") and stale `:1059` ("on dev for all five workflows — BAR-187"). `:176` is internally contradictory — it says "their doc squash-merges to dev at close" (docs ARE on feat during the run) yet keeps status on dev.
+
+### Decisions (owner-confirmed)
+
+<!-- prettier-ignore -->
+| # | Decision | Choice |
+| --- | --- | --- |
+| 1 | Where | **Fix now, directly on `dev`** (as rest of #209). |
+| 2 | Subagent cwd pinning scope | **All five workflows**, not just design/plan. The fragile `cd "$(dirname "$(git rev-parse … --git-common-dir)")/.worktrees/{FID}"` idiom is universal (design 9, plan 11, build 14, debug 7, ship 4 = 45 sites) → pin every worktree `cd` to the orchestrator's already-computed `{WORKTREE_PATH}`. (Ship's two *main-repo* `cd`s at 717/722 — no `.worktrees` suffix — are deliberately left untouched.) Closes friction #29/#43 consistently rather than leaving design/plan diverged from the other three. |
+| 3 | design/plan Failure Path | **Drop the best-effort `dev` push** of FAILED status. Match build/debug: status stays on the retained local `feat/{FID}` worktree; the tracker comment (FP step 3) carries the human failure signal. Only `dev` writes that remain are the doc-link URLs in comment blocks + the Close squash-merge. |
+
+### Edit plan
+
+**design + plan (status feat-relocation):**
+1. Per-step status blocks: `REPO_ROOT=…; STATUS="$REPO_ROOT/…"` → `STATUS="$(git rev-parse --show-toplevel)/…"` (worktree), matching build/debug. (7 blocks each.)
+2. Step-2 init: convert to `WT=$(git rev-parse --show-toplevel)` + `DIR` form (mirrors `bkit-build.md:316–326`), incl. the migrate-once legacy reader reading `$WT/$DIR/status.json`.
+3. Step-1 resume read: prefer the worktree copy, fall back to dev — `SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"` — then fold `$SRC` (mirrors `bkit-build.md:130`).
+4. **Close reorder (the one non-mechanical bit):** today the close-workflow appends the `step-done`/`workflow-done` events *after* the `git add -A && git commit`, so feat-locating the path alone would leave them uncommitted and the `git merge --squash feat` would drop them. Reorder to **append events → then `git add -A && git commit`** so they ride the feat commit and reach dev via the existing squash-merge. The Close `dev` push stays — that's the intended single dev write.
+5. Failure Path: drop the `git -C "$REPO_ROOT" pull/add/commit/push origin dev` block; write `workflow-failed` to worktree-if-exists-else-dev (build's pattern).
+
+**all 5 workflows (subagent cwd pinning):** one `replace_all` per file converting the 45 worktree-`cd` Context lines to `cd "{WORKTREE_PATH}"`; add `{WORKTREE_PATH}` to each Placeholders bullet (set at worktree setup, required for subagent Context).
+
+**docs/prose:** rewrite the design/plan **Status branch** bullets (feat-located, reaches dev once via Close merge, no FP dev push); update `.bkit/workflows.md` (134/153/174/176 + stale 1059).
+
+**Out of scope (unchanged):** build/debug/ship status placement (already correct); ship's main-repo post-merge `cd`s; cloud/audit dev-located status (no worktree).
+
+### Verification gates
+`pnpm test` green; `pnpm bkit-trackers` render sweep clean (mirror parity); regenerate `.claude/commands/*` + `.cursor/commands/*`; manual diff review of the Close reorder on both files. Shipped-summary comment to follow.
+
+## Implementation note (9/3) — §3 finish shipped to `dev`
+
+Committed to `dev` as **`0359884`** (`fix(209): finish §3 — feat-locate design/plan status.jsonl + pin subagent cwd to WORKTREE_PATH`, 16 files, +286/−336). Not pushed (per request). Done directly on `dev` like the rest of #209.
+
+### Delivered
+
+**design/plan — status.jsonl relocated to `feat/{FID}` (matches build/debug):**
+- Every per-step write + the Step-2 init now target the worktree (`$(git rev-parse --show-toplevel)/…` / `WT=$(git rev-parse --show-toplevel)` + `DIR`). `cwd` persistence across Bash calls (the "Worktree" invariant) resolves `--show-toplevel` to the feat worktree — the same mechanism build/debug rely on.
+- Step-1 resume read prefers the worktree copy, falls back to dev (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`).
+- **Close reorder** (the one non-mechanical edit): `step-done` + `workflow-done` are now appended *before* `git add -A && git commit`, so they ride the feat commit and reach `dev` via the existing `git merge --squash -X ours` — instead of being written post-commit and dropped by the squash. The Close `dev` push stays (the single intended dev write).
+- Failure Path: dropped the `git -C "$REPO_ROOT" pull/add/commit/push origin dev`; `workflow-failed` is appended to the retained worktree copy. Only `dev` writes left are the Close squash-merge + doc-link URLs.
+
+**all 5 workflows — subagent cwd pinned (closes friction #29/#43):**
+- 45 worktree-`cd` Context lines (design 9, plan 11, build 14, debug 7, ship 4) converted from the fragile `cd "$(dirname "$(git rev-parse … --git-common-dir)")/.worktrees/{FID}"` idiom to `cd "{WORKTREE_PATH}"` (orchestrator-substituted absolute path). `{WORKTREE_PATH}` registered in each Placeholders bullet. Ship's two *main-repo* `cd`s (post-merge Steps 8-12) deliberately left as-is. This was the scope extension beyond design/plan — the idiom was universal, so leaving the other three on it would have diverged them.
+
+**docs:** `.bkit/workflows.md` branch-placement model rewritten (table + rationale + staleness rule + the stale `:1059` "on dev for all five — BAR-187" line); `.claude/.cursor` command mirrors regenerated via `pnpm bkit install`.
+
+### Verification
+- `bkit-trackers` render sweep: 41 ✓ · `bkit-tokens` + `bkit-status`: 42 ✓
+- Mirrors: 0 leftover idiom, 0 orphan tracker markers, 0 dev-located `status.jsonl` in design/plan, `cd "{WORKTREE_PATH}"` counts match sources (9/11/14/7/4 × 2 hosts).
+- No Unicode operators introduced; prettier + vale + slop-scan clean on commit.
+
+### Notes
+- `cloud`/`audit` remain dev-located by design (no persistent worktree) — unchanged.
+- §3 is now uniform across all worktree-bearing phases; the design/plan "dev-located cheap archive" exemption from the original issue body is removed.
+
+## Implementation note (10/3) — `bkit-cloud` router made fully stateless (no `status.jsonl`)
+
+Follow-on cleanup (uncommitted — edits only, per request). The cloud router was the last workflow writing `status.jsonl` to `dev`. It's now a **pure stateless dispatcher**: no `status.jsonl`, no `dev` commit.
+
+### Why it was safe to remove
+Nothing read the router's status:
+- **No lock** — the router never acquires `.lock`, so no staleness check depends on it.
+- **No resume** — single-shot (Step 1 resolve → Step 2 dispatch → exit). Its only status consumer was the Step-1 `LATEST` "already-IN_PROGRESS?" dedup, which was self-referential (existed only because the write persisted).
+- **Dispatched skill doesn't use it** — ship/debug fold the log for their *own* `workflow` entries and ignore `"cloud"`; they own their FID/worktree/status.
+- **`bkit-cloud.yml` doesn't read it** — gates on the `bkit:auto` label + `bkit [auto route]` marker.
+
+Its sole purpose was an audit record of "router ran, dispatched phase X" — which the **Step 1 + Step 2 tracker comments already capture, with richer links** (branch / PR / run-id). Removing it also kills a `[skip ci]` `dev` push, consistent with #209's dev-write minimization.
+
+### Changed (`bkit-cloud.md`)
+- Removed: Step-1 status init (incl. `YYYYMM` resolution + migrate-once + `workflow-started`/`cloud-start-workflow`), Step-2 status write/commit/push (`cloud-dispatch`/`workflow-done`), Failure-Path status block. Sub-steps renumbered; gates de-statused.
+- The `Status` + `Status branch` caution bullets → one `**State:** stateless dispatcher — writes NO status.jsonl and makes NO dev commit` bullet.
+- Result: zero `STATUS=` / `REPO_ROOT` / `push origin dev` / `cloud`-event sites remain; ISSUE_ID resolution + the two tracker comments stay.
+
+### Changed (`.bkit/workflows.md`)
+- `cloud` removed from every status-placement / resume / staleness reference → documented as "writes none (stateless dispatcher)."
+- Also fixed a **leftover from the §3 doc edits**: the Resume-rule line still listed `design`/`plan` as reading `$REPO_ROOT` directly — corrected to the `feat/{FID}` worktree-prefer group (they're feat-located as of `0359884`).
+- `audit` (#80, not yet built) de-grouped from cloud; noted it will follow the design/plan feat-located pattern per #80.
+
+### Verification
+Full suite **1197 passed** / 2 skipped / 1 todo (the −2 vs prior run is exactly the parametrized assertions over cloud's removed status sites). Cloud mirrors regenerated (`pnpm bkit install`) — 0 status/REPO_ROOT/orphan-marker residue.
+
+### Follow-up (not done here)
+`.bkit/templates/.github/workflows/bkit-cloud.yml` + `.github/workflows/bkit-cloud.yml` carry an explanatory comment (~L107–111) that still says the dispatcher "commits a `cloud` run to dev's `status.jsonl`." That's now stale (comment-only, non-functional). Left untouched to avoid colliding with the concurrent #216 work that owns that file — fold a one-line correction into its next touch.
 
 ## #639 — Land parallel workflow closes on dev without colliding (closed)
 
@@ -1235,678 +1735,6 @@ Moved from per-workflow files to `.agents/workflows.md` § Common Workflow Anato
 
 No template-side mirror (none exists for these files). Mirror regen (`pnpm bkit install`) deferred to session end per batching convention.
 
-## #209 — Workflow state model: squash to dev, persistent feat branch (closed)
-
-## Problem
-
-Today the workflow state model has two friction points that hurt cloud-agent dispatch:
-
-1. **`status.json` is pushed to `dev`** (one `[skip ci]` snapshot per run, every phase). Nobody reads it on `dev` — it's a *rendezvous file*, written there only because the cloud runner checks out `ref: dev` (`.github/workflows/bkit-cloud.yml:114`) and that's the one ref a stateless runner is guaranteed to reach. It's the path of least resistance, not a requirement.
-2. **Per-phase branch lifecycle is inconsistent.** design and plan each create a throwaway `feat/{FID}` worktree, squash-merge their doc to `dev`, then **delete** the branch; build creates `feat/{FID}` and *keeps* it (the PR spine). So state lives in different places depending on phase.
-
-Considered and **rejected**: "a PR for every workflow" — design→plan→build is a strict chain, so a design PR would have to auto-merge before plan starts anyway (pure ceremony), and a doc-only PR either burns the full `bkit-tests` suite (`ci.yml` has no path filter) or is `[skip ci]` and un-gateable. Human review is already handled conversationally (agent walks through checkpoints, human approves), so a human-merged PR buys nothing.
-
-Also rejected: **one long-lived branch from design→ship** — design↔build can be days apart while `dev` moves on, so a branch spanning that whole window means constant rebasing.
-
-## Decision — the approach
-
-Keep squash-merge to `dev`. No PR ceremony for design/plan. Localize the persistent branch to the window that needs it.
-
-### 1. design & plan → squash-merge to `dev`, "dev always wins" on conflict
-
-design/plan are doc-only phases: the only files they add are FID-namespaced (`docs/plans/{YYYYMM}/{FID}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/**`), which `dev` never touches, so they **cannot conflict** (new files always land). The only genuinely-shared mutable file they touch is `.agents/friction.md` (the close-workflow sweep).
-
-Change the close-workflow merge (`bkit-design.md:764`, same in `bkit-plan.md`) from:
-
-```bash
-git merge --squash "feat/{FID}"
-```
-
-to:
-
-```bash
-git merge --squash -X ours "feat/{FID}"
-```
-
-`-X ours` keeps `dev`'s side on a conflicting hunk while **still bringing in non-conflicting** feat changes (the new doc + logs). Result: docs/logs always land, any shared-file collision silently resolves to `dev`, and the merge **never halts → Failure Path** on drift. This is the fix for the "days of `dev` movement → rebasing pain" concern: design/plan never hold a branch across that gap; they merge straight to `dev`.
-
-**Guard:** after the merge, assert the staged diff touches nothing outside `docs/plans/**` and `.agents/friction.md`. design/plan have no business changing code; if they did, surface a loud log rather than let "dev wins" silently drop it.
-
-Note on `.agents/friction.md`: it's the one shared file `-X ours` adjudicates. Non-colliding appends survive; a directly-colliding hunk resolves to `dev`. Acceptable for an append-mostly file.
-
-### 2. build creates the one persistent `feat/{FID}`, lasting build → debug → ship
-
-- build branches `feat/{FID}` from `dev`. Because design and plan already squash-merged their docs to `dev`, **build inherits the design + plan docs for free** by branching from `dev` — no cross-branch reading.
-- The branch persists through debug and ship; ship squash-merges it back to `dev` and deletes it (today's behavior). Rebasing during this window is already handled (`bkit-ship.md:249` rebases on `origin/dev` before merge).
-
-### 3. build/debug/ship state comes off the branch
-
-Because `feat/{FID}` now persists build→ship, those phases write `status.json` + logs **only on the branch** — no `[skip ci]` dev pushes mid-lifecycle. The state reaches `dev` exactly once, as an audit record, when ship squash-merges the branch.
-
-- The cloud runner for ship/debug reads state from `feat/{FID}` (it already knows `head_branch`) instead of `ref: dev`.
-- design/plan `status.json` *does* still land on `dev` (no persistent branch for those phases) — but that's now just a cheap one-commit archive, not a live state bus.
-
-## Absorbed from #203 — two related defects
-
-These defects were originally described under "Related defects" in #203. They are bkit-core orchestration plumbing (not CI-gate design) and do not flow from the gether-403 work. They belong here because the same branch/state lifecycle this issue redesigns is the root cause of both, and they share change surface with sections 1–3 above.
-
-### Defect A — status.json conflicts → unmergeable PRs → CI never runs
-
-**Root cause:** `status.json` for a given FID is committed on **both** `dev` (design/plan/build phases + the once-per-run dev commits) and `feat/{FID}` (per-step commits) → divergent content on the same path → conflict. A merge conflict on `docs/plans/{YYYYMM}/logs/{FID}/status.json` makes the PR unmergeable, so GitHub cannot build `refs/pull/N/merge` and **`pull_request` CI never runs** (`ci.yml` push triggers are `[main, dev]` only). Observed in gether — PR blocked on `docs/plans/202605/logs/313-url-monitor-v2/status.json` with "This branch has conflicts that must be resolved."
-
-**Primary fix — the state model above.** Keeping `status.json` writes on the branch (not pushed to `dev` mid-lifecycle) removes the divergence source. The conflict cannot arise if only one ref writes to a given FID's log files during build→ship.
-
-**Additive hardening — NDJSON event log + `merge=union` (if desired).** Convert `status.json` → append-only `status.jsonl`: one event per line (`workflow-started` / `step-done` / `workflow-done`), **never mutate prior lines**; derive current state by folding the log on read. Add `*.jsonl merge=union` to `.gitattributes` (+ template) so git auto-concatenates both branches' appended lines server-side — no conflict, PR stays mergeable. Union can interleave/duplicate lines, so the reader folds + dedupes by `(workflow, step, parentSha)` and orders by `at`. (Per-entry-file directory was the alternative; NDJSON+union chosen for consistency with the existing union-ledger pattern in `.gitattributes`.)
-
-NDJSON scope (if included):
-- `bkit-status.ts` becomes a **reducer** over the event log (current-state = fold of lines), + its tests.
-- Every status-write `jq` site across the 8 `.agents/workflows/*.md` rewrites from array-mutation to **line-append**.
-- `.gitattributes` **and** `.agents/templates/.gitattributes` gain the `*.jsonl merge=union` rule.
-- Resume / lock-staleness logic that reads `.[-1]` switches to "fold then inspect latest."
-
-> Note: this does **not** by itself make CI run on an *already*-conflicted PR; it removes the **cause** so PRs stop becoming unmergeable in the first place.
-
-### Defect B — `[skip ci]` status commit as the PR-branch tip suppresses ALL CI
-
-**Root cause.** When the **tip of `feat/{FID}` carries a CI-suppressing token**, GitHub skips the workflow natively and gether's gate sets `run_level=none` → **zero CI runs**. Observed in gether: `feat/313-url-monitor-v2` tip was `chore(313-url-monitor-v2): build DONE bkit [skip ci]` — a status.json-only commit. The `[skip ci]` is correct *for its intended home, `dev`*; the defect is a **dev-destined status commit becoming the tip of the PR branch**.
-
-Three defects compounding:
-1. bkit's `feat/{FID}` branch accumulates many `[skip ci]` / `[skip build]` status + docs commits.
-2. The terminal `build DONE` status commit leaked onto `feat` as well as `dev` (same message, two SHAs) — it should be `dev`-only per `bkit-build.md:1186` (`push origin dev`).
-3. A **status.json conflict** (Defect A above) forced a manual `git rebase origin/dev -X theirs` + force-push, which **replayed the skip-ci status commit back to the tip**, bypassing the build workflow's HEAD-Subject Assertion guard.
-
-**Fix — harden the "PR tip != suppressing token" invariant at every mutation point:**
-- **Don't leak the terminal `build DONE [skip ci]` onto `feat`.** Assert branch identity (`git branch --show-current` == `dev`) immediately before that commit/push in `bkit-build.md` Close.
-- **Re-run the HEAD-Subject Assertion after EVERY feat mutation** — at PR creation, and **after any conflict-resolution rebase/force-push** (both the `bkit-ship-conflict-resolve` agent path *and* documented manual recovery). If the feat tip carries `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]`/`[skip build]`, append an empty `[force build]` trigger commit before declaring the push complete.
-- This compounds with Defect A: removing the status.json conflict removes the rebase that re-exposed this. Fix together.
-
-Change surface: `bkit-build.md` (Close branch-identity assert + PR-creation guard), `bkit-ship.md` + `bkit-ship-conflict-resolve` (post-rebase guard) + mirrors.
-
-## Change surface (combined)
-
-- `bkit-design.md` / `bkit-plan.md` — close-workflow merge → `git merge --squash -X ours`; add the doc/log-namespace guard. Keep dev push + branch delete (throwaway branch).
-- All workflows — build/debug/ship drop the per-run `status.json` push to `dev` ("Status branch" rule); state stays on `feat/{FID}` until ship's final merge.
-- `bkit-ship.md` / `bkit-debug.md` — check out `feat/{FID}` *before* reading `status.json`; read `PRIOR_STRATEGY` / `DEBUG_ATTEMPT` from the branch.
-- `.github/workflows/bkit-cloud.yml` — `ref: dev` (line 114) stays correct for brief-class design/plan/build; ship/debug (CI-class) operate on the `feat/{FID}` checkout to read branch-local state.
-- `bkit-build.md` — branch-identity assert before terminal `build DONE` commit; PR-creation HEAD-Subject Assertion guard.
-- `bkit-ship-conflict-resolve` — post-rebase HEAD-Subject Assertion guard.
-- `bkit-status.ts` (+ tests, mirrors) — if NDJSON hardening is included.
-- `.gitattributes` + `.agents/templates/.gitattributes` — `*.jsonl merge=union` rule, if NDJSON hardening is included.
-- Regenerate `.claude/commands/*` and `.cursor/commands/*` mirrors after any workflow edits.
-
-## Sharp edges (small, non-blocking)
-
-1. **friction.md** is the one shared mutable file `-X ours` adjudicates — colliding hunks resolve to `dev`.
-2. **design/plan `status.json` stays on `dev`** — accepted as cheap archive; the original "pollutes dev" complaint is solved for the phases that have a branch (build→ship).
-3. **Cloud design/plan crash-resume is weak** — ephemeral worktree is gone and there's no dev snapshot until close, so a re-dispatch restarts the phase. This is true today too (not a regression); this change does not fix it.
-
-## Open product question
-
-Single-window branch means an **approved design/plan that never reaches build** still lands its doc on `dev` (because design/plan merge to `dev` regardless) — so this model *keeps* the "approved designs are on dev" property. Confirmed acceptable.
-
-## Related
-
-- #119 (cloud phase-routed dispatch) — the `ref: dev` checkout and CI-class vs brief-class routing this builds on.
-- #203 (CI verdicts / green != validated) — the two defects absorbed here were originally described under "Related defects" in that issue. #209 should land before #203.
-
-## Implementation design (1/3) — decisions + status.jsonl event model
-
-Recording the implementation design before/while building on `dev` (this is being done directly in `dev`, not via the bkit workflow — we cannot dogfood the workflow files we are editing).
-
-### Decisions locked
-
-<!-- prettier-ignore -->
-| Decision | Choice | Rationale |
-| --- | --- | --- |
-| Scope this pass | **Full**: state model (§1–3) + Defect B (skip-ci tip guard) + Defect A NDJSON hardening | Owner opted in to everything incl. NDJSON. |
-| NDJSON read/write mechanism | **Inline jq fold** — workflows stay pure bash+jq, no node/dist runtime dependency at status sites | Avoids coupling status ops to the compiled `dist/` (and to #160's bin relocation). Cost accepted: the fold filter is repeated at the ~10 read sites. |
-| `bkit-status.ts` | Stays as the **canonical reference reducer + `validateInvariants`**, now with a `fold` reducer + vitest coverage | The jq fold mirrors the TS reducer; TS is the unit-tested source of truth for fold semantics even though workflows execute jq. |
-| Execution | **Two movements in this branch** (see comment 3/3) | Movement 1 (state model + Defect B) is independently valuable AND structurally removes the Defect A conflict; Movement 2 (NDJSON) is additive hardening. |
-
-### Why the state-model change alone already fixes Defect A
-
-Once build/debug/ship stop pushing `status.json` to `dev` mid-lifecycle (state lives only on `feat/{FID}` until ship's final squash-merge), the same FID's `status.json` is no longer written on **both** `dev` and `feat/{FID}` → the divergent-path merge conflict that made PRs unmergeable cannot arise. NDJSON + `merge=union` is belt-and-braces on top.
-
-### status.jsonl event model
-
-One JSON object per line, append-only, **prior lines never mutated**. Replaces the single nested `status.json` array (`[{workflow, startedAt, status, steps:[...]}]`).
-
-**Event types:**
-
-```jsonc
-// opens a new run of a phase workflow
-{"type":"workflow-started","workflow":"build","at":"<iso8601>"}
-
-// one per completed step (the bulk — ~90 sites)
-{"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE",
- "at":"<iso8601>","parentSha":"<sha>","artifacts":[],
- "verdict":"PASS","attempt":1,"subPlan":1,"failures":0,"strategy":"STANDARD"}
-//   ^ verdict/attempt/subPlan/failures/strategy all optional, same as today's Step shape
-
-// workflow-level metadata merged onto the run (e.g. debug counters)
-{"type":"workflow-meta","workflow":"debug","at":"<iso8601>","debugAttempt":2}
-
-// terminal state — replaces `.[-1] |= (.+{status:"DONE"|"FAILED"})`
-{"type":"workflow-done","workflow":"build","at":"<iso8601>"}
-{"type":"workflow-failed","workflow":"build","at":"<iso8601>"}
-```
-
-**Dedup identity** (union can interleave/duplicate lines):
-- `step-done`: `(workflow, step, parentSha, at)`
-- `workflow-*`: `(type, workflow, at)`
-
-Keep first occurrence; then order by `at`.
-
-### Canonical fold (jq `-s` over `status.jsonl` → legacy shape)
-
-Reconstructs the exact `[{workflow, startedAt, status, steps:[...], <meta>}]` structure every existing read expects, so read queries downstream of the fold are unchanged.
-
-```jq
-# FOLD: array-of-events (from `jq -s` over status.jsonl) -> legacy status array.
-# Canonical logic lives in bkit-status.ts (unit-tested); this jq mirrors it.
-def lastIdx($w): [range(0;length) as $i | select(.[$i].workflow==$w) | $i] | last;
-def fold:
-  ( reduce .[] as $e ({seen:{},out:[]};
-      ( if $e.type=="step-done"
-        then "S^@\($e.workflow)^@\($e.step)^@\($e.parentSha)^@\($e.at)"
-        else "W^@\($e.type)^@\($e.workflow)^@\($e.at)" end ) as $k
-      | if .seen[$k] then . else .seen[$k]=true | .out += [$e] end )
-    | .out | sort_by(.at) ) as $ev
-  | reduce $ev[] as $e ([];
-      if $e.type=="workflow-started" then
-        . + [{workflow:$e.workflow, startedAt:$e.at, status:"IN_PROGRESS", steps:[]}]
-      elif $e.type=="step-done" then
-        (lastIdx($e.workflow)) as $i
-        | if $i==null
-          then . + [{workflow:$e.workflow, startedAt:$e.at, status:"IN_PROGRESS",
-                     steps:[($e|del(.type,.workflow))]}]
-          else .[$i].steps += [($e|del(.type,.workflow))] end
-      elif $e.type=="workflow-meta" then
-        (lastIdx($e.workflow)) as $i
-        | if $i==null then . else .[$i] += ($e|del(.type,.workflow,.at)) end
-      elif $e.type=="workflow-done" then
-        (lastIdx($e.workflow)) as $i | if $i==null then . else .[$i].status="DONE" end
-      elif $e.type=="workflow-failed" then
-        (lastIdx($e.workflow)) as $i | if $i==null then . else .[$i].status="FAILED" end
-      else . end );
-```
-
-**Read sites** become `jq -s 'fold | <existing query>' "$STATUS"` (with `def fold` prepended), e.g. resume logic's `[.[] | select(.workflow==$w)] | last` runs verbatim against `fold` output.
-
-**Write sites** become a single appended line, e.g.
-```bash
-jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERDICT" \
-  '{type:"step-done",workflow:"build",step:"build-run-tests",status:"DONE",
-    at:$t,parentSha:$p,artifacts:[],verdict:$v,attempt:1,failures:0}' >> "$STATUS"
-```
-
-Next: comment 2/3 = full site inventory; comment 3/3 = two-movement execution plan + per-file edit specs.
-
-## Implementation design (2/3) — complete status-site inventory
-
-Exhaustive map of every status read/write site driving the NDJSON conversion. Line numbers are against `dev` at time of writing (`bkit-design.md` 793L, `bkit-plan.md` 774L, `bkit-build.md` 1230L, `bkit-ship.md` 933L, `bkit-debug.md` 1093L, `bkit-cloud.md` ~210L). Reference counts: build 83, debug 71, ship 65, plan 53, design 50, cloud 21; `worktree-sync`/`worktree-prune` = none.
-
-### Write sites by event class
-
-**`workflow-started`** (`. + [{workflow:…, startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]`):
-design:245 · plan:249 · build:318 · debug:301 · ship:293 · cloud:159
-
-**`workflow-failed`** (Failure Path, `.[-1] |= (.+{status:"FAILED"})`):
-design:56 · plan:56 · build:58 · debug:58 · ship:58 · cloud:57
-
-**`workflow-done`** (Close Workflow, `.[-1] |= (.+{status:"DONE"})`, fused with the close step-done):
-design:728 · plan:710 · build:1152 · debug:948 · ship:881 · cloud:206
-
-**`step-done`** (`.[-1].steps += [{…}]`) — ~90 sites:
-- design: 249, 252, 305, 346, 397, 443, 489, 535, 674, 727
-- plan: 253, 256, 301, 353, 398, 448, 494, 540, 585, 635, 709
-- build: 322, 325, 368, 411, 463, 508, 574, 620, 672, 714, 768, 816, 868, 928, 976, 1022, 1103, 1151
-- debug: 305, 309, 422, 488, 536, 595, 639, 695, 762, 825, 883, 947, 995
-- ship: 297, 300, 367, 415, 490, 544, 602, 658, 714, 717, 775, 830, 880
-- cloud: 163, 204
-
-**`workflow-meta`** (fused metadata writes, `.[-1] |= (.+{…})`):
-- debug:305–307 (`debugAttempt` on start), debug:639–641 (`debugAttempt` on push-remediation)
-
-### Read sites
-
-**Resume / lock-staleness** (`[.[] | select(.workflow==$w)] | last` → `.status`, `.steps | last | .at`) — identical block in 5 files:
-design:105–114 · plan:106–114 · build:133–140 · debug:133–140 · ship:133–140
-
-**Strategy extraction** (`[.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""`):
-build:551–555 (plan-gaps-remediate, also keyed `.subPlan==$sp`) · build:906–910 (failure-diagnose) · debug:469 (failure-diagnose) · ship:579–583 (failure-remediate)
-
-**Debug metadata** (`[.[] | select(.workflow=="debug")] | last.debugAttempt // 0`; `…| .steps[] | select(.step=="worktree-setup")] | last.observeMode // "off"`):
-debug:172–174
-
-### Path / git-op references (rename `status.json` → `status.jsonl`)
-
-**`STATUS=`/`STATUS_REL=` assignments** (one per step + Step 1): every `STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"` and `STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.json"` across all 6 files (design ~12, plan ~12, build ~20, debug ~14, ship ~15, cloud ~3).
-
-**Markdown links** to status in the Step-1 issue comment: design:267 · plan:271 · build:340 · debug:324 · ship:315
-
-**`git add` of status:** design:62,737 · plan:62,719 · build:65,1166 · debug:65,1021 · ship:65 · cloud:208
-
-**`git merge --squash`** (design/plan close only): design:736 · plan:718  → become `git merge --squash -X ours` (§1)
-
-**`git push origin dev`** of status: design:739 · plan:721 · cloud:210; plus Failure-Path dev push design:64 / plan:64 / build:66 / debug:66 / ship:66 → build/debug/ship dev pushes of status are **dropped** (§3); design/plan retain (no persistent branch).
-
-**`.github/workflows/bkit-cloud.yml`:** `ref: dev` at line 114 (+ BAR-187 note ~line 78) — stays for brief-class design/plan/build; ship/debug (CI-class) read branch-local state from `feat/{FID}`.
-
-### Notes carried into edits
-
-- The close step-done + `workflow-done` are **fused** in one jq today (design:727–729 etc.); in NDJSON they become two appended lines (`step-done` then `workflow-done`).
-- debug fuses step-done + `workflow-meta` (debugAttempt) at 305–307 and 639–641 → two appended lines.
-- build's strategy read at 551–555 additionally filters `.subPlan==$sp` — fold output preserves `subPlan` on steps, so the query is unchanged post-fold.
-- Status-doc prose blocks to update: the `> - **Status:**` and `> - **Status branch:**` bullets (design:23–25, plan:23–25, and equivalents) describing the model.
-
-Next: comment 3/3 = two-movement execution plan + per-file edit specs + verification gates.
-
-## Implementation design (3/3) — two-movement execution plan
-
-All in one `dev` branch, but sequenced as two independently-verifiable movements. Mirrors (`.claude/commands/*`, `.cursor/commands/*`) regenerated once at the **end of each movement**, not per edit (per repo norm).
-
----
-
-### Movement 1 — state model (§1–3) + Defect B  *(high-value, ~30 edits, lower risk)*
-
-**§1 — design/plan squash-merge "dev always wins"**
-- `bkit-design.md:736` & `bkit-plan.md:718`: `git merge --squash "feat/{FID}"` → `git merge --squash -X ours "feat/{FID}"`.
-- After the merge, add a **namespace guard**: assert the staged diff touches nothing outside `docs/plans/**` and `.agents/friction.md`; else loud log (do not let "dev wins" silently drop a code change).
-  ```bash
-  STRAY=$(git diff --cached --name-only | grep -vE '^docs/plans/|^\.agents/friction\.md$' || true)
-  [ -n "$STRAY" ] && { echo "design/plan close touched non-doc files:" >&2; echo "$STRAY" >&2; exit 1; }
-  ```
-- Keep the dev commit + branch delete (throwaway branch unchanged).
-
-**§2/§3 — build/debug/ship: state stays on `feat/{FID}`; no mid-lifecycle dev push of status**
-- Drop the `git pull/add/commit/push origin dev` of `status.json` in build/debug/ship **Failure Path** (build:61–64, debug:61–64, ship:61–64) and any once-per-run dev status push — status writes commit on `feat/{FID}` only.
-- ship/debug **read state from `feat/{FID}`**: ensure the `feat/{FID}` checkout happens *before* the Step-1 status read (resume/lock) and before `PRIOR_STRATEGY` / `DEBUG_ATTEMPT` reads. Today these read from the dev checkout.
-- Update the `> - **Status branch:**` prose bullet in build/debug/ship to state: per-step commit on `feat/{FID}`; state reaches `dev` once, at ship's final squash-merge.
-- `.github/workflows/bkit-cloud.yml`: ship/debug (CI-class) operate on the `feat/{FID}` checkout (it knows `head_branch`); `ref: dev` (line 114) stays for brief-class design/plan/build. `bkit-cloud.md:208–210` CI-class dev status push reconsidered accordingly.
-
-**Defect B — PR-tip must never carry a CI-suppressing token**
-- `bkit-build.md` Close: before the terminal `build DONE … [skip ci]` commit/push, assert `git branch --show-current` == `dev` (don't leak the dev-only status commit onto `feat`).
-- Re-run the **HEAD-Subject Assertion** after *every* `feat` mutation — at PR creation (`bkit-build.md`) and after any conflict-resolution rebase/force-push (`bkit-ship.md` + `bkit-ship-conflict-resolve`). If the `feat` tip subject matches `[skip ci]`/`[ci skip]`/`[no ci]`/`[skip actions]`/`[actions skip]`/`[skip build]`, append an empty `[force build]` trigger commit before declaring the push complete.
-  ```bash
-  TIP=$(git log -1 --format=%s feat/{FID})
-  case "$TIP" in
-    *"[skip ci]"*|*"[ci skip]"*|*"[no ci]"*|*"[skip actions]"*|*"[actions skip]"*|*"[skip build]"*)
-      git commit --allow-empty -m "chore({FID}): [force build] re-trigger CI after status-commit tip" ;;
-  esac
-  ```
-
-**Movement 1 gate:** `pnpm bkit-trackers` render sweep clean (8×3); `pnpm test` green; regenerate mirrors; manual diff review of the 6 workflow files confirms no stray non-doc paths in §1 guard.
-
----
-
-### Movement 2 — NDJSON (Defect A hardening)  *(~145 sites, mechanical, higher churn)*
-
-1. **`bkit-status.ts`** — add the `fold` reducer (events → legacy run array) + `appendEvent` helper + event type union; keep `validateInvariants`. **`bkit-status.test.ts`** — cover: single-run fold, multi-run/multi-phase fold, union dedup (duplicated + interleaved lines), `workflow-meta` merge, terminal state, invariant validation on folded steps.
-2. **`.gitattributes` + `.agents/templates/.gitattributes`** — add `*.jsonl merge=union` (alongside existing union-ledger entries).
-3. **Per-file conversion** (design → plan → cloud → ship → debug → build, simplest first):
-   - rename `status.json` → `status.jsonl` at every `STATUS=`/`STATUS_REL=`/`git add`/markdown-link/commit-path site;
-   - every write → appended event line(s) (fused writes split into 2 lines);
-   - every read → `jq -s 'def fold: …; fold | <existing query>' "$STATUS"`;
-   - resume/lock + strategy + debug-meta reads use the fold then the unchanged downstream query.
-   Each file is independent → may fan out to subagents with this exact spec, then reconcile.
-4. **One-time migration / coexistence** — reader tolerates a legacy `status.json` (single JSON array) OR new `status.jsonl`: if `status.jsonl` absent but `status.json` present, treat the array as already-folded; first write creates `status.jsonl`. (In-flight FIDs across the boundary.)
-
-**Movement 2 gate:** `pnpm test` green incl. new fold tests; render sweep clean; regenerate mirrors; spot-check a folded multi-phase `status.jsonl` reproduces the legacy nested shape byte-for-byte for the read queries.
-
----
-
-### Out of scope (confirmed)
-- Cloud design/plan crash-resume weakness (pre-existing, not a regression — §"Sharp edges" #3).
-- design/plan `status.json` on `dev` (accepted cheap archive — §"Sharp edges" #2).
-
-### Cross-issue note
-This lands **before #203** (per roadmap #214). #203's CI-gate work builds on the settled branch/state model here. NDJSON `merge=union` + the dropped mid-lifecycle dev push together remove the unmergeable-PR class that blocked `pull_request` CI — a precondition #203's "assert `bkit-gate` on the PR's full run" relies on.
-
-## Implementation note (4/3) — §3 read-location + migration, decided during build
-
-Two details the plan left open, resolved while converting `bkit-build.md` (the reference file):
-
-### Where build/debug/ship status physically lives (the §3 crux)
-Today `STATUS="$REPO_ROOT/docs/.../status.json"` resolves to the **dev main worktree** (`$REPO_ROOT = dirname(git-common-dir)` = main repo, not the feat worktree). Per-step writes land on dev's working copy; the once-per-run dev push is how they reach history → the dev↔feat divergence behind Defect A.
-
-**Resolution (build/debug/ship):** status writes target the **feat worktree** copy (`$(git rev-parse --show-toplevel)/docs/.../status.jsonl`, cwd = worktree after Step 2), committed on `feat/{FID}` via the existing `git add -A` step commits. The mid-lifecycle dev push is **dropped** (Failure Path + close). State reaches dev once, at ship's squash-merge.
-
-**Step-1 lock/resume read** runs *before* the worktree is cd'd, and must see in-flight state. Resolution: read from the worktree copy when it exists, else the dev copy:
-```bash
-REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
-SRC="$REPO_ROOT/.worktrees/{FID}/$REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$REL"
-```
-design/plan keep dev-located status (no persistent branch — the accepted "cheap archive"), so their reads stay `$REPO_ROOT`-based.
-
-### Migrate-once at Step 1 (coexistence) — keeps every read uniform
-Rather than branching every read on `.jsonl` vs legacy `.json`, each workflow's Step 1 converts a legacy array to events **once**, so all downstream reads can assume `.jsonl` and just fold:
-```bash
-LEGACY="$REPO_ROOT/$DIR/status.json"; JSONL="$REPO_ROOT/$DIR/status.jsonl"
-if [ -f "$LEGACY" ] && [ ! -f "$JSONL" ]; then
-  jq -c '.[] as $w | ($w.workflow) as $wf
-    | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
-    , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
-    , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
-       elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
-       else empty end)' "$LEGACY" > "$JSONL"
-fi
-```
-(Mirrors `parseStatus` in `bkit-status.ts`, which already tolerates both forms for the install/upgrade boundary.)
-
-### Read sites inline the validated fold verbatim
-The `def lastIdx … def fold` block (comment 1/3), proven byte-equal to the TS reducer, is inlined at each of the ~10 read sites: `jq -s '<fold> | <existing query>' "$SRC"`. WRITE sites are a single appended event line (no fold). This is the accepted verbosity cost of the "inline jq fold, no node dependency" mechanism.
-
-### Progress (uncommitted on dev)
-Done + verified: `bkit-status.ts` reducer + 18 tests; jq-fold↔TS parity; `.gitattributes` ×2; §1 design/plan `-X ours` + guard; `bkit-build.md` Failure Path (§3 pattern: append `workflow-failed`, drop dev push, feat-located, `.jsonl`). Typecheck + tests green. Remaining: finish build (Step 1 migrate/resume, ~16 writes, 2 strategy reads, Step 2 start, close, PR, Defect B) then replicate to debug/ship/design/plan/cloud; cloud.yml `ref` for CI-class; regenerate mirrors.
-
-## Implementation note (5/3) — comment-block link permanence (branch-pruning)
-
-Surfaced while reviewing #209: the tracker `comment` blocks deep-link WIP artifacts by branch (`tree/{BRANCH}`, `blob/{BRANCH}/…`, where `{BRANCH}` = `feat/{FID}`). Those links **404 once `feat/{FID}` is pruned**, and the comments persist on the issue forever. §3 sharpened this for the `status.jsonl` link specifically — that file now lives on `feat` (not `dev`) for build/debug.
-
-### Rule adopted
-> **Link to `feat` while feat is alive and holds the artifact; link to `dev` once the artifact is permanently on `dev` (post-merge / post-close).**
-
-Per workflow:
-
-<!-- prettier-ignore -->
-| Workflow | Link base | Why |
-| --- | --- | --- |
-| `design` / `plan` | **`dev`** | They prune `feat` at close, so feat links break the moment the run ends. Their canonical doc + log artifacts land on `dev` via the `-X ours` squash-merge → `dev` links are permanent. (Trade: a `dev` link 404s *during* the short run, before the close merge — acceptable for a comment that lives forever.) |
-| `build` / `debug` | **`feat`** (unchanged) | Neither deletes `feat`; it lives across the whole build→debug→ship window — exactly when these WIP deep-links are clicked (live monitoring). They break only after ship prunes feat, by which point the PR + merged `dev` code are the durable references. Also §3-correct: build/debug `status.jsonl` genuinely lives on `feat` during the run. |
-| `ship` | **already split — leave it** | ship deletes `feat` mid-run (Step 5, `gh pr merge --delete-branch`). It correctly uses `feat` for pre-merge Steps 1-7 and `dev` for post-merge Steps 8-12. Blanket-hardcoding ship to `feat` would re-break its close/switch-to-dev comments. |
-
-The codebase already used this pattern for *final* links (ship close → `tree/dev` / `blob/dev/…`; canonical design/plan docs → `blob/main/…`); this just extends it to design/plan's per-step links.
-
-### Change applied (uncommitted, with #209)
-- `bkit-design.md` (7 link sites) + `bkit-plan.md` (8 link sites): `tree/{BRANCH}` → `tree/dev`, `blob/{BRANCH}/…` → `blob/dev/…` in the `comment` blocks only (bash `$BRANCH` / prose `{BRANCH}` untouched). `build`/`debug`/`ship` unchanged. Mirrors regenerated; tests green.
-
-### Considered, not taken
-- **Commit-SHA blobs** (`blob/{SHA}/…`) — the only zero-compromise option (live *and* permanent, survives prune). Rejected as too heavy for these glance-navigation links (capture+substitute a SHA per comment, uglier URLs). If the design/plan during-run 404 window ever matters, SHA-linking is the upgrade path.
-
-## Implementation note (6/3) — `merge=union` scoped to the status path (not blanket `*.jsonl`)
-
-Correction to the `.gitattributes` change: shipped `*.jsonl merge=union` was **too broad** — it would impose union-merge on *any* `.jsonl` a consumer has (datasets, fixtures, NDJSON logs). `merge=union` is **destructive for non-append-only files** (it concatenates both sides with no dedup → corrupt merge), and it also broke the file's own convention (every other entry is a specific path: `docs/pending.md`, `.agents/friction.md`).
-
-Scoped to bkit's status files only:
-```gitattributes
-docs/plans/**/status.jsonl merge=union
-```
-(`*/status.jsonl` was considered but wouldn't match — gitattributes anchors slashed patterns and `*` doesn't cross `/`, so it can't reach the 4-deep `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`; `**` is required.)
-
-Verified with `git check-attr merge`:
-- `docs/plans/202606/logs/foo-123/status.jsonl` → `union` ✓
-- `data/training.jsonl`, `fixtures/records.jsonl` → `unspecified` ✓ (consumer files untouched)
-
-Applied to both `.gitattributes` and `.agents/templates/.gitattributes` (identical); index refs in `workflows.md` updated. Tests green.
-
-## Implementation note (7/3) — ASCII-operator sweep + documented authoring rule
-
-The authoring audit surfaced pre-existing Unicode math operators in the workflow/prompt files (predate #209; I'd copied them verbatim per "match existing formatting"). Cleaned up codebase-wide and promoted to a written rule.
-
-**Converted** (`≠`→`!=`, `≥`→`>=`, `≤`→`<=`, `⇒`→`=>`, `×`→`x`) — **89 glyphs across 26 files**:
-- all `.agents/workflows/bkit-*.md` + `.agents/prompts/*.md`
-- index docs `.agents/workflows.md`, `.agents/prompts.md`
-- shipped templates (`.cursor/Dockerfile`, `docs/styles.md`, `docs/plans/template.md`)
-- bkit-authored `.agents/README.md`, `.agents/cloud.md`, `.agents/scripts/bkit-upgrade.ts`
-- `.claude`/`.cursor` mirrors regenerated → ASCII too
-
-**Deliberately NOT touched:**
-- The flow-arrow `→` (the documented `**If** … → …` / dispatch-table notation) — it's the one intentional non-ASCII glyph.
-- Em-dashes, smart quotes, emoji, `§` — typography/section-refs, not operators.
-- Vendored `.agents/skills/**` (Anthropic "superpowers" skills) — not bkit execution surfaces; editing them would diverge from upstream. Flagged, left as-is.
-
-**Documented as a rule** — new "ASCII operators" bullet in both `.agents/workflows.md § Workflow Authoring Rules` and `.agents/prompts.md § Prompt Authoring Rules`:
-> Use ASCII comparison/logic operators only — `!=`, `>=`, `<=`, `=>` — and `x` for "times"/dimensions. NEVER Unicode math glyphs. The flow-arrow `→` is the sole intentional non-ASCII glyph.
-
-Verify clean: `git grep -n '≠\|≥\|≤\|⇒\|×' .agents/workflows .agents/prompts` → empty. Tests green (1146).
-
-## Implementation note (7b/3) — `→` flow-arrow kept ASCII-exempt (decided)
-
-Decision on the one remaining non-ASCII glyph: **keep `→`, do not convert to `->`.**
-
-**Why:**
-- It's a different category from the operators we swept. `≥`/`⇒`/`×` were *stray* math operators inconsistently mixed into ASCII text. `→` is the **uniform, documented flow notation** — every `**If** {condition} → {action}.` conditional and dispatch table uses it consistently (the "Procedural conditionals" authoring rule literally specifies it). It's a typographic device, not a comparison operator.
-- Scale: ~1,200 occurrences in workflow/prompt sources (~1,564 across `.agents`) — ~14x the whole operator sweep, for a glyph that isn't a consistency or rendering problem.
-- `→` reads clearer than `->` for "leads to", and `->` is overloaded (member-access in C/PHP, type-signature arrows) — i.e. slightly *more* ambiguous, not less.
-
-**Documented:** the "ASCII operators" bullet in both `.agents/workflows.md` and `.agents/prompts.md § Authoring Rules` now states `→` is the sole intentional non-ASCII glyph and is deliberately kept (with the rationale), with an explicit "do NOT convert `→`". Memory rule updated to match.
-
-Net rule: **ASCII for operators that have expected ASCII forms; `→` is the one deliberate notation glyph.**
-
-## Shipped to `dev` — closing
-
-Implemented directly on `dev` (not via the bkit workflow — can't dogfood the workflow files being edited). Commit **`fc76776`** (`feat(209): NDJSON status.jsonl event log + branch-local state placement`, 96 files), pushed to `dev`.
-
-**Delivered (design-of-record in comments 1–7b):**
-- `status.jsonl` append-only NDJSON event log replacing the mutated `status.json` array; canonical `fold` reducer in `bkit-status.ts` (+ tests), inline jq fold mirrored across all 6 workflows; migrate-once for in-flight legacy files.
-- `docs/plans/**/status.jsonl merge=union` (path-scoped) — the git-layer guarantee.
-- Branch placement: build/debug write status on `feat/{FID}` (no mid-lifecycle dev push); ship splits feat (Steps 1-7) / dev (Steps 8-12); design/plan/cloud dev-located.
-- Defect B: `[skip build]` in the HEAD-Subject token set.
-- Comment-link permanence: design/plan → `dev`; build/debug keep `feat`; ship already split.
-- Authoring-rules remediation (53 violations cleared, 2 audit passes), `workflows.md` index rewrite, ASCII-operator sweep + documented rule.
-
-CI validates on the `dev` push. The two "related defects" originally bundled here were the actual scope — the CI-gate generalization stays in #203, which builds on this settled state model.
-
-## Re-opening: §3 feat-relocation incomplete for design/plan (surfaced via #216 friction reconciliation)
-
-The `status.jsonl` branch-placement model was not fully applied to **design** and **plan**. Current state:
-
-- **build / debug** — `status.jsonl` is **feat-located** (worktree): `bkit-build.md:318` `STATUS="$WT/.../status.jsonl"` (`$WT` = `git rev-parse --show-toplevel`). ✅ intended model.
-- **design / plan** — `status.jsonl` is **dev-located** (`$REPO_ROOT/...`): `bkit-design.md:25` ("design status.jsonl is dev-located"), written at `bkit-design.md:55,245`; `workflows.md:174` documents design/plan as a *"dev-located cheap archive, no persistent feat branch."* ❌ This contradicts the intended model — status + generated docs live on `feat/{FID}` and squash-merge to `dev` at close; the **only** thing hard-coded to `dev` should be the doc links inside tracker comment blocks (pretend-already-merged URLs).
-
-**Knock-on (also from #216):** design DOC artifacts *are* worktree-located (subagents `cd` into `.worktrees/{FID}`), but `bkit-design-summary` intermittently writes `design-summary.md` to the main checkout (`$REPO_ROOT`) instead of the worktree — friction #29/#43. Root cause: the subagent `Context:` `cd` uses the `dirname git-common-dir` idiom rather than the orchestrator's already-computed `WORKTREE_PATH` (`bkit-design.md:216`). Same dev-vs-feat path fragility.
-
-**To finish §3:** relocate design/plan `status.jsonl` (and the dev-located archive model in `workflows.md` / `bkit-design.md` / `bkit-plan.md`) onto `feat/{FID}` like build/debug, and pin subagent worktree paths to `WORKTREE_PATH`. Skipped in the #216 friction backlog and tracked here.
-
-## Implementation note (8/3) — re-open remediation plan: finish §3 for design/plan + align subagent cwd across all workflows
-
-Acting on the re-open (comment above). Confirmed the gap against current `dev` (post-`.bkit/` relocation, so line refs differ from the original inventory). Doing this directly on `dev` like the rest of #209 — can't dogfood the workflow files being edited.
-
-### Confirmed: §3 was applied to build/debug/ship but NOT design/plan
-
-- **build/debug/ship** write per-step status to the **feat worktree**: `STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"` (cwd is inside `.worktrees/{FID}`), committed per-step on `feat/{FID}`, reaching `dev` once via the squash-merge. ✅
-- **design/plan** write per-step status to the **dev main checkout**: every site is `STATUS="$REPO_ROOT/docs/plans/.../status.jsonl"` (`$REPO_ROOT = dirname(git-common-dir)` = main repo). ❌ — even though design/plan **do** create & `cd` into a `feat/{FID}` worktree (`bkit-design.md:216`) and write their **docs** there. So inside design/plan, docs are feat-located but status is dev-located: the exact inconsistency the re-open flags.
-- Docs encode the old decision: `.bkit/workflows.md:134/153/174/176` ("dev-located cheap archive") and stale `:1059` ("on dev for all five workflows — BAR-187"). `:176` is internally contradictory — it says "their doc squash-merges to dev at close" (docs ARE on feat during the run) yet keeps status on dev.
-
-### Decisions (owner-confirmed)
-
-<!-- prettier-ignore -->
-| # | Decision | Choice |
-| --- | --- | --- |
-| 1 | Where | **Fix now, directly on `dev`** (as rest of #209). |
-| 2 | Subagent cwd pinning scope | **All five workflows**, not just design/plan. The fragile `cd "$(dirname "$(git rev-parse … --git-common-dir)")/.worktrees/{FID}"` idiom is universal (design 9, plan 11, build 14, debug 7, ship 4 = 45 sites) → pin every worktree `cd` to the orchestrator's already-computed `{WORKTREE_PATH}`. (Ship's two *main-repo* `cd`s at 717/722 — no `.worktrees` suffix — are deliberately left untouched.) Closes friction #29/#43 consistently rather than leaving design/plan diverged from the other three. |
-| 3 | design/plan Failure Path | **Drop the best-effort `dev` push** of FAILED status. Match build/debug: status stays on the retained local `feat/{FID}` worktree; the tracker comment (FP step 3) carries the human failure signal. Only `dev` writes that remain are the doc-link URLs in comment blocks + the Close squash-merge. |
-
-### Edit plan
-
-**design + plan (status feat-relocation):**
-1. Per-step status blocks: `REPO_ROOT=…; STATUS="$REPO_ROOT/…"` → `STATUS="$(git rev-parse --show-toplevel)/…"` (worktree), matching build/debug. (7 blocks each.)
-2. Step-2 init: convert to `WT=$(git rev-parse --show-toplevel)` + `DIR` form (mirrors `bkit-build.md:316–326`), incl. the migrate-once legacy reader reading `$WT/$DIR/status.json`.
-3. Step-1 resume read: prefer the worktree copy, fall back to dev — `SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"` — then fold `$SRC` (mirrors `bkit-build.md:130`).
-4. **Close reorder (the one non-mechanical bit):** today the close-workflow appends the `step-done`/`workflow-done` events *after* the `git add -A && git commit`, so feat-locating the path alone would leave them uncommitted and the `git merge --squash feat` would drop them. Reorder to **append events → then `git add -A && git commit`** so they ride the feat commit and reach dev via the existing squash-merge. The Close `dev` push stays — that's the intended single dev write.
-5. Failure Path: drop the `git -C "$REPO_ROOT" pull/add/commit/push origin dev` block; write `workflow-failed` to worktree-if-exists-else-dev (build's pattern).
-
-**all 5 workflows (subagent cwd pinning):** one `replace_all` per file converting the 45 worktree-`cd` Context lines to `cd "{WORKTREE_PATH}"`; add `{WORKTREE_PATH}` to each Placeholders bullet (set at worktree setup, required for subagent Context).
-
-**docs/prose:** rewrite the design/plan **Status branch** bullets (feat-located, reaches dev once via Close merge, no FP dev push); update `.bkit/workflows.md` (134/153/174/176 + stale 1059).
-
-**Out of scope (unchanged):** build/debug/ship status placement (already correct); ship's main-repo post-merge `cd`s; cloud/audit dev-located status (no worktree).
-
-### Verification gates
-`pnpm test` green; `pnpm bkit-trackers` render sweep clean (mirror parity); regenerate `.claude/commands/*` + `.cursor/commands/*`; manual diff review of the Close reorder on both files. Shipped-summary comment to follow.
-
-## Implementation note (9/3) — §3 finish shipped to `dev`
-
-Committed to `dev` as **`0359884`** (`fix(209): finish §3 — feat-locate design/plan status.jsonl + pin subagent cwd to WORKTREE_PATH`, 16 files, +286/−336). Not pushed (per request). Done directly on `dev` like the rest of #209.
-
-### Delivered
-
-**design/plan — status.jsonl relocated to `feat/{FID}` (matches build/debug):**
-- Every per-step write + the Step-2 init now target the worktree (`$(git rev-parse --show-toplevel)/…` / `WT=$(git rev-parse --show-toplevel)` + `DIR`). `cwd` persistence across Bash calls (the "Worktree" invariant) resolves `--show-toplevel` to the feat worktree — the same mechanism build/debug rely on.
-- Step-1 resume read prefers the worktree copy, falls back to dev (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`).
-- **Close reorder** (the one non-mechanical edit): `step-done` + `workflow-done` are now appended *before* `git add -A && git commit`, so they ride the feat commit and reach `dev` via the existing `git merge --squash -X ours` — instead of being written post-commit and dropped by the squash. The Close `dev` push stays (the single intended dev write).
-- Failure Path: dropped the `git -C "$REPO_ROOT" pull/add/commit/push origin dev`; `workflow-failed` is appended to the retained worktree copy. Only `dev` writes left are the Close squash-merge + doc-link URLs.
-
-**all 5 workflows — subagent cwd pinned (closes friction #29/#43):**
-- 45 worktree-`cd` Context lines (design 9, plan 11, build 14, debug 7, ship 4) converted from the fragile `cd "$(dirname "$(git rev-parse … --git-common-dir)")/.worktrees/{FID}"` idiom to `cd "{WORKTREE_PATH}"` (orchestrator-substituted absolute path). `{WORKTREE_PATH}` registered in each Placeholders bullet. Ship's two *main-repo* `cd`s (post-merge Steps 8-12) deliberately left as-is. This was the scope extension beyond design/plan — the idiom was universal, so leaving the other three on it would have diverged them.
-
-**docs:** `.bkit/workflows.md` branch-placement model rewritten (table + rationale + staleness rule + the stale `:1059` "on dev for all five — BAR-187" line); `.claude/.cursor` command mirrors regenerated via `pnpm bkit install`.
-
-### Verification
-- `bkit-trackers` render sweep: 41 ✓ · `bkit-tokens` + `bkit-status`: 42 ✓
-- Mirrors: 0 leftover idiom, 0 orphan tracker markers, 0 dev-located `status.jsonl` in design/plan, `cd "{WORKTREE_PATH}"` counts match sources (9/11/14/7/4 × 2 hosts).
-- No Unicode operators introduced; prettier + vale + slop-scan clean on commit.
-
-### Notes
-- `cloud`/`audit` remain dev-located by design (no persistent worktree) — unchanged.
-- §3 is now uniform across all worktree-bearing phases; the design/plan "dev-located cheap archive" exemption from the original issue body is removed.
-
-## Implementation note (10/3) — `bkit-cloud` router made fully stateless (no `status.jsonl`)
-
-Follow-on cleanup (uncommitted — edits only, per request). The cloud router was the last workflow writing `status.jsonl` to `dev`. It's now a **pure stateless dispatcher**: no `status.jsonl`, no `dev` commit.
-
-### Why it was safe to remove
-Nothing read the router's status:
-- **No lock** — the router never acquires `.lock`, so no staleness check depends on it.
-- **No resume** — single-shot (Step 1 resolve → Step 2 dispatch → exit). Its only status consumer was the Step-1 `LATEST` "already-IN_PROGRESS?" dedup, which was self-referential (existed only because the write persisted).
-- **Dispatched skill doesn't use it** — ship/debug fold the log for their *own* `workflow` entries and ignore `"cloud"`; they own their FID/worktree/status.
-- **`bkit-cloud.yml` doesn't read it** — gates on the `bkit:auto` label + `bkit [auto route]` marker.
-
-Its sole purpose was an audit record of "router ran, dispatched phase X" — which the **Step 1 + Step 2 tracker comments already capture, with richer links** (branch / PR / run-id). Removing it also kills a `[skip ci]` `dev` push, consistent with #209's dev-write minimization.
-
-### Changed (`bkit-cloud.md`)
-- Removed: Step-1 status init (incl. `YYYYMM` resolution + migrate-once + `workflow-started`/`cloud-start-workflow`), Step-2 status write/commit/push (`cloud-dispatch`/`workflow-done`), Failure-Path status block. Sub-steps renumbered; gates de-statused.
-- The `Status` + `Status branch` caution bullets → one `**State:** stateless dispatcher — writes NO status.jsonl and makes NO dev commit` bullet.
-- Result: zero `STATUS=` / `REPO_ROOT` / `push origin dev` / `cloud`-event sites remain; ISSUE_ID resolution + the two tracker comments stay.
-
-### Changed (`.bkit/workflows.md`)
-- `cloud` removed from every status-placement / resume / staleness reference → documented as "writes none (stateless dispatcher)."
-- Also fixed a **leftover from the §3 doc edits**: the Resume-rule line still listed `design`/`plan` as reading `$REPO_ROOT` directly — corrected to the `feat/{FID}` worktree-prefer group (they're feat-located as of `0359884`).
-- `audit` (#80, not yet built) de-grouped from cloud; noted it will follow the design/plan feat-located pattern per #80.
-
-### Verification
-Full suite **1197 passed** / 2 skipped / 1 todo (the −2 vs prior run is exactly the parametrized assertions over cloud's removed status sites). Cloud mirrors regenerated (`pnpm bkit install`) — 0 status/REPO_ROOT/orphan-marker residue.
-
-### Follow-up (not done here)
-`.bkit/templates/.github/workflows/bkit-cloud.yml` + `.github/workflows/bkit-cloud.yml` carry an explanatory comment (~L107–111) that still says the dispatcher "commits a `cloud` run to dev's `status.jsonl`." That's now stale (comment-only, non-functional). Left untouched to avoid colliding with the concurrent #216 work that owns that file — fold a one-line correction into its next touch.
-
-## #661 — Ship re-runs CI after updating the branch from dev, even though code did not change (closed)
-
-## What happens
-
-When `dev` has moved since a feature branch went green, `/bkit-ship` merges `dev` into the branch and then waits for a whole new CI run, even though the feature's own changes are byte-identical. The only new code is code that came from `dev`. The push to `dev` after the merge runs CI on that combination anyway, so the second run before the merge costs time and buys nothing.
-
-## Example (a consumer repo, bkit 5.5.1, 2026-10-22)
-
-- A feature branch went green at `c217ea97`.
-- `dev` had already moved on with three commits (a bkit upgrade, an e2e test fix and a docs change) that the green run did not include.
-- Ship Step 3 (`bkit branches sync`) found `dev` was not part of the branch, so it took Path B. Step 4 B1 ran `bkit prs update-branch`. GitHub created merge commit `49fc6644` ("Merge branch 'dev' into ...", committed by GitHub), which started a new CI run eight seconds later.
-- The branch's own change is identical before and after the update: `git diff <old merge-base> c217ea97` and `git diff <new dev> 49fc6644` have the same `git patch-id --stable`.
-- That repo's `dev` requires no status checks and has no "branch must be up to date" rule; its only ruleset stops `dev` being deleted. The PR was already mergeable without the update.
-
-## Why it happens
-
-1. **Ship moves the tip itself.** Step 4 B1 (`.bkit/core/workflows/bkit-ship.md`, § Step 4 — Integrate) always runs `bkit prs update-branch` when `dev` has moved, whether or not `dev` requires the branch to be up to date.
-2. **Step 9 compares commits, not the branch's own changes.** `runRevalidate` in `.bkit/core/engine/commands/workflow/runs.ts` re-runs CI whenever the commit to validate differs from `ENTRY_HEAD` (the PR tip when ship started). The only exception is ship's own bookkeeping commits (`onlyBookkeeping`). A tip that moved only because `dev` was merged in counts as new code.
-3. The merge gate in Step 10 (`bkit runs gate`) has the same rule: anything past the validated commit other than bookkeeping returns exit 17 and sends ship back to Step 9.
-
-The only recorded reason for updating the branch is in the commit that added it, `4c785ccd` (fix(216), 2026-06-01): "so a base that moved during the ship window cannot fail the squash". GitHub refuses to merge an out-of-date PR only when there is a textual conflict (which updating the branch does not fix either) or when `dev` requires branches to be up to date. Neither applied here. No row in `docs/decisions.jsonl` covers the step.
-
-## Proposed fix
-
-Change Step 4 B1 so ship updates the branch only when the branch code has to change, or the repo asks for checks on `dev`:
-
-<!-- prettier-ignore -->
-| Situation | Behaviour |
-| --- | --- |
-| `MERGEABLE` = MERGEABLE (no textual conflict) and `dev` requires no status checks | **Skip `bkit prs update-branch`.** Merge the PR at the tip CI already passed on. The push to `dev` runs CI on the combined code. |
-| `MERGEABLE` = CONFLICTING (Path B2) | Unchanged: resolve, push, re-run CI. Someone edited files to resolve the conflict, so the branch code really did change. |
-| `dev` requires status checks (ruleset or branch protection) | Unchanged: update the branch and re-run CI. The repo has asked for checks to guard `dev`, so ship keeps the stricter behaviour. `devRequiresChecks` in `runs.ts` already detects this. (GitHub itself refuses an out-of-date branch only when the rule's "require branches to be up to date" setting is on.) |
-
-Likely touch points:
-
-- `.bkit/core/workflows/bkit-ship.md` § Step 4, sub-step 1 (B1) and Gate 4 (`B1: bkit prs update-branch attempted`), plus the mirrored command/skill renders.
-- `.bkit/core/engine/commands/workflow/runs.ts` (`runRevalidate`, `runs gate`), so that skipping the update leaves `CODE_HEAD` = `ENTRY_HEAD` and no re-run happens.
-- Tests for the three rows above, and the docs that describe Path B (`.bkit/workflows.md`, `docs/deployments.md`).
-
-## Trade-off (accepted)
-
-If `dev` and the branch break each other without a textual conflict (for example, `dev` renames a function the branch calls), the problem shows up as a red `dev` CI run after the merge, not as a red PR before it. This is accepted: the `dev` push run catches it.
-
-GitHub's `mergeable` answer is occasionally wrong on very large diffs. If it reports no conflict and there is one, the merge itself is refused and ship goes through its existing retry path (Steps 11-12): a wasted attempt, not a bad merge.
-
-Repos that want the stricter behaviour can turn on required status checks for `dev`. Ship then keeps updating the branch and re-running CI, as in the third row of the table.
-
-so the branch code DID change and ci is justified no? what are we talking about here?
-
-Yes, once ship had pulled dev in, the branch did change and the re-run was justified. The question in #661 is whether ship needed to pull dev in at all. I blurred this earlier by saying “the code on your branch didn’t change”; I should have said “your feature’s code didn’t change”.
-
-Two different things:
-
-Your feature’s code (what feat/1502 adds on top of dev) didn’t change. The update left it byte-identical.
-The branch as a whole did change, but only because ship merged dev into it. The only new code on the branch was dev’s.
-
-The chain:
-
-Ship pulls dev into the branch. This step wasn’t necessary in gether. The PR could already merge, and gether’s dev doesn’t require the branch to be up to date.
-That creates a new commit holding new code, the feature plus the latest dev.
-Given that new code, re-running CI is correct. I’m not proposing to skip CI on changed code.
-
-So #661 doesn’t say “this CI run was unjustified”. It says “don’t make the change that forces it”. If ship merges without pulling dev in first, the branch never changes, run 1’s green still applies, and there’s nothing to re-test.
-
-The one thing you give up: the second run was testing feature plus latest dev together before the merge. After #661 that same test happens once, as the CI run on the push to dev after the merge. That’s the trade-off you accepted: a clash shows up as a red dev instead of a red PR.
-
-> Ship pulls dev into the branch. This step wasn’t necessary in gether. The PR could already merge, and gether’s dev doesn’t require the branch to be up to date.
-
-so why did we pull the code if we did not need it?
-
-I traced the unconditional dev-pull step to commit 4c785ccd, which added it to prevent squash-merge failures from a base moving mid-ship — but that risk only matters if there’s a conflict or the repo enforces “up to date before merging,” neither of which applies here. I’d wrongly claimed in #661 that no reason was recorded (I’d only checked docs/decisions.jsonl); I’ll correct that now.
-
-Pushing the corrected line to the issue now.
-
-I’ve corrected #661: it now quotes the reason from commit 4c785ccd and explains why that reason didn’t apply here.
-
-To answer you directly: we pulled dev in because ship has done it on every ship since June, needed or not. It was added on the belief that GitHub won’t merge a PR once dev has moved past it. That’s only true when there’s a conflict or when the repo requires branches to be up to date, and gether has neither. #661 makes the step happen only in those two cases.
-
-> It was added on the belief that GitHub won’t merge a PR once dev has moved past it. That’s only true when there’s a conflict or when the repo requires branches to be up to date, and gether has neither.
-
-so we should be checking if there is a merge conflict? if yes, we re run ci, if not we skip ci and do not run it again, that it?
-
-Almost. There’s one more case to keep, and one correction to how you’ve put it: with no conflict, ship isn’t skipping a CI run that should happen. Nothing changes on the branch, so there’s nothing new to test.
-
-The rule after #661:
-
-Conflict with dev?	dev requires checks?	What ship does
-No	No (gether today)	Merges straight away on the green it already has. The branch isn’t touched, so CI doesn’t run again.
-Yes	Either	Resolves the conflict, pushes, and CI runs again. Someone edited files, so the code really changed.
-No	Yes	Updates the branch and re-runs CI, because the repo has asked for dev to be guarded that way.
-
-Ship already checks for conflicts. It reads GitHub’s “mergeable” answer at Step 1 and uses it to choose between B1 (no conflict) and B2 (conflict). #661 only changes what B1 does: today it pulls dev in, afterwards it does nothing.
-
-One caveat: GitHub’s “mergeable” answer is occasionally wrong on very large diffs. If it says “no conflict” and there is one, the merge itself fails, and ship goes into its existing retry path (Step 11). That would be a wasted attempt, not a bad merge. I’ll add a line about it to #661 if you want it recorded.
-
-Almost. There's one more case to keep, and one correction to how you've put it: with no conflict, ship isn't skipping a CI run that should happen. Nothing changes on the branch, so there's nothing new to test.
-
-**The rule after #661:**
-
-<!-- prettier-ignore -->
-| Conflict with `dev`? | `dev` requires checks? | What ship does |
-| --- | --- | --- |
-| No | No (gether today) | Merges straight away on the green it already has. The branch isn't touched, so CI doesn't run again. |
-| Yes | Either | Resolves the conflict, pushes, and CI runs again. Someone edited files, so the code really changed. |
-| No | Yes | Updates the branch and re-runs CI, because the repo has asked for `dev` to be guarded that way. |
-
-**Ship already checks for conflicts.** It reads GitHub's "mergeable" answer at Step 1 and uses it to choose between B1 (no conflict) and B2 (conflict). #661 only changes what B1 does: today it pulls `dev` in, afterwards it does nothing.
-
-**One caveat:** GitHub's "mergeable" answer is occasionally wrong on very large diffs. If it says "no conflict" and there is one, the merge itself fails, and ship goes into its existing retry path (Step 11). That would be a wasted attempt, not a bad merge. I'll add a line about it to #661 if you want it recorded.
-
-## #756 — Workflow optimisation: ship, land and close steps (done) (closed)
-
-Completed workflow-optimisation issues about shipping, landing on dev, workflow close steps, branches and pushes, that have no other parent.
-
-Closed: every sub-issue is closed. Open work in this area is under #750 — Workflow optimisation (https://github.com/cbartens/bkit/issues/750).
-
 ## #66 — Workflows abort on rebase conflict (closed)
 
 <!-- linear-import: BAR-169 -->
@@ -2113,3 +1941,358 @@ While auditing the new prompt against `prompts.md` / `workflows.md` rules, sever
 ### Files touched
 
 `.agents/workflows/{bkit-build,bkit-debug,bkit-ship,bkit-design,bkit-plan,bkit-worktree-prune,bkit-worktree-sync}.md`, `.agents/workflows.md`, `.agents/prompts/bkit-ship-conflict-resolve.md` (new), `.agents/prompts.md`, `.agents/prompts/*.md` (many — authoring-rule passes), `.agents/scripts/bkit-install.ts` + `.test.ts`, `.agents/templates/gitattributes` (new), `.gitattributes` (new), `docs/decisions.md` (DE-17).
+
+## #68 — Stale workflow lock main repo vs worktree cwd mismatch (closed)
+
+<!-- linear-import: BAR-183 -->
+**Linear:** [BAR-183](https://linear.app/bartens/issue/BAR-183) · **Created:** 2026-05-11 · **Linear assignee:** christian@bartens.biz
+
+---
+
+## Summary
+
+Recurring friction (6 distinct entries across #59, [BAR-152](https://linear.app/bartens/issue/BAR-152/ws-5-chat-agent-runtime-prompts-models-retrieval-apichat), [BAR-95](https://linear.app/bartens/issue/BAR-95/ws-3-member-crud-invites-children-and-roles), [BAR-166](https://linear.app/bartens/issue/BAR-166/separate-prompt-tool-files) ×2, [BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding) over 2026-05-09 to 2026-05-11) where a workflow's `.lock` file is acquired in the **main repo working directory** but never released because the workflow's close/cleanup step runs from the **worktree** instead. Next workflow invocation against the same FID finds a stale lock (typically <2h old, under the auto-clean threshold) and blocks per the lock-protocol rule, even though the prior workflow ran to completion.
+
+## Root cause
+
+`docs/plans/logs/{FID}/.lock` is written via a relative path. When `start-workflow` runs from the main repo (e.g. on `dev`), the lock lands at `<MAIN_REPO>/docs/plans/logs/{FID}/.lock`. Subsequent workflow steps `cd` into `.worktrees/{FID}`; the `close-workflow` `rm -f docs/plans/logs/{FID}/.lock` then resolves against the worktree's path, which either has a separate lock or no lock at all. Net effect: main-repo lock never gets removed; the next debug/ship/plan run blocks on it.
+
+Additionally, when `start-workflow` commits status.json to `dev` from the main repo (before worktree creation), the status.json entry lives on `dev` with `IN_PROGRESS` even after the worktree's status.json is `DONE` — orphaning state across two branches.
+
+## Suggested fix options (cross-entry consensus)
+
+1. **Absolute-path lock release.** `close-workflow` should resolve the lock at the repo root, e.g. `rm -f "$(git rev-parse --path-format=absolute --git-common-dir)/../docs/plans/logs/{FID}/.lock"` or capture `REPO_ROOT` at `start-workflow` and persist it in status.json for the close step to use.
+2. **Acquire-and-release in same context.** Move `start-workflow` (and therefore lock acquisition) entirely into the worktree, after `cd`. This unifies cwd across the whole workflow and keeps status.json on the feature branch only.
+3. **Per-workflow lock keys.** `{FID}-{workflow}.lock` so concurrent debug + build don't deadlock each other when one stalls (covers the [BAR-166](https://linear.app/bartens/issue/BAR-166/separate-prompt-tool-files) build-lock-blocks-debug case).
+4. **Mandatory lock-removal assertion on Failure Path.** Several entries note Failure Path doesn't `rm -f` the lock ([BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding), [BAR-152](https://linear.app/bartens/issue/BAR-152/ws-5-chat-agent-runtime-prompts-models-retrieval-apichat)). Add an explicit assertion that lock cleanup succeeded before exiting any workflow.
+
+## Affected friction entries (all RECOVERED, all same root cause)
+
+### Entry 1 — #59: Build failure-path leaves stale lock in main repo (2026-05-09)
+
+* **Workflow:** build → debug
+* **Step:** orchestrator (lock cleanup in Failure Path)
+* **Source:** orchestrator
+* **What happened:** Build Step 1 acquires lock in main repo working directory (`docs/plans/logs/{FID}/.lock`). Build Failure Path runs from worktree context; `rm -f "docs/plans/logs/{FID}/.lock"` resolves to the worktree's lock, not the main repo's. Main repo lock is never removed. Debug workflow blocked with "lock <2h old" on next invocation. Additionally, if debug Step 1 commits status.json to dev and Step 2 rebases worktree on dev, a status.json conflict arises (dev has partial build steps + debug entry; feature branch has full build steps). To avoid both issues, all debug steps should run from inside the worktree, not the main repo.
+* **Suggested fix:** Failure Path should delete the lock at an absolute path (`$(git rev-parse --show-toplevel)/docs/plans/logs/{FID}/.lock`) so it works regardless of cwd. Alternatively, Step 1 should always run from the worktree, not the main repo, so lock and status.json paths are consistent.
+* **Related:** #59-option-1, build lock `2026-05-09T00:25:04Z`
+* **Recovery:** Manually removed stale lock; debug workflow runs entirely from worktree to avoid rebase conflict.
+
+### Entry 2 — visitfrasercoast [BAR-152](https://linear.app/bartens/issue/BAR-152/ws-5-chat-agent-runtime-prompts-models-retrieval-apichat): Stale lock from debug workflow not cleaned up (2026-05-10)
+
+* **Workflow:** ship, Step 1 — Start Workflow
+* **Source:** orchestrator
+* **What happened:** On ship start, found `.lock` from a previous debug workflow (age \~22min, < 2h threshold). The debug workflow HAD completed fully (confirmed via worktree status.json showing `close-workflow: DONE` and Linear comment showing all 11 steps). The lock was not removed by the debug workflow's close step. Also: main branch (dev) had a stale status.json (2 IN_PROGRESS entries for build+debug) while the worktree had the correct complete status.json (1 DONE entry with all steps). Normally this would trigger Failure Path per lock rules. Treated as stale since completion was confirmed; removed lock and continued.
+* **Suggested fix:** bkit-debug Step 11 (Close Workflow) must assert `.lock` removal succeeded. Debug workflow should not leave orphaned lock files when the worktree's close-workflow step ran on a different branch than where the lock was acquired.
+* **Related:** [BAR-152](https://linear.app/bartens/issue/BAR-152/ws-5-chat-agent-runtime-prompts-models-retrieval-apichat)-chat-agent, [BAR-152](https://linear.app/bartens/issue/BAR-152/ws-5-chat-agent-runtime-prompts-models-retrieval-apichat)
+* **Recovery:** Removed stale lock, proceeded with ship Step 1.
+
+### Entry 3 — [BAR-95](https://linear.app/bartens/issue/BAR-95/ws-3-member-crud-invites-children-and-roles): Debug lock left in main repo; close-workflow releases only worktree lock (2026-05-11)
+
+* **Workflow:** debug, Step 1 / Step 11
+* **Source:** orchestrator
+* **What happened:** `start-workflow` acquires `.lock` in the MAIN repo cwd (dev branch), then the workflow switches to the worktree. `close-workflow` does `rm -f "docs/plans/logs/{FID}/.lock"` from inside the WORKTREE — which removes the worktree's lock (if it exists) but NOT the main repo's lock. The main repo's lock persisted after a complete successful debug run, causing the next /bkit-debug invocation to find a `<2h` lock and fail the guard. Also: debug workflow steps 2–11 append to the last IN_PROGRESS workflow entry in the worktree's status.json (which was `build`, not `debug`), while the dev branch retains an orphaned IN_PROGRESS `debug` entry with only `start-workflow` DONE.
+* **Suggested fix:** (a) `close-workflow` should `cd` back to main repo root before `rm -f .lock`, or acquire the lock in the worktree. (b) Alternatively, write the lock to an absolute path (repo root + relative lock path) so worktree and main repo share the same inode. (c) For status.json: start-workflow should run from inside the worktree (after cd) so all status updates land in the same file.
+* **Related:** [BAR-95](https://linear.app/bartens/issue/BAR-95/ws-3-member-crud-invites-children-and-roles)-member-crud-invites, [BAR-95](https://linear.app/bartens/issue/BAR-95/ws-3-member-crud-invites-children-and-roles), commit 76d2c26d (orphaned start-workflow), `.agents/prompts/bkit-debug.md`
+* **Recovery:** Detected stale lock (37 min, < 2h) from prior completed session; removed manually and re-acquired; created new debug entry in dev status.json with corrected debugAttempt=1.
+
+### Entry 4 — [BAR-166](https://linear.app/bartens/issue/BAR-166/separate-prompt-tool-files): Debug workflow stale build lock (1h53m) blocked debug start (2026-05-11)
+
+* **Workflow:** debug, Step 1 — Start Workflow
+* **Source:** orchestrator
+* **What happened:** Lock `docs/plans/logs/bar-166-prompt-tool-files/.lock` was held by the `build` workflow (written 2026-05-10T22:38:48Z). Build status was IN_PROGRESS with only `start-workflow` done (workflow clearly abandoned). Lock was 6819s old (< 7200s threshold). Protocol says Failure Path, but this was clearly not a concurrent run — the build stalled \~2h ago with no activity. Debug workflow was explicitly requested to fix GH Actions failures.
+* **Suggested fix:** Differentiate lock per workflow type (e.g. `{FID}-{workflow}.lock`) so debug can proceed independently from a stalled build. Or extend stale threshold for cross-workflow lock detection.
+* **Recovery:** Treated as stale — removed build lock, marked build workflow FAILED in status.json, re-acquired lock for debug.
+
+### Entry 5 — [BAR-166](https://linear.app/bartens/issue/BAR-166/separate-prompt-tool-files): Ship workflow stale debug lock in main repo (2026-05-11)
+
+* **Workflow:** ship, Step 1 — Start Workflow
+* **What happened:** Lock `docs/plans/logs/bar-166-prompt-tool-files/.lock` was held by the `debug` workflow (written 2026-05-11T02:13:50Z, age 2773s). Debug workflow was DONE (close-workflow ran in worktree and released lock there, but main repo lock was never removed because Step 11's `rm -f` ran inside the worktree, not the main repo root).
+* **Suggested fix:** In debug/ship close-workflow, release both the worktree's lock AND the main repo's lock (`git rev-parse --show-toplevel/../..` relative release).
+* **Recovery:** Verified debug status showed `IN_PROGRESS` only on dev branch (fix branch has DONE); treated lock as stale; removed and re-acquired for ship.
+
+### Entry 6 — [BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding): Stale lock from failed build workflow blocking plan re-run (2026-05-11)
+
+* **Workflow:** plan, Step 1 — Start Workflow
+* **Source:** orchestrator
+* **What happened:** On plan start for [BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding)-aio-mdx-pages, found `.lock` from previous build workflow (age \~61min, < 2h threshold). Build workflow status in worktree showed `"status": "FAILED"` (build-challenge-remediate attempt 1 failed). Lock was orphaned — build Failure Path did not remove it. Dev branch status.json was stale (only showing build start-workflow IN_PROGRESS, not the full failed history). User re-ran `/bkit-plan` to re-generate the plan after build failure.
+* **Suggested fix:** Build Failure Path should assert lock removal succeeds. Lock cleanup should also check worktree branch if lock was acquired on dev.
+* **Related:** [BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding)-aio-mdx-pages, [BAR-150](https://linear.app/bartens/issue/BAR-150/ws-7-aio-mdx-pages-and-content-scaffolding)
+* **Recovery:** Confirmed build FAILED via worktree status.json; removed stale lock; proceeded with plan Step 1.
+
+## Acceptance criteria
+
+- [ ] Pick one structural fix (absolute path / acquire-in-worktree / per-workflow keys) and apply consistently across `bkit-build.md`, `bkit-debug.md`, `bkit-ship.md`, `bkit-plan.md` workflows.
+- [ ] Every Failure Path branch in all 4 workflows includes an explicit lock-removal assertion (must exit non-zero if `.lock` still present at exit).
+- [ ] Add a Step 1 sub-step that distinguishes "lock from same workflow type" vs "lock from different workflow type" — only same-type with recent activity blocks; cross-type stale (>30min idle in status.json) auto-cleans.
+- [ ] Regression: simulate the [BAR-95](https://linear.app/bartens/issue/BAR-95/ws-3-member-crud-invites-children-and-roles) scenario (debug close from worktree while lock is on main repo) and verify main repo lock is removed.
+
+## Workflows affected
+
+`bkit-build.md`, `bkit-debug.md`, `bkit-ship.md`, `bkit-plan.md` — all Step 1 (Start Workflow), Step 11 (Close Workflow), Failure Path.
+
+<!-- linear-links-start -->
+**Links:**
+
+- **Related:** #59 ([BAR-148](https://linear.app/bartens/issue/BAR-148)), [BAR-150](https://linear.app/bartens/issue/BAR-150) _(not imported)_, [BAR-152](https://linear.app/bartens/issue/BAR-152) _(not imported)_, [BAR-166](https://linear.app/bartens/issue/BAR-166) _(not imported)_, #69 ([BAR-184](https://linear.app/bartens/issue/BAR-184)), #71 ([BAR-187](https://linear.app/bartens/issue/BAR-187)), [BAR-95](https://linear.app/bartens/issue/BAR-95) _(not imported)_
+<!-- linear-links-end -->
+
+<!-- linear-comment: 0ad0da36-7a5c-4035-a4c4-834d6639e1ce -->
+**@christian (Linear, 2026-05-11):**
+
+Shipped on `dev`:
+
+- `9f3dbc8` fix(bar-183): absolute-path lock + status.json on dev for plan/design
+- `8279ce9` chore: regenerate .claude/ and .cursor/ mirrors after bar-183
+
+Implementation matches the decisions in [the earlier comment](https://linear.app/bartens/issue/BAR-183#comment-c556f927):
+
+- Lock at `$REPO_ROOT/docs/plans/logs/{FID}/.lock` (absolute path, anchored via `git rev-parse --path-format=absolute --git-common-dir`) — same inode regardless of cwd.
+- Staleness via `status.json` cross-check (workflow type from lock body → DONE/FAILED clean; IN_PROGRESS <30min idle block; ≥30min idle stale).
+- Lock removal asserted absent at every Close Workflow + Failure Path exit (`Lock removal failed` → non-zero).
+- `status.json` lives on `dev` for plan/design (`git -C "$REPO_ROOT" pull --ff-only` + commit + push every mutation; pull/push failure → Failure Path).
+- Build/debug/ship `status.json` unchanged (stays on `feat/{FID}`).
+- Schema enums lowercase → UPPER_CASE in `workflows.md` to match what workflows actually write.
+
+Closes all six friction entries (#59, BAR-152, BAR-95, BAR-166 ×2, BAR-150).
+
+<!-- linear-comment: c556f927-e00a-4824-85e9-877a22f6dd66 -->
+**@christian (Linear, 2026-05-11):**
+
+## Pre-design: options analysed + final decisions
+
+Skipping formal `/bkit-design` and `/bkit-plan` — direct implementation. Decisions below close all six friction entries.
+
+#69 (just merged) deferred `status.json` init into the worktree to fix dev-divergence. This ticket narrows to (a) the `.lock` cwd mismatch and (b) where `status.json` lives during the run.
+
+---
+
+### Q1 — Lock location
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| **A. Absolute path in main repo** | Capture `REPO_ROOT=$(git rev-parse --show-toplevel)` at Step 1, use `$REPO_ROOT/docs/plans/logs/{FID}/.lock` for both acquire and release. Smallest diff, no step reordering. |
+| B. Acquire inside worktree (Step 2) | Mirrors #69's status.json move. Unifies cwd, but opens a Step-1 race window before the worktree exists. |
+| C. A + explicit cwd contract | Option A plus a rule in `workflows.md` codifying Step 1 = `$REPO_ROOT`, Step 2+ = `$WORKTREE`. Documentation polish, not load-bearing. |
+
+**Decision: A** — for build/debug/ship. Plan/design lock co-locates with their `status.json` on dev (see § Q5).
+
+### Q2 — Lock key granularity
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| **A. Keep per-FID (`{FID}/.lock`)** | Current. One workflow per feature at a time. |
+| B. Per-workflow (`{FID}/.lock-{workflow}`) | Build + debug concurrent against same FID. Adds risk of interleaved `status.json` mutation; build→debug is serial anyway. |
+
+**Decision: A (keep per-FID).** The one genuine cross-workflow case (BAR-166 Entry 4) is solved by Q3 staleness detection, not granularity.
+
+### Q3 — Staleness detection
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| A. Flat 2h threshold | Current. Misclassifies completed-but-orphaned locks. |
+| **B. Cross-check `status.json`** | Lock body carries `{workflow}`. Step 1 reads it, checks that workflow's last `status.json` entry: `done`/`failed` → clean silently; `in_progress` + last step <30min → Failure Path (genuine concurrent run); `in_progress` + last step ≥30min → clean and mark workflow failed. |
+| C. Tiered threshold (same-type vs cross-type) | Cheaper than B, coarser. Same-type 2h still misclassifies completed-recent orphans. |
+
+**Decision: B.** Eliminates both misclassification modes. The `{workflow}` field is already written, just never read.
+
+### Q4 — `status.json` orphan-on-dev cleanup scope
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| **A. Descope — #69 closed it** | Historical orphan entries on `dev` are inert once locks are fixed. |
+| B. Add cleanup pass | Step 1 scanner marks stale `dev` `IN_PROGRESS` entries as failed. Cosmetic gain; new code path with own failure modes. |
+| C. Verify only | Regression test asserting Step 1 makes zero `dev` commits across all 4 workflows. Cheap, but belongs to #69 followup. |
+
+**Decision: A (descope).**
+
+---
+
+### Q5 — `status.json` branch placement (new — supersedes parts of Q1)
+
+The asymmetry between dev-bound (plan/design) and PR-bound (build/debug/ship) workflows means one rule doesn't fit all:
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| A. Live on dev during the run (push every step) — all 5 workflows | Cleanest uniformity. Collapses cwd issue entirely. But build/debug push status to dev outside their PR — breaks the "every dev change reviewed" boundary. |
+| **B. Live on dev for plan/design only; feat for build/debug/ship** | Matches each workflow's existing dev/PR boundary. Plan/design already `git merge feat→dev` at close-workflow — status.json on dev mid-run is consistent. Build/debug/ship keep current behaviour. |
+| C. Stable Linear URLs only (status.json stays on feat for all) | Smallest surface. Doesn't actually solve cwd-mismatch class of bugs — just papers over the URL symptom. |
+| D. Symlink/cd-juggling per operation | Workable but adds cwd-switch boilerplate to every status mutation. |
+
+**Decision: B.** Plan/design = dev-bound (merge directly to dev, no PR). Build/debug/ship = PR-bound (dev only changes via squash-merge). Different rules because the workflows have different dev relationships.
+
+### Q6 — Linear comment URL for `status.json`
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| A. Always `{BRANCH}` (current = feat branch) | Status.json on feat resolves; on dev only post-merge. For plan/design under Q5-B, dev would always have status — feat link redundant. |
+| **B. Per-workflow: `dev` for plan/design, `{BRANCH}` for build/debug/ship** | Matches Q5-B. Plan/design Linear URLs are stable from Step 2 onwards; build/debug/ship URLs unchanged. |
+| C. Always `dev` | Build/debug status.json doesn't reach dev until ship squash-merge — links would 404 mid-run. |
+
+**Decision: B.**
+
+### Q7 — Push-failure / rebase-conflict policy (plan/design)
+
+Q5-B means plan/design push `status.json` to `origin/dev` on every status mutation. Failure modes:
+
+<!-- prettier-ignore -->
+| Option | Trade-off |
+| --- | --- |
+| A. Retry N times on non-FF, then Failure Path | Matches network/transient retry pattern in other workflows. Slightly more code. |
+| **B. `git pull --ff-only origin dev` before each push; failure → Failure Path with `status.json push failed`** | Same idiom as ship Step 7. Cheap, consistent. Concurrent same-FID runs are prevented by lock, so FF-only is normally safe. |
+| C. Best-effort (swallow push errors) | Status.json on dev silently drifts from local. Unacceptable. |
+
+**Decision: B.** Note: this *extends* #69, doesn't reverse it. #69 banned `dev` commits *pre-worktree*; Q5-B adds `dev` commits *post-worktree* that always push immediately, so the local-accumulation failure mode #69 fixed stays fixed.
+
+---
+
+### Final direction — implementation surface
+
+<!-- prettier-ignore -->
+| Workflow | `status.json` branch | `.lock` location | Linear `status.json` link |
+| --- | --- | --- | --- |
+| `bkit-plan`, `bkit-design` | `dev` (commit + push every step from `$REPO_ROOT` cwd) | `dev` working tree (= `$REPO_ROOT`) | `dev` (stable) |
+| `bkit-build`, `bkit-debug`, `bkit-ship` | `feat/{FID}` (current, unchanged) | `$REPO_ROOT/docs/plans/logs/{FID}/.lock` (absolute path) | `{BRANCH}` (= feat, unchanged) |
+| **All five** | — | Staleness check reads `status.json.[-1].steps[-1].at` for the lock's `{workflow}` before blocking | — |
+| **All five** | — | Failure Path asserts lock removal succeeded before exit | — |
+
+### Files to touch
+
+- `.agents/workflows.md` § Concurrency lock — replace bash snippet with absolute-path variant; replace flat-threshold with status.json cross-check; document Q5 branch placement per workflow.
+- `.agents/workflows/bkit-plan.md`, `bkit-design.md` — Step 2 onwards: status.json operations run via `git -C $REPO_ROOT`; every status commit followed by `git pull --ff-only origin dev && git push origin dev`; Linear comment URLs use `dev`.
+- `.agents/workflows/bkit-build.md`, `bkit-debug.md`, `bkit-ship.md` — Step 1 lock acquisition uses absolute path; Close-workflow + Failure Path release uses absolute path; Failure Path asserts removal.
+- All 5 workflows — Step 1 staleness check reads `status.json` to disambiguate stale-but-completed from genuine concurrent run.
+
+Ready to implement.
+
+## #74 — Ship workflow cancels feature CI run mid-flight (closed)
+
+<!-- linear-import: BAR-190 -->
+**Linear:** [BAR-190](https://linear.app/bartens/issue/BAR-190) · **Created:** 2026-05-12 · **Linear assignee:** christian@bartens.biz
+
+---
+
+## Severity
+
+**Urgent — silent CI-skip.** A feature can land on `origin/dev` without GitHub Actions ever fully running the test suite against the merge commit, and the workflow gives no signal. Spotted by accident on the gether-life 2026-05-12 ship (`bar-98-family-monitors`, PR #50).
+
+## What happened (verbatim incident reconstruction)
+
+The cascade that caused it:
+
+1. `docs/deployments.md` was modified on local `dev` **before** the ship workflow started. The pre-worktree step committed it as a regular commit (`d7cff8e6`) — **without** `[skip build] [skip ci]` tags, because those tags are only required for docs-only commits and the commit-message logic didn't enforce it.
+2. The PR squash merge landed on `origin/dev` (`816b4d58`) and triggered CI run **#784**. At this point, local `dev` had diverged from `origin/dev` by 1 commit (the docs commit vs the squash merge — both branched from the same base).
+3. Step 7 (Switch to Dev) rebased local `dev` onto `origin/dev` to reconcile the divergence, producing a new commit `60cda14d` (the docs change on top of the squash merge). This rebase commit was then pushed to `origin/dev`.
+4. That second push **cancelled CI run #784** — GitHub Actions cancels any in-progress run on a branch when a new push arrives. Run **#785** fired instead, but since `60cda14d` only changed a docs file, the CI's code-delta detection **skipped the run-tests job entirely** (vercel-build ran, tests were skipped).
+
+**Net result:** The feature merge commit (`816b4d58`) never got a complete CI run. The empty trigger commit had to be pushed manually to force a full test run — and only because the user happened to spot the missing run. On a less-attentive ship, the feature merges to `dev` with no full GH Actions validation and no surface signal.
+
+## Root causes (two)
+
+1. **Pre-worktree docs commit lacks** `[skip build] [skip ci]` when the only staged paths are under `docs/`. Should never have interfered with CI in the first place.
+2. **Step 7 rebase push lacks** `[skip ci]` when the rebased commit on top of `origin/dev` is docs-only. Even if root cause 1 is fixed, any subsequent docs-only push to `dev` immediately after a squash merge will cancel the in-flight feature CI run.
+
+## Proposed fix (both required)
+
+### Fix A — Step 2.1 (pre-worktree commit, all workflows)
+
+In `bkit-ship.md`, `bkit-build.md`, `bkit-debug.md` Step 2.1 (where the pre-worktree commit happens), inspect staged paths after `git add`. If every staged path is under `docs/` (or matches an explicit docs-only allow-list — `docs/`, `.agents/friction.md`), append `[skip build] [skip ci]` to the commit message. The 1.1.2 fix on `bkit-design`/`bkit-plan` narrowed the `git add` allow-list but did **not** add the skip-tag enforcement.
+
+```bash
+git add -- <allow-list>
+if git diff --cached --quiet; then
+  : # nothing staged
+elif git diff --cached --name-only | grep -qvE '^(docs/|\.agents/friction\.md$)'; then
+  git commit -m "chore({FID}): pre-worktree uncommitted changes"
+else
+  git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
+fi
+```
+
+### Fix B — Step 7 Switch-to-Dev rebase push
+
+After `git pull --ff-only origin dev` (or rebase) in `bkit-ship.md` Step 7, if the local dev tip's diff vs `origin/dev`'s pre-pull tip is docs-only, amend the commit message (or push with `--push-option=ci.skip` where supported) to add `[skip ci]`. If amending is unsafe (e.g. rebase produced multiple commits), prefer the safer route: detect docs-only-ahead **before** push and rewrite via `git commit --amend -m "$(git log -1 --format=%B) [skip ci]"`.
+
+**Cross-reference:** This is the upstream cause of the existing friction entries:
+
+* "Docs-only pre-worktree commit pushed to dev without \[skip ci\], cancelling feature CI run" ([BAR-98](https://linear.app/bartens/issue/BAR-98/ws-6-family-monitors), OPEN)
+* "Local dev 1 commit ahead of origin/dev after squash-merge" ([BAR-136](https://linear.app/bartens/issue/BAR-136/ws-11-outbound-summary-email), RECOVERED)
+* partly: "Tracked tsbuildinfo.json causes dev divergence on ff-only pull" ([BAR-96](https://linear.app/bartens/issue/BAR-96/ws-4-auto-tagging-engine-and-override-memory)/[BAR-97](https://linear.app/bartens/issue/BAR-97/ws-5-family-lifecycle-and-switcher), RECOVERED — same Step 2.1 broad-add shape)
+
+## Detection guard (defence in depth)
+
+After Step 7 push, before close-workflow, assert that **a CI run exists for the squash-merge SHA** AND **its run-tests job completed successfully** (not skipped, not cancelled):
+
+```bash
+SQUASH_SHA=$(gh pr view "{PR_NUMBER}" --json mergeCommit -q .mergeCommit.oid)
+RUN_STATUS=$(gh run list --branch dev --commit "$SQUASH_SHA" --json status,conclusion,jobs -L 1)
+# fail close-workflow if tests job is skipped/cancelled/missing
+```
+
+If absent or skipped/cancelled → **Failure Path** with a clear "feature merge has no test-validated CI run" reason. Forces a manual rerun decision instead of silently shipping.
+
+## DoD
+
+- [ ] Fix A: pre-worktree commits in `bkit-ship.md`, `bkit-build.md`, `bkit-debug.md` Step 2.1 append `[skip build] [skip ci]` iff every staged path is docs-only.
+- [ ] Fix B: Step 7 Switch-to-Dev in `bkit-ship.md` rewrites docs-only commit messages on local dev to include `[skip ci]` before push.
+- [ ] Detection guard: `bkit-ship.md` close-workflow asserts the PR's squash-merge SHA has a green run-tests CI run before completing; failure → Failure Path with explicit reason string.
+- [ ] Regression test or scripted scenario reproducing the cascade above (`docs` edit on dev → ship → cancelled #784 → docs-only #785 with skipped tests) and verifying the fix prevents it.
+- [ ] Friction entries (`Docs-only pre-worktree commit pushed to dev without [skip ci]`, `Local dev 1 commit ahead of origin/dev`) marked `FIXED-IN: BAR-{this}` once shipped.
+
+## Out of scope
+
+* Disabling GH Actions's "cancel in-progress on new push" concurrency rule — that's the correct default; the fix is to make sure docs-only follow-up pushes carry `[skip ci]` so they don't trigger a new run at all.
+
+## References
+
+* gether-life PR #50, squash-merge `816b4d58`, cancelled CI run #784, replacement run #785 (run-tests skipped)
+* #61 (workflow friction optimisation — parent topic) — friction sweep 2026-05-12 surfaced this as the highest-leverage open cluster.
+* `bkit-ship.md:142` (Step 2.1 commit), `bkit-ship.md:419-427` (Step 7 Switch-to-Dev)
+
+<!-- linear-links-start -->
+**Links:**
+
+- **Related:** [BAR-136](https://linear.app/bartens/issue/BAR-136) _(not imported)_, #61 ([BAR-155](https://linear.app/bartens/issue/BAR-155)), #99 ([BAR-230](https://linear.app/bartens/issue/BAR-230)), [BAR-96](https://linear.app/bartens/issue/BAR-96) _(not imported)_, [BAR-97](https://linear.app/bartens/issue/BAR-97) _(not imported)_, [BAR-98](https://linear.app/bartens/issue/BAR-98) _(not imported)_
+<!-- linear-links-end -->
+
+<!-- linear-comment: 07d01ce0-f103-4544-9f23-2904819bd581 -->
+**@christian (Linear, 2026-05-12):**
+
+## Shipped on `dev` — commit `3d2b665`
+
+All three sub-fixes from the DoD landed:
+
+**Fix A — Pre-worktree docs-only `[skip ci]` enforcement**
+
+- `bkit-ship.md` Step 2.1 tightened to allow-list `docs/ .agents/friction.md` (was deny-list — let `apps/web/.cache/tsbuildinfo.json` and other build cache through). Commit message now always `chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]`.
+- `bkit-design.md`, `bkit-plan.md`, `bkit-build.md` Step 2.1 pre-worktree commit message also tagged `[skip build] [skip ci]` for cross-workflow consistency. (These workflows don't push mid-flight, but defensive tagging costs nothing and aligns the pattern.)
+
+**Fix B — Step 7 Switch-to-Dev amend logic**
+
+- `bkit-ship.md` Step 7 sub-step 1: when local `dev` is AHEAD of `origin/dev`, inspect commit messages. If every ahead commit is `[skip ci]`-tagged → `git pull --rebase origin dev` + `git push origin dev` silently (rebase preserves the `[skip ci]` tag so no new CI run fires on the push). If any non-skip-ci commit ahead → Failure Path with explicit reconciliation message.
+
+**Fix C — Detection guard at Close Workflow**
+
+- `bkit-ship.md` Step 11 new sub-step 2 (renumbered subsequent items): asserts the squash-merge SHA's CI run via `gh run list --commit "$SQUASH_SHA"`:
+  - Missing run → fail.
+  - Run cancelled → fail.
+  - Any job matching `test*` skipped → fail.
+- New Gate 11 checklist item: "Squash-merge CI run completed `run-tests` (not cancelled, not skipped)".
+- Failure routes to standard Failure Path with explicit "feature merge not test-validated" reason — forces a manual rerun decision instead of silently shipping.
+
+**Scope notes**
+
+- Cascade is ship-only — `build`/`debug`/`design`/`plan` cannot trigger it because they never put `dev` into "CI running" state (no squash merge). Detection guard is therefore ship-only.
+- Friction entries removed in the same commit (already deduplicated in the #61 sweep):
+  - "Docs-only pre-worktree commit pushed to dev without [skip ci]" (BAR-98)
+  - "Tracked tsbuildinfo.json causes dev divergence on ff-only pull" (BAR-96/97, both copies)
+  - "Local dev 1 commit ahead of origin/dev after squash-merge" (BAR-136)
+- Out of DoD: regression test scripting the full cascade (`docs` edit on dev → ship → cancelled #784 → docs-only #785). Deferred — current fix is mechanical and inspectable; can add a scripted scenario later if recurrence appears.
+
+Closing as Done.
