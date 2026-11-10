@@ -31,3 +31,10 @@ The owner reviewed sample questions rendered from the plan and answered "fix the
   - Decision: 895-shared-question-shape
 - **Gap 5 — Assumption A2 (each option line shows on its own line):** unchanged; still unverified.
   - Decision: none
+
+## Stop wording and default lines
+
+- **The mid-run `Stop` option and the reply line's stop sentence said it differently:** the owner answered "align as well". Both now read "ends here with a handover; the next run resumes here": the option `Stop — the run ends here with a handover; the next run resumes here`, the sentence `"stop" ends here with a handover; the next run resumes here.`
+  - Decision: 895-shared-question-shape
+- **The Loop Question and Merge Question each carry a `Default if unanswered: the run waits for you` line, though they are only asked when someone can answer:** the owner answered "that is ok". No change.
+  - Decision: none
