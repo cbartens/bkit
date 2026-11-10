@@ -67,3 +67,11 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T06:05:48Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"630590c6a7289dadfdbb542a6e1cc9da47a5a940714c1e8d48f409dd1ac967a6","ref":"https://github.com/cbartens/bkit/issues/849#issuecomment-6760359200","at":"2026-11-10T06:05:50Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-10T06:05:50Z","parentSha":"f6914f3c9c88e68faa4b8806406c0d562d2d6c7c","artifacts":["docs/plans/202611/logs/849-keep-local-dev/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:27:34Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:28:47Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:32:49Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:34:20Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:34:49Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:34:53Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"c13e1e845dbb5dac8e460973123db2fc64fc51dde122d86afe990227431a980d","ref":"https://github.com/cbartens/bkit/issues/849#issuecomment-6760359200","at":"2026-11-10T06:34:55Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-10T06:34:55Z","parentSha":"e27e0dbf1c149dd3de1f547f5f98c85b82a6f01d","artifacts":["docs/plans/202611/logs/849-keep-local-dev/plan-v1-draft.md","docs/plans/202611/logs/849-keep-local-dev/plan-generate-check.md"],"attempt":1}
