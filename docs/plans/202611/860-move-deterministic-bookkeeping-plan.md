@@ -123,6 +123,7 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | keeps invocation events and engine-call rows inside the issuing worktree after receipt loss | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 10 |
 | refuses to issue an invocation into a status file outside the issuing checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 11 |
 | starts a step clock at the previous step row, not at an invocation row | Unit | `.bkit/core/engine/commands/workflow/run-facts.test.ts` | 11 |
+| accepts verified unavailable model without confusing configured and observed models | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 12 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -318,7 +319,7 @@ All following files were found and read; no new source module is required. `E` i
 
 - Extend `steps stub` with proposed `--result-file` structured-result mode; `--from` remains required only for legacy copy mode, `--to` remains destination. Agent/result kind comes from invocation or explicit standalone `--agent`. Reuse `promptHeader`, `readHeader`, `parseFindings` and existing finish/gates. No `steps seed` command or separate serializer noun.
 - Deterministically render headers/body/counts for registered result kinds; map each declared field to a derivation or explicit judgment. Preserve special verdict rules, incomplete finding exclusion and immediate critical-finding failure. Store and validate result/body fingerprint at `steps verdict/finish`; stale edits regenerate explicitly or reject before DONE. Missing evidence never produces PASS.
-- Audit mode takes structured findings plus coverage and explicit prior-key/closure/grouping judgments once. Export its common validator/derivation API from existing `issues.ts`, which steps already imports; both steps rendering and comment result-file mode consume that API, with no issues→steps import or duplicated validator. Derive report-local IDs, counts, source links and ledger payloads; expose prior-key candidates without deciding equivalence. A runless audit/utility caller first obtains Task 1's explicit standalone binding and Task 4's operation receipts. All audit ledger writes use receipt-aware append; all tracker posting uses the existing publisher/#826 semantics. Group 2 finishes with `pnpm build` and compiled CLI result-render/comment smoke probes to catch import cycles before Group 3.
+- Audit mode takes structured findings plus coverage and explicit prior-key/closure/grouping judgments once. Export its common validator/derivation API from existing `issues.ts`, which steps already imports; both steps rendering and comment result-file mode consume that API, with no issues→steps import or duplicated validator. Derive report-local IDs, counts, source links and ledger payloads; expose prior-key candidates without deciding equivalence. A runless audit/utility caller first obtains Task 1's explicit standalone binding and Task 4's operation receipts. All audit ledger writes use receipt-aware append; all tracker posting uses the existing publisher/#826 semantics. Group 3 finishes with `pnpm build` and compiled CLI result-render/comment smoke probes to catch import cycles before Group 4.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/runs.ts`, `.bkit/core/engine/commands/workflow/counters.ts`, `.bkit/core/engine/ledgers/status.ts`
 
@@ -365,7 +366,7 @@ Code-only — `git revert` of the implementation commits is sufficient after act
 
 ## Agent Execution Runbook
 
-Nine tasks in three groups. Maximum actual group size is three tasks and ten TEST FIRST cases, below the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate. Shared pieces with #836 (`docs/plans/202611/836-record-host-model-plan.md`) are built once: before Tasks 1, 4 and the commit-helper wiring in Task 4, check what #836 has landed (invocation record and receipt, the locked read-back status/ledger append boundary, current operation context for commit helpers); whichever lands first creates it, and this plan extends it without a second copy. Build #860 Task 4 and #836 Task 6 one after the other, never in parallel.
+Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen TEST FIRST cases, within the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate. Shared pieces with #836 (`docs/plans/202611/836-record-host-model-plan.md`) are built once: before Tasks 1, 4 and the commit-helper wiring in Task 4, check what #836 has landed (invocation record and receipt, the locked read-back status/ledger append boundary, current operation context for commit helpers); whichever lands first creates it, and this plan extends it without a second copy. Build #860 Task 4 and #836 Task 6 one after the other, never in parallel.
 
 <!-- bkit:group 1 start -->
 
@@ -464,7 +465,23 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:group 2 start -->
 
-### TASK GROUP 2: Replay-safe writes and shared result rendering
+### TASK GROUP 2: Close the group 1 quality gate
+
+<!-- bkit:task 12 start -->
+
+- [ ] **TASK 12:** Retype the one planned test call that fails the slop check (owner decision, build decision 3; closes the group 1 quality-gate gap).
+  - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: the owner approved changing the call in `accepts verified unavailable model without confusing configured and observed models` from `writerProblem(unavailable as unknown as Record<string, unknown>)` to a call that passes a plain object, the way the other `writerProblem` calls in the file do, with no `as unknown as` cast. Keep every expectation of that test.
+  - **DEPENDS ON:** 2.
+  - **DONE WHEN:** The test no longer contains a double type cast, every expectation of it is unchanged and it passes, `pnpm bkit:slop:delta` reports no net-new finding for `telemetry.test.ts`, and `bkit:gate:static-unit` passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/telemetry.test.ts` `accepts verified unavailable model without confusing configured and observed models` fails on the slop check flagging its double type cast (the test itself passes before and after, so it may be reported unproven and left for the owner at Step 15).
+
+<!-- bkit:task 12 end -->
+<!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Replay-safe writes and shared result rendering
 
 <!-- bkit:task 4 start -->
 
@@ -515,18 +532,18 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.test.ts`: audit result comments and tracker modes.
   - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: real structured artifact → append → comment-draft flow.
   - **DEPENDS ON:** 3, 4, 5.
-  - **DONE WHEN:** The one issues-owned validated audit contract supplies report/header/ledger/comment counts and IDs without an import cycle or duplicated validator; coverage/links and explicit semantic judgments agree, supported tracker/none contracts stay intact and all three named tests pass. Starting with no active run/status/FID, the real-files audit obtains standalone invocation/operation context, renders, appends and drafts its comment, then replays publication without duplicate rows. `pnpm build` and compiled CLI result/comment smoke probes pass within Group 2 before Group 3 begins.
+  - **DONE WHEN:** The one issues-owned validated audit contract supplies report/header/ledger/comment counts and IDs without an import cycle or duplicated validator; coverage/links and explicit semantic judgments agree, supported tracker/none contracts stay intact and all three named tests pass. Starting with no active run/status/FID, the real-files audit obtains standalone invocation/operation context, renders, appends and drafts its comment, then replays publication without duplicate rows. `pnpm build` and compiled CLI result/comment smoke probes pass within Group 3 before Group 4 begins.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/steps.test.ts` `derives audit IDs totals ledger payloads and coverage from one result` fails on unstable local IDs, duplicated manually supplied counts or lost not-checked coverage.
     - `.bkit/core/engine/commands/workflow/issues.test.ts` `renders audit comments from validated result and preserves tracker adapters` fails on divergent counts/links or a result path bypassing existing provider/none formatting.
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps rendered audit report appended rows and tracker draft counts identical` fails on a real runless audit/utility flow (no FID/status/active run) lacking issuance/receipt prerequisites, actual persisted rows disagreeing with result-derived artifact/comment, duplicate replay events or compiled CLI import-cycle failure; exercise the standalone variants from Tasks 1/4.
 
 <!-- bkit:task 6 end -->
-<!-- bkit:group 2 end -->
+<!-- bkit:group 3 end -->
 
-<!-- bkit:group 3 start -->
+<!-- bkit:group 4 start -->
 
-### TASK GROUP 3: Durable continuation and maintained caller contracts
+### TASK GROUP 4: Durable continuation and maintained caller contracts
 
 <!-- bkit:task 7 start -->
 
@@ -625,7 +642,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs and upgrades fresh consumers with deterministic bookkeeping contracts` fails on source/rendered/compiled CLI drift or fresh consumer invocation/query/result/receipt/recovery probes producing divergent rows, limits or attribution.
 
 <!-- bkit:task 9 end -->
-<!-- bkit:group 3 end -->
+<!-- bkit:group 4 end -->
 
 The required shared wording in Task 9 is copied from #860:
 
@@ -661,7 +678,7 @@ Documentation verification: Task 9 covers every Documentation Updates row and ge
 
 - [ ] **Static:** `pnpm instructions:sync`, `pnpm cli:sync`, instruction coverage/source checks, command help/catalog parity and syntax/prose/format checks.
 - [ ] **Unit:** The matrix's command/codec/field/identity cases, plus impacted existing steps/challenge/locks/tracker/status/run-facts/host/model tests. Keep tests out of production tsconfig inputs.
-- [ ] **Integration:** Real temporary git repositories/worktrees/files, direct journal/owner-pause competing writers, append concurrency and fault checkpoints, standalone audit/utility replay without a fabricated run, durable correction/CI resume and local bare-remote commit/push reconciliation. Check actual artifact/ledger/comment equality and fresh-consumer install/upgrade. Group 2's compiled CLI import-cycle probe must pass before Group 3. Ground truth includes exact ledger bytes/lineage/offsets, remote SHA, reachable retrigger count, owned tree contents, receipts and status events, not only exit status.
+- [ ] **Integration:** Real temporary git repositories/worktrees/files, direct journal/owner-pause competing writers, append concurrency and fault checkpoints, standalone audit/utility replay without a fabricated run, durable correction/CI resume and local bare-remote commit/push reconciliation. Check actual artifact/ledger/comment equality and fresh-consumer install/upgrade. Group 3's compiled CLI import-cycle probe must pass before Group 4. Ground truth includes exact ledger bytes/lineage/offsets, remote SHA, reachable retrigger count, owned tree contents, receipts and status events, not only exit status.
 - [ ] **Full Local Gate Suite:** Deepest applicable `bkit:gate:static-unit-integration`, `pnpm build` and `bkit check`; follow existing awake wrapper/machine-lock scripts. No new migration, UI E2E or live provider lane is introduced; unchanged network calls remain exercised by existing provider fixtures and contracts.
 - [ ] **Test Synchronization:** All 27 matrix cases belong to one task and run at their owning task. New files are unnecessary; reuse existing fixtures and maintain five-host/four-tracker rendered parity.
 
