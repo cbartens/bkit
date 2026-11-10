@@ -2983,7 +2983,7 @@ describe("verified model attribution", () => {
       by: subagentBy({ modelSource: "unavailable", configuredModel: "sonnet" }),
     });
     expect(validate(unavailable).ok).toBe(true);
-    expect(writerProblem(unavailable as unknown as Record<string, unknown>)).toBeUndefined();
+    expect(writerProblem({ ...unavailable })).toBeUndefined();
 
     // The configured pin is never recorded as the runtime model.
     const pinAsRuntime = knowledgeEvent("k", {
