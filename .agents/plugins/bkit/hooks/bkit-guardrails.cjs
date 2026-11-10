@@ -587,6 +587,12 @@ function hookContext(payload) {
   return { cwd, root };
 }
 
+/** This process's own CPU time in ms; scheduler contention does not inflate it. */
+function cpuMs() {
+  const u = process.cpuUsage();
+  return (u.user + u.system) / 1000;
+}
+
 function newEvidence(ctx) {
   const cwd = path.resolve((ctx && ctx.cwd) || process.cwd());
   const root = path.resolve((ctx && ctx.root) || (ctx && ctx.cwd) || process.cwd());
@@ -599,7 +605,8 @@ function newEvidence(ctx) {
     limit: null,
     halted: false,
     commands: 0,
-    deadline: Date.now() + EVIDENCE_LIMITS.deadlineMs,
+    startWall: Date.now(),
+    startCpu: cpuMs(),
   };
 }
 
@@ -611,7 +618,12 @@ function evidenceLimit(st, reason, halt = true) {
 
 function evidenceExpired(st) {
   if (st.halted) return true;
-  if (Date.now() > st.deadline) {
+  // The deadline counts the process's own CPU time, so machine load cannot trip it;
+  // a wall-clock backstop (4x) still bounds a stalled process.
+  if (
+    cpuMs() - st.startCpu > EVIDENCE_LIMITS.deadlineMs ||
+    Date.now() - st.startWall > EVIDENCE_LIMITS.deadlineMs * 4
+  ) {
     evidenceLimit(st, "deadline");
     return true;
   }

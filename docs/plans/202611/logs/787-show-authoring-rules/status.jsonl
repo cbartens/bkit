@@ -609,3 +609,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:06Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/4/comment","hash":"eabbb9e20f2f2efd1ba269c2c2a1ed94f3588576e2212e014b78601b80cdc3da","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6760267219","at":"2026-11-10T05:59:09Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-10T05:59:09Z","parentSha":"13a13c0a1d82e4f2793394bcd58d204710e94535","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-holistic-4.md"],"verdict":"CONCERNS","attempt":4,"failures":3}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:23Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:24Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:25Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:26Z","noun":"counters","verb":"route","flags":["name","of","since-clean","file","workflow","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T05:59:34Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:00:46Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:29:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate-holistic/-/4/comment","hash":"79732897584ce8cd408162a7d9fcecc8814fb42ea9e35225efd2709b95d553e1","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6760267219","at":"2026-11-10T06:29:03Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate-holistic","status":"DONE","at":"2026-11-10T06:29:03Z","parentSha":"42fbdeba95fa5221dce3f10ed9c2b585e6d13f69","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-gaps-remediate-holistic-4-log.md"],"verdict":"CONCERNS","attempt":4,"strategy":"FINAL"}
