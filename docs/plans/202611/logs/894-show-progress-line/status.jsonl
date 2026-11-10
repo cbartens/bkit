@@ -36,3 +36,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:37Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"b160ed42a88d8cb5416bc43e3dd435d90b84a1e0efc264b4627c1b21128b3c61","ref":"https://github.com/cbartens/bkit/issues/894#issuecomment-6760643072","at":"2026-11-10T07:11:40Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T07:11:40Z","parentSha":"28cfdea4d0769e9adde8297e10d7a3233b70cadb","artifacts":["docs/plans/202611/logs/894-show-progress-line/plan-v2-reviewed.md","docs/plans/202611/logs/894-show-progress-line/plan-update-check.md"],"verdict":"PASS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:52Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:53Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:57Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:11:57Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:12:04Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"3724791f6f4cf2b6bf82268b3348219186d2a765e1a2d6d7a4c33bd048167ef5","ref":"https://github.com/cbartens/bkit/issues/894#issuecomment-6760643072","at":"2026-11-10T07:12:07Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-10T07:12:07Z","parentSha":"9d8531cfb85f1ce891ad4105736b4d6b939a7c60","artifacts":["docs/plans/202611/logs/894-show-progress-line/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
