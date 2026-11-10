@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { buildSummary, NEXT_STEP, refOf, type SummaryInput } from "./summary";
@@ -1079,5 +1081,24 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("KEEP-ACTION");
     expect(s.markdown).not.toContain("UNTRUSTED-ACTION");
     expect(s.markdown).not.toContain("UNTRUSTED-SECTION-ACTION");
+  });
+
+  it("a plan built from the unfilled bkit-plan.md template yields no documentation warning", () => {
+    const template = fs.readFileSync(
+      path.resolve(__dirname, "../../../docs/templates/bkit-plan.md"),
+      "utf8",
+    );
+    const filled = template.replace(/(## Documentation Warnings\n\n)\[[^\n]*\]/, "$1None");
+    expect(filled).not.toBe(template);
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "plan-write", verdict: "PASS", artifacts: ["log/plan.md"] },
+        ],
+        read: reader({ "log/plan.md": filled }),
+      }),
+    );
+    expect(s.markdown).not.toContain("**security** (starter-only)");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
   });
 });

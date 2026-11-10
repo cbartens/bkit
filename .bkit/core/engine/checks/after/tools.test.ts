@@ -685,4 +685,42 @@ describe("detectProjectDocs", () => {
     // Sync either registered the doc (no advisory) or the advisory must not promise upgrade will.
     expect(promised).not.toContain("bkit upgrade");
   });
+
+  it("reports an ambiguous legacy wrapper left in a project document", () => {
+    writeDoc(
+      "docs/security.md",
+      "<!-- bkit:start -->\n# Security\n\nAuth uses session cookies issued by the api service.\n",
+    );
+    writeIndex([{ doc: "docs/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const text = allText(findings);
+    expect(text).toContain("docs/security.md");
+    expect(text).toContain("bkit:start");
+    const cleanup = findings.find((f) => f.detect.includes("bkit:start"));
+    expect(cleanup).toBeDefined();
+    expect(cleanup!.severity).toBe("advisory");
+  });
+
+  it("reports an index row through a regular file as ambiguous instead of throwing", () => {
+    fs.writeFileSync(path.join(tmpDir, "README.md"), "# readme\n");
+    writeIndex([{ doc: "README.md/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+  });
+
+  it("reports a NUL-byte index path as ambiguous instead of throwing", () => {
+    writeIndex([{ doc: "docs/a\u0000/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+  });
 });
