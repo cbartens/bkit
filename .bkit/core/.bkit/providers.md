@@ -421,7 +421,7 @@ Arbitrary custom or MCP tools are not inferred from a generic tool name.
 
 **Customized drivers.** A customized outer driver stays consumer-owned. When the managed block cannot carry the new behavior through it, the install is not equivalent to the default. Name the exact wiring boundary in your own docs.
 
-**Response budgets.** The engine adds only complete per-file blocks, and counts the whole added context: the shell introduction, the blocks and the notices. It reserves 512 characters (Claude) or bytes (the others) of the budget for notices.
+**Response budgets.** The engine adds only complete per-file blocks, and counts the whole added context: the shell introduction, the blocks and the notices. It reserves 512 characters (Claude, OpenCode) or bytes (the others) of the budget for notices. Composed shell advice counts its own text, so the omitted-target notice is sized exactly instead.
 
 <!-- prettier-ignore -->
 | Host | Budget | Basis |
@@ -429,7 +429,7 @@ Arbitrary custom or MCP tools are not inferred from a generic tool name.
 | Claude | 8,000 characters | Below the documented 10,000-character spill threshold. |
 | Codex | 2,000 UTF-8 bytes | Below the documented default of about 2,500 tokens. |
 | Cursor, Antigravity | 2,000 bytes | Provisional until the route is verified. |
-| OpenCode | none | No before-edit advisory route. |
+| OpenCode | 8,000 characters | Same limit as Claude (`ADVICE_BUDGETS.opencode`). |
 
 These are conservative limits, not measured visibility guarantees. A target whose block does not fit is left unacknowledged, so a later exact edit warns again. The shell path inspects at most 256 KiB of command text, 64 KiB per directly named script, nesting depth 3 and 64 exact targets, with a cooperative 200 ms deadline. Each rendered shell hook must finish within the smaller of one second and a quarter of its host's documented timeout.
 

@@ -79,11 +79,21 @@ function decideShell(cmd, dirs, ctx, session) {
       return ask(
         `bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
-    case "fetch":
+    case "fetch": {
+      const fetchNote = `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}`;
+      if (!v.edits) return ask(fetchNote);
       return ask(
-        `bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${c}` +
-          (v.edits ? `\n\n${shellEditAdvisory(v.edits)}` : ""),
+        `${fetchNote}\n\n${shellEditContext(
+          shellEditAdvisory(v.edits),
+          v.edits,
+          ctx,
+          session,
+          undefined,
+          ADVICE_BUDGETS.codex,
+          fetchNote,
+        )}`,
       );
+    }
     default:
       // Shell-as-edit-channel: advisory on every host, never a block.
       return ask(

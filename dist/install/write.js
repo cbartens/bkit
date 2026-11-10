@@ -140,8 +140,8 @@ export function deepMergeJson(base, override) {
 //
 //   - Objects: merge like deepMergeJson (template keys first, consumer-only keys appended)
 //   - Lists of plain values: template entries in template order, then consumer-only entries
-//   - Lists of objects (hook groups): a consumer group sharing a hook `command` with a
-//     template group is replaced by it; other consumer groups follow the template's groups
+//   - Lists of objects (hook groups): a consumer group sharing a hook `command`, or the same
+//     bkit hook file (`bkit-*.cjs`), with a template group is replaced by it; other consumer groups follow the template's groups
 //   - Anything else: the template wins
 // ---------------------------------------------------------------------------
 function isPlainObject(v) {
@@ -160,19 +160,32 @@ function groupCommands(group) {
     }
     return out;
 }
+// The bkit hook file a command runs (`bkit-gateguard.cjs`, `bkit-preflight.sh`, ...), so an
+// older spelling of the same bkit hook is still recognised as bkit's own.
+function bkitHookFile(command) {
+    return /\bbkit-[a-z0-9-]+\.(?:cjs|js|sh)\b/.exec(command)?.[0];
+}
 function mergeManagedList(base, override) {
     const objectLists = [...base, ...override].every((e) => isPlainObject(e));
     if (objectLists) {
         const templateCommands = new Set();
         for (const g of override) {
-            for (const c of groupCommands(g))
+            for (const c of groupCommands(g)) {
                 templateCommands.add(c);
+                const file = bkitHookFile(c);
+                if (file)
+                    templateCommands.add(`bkit-file:${file}`);
+            }
         }
         const templateKeys = new Set(override.map((g) => JSON.stringify(g)));
         const kept = base.filter((g) => {
             if (templateKeys.has(JSON.stringify(g)))
                 return false;
-            return !groupCommands(g).some((c) => templateCommands.has(c));
+            return !groupCommands(g).some((c) => {
+                const file = bkitHookFile(c);
+                return (templateCommands.has(c) ||
+                    (file !== undefined && templateCommands.has(`bkit-file:${file}`)));
+            });
         });
         return [...override, ...kept];
     }

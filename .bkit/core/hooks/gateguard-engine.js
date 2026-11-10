@@ -301,8 +301,7 @@ const ADVICE_BUDGETS = {
   antigravity: { limit: 2000, unit: "bytes" },
   opencode: { limit: 8000, unit: "chars" },
 };
-
-const ADVICE_NOTICE_RESERVE = 300;
+const ADVICE_NOTICE_RESERVE = 512;
 
 function adviceSize(text, unit) {
   return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
