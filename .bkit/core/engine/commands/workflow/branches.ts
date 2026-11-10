@@ -19,7 +19,13 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
+import {
+  actionHash,
+  actionKey,
+  alreadyDone,
+  recordAction,
+  withTargetLock,
+} from "../../ledgers/status.js";
 import {
   bodySkipToken,
   classifyLockExit,
@@ -2563,13 +2569,16 @@ function restoreBranchRows(dir: string, branch: string): void {
   for (const p of changed) {
     const before = new Set(revLines(dir, base, p));
     const file = path.join(dir, p);
-    const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-    const have = new Set(text.split("\n").map((l) => l.trim()));
-    const missing = revLines(dir, branch, p).filter((l) => !before.has(l) && !have.has(l));
-    if (missing.length === 0) continue;
-    const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, `${sep}${missing.join("\n")}\n`);
+    const wrote = withTargetLock(file, () => {
+      const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+      const have = new Set(text.split("\n").map((l) => l.trim()));
+      const missing = revLines(dir, branch, p).filter((l) => !before.has(l) && !have.has(l));
+      if (missing.length === 0) return false;
+      const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
+      fs.appendFileSync(file, `${sep}${missing.join("\n")}\n`);
+      return true;
+    });
+    if (!wrote) continue;
     runGit(dir, ["add", "--", p]);
   }
 }

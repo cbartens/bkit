@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
-import { actionHash, actionKey, alreadyDone, recordAction } from "../../ledgers/status.js";
+import { actionHash, actionKey, alreadyDone, recordAction, withTargetLock, } from "../../ledgers/status.js";
 import { bodySkipToken, classifyLockExit, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, testsLockHolder, wholeNumber, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
@@ -2107,14 +2107,18 @@ function restoreBranchRows(dir, branch) {
     for (const p of changed) {
         const before = new Set(revLines(dir, base, p));
         const file = path.join(dir, p);
-        const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-        const have = new Set(text.split("\n").map((l) => l.trim()));
-        const missing = revLines(dir, branch, p).filter((l) => !before.has(l) && !have.has(l));
-        if (missing.length === 0)
+        const wrote = withTargetLock(file, () => {
+            const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+            const have = new Set(text.split("\n").map((l) => l.trim()));
+            const missing = revLines(dir, branch, p).filter((l) => !before.has(l) && !have.has(l));
+            if (missing.length === 0)
+                return false;
+            const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
+            fs.appendFileSync(file, `${sep}${missing.join("\n")}\n`);
+            return true;
+        });
+        if (!wrote)
             continue;
-        const sep = text !== "" && !text.endsWith("\n") ? "\n" : "";
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        fs.appendFileSync(file, `${sep}${missing.join("\n")}\n`);
         runGit(dir, ["add", "--", p]);
     }
 }

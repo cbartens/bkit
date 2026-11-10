@@ -500,6 +500,239 @@ export function recordAction(
   return row;
 }
 
+// ---------------------------------------------------------------------------
+// Ledger operations — a bookkeeping write that must survive a lost response. One
+// operation id names one request (its hash): the same id and hash replays the
+// original receipt, the same id with another hash is refused, and a new id on the
+// same ledger key is a deliberate later update. This is stricter than the generic
+// action policy above, where the same key with a changed hash acts again.
+// ---------------------------------------------------------------------------
+
+/** The operations store, relative to a book root; `.bkit/*.jsonl` is allow-listed and unioned. */
+export const LEDGER_OPERATIONS_FILE = path.join(".bkit", "ledger-operations.jsonl");
+
+const ledgerOpKey = (operation: string) => actionKey("ledger-op", operation);
+
+export type LedgerOperationState =
+  { state: "new" } | { state: "replay" | "conflict"; row: EngineActionRow };
+
+/** Where `operation` stands in `file`: unseen, done with this request, or used for another. */
+export function ledgerOperation(
+  file: string,
+  operation: string,
+  hash: string,
+): LedgerOperationState {
+  const known = engineActions(file)
+    .filter((r) => r.key === ledgerOpKey(operation))
+    .at(0);
+  if (known === undefined) return { state: "new" };
+  return { state: known.hash === hash ? "replay" : "conflict", row: known };
+}
+
+/**
+ * Record the receipt of a finished ledger operation. A known operation with the same
+ * hash returns its original row unchanged; one with another hash throws and writes nothing.
+ * `detail` rides on the row so a replay can return the original effect.
+ */
+export function recordLedgerOperation(
+  file: string,
+  a: { operation: string; hash: string; ref: string | null; detail?: Record<string, unknown> },
+): EngineActionRow {
+  const known = ledgerOperation(file, a.operation, a.hash);
+  if (known.state === "conflict")
+    throw new Error(`ledger operation ${a.operation} was already used for a different request`);
+  if (known.state === "replay") return known.row;
+  const row = {
+    ...recordRow({
+      action: "ledger-append",
+      key: ledgerOpKey(a.operation),
+      hash: a.hash,
+      ref: a.ref,
+    }),
+    ...(a.detail === undefined ? {} : { detail: a.detail }),
+  };
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(file, appendLine(row));
+  return row;
+}
+
+const recordRow = (a: {
+  action: string;
+  key: string;
+  hash: string;
+  ref: string | null;
+}): EngineActionRow => ({ type: ENGINE_ACTION, ...a, at: statusTimestamp() });
+
+/** The exact bytes an operation prepared, written before the target is touched. */
+export type LedgerIntent = {
+  type: "ledger-intent";
+  operation: string;
+  hash: string;
+  /** Target path relative to the book root. */
+  file: string;
+  offset: number;
+  bytes: number;
+  block: string;
+  at: string;
+};
+
+function intentRows(file: string): LedgerIntent[] {
+  if (!fs.existsSync(file)) return [];
+  const out: LedgerIntent[] = [];
+  for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+    if (line.trim() === "") continue;
+    const parsed = parseJson(line);
+    if (!parsed.ok) continue;
+    const r = parsed.value as Partial<LedgerIntent> | null;
+    if (r?.type === "ledger-intent" && typeof r.operation === "string") out.push(r as LedgerIntent);
+  }
+  return out;
+}
+
+/** Record the prepared bytes of an operation before writing them. */
+export function recordLedgerIntent(file: string, intent: Omit<LedgerIntent, "type" | "at">): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const row: LedgerIntent = { type: "ledger-intent", ...intent, at: statusTimestamp() };
+  fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+}
+
+/** The latest prepared intent of `operation`, or undefined. */
+export function ledgerIntent(file: string, operation: string): LedgerIntent | undefined {
+  return intentRows(file)
+    .filter((i) => i.operation === operation)
+    .at(-1);
+}
+
+/** Intents on `target` (relative path) whose operation has no receipt: effects not yet confirmed. */
+export function pendingLedgerIntents(file: string, target: string): LedgerIntent[] {
+  const receipted = new Set(engineActions(file).map((r) => r.key));
+  const latest = new Map<string, LedgerIntent>();
+  for (const i of intentRows(file)) latest.set(i.operation, i);
+  return [...latest.values()].filter(
+    (i) => i.file === target && !receipted.has(ledgerOpKey(i.operation)),
+  );
+}
+
+/** Create `file` holding `content` only if absent; false when it exists. Other errors throw. */
+export function createExclusive(file: string, content: string): boolean {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "wx");
+  } catch (err) {
+    // EEXIST is the expected "someone holds it" answer; anything else is a real error.
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw err;
+  }
+  try {
+    fs.writeSync(fd, content);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return true;
+}
+
+const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** How long a writer waits for another writer's lock on a ledger before refusing. */
+export const TARGET_LOCK_WAIT_MS = 10_000;
+
+/**
+ * Run `fn` holding the exclusive lock on `target` (`<target>.bkit-lock`). A holder that
+ * does not release in time is never reclaimed: the call throws, naming the lock file.
+ */
+export function withTargetLock<T>(target: string, fn: () => T, waitMs = TARGET_LOCK_WAIT_MS): T {
+  const lock = `${target}.bkit-lock`;
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  const body = JSON.stringify({ pid: process.pid, at: statusTimestamp(), token });
+  const deadline = Date.now() + waitMs;
+  while (!createExclusive(lock, body)) {
+    if (Date.now() >= deadline) {
+      const holder = fs.existsSync(lock) ? fs.readFileSync(lock, "utf-8").trim() : "unknown";
+      throw new Error(
+        `ledger target ${target} is locked by another writer (${holder}); if that process is gone, remove ${lock}`,
+      );
+    }
+    sleepSync(20);
+  }
+  try {
+    return fn();
+  } finally {
+    const held = fs.existsSync(lock) ? fs.readFileSync(lock, "utf-8") : "";
+    if (held === body) fs.rmSync(lock, { force: true });
+  }
+}
+
+/** Append `block` to `target` at exactly `offset`, flush it and read it back; throws on any mismatch. */
+export function writePrepared(target: string, block: string, offset: number): void {
+  const size = fs.existsSync(target) ? fs.statSync(target).size : 0;
+  if (size !== offset)
+    throw new Error(
+      `ledger ${target} changed since the append was prepared (${size} != ${offset})`,
+    );
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const fd = fs.openSync(target, "a");
+  try {
+    fs.writeSync(fd, block);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const bytes = Buffer.byteLength(block);
+  const back = Buffer.alloc(bytes);
+  const rd = fs.openSync(target, "r");
+  try {
+    fs.readSync(rd, back, 0, bytes, offset);
+  } finally {
+    fs.closeSync(rd);
+  }
+  if (back.toString("utf-8") !== block)
+    throw new Error(`ledger ${target} read-back disagrees with the bytes just written`);
+}
+
+export type AppendCheckpoint = (name: "prepared" | "written" | "receipted") => void;
+
+export type AppendHooks = {
+  prepared?: (p: { offset: number; block: string }) => void;
+  written?: (p: { offset: number; bytes: number; block: string }) => void;
+  checkpoint?: AppendCheckpoint;
+};
+
+/**
+ * The one lock-and-confirm append: under the target lock, read the current text, let
+ * `prepare` build the rows to add, write them (a missing final newline is closed first)
+ * and flush and read them back. Returns where the bytes landed.
+ */
+export function appendLocked(
+  target: string,
+  prepare: (current: string) => string,
+  hooks: AppendHooks = {},
+): { offset: number; bytes: number; block: string } {
+  return withTargetLock(target, () => appendHeld(target, prepare, hooks));
+}
+
+/** {@link appendLocked} for a caller that already holds the target lock. */
+export function appendHeld(
+  target: string,
+  prepare: (current: string) => string,
+  hooks: AppendHooks = {},
+): { offset: number; bytes: number; block: string } {
+  {
+    const current = fs.existsSync(target) ? fs.readFileSync(target, "utf-8") : "";
+    const body = prepare(current);
+    const block = `${current !== "" && !current.endsWith("\n") ? "\n" : ""}${body}`;
+    const offset = Buffer.byteLength(current);
+    hooks.prepared?.({ offset, block });
+    hooks.checkpoint?.("prepared");
+    writePrepared(target, block, offset);
+    const bytes = Buffer.byteLength(block);
+    hooks.checkpoint?.("written");
+    hooks.written?.({ offset, bytes, block });
+    hooks.checkpoint?.("receipted");
+    return { offset, bytes, block };
+  }
+}
+
 export type Strategy = NonNullable<Step["strategy"]>;
 
 /** Next rung: none -> STANDARD -> PIVOT -> FINAL, and FINAL stays FINAL. */

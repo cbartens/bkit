@@ -17,7 +17,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { actionHash, actionKey, lastRun, recordAction } from "../../ledgers/status.js";
+import { actionHash, actionKey, lastRun, recordAction, withTargetLock, } from "../../ledgers/status.js";
 import { APPEND_LEDGERS, gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -364,8 +364,10 @@ function putJournalRowsBack(wt, journal) {
     }
     for (const [rel, a] of journal) {
         const file = path.join(wt, rel);
-        const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
-        fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${a.rows}`);
+        withTargetLock(file, () => {
+            const text = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+            fs.appendFileSync(file, `${text !== "" && !text.endsWith("\n") ? "\n" : ""}${a.rows}`);
+        });
     }
     return "";
 }

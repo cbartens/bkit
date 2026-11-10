@@ -457,6 +457,145 @@ export function headingAnchor(heading) {
         .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
         .replace(/ /g, "-");
 }
+// ---------------------------------------------------------------------------
+// Audit result — the one validated shape an audit's report header, ledger rows and
+// tracker comment are all derived from. The agent supplies findings and judgments
+// (status, the prior key it judged the same item, coverage gaps); the engine derives
+// the IDs, the severity totals and the ledger payloads, so none can disagree.
+// ---------------------------------------------------------------------------
+export const AUDIT_SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+const AUDIT_RESULT_KEYS = [
+    "slug",
+    "status",
+    "report",
+    "findings",
+    "notChecked",
+    "stopped",
+    "overview",
+    "issue",
+    "parent",
+];
+const AUDIT_FINDING_KEYS = ["severity", "title", "location", "priorKey"];
+/** The audit result held in `raw`; throws a CommandError (USAGE) naming the first problem. */
+export function parseAuditResult(raw) {
+    const bad = (why) => new CommandError(EXIT.USAGE, `audit result: ${why}`);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+        throw bad("must be a JSON object");
+    const r = raw;
+    for (const k of Object.keys(r))
+        if (!AUDIT_RESULT_KEYS.includes(k))
+            throw bad(`unknown field "${k}"; totals, counts and IDs are derived from the findings`);
+    if (typeof r["slug"] !== "string" || !/^[a-z0-9-]+$/.test(r["slug"]))
+        throw bad("slug must be the template slug (a-z, 0-9, -)");
+    if (r["status"] !== "COMPLETE" && r["status"] !== "STOPPED")
+        throw bad("status must be COMPLETE or STOPPED");
+    const report = r["report"] ?? null;
+    if (report !== null && (typeof report !== "string" || report === ""))
+        throw bad("report must be a path or null");
+    if (!Array.isArray(r["findings"]))
+        throw bad("findings must be an array");
+    const priors = new Set();
+    const findings = r["findings"].map((f, i) => {
+        const at = `finding ${i + 1}`;
+        if (f === null || typeof f !== "object" || Array.isArray(f))
+            throw bad(`${at} is not an object`);
+        const o = f;
+        for (const k of Object.keys(o))
+            if (!AUDIT_FINDING_KEYS.includes(k))
+                throw bad(`${at} has unknown field "${k}"`);
+        if (!AUDIT_SEVERITIES.includes(o["severity"]))
+            throw bad(`${at} severity must be ${AUDIT_SEVERITIES.join("|")}`);
+        if (typeof o["title"] !== "string" || o["title"].trim() === "")
+            throw bad(`${at} needs a title`);
+        if (typeof o["location"] !== "string" || !/^\S+:\d+$/.test(o["location"]))
+            throw bad(`${at} location must be path:line`);
+        if (o["priorKey"] !== undefined) {
+            if (typeof o["priorKey"] !== "string" || o["priorKey"] === "")
+                throw bad(`${at} priorKey must be a non-empty string`);
+            if (priors.has(o["priorKey"]))
+                throw bad(`${at} repeats priorKey ${o["priorKey"]}`);
+            priors.add(o["priorKey"]);
+        }
+        return {
+            severity: o["severity"],
+            title: o["title"].trim(),
+            location: o["location"],
+            ...(o["priorKey"] === undefined ? {} : { priorKey: o["priorKey"] }),
+        };
+    });
+    const notChecked = r["notChecked"] ?? [];
+    if (!Array.isArray(notChecked) || notChecked.some((n) => typeof n !== "string" || n === ""))
+        throw bad("notChecked must be an array of non-empty strings");
+    const text = (name) => {
+        const v = r[name];
+        if (v === undefined)
+            return undefined;
+        if (typeof v !== "string")
+            throw bad(`${name} must be text`);
+        return v;
+    };
+    return {
+        slug: r["slug"],
+        status: r["status"],
+        report: report,
+        findings,
+        notChecked: notChecked,
+        ...(text("stopped") === undefined ? {} : { stopped: text("stopped") }),
+        ...(text("overview") === undefined ? {} : { overview: text("overview") }),
+        ...(text("issue") === undefined ? {} : { issue: text("issue") }),
+        ...(text("parent") === undefined ? {} : { parent: text("parent") }),
+    };
+}
+/** Findings per severity. */
+export function auditTotals(findings) {
+    return Object.fromEntries(AUDIT_SEVERITIES.map((s) => [s, findings.filter((f) => f.severity === s).length]));
+}
+/** `CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2`, the Findings header value. */
+export const auditFindingsLine = (totals) => AUDIT_SEVERITIES.map((s) => `${s} ${totals[s]}`).join(" \u00b7 ");
+const kebab = (text) => text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+/** The findings in their one deterministic order, each with its ID and ledger key. */
+export function auditEntries(result) {
+    const rank = (s) => AUDIT_SEVERITIES.indexOf(s);
+    const ordered = [...result.findings].sort((a, b) => rank(a.severity) - rank(b.severity) ||
+        a.location.localeCompare(b.location) ||
+        a.title.localeCompare(b.title) ||
+        (a.priorKey ?? "").localeCompare(b.priorKey ?? ""));
+    const used = new Set(ordered.flatMap((f) => (f.priorKey === undefined ? [] : [f.priorKey])));
+    return ordered.map((f, i) => {
+        let key = f.priorKey;
+        if (key === undefined) {
+            const base = `${result.slug}-${kebab(f.title) || "finding"}`;
+            key = base;
+            for (let n = 2; used.has(key); n += 1)
+                key = `${base}-${n}`;
+            used.add(key);
+        }
+        return { ...f, id: `${result.slug}-${i + 1}`, key };
+    });
+}
+/** One `failure` ledger payload per finding, ready for `bkit ledgers append`. */
+export function auditLedgerRows(result) {
+    return auditEntries(result).map((e) => ({
+        kind: "failure",
+        by: { workflow: "audit", step: `audit-${result.slug}` },
+        key: e.key,
+        summary: e.title,
+        severity: e.severity,
+        description: `${e.title} (${e.location}); audit ${result.slug} finding ${e.id}`,
+        status: "OPEN",
+    }));
+}
+/** The comment's header fields: the same Status and Findings the report header carries. */
+export function auditHeaderFields(result) {
+    return [
+        ["Status", result.status],
+        ["Findings", auditFindingsLine(auditTotals(result.findings))],
+    ];
+}
 const KINDS = ["step", "failure", "handover", "audit"];
 /** The exact comment body; files (`bodyFile`, `sections`, `stderrFile`, `errorFile`) resolve against `cwd`. */
 export function buildComment(cwd, o) {
@@ -534,14 +673,34 @@ export function commentBody(ctx) {
     if (ctx.flags.groupCount !== undefined && ctx.flags.group === undefined) {
         throw new CommandError(EXIT.USAGE, "--group-count needs --group");
     }
+    const resultFile = str(ctx.flags.resultFile);
+    let audit;
+    if (resultFile !== undefined) {
+        if (kind !== "audit")
+            throw new CommandError(EXIT.USAGE, "--result-file needs --kind=audit");
+        const parsed = parseJson(readInput(ctx.cwd, resultFile, "result-file"));
+        if (!parsed.ok)
+            throw new CommandError(EXIT.USAGE, "--result-file is not JSON");
+        audit = parseAuditResult(parsed.value);
+        const slug = str(ctx.flags.auditSlug);
+        if (slug !== undefined && slug !== audit.slug)
+            throw new CommandError(EXIT.USAGE, `conflict: --audit-slug ${slug} is not the result's slug ${audit.slug}`);
+        for (const [name] of headerFields(ctx))
+            if (name === "Status" || name === "Findings")
+                throw new CommandError(EXIT.USAGE, `conflict: --field ${name} beside --result-file; the result derives it`);
+    }
+    const given = ctx.flags.line ?? [];
     return buildComment(ctx.cwd, {
         kind: kind,
-        auditSlug: str(ctx.flags.auditSlug),
+        auditSlug: audit?.slug ?? str(ctx.flags.auditSlug),
         workflow: str(ctx.flags.workflow),
         workflowHeading: ctx.flags.workflowHeading === true,
         stepNumber: str(ctx.flags.stepNumber),
         stepTitle: str(ctx.flags.stepTitle),
-        fields: kind === "step" || kind === "audit" ? headerFields(ctx) : [],
+        fields: [
+            ...(audit === undefined ? [] : auditHeaderFields(audit)),
+            ...(kind === "step" || kind === "audit" ? headerFields(ctx) : []),
+        ],
         subStep: str(ctx.flags.subStep),
         error: str(ctx.flags.error),
         errorFile: str(ctx.flags.errorFile),
@@ -553,7 +712,7 @@ export function commentBody(ctx) {
         runId: str(ctx.flags.runId),
         artifacts: ctx.flags.artifact ?? [],
         ref: str(ctx.flags.ref),
-        lines: ctx.flags.line ?? [],
+        lines: [...(audit?.report == null ? [] : [`Report: ${audit.report}`]), ...given],
         bodyFile: str(ctx.flags.bodyFile),
         sections: ctx.flags.section ?? [],
     });
@@ -821,6 +980,11 @@ export const issuesCommand = {
                     help: "routine | attention | terminal; defaults from kind, never from PR metadata",
                 },
                 { name: "audit-slug", type: "string", help: "audit: template slug, e.g. security" },
+                {
+                    name: "result-file",
+                    type: "string",
+                    help: "audit: the structured audit result JSON; derives the Status and Findings fields and the Report line, and refuses a hand-written Status or Findings field",
+                },
                 { name: "step-number", type: "string", help: "step number in the heading" },
                 { name: "step-title", type: "string", help: "step title in the heading, e.g. Plan Verify" },
                 { name: "workflow", type: "string", help: "design | plan | build | debug | ship | auto" },
