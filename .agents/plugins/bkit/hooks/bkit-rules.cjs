@@ -161,6 +161,19 @@ function agRetryFile(hook, sessionId) {
  * its own process, so a deny it cannot record would block every retry.
  */
 function adviseOnce(hook, sessionId, signature, advisory) {
+  return adviseOnceDelivery(hook, sessionId, signature, advisory).decision;
+}
+
+const AG_RETRY_SUFFIX =
+  "\nThis call was held once so you see this advisory. Repeat the same call to proceed.";
+
+/**
+ * `adviseOnce` with its transport outcome: `{ decision, delivered }`. `delivered` is true
+ * only when the call was denied with the advisory as the reason. An identical retry or an
+ * unusable retry store returns the bare allow with `delivered` false, so the caller leaves
+ * the advised targets unacknowledged.
+ */
+function adviseOnceDelivery(hook, sessionId, signature, advisory) {
   const file = agRetryFile(hook, sessionId);
   // One-way digest of the call signature: the retry store is world-readable and has no
   // TTL, so no tool argument (a shell command line with an inline secret, a file path)
@@ -170,16 +183,19 @@ function adviseOnce(hook, sessionId, signature, advisory) {
     const last = fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
     if (last === digest) {
       fs.rmSync(file, { force: true });
-      return { decision: "allow" };
+      return { decision: { decision: "allow" }, delivered: false };
     }
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, digest, "utf-8");
   } catch {
-    return { decision: "allow" };
+    return { decision: { decision: "allow" }, delivered: false };
   }
   return {
-    decision: "deny",
-    reason: `${advisory}\nThis call was held once so you see this advisory. Repeat the same call to proceed.`,
+    decision: {
+      decision: "deny",
+      reason: `${advisory}${AG_RETRY_SUFFIX}`,
+    },
+    delivered: true,
   };
 }
 

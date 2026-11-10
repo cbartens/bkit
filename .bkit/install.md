@@ -221,6 +221,7 @@ In this example, `hooks.SessionStart` is bkit-declared scope (from the template)
 
 - Consumer keys outside the template tree survive every `bkit install` byte-identically.
 - `bkit install` uses `deepContains(template, consumer)`, which checks that every template leaf is present. On drift, it deep-merges with the template winning, and consumer-only siblings are preserved.
+- Lists merge too. A list of plain values (such as `permissions.allow`) keeps the template's entries in template order, then appends consumer-only entries. A list of objects (hook groups) replaces a consumer group that holds a hook `command` the template group also holds, and keeps every other consumer group after the template's groups. A second install is a no-op.
 - `bkit check` surfaces the `tier2-json-drift` advisory when `deepContains` fails, and exits 1 (CI drift gate). It writes nothing. The consumer reviews and re-runs `bkit install` to reconverge.
 - `.cursor/hooks.json` uses Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
 

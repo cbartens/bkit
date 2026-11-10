@@ -173,6 +173,27 @@ function docAuthoringAdvisory() {
   );
 }
 
+// Agent-read files: the files below `.agents/`, `.bkit/` and `docs/` plus the root agent
+// files, matching the scope `.bkit/authoring.md` states. Plan artifacts under `docs/plans/`
+// keep their own template contract and get no general reminder.
+const AGENT_READ_ROOT_FILES = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
+
+function isAgentReadPath(filePath) {
+  const p = filePath.replace(/\\/g, "/");
+  if (AGENT_READ_ROOT_FILES.has(p.split("/").pop() || "")) return true;
+  if (p.startsWith("docs/plans/") || p.includes("/docs/plans/")) return false;
+  return ["docs/", ".agents/", ".bkit/"].some((d) => p.startsWith(d) || p.includes("/" + d));
+}
+
+// The one general authoring reminder, identical for every edit channel and host.
+function authoringReminder() {
+  return (
+    `[bkit GateGuard] Agent-read file. Before you edit it:\n` +
+    `- Find this file in \`.bkit/authoring.md\` § Which Sections Apply, and read the sections its row lists.\n` +
+    `- Follow those rules in the edit.`
+  );
+}
+
 function configAdvisory(filePath) {
   const base = path.basename(filePath);
   return (
@@ -204,6 +225,13 @@ function inProcessKey(sessionId, filePath) {
   return JSON.stringify([sessionId, filePath]);
 }
 
+// Normalized warning identity: an absolute path resolved against the call's effective
+// directory, so a relative, absolute or `..` spelling of one file shares one record.
+function normalizeIdentity(filePath, cwd) {
+  const base = typeof cwd === "string" && cwd ? cwd : process.cwd();
+  return path.resolve(base, filePath);
+}
+
 // Dedup scope: the session, narrowed to one agent when the host names it. A Claude Code
 // subagent shares its parent's session_id and carries its own agent_id.
 function dedupKey(sessionId, agentId) {
@@ -217,12 +245,17 @@ function stateFile(sessionId) {
 }
 
 // Returns the per-session warned-file map. Absent state file is the NORMAL
-// first-touch case (guarded, no throw); a corrupt file throws to the top-level
-// fail-open boundary and that one call no-ops.
+// first-touch case (guarded, no throw); a corrupt file reads as empty.
 function readState(sessionId) {
   const file = stateFile(sessionId);
   if (!fs.existsSync(file)) return { files: {} };
-  const parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, "utf-8"));
+  } catch {
+    // Unparseable state is treated as empty; the in-process set still prevents a deny loop.
+    return { files: {} };
+  }
   if (parsed && typeof parsed === "object" && parsed.files && typeof parsed.files === "object") {
     return parsed;
   }
@@ -234,10 +267,13 @@ function alreadyWarned(sessionId, filePath) {
   return Boolean(readState(sessionId).files[filePath]);
 }
 
-function markWarned(sessionId, filePath) {
+// `spelling` is the path as the host wrote it; it is recorded beside the normalized key so
+// state readers that look a file up by its original spelling still find it.
+function markWarned(sessionId, filePath, spelling) {
   fs.mkdirSync(stateDir(), { recursive: true });
   const state = readState(sessionId);
   state.files[filePath] = true;
+  if (typeof spelling === "string" && spelling) state.files[spelling] = true;
   fs.writeFileSync(stateFile(sessionId), JSON.stringify(state), "utf-8");
 }
 
@@ -256,41 +292,183 @@ function gcOldState() {
   }
 }
 
-// The advisory for the first touch of `filePath` this session, or null when GateGuard
-// is off, the path is unusable, or this session was already warned about it. Records
-// the touch. `isNewFile` picks the reuse checklist over the read-this-file checklist.
-// Fail-open: a state-file write error still returns the checklist and the process
-// remembers it, as advisory only — a deny no later call can see was given would block
-// every retry of the edit.
-function firstTouchAdvice(filePath, sessionId, isNewFile) {
+// Host-declared: true when the hook process outlives one call (the opencode plugin), so a
+// deny whose state file cannot be written is still remembered in process and cannot loop.
+function processPersists() {
+  return typeof GATEGUARD_PROCESS_PERSISTS !== "undefined" && GATEGUARD_PROCESS_PERSISTS === true;
+}
+
+// Pure preparation: the advice for the first touch of `filePath` this session, or null when
+// GateGuard is off, the path is unusable, or the session was already warned about it.
+// Writes nothing; `acknowledgeAdvice` records the touch once the advice is delivered.
+// `isNewFile` picks the reuse checklist over the read-this-file checklist.
+function prepareAdvice(filePath, sessionId, isNewFile, cwd) {
   const mode = process.env.BKIT_GATEGUARD;
   if (mode === "off") return null;
   if (!filePath || typeof filePath !== "string") return null;
 
   const sid = typeof sessionId === "string" ? sessionId : "no-session";
+  const key = normalizeIdentity(filePath, cwd);
 
   // Warn once per (session, file).
-  if (alreadyWarned(sid, filePath)) return null;
+  if (alreadyWarned(sid, key)) return null;
 
-  const gated = isGateConfig(filePath) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
+  const gated = isGateConfig(key) && process.env.BKIT_ALLOW_CONFIG_EDIT !== "1";
   const baseContext = gated
-    ? configAdvisory(filePath)
+    ? configAdvisory(key)
     : isNewFile
-      ? reuseChecklist(filePath)
-      : investigationChecklist(filePath);
-  const context = isDocsPath(filePath)
-    ? `${baseContext}\n\n${docAuthoringAdvisory()}`
-    : baseContext;
+      ? reuseChecklist(key)
+      : investigationChecklist(key);
+  const parts = [baseContext];
+  if (isDocsPath(key)) parts.push(docAuthoringAdvisory());
+  if (isAgentReadPath(key)) parts.push(authoringReminder());
 
+  return {
+    sid,
+    key,
+    mode: mode === "deny" ? "deny" : "advisory",
+    context: parts.join("\n\n"),
+    spelling: filePath,
+    agentRead: isAgentReadPath(key),
+  };
+}
+
+// Records a prepared touch. Fail-open: a state-file write error remembers the touch in
+// this process and returns false (not durable). Only a durable record, or a process that
+// outlives the call, can back a deny: a deny no later call can see was given would block
+// every retry of the edit.
+function acknowledgeAdvice(prepared) {
   try {
-    markWarned(sid, filePath);
+    markWarned(prepared.sid, prepared.key, prepared.spelling);
     gcOldState();
+    return true;
   } catch {
-    warnedInProcess.add(inProcessKey(sid, filePath));
-    return { mode: "advisory", context };
+    warnedInProcess.add(inProcessKey(prepared.sid, prepared.key));
+    return false;
   }
+}
 
-  return { mode: mode === "deny" ? "deny" : "advisory", context };
+// The advisory for the first touch of `filePath` this session, or null. Prepares and
+// acknowledges in one step, for callers that deliver the advice themselves.
+function firstTouchAdvice(filePath, sessionId, isNewFile, cwd) {
+  const prepared = prepareAdvice(filePath, sessionId, isNewFile, cwd);
+  if (!prepared) return null;
+  const durable = acknowledgeAdvice(prepared);
+  const mode = durable || processPersists() ? prepared.mode : "advisory";
+  return { mode, context: prepared.context };
+}
+
+// Conservative per-host output budgets for delivered advice (reviewed under decision
+// `787-conservative-host-advisory-budgets`; complete-block visibility is unverified).
+const ADVICE_BUDGETS = {
+  claude: { limit: 8000, unit: "chars" },
+  codex: { limit: 2000, unit: "bytes" },
+  cursor: { limit: 2000, unit: "bytes" },
+  antigravity: { limit: 2000, unit: "bytes" },
+  opencode: { limit: 8000, unit: "chars" },
+};
+const ADVICE_NOTICE_RESERVE = 512;
+
+function adviceSize(text, unit) {
+  return unit === "bytes" ? Buffer.byteLength(text, "utf-8") : text.length;
+}
+
+// Selects prepared advice blocks inside `budget`: only whole blocks, in order, with
+// `ADVICE_NOTICE_RESERVE` units kept for the omitted-target notice. Pure: acknowledges
+// nothing. `fixedCost` is the size (in the budget's unit) of text the caller adds around
+// the blocks, so the whole composed advice fits. Returns `{ selected, context }`
+// (`context` includes the omitted-target notice).
+function selectAdvice(blocks, budget, fixedCost = 0) {
+  const sep = "\n\n";
+  const pick = (room) => {
+    const selected = [];
+    const omitted = [];
+    let used = 0;
+    for (const b of blocks) {
+      const cost = adviceSize(b.context, budget.unit) + (selected.length > 0 ? sep.length : 0);
+      if (used + cost <= room) {
+        selected.push(b);
+        used += cost;
+      } else {
+        omitted.push(b);
+      }
+    }
+    return { selected, omitted };
+  };
+  const omittedNotice = (omitted) => {
+    const reminder = omitted.some((b) => b.agentRead)
+      ? " Agent-read files: see `.bkit/authoring.md` § Which Sections Apply."
+      : "";
+    return `[bkit GateGuard] ${omitted.length} target${omitted.length === 1 ? "" : "s"} omitted (output limit); they stay unacknowledged and are advised on a later edit.${reminder}`;
+  };
+  let { selected, omitted } = pick(
+    budget.limit - (fixedCost > 0 ? 0 : ADVICE_NOTICE_RESERVE) - fixedCost,
+  );
+  if (fixedCost > 0 && omitted.length > 0) {
+    // Composed advice counts its own text, so the omitted-target notice is sized exactly
+    // (worst case: every block omitted) instead of by the fixed reserve.
+    const noticeRoom = adviceSize(omittedNotice(blocks), budget.unit) + sep.length;
+    ({ selected, omitted } = pick(budget.limit - fixedCost - noticeRoom));
+  }
+  const texts = selected.map((b) => b.context);
+  if (omitted.length > 0) texts.push(omittedNotice(omitted));
+  return { selected, context: texts.join(sep) };
+}
+
+// Records the selected blocks once their route has delivered them. Returns the mode to
+// report: a deny only when every record is durable (or the process outlives the call).
+function acknowledgeSelected(selected) {
+  if (selected.length === 0) return "advisory";
+  let durable = true;
+  for (const b of selected) if (!acknowledgeAdvice(b)) durable = false;
+  return durable || processPersists() ? selected[0].mode : "advisory";
+}
+
+// Delivers prepared advice blocks inside `budget` (see `selectAdvice`). Acknowledges exactly
+// the selected blocks, and only when `verified` says the route reaches the model. Returns
+// `{ mode, context }` or null when there is nothing to say.
+function deliverAdvice(blocks, budget, verified, fixedCost = 0) {
+  if (blocks.length === 0) return null;
+  const { selected, context } = selectAdvice(blocks, budget, fixedCost);
+  return { mode: verified ? acknowledgeSelected(selected) : "advisory", context };
+}
+
+// Prepared per-file blocks for the exact targets of a shell edit. Shell targets are
+// relative to the evidence root (`ctx.root`, else `ctx.cwd`); they normalize to the same
+// absolute identity the edit tools record, so both channels share one warning. A shell
+// edit is advisory only and never a new-file reuse check: the file may not exist yet.
+function shellTargetBlocks(targets, ctx, sessionId, agentId) {
+  const base = (ctx && (ctx.root || ctx.cwd)) || process.cwd();
+  const sid = dedupKey(sessionId, agentId);
+  const blocks = [];
+  const seen = new Set();
+  for (const t of targets || []) {
+    const prepared = prepareAdvice(t, sid, false, base);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    // The record carries only the normalized path: the relative spelling is shell-local.
+    prepared.spelling = prepared.key;
+    blocks.push(prepared);
+  }
+  return blocks;
+}
+
+// The shell `notice` plus the per-file checklists for the evidence's exact targets, inside
+// `budget`. Always advisory text (never a deny); acknowledges the delivered blocks. The
+// notice and `outside` (text the caller joins around the result) count against `budget`.
+function shellEditContext(notice, edits, ctx, sessionId, agentId, budget, outside = "") {
+  const sepSize = 2;
+  const fixedCost =
+    adviceSize(notice, budget.unit) +
+    sepSize +
+    (outside ? adviceSize(outside, budget.unit) + sepSize : 0);
+  const delivered = deliverAdvice(
+    shellTargetBlocks(edits.targets, ctx, sessionId, agentId),
+    budget,
+    true,
+    fixedCost,
+  );
+  return delivered ? `${notice}\n\n${delivered.context}` : notice;
 }
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or
@@ -305,14 +483,19 @@ function bkitGateguard(payload) {
   const input = payload.tool_input || {};
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
   const sessionId = dedupKey(payload.session_id, payload.agent_id);
-  // One patch can touch several files. Advises on the first not-yet-warned target, so a
-  // new file after an already-warned one still gets its advisory.
-  const target = parseApplyPatchTargets(input.command, cwd).find(
-    (t) => !alreadyWarned(sessionId, t.file),
-  );
-  if (!target) return null;
-  // `*** Add File:` IS the new-file signal; no existence probe.
-  return firstTouchAdvice(target.file, sessionId, target.isNew);
+  // One patch can touch several files. Every not-yet-warned target is prepared (nothing is
+  // recorded), complete blocks are selected inside Codex's output budget, and only the
+  // selected blocks are acknowledged; the rest stay eligible for a later edit.
+  const blocks = [];
+  const seen = new Set();
+  for (const t of parseApplyPatchTargets(input.command, cwd)) {
+    // `*** Add File:` IS the new-file signal; no existence probe.
+    const prepared = prepareAdvice(t.file, sessionId, t.isNew, cwd);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    blocks.push(prepared);
+  }
+  return deliverAdvice(blocks, ADVICE_BUDGETS.codex, true);
 }
 
 // bkit:end
@@ -368,7 +551,7 @@ function isBkitDocPath(filePath) {
 const ENTRY_FILES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
 
 /** The rest of § All Agent-Read Files scope: `.bkit/**`, `docs/**`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`. */
-function isAgentReadPath(filePath) {
+function isDogfoodAgentReadPath(filePath) {
   const p = slashed(filePath);
   if (!p.endsWith(".md")) return false;
   const base = p.slice(p.lastIndexOf("/") + 1);
@@ -433,7 +616,7 @@ const AUTHORING_KINDS = [
     sections: ["All Agent-Read Files", "Output Formatting", "Doc Templates"],
   },
   { test: isBkitDocPath, label: "doc", sections: ["All Agent-Read Files", "Docs"] },
-  { test: isAgentReadPath, label: "agent-read file", sections: ["All Agent-Read Files"] },
+  { test: isDogfoodAgentReadPath, label: "agent-read file", sections: ["All Agent-Read Files"] },
 ];
 
 function authoringAdvisory(kind) {

