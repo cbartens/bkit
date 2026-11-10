@@ -9,3 +9,11 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T23:07:32Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"4a35b0005d56c86da418b23881af6a273c83b4264bd0a1cca71272f28fde49fd","ref":"https://github.com/cbartens/bkit/issues/914#issuecomment-6781780058","at":"2026-11-10T23:07:34Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-10T23:07:34Z","parentSha":"1afb96fd32aa6bb0b20b5c349d7eb77c30cd48c5","artifacts":["docs/plans/202611/logs/914-build-planned-test/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:20:20Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:25:10Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:26:00Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:26:13Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:26:34Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:26:39Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"852d5a171f286022c1e110018e2537bd99f558abafca8e177b44026f29da3af8","ref":"https://github.com/cbartens/bkit/issues/914#issuecomment-6781780058","at":"2026-11-10T23:26:41Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-10T23:26:41Z","parentSha":"5d69a6ed6203b06c90aa6d63a5cf84137efbeefc","artifacts":["docs/plans/202611/logs/914-build-planned-test/plan-v1-draft.md","docs/plans/202611/logs/914-build-planned-test/plan-generate-check.md"],"attempt":1}
