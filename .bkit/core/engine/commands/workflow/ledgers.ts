@@ -33,32 +33,41 @@ import {
 } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers, type CompactLedger } from "../../ledgers/compact.js";
 import {
+  CORRECTION_REJECTED_ROW,
+  CORRECTION_SUCCEEDED_ROW,
   LEDGER_OPERATIONS_FILE,
   actionHash,
   appendHeld,
+  appendLine,
+  correctionScope,
   ledgerIntent,
   ledgerOperation,
   pendingLedgerIntents,
   recordLedgerIntent,
   recordLedgerOperation,
+  statusTimestamp,
   withTargetLock,
   writePrepared,
   type AppendCheckpoint,
 } from "../../ledgers/status.js";
 import {
   CommandError,
+  CorrectionExhausted,
   EXIT,
   INVOCATION_FLAG,
   isIgnoredPath,
   isSharedBranch,
+  NoWriteRejection,
   parseJson,
+  UncertainEffect,
   wholeNumber,
   type CommandSpec,
   type FlagSpec,
   type Invocation,
   type RunContext,
 } from "../lib.js";
-import { str } from "./status.js";
+import { CORRECTION_LIMIT, spendCorrection, type CorrectionSpend } from "./counters.js";
+import { readStatusRows, str } from "./status.js";
 import {
   NO_MARKERS_REASON,
   outOfScope,
@@ -841,6 +850,11 @@ export const ledgersCommand: CommandSpec = {
           type: "boolean",
           help: "let the engine issue the operation id from --invocation and the request, so a retried call after a lost response replays instead of appending again; exclusive with --operation",
         },
+        {
+          name: "correction-of",
+          type: "string",
+          help: "the operation of an earlier guaranteed no-write rejection of this ledger append in this step: this call is its corrected retry (two per scope), under its own fresh --operation or --issue-operation",
+        },
       ],
       output: {
         ledger: "the ledger appended to",
@@ -849,6 +863,8 @@ export const ledgersCommand: CommandSpec = {
         keys: "each row's key, in order (null when a row has none)",
         receipt:
           "with --operation: {operation, ledger, file, offset, bytes, rows[{key, ts}], replayed}; replayed is true when the original effect is returned",
+        correction:
+          "with --correction-of: {scope, operation, of, used, limit, substep, verified}; verified is true when the rows landed (or the original receipt was returned)",
       },
       exitCodes: {
         [EXIT_STAGE]:
@@ -1438,6 +1454,43 @@ export interface AppendOptions {
   checkpoint?: AppendCheckpoint;
 }
 
+/**
+ * The operation id of an append request: the caller's `--operation`, else (with
+ * `--issue-operation`) one issued from the invocation and the request, so retrying a lost
+ * response gets the same id.
+ */
+export function appendOperationId(
+  ledger: string,
+  rows: unknown,
+  invocation: Invocation | undefined,
+  options: { operation?: string; issueOperation?: boolean },
+): string | undefined {
+  if (options.operation !== undefined) return options.operation;
+  if (options.issueOperation !== true || invocation === undefined) return undefined;
+  const hash = actionHash(JSON.stringify({ ledger, rows, invocation: invocation.id }));
+  return `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`;
+}
+
+/** The correction scope of an append by a workflow-run invocation; null for any other caller. */
+export function appendCorrectionScope(invocation: Invocation, ledger: string): string | null {
+  if (
+    invocation.scope !== "run" ||
+    invocation.statusPath === null ||
+    invocation.workflow === null ||
+    invocation.step === null
+  )
+    return null;
+  return correctionScope({
+    workflow: invocation.workflow,
+    run: invocation.run,
+    step: invocation.step,
+    group: invocation.group,
+    attempt: invocation.attempt,
+    ledger,
+    substep: "append",
+  });
+}
+
 /** The `{key, ts}` of each row in prepared `block` bytes. */
 function receiptRows(block: string): LedgerReceipt["rows"] {
   const out: LedgerReceipt["rows"] = [];
@@ -1495,12 +1548,16 @@ export function appendLedgerRows(
       EXIT.USAGE,
       "--issue-operation needs --invocation: the id is issued from that invocation's context",
     );
-  // Issued from the invocation and the request hash, so retrying a lost response gets the same id.
-  const operation =
-    options.operation ??
-    (options.issueOperation === true && invocation !== undefined
-      ? `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`
-      : undefined);
+  const operation = appendOperationId(ledger, rows, invocation, options);
+  // A rejection before any write is correctable only inside a workflow run (it has a scope to
+  // spend from) and only when the operation can be named by the corrected retry.
+  const scope = invocation === undefined ? null : appendCorrectionScope(invocation, ledger);
+  const reject = (why: string, row: number) => {
+    const message = `row ${row}: ${why}`;
+    return scope !== null && operation !== undefined
+      ? new NoWriteRejection(EXIT_ROW_REFUSED, message, { scope, substep: "append" })
+      : new CommandError(EXIT_ROW_REFUSED, message);
+  };
 
   const result = (landed: { offset: number; bytes: number }, block: string, replayed: boolean) => {
     const parsedRows = receiptRows(block);
@@ -1533,7 +1590,7 @@ export function appendLedgerRows(
     const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
       const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
       if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        throw refuse("not a JSON object");
+        throw reject("not a JSON object", i + 1);
       }
       const r =
         invocation === undefined
@@ -1543,15 +1600,17 @@ export function appendLedgerRows(
         throw refuse(
           "by.modelSource unavailable needs a validated --invocation; the engine records it, a caller cannot assert it",
         );
-      if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
-      if (Object.hasOwn(r, "schema")) throw refuse("carries schema; it is set at append time");
+      if (Object.hasOwn(r, "ts")) throw reject("carries ts; ts is minted at append time", i + 1);
+      if (Object.hasOwn(r, "schema"))
+        throw reject("carries schema; it is set at append time", i + 1);
       if (!takes.includes(String(r["kind"]))) {
-        throw refuse(
+        throw reject(
           `kind must be ${takes.join(" | ")} in --ledger=${ledger} (got ${String(r["kind"])})`,
+          i + 1,
         );
       }
       if (Object.hasOwn(r, "bkit"))
-        throw refuse("carries bkit; bkit.version is set at append time");
+        throw reject("carries bkit; bkit.version is set at append time", i + 1);
       repo ??= resolveRepoSlug(root) || "unknown/repo";
       version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
       last = mintTs(last);
@@ -1566,7 +1625,7 @@ export function appendLedgerRows(
       for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
       for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
       const v = validate(row);
-      if (!v.ok) throw refuse(v.reason ?? "invalid");
+      if (!v.ok) throw reject(v.reason ?? "invalid", i + 1);
       const who = writerProblem(row);
       if (who !== undefined) throw refuse(who);
       prior.push(row);
@@ -1635,7 +1694,7 @@ export function appendLedgerRows(
             return result(intent, intent.block, true);
           }
           if (seg.length > 0 && have.length === intent.offset + seg.length)
-            throw new CommandError(
+            throw new UncertainEffect(
               EXIT_STAGE,
               `operation ${operation}: ${file} holds ${seg.length} of ${want.length} prepared bytes; the effect is uncertain, nothing was truncated or retried`,
             );
@@ -1694,16 +1753,132 @@ function append(ctx: RunContext): number {
         `conflict: --root ${root} is outside the checkout ${ctx.invocation.worktree} that issued invocation ${ctx.invocation.id}`,
       );
   }
-  const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value, ctx.invocation, {
+  const ledger = String(ctx.flags.ledger);
+  const request = {
     operation: str(ctx.flags.operation),
     issueOperation: ctx.flags.issueOperation === true,
-  });
+  };
+  const run = ctx.invocation;
+  const scope = run === undefined ? null : appendCorrectionScope(run, ledger);
+  const operation = appendOperationId(ledger, parsed.value, run, request);
+  const correctionOf = str(ctx.flags.correctionOf);
+  let spend: CorrectionSpend | undefined;
+  if (correctionOf !== undefined) {
+    if (run === undefined || scope === null || run.statusPath === null || run.workflow === null)
+      throw new CommandError(
+        EXIT.USAGE,
+        "--correction-of needs a workflow-run --invocation: the correction budget lives in that run",
+      );
+    if (operation === undefined || operation === correctionOf)
+      throw new CommandError(
+        EXIT.USAGE,
+        "--correction-of needs a fresh --operation or --issue-operation: a corrected candidate has its own operation id",
+      );
+    const rejected = readStatusRows(run.statusPath).some(
+      (row) =>
+        row.type === CORRECTION_REJECTED_ROW &&
+        row.operation === correctionOf &&
+        row.scope === scope &&
+        row.workflow === run.workflow,
+    );
+    if (!rejected)
+      throw new CommandError(
+        EXIT.USAGE,
+        `--correction-of=${correctionOf} names no rejected ${ledger} append in this step; only a guaranteed no-write rejection of this sub-step can be corrected`,
+      );
+    // An earlier operation on this ledger whose effect is unconfirmed is reconciled first.
+    const target = Object.hasOwn(APPEND_LEDGERS, ledger)
+      ? APPEND_LEDGERS[ledger as AppendLedger].file
+      : undefined;
+    if (
+      target !== undefined &&
+      pendingLedgerIntents(path.join(root, LEDGER_OPERATIONS_FILE), target).length > 0
+    )
+      throw new UncertainEffect(
+        EXIT_STAGE,
+        `${target} holds an operation whose effect is unconfirmed; reconcile it before any corrected candidate — nothing was written`,
+      );
+    spend = spendCorrection(run.statusPath, run.workflow, scope, operation, CORRECTION_LIMIT, {
+      of: correctionOf,
+      step: run.step,
+      substep: "append",
+    });
+    if (!spend.allowed)
+      throw new CorrectionExhausted(
+        EXIT.NO,
+        `the correction budget of ${scope} is spent (${spend.used} of ${spend.limit}); nothing was written`,
+        scope,
+      );
+  }
+  let r: AppendResult;
+  try {
+    r = appendLedgerRows(root, ledger, parsed.value, ctx.invocation, request);
+  } catch (err) {
+    if (
+      err instanceof NoWriteRejection &&
+      run?.statusPath != null &&
+      run.workflow !== null &&
+      operation !== undefined
+    ) {
+      fs.appendFileSync(
+        run.statusPath,
+        appendLine({
+          type: CORRECTION_REJECTED_ROW,
+          workflow: run.workflow,
+          at: statusTimestamp(),
+          scope: err.detail.scope,
+          substep: err.detail.substep,
+          operation,
+          step: run.step,
+        }),
+      );
+      // The last allowed retry was just used: the rejection is final, not correctable.
+      if (spend !== undefined && spend.remaining === 0)
+        throw new CommandError(err.code, err.message);
+    }
+    throw err;
+  }
   ctx.log(
     r.receipt?.replayed === true
       ? `operation ${r.receipt.operation} already appended to ${r.file}; nothing written`
       : `appended ${r.appended} row(s) to ${r.file}`,
   );
-  ctx.emit({ ...r });
+  if (spend === undefined || run?.statusPath == null || run.workflow === null || scope === null) {
+    ctx.emit({ ...r });
+    return EXIT.OK;
+  }
+  const verified =
+    r.receipt?.replayed === true || r.appended === (parsed.value as unknown[]).length;
+  const statusPath = run.statusPath;
+  const succeeded = readStatusRows(statusPath).some(
+    (row) => row.type === CORRECTION_SUCCEEDED_ROW && row.operation === operation,
+  );
+  if (verified && !succeeded)
+    fs.appendFileSync(
+      statusPath,
+      appendLine({
+        type: CORRECTION_SUCCEEDED_ROW,
+        workflow: run.workflow,
+        at: statusTimestamp(),
+        scope,
+        substep: "append",
+        operation,
+        of: correctionOf,
+        step: run.step,
+      }),
+    );
+  ctx.emit({
+    ...r,
+    correction: {
+      scope,
+      operation,
+      of: correctionOf,
+      used: spend.used,
+      limit: spend.limit,
+      substep: "append",
+      verified,
+    },
+  });
   return EXIT.OK;
 }
 

@@ -70,6 +70,63 @@ export class CommandError extends Error {
   }
 }
 
+/**
+ * A refusal the receiving handler declares as pre-effect validation: nothing was written,
+ * so a corrected retry of the same sub-step is permitted within its correction budget.
+ * Only this class (never a generic `CommandError`) carries that permission.
+ */
+export class NoWriteRejection extends CommandError {
+  constructor(
+    code: number,
+    message: string,
+    readonly detail: { scope: string; substep: string },
+  ) {
+    super(code, message);
+  }
+}
+
+/** A failure after an effect may have begun: the state must be reconciled, never auto-retried. */
+export class UncertainEffect extends CommandError {}
+
+/** The correction budget of `scope` is spent: nothing was written and no further retry is allowed. */
+export class CorrectionExhausted extends CommandError {
+  constructor(
+    code: number,
+    message: string,
+    readonly scope: string,
+  ) {
+    super(code, message);
+  }
+}
+
+/** The structured `--json` error for the declared classes; every other error prints none. */
+function structuredError(err: CommandError): Record<string, unknown> | null {
+  if (err instanceof CorrectionExhausted) {
+    return {
+      code: err.code,
+      message: err.message,
+      effects: "none",
+      correctable: false,
+      exhausted: true,
+      scope: err.scope,
+    };
+  }
+  if (err instanceof NoWriteRejection) {
+    return {
+      code: err.code,
+      message: err.message,
+      effects: "none",
+      correctable: true,
+      scope: err.detail.scope,
+      substep: err.detail.substep,
+    };
+  }
+  if (err instanceof UncertainEffect) {
+    return { code: err.code, message: err.message, effects: "uncertain", correctable: false };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Specs
 // ---------------------------------------------------------------------------
@@ -769,6 +826,24 @@ export async function runCommand(
   }
   const rest = argv.slice(2);
   if (rest.some(isHelp)) {
+    if (rest.includes("--json")) {
+      const s = cmd.verbs[verb]!;
+      io.stdout(
+        `${JSON.stringify({
+          noun: cmd.noun,
+          verb,
+          summary: s.summary,
+          flags: s.flags.map((f) => ({
+            name: f.name,
+            type: f.type,
+            required: f.required === true,
+          })),
+          output: s.output,
+          exitCodes: s.exitCodes ?? {},
+        })}\n`,
+      );
+      return EXIT.OK;
+    }
     io.stdout(verbHelp(cmd, verb));
     return EXIT.OK;
   }
@@ -838,6 +913,8 @@ export async function runCommand(
   } catch (err) {
     if (!(err instanceof CommandError)) throw err;
     io.stderr(`${tag} ${err.message}\n`);
+    const structured = ctx.json ? structuredError(err) : null;
+    if (structured !== null) io.stdout(`${JSON.stringify({ error: structured })}\n`);
     outcome = err.code;
     return err.code;
   } finally {

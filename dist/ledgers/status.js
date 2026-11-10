@@ -72,6 +72,138 @@ export function ciSelectionIdentity(selection) {
             selection.headSha,
         ]);
 }
+export const CI_HANDOFF_RESULTS = [
+    "none",
+    "pending",
+    "success",
+    "failure",
+    "provider-error",
+];
+export const CI_RETRIGGER_STATES = [
+    "intended",
+    "commit-created",
+    "push-completed",
+    "receipt-completed",
+];
+const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const isRecord = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const isCount = (v) => Number.isSafeInteger(v) && Number(v) >= 0;
+const nonEmpty = (v) => typeof v === "string" && v.trim().length > 0;
+function validHandoffTarget(value) {
+    if (!isRecord(value))
+        return false;
+    return (value.provider === "github" &&
+        typeof value.repo === "string" &&
+        REPO_RE.test(value.repo) &&
+        (value.pr === null || (typeof value.pr === "string" && /^[1-9][0-9]*$/.test(value.pr))) &&
+        typeof value.head === "string" &&
+        SHA_RE.test(value.head) &&
+        nonEmpty(value.branch));
+}
+function validRetrigger(value) {
+    if (!isRecord(value))
+        return false;
+    const state = CI_RETRIGGER_STATES.find((s) => s === value.state);
+    if (state === undefined)
+        return false;
+    if (typeof value.original !== "string" || !SHA_RE.test(value.original))
+        return false;
+    const sha = (k) => typeof value[k] === "string" && SHA_RE.test(value[k]);
+    if (state === "intended")
+        return true;
+    if (!sha("commit"))
+        return false;
+    if (state === "commit-created")
+        return true;
+    if (!nonEmpty(value.ref) || !sha("remote"))
+        return false;
+    if (state === "push-completed")
+        return true;
+    return nonEmpty(value.receipt);
+}
+/** Validate one `ci-handoff` row before any reader treats it as evidence. */
+export function validateCiHandoffEvent(value) {
+    if (!isRecord(value) || value.type !== "ci-handoff")
+        return false;
+    if (!nonEmpty(value.workflow) || !nonEmpty(value.at))
+        return false;
+    if (value.phase !== "poll" && value.phase !== "repoll")
+        return false;
+    if (!validHandoffTarget(value.target))
+        return false;
+    const o = value.observation;
+    if (!isRecord(o))
+        return false;
+    if (!CI_HANDOFF_RESULTS.some((r) => r === o.result))
+        return false;
+    if (!isCount(o.attempts) || !isCount(o.errors) || o.errors > o.attempts)
+        return false;
+    if (value.retrigger !== undefined && !validRetrigger(value.retrigger))
+        return false;
+    return value.phase !== "repoll" || value.retrigger !== undefined;
+}
+/** Wording and transport do not change which target a handoff row is about. */
+export function ciHandoffIdentity(target) {
+    return JSON.stringify([
+        target.provider,
+        target.repo.toLowerCase(),
+        target.pr,
+        target.head,
+        target.branch,
+    ]);
+}
+/**
+ * The cumulative handoff state of one target: de-dupes, orders by `at`, counts rows for other
+ * targets as `stale` and rows whose cumulative counts go backwards as `invalid`.
+ */
+export function foldCiHandoff(rows, target) {
+    const seen = new Set();
+    const events = [];
+    for (const row of rows) {
+        if (!validateCiHandoffEvent(row))
+            continue;
+        const key = JSON.stringify(row);
+        if (seen.has(key))
+            continue;
+        seen.add(key);
+        events.push(row);
+    }
+    const ordered = events
+        .map((e, i) => ({ e, i }))
+        .sort((a, b) => (a.e.at < b.e.at ? -1 : a.e.at > b.e.at ? 1 : a.i - b.i))
+        .map((x) => x.e);
+    const want = ciHandoffIdentity(target);
+    const state = {
+        phase: "poll",
+        attempts: 0,
+        errors: 0,
+        last: null,
+        retrigger: null,
+        retriggerBase: null,
+        stale: 0,
+        invalid: 0,
+    };
+    for (const e of ordered) {
+        if (ciHandoffIdentity(e.target) !== want) {
+            state.stale += 1;
+            continue;
+        }
+        if (e.observation.attempts < state.attempts || e.observation.errors < state.errors) {
+            state.invalid += 1;
+            continue;
+        }
+        state.attempts = e.observation.attempts;
+        state.errors = e.observation.errors;
+        state.phase = e.phase;
+        state.last = { result: e.observation.result, at: e.at };
+        if (e.retrigger !== undefined) {
+            state.retriggerBase ??= { attempts: e.observation.attempts, errors: e.observation.errors };
+            state.retrigger = e.retrigger;
+        }
+    }
+    return state;
+}
 /** Validate the bounded CI evidence variant without relaxing local exit codes. */
 export function testRunProblem(value) {
     if (!value || typeof value !== "object")
@@ -355,6 +487,27 @@ export function recordAction(file, a) {
 /** The operations store, relative to a book root; `.bkit/*.jsonl` is allow-listed and unioned. */
 export const LEDGER_OPERATIONS_FILE = path.join(".bkit", "ledger-operations.jsonl");
 const ledgerOpKey = (operation) => actionKey("ledger-op", operation);
+/** The status rows of one bounded correction: a guaranteed no-write rejection, a corrected retry, its success. */
+export const CORRECTION_REJECTED_ROW = "correction-rejected";
+export const CORRECTION_CANDIDATE_ROW = "correction-candidate";
+export const CORRECTION_SUCCEEDED_ROW = "correction-succeeded";
+/**
+ * The stable scope one rejected sub-step's corrected retries share: derived from the run, step,
+ * task group and attempt, the ledger and the sub-step, never from an invocation or operation id,
+ * so a new tool call, helper or resume spends from the same budget.
+ */
+export function correctionScope(o) {
+    return [
+        "ledgers-append",
+        o.ledger,
+        o.substep,
+        o.workflow,
+        `run${o.run ?? 0}`,
+        o.step,
+        ...(o.group === null ? [] : [`group${o.group}`]),
+        ...(o.attempt === null ? [] : [`attempt${o.attempt}`]),
+    ].join(":");
+}
 /** Where `operation` stands in `file`: unseen, done with this request, or used for another. */
 export function ledgerOperation(file, operation, hash) {
     const known = engineActions(file)

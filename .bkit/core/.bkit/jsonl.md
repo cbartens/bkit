@@ -388,6 +388,21 @@ An identity match means the same thing, not an automatic skip:
 - **Nothing changed** → skip.
 - **Something changed** → append (§ Updating a Row).
 
+## `ci-handoff` and correction rows
+
+These are rows in a run's `status.jsonl`; the status fold ignores types it does not know, so they never change a step's state.
+
+<!-- prettier-ignore -->
+| `type` | Written by | Fields |
+| --- | --- | --- |
+| `ci-handoff` | `bkit runs handoff`, `bkit runs dispatch --invocation` | the target (`provider`, `repo`, `pr`, `head`, `branch`), the cumulative observation (`result`, `attempts`, `errors`) and an optional re-trigger checkpoint `intended`, `commit-created`, `push-completed` or `receipt-completed` (the receipt) |
+| `correction-rejected` | `bkit ledgers append --correction-of` | the rejected `operation`, the `scope` and the engine's rejection code |
+| `correction-candidate` | `bkit counters correction` | the candidate `operation` that spent one retry in the `scope` |
+| `correction-succeeded` | `bkit ledgers append --correction-of` | the verified `operation` and the `scope` it closed |
+
+- **Phase and totals** are derived by the engine from these rows; a caller never supplies an attempt count.
+- **Other targets:** a `ci-handoff` row for another repo, PR, head or branch is counted as stale and never resumes the gate.
+
 ## `engine-action` rows
 
 This is not a ledger but a row in a run's `status.jsonl` (`.bkit/workflows.md` § `status.jsonl`). An engine action unsafe to repeat — a tracker comment, a marker commit, a CI re-trigger, a PR open — appends one once it is done, and checks for it first, so a re-run of the same block does not act twice. Actions safe to repeat (a label already set) record nothing.

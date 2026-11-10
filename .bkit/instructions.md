@@ -1138,11 +1138,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:419`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:420`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:202`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:203`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:216`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:217`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
@@ -1235,11 +1235,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:419`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:420`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:202`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:203`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:216`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:217`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:584`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:585`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1668,7 +1668,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:584`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:585`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -2627,10 +2627,11 @@ One `### {name}` per clause, in the lines of § Format, Clause section lines. He
 - carriers: workflow all
 
 ```text
-**Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
+**Failures:** Apply explicit recovery routes, including **Sandbox recovery**, **Read-only helper recovery** and **Bounded correction**, before **Failure Path**.
 ```
 
 ```retired
+**Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
 **Failures:** Follow explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before entering **Failure Path**.
 **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**.
 **Failures:** Follow explicit recovery routes, including **Sandbox recovery**, before entering **Failure Path**. **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
@@ -2905,7 +2906,21 @@ Continue from the interrupted sub-step only after the retry is verified.
 - carriers: workflow `bkit-build`, `bkit-debug`
 
 ```text
+**CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop. Pass `--invocation="{INVOCATION}"` on every run of the block. Each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead), then record what it saw with `bkit runs handoff --invocation="{INVOCATION}" --repo={OWNER_REPO} --pr={PR_NUMBER} --head=<printed head> --branch={BRANCH} --result=<none|pending|success|failure|provider-error> --polls=1`. Follow the printed `nextAction`: `poll-again` → end turn and repeat; `retrigger`, `reconcile-retrigger` or `verdict` → re-run the block. The engine derives the attempts, errors and re-trigger state from the persisted rows; never supply a counter.
+```
+
+```retired
 **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop: each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead) — check present → `found`; 6th unresolved turn → `none`, or `err` when every turn errored; **Else** → end turn and repeat. Re-run the block with `{CI_REENTRY}` = `--poll-result=<found|none|err> --attempts=<total>`, plus `--all-errored` when every turn errored and `--retriggered` when the printed `phase` = repoll. `{CI_REENTRY}` is empty on a block's first run.
+```
+
+### workflow-bounded-correction
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
 ```
 
 ### contract-lead
@@ -10051,7 +10066,6 @@ Hold its URL as `PR_URL` and its number as `PR_NUMBER`.
 **If** exit 80 → append ` bkit [force build]` to the title with `update_pull_request`, then re-run the block with `--title-set`.
 Record `build-create-pr`:
 [mcp-fallback] Run the CI-Dispatch Gate. It records `build-close-workflow` with its `ciDispatch` verdict, cross-checks the transport and records the close transport.
-**If** re-entering from the **CI wait turn-loop** → fill `{CI_REENTRY}`:
 **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
 Re-read the issue's labels after the push, for the kill-switch check:
 **If** `PUBLISH` = true → also run:
@@ -10191,10 +10205,10 @@ Set `TRIGGER_PR`:
 **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
 [code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
-**If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
+**If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with the held `INVOCATION`.
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
 **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
-**If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
+**If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `--invocation="{INVOCATION}"`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
 [fit `workflow-verdict-fail` 0.67; keep: fails on a missing CI run, not on a FAIL verdict] **If** `result` != `found` → **Failure Path**.
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).

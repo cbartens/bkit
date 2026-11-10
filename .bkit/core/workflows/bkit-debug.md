@@ -13,7 +13,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery**, **Read-only helper recovery** and **Bounded correction**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -34,7 +34,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls<!-- bkit:tracker true start --> (`{ISSUE_ID}` may be empty)<!-- bkit:tracker true end -->. **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
-- **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop: each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead) — check present → `found`; 6th unresolved turn → `none`, or `err` when every turn errored; **Else** → end turn and repeat. Re-run the block with `{CI_REENTRY}` = `--poll-result=<found|none|err> --attempts=<total>`, plus `--all-errored` when every turn errored and `--retriggered` when the printed `phase` = repoll. `{CI_REENTRY}` is empty on a block's first run.
+- **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop. Pass `--invocation="{INVOCATION}"` on every run of the block. Each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead), then record what it saw with `bkit runs handoff --invocation="{INVOCATION}" --repo={OWNER_REPO} --pr={PR_NUMBER} --head=<printed head> --branch={BRANCH} --result=<none|pending|success|failure|provider-error> --polls=1`. Follow the printed `nextAction`: `poll-again` → end turn and repeat; `retrigger`, `reconcile-retrigger` or `verdict` → re-run the block. The engine derives the attempts, errors and re-trigger state from the persisted rows; never supply a counter.
+- **Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -787,25 +788,37 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
    **If** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 → run the CI-Dispatch Gate on the pushed head. It records `{DISPATCH_ROW}`, cross-checks the transport and records the close transport. `{DISPATCH_ROW}` = `--step=debug-close-workflow {LIVE_SKIPPED}` when `{PR_OPEN}` = 1, `--step=debug-create-pr --artifact={PR_URL}` after a created PR. `{LABEL_FLAGS}` as in sub-step 6:
 
+   Issue the invocation for the `{DISPATCH_ROW}` step once and hold its `invocation` as `INVOCATION` for every re-run:
+
    ```bash
-   "{BKIT}" runs dispatch --pr={PR_NUMBER} --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug {DISPATCH_ROW} {CI_REENTRY}
+   "{BKIT}" status invocation --workflow=debug --step=<the {DISPATCH_ROW} step> --file="{STATUS}"
+   ```
+
+   ```bash
+   "{BKIT}" runs dispatch --pr={PR_NUMBER} --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug {DISPATCH_ROW} --invocation="{INVOCATION}"
    ```
 
    Route:
    - **If** exit 0 → hold `head` as `VERIFY_HEAD`; with selected CI, run the verification below before sub-step 8; with local discovery, continue at sub-step 8.
-   - **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with `{CI_REENTRY}`.
+   - **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with the held `INVOCATION`.
    - **Else** (1 unresolved verdict, 4 skip token in the pushed body, 5 / 6 / other) → **Failure Path**.
 
    - **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = false → only release the lock (the last block below).
    - **If** `BRANCH` = `dev` **and** `DEV_PUSHED` = true → gate the push-event CI run at `{DEV_SHA}`, then release the lock. `{LIVE_SKIPPED}` and `{LABEL_FLAGS}` as above:
 
+     Issue a fresh invocation for `debug-close-workflow` and hold it as `INVOCATION`:
+
      ```bash
-     "{BKIT}" runs dispatch --sha="{DEV_SHA}" --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug --step=debug-close-workflow {LIVE_SKIPPED} {CI_REENTRY}
+     "{BKIT}" status invocation --workflow=debug --step=debug-close-workflow --file="{STATUS}"
+     ```
+
+     ```bash
+     "{BKIT}" runs dispatch --sha="{DEV_SHA}" --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=debug --step=debug-close-workflow {LIVE_SKIPPED} --invocation="{INVOCATION}"
      ```
 
      Route:
      - **If** exit 0 → hold the printed `head` as `DEV_SHA` → wait below.
-     - **If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `{CI_REENTRY}`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
+     - **If** exit 81 **or** 80 → hold the printed `head` as `DEV_SHA` → **CI wait turn-loop**, polling `runs wait --head="{DEV_SHA}" --branch=dev --once` in place of `--pr` → re-run this block with `--invocation="{INVOCATION}"`, `--sha="{DEV_SHA}"` re-held from each printed `head` (after a `repoll` phase too).
      - **Else** → **Failure Path**.
 
      ```bash
