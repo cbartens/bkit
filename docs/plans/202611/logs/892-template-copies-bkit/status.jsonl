@@ -318,3 +318,14 @@
 {"type":"engine-action","action":"comment","key":"ship/1/ship-bookkeeping-push/-/-/comment","hash":"fee5c51ea9350459a01c5c254a76c88db923a2211670a5dcb727a19a0a528e5a","ref":"https://github.com/cbartens/bkit/issues/892#issuecomment-6739810233","at":"2026-11-09T12:26:06Z"}
 {"type":"step-done","workflow":"ship","step":"ship-bookkeeping-push","status":"DONE","at":"2026-11-09T12:26:06Z","parentSha":"7a2f720f9d47bab6da9fbede5149fcce6a412a54","artifacts":[]}
 {"type":"engine-call","workflow":"ship","at":"2026-11-09T12:26:06Z","noun":"ledgers","verb":"commit","flags":["month","fid","scope","mode","message"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T12:38:16Z","noun":"issues","verb":"labels","flags":["write","phase","board","issue","owner-repo","label"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T12:38:21Z","noun":"steps","verb":"gate","flags":["file","ref","workflow","step"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T20:58:31Z","noun":"repo","verb":"info","flags":["fetch"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T20:58:43Z","noun":"fids","verb":"parse","flags":["prompt-file"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T20:58:43Z","noun":"issues","verb":"fetch","flags":["issue","session-dir"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T20:58:45Z","noun":"fids","verb":"resolve","flags":["prompt-file","issue","title-file","workflow"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T21:45:55Z","noun":"repo","verb":"info","flags":["fetch"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T21:45:57Z","noun":"fids","verb":"parse","flags":["prompt-file"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T21:45:57Z","noun":"issues","verb":"fetch","flags":["issue","session-dir"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T21:45:58Z","noun":"fids","verb":"resolve","flags":["prompt-file","issue","title-file","workflow"]}
+{"type":"engine-call","workflow":"ship","at":"2026-11-09T23:51:57Z","noun":"issues","verb":"labels","flags":["write","phase","board","issue","owner-repo","label"]}
