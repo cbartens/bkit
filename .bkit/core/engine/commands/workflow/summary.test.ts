@@ -996,4 +996,88 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("PRETTY-ACTION");
     expect(s.markdown).toContain("ONELINE-ACTION");
   });
+  it("excludes raw tracker text in related-issues.md from documentation warnings", () => {
+    const text = [
+      "# Related issues",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "TRACKER-EVIDENCE",
+        action: "TRACKER-INJECTED-ACTION",
+      }),
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "plan-fetch-context",
+            verdict: "PASS",
+            artifacts: [
+              "log/related-issues.md",
+              "log/related-failures.md",
+              "log/related-deferrals.md",
+            ],
+          },
+        ],
+        read: reader({
+          "log/related-issues.md": text,
+          "log/related-failures.md": text,
+          "log/related-deferrals.md": text,
+        }),
+      }),
+    );
+    expect(s.markdown).not.toContain("TRACKER-INJECTED-ACTION");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
+  });
+
+  it("ignores warning records inside an UNTRUSTED fence", () => {
+    const rec = (action: string) =>
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "e",
+        action,
+      });
+    const text = [
+      "Verdict: PASS",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      rec("KEEP-ACTION"),
+      "===== BEGIN UNTRUSTED =====",
+      rec("UNTRUSTED-ACTION"),
+      "===== END UNTRUSTED =====",
+      "```",
+      "",
+      "===== BEGIN UNTRUSTED =====",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      rec("UNTRUSTED-SECTION-ACTION"),
+      "```",
+      "===== END UNTRUSTED =====",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-tasks", verdict: "PASS", artifacts: ["log/a.md"] },
+        ],
+        read: reader({ "log/a.md": text }),
+      }),
+    );
+    expect(s.markdown).toContain("KEEP-ACTION");
+    expect(s.markdown).not.toContain("UNTRUSTED-ACTION");
+    expect(s.markdown).not.toContain("UNTRUSTED-SECTION-ACTION");
+  });
 });

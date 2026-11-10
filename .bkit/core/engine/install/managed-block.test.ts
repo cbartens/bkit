@@ -10,6 +10,7 @@ import {
   extractManagedBlock,
   findLineAnchoredMarkers,
   findUnmarkedCopy,
+  stripManagedWrapper,
 } from "./managed-block";
 
 // ---------------------------------------------------------------------------
@@ -324,5 +325,35 @@ describe("findUnmarkedCopy", () => {
 
   it("returns null when the block has no title", () => {
     expect(findUnmarkedCopy(rows(12), rows(12))).toBeNull();
+  });
+});
+
+describe("stripManagedWrapper historical notices", () => {
+  const wrap = (notice: string) =>
+    ["<!-- bkit:start -->", "", notice, "", "# Doc", "", "Body.", "", "<!-- bkit:end -->", ""].join(
+      "\n",
+    );
+
+  it("removes a v5 PolyForm-licensed notice with the wrapper", () => {
+    const notice =
+      "<!-- bkit:managed v5.0.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do not edit; run `bkit upgrade` to refresh -->";
+    const r = stripManagedWrapper(wrap(notice));
+    expect(r.status).toBe("removed");
+    expect(r.content).not.toContain("bkit:managed");
+    expect(r.content).not.toContain("PolyForm");
+    expect(r.content).toBe("# Doc\n\nBody.\n");
+  });
+
+  it("removes a pre-6.0 do NOT edit notice with the wrapper", () => {
+    const notice =
+      "<!-- bkit:managed v4.12.0 — PolyForm Noncommercial 1.0.0 / Small Business 1.0.0 (https://polyformproject.org/licenses/) — do NOT edit; run `bkit upgrade` to refresh -->";
+    const plain = "<!-- bkit:managed v4.5.0 — do NOT edit; run `bkit upgrade` to refresh -->";
+    for (const n of [notice, plain]) {
+      const r = stripManagedWrapper(wrap(n));
+      expect(r.status).toBe("removed");
+      expect(r.content).not.toContain("bkit:managed");
+      expect(r.content).not.toContain("do NOT edit");
+      expect(r.content).toBe("# Doc\n\nBody.\n");
+    }
   });
 });

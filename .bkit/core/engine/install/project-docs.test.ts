@@ -132,6 +132,8 @@ describe("syncProjectDocs", () => {
 
   it("adds no row when an indexed equivalent covers the topic", () => {
     fs.writeFileSync(path.join(root, "docs/noise.md"), "# Noise\n");
+    fs.mkdirSync(path.join(root, "docs/other"));
+    fs.writeFileSync(path.join(root, "docs/other/noise.md"), "# Our noise\n");
     fs.appendFileSync(
       path.join(root, ".agents/docs.md"),
       "| `docs/other/noise.md` | Equivalent to docs/noise.md |\n",
@@ -139,5 +141,33 @@ describe("syncProjectDocs", () => {
     const r = syncProjectDocs(root, { dryRun: false });
     expect(r.registered).toEqual([]);
     expect(r.equivalent).toHaveLength(1);
+  });
+  it("reports instead of throwing when docs is a regular file", () => {
+    fs.rmSync(path.join(root, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(root, "docs"), "not a directory\n");
+    const before = fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8");
+    let report: ReturnType<typeof syncProjectDocs> | undefined;
+    expect(() => {
+      report = syncProjectDocs(root, { dryRun: false });
+    }).not.toThrow();
+    expect(report!.migrated).toEqual([]);
+    expect(report!.registered).toEqual([]);
+    expect(report!.unsafe.length).toBeGreaterThan(0);
+    for (const u of report!.unsafe) expect(u.path).toMatch(/^docs\/.+\.md$/);
+    for (const u of report!.unsafe) expect(u.reason.length).toBeGreaterThan(0);
+    expect(fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8")).toBe(before);
+  });
+
+  it("registers a present default doc when its only equivalent row points at a missing file", () => {
+    fs.writeFileSync(path.join(root, "docs/security.md"), "# Security\n\nReal content.\n");
+    fs.appendFileSync(
+      path.join(root, ".agents/docs.md"),
+      "| `engineering/security.md` | Equivalent to docs/security.md |\n",
+    );
+    const r = syncProjectDocs(root, { dryRun: false });
+    expect(r.registered).toEqual(["docs/security.md"]);
+    expect(fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8")).toContain(
+      "`docs/security.md`",
+    );
   });
 });

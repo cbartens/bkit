@@ -12,7 +12,7 @@ import {
   buildDepUpdaterSetupAdvisory,
   detectProjectDocs,
 } from "./tools";
-import { LEGACY_STARTER_SOURCE_REVISION } from "../../install/project-docs";
+import { LEGACY_STARTER_SOURCE_REVISION, syncProjectDocs } from "../../install/project-docs";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -626,5 +626,63 @@ describe("detectProjectDocs", () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+  /** The v6.1.1 shipped text of a topic as it was rendered into a consumer repo. */
+  async function renderedV611(topic: string, branch: string): Promise<string> {
+    const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const raw = cp.execFileSync("git", ["show", `v6.1.1:.bkit/shared/docs/${topic}.md`], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: originalCwd,
+    });
+    return raw
+      .replace(
+        "{{BKIT_MANAGED_MARKER}}",
+        "<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->",
+      )
+      .replace(/\{\{DEFAULT_BRANCH\}\}/g, branch);
+  }
+
+  it("recognizes the v6.1.1 untouched security starter as unpopulated", async () => {
+    writeDoc("docs/security.md", await renderedV611("security", "main"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  it("recognizes a legacy deployments starter rendered with default branch dev", async () => {
+    writeDoc("docs/deployments.md", await renderedV611("deployments", "dev"));
+    writeIndex([{ doc: "docs/deployments.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/deployments.md");
+  });
+
+  it("returns an advisory instead of throwing when docs is a regular file", () => {
+    fs.writeFileSync(path.join(tmpDir, "docs"), "not a directory\n");
+    writeIndex([{ doc: "docs/security.md" }]);
+    let findings: ReturnType<typeof detectProjectDocs> = [];
+    expect(() => {
+      findings = detectProjectDocs(tmpDir);
+    }).not.toThrow();
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.severity).toBe("advisory");
+    expect(ambiguous!.detect).toContain("docs/");
+  });
+
+  it("does not advise bkit upgrade for a default doc that sync leaves to an indexed equivalent", () => {
+    writeDoc("docs/security.md", POPULATED);
+    writeDoc("engineering/security.md", POPULATED);
+    writeIndex([{ doc: "engineering/security.md", scope: "Equivalent to docs/security.md" }]);
+    syncProjectDocs(tmpDir, { dryRun: false });
+    const promised = detectProjectDocs(tmpDir)
+      .filter((f) => f.id === "project-docs-unindexed")
+      .filter((f) => f.detect.includes("docs/security.md"))
+      .map((f) => f.action)
+      .join("\n");
+    // Sync either registered the doc (no advisory) or the advisory must not promise upgrade will.
+    expect(promised).not.toContain("bkit upgrade");
   });
 });

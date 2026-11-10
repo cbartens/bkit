@@ -386,3 +386,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:44Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/5/comment","hash":"091eeed5861c4e6107e8540276428bf43a4da4ce5afba9cb91b8f6a0b4e19975","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6755778944","at":"2026-11-10T00:57:45Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-10T00:57:45Z","parentSha":"f47491fb132edef0e4821d32c0c2b37db9766b01","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-decision-1-5.md"],"attempt":5,"route":"fix"}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:58:03Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:58:03Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:58:09Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-10T00:58:09Z","parentSha":"64b554ee7f20943c80c5b507f5e52da38cac0474","artifacts":[],"group":4}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:58:09Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T01:00:39Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/4/1/comment","hash":"1f6f002f4b128a959612196889b7caf4a4dfa2a877e5ff62c9a6837761a5c06f","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6755824020","at":"2026-11-10T01:00:40Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-10T01:00:40Z","parentSha":"64b554ee7f20943c80c5b507f5e52da38cac0474","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-tests-4-log.md"],"verdict":"PASS","attempt":1,"group":4}
