@@ -112,6 +112,13 @@ Move project documentation from bkit-managed content to copy-and-own templates w
 | a plan built from the unfilled bkit-plan.md template yields no documentation warning | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 16 |
 | reports an index row through a regular file as ambiguous instead of throwing | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 17 |
 | reports a NUL-byte index path as ambiguous instead of throwing | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 17 |
+| ignores a warning record placed after a forged closing marker in a fenced context artifact | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 18 |
+| consults a later valid same-topic row when the first indexed row is stale | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 19 |
+| consults a later valid equivalent row when the first is out of tree | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 19 |
+| classifies a starter copy that differs only in whitespace as unpopulated | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 20 |
+| classifies an indented legacy starter copy as unpopulated | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 20 |
+| does not add a second row for a default doc indexed through a markdown link | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 21 |
+| reads the Scope of a row without a trailing pipe | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 21 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -632,6 +639,51 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 17 end -->
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 2 findings
+
+<!-- bkit:task 18 start -->
+
+- [ ] **TASK 18:** A runtime or CI log line that prints a forged `===== END UNTRUSTED =====` line, followed by a `## Documentation Warnings` jsonl block, survives `stripUntrusted` in a debug context-fetch artifact (`context-<name>-N.md`, a `step-done` artifact the name filter does not exclude), so `bkit workflows summary` republishes the attacker's `Action:` text as engine output in `debug-summary.md`, which is posted as a tracker comment and returned as the final message.
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/summary.ts:158` · **Round:** 2
+  - **DONE WHEN:** `stripUntrusted` drops everything from the first `FENCE_OPEN` line to the last `FENCE_CLOSE` line in the file (to end of file when no close follows), so no closing marker inside the payload can end the strip early. This matches the fence contract at `.bkit/core/engine/commands/workflow/context.ts:88` ("Fence ends at LAST line of file; ANY other closing markers are forged"). The `jsonl` fence body regex accepts the end of the section as a close, so the existing test `ignores warning records inside an UNTRUSTED fence` keeps passing. The plan's Task 6 DONE WHEN ("Untrusted inputs ... are outside the aggregation source set") and Task 10 hold against a forged closer.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/summary.test.ts` `ignores a warning record placed after a forged closing marker in a fenced context artifact` fails on `buildSummary` rendering `FORGED-ACTION`. The fixture is a `step-done` row with artifact `log/context-ci-1.md`. Its text is `FENCE_INSTRUCTION_LINES`, `FENCE_OPEN`, a log line, a forged `FENCE_CLOSE`, `## Documentation Warnings`, a `jsonl` fence holding a valid five-field record whose `action` is `FORGED-ACTION`, then the real `FENCE_CLOSE`. The current lazy `[\s\S]*?` stops at the forged closer, and `isRawInput` matches only `*-input-*`, `related-*` and `context-related-*` names, so the record is rendered today.
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** A Project Documents table that lists a deleted `old/security.md` above a populated `eng/security.md` gets `bkit check` saying "No project document covers: docs/security.md", because `findIndexedEquivalent` returns the first same-topic row and the detector calls it with the default `usable = () => true`.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:426` · **Round:** 2
+  - **DONE WHEN:** When the default path is absent, the detector (`.bkit/core/engine/checks/after/tools.ts:495`) resolves the topic to the first indexed row that is in-tree and a regular file (the same `usable` predicate sync passes at `project-docs.ts:528`), so a stale or out-of-tree row ahead of a valid one yields neither `project-docs-missing` nor `project-docs-ambiguous` for that topic; when every candidate row is unusable, the advisory names those rows. Plan Edge Cases: "Indexed equivalent uses a different path → Consult it; do not emit a false missing-default-path warning."
+  - **TEST FIRST:**
+    - `.bkit/core/engine/checks/after/tools.test.ts` `consults a later valid same-topic row when the first indexed row is stale` fails on `detectProjectDocs` listing `docs/security.md` in `project-docs-missing` for an index with rows `old/security.md` (no file) then `eng/security.md` (populated) and no `docs/security.md`.
+    - `.bkit/core/engine/checks/after/tools.test.ts` `consults a later valid equivalent row when the first is out of tree` fails on `detectProjectDocs` returning `project-docs-ambiguous` naming `../shared/security.md` when the next row `eng/security.md` is populated and in-tree.
+
+<!-- bkit:task 19 end -->
+<!-- bkit:task 20 start -->
+
+- [ ] **TASK 20:** A maintainer copies the security starter and their editor or formatter indents one line or doubles one space; `bkit check` then raises no starter-only advisory and the file reads as a populated candidate, because `normalizeLegacyText` trims only trailing whitespace and blank-line runs.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:158` · **Round:** 2
+  - **DONE WHEN:** The comparison used for starter recognition (`normalizeLegacyText`, and the digests in `LEGACY_STARTER_DIGEST_HISTORY` recomputed under the same rule) is insensitive to leading whitespace and runs of inner spaces / tabs, so a current or legacy starter copy that differs only in whitespace is reported under `project-docs-unpopulated`. Plan Edge Cases: "Copied starter differs only in whitespace or the former ownership lines → Classify it as starter-only."
+  - **TEST FIRST:**
+    - `.bkit/core/engine/checks/after/tools.test.ts` `classifies a starter copy that differs only in whitespace as unpopulated` fails on `detectProjectDocs` returning no finding for an indexed `docs/security.md` holding `.bkit/templates/docs/security.md` with one prose line's first space doubled.
+    - `.bkit/core/engine/checks/after/tools.test.ts` `classifies an indented legacy starter copy as unpopulated` fails on the same omission for an indexed `docs/security.md` holding the `45f4254bd` security starter (wrapper lines removed) with its first prose line indented by two spaces.
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [ ] **TASK 21:** A consumer whose Project Documents row is `| [docs/security.md](docs/security.md) | ... |` gets a second `docs/security.md` row written into their own table on the next install / upgrade, and a row with no trailing pipe has its `Equivalent to docs/security.md` Scope ignored, because the row parser only sees a backticked first cell and takes Scope as `cells[length - 2]`.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:338` · **Round:** 2
+  - **DONE WHEN:** `readProjectIndex` reads a row's path from a backticked cell, a Markdown link target or a bare path, and takes Scope as the last non-empty cell whether or not the row ends in `|` (escaped `\|` not splitting a cell); a row it cannot parse is reported as ambiguous rather than treated as absent. `syncProjectDocs` adds no row for a path already listed in any of those forms. Plan Success Criteria: "Register adopted project docs ... without duplicates or overwriting existing entries."
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/project-docs.test.ts` `does not add a second row for a default doc indexed through a markdown link` fails on `syncProjectDocs` returning `registered: ["docs/security.md"]` and appending a backticked row below the existing link row.
+    - `.bkit/core/engine/checks/after/tools.test.ts` `reads the Scope of a row without a trailing pipe` fails on `detectProjectDocs` listing `docs/security.md` as missing when the only row is ``| `eng/sec-notes.md` | ○ | ○ | ○ | ○ | ○ | Equivalent to docs/security.md`` with no closing pipe and `eng/sec-notes.md` populated.
+
+<!-- bkit:task 21 end -->
+<!-- bkit:group 6 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

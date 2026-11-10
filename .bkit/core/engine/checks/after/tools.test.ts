@@ -739,4 +739,73 @@ describe("detectProjectDocs", () => {
     expect(ambiguous).toBeDefined();
     expect(ambiguous!.severity).toBe("advisory");
   });
+
+  it("consults a later valid same-topic row when the first indexed row is stale", () => {
+    writeDoc("eng/security.md", POPULATED);
+    writeIndex([{ doc: "old/security.md" }, { doc: "eng/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
+  });
+
+  it("consults a later valid equivalent row when the first is out of tree", () => {
+    writeDoc("eng/security.md", POPULATED);
+    writeIndex([
+      { doc: "../shared/security.md", scope: "Equivalent to docs/security.md" },
+      { doc: "eng/security.md", scope: "Equivalent to docs/security.md" },
+    ]);
+    const findings = detectProjectDocs(tmpDir);
+    expect(findings.some((f) => f.id === "project-docs-ambiguous")).toBe(false);
+    expect(allText(findings)).not.toContain("../shared/security.md");
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+  });
+
+  it("classifies a starter copy that differs only in whitespace as unpopulated", () => {
+    const starter = fs.readFileSync(path.join(STARTER_DIR, "security.md"), "utf-8");
+    const lines = starter.split("\n");
+    const i = lines.findIndex((l) => /^[A-Za-z]\S* \S/.test(l));
+    expect(i).toBeGreaterThanOrEqual(0);
+    lines[i] = lines[i]!.replace(" ", "  ");
+    writeDoc("docs/security.md", lines.join("\n"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  it("classifies an indented legacy starter copy as unpopulated", async () => {
+    const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+    const legacy = cp.execFileSync(
+      "git",
+      ["show", `${LEGACY_STARTER_SOURCE_REVISION}:.bkit/shared/docs/security.md`],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], cwd: originalCwd },
+    );
+    const lines = stripLegacyWrapper(legacy).split("\n");
+    const i = lines.findIndex((l) => /^[A-Za-z]/.test(l));
+    expect(i).toBeGreaterThanOrEqual(0);
+    lines[i] = `  ${lines[i]}`;
+    writeDoc("docs/security.md", lines.join("\n"));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+  });
+
+  it("reads the Scope of a row without a trailing pipe", () => {
+    writeDoc("eng/sec-notes.md", POPULATED);
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "docs.md"),
+      INDEX_HEAD + "| `eng/sec-notes.md` | ○ | ○ | ○ | ○ | ○ | Equivalent to docs/security.md\n",
+    );
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).not.toContain("docs/security.md");
+    expect(missing!.detect).toContain("docs/architecture.md");
+  });
 });

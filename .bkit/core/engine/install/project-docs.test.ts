@@ -170,4 +170,18 @@ describe("syncProjectDocs", () => {
       "`docs/security.md`",
     );
   });
+
+  it("does not add a second row for a default doc indexed through a markdown link", () => {
+    fs.writeFileSync(path.join(root, "docs/security.md"), "# Security\n\nReal content.\n");
+    fs.appendFileSync(
+      path.join(root, ".agents/docs.md"),
+      "| [docs/security.md](docs/security.md) | Security rules |\n",
+    );
+    const before = fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8");
+    const r = syncProjectDocs(root, { dryRun: false });
+    expect(r.registered).toEqual([]);
+    const after = fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8");
+    expect(after).toBe(before);
+    expect(after).not.toContain("`docs/security.md`");
+  });
 });
