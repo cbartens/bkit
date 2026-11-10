@@ -518,6 +518,59 @@ describe("buildSummary", () => {
     ).toContain("build-plan-gaps-remediate-holistic FAIL");
   });
 
+  it("a later PASS whole-plan verify resolves a group's failed execution and gaps fix", () => {
+    const execute = { type: "step-done", step: "build-plan-tasks", verdict: "FAIL", group: 2 };
+    const gaps = {
+      type: "step-done",
+      step: "build-plan-gaps-remediate",
+      verdict: "FAIL",
+      group: 2,
+    };
+    const holistic = (verdict: string, failures: number) => ({
+      type: "step-done",
+      step: "build-plan-verify-holistic",
+      verdict,
+      failures,
+    });
+    const answered = buildSummary(input({ rows: [execute, gaps, holistic("PASS", 0)] }));
+    expect(answered.markdown).toContain(
+      "build-plan-tasks (group 2) FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(answered.markdown).toContain(
+      "build-plan-gaps-remediate (group 2) FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(answered.verdict).toBe("PASS");
+
+    for (const rows of [
+      [execute, holistic("FAIL", 1)],
+      [execute, holistic("PASS", 1)],
+      [holistic("PASS", 0), execute],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-tasks (group 2) FAIL");
+  });
+
+  it("a later passing test run resolves a failed test-failure fix", () => {
+    const remediate = { type: "step-done", step: "build-failure-remediate", verdict: "FAIL" };
+    const tests = (verdict: string, failures: number) => ({
+      type: "step-done",
+      step: "build-run-tests",
+      verdict,
+      failures,
+    });
+    const answered = buildSummary(input({ rows: [tests("FAIL", 1), remediate, tests("PASS", 0)] }));
+    expect(answered.markdown).toContain(
+      "build-failure-remediate FAIL, resolved by build-run-tests",
+    );
+    expect(answered.verdict).toBe("PASS");
+
+    for (const rows of [
+      [tests("FAIL", 1), remediate],
+      [tests("FAIL", 1), remediate, tests("FAIL", 1)],
+      [tests("PASS", 0), remediate],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-failure-remediate FAIL");
+  });
+
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
     const gate = (linesChanged: number, filesChanged: number, size: string, skipped: boolean) => ({
       type: "challenge-gate",

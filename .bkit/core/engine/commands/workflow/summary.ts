@@ -61,16 +61,21 @@ export function refOf(fid: string, tracker: FidTracker = "any"): string | undefi
 }
 
 /**
- * Review updates cover their review's findings. Group verification covers failed
- * execution, but does not cover a remediation agent's separate warnings or flakes.
+ * Review updates cover their review's findings. The same group's verification, or a
+ * whole-plan verification, covers failed execution; a passing test run covers a failed
+ * test-failure fix. None covers a remediation agent's separate warnings or flakes.
  */
 const RESOLVED_BY: Readonly<Record<string, readonly string[]>> = {
   "plan/plan-review": ["plan-apply-review"],
   "design/design-review": ["design-apply-review"],
-  "build/build-plan-tasks": ["build-plan-verify"],
-  "build/build-plan-gaps-remediate": ["build-plan-verify"],
+  "build/build-plan-tasks": ["build-plan-verify", "build-plan-verify-holistic"],
+  "build/build-plan-gaps-remediate": ["build-plan-verify", "build-plan-verify-holistic"],
   "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+  "build/build-failure-remediate": ["build-run-tests"],
 };
+
+/** Steps that check the whole run, so they answer a failure in any task group. */
+const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
@@ -384,7 +389,7 @@ export function buildSummary(input: SummaryInput): Summary {
           answers.includes(String(r.step)) &&
           (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
           (r.failures === undefined || r.failures === 0) &&
-          taskGroupOf(r) === sub &&
+          (WHOLE_RUN.has(String(r.step)) || taskGroupOf(r) === sub) &&
           (!review || r.attempt === row.attempt),
       );
     if (answer !== undefined && spike) {
