@@ -385,6 +385,7 @@ export function detectProjectDocs(cwd, onSuppressed) {
     const unpopulated = [];
     const unindexed = [];
     const unindexedWrapped = [];
+    const unindexedBlocked = [];
     const duplicates = [];
     const ambiguous = [];
     const cleanup = [];
@@ -440,6 +441,8 @@ export function detectProjectDocs(cwd, onSuppressed) {
                 duplicates.push(`${target} (beside ${covering})`);
             else if (wrapper.status === "ambiguous")
                 unindexedWrapped.push(target);
+            else if ((index.unparsed ?? []).length > 0)
+                unindexedBlocked.push(target);
             else
                 unindexed.push(target);
         }
@@ -499,6 +502,14 @@ export function detectProjectDocs(cwd, onSuppressed) {
             severity: "advisory",
             detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them, and bkit will not register them while their ownership wrapper stays: ${unindexedWrapped.join(", ")}.`,
             action: `Remove the wrapper as the cleanup advisory describes, then add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH} (or run \`bkit upgrade\` once the wrapper is gone).`,
+        });
+    }
+    if (unindexedBlocked.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them, and bkit will not register them while a row of \`## Project Documents\` is unreadable: ${unindexedBlocked.join(", ")}.`,
+            action: `Repair or remove the unreadable row named in the ambiguous advisory, then add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH} (or run \`bkit upgrade\` once the row is repaired).`,
         });
     }
     if (duplicates.length > 0) {

@@ -726,6 +726,23 @@ describe("detectProjectDocs", () => {
     expect(actions).not.toContain("to register the default paths");
   });
 
+  it("does not promise bkit upgrade for an unindexed doc while the index holds an unreadable row", () => {
+    writeDoc("docs/security.md", POPULATED);
+    writeIndex([]);
+    fs.appendFileSync(
+      path.join(tmpDir, ".agents", "docs.md"),
+      "| Arch notes (docs/notes.md) | ○ | ○ | ○ | ○ | ○ | Notes. |\n",
+    );
+    const findings = detectProjectDocs(tmpDir);
+    const unindexed = findings.filter(
+      (f) => f.id === "project-docs-unindexed" && f.detect.includes("docs/security.md"),
+    );
+    expect(unindexed.length).toBeGreaterThan(0);
+    const actions = unindexed.map((f) => f.action).join("\n");
+    expect(actions).toContain("once the row is repaired");
+    expect(actions).not.toContain("to register the default paths");
+  });
+
   it("reports an index row through a regular file as ambiguous instead of throwing", () => {
     fs.writeFileSync(path.join(tmpDir, "README.md"), "# readme\n");
     writeIndex([{ doc: "README.md/security.md" }]);
