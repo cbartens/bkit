@@ -469,7 +469,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Retype the one planned test call that fails the slop check (owner decision, build decision 3; closes the group 1 quality-gate gap).
+- [x] **TASK 12:** Retype the one planned test call that fails the slop check (owner decision, build decision 3; closes the group 1 quality-gate gap).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: the owner approved changing the call in `accepts verified unavailable model without confusing configured and observed models` from `writerProblem(unavailable as unknown as Record<string, unknown>)` to a call that passes a plain object, the way the other `writerProblem` calls in the file do, with no `as unknown as` cast. Keep every expectation of that test.
   - **DEPENDS ON:** 2.
   - **DONE WHEN:** The test no longer contains a double type cast, every expectation of it is unchanged and it passes, `pnpm bkit:slop:delta` reports no net-new finding for `telemetry.test.ts`, and `bkit:gate:static-unit` passes.
