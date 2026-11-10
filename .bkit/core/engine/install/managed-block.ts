@@ -253,7 +253,7 @@ export function updateManagedBlock(
 
 /** The generated notice line a managed block carries: `<!-- bkit:managed vX — do not edit; … -->`. */
 const MANAGED_NOTICE_RE =
-  /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/;
+  /^<!-- bkit:managed v\S+ — (?:.* — )?do (?:not|NOT) edit; run `bkit upgrade` to refresh -->$/;
 
 /** Why a wrapper could not be removed without guessing. */
 export type WrapperProblem =

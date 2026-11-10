@@ -220,7 +220,7 @@ export function updateManagedBlock(filePath, newContent, dryRun = false, markerS
 // Wrapper-only removal — the ownership metadata of a document that becomes the project's own
 // ---------------------------------------------------------------------------
 /** The generated notice line a managed block carries: `<!-- bkit:managed vX — do not edit; … -->`. */
-const MANAGED_NOTICE_RE = /^<!-- bkit:managed v\S+ — do not edit; run `bkit upgrade` to refresh -->$/;
+const MANAGED_NOTICE_RE = /^<!-- bkit:managed v\S+ — (?:.* — )?do (?:not|NOT) edit; run `bkit upgrade` to refresh -->$/;
 /** Lines with their terminators, so removing a line keeps every other byte, CRLF included. */
 function splitKeepingEol(content) {
     return content.match(/[^\n]*\n|[^\n]+$/g) ?? [];

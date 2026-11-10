@@ -204,7 +204,7 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 | `project-docs-missing` | A recommended topic has no document and no indexed equivalent |
 | `project-docs-empty` | A covering document is empty |
 | `project-docs-unpopulated` | A covering document is still a current or legacy starter, or only headings |
-| `project-docs-unindexed` | A populated candidate exists but the index does not list it |
+| `project-docs-unindexed` | A populated candidate exists but the index does not list it, or lists another document for the same topic |
 | `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |
 
 A document that differs from every starter is a candidate for agent assessment; the check does not claim it is complete.

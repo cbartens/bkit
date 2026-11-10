@@ -76,7 +76,10 @@ const WARNING_FIELDS = [
     "action",
 ];
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
-const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel);
+const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
+    /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel);
+/** Text between the untrusted-content markers is external data: never a source of warnings. */
+const stripUntrusted = (text) => text.replace(/^[^\n]*={5} BEGIN UNTRUSTED ={5}[\s\S]*?(?:={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)|(?![\s\S]))/gm, "");
 /**
  * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
  * rewrites a one-line record into that shape); braces inside strings are ignored. Text outside
@@ -135,9 +138,10 @@ function documentationWarnings(rows, read) {
             if (!rel.endsWith(".md") || isRawInput(rel) || seenFiles.has(rel))
                 continue;
             seenFiles.add(rel);
-            const text = read(rel);
-            if (text === null)
+            const raw = read(rel);
+            if (raw === null)
                 continue;
+            const text = stripUntrusted(raw);
             const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text);
             const fence = section === null ? null : /```jsonl[ \t]*\r?\n([\s\S]*?)```/.exec(section[1]);
             if (fence === null)

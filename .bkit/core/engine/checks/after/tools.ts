@@ -14,6 +14,7 @@ import {
   type ProjectDocTopic,
   findIndexedEquivalent,
   inspectRepoFile,
+  isInTreePath,
   legacyStarterTopic,
   normalizeLegacyText,
   projectDocPath,
@@ -444,12 +445,6 @@ function readStarterText(cwd: string, topic: ProjectDocTopic): string | null {
   return null;
 }
 
-/** True when `rel` is a repo-relative path with no parent or absolute segments. */
-function isInTreePath(rel: string): boolean {
-  if (rel === "" || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel)) return false;
-  return !rel.split(/[\\/]/).includes("..");
-}
-
 type DocAssessment = "empty" | "unpopulated" | "candidate";
 
 /** Mechanical read of a project document: empty, an untouched starter, or a candidate. */
@@ -489,6 +484,7 @@ export function detectProjectDocs(
   const empty: string[] = [];
   const unpopulated: string[] = [];
   const unindexed: string[] = [];
+  const duplicates: string[] = [];
   const ambiguous: string[] = [];
 
   for (const topic of PROJECT_DOC_TOPICS) {
@@ -524,7 +520,16 @@ export function detectProjectDocs(
     const assessed = assessDocText(cwd, topic, read.text);
     if (assessed === "empty") empty.push(target);
     else if (assessed === "unpopulated") unpopulated.push(target);
-    else if (index.status === "ok" && !indexedPaths.has(target)) unindexed.push(target);
+    else if (index.status === "ok" && !indexedPaths.has(target)) {
+      const covering = findIndexedEquivalent(
+        rows,
+        topic,
+        (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular",
+      );
+      if (covering !== null && target === recommended)
+        duplicates.push(`${target} (beside ${covering})`);
+      else unindexed.push(target);
+    }
   }
 
   const findings: PreflightFinding[] = [];
@@ -568,6 +573,14 @@ export function detectProjectDocs(
       severity: "advisory",
       detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them: ${unindexed.join(", ")}.`,
       action: `Add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH}, or run \`bkit upgrade\` to register the default paths.`,
+    });
+  }
+  if (duplicates.length > 0) {
+    findings.push({
+      id: "project-docs-unindexed",
+      severity: "advisory",
+      detect: `These project documents exist but ${PROJECT_INDEX_PATH} lists another document for the same topic: ${duplicates.join(", ")}.`,
+      action: `bkit does not register them while the other document is indexed. Keep one: delete the unused file, or add a row for the second one by hand under \`## Project Documents\` in ${PROJECT_INDEX_PATH}.`,
     });
   }
   if (ambiguous.length > 0) {

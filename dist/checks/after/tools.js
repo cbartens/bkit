@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readPackageJson } from "../../shared/package-json.js";
 import { readTextFile } from "../../shared/json.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
-import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, inspectRepoFile, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
+import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, inspectRepoFile, isInTreePath, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
 import { isAdvisorySuppressed } from "./suppression.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import { DEP_UPDATER_NAMES, findDepUpdaterConfigs, } from "../../shared/dep-updater.js";
@@ -349,12 +349,6 @@ function readStarterText(cwd, topic) {
     }
     return null;
 }
-/** True when `rel` is a repo-relative path with no parent or absolute segments. */
-function isInTreePath(rel) {
-    if (rel === "" || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel))
-        return false;
-    return !rel.split(/[\\/]/).includes("..");
-}
 /** Mechanical read of a project document: empty, an untouched starter, or a candidate. */
 function assessDocText(cwd, topic, text) {
     if (text.trim() === "")
@@ -389,6 +383,7 @@ export function detectProjectDocs(cwd, onSuppressed) {
     const empty = [];
     const unpopulated = [];
     const unindexed = [];
+    const duplicates = [];
     const ambiguous = [];
     for (const topic of PROJECT_DOC_TOPICS) {
         const recommended = projectDocPath(topic);
@@ -425,8 +420,13 @@ export function detectProjectDocs(cwd, onSuppressed) {
             empty.push(target);
         else if (assessed === "unpopulated")
             unpopulated.push(target);
-        else if (index.status === "ok" && !indexedPaths.has(target))
-            unindexed.push(target);
+        else if (index.status === "ok" && !indexedPaths.has(target)) {
+            const covering = findIndexedEquivalent(rows, topic, (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular");
+            if (covering !== null && target === recommended)
+                duplicates.push(`${target} (beside ${covering})`);
+            else
+                unindexed.push(target);
+        }
     }
     const findings = [];
     if (index.status === "missing") {
@@ -470,6 +470,14 @@ export function detectProjectDocs(cwd, onSuppressed) {
             severity: "advisory",
             detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them: ${unindexed.join(", ")}.`,
             action: `Add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH}, or run \`bkit upgrade\` to register the default paths.`,
+        });
+    }
+    if (duplicates.length > 0) {
+        findings.push({
+            id: "project-docs-unindexed",
+            severity: "advisory",
+            detect: `These project documents exist but ${PROJECT_INDEX_PATH} lists another document for the same topic: ${duplicates.join(", ")}.`,
+            action: `bkit does not register them while the other document is indexed. Keep one: delete the unused file, or add a row for the second one by hand under \`## Project Documents\` in ${PROJECT_INDEX_PATH}.`,
         });
     }
     if (ambiguous.length > 0) {

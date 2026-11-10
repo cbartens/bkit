@@ -150,7 +150,15 @@ const WARNING_FIELDS = [
   "action",
 ] as const;
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
-const isRawInput = (rel: string) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel);
+const isRawInput = (rel: string) =>
+  /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
+  /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel);
+/** Text between the untrusted-content markers is external data: never a source of warnings. */
+const stripUntrusted = (text: string) =>
+  text.replace(
+    /^[^\n]*={5} BEGIN UNTRUSTED ={5}[\s\S]*?(?:={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)|(?![\s\S]))/gm,
+    "",
+  );
 
 /**
  * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
@@ -201,8 +209,9 @@ function documentationWarnings(rows: Row[], read: (rel: string) => string | null
     for (const rel of artifactsOf(row)) {
       if (!rel.endsWith(".md") || isRawInput(rel) || seenFiles.has(rel)) continue;
       seenFiles.add(rel);
-      const text = read(rel);
-      if (text === null) continue;
+      const raw = read(rel);
+      if (raw === null) continue;
+      const text = stripUntrusted(raw);
       const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(
         text,
       );
