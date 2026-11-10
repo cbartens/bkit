@@ -390,7 +390,9 @@ export function detectProjectDocs(cwd, onSuppressed) {
     const cleanup = [];
     for (const topic of PROJECT_DOC_TOPICS) {
         const recommended = projectDocPath(topic);
-        const equivalent = findIndexedEquivalent(rows, topic);
+        const isUsableRow = (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular";
+        // The first valid same-topic row wins; when none is valid the first row is named in the advisory.
+        const equivalent = findIndexedEquivalent(rows, topic, isUsableRow) ?? findIndexedEquivalent(rows, topic);
         const defaultState = inspectRepoFile(cwd, recommended);
         let target = recommended;
         if (defaultState === "absent") {
@@ -447,6 +449,11 @@ export function detectProjectDocs(cwd, onSuppressed) {
     }
     else if (index.status === "unreadable") {
         ambiguous.push(`${PROJECT_INDEX_PATH} (${index.reason})`);
+    }
+    else {
+        for (const row of index.unparsed ?? []) {
+            ambiguous.push(`${PROJECT_INDEX_PATH} (unreadable table row: ${row.slice(0, 80)})`);
+        }
     }
     if (missing.length > 0) {
         findings.push({

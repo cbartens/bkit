@@ -122,12 +122,15 @@ function anyBranch(line) {
  * Normalize a document for comparison with a legacy starter: LF line endings, the former
  * ownership lines (`bkit:start`, `bkit:end`, the `bkit:managed` notice and the unrendered
  * `{{BKIT_MANAGED_MARKER}}` token) dropped, the default-branch token rendered as `main`,
- * trailing spaces trimmed and runs of blank lines collapsed.
+ * leading and trailing whitespace trimmed per line, runs of inner spaces and tabs collapsed to one
+ * space and runs of blank lines collapsed.
  */
 export function normalizeLegacyText(text) {
     const kept = [];
     for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
-        const line = anyBranch(raw.replace(/\{\{DEFAULT_BRANCH\}\}/g, "main")).replace(/[ \t]+$/, "");
+        const line = anyBranch(raw.replace(/\{\{DEFAULT_BRANCH\}\}/g, "main"))
+            .replace(/[ \t]+/g, " ")
+            .trim();
         if (line === "<!-- bkit:start -->" || line === "<!-- bkit:end -->")
             continue;
         if (line === "{{BKIT_MANAGED_MARKER}}" || LEGACY_NOTICE_RE.test(line))
@@ -147,14 +150,14 @@ export function legacyDigest(text) {
 export const LEGACY_STARTER_DIGESTS = {
     architecture: "b949b773e10f9d0a797189c942a5884a4c971805da43520883138118226ad845",
     technology: "723fd7fa4c001c1c3d562bd9de18f9830df3beebdcd45b54afeee159ce7bf2f0",
-    security: "bdc2046e0f1b91a88fe272c8a1f5260429bb07ad548d57721b6a8b2fc623e345",
+    security: "e125a3c7de63b5bb20a3a43b09b7381125339f8f0a5bafc597f6a146b27b04a1",
     "data-schema": "2cd1f2eedc508af1d609ce5b53b0e1836cc33c8fd4e67fb2ad4c821f83043c5f",
-    testing: "075dec5a758e911f11077296eee0c6008be68415105a18df5cbdd76defb22bab",
-    deployments: "723cedf74544ac377877a5ea9498622cadec41b81b8e8accd33cedf7eea44630",
+    testing: "1bfcabad6ebf8bb0a73ec0871f0d2e38ffd807fad8bb56bb3a5504ad3ffc254c",
+    deployments: "dc2c717eab87bd46b44b45ee7b2563ddd25e4a4f91326c403a6d7394ef2c5cc8",
     observability: "bebf67757c55db829ed4c429cefadf28b31175361f40e253b014d50e73dd5a65",
     design: "2e680b2857679af9672b1112cf06d7e1282c75c739e36428e49cf13be33bfc92",
     noise: "64ddcda2d9ee14efbe1a210c1f5177e6cc4dfa10417d410825d8765628307773",
-    setup: "7da0f1a4e639ee2a2194c11a0ba762e9f4014826e1d01f7f61f9391de8c462a8",
+    setup: "174b5a0143c96470ee5c5e2bbe7b5f38d904ec98ba4fb27892b2b5030cfcd75e",
 };
 /** Digests of every released shipped starter text per topic (each tag that installed .bkit/shared/docs/) plus the recorded revision. */
 export const LEGACY_STARTER_DIGEST_HISTORY = {
@@ -175,8 +178,8 @@ export const LEGACY_STARTER_DIGEST_HISTORY = {
         "38bd66f0a66c7b2f3e454132df182b31538e045141f2fd6f761c57af2890c422",
         "040408ccd16e3872d5eced55d36172fc163dcde548e89f382eafa992282f027c",
         "26b8927e8df45b989422b417df8f406cd8b8c594811e42919756d26e807133c0",
-        "c8b631886a5a748199e1d731eabf50de9a07738912ecae392b5bac4636b90806",
-        "bdc2046e0f1b91a88fe272c8a1f5260429bb07ad548d57721b6a8b2fc623e345",
+        "e15f29264be7acaee091ed7c4681bb9d886782a9b7bd4f645adcbbfe0f0bc392",
+        "e125a3c7de63b5bb20a3a43b09b7381125339f8f0a5bafc597f6a146b27b04a1",
     ],
     "data-schema": [
         "cc8f7b971e1714b9dde60a89738495fdf30b112536a94cd45e94a2e2cc5cc155",
@@ -184,27 +187,27 @@ export const LEGACY_STARTER_DIGEST_HISTORY = {
         "2cd1f2eedc508af1d609ce5b53b0e1836cc33c8fd4e67fb2ad4c821f83043c5f",
     ],
     testing: [
-        "c20736efb9cf7b3e2b2aea237fb2ea902e83cba7c590402c3ebc3bbe9d00ad0a",
-        "b4b7786ce58a4c20589246f9c3a6f3a6d391fb479dc20708eff638329c7769d0",
-        "15a92687e35c1b902ff51c229e9b3abd821e3ceea0c1d7649b6ff4f977400940",
-        "22c3d9df343affec39423f61f1943a8e5be29b9a109c8b20b1a52b01ee7a4ba9",
-        "dc2b3553910be2879a15e379abd5e0718509bf7f690d31f1c8ba619857880433",
-        "a99cc2244c94b52ebcc67110c2c12905941f26e885bf6f07557876f21e3dcbb6",
-        "c96f8a8a1f2720c18915d9c24e0af28ad46a5d97814adaad3f7538f53e5ba6a2",
+        "bd8ebf504f7368725148f94374ce9ae9e849de8f993975a3a60f935da33516e8",
+        "c4f910bd9265cb4e1c7503b8ef4b49ede5a7dccfc2ea0ae3d23df9c8ae2331b8",
+        "9b6dbbf2dfbd3c8c41726c097caccf4183f06262b97d5cf64ea2cc2d2144c593",
+        "2b91ac955b3fc9e0d606802637e3a99a98669ae6f88c20db6967e8e95b774c00",
+        "7ad2f121f6e0c5eefb30e04032c1faf8314fe8c8260ccfc96a660e71a853f931",
+        "9ae2b857908c5195b24ba7b23116367b81182189acd337293253117f6896d6ad",
+        "1bfcabad6ebf8bb0a73ec0871f0d2e38ffd807fad8bb56bb3a5504ad3ffc254c",
     ],
     deployments: [
-        "46c46cd2c2bb97676c9e9ecfa16184913124e5d32f9433142a6a33782f63ab43",
-        "9ccd487486549b5756401b2242d4a557a180f790bd43124800a33038ee116ecc",
-        "cb90552aba937c04949d6ab881f07eee51eff7bdebf6af679fb351267489c17c",
-        "09eec0a36879f31e18cae2c0669a81f4dac874cd530098bd2cbae65ac91e6463",
-        "9313b73cd5ee572c9c8a655167d31e72b960a5e7dd06ccddb2f7cf6c2581ce28",
-        "59e5a148c20d431b5fcf890f1a3848d80a6f599852042ae4e28f1887fb2fdbf9",
-        "44a277e16553554bef3c986b6651fd329d51aaf285846fc39ca8d3bfeef18a96",
-        "d337db11cbc8ab535db2a07fd06bf1c9d769f38b96c59b3485833997a318fe48",
-        "ac5f9f45397d816e0780029c00e52a203a5676cc443dc4b06c342424343389df",
-        "997062bf3456a3ce7cc7bb87c94dc04b64888f6f0c82c9e3c84109f6ad900335",
-        "6b091b3f43af189e6818838a506511aa25fc2ba99e467dc513466ae7469423b7",
-        "960a206511793814cef4d01db7a23f06fe0387dd7ee7d7d2b9fbb296b8303fcd",
+        "833c637328e0deec593fa2e4376071fc9eab36f22f96718160d43797e618cbda",
+        "6210d30325754cb0cab79753d08a0f07f5c7b60eee663f47084fbd37c3be43ba",
+        "8e70e44256ca5e92afeb38a87a464859d31434f88afcbf0ff03c0f3b4826dc20",
+        "964064bd2162c776a7f5d6ae740bf43ab6cb60dd16e211470ee91f8bab462c9e",
+        "f8f23501362f12a5dc70b8823b9c15399cc0df31d2183abe197ee2c2f4065ba7",
+        "96c39c2ce3e9c29c862055611348558ad23896019503a076c89e7981964dbf83",
+        "95e2a23dd8764c98965577285d5d181c393531819c900aa3b22004ed0f0880ea",
+        "89425e45187d0e64d9c85c0451562b635531fd723d4f4dec44e85ad7a5195676",
+        "5004275925310aedcbd82f88fdddaece64e3d6019485cb631d40d384c556dd4d",
+        "1c3dc0b4139020853d2274bdd920b9f246b09ed6cec1392f084970917267a776",
+        "cf24e7566f6b8440ad56d34882825db3f47e8a77b5b8dff2abdaff6ab5d2270f",
+        "dc2c717eab87bd46b44b45ee7b2563ddd25e4a4f91326c403a6d7394ef2c5cc8",
     ],
     observability: [
         "3541333403d2f87f34c0846a533dbb2bd9d92af6e92937d094381bd25e3686c6",
@@ -225,7 +228,7 @@ export const LEGACY_STARTER_DIGEST_HISTORY = {
         "b3827a1e70fcea5c9c12585a2e3f43cf895ad8eb3bf2bcf66ed8ac19783273b6",
         "d130a83010ddfb870f21f30a8b271880101ee2d103cc361d193262a1a3147e16",
         "a6114f7fc2a8d80460892d5892b6d9d2d59b6ed90974d094b0ddf9f68a2b26fa",
-        "7da0f1a4e639ee2a2194c11a0ba762e9f4014826e1d01f7f61f9391de8c462a8",
+        "174b5a0143c96470ee5c5e2bbe7b5f38d904ec98ba4fb27892b2b5030cfcd75e",
     ],
 };
 /** The topic whose legacy starter `text` equals once normalized, or null. */
@@ -275,7 +278,25 @@ export function isInTreePath(rel) {
     }
     return !rel.split(/[\\/]/).includes("..");
 }
-const ROW_RE = /^\|\s*`([^`]+)`\s*\|/;
+/** Split a table row on unescaped pipes; the empty edges of a leading or trailing pipe are dropped. */
+function splitRow(line) {
+    const cells = line.split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, "|").trim());
+    if (cells[0] === "")
+        cells.shift();
+    if (cells.length > 0 && cells[cells.length - 1] === "")
+        cells.pop();
+    return cells;
+}
+/** The path a row's first cell names: backticked, a Markdown link target or a bare path; else null. */
+function cellPath(cell) {
+    const tick = /^`([^`]+)`$/.exec(cell);
+    if (tick)
+        return tick[1].trim() || null;
+    const link = /^\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/.exec(cell);
+    if (link)
+        return link[1];
+    return /^[^\s`|()[\]]+$/.test(cell) ? cell : null;
+}
 /** The `Project Documents` table of the index: the heading below the last `bkit:end`, then the first table. */
 export function readProjectIndex(root) {
     const state = inspectRepoFile(root, PROJECT_INDEX_PATH);
@@ -307,6 +328,7 @@ export function readProjectIndex(root) {
     let tableEnd = -1;
     let needsEol = false;
     const rows = [];
+    const unparsed = [];
     for (const line of lines) {
         const bare = line.replace(/\r?\n$/, "");
         const lineEnd = offset + line.length;
@@ -322,13 +344,16 @@ export function readProjectIndex(root) {
             if (bare.startsWith("|")) {
                 if (tableStart === -1)
                     tableStart = offset;
-                const match = ROW_RE.exec(bare);
-                if (match && tableStart !== offset) {
-                    const cells = bare.split("|");
-                    rows.push({
-                        path: match[1],
-                        scope: (cells[cells.length - 2] ?? "").trim(),
-                    });
+                const cells = splitRow(bare);
+                const separator = cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+                if (tableStart !== offset && !separator) {
+                    const rowPath = cells.length > 0 ? cellPath(cells[0]) : null;
+                    if (rowPath === null)
+                        unparsed.push(bare);
+                    else {
+                        const rest = cells.slice(1).filter((c) => c !== "");
+                        rows.push({ path: rowPath, scope: rest[rest.length - 1] ?? "" });
+                    }
                 }
                 needsEol = !line.endsWith("\n");
                 // The table ends at the first non-table line, so keep scanning.
@@ -352,7 +377,7 @@ export function readProjectIndex(root) {
     }
     if (tableEnd === -1)
         tableEnd = offset;
-    return { status: "ok", text, eol, rows, insertAt: tableEnd, needsEol };
+    return { status: "ok", text, eol, rows, unparsed, insertAt: tableEnd, needsEol };
 }
 /** Row text for a project document, in the table's column order. */
 export function projectDocRow(topic) {

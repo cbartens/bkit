@@ -80,7 +80,16 @@ const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
     /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
     /(^|\/)context-related-[^/]*$/.test(rel);
 /** Text between the untrusted-content markers is external data: never a source of warnings. */
-const stripUntrusted = (text) => text.replace(/^[^\n]*={5} BEGIN UNTRUSTED ={5}[\s\S]*?(?:={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)|(?![\s\S]))/gm, "");
+const stripUntrusted = (text) => {
+    const open = /^[^\n]*={5} BEGIN UNTRUSTED ={5}/m.exec(text);
+    if (!open)
+        return text;
+    // The fence ends at the LAST closing marker: any earlier closer inside the payload is forged.
+    const closers = [...text.matchAll(/^[^\n]*={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)/gm)].filter((m) => m.index >= open.index + open[0].length);
+    const last = closers.at(-1);
+    const end = last ? last.index + last[0].length : text.length;
+    return text.slice(0, open.index) + text.slice(end);
+};
 /**
  * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
  * rewrites a one-line record into that shape); braces inside strings are ignored. Text outside
@@ -144,7 +153,9 @@ function documentationWarnings(rows, read) {
                 continue;
             const text = stripUntrusted(raw);
             const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text);
-            const fence = section === null ? null : /```jsonl[ \t]*\r?\n([\s\S]*?)```/.exec(section[1]);
+            const fence = section === null
+                ? null
+                : /```jsonl[ \t]*\r?\n([\s\S]*?)(?:```|(?![\s\S]))/.exec(section[1]);
             if (fence === null)
                 continue;
             for (const chunk of jsonObjectChunks(fence[1])) {
