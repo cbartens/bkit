@@ -549,7 +549,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** A public issue whose body holds a `## Documentation Warnings` jsonl block becomes a bkit-authored "Action:" line in the run summary, because `related-issues.md` (raw tracker text) is aggregated as a trusted step artifact.
+- [x] **TASK 10:** A public issue whose body holds a `## Documentation Warnings` jsonl block becomes a bkit-authored "Action:" line in the run summary, because `related-issues.md` (raw tracker text) is aggregated as a trusted step artifact.
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/summary.ts:153` · **Round:** 1
   - **DONE WHEN:** `documentationWarnings` reads no record from raw external evidence: `related-issues.md`, `related-failures.md`, `related-deferrals.md` (the `plan-fetch-context` step-done artifacts that `.bkit/core/workflows/bkit-plan.md:310` fills with issue descriptions and human comments verbatim) and any text between `===== BEGIN UNTRUSTED =====` / `===== END UNTRUSTED =====` are excluded, alongside `*-input-*`. Cross-ref `docs/security.md` § Untrusted Content & Prompt Injection and the plan's Task 6 DONE WHEN ("Untrusted inputs ... are outside the aggregation source set").
   - **TEST FIRST:**
@@ -559,7 +559,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 10 end -->
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** A consumer on the latest release (v6.1.1) with an untouched legacy `docs/security.md` or `docs/deployments.md`, or any consumer whose default branch is not `main`, gets no starter-only advisory: the digests come from unreleased revision `45f4254bd`, so the file reads as a populated "candidate".
+- [x] **TASK 11:** A consumer on the latest release (v6.1.1) with an untouched legacy `docs/security.md` or `docs/deployments.md`, or any consumer whose default branch is not `main`, gets no starter-only advisory: the digests come from unreleased revision `45f4254bd`, so the file reads as a populated "candidate".
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:160` · **Round:** 1
   - **DONE WHEN:** `LEGACY_STARTER_DIGESTS` holds, per topic, the normalized digest of every released shipped text (at least each tag that installed `.bkit/shared/docs/`, v6.1.1 included; `git diff v6.1.1 45f4254bd -- .bkit/shared/docs/security.md .bkit/shared/docs/deployments.md` shows real content changes from #893), and normalization makes the rendered `{{DEFAULT_BRANCH}}` value (testing.md x2, deployments.md x6) branch-agnostic. Plan Task 5 DONE WHEN "recognized legacy starters".
   - **TEST FIRST:**
@@ -569,7 +569,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 11 end -->
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** A v5.x (or older) consumer upgrading straight to this release keeps `<!-- bkit:managed v5.x — PolyForm ... — do not edit; run \`bkit upgrade\` to refresh -->`inside a now project-owned doc, because the notice regex only matches the 6.x wording.
+- [x] **TASK 12:** A v5.x (or older) consumer upgrading straight to this release keeps `<!-- bkit:managed v5.x — PolyForm ... — do not edit; run \`bkit upgrade\` to refresh -->`inside a now project-owned doc, because the notice regex only matches the 6.x wording.
 **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:**`.bkit/core/engine/install/managed-block.ts:255` · **Round:** 1
   - **DONE WHEN:** `MANAGED_NOTICE_RE` (and `LEGACY_NOTICE_RE` at `.bkit/core/engine/install/project-docs.ts:131`) match every historically generated notice inside the wrapper: the v5 PolyForm-licensed form and the pre-#501 `do NOT edit` form, as well as the 6.x form. The migrated doc carries no `bkit:managed` line. Plan Edge Cases: "Remove ownership delimiters and generated managed notices".
   - **TEST FIRST:**
@@ -579,7 +579,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 12 end -->
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** When `docs` is a regular file (or a doc / the index is unreadable or read-only), `syncProjectDocs` throws ENOTDIR / EACCES and aborts `bkit upgrade` after the managed writes but before `.bkit/version` is refreshed; `bkit check` / `doctor` crash the same way in `detectProjectDocs`.
+- [x] **TASK 13:** When `docs` is a regular file (or a doc / the index is unreadable or read-only), `syncProjectDocs` throws ENOTDIR / EACCES and aborts `bkit upgrade` after the managed writes but before `.bkit/version` is refreshed; `bkit check` / `doctor` crash the same way in `detectProjectDocs`.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:373` · **Round:** 1
   - **DONE WHEN:** `inspectRepoFile`, the doc reads / writes and the index write in `syncProjectDocs` catch filesystem errors and record the path under `unsafe` (or `indexProblem`) with the reason; `upgrade.ts:1024` and `install.ts` always reach the version refresh and advisories; `detectProjectDocs` reports the path as `project-docs-ambiguous` instead of throwing. Verified: `fs.lstatSync("docs/architecture.md", { throwIfNoEntry: false })` throws `ENOTDIR` on Node v24.16.0 when `docs` is a file. Plan Task 5 DONE WHEN: "Findings never make install, upgrade, check or doctor fail on optional-document grounds".
   - **TEST FIRST:**
@@ -589,7 +589,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 13 end -->
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** `bkit check` tells the user to "run `bkit upgrade` to register" a present `docs/<topic>.md`, but upgrade silently skips it whenever any indexed row shares the basename or says `Equivalent to` (even a stale row for a deleted file), so the advisory repeats forever.
+- [x] **TASK 14:** `bkit check` tells the user to "run `bkit upgrade` to register" a present `docs/<topic>.md`, but upgrade silently skips it whenever any indexed row shares the basename or says `Equivalent to` (even a stale row for a deleted file), so the advisory repeats forever.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** false · **Location:** `.bkit/core/engine/install/project-docs.ts:400` · **Round:** 1
   - **DONE WHEN:** The detector and sync agree: either sync registers a present default whose equivalent row is unusable (absent, out of tree, unsafe), and `logReport` prints the `equivalent` entries it skipped; or `detectProjectDocs` (`.bkit/core/engine/checks/after/tools.ts:527`, action at `:570`) reports a present default beside an indexed equivalent as two candidates with a hand-edit action instead of "run `bkit upgrade`". No advisory names an action the CLI will not perform.
   - **TEST FIRST:**
