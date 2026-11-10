@@ -2104,4 +2104,17 @@ describe("bkit ledgers append --operation", () => {
     expect(b!["ts"]).toBeGreaterThan(a!["ts"] as number);
     expect(update.json.receipt.rows[0].ts).toBe(b!["ts"]);
   });
+
+  it("refuses --issue-operation without an invocation or beside --operation, writing nothing", async () => {
+    const r = repo();
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify([failure()]));
+    const base = ["append", `--root=${r}`, "--ledger=failures", `--rows=${file}`];
+    const alone = await run(r, [...base, "--issue-operation"]);
+    expect(alone.code).toBe(2);
+    expect(alone.err).toContain("--invocation");
+    const both = await run(r, [...base, "--issue-operation", "--operation=op-1"]);
+    expect(both.code).toBe(2);
+    expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
+  });
 });

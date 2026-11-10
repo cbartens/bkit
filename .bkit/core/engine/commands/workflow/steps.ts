@@ -1535,7 +1535,8 @@ async function finish(ctx: RunContext): Promise<number> {
  */
 const DERIVED_FIELDS: Record<string, (findings: Finding[]) => string> = {
   Failures: (f) => String(f.length),
-  Fixable: (f) => String(f.every((x) => x.fixable)),
+  // `true` when any gap is fixable (the plan-verify header contract), `false` for none.
+  Fixable: (f) => String(f.some((x) => x.fixable)),
 };
 
 /** The agent whose header is the audit summary (Status / Report / Findings), not a Verdict header. */

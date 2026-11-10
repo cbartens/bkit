@@ -20,6 +20,7 @@ import {
   readHeader,
   stepsCommand,
 } from "./steps";
+import { getPromptsRoot } from "../../shared/package-roots.js";
 import { blockHash } from "./tests";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -2269,6 +2270,71 @@ describe("bkit steps stub --result-file", () => {
     expect((await run(cwd, [...verdictArgs, "--result-file=logs/clean.json"])).code).toBe(6);
     write(cwd, "logs/clean.md", generated.replace("Failures: 0", "Failures: 3"));
     expect((await run(cwd, verdictArgs)).code).toBe(6);
+  });
+
+  it("renders and verifies the header of every prompt that declares one", async () => {
+    const cwd = repo();
+    const agents = fs
+      .readdirSync(getPromptsRoot())
+      .filter((n) => n.endsWith(".md"))
+      .map((n) => n.slice(0, -3))
+      .filter((agent) => {
+        try {
+          return promptHeader(agent).verdicts.length > 0 && agent !== "bkit-audit-generate";
+        } catch {
+          return false;
+        }
+      });
+    // The registered header kinds named by the review: each must be in the table.
+    for (const named of [
+      "bkit-build-challenge-2",
+      "bkit-plan-review-2",
+      "bkit-plan-scope-check",
+      "bkit-build-plan-current",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-build-plan-tasks",
+      "bkit-debug-failure-diagnose",
+      "bkit-debug-failure-reproduce",
+      "bkit-debug-failure-remediate",
+      "bkit-ship-deferred-sweep",
+    ])
+      expect(agents).toContain(named);
+
+    for (const agent of agents) {
+      const declared = promptHeader(agent);
+      const judgments: Record<string, string> = {};
+      for (const f of declared.fields) {
+        if (f.name === "Failures" || f.name === "Fixable") continue;
+        judgments[f.name] = f.values ? f.values[0]! : f.integer ? "1" : "none";
+      }
+      const has = (name: string) => declared.fields.some((f) => f.name === name);
+
+      // One fixable finding: FAIL with derived counts, and the read accepts what was rendered.
+      resultFile(cwd, `logs/${agent}.json`, { findings: [finding(1)], judgments });
+      const res = await run(cwd, stubArgs(agent, `logs/${agent}.json`, `logs/${agent}.md`));
+      expect(res.code, agent).toBe(0);
+      const fields = headerFields(header(cwd, `logs/${agent}.md`));
+      expect(fields["Verdict"], agent).toBe("FAIL");
+      if (has("Failures")) expect(fields["Failures"], agent).toBe("1");
+      if (has("Fixable")) expect(fields["Fixable"], agent).toBe("true");
+      for (const [k, v] of Object.entries(judgments)) expect(fields[k], `${agent} ${k}`).toBe(v);
+      expect(
+        (await run(cwd, ["steps", "verdict", `--file=logs/${agent}.md`, `--agent=${agent}`])).code,
+        agent,
+      ).toBe(0);
+
+      // No findings and complete evidence: PASS, with zero derived failures.
+      resultFile(cwd, `logs/${agent}-clean.json`, { judgments });
+      const clean = await run(
+        cwd,
+        stubArgs(agent, `logs/${agent}-clean.json`, `logs/${agent}-clean.md`),
+      );
+      expect(clean.code, agent).toBe(0);
+      const cleanFields = headerFields(header(cwd, `logs/${agent}-clean.md`));
+      expect(cleanFields["Verdict"], agent).toBe("PASS");
+      if (has("Failures")) expect(cleanFields["Failures"], agent).toBe("0");
+      if (has("Fixable")) expect(cleanFields["Fixable"], agent).toBe("false");
+    }
   });
 
   it("retains special verdict judgments and legacy stub behavior", async () => {

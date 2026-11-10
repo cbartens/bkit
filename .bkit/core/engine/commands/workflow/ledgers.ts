@@ -836,6 +836,11 @@ export const ledgersCommand: CommandSpec = {
           type: "string",
           help: "operation id naming this request: the same id and rows replay the original receipt without writing; the same id with other rows is refused; a new id is a deliberate later update",
         },
+        {
+          name: "issue-operation",
+          type: "boolean",
+          help: "let the engine issue the operation id from --invocation and the request, so a retried call after a lost response replays instead of appending again; exclusive with --operation",
+        },
       ],
       output: {
         ledger: "the ledger appended to",
@@ -1427,6 +1432,8 @@ export interface LedgerReceipt {
 export interface AppendOptions {
   /** Names the request: the same id and rows replay the original effect, never a second write. */
   operation?: string;
+  /** The engine issues the operation id from the invocation and the request; exclusive with `operation`. */
+  issueOperation?: boolean;
   /** Test seam: called at each durable checkpoint; a throw there simulates a lost response. */
   checkpoint?: AppendCheckpoint;
 }
@@ -1476,9 +1483,24 @@ export function appendLedgerRows(
   const abs = path.join(root, file);
   const made = mkdirp(path.dirname(abs));
   if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
-  const operation = options.operation;
   const ops = path.join(root, LEDGER_OPERATIONS_FILE);
   const hash = actionHash(JSON.stringify({ ledger, rows, invocation: invocation?.id ?? null }));
+  if (options.operation !== undefined && options.issueOperation === true)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--issue-operation and --operation are exclusive: the engine issues the id, or the caller names it",
+    );
+  if (options.issueOperation === true && invocation === undefined)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--issue-operation needs --invocation: the id is issued from that invocation's context",
+    );
+  // Issued from the invocation and the request hash, so retrying a lost response gets the same id.
+  const operation =
+    options.operation ??
+    (options.issueOperation === true && invocation !== undefined
+      ? `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`
+      : undefined);
 
   const result = (landed: { offset: number; bytes: number }, block: string, replayed: boolean) => {
     const parsedRows = receiptRows(block);
@@ -1564,80 +1586,84 @@ export function appendLedgerRows(
         const landed = appendHeld(abs, build, { checkpoint: options.checkpoint });
         return result(landed, landed.block, false);
       }
-      const known = ledgerOperation(ops, operation, hash);
-      if (known.state === "conflict")
-        throw new CommandError(
-          EXIT_ROW_REFUSED,
-          `operation ${operation} was already used for a different request; nothing written`,
-        );
-      if (known.state === "replay") {
-        const d = (known.row as { detail?: { offset: number; bytes: number; block: string } })
-          .detail;
-        if (d === undefined)
+      // The operation store is serialized by its own lock, taken after the target's, so two
+      // ledgers' operations (and `union` of the store) never interleave check and record.
+      return withTargetLock(ops, () => {
+        const known = ledgerOperation(ops, operation, hash);
+        if (known.state === "conflict")
           throw new CommandError(
-            EXIT_STAGE,
-            `operation ${operation} has a receipt without its effect`,
+            EXIT_ROW_REFUSED,
+            `operation ${operation} was already used for a different request; nothing written`,
           );
-        return result(d, d.block, true);
-      }
-      const intent = ledgerIntent(ops, operation);
-      if (intent !== undefined && intent.hash !== hash)
-        throw new CommandError(
-          EXIT_ROW_REFUSED,
-          `operation ${operation} was already used for a different request; nothing written`,
-        );
-      const receipt = (landed: { offset: number; bytes: number; block: string }) =>
-        recordLedgerOperation(ops, {
-          operation,
-          hash,
-          ref: `${file}@${landed.offset}+${landed.bytes}`,
-          detail: { offset: landed.offset, bytes: landed.bytes, block: landed.block },
-        });
-      if (intent !== undefined) {
-        const have = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
-        const want = Buffer.from(intent.block);
-        const seg = have.subarray(intent.offset, intent.offset + want.length);
-        if (seg.equals(want)) {
-          // The bytes landed whole; confirm them durable and receipt them.
-          const fd = fs.openSync(abs, "r");
-          try {
-            fs.fsyncSync(fd);
-          } finally {
-            fs.closeSync(fd);
-          }
-          receipt(intent);
-          options.checkpoint?.("receipted");
-          return result(intent, intent.block, true);
+        if (known.state === "replay") {
+          const d = (known.row as { detail?: { offset: number; bytes: number; block: string } })
+            .detail;
+          if (d === undefined)
+            throw new CommandError(
+              EXIT_STAGE,
+              `operation ${operation} has a receipt without its effect`,
+            );
+          return result(d, d.block, true);
         }
-        if (seg.length > 0 && have.length === intent.offset + seg.length)
+        const intent = ledgerIntent(ops, operation);
+        if (intent !== undefined && intent.hash !== hash)
           throw new CommandError(
-            EXIT_STAGE,
-            `operation ${operation}: ${file} holds ${seg.length} of ${want.length} prepared bytes; the effect is uncertain, nothing was truncated or retried`,
+            EXIT_ROW_REFUSED,
+            `operation ${operation} was already used for a different request; nothing written`,
           );
-        if (have.length === intent.offset) {
-          // Nothing landed: write the exact prepared bytes again.
-          writePrepared(abs, intent.block, intent.offset);
-          options.checkpoint?.("written");
-          receipt(intent);
-          options.checkpoint?.("receipted");
-          return result(intent, intent.block, false);
-        }
-        // Another writer appended after the failed attempt and none of ours landed: prepare afresh.
-      }
-      const landed = appendHeld(abs, build, {
-        checkpoint: options.checkpoint,
-        prepared: (p) =>
-          recordLedgerIntent(ops, {
+        const receipt = (landed: { offset: number; bytes: number; block: string }) =>
+          recordLedgerOperation(ops, {
             operation,
             hash,
-            file,
-            offset: p.offset,
-            bytes: Buffer.byteLength(p.block),
-            block: p.block,
-          }),
-        written: (p) => receipt(p),
+            ref: `${file}@${landed.offset}+${landed.bytes}`,
+            detail: { offset: landed.offset, bytes: landed.bytes, block: landed.block },
+          });
+        if (intent !== undefined) {
+          const have = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
+          const want = Buffer.from(intent.block);
+          const seg = have.subarray(intent.offset, intent.offset + want.length);
+          if (seg.equals(want)) {
+            // The bytes landed whole; confirm them durable and receipt them.
+            const fd = fs.openSync(abs, "r");
+            try {
+              fs.fsyncSync(fd);
+            } finally {
+              fs.closeSync(fd);
+            }
+            receipt(intent);
+            options.checkpoint?.("receipted");
+            return result(intent, intent.block, true);
+          }
+          if (seg.length > 0 && have.length === intent.offset + seg.length)
+            throw new CommandError(
+              EXIT_STAGE,
+              `operation ${operation}: ${file} holds ${seg.length} of ${want.length} prepared bytes; the effect is uncertain, nothing was truncated or retried`,
+            );
+          if (have.length === intent.offset) {
+            // Nothing landed: write the exact prepared bytes again.
+            writePrepared(abs, intent.block, intent.offset);
+            options.checkpoint?.("written");
+            receipt(intent);
+            options.checkpoint?.("receipted");
+            return result(intent, intent.block, false);
+          }
+          // Another writer appended after the failed attempt and none of ours landed: prepare afresh.
+        }
+        const landed = appendHeld(abs, build, {
+          checkpoint: options.checkpoint,
+          prepared: (p) =>
+            recordLedgerIntent(ops, {
+              operation,
+              hash,
+              file,
+              offset: p.offset,
+              bytes: Buffer.byteLength(p.block),
+              block: p.block,
+            }),
+          written: (p) => receipt(p),
+        });
+        return result(landed, landed.block, false);
       });
-      return result(landed, landed.block, false);
     });
   } catch (err) {
     throw stage(err);
@@ -1670,6 +1696,7 @@ function append(ctx: RunContext): number {
   }
   const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value, ctx.invocation, {
     operation: str(ctx.flags.operation),
+    issueOperation: ctx.flags.issueOperation === true,
   });
   ctx.log(
     r.receipt?.replayed === true

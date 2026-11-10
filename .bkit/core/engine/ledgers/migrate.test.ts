@@ -115,6 +115,19 @@ describe("migrateLedgers", () => {
     expect(fs.readdirSync(path.join(root, ".bkit"))).toEqual(["stats.jsonl"]);
   });
 
+  it("refuses to rewrite a ledger holding a pending operation's prepared bytes", () => {
+    const file = path.join(root, "docs/deferrals.jsonl");
+    const before = `${line(OLD_DEFERRAL)}\n`;
+    fs.writeFileSync(file, before);
+    fs.writeFileSync(
+      path.join(root, ".bkit/ledger-operations.jsonl"),
+      `${JSON.stringify({ type: "ledger-intent", operation: "op-1", hash: "h", file: "docs/deferrals.jsonl", offset: 0, bytes: 1, block: "x", at: "t" })}\n`,
+    );
+    expect(() => migrateLedgers(root, false)).toThrow(/op-1/);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect(fs.existsSync(`${file}.bkit-lock`)).toBe(false);
+  });
+
   it("dry run counts without writing", () => {
     const file = path.join(root, "docs/failures.jsonl");
     const before = `${line({ ...OLD_DEFERRAL, kind: "failure", reason: undefined })}\n`;

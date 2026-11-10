@@ -9,6 +9,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { parseJson } from "../shared/json.js";
+import { LEDGER_OPERATIONS_FILE, pendingLedgerIntents, withTargetLock } from "./status.js";
 import { normalize } from "./telemetry.js";
 
 /** Every repo ledger whose rows carry the shared top section (`.bkit/jsonl.md`). */
@@ -79,14 +80,25 @@ export function migrateLedgers(
   for (const file of SCHEMA_LEDGERS) {
     const abs = path.join(root, file);
     if (!fs.lstatSync(abs, { throwIfNoEntry: false })?.isFile()) continue;
-    const { text, rewritten, dropped } = migrateLedgerText(fs.readFileSync(abs, "utf-8"));
-    if (rewritten + dropped === 0) continue;
-    if (!dryRun) {
-      const tmp = `${abs}.bkit-migrate.tmp`;
-      fs.writeFileSync(tmp, text, "utf-8");
-      fs.renameSync(tmp, abs);
-    }
-    out.push({ file, rewritten, dropped });
+    const migrate = () => {
+      const { text, rewritten, dropped } = migrateLedgerText(fs.readFileSync(abs, "utf-8"));
+      if (rewritten + dropped === 0) return undefined;
+      if (!dryRun) {
+        // A pending ledger operation holds an offset into the current bytes: refuse to move them.
+        const pending = pendingLedgerIntents(path.join(root, LEDGER_OPERATIONS_FILE), file);
+        if (pending.length > 0)
+          throw new Error(
+            `${file} has ledger operation(s) with bytes but no receipt (${pending.map((p) => p.operation).join(", ")}); replay them before migrating`,
+          );
+        const tmp = `${abs}.bkit-migrate.tmp`;
+        fs.writeFileSync(tmp, text, "utf-8");
+        fs.renameSync(tmp, abs);
+      }
+      return { file, rewritten, dropped };
+    };
+    // Read and rewrite under the target lock, so a row appended meanwhile is never dropped.
+    const done = dryRun ? migrate() : withTargetLock(abs, migrate);
+    if (done !== undefined) out.push(done);
   }
   return out;
 }

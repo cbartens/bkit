@@ -523,7 +523,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Derive audit bookkeeping from one validated result (deterministic-bookkeeping-6; R8–R9, R12, R15–R16).
+- [x] **TASK 6:** Derive audit bookkeeping from one validated result (deterministic-bookkeeping-6; R8–R9, R12, R15–R16).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: own/export the common audit result validation/derivation contract and proposed comment result-file mode, preserving existing buildComment/poster; do not import steps.ts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: consume the issues-owned contract through its existing import direction to render stable IDs, coverage, totals, links and ledger payloads; preserve explicit semantic prior-key/closure/grouping decisions.
   - **READ:** `.bkit/core/engine/commands/workflow/ledgers.ts`: canonical prior-key candidates and receipt-aware append path.
