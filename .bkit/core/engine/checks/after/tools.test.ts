@@ -734,9 +734,9 @@ describe("detectProjectDocs", () => {
       "| Arch notes (docs/notes.md) | ○ | ○ | ○ | ○ | ○ | Notes. |\n",
     );
     const findings = detectProjectDocs(tmpDir);
-    const unindexed = findings.filter(
-      (f) => f.id === "project-docs-unindexed" && f.detect.includes("docs/security.md"),
-    );
+    const unindexed = findings
+      .filter((f) => f.id === "project-docs-unindexed")
+      .filter((f) => f.detect.includes("docs/security.md"));
     expect(unindexed.length).toBeGreaterThan(0);
     const actions = unindexed.map((f) => f.action).join("\n");
     expect(actions).toContain("once the row is repaired");
