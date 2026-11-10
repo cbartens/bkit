@@ -1194,6 +1194,7 @@ describe("bkit tests plan-check", () => {
     ].join("\n");
   /** The matrix header the reader maps rows to tasks by. */
   const MATRIX = ["Test description", "Type", "Target file", "Task"];
+  const EXPECTED_MATRIX_HEADER = "Test description | Type | Target file | Task";
   /** A Supersession Inventory table with one DELETE row per file. */
   const supersession = (...files: string[]) =>
     [
@@ -1615,7 +1616,80 @@ describe("bkit tests plan-check", () => {
       expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
     ]);
     expect(r.json.problems[0].message).toContain("Task");
+    expect(r.json.problems[0].message).toContain("Test description | Type | Target file | Task");
     expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses a matrix header with an extra leading # column", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["#", "Test description", "Type", "Target file", "Task"],
+        ["1", "case a", "Unit", "`t0.test.ts`", "1"],
+        ["2", "case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| #") }),
+    ]);
+    expect(r.json.problems[0].message).toContain(EXPECTED_MATRIX_HEADER);
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses a matrix header with Task not last", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["Test description", "Type", "Task", "Target file"],
+        ["case a", "Unit", "1", "`t0.test.ts`"],
+        ["case b", "Unit", "2", "`t1.test.ts`"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
+    ]);
+    expect(r.json.problems[0].message).toContain(EXPECTED_MATRIX_HEADER);
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check refuses synonym matrix column names", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["Behaviour", "Tier", "Target file", "Task"],
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Behaviour") }),
+    ]);
+    expect(r.json.problems[0].message).toContain(EXPECTED_MATRIX_HEADER);
+    expect(report().match(/`matrix`/g)).toHaveLength(1);
+  });
+
+  it("plan-check accepts the template matrix header in any letter case", async () => {
+    write(
+      "plan.md",
+      matrix(
+        ["test DESCRIPTION", " TYPE", "target File ", "TASK"],
+        ["case a", "Unit", "`t0.test.ts`", "1"],
+        ["case b", "Unit", "`t1.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(0);
+    expect(r.json.problems).toEqual([]);
   });
 
   it("plan-check refuses a Task cell naming an undefined task", async () => {
