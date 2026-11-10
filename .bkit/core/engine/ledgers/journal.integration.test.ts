@@ -13,10 +13,18 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { INVOCATION_FLAG, runCommand, type CommandSpec } from "../commands/lib";
+import { INVOCATION_FLAG, runCommand, type CommandSpec, type GhResult } from "../commands/lib";
 import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
-import { appendLedgerRows, ledgersCommand } from "../commands/workflow/ledgers";
+import {
+  appendLedgerRows,
+  appendRecordCommit,
+  ledgersCommand,
+  newRecord,
+  readRecord,
+  writeRecord,
+} from "../commands/workflow/ledgers";
+import { ciDispatchGate, type Gh } from "../commands/workflow/runs";
 
 const FID = "901-journal";
 const STATUS_REL = path.join("docs", "plans", "202610", "logs", FID, "status.jsonl");
@@ -845,5 +853,500 @@ describe("replay-safe ledger appends on real files", () => {
     });
     expect(fs.readFileSync(path.join(repo, "docs", "failures.jsonl"), "utf-8")).toBe(before);
     expect(fs.existsSync(path.join(repo, "docs", "plans"))).toBe(false);
+  });
+});
+
+describe("persistent CI handoff on a real local remote", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const d of roots.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  const ok = (stdout: string): GhResult => ({ ok: true, stdout, stderr: "", missing: false });
+  const rollup = (name: string) =>
+    ok(JSON.stringify({ statusCheckRollup: [{ name, status: "QUEUED" }] }));
+  const NONE = rollup("vercel");
+  const FOUND = rollup("bkit-tests-unit");
+  const none = (n: number) => Array.from({ length: n }, () => NONE);
+
+  /** A gh whose `pr view` answers come from `replies` in order (the last repeats); counts the polls. */
+  function pollingGh(replies: GhResult[]) {
+    let polls = 0;
+    const gh: Gh = (args) => {
+      if (args[0] !== "pr" || args[1] !== "view")
+        return { ok: false, stdout: "", stderr: "HTTP 500", missing: false };
+      const reply = replies[Math.min(polls, replies.length - 1)]!;
+      polls += 1;
+      return reply;
+    };
+    return { gh, polls: () => polls };
+  }
+
+  const instant = async (ms: number) => ms;
+  const quiet = (sleep: (ms: number) => Promise<number> = instant) => ({
+    sleep,
+    log: () => undefined,
+  });
+  const crashAt = (point: string) => (name: string) => {
+    if (name === point) throw new Error(`process lost at ${point}`);
+  };
+
+  /** A work clone of a bare remote with one pushed commit; `shared` makes it a run in place on dev. */
+  function remoteRepo(branch: string, shared: boolean) {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-handoff-int-")));
+    roots.push(root);
+    const remote = path.join(root, "remote.git");
+    const work = path.join(root, "work");
+    git(root, ["init", "-q", "--bare", "-b", branch, remote]);
+    git(root, ["init", "-q", "-b", branch, work]);
+    fs.writeFileSync(path.join(work, "package.json"), JSON.stringify({ private: true }));
+    git(work, ["add", "package.json"]);
+    git(work, ["commit", "-q", "-m", "base"]);
+    git(work, ["remote", "add", "origin", remote]);
+    git(work, ["push", "-q", "-u", "origin", branch]);
+    if (shared) {
+      git(work, ["commit", "-q", "--allow-empty", "-m", "foreign local commit"]);
+      writeRecord(work, newRecord(work, "1-x", branch));
+    }
+    git(work, ["commit", "-q", "--allow-empty", "-m", "chore(1-x): close-workflow"]);
+    if (shared) appendRecordCommit(work, "1-x", git(work, ["rev-parse", "HEAD"]));
+    const status = path.join(root, "logs", "status.jsonl");
+    fs.mkdirSync(path.dirname(status), { recursive: true });
+    fs.writeFileSync(
+      status,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+    );
+    return {
+      root,
+      remote,
+      work,
+      status,
+      tip: () => git(remote, ["rev-parse", branch]),
+      log: () => git(remote, ["log", "--format=%s", branch]).split("\n"),
+      retriggers: () =>
+        git(remote, ["log", "--format=%s", branch])
+          .split("\n")
+          .filter((s) => s.includes("re-trigger")).length,
+    };
+  }
+
+  const options = (
+    r: ReturnType<typeof remoteRepo>,
+    handoff: { checkpoint?: (name: string) => void } = {},
+  ) => ({
+    cwd: r.work,
+    pr: "7",
+    fid: "1-x",
+    autoRouteSuffix: "",
+    budgetS: 60,
+    intervalS: 10,
+    retriggered: false,
+    handoff: { statusPath: r.status, operation: "handoff-1", ...handoff },
+  });
+  const handoffRows = (r: ReturnType<typeof remoteRepo>) =>
+    rows(r.status).filter((row) => row["type"] === "ci-handoff");
+
+  it("resumes nonwaiting CI polls without resetting attempts or duplicating retrigger", async () => {
+    // A poll interrupted after three attempts continues in a fresh process: the budget is not reset.
+    const waiting = remoteRepo("feat/1-x", false);
+    let sleeps = 0;
+    const handedOff = await ciDispatchGate(options(waiting), {
+      gh: pollingGh(none(6)).gh,
+      ...quiet(async (ms) => {
+        sleeps += 1;
+        return ms + 6000 * Number(sleeps > 2);
+      }),
+    });
+    expect(handedOff).toMatchObject({ phase: "poll", handoff: 81, attempts: 3 });
+    expect(handoffRows(waiting).at(-1)).toMatchObject({
+      phase: "poll",
+      observation: { result: "none", attempts: 3, errors: 0 },
+    });
+    const resumedGh = pollingGh(none(30));
+    const resumed = await ciDispatchGate(options(waiting), { gh: resumedGh.gh, ...quiet() });
+    // 3 more first-poll attempts, then 6 after the one re-trigger: 9 polls, 12 in total.
+    expect(resumedGh.polls()).toBe(9);
+    expect(resumed.ciDispatch).toMatchObject({ outcome: "no-ci", attempts: 12, retrigger: true });
+    expect(waiting.retriggers()).toBe(1);
+
+    // A process lost at each durable checkpoint of the retrigger is resumed to exactly one reachable commit.
+    for (const point of ["commit-created", "push-completed", "receipt-completed"] as const) {
+      const r = remoteRepo("feat/1-x", false);
+      const base = git(r.work, ["rev-parse", "HEAD"]);
+      const tipBefore = r.tip();
+      const lost = ciDispatchGate(options(r, { checkpoint: crashAt(point) }), {
+        gh: pollingGh(none(30)).gh,
+        ...quiet(),
+      });
+      await expect(lost).rejects.toThrow(`process lost at ${point}`);
+      const localHead = git(r.work, ["rev-parse", "HEAD"]);
+      expect(localHead).not.toBe(base);
+      expect(r.retriggers()).toBe(
+        { "commit-created": 0, "push-completed": 1, "receipt-completed": 1 }[point],
+      );
+      expect(r.tip()).toBe(
+        {
+          "commit-created": tipBefore,
+          "push-completed": localHead,
+          "receipt-completed": localHead,
+        }[point],
+      );
+      expect(handoffRows(r).at(-1)).toMatchObject({
+        phase: {
+          "commit-created": "poll",
+          "push-completed": "poll",
+          "receipt-completed": "repoll",
+        }[point],
+        retrigger: { state: point, original: base, commit: localHead },
+      });
+
+      // The fresh process finishes the interrupted effect: no second commit, no second push, no first poll again.
+      const secondGh = pollingGh([FOUND]);
+      const finished = await ciDispatchGate(options(r), { gh: secondGh.gh, ...quiet() });
+      expect(secondGh.polls()).toBe(1);
+      expect(finished.ciDispatch).toMatchObject({
+        outcome: "self-healed",
+        retrigger: true,
+        attempts: 7,
+        head: localHead,
+      });
+      expect(git(r.work, ["rev-parse", "HEAD"])).toBe(localHead);
+      expect(r.tip()).toBe(localHead);
+      expect(r.retriggers()).toBe(1);
+      expect(git(r.remote, ["rev-list", "--count", "feat/1-x"])).toBe("3");
+      // The pushed commit owns nothing but itself: its tree is its parent's.
+      expect(git(r.remote, ["rev-parse", `${localHead}^{tree}`])).toBe(
+        git(r.remote, ["rev-parse", `${localHead}~1^{tree}`]),
+      );
+      expect(handoffRows(r).at(-1)).toMatchObject({
+        phase: "repoll",
+        retrigger: {
+          state: "receipt-completed",
+          original: base,
+          commit: localHead,
+          ref: "refs/heads/feat/1-x",
+          remote: localHead,
+          receipt: "handoff-1",
+        },
+      });
+
+      // A third process after the receipt is a pure read of the same effect.
+      const thirdGh = pollingGh([FOUND]);
+      const again = await ciDispatchGate(options(r), { gh: thirdGh.gh, ...quiet() });
+      expect(again.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true });
+      expect(r.tip()).toBe(localHead);
+      expect(r.retriggers()).toBe(1);
+      expect(git(r.work, ["rev-parse", "HEAD"])).toBe(localHead);
+    }
+
+    // Unrelated staged content is never published by the retrigger.
+    const staged = remoteRepo("feat/1-x", false);
+    fs.writeFileSync(path.join(staged.work, "unrelated.txt"), "user work\n");
+    git(staged.work, ["add", "unrelated.txt"]);
+    const stagedGh = pollingGh([...none(6), FOUND]);
+    const stagedRun = await ciDispatchGate(options(staged), { gh: stagedGh.gh, ...quiet() });
+    expect(stagedRun.ciDispatch).toMatchObject({ outcome: "self-healed" });
+    expect(git(staged.remote, ["ls-tree", "-r", "--name-only", staged.tip()])).not.toContain(
+      "unrelated.txt",
+    );
+    expect(git(staged.remote, ["show", "--name-only", "--format=", staged.tip()])).toBe("");
+    expect(git(staged.work, ["diff", "--cached", "--name-only"])).toBe("unrelated.txt");
+
+    // A conflicting remote movement after the commit was made blocks every further effect.
+    const moved = remoteRepo("feat/1-x", false);
+    await expect(
+      ciDispatchGate(options(moved, { checkpoint: crashAt("commit-created") }), {
+        gh: pollingGh(none(30)).gh,
+        ...quiet(),
+      }),
+    ).rejects.toThrow("process lost at commit-created");
+    const other = path.join(moved.root, "other");
+    git(moved.root, ["clone", "-q", "-b", "feat/1-x", moved.remote, other]);
+    git(other, ["commit", "-q", "--allow-empty", "-m", "someone else moved the branch"]);
+    git(other, ["push", "-q", "origin", "feat/1-x"]);
+    const movedTip = moved.tip();
+    const blocked = await ciDispatchGate(options(moved), {
+      gh: pollingGh([FOUND]).gh,
+      ...quiet(),
+    });
+    expect(blocked).toMatchObject({ handoff: 6, ciDispatch: null });
+    expect(moved.tip()).toBe(movedTip);
+    expect(moved.retriggers()).toBe(0);
+    expect(moved.log()[0]).toBe("someone else moved the branch");
+    expect(handoffRows(moved).at(-1)).toMatchObject({ retrigger: { state: "commit-created" } });
+
+    // A run in place on a shared branch pushes only its own commits, even across the interruption.
+    const shared = remoteRepo("dev", true);
+    await expect(
+      ciDispatchGate(options(shared, { checkpoint: crashAt("commit-created") }), {
+        gh: pollingGh(none(30)).gh,
+        ...quiet(),
+      }),
+    ).rejects.toThrow("process lost at commit-created");
+    expect(shared.retriggers()).toBe(0);
+    const sharedGh = pollingGh([FOUND]);
+    const sharedRun = await ciDispatchGate(options(shared), { gh: sharedGh.gh, ...quiet() });
+    expect(sharedRun.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true });
+    expect(shared.log()).not.toContain("foreign local commit");
+    expect(shared.log()).toContain("chore(1-x): close-workflow");
+    expect(shared.retriggers()).toBe(1);
+    expect(git(shared.work, ["rev-list", "--count", "--grep=re-trigger", "HEAD"])).toBe("1");
+    expect(readRecord(shared.work, "1-x")?.commits).toHaveLength(2);
+    expect(handoffRows(shared).at(-1)).toMatchObject({
+      retrigger: { state: "receipt-completed", remote: shared.tip(), receipt: "handoff-1" },
+    });
+  });
+});
+
+describe("bounded correction on real ledgers", () => {
+  const knowledge = (over: Record<string, unknown> = {}) => ({
+    kind: "knowledge",
+    key: "gotcha",
+    summary: "a gotcha worth keeping",
+    ...over,
+  });
+  /** Fails the engine's own row validation after the deterministic fill: nothing is written. */
+  const invalidRow = () => knowledge({ status: "BOGUS" });
+  const failure = (over: Record<string, unknown> = {}) => ({
+    kind: "failure",
+    key: "parser-drops-last-line",
+    summary: "parser drops the last line",
+    severity: "HIGH",
+    status: "OPEN",
+    ...over,
+  });
+
+  const append = (id: string, payload: unknown, ledger: string, ...extra: string[]) => {
+    const file = path.join(main, `rows-${ledger}.json`);
+    fs.writeFileSync(file, JSON.stringify(payload));
+    return call(
+      worktree,
+      [ledgersCommand],
+      [
+        "ledgers",
+        "append",
+        `--root=${worktree}`,
+        `--ledger=${ledger}`,
+        `--rows=${file}`,
+        `--invocation=${id}`,
+        ...extra,
+      ],
+    );
+  };
+  const lostAt = (point: string) => (name: string) => {
+    if (name === point) throw new Error("response lost");
+  };
+  const statusFile = () => path.join(worktree, STATUS_REL);
+  const corrections = () =>
+    rows(statusFile()).filter((r) => String(r["type"]).startsWith("correction-"));
+  const ledgerBytes = (name: string) => {
+    const file = path.join(worktree, "docs", `${name}.jsonl`);
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : "";
+  };
+
+  it("resumes corrected substep and blocks exhausted unauthorized or uncertain effects", async () => {
+    const first = await issue(worktree, ["--agent=bkit-build-plan-tests"]);
+
+    // A guaranteed no-write rejection after the deterministic fill names its exact sub-step.
+    const rejected = await append(first, [invalidRow()], "knowledge", "--operation=op-1");
+    expect(rejected.code).toBe(8);
+    expect(rejected.json!["error"]).toMatchObject({
+      effects: "none",
+      correctable: true,
+      substep: "append",
+    });
+    const scope = rejected.json!["error"].scope as string;
+    expect(scope).toContain("knowledge");
+    expect(ledgerBytes("knowledge")).toBe("");
+    expect(corrections()).toEqual([
+      expect.objectContaining({
+        type: "correction-rejected",
+        scope,
+        substep: "append",
+        operation: "op-1",
+        step: "build-plan-tests",
+      }),
+    ]);
+
+    // The corrected candidate carries a fresh immutable operation and resumes the same sub-step.
+    const fixed = await append(
+      first,
+      [knowledge()],
+      "knowledge",
+      "--operation=op-2",
+      "--correction-of=op-1",
+    );
+    expect(fixed.code).toBe(0);
+    expect(fixed.json).toMatchObject({
+      appended: 1,
+      receipt: { operation: "op-2", replayed: false },
+      correction: {
+        scope,
+        operation: "op-2",
+        of: "op-1",
+        used: 1,
+        limit: 2,
+        substep: "append",
+        verified: true,
+      },
+    });
+    expect(rows(path.join(worktree, "docs", "knowledge.jsonl"))).toHaveLength(1);
+    expect(corrections().map((r) => r["type"])).toEqual([
+      "correction-rejected",
+      "correction-candidate",
+      "correction-succeeded",
+    ]);
+    expect(corrections().every((r) => r["scope"] === scope)).toBe(true);
+
+    // Replaying the corrected operation after a lost response returns its receipt and spends nothing.
+    const bytes = ledgerBytes("knowledge");
+    const replay = await append(
+      first,
+      [knowledge()],
+      "knowledge",
+      "--operation=op-2",
+      "--correction-of=op-1",
+    );
+    expect(replay.code).toBe(0);
+    expect(replay.json!["receipt"]).toMatchObject({ operation: "op-2", replayed: true });
+    expect(replay.json!["correction"]).toMatchObject({ used: 1 });
+    expect(ledgerBytes("knowledge")).toBe(bytes);
+
+    // A candidate must continue the sub-step it corrects: another ledger or an unknown rejection is refused.
+    const elsewhere = await append(
+      first,
+      [failure()],
+      "failures",
+      "--operation=op-x",
+      "--correction-of=op-1",
+    );
+    expect(elsewhere.code).toBe(2);
+    const unknown = await append(
+      first,
+      [knowledge({ key: "other" })],
+      "knowledge",
+      "--operation=op-y",
+      "--correction-of=never-rejected",
+    );
+    expect(unknown.code).toBe(2);
+    expect(ledgerBytes("failures")).toBe("");
+    expect(ledgerBytes("knowledge")).toBe(bytes);
+
+    // Two corrected retries per scope, however many invocations, operations or helpers ask.
+    const idA = await issue(worktree, [], "build-plan-verify");
+    const idB = await issue(worktree, [], "build-plan-verify");
+    const firstReject = await append(idA, [invalidRow()], "knowledge", "--operation=op-a");
+    expect(firstReject.json!["error"]).toMatchObject({ correctable: true });
+    const scope2 = firstReject.json!["error"].scope as string;
+    expect(scope2).not.toBe(scope);
+    const retryOne = await append(
+      idB,
+      [invalidRow()],
+      "knowledge",
+      "--operation=op-b",
+      "--correction-of=op-a",
+    );
+    expect(retryOne.code).toBe(8);
+    expect(retryOne.json!["error"]).toMatchObject({ correctable: true, scope: scope2 });
+    const retryTwo = await append(
+      idA,
+      [invalidRow()],
+      "knowledge",
+      "--operation=op-c",
+      "--correction-of=op-a",
+    );
+    expect(retryTwo.code).toBe(8);
+    const before = ledgerBytes("knowledge");
+    for (const [id, operationFlag] of [
+      [idB, "--operation=op-d"],
+      [idA, "--issue-operation"],
+    ] as const) {
+      const exhausted = await append(
+        id,
+        [knowledge({ key: "valid-but-late" })],
+        "knowledge",
+        operationFlag,
+        "--correction-of=op-a",
+      );
+      expect(exhausted.code).toBe(1);
+      expect(exhausted.json!["error"]).toMatchObject({
+        effects: "none",
+        correctable: false,
+        exhausted: true,
+        scope: scope2,
+      });
+    }
+    expect(ledgerBytes("knowledge")).toBe(before);
+    // The shared counter agrees: the same scope has no correction left for any other caller.
+    const counter = await call(worktree, COMMANDS, [
+      "counters",
+      "correction",
+      `--file=${statusFile()}`,
+      "--workflow=build",
+      `--scope=${scope2}`,
+      "--operation=op-z",
+    ]);
+    expect(counter.code).toBe(1);
+    expect(counter.json).toMatchObject({ allowed: false, used: 2, limit: 2 });
+
+    // An authorship conflict is a permission refusal, never auto-corrected.
+    const idC = await issue(worktree, [], "build-plan-gaps-remediate");
+    const unauthorized = await append(
+      idC,
+      [knowledge({ key: "forged", by: { subagent: "someone-else" } })],
+      "knowledge",
+      "--operation=op-auth",
+    );
+    expect(unauthorized.code).toBe(8);
+    expect(unauthorized.err).toMatch(/conflict/i);
+    expect(unauthorized.json?.["error"]?.correctable).not.toBe(true);
+    const retryAuth = await append(
+      idC,
+      [knowledge({ key: "forged" })],
+      "knowledge",
+      "--operation=op-auth-2",
+      "--correction-of=op-auth",
+    );
+    expect(retryAuth.code).toBe(2);
+    expect(ledgerBytes("knowledge")).toBe(before);
+
+    // An uncertain earlier effect on the ledger blocks any corrected candidate: nothing is appended.
+    const idD = await issue(worktree, [], "build-challenge");
+    const failureRejected = await append(
+      idD,
+      [failure({ status: "BOGUS" })],
+      "failures",
+      "--operation=op-f1",
+    );
+    expect(failureRejected.json!["error"]).toMatchObject({ correctable: true });
+    expect(() =>
+      appendLedgerRows(
+        worktree,
+        "failures",
+        [failure({ by: { workflow: "build", step: "build-challenge" } })],
+        undefined,
+        {
+          operation: "op-torn",
+          checkpoint: lostAt("written"),
+        },
+      ),
+    ).toThrow();
+    const torn = fs.readFileSync(path.join(worktree, "docs", "failures.jsonl"));
+    fs.writeFileSync(
+      path.join(worktree, "docs", "failures.jsonl"),
+      torn.subarray(0, torn.length - 15),
+    );
+    const cut = ledgerBytes("failures");
+    const uncertain = await append(
+      idD,
+      [failure({ key: "second-failure" })],
+      "failures",
+      "--operation=op-f2",
+      "--correction-of=op-f1",
+    );
+    expect(uncertain.code).not.toBe(0);
+    expect(uncertain.json!["error"]).toMatchObject({ effects: "uncertain", correctable: false });
+    expect(ledgerBytes("failures")).toBe(cut);
+    expect(corrections().filter((r) => r["type"] === "correction-succeeded")).toHaveLength(1);
   });
 });

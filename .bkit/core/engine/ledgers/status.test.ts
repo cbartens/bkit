@@ -17,8 +17,11 @@ import {
   recordLedgerOperation,
   validateCiSelection,
   ciSelectionIdentity,
+  ciHandoffIdentity,
+  foldCiHandoff,
+  validateCiHandoffEvent,
 } from "./status";
-import { readStatusEvents } from "../commands/workflow/status";
+import { readStatusEvents, readStatusRows } from "../commands/workflow/status";
 
 describe("CI evidence selection contract", () => {
   it("validates atomic CI and local selections with stable evidence identities", () => {
@@ -338,5 +341,214 @@ describe("ledger operation receipts", () => {
 
     // The fold ignores every one of these rows.
     expect(fold(readStatusEvents(file))).toEqual([]);
+  });
+});
+
+describe("CI handoff events", () => {
+  const SHA = "a".repeat(40);
+  const NEW_SHA = "b".repeat(40);
+  const OTHER_SHA = "c".repeat(40);
+  const target = {
+    provider: "github" as const,
+    repo: "example/example",
+    pr: "7",
+    head: SHA,
+    branch: "feat/1-x",
+  };
+  const handoff = (at: string, over: Record<string, unknown> = {}) => ({
+    type: "ci-handoff",
+    workflow: "build",
+    at,
+    phase: "poll",
+    target,
+    observation: { result: "none", attempts: 6, errors: 0 },
+    ...over,
+  });
+  const observation = (result: string, attempts: number, errors: number) => ({
+    result,
+    attempts,
+    errors,
+  });
+  const retrigger = (state: string, extra: Record<string, unknown> = {}) => ({
+    state,
+    original: SHA,
+    ...extra,
+  });
+  const logFile = (rows: object[]) => {
+    const file = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-handoff-")),
+      "logs",
+      "status.jsonl",
+    );
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, rows.map((r) => `${JSON.stringify(r)}\n`).join(""));
+    return file;
+  };
+
+  it("preserves handoff events across status folding and rejects stale CI selection", () => {
+    // Every observation kind and every retrigger checkpoint is a valid event with its own identity.
+    const valid = [
+      handoff("2026-11-01T00:00:01Z", { observation: observation("none", 6, 0) }),
+      handoff("2026-11-01T00:00:02Z", { observation: observation("pending", 3, 0) }),
+      handoff("2026-11-01T00:00:03Z", { observation: observation("success", 2, 0) }),
+      handoff("2026-11-01T00:00:04Z", { observation: observation("failure", 2, 0) }),
+      handoff("2026-11-01T00:00:05Z", { observation: observation("provider-error", 8, 4) }),
+      handoff("2026-11-01T00:00:06Z", { retrigger: retrigger("intended") }),
+      handoff("2026-11-01T00:00:07Z", {
+        observation: observation("pending", 8, 4),
+        retrigger: retrigger("commit-created", { commit: NEW_SHA }),
+      }),
+      handoff("2026-11-01T00:00:08Z", {
+        phase: "repoll",
+        observation: observation("pending", 8, 4),
+        retrigger: retrigger("push-completed", {
+          commit: NEW_SHA,
+          ref: "refs/heads/feat/1-x",
+          remote: NEW_SHA,
+        }),
+      }),
+      handoff("2026-11-01T00:00:09Z", {
+        phase: "repoll",
+        observation: observation("pending", 8, 4),
+        retrigger: retrigger("receipt-completed", {
+          commit: NEW_SHA,
+          ref: "refs/heads/feat/1-x",
+          remote: NEW_SHA,
+          receipt: "retrigger-1",
+        }),
+      }),
+    ];
+    for (const event of valid) expect(validateCiHandoffEvent(event)).toBe(true);
+
+    // Shapes that carry no usable identity or phase evidence are refused.
+    const invalid: Array<Record<string, unknown>> = [
+      handoff("t", { observation: observation("maybe", 1, 0) }),
+      handoff("t", { observation: observation("none", -1, 0) }),
+      handoff("t", { observation: observation("none", 1.5, 0) }),
+      handoff("t", { observation: observation("provider-error", 1, 2) }),
+      handoff("t", { target: { ...target, head: "not-a-commit" } }),
+      handoff("t", { target: { ...target, repo: "../example" } }),
+      handoff("t", { target: { ...target, provider: "other" } }),
+      handoff("t", { phase: "later" }),
+      handoff("t", { phase: "repoll" }),
+      handoff("t", { retrigger: retrigger("commit-created") }),
+      handoff("t", { retrigger: retrigger("push-completed", { commit: NEW_SHA }) }),
+      handoff("t", {
+        retrigger: retrigger("receipt-completed", { commit: NEW_SHA, remote: NEW_SHA }),
+      }),
+    ];
+    for (const event of invalid) expect(validateCiHandoffEvent(event)).toBe(false);
+
+    // The target identity ignores wording and tracks repo, PR, head and branch.
+    const identity = ciHandoffIdentity(target);
+    expect(identity).toBe(ciHandoffIdentity({ ...target, repo: "Example/Example" }));
+    expect(identity).not.toBe(ciHandoffIdentity({ ...target, head: OTHER_SHA }));
+    expect(identity).not.toBe(ciHandoffIdentity({ ...target, pr: "8" }));
+    expect(identity).not.toBe(ciHandoffIdentity({ ...target, repo: "other/example" }));
+
+    // Written, unioned (duplicate and shuffled), read back and folded: the identity and totals survive.
+    const rows = [
+      { type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" },
+      valid[0],
+      valid[4],
+      valid[6],
+      valid[8],
+    ];
+    const shuffled = [rows[0]!, rows[4]!, rows[2]!, rows[1]!, rows[3]!, rows[2]!];
+    const file = logFile(shuffled);
+    const reread = readStatusRows(file);
+    const state = foldCiHandoff(reread, target);
+    expect(state).toMatchObject({
+      phase: "repoll",
+      attempts: 8,
+      errors: 4,
+      stale: 0,
+      last: { result: "pending" },
+      retrigger: {
+        state: "receipt-completed",
+        original: SHA,
+        commit: NEW_SHA,
+        remote: NEW_SHA,
+        receipt: "retrigger-1",
+      },
+    });
+    // A restart reads the same state from the same bytes.
+    expect(foldCiHandoff(readStatusRows(file), target)).toEqual(state);
+    // The run fold never mistakes a handoff row for a step or a run.
+    expect(fold(readStatusEvents(file))).toEqual([
+      { workflow: "build", startedAt: "2026-11-01T00:00:00Z", status: "IN_PROGRESS", steps: [] },
+    ]);
+
+    // Evidence for another head, PR or repository never counts toward this target.
+    const mixed = [
+      valid[0],
+      handoff("2026-11-01T00:01:00Z", {
+        target: { ...target, head: OTHER_SHA },
+        observation: observation("success", 1, 0),
+      }),
+      handoff("2026-11-01T00:02:00Z", {
+        target: { ...target, pr: "8" },
+        observation: observation("failure", 1, 0),
+      }),
+      handoff("2026-11-01T00:03:00Z", {
+        target: { ...target, repo: "other/example" },
+        observation: observation("success", 1, 0),
+      }),
+    ];
+    expect(foldCiHandoff(mixed, target)).toMatchObject({
+      attempts: 6,
+      errors: 0,
+      stale: 3,
+      last: { result: "none" },
+    });
+    expect(foldCiHandoff(mixed, { ...target, head: OTHER_SHA })).toMatchObject({
+      attempts: 1,
+      stale: 3,
+      last: { result: "success" },
+    });
+    // A cumulative count that goes backwards is refused, not folded.
+    expect(
+      foldCiHandoff(
+        [valid[0], handoff("2026-11-01T00:04:00Z", { observation: observation("none", 2, 0) })],
+        target,
+      ),
+    ).toMatchObject({ attempts: 6, invalid: 1 });
+    // No events for the target is a state, not an error.
+    expect(foldCiHandoff([], target)).toMatchObject({
+      attempts: 0,
+      errors: 0,
+      last: null,
+      retrigger: null,
+    });
+
+    // The failed-only debug selection stays closed to handoff observations and keeps its identity.
+    const selection = {
+      mode: "ci" as const,
+      provider: "github" as const,
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 1,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/1",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "feat/1-x",
+      headSha: SHA,
+      conclusion: "failure" as const,
+      redTiers: ["unit" as const],
+      via: "prompt-run",
+    };
+    expect(validateCiSelection(selection)).toBe(true);
+    expect(validateCiSelection({ ...selection, conclusion: "success" })).toBe(false);
+    expect(validateCiSelection({ ...selection, conclusion: "pending" })).toBe(false);
+    expect(validateCiSelection(valid[2])).toBe(false);
+    expect(validateCiHandoffEvent(selection)).toBe(false);
+    expect(ciSelectionIdentity({ ...selection, via: "issue-run" })).toBe(
+      ciSelectionIdentity(selection),
+    );
+    // A saved selection for a different head is not the evidence this target handed off.
+    expect(ciSelectionIdentity({ ...selection, headSha: OTHER_SHA })).not.toBe(
+      ciSelectionIdentity(selection),
+    );
+    expect(ciHandoffIdentity(target)).not.toBe(ciSelectionIdentity(selection));
   });
 });

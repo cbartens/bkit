@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { useGateRunner } from "../../../../../vitest.gate-fixture";
 
 import { runCommand } from "../lib";
+import { COMMANDS } from "../registry";
 import {
   checkNamespace,
   ciDispatchGate,
@@ -3077,3 +3078,245 @@ describe(
     });
   },
 );
+
+describe("bkit runs handoff", { timeout: 30_000 }, () => {
+  const REL = "docs/plans/202611/logs/1-x/status.jsonl";
+  const HEAD = "a".repeat(40);
+  const OTHER_HEAD = "c".repeat(40);
+  const NEW_HEAD = "b".repeat(40);
+  const TARGET = {
+    provider: "github",
+    repo: "example/example",
+    pr: "7",
+    head: HEAD,
+    branch: "feat/1-x",
+  };
+
+  /** A real repo with a run's status log and an engine-issued invocation bound to it. */
+  async function handoffRepo(o: { ciFile?: boolean } = {}) {
+    const cwd = tmp("bkit-handoff-");
+    gitIn(cwd, "init", "-q", "-b", "feat/1-x");
+    const status = path.join(cwd, REL);
+    fs.mkdirSync(path.dirname(status), { recursive: true });
+    fs.writeFileSync(
+      status,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+    );
+    if (o.ciFile) {
+      fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "name: bkit-ci\n");
+    }
+    gitIn(cwd, "add", "-A");
+    gitIn(cwd, "commit", "-q", "-m", "init");
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-close-workflow",
+        `--file=${REL}`,
+        "--host=claude",
+        "--configured-model=sonnet",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    return { cwd, status, id };
+  }
+
+  type Repo = Awaited<ReturnType<typeof handoffRepo>>;
+  const observe = (r: Repo, flags: string[], target: Record<string, string> = {}) =>
+    cli(r.cwd, [
+      "handoff",
+      `--invocation=${r.id}`,
+      `--repo=${target.repo ?? TARGET.repo}`,
+      `--pr=${target.pr ?? TARGET.pr}`,
+      `--head=${target.head ?? TARGET.head}`,
+      `--branch=${TARGET.branch}`,
+      "--budget-s=60",
+      "--interval-s=10",
+      ...flags,
+    ]);
+  const handoffRows = (r: Repo) =>
+    fs
+      .readFileSync(r.status, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, any>)
+      .filter((row) => row["type"] === "ci-handoff");
+  /** What a dispatcher already persisted before this process started. */
+  const persist = (r: Repo, rows: Array<Record<string, unknown>>) =>
+    fs.appendFileSync(r.status, rows.map((row) => `${JSON.stringify(row)}\n`).join(""));
+  const persisted = (at: string, over: Record<string, unknown>) => ({
+    type: "ci-handoff",
+    workflow: "build",
+    at,
+    phase: "poll",
+    target: TARGET,
+    observation: { result: "none", attempts: 6, errors: 0 },
+    ...over,
+  });
+  const RETRIGGER = { original: HEAD, commit: NEW_HEAD, ref: "refs/heads/feat/1-x" };
+
+  it("derives handoff decisions from persisted poll observations and target identity", async () => {
+    // Fresh polls accumulate: engine-derived totals, the next action, one persisted row per observation.
+    const fresh = await handoffRepo();
+    const first = await observe(fresh, ["--result=none", "--polls=3"]);
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({
+      phase: "poll",
+      attempts: 3,
+      errors: 0,
+      nextAction: "poll-again",
+      stale: 0,
+    });
+    const second = await observe(fresh, ["--result=none", "--polls=3"]);
+    expect(second.json).toMatchObject({ phase: "poll", attempts: 6, nextAction: "retrigger" });
+    expect(handoffRows(fresh)).toHaveLength(2);
+    expect(handoffRows(fresh).at(-1)).toMatchObject({
+      phase: "poll",
+      target: TARGET,
+      observation: { result: "none", attempts: 6, errors: 0 },
+    });
+
+    // Every kind of observation that proves a run exists ends the poll with a dispatched verdict.
+    for (const result of ["pending", "success", "failure"]) {
+      const repo = await handoffRepo();
+      const found = await observe(repo, [`--result=${result}`, "--polls=1"]);
+      expect(found.json).toMatchObject({
+        nextAction: "verdict",
+        outcome: "dispatched",
+        attempts: 1,
+        ciResult: result,
+      });
+    }
+
+    // A provider that only errors is unresolved, never a clean absence of CI.
+    const broken = await handoffRepo();
+    const errored = await observe(broken, ["--result=provider-error", "--polls=6"]);
+    expect(errored.json).toMatchObject({
+      attempts: 6,
+      errors: 6,
+      nextAction: "verdict",
+      outcome: "unresolved",
+      reason: "gh-error",
+    });
+
+    // Supplied counters and a supplied success are not evidence: the flags do not exist.
+    const forged = await handoffRepo();
+    const before = fs.readFileSync(forged.status, "utf-8");
+    for (const flag of ["--attempts=99", "--errors=0", "--success", "--poll-result=found"]) {
+      expect((await observe(forged, ["--result=none", "--polls=1", flag])).code).toBe(2);
+    }
+    expect((await observe(forged, ["--result=maybe", "--polls=1"])).code).toBe(2);
+    expect((await observe(forged, ["--polls=1"])).code).toBe(2);
+    expect(fs.readFileSync(forged.status, "utf-8")).toBe(before);
+
+    // Without an engine-issued invocation there is no run to persist into: refused, nothing written.
+    const bare = await handoffRepo();
+    const noInvocation = await cli(bare.cwd, [
+      "handoff",
+      "--repo=example/example",
+      "--pr=7",
+      `--head=${HEAD}`,
+      "--result=none",
+      "--polls=1",
+    ]);
+    expect(noInvocation.code).toBe(2);
+    expect(handoffRows(bare)).toEqual([]);
+
+    // An unresolved retrigger intent is not a completed retrigger: the poll cannot reach a verdict.
+    for (const retrigger of [
+      { state: "intended", original: HEAD },
+      { state: "commit-created", ...RETRIGGER },
+    ]) {
+      const pending = await handoffRepo();
+      persist(pending, [persisted("2026-11-01T00:01:00Z", { retrigger })]);
+      const silent = await observe(pending, ["--result=none", "--polls=6"]);
+      expect(silent.json).toMatchObject({ nextAction: "reconcile-retrigger", attempts: 12 });
+      expect(silent.json).not.toHaveProperty("outcome");
+      expect(handoffRows(pending).at(-1)).toMatchObject({ retrigger: { state: retrigger.state } });
+    }
+
+    // After a completed retrigger the second poll carries the running total and decides.
+    const completed = {
+      state: "receipt-completed",
+      ...RETRIGGER,
+      remote: NEW_HEAD,
+      receipt: "retrigger-1",
+    };
+    const afterRetrigger = (over: Record<string, unknown>) =>
+      persisted("2026-11-01T00:02:00Z", { phase: "repoll", retrigger: completed, ...over });
+    const quietNoCi = await handoffRepo();
+    persist(quietNoCi, [afterRetrigger({})]);
+    expect(await observe(quietNoCi, ["--result=none", "--polls=6"])).toMatchObject({
+      json: { phase: "repoll", attempts: 12, nextAction: "verdict", outcome: "no-ci" },
+    });
+    const declared = await handoffRepo({ ciFile: true });
+    persist(declared, [afterRetrigger({})]);
+    expect((await observe(declared, ["--result=none", "--polls=6"])).json).toMatchObject({
+      outcome: "unresolved",
+      reason: "ci-declared-no-run",
+    });
+    const healed = await handoffRepo();
+    persist(healed, [afterRetrigger({})]);
+    expect((await observe(healed, ["--result=pending", "--polls=1"])).json).toMatchObject({
+      phase: "repoll",
+      nextAction: "verdict",
+      outcome: "self-healed",
+      attempts: 7,
+    });
+
+    // Evidence for another head, PR or repository is stale: it adds nothing and decides nothing.
+    const moved = await handoffRepo();
+    persist(moved, [
+      persisted("2026-11-01T00:03:00Z", {
+        target: { ...TARGET, head: OTHER_HEAD },
+        observation: { result: "success", attempts: 9, errors: 0 },
+      }),
+      persisted("2026-11-01T00:03:30Z", {
+        target: { ...TARGET, pr: "8" },
+        observation: { result: "failure", attempts: 9, errors: 0 },
+      }),
+      persisted("2026-11-01T00:04:00Z", {
+        target: { ...TARGET, repo: "other/example" },
+        observation: { result: "success", attempts: 9, errors: 0 },
+      }),
+    ]);
+    const current = await observe(moved, ["--result=none", "--polls=1"]);
+    expect(current.json).toMatchObject({
+      phase: "poll",
+      attempts: 1,
+      nextAction: "poll-again",
+      stale: 3,
+    });
+    expect(current.json).not.toHaveProperty("outcome");
+    // The same state asked for the other head answers from that head's own evidence only.
+    const other = await observe(moved, ["--result=pending", "--polls=1"], { head: OTHER_HEAD });
+    expect(other.json).toMatchObject({ attempts: 10, outcome: "dispatched", stale: 3 });
+
+    // A target that does not name its head, PR and repository cannot ask for a decision.
+    for (const missing of ["--head=", "--repo=", "--pr="]) {
+      const bad = await cli(moved.cwd, [
+        "handoff",
+        `--invocation=${moved.id}`,
+        "--repo=example/example",
+        "--pr=7",
+        `--head=${HEAD}`,
+        `--branch=${TARGET.branch}`,
+        missing,
+        "--result=none",
+        "--polls=1",
+      ]);
+      expect(bad.code).toBe(2);
+    }
+  });
+});

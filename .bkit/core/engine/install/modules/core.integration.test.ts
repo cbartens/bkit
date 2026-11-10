@@ -34,6 +34,12 @@ import { BKIT_GATE_CHANGED_SCRIPT, BKIT_GATE_SCRIPTS } from "../manifest";
 import { readBkitConfig } from "../../shared/settings";
 import { hashFile, readBkitVersion, readManagedVersion, writeBkitVersion } from "../version-file";
 import { applyTokens } from "../placeholders";
+import {
+  buildAntigravityModelLookup,
+  buildOpencodeModelLookup,
+  parseEffortMap,
+  parseModelLookup,
+} from "../../render/models";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2439,5 +2445,246 @@ describe("migrateValeHouseStyle (via runBkitDocs)", () => {
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe("deterministic bookkeeping contracts in a fresh consumer", { timeout: 180_000 }, () => {
+  const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+  const HOSTS = ["claude", "cursor", "opencode", "codex", "antigravity"] as const;
+  const TRACKERS = ["github", "linear", "jira", "none"] as const;
+  const WORKFLOW_FILES: Record<(typeof HOSTS)[number], string> = {
+    claude: ".claude/commands/bkit-build.md",
+    cursor: ".cursor/commands/bkit-build.md",
+    opencode: ".opencode/commands/bkit-build.md",
+    codex: ".agents/skills/bkit-build/SKILL.md",
+    antigravity: ".agents/plugins/bkit/skills/bkit-build/SKILL.md",
+  };
+  const extraDirs: string[] = [];
+  afterEach(() => {
+    process.chdir(originalCwd);
+    for (const d of extraDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  const consumer = (): string => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-consumer-")));
+    extraDirs.push(dir);
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: "test-project", packageManager: "pnpm@10.4.1" }),
+      "utf-8",
+    );
+    process.chdir(dir);
+    return dir;
+  };
+  const install = (host: (typeof HOSTS)[number], tracker: (typeof TRACKERS)[number]): WriteSet => {
+    const ws = makeWriteSet();
+    dispatchModules(
+      new Set(["core", host]),
+      makeCtx({
+        ws,
+        issueTracker: tracker,
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        opencodeModelLookup: buildOpencodeModelLookup(promptsMd, "openrouter"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+        opencodeProvider: "openrouter",
+      }),
+    );
+    return ws;
+  };
+  const read = (dir: string, rel: string) => fs.readFileSync(path.join(dir, rel), "utf-8");
+  const correction = (text: string) =>
+    /\*\*Bounded correction:\*\*[\s\S]*?(?:\n\s*\n|$)/.exec(text)?.[0].replace(/\s+/g, " ") ?? "";
+
+  const CLI = path.join(getPkgRoot(), "dist", "cli.js");
+  const bkit = (cwd: string, ...argv: string[]) => {
+    const res = spawnSync(process.execPath, [CLI, ...argv, "--json"], {
+      cwd,
+      encoding: "utf-8",
+    });
+    return {
+      code: res.status,
+      json: res.stdout.trim() === "" ? undefined : (JSON.parse(res.stdout) as Record<string, any>),
+      err: res.stderr,
+    };
+  };
+  const gitIn = (cwd: string, ...args: string[]) => {
+    const res = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], {
+      cwd,
+      encoding: "utf-8",
+    });
+    return res.stdout.trim();
+  };
+  const jsonRows = (file: string) =>
+    fs
+      .readFileSync(file, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, any>);
+
+  it("installs and upgrades fresh consumers with deterministic bookkeeping contracts", () => {
+    const snapshots = new Map<string, Record<string, string>>();
+
+    // Fresh install: every host x tracker renders the same recovery contract and engine-owned CI re-entry.
+    for (const host of HOSTS) {
+      for (const tracker of TRACKERS) {
+        const dir = consumer();
+        install(host, tracker);
+        const workflow = read(dir, WORKFLOW_FILES[host]);
+        expect(correction(workflow), `${host}/${tracker}`).toMatch(/guaranteed no-write/i);
+        expect(correction(workflow), `${host}/${tracker}`).toMatch(/two corrected retries/i);
+        expect(workflow, `${host}/${tracker}`).toContain("bkit runs handoff");
+        expect(workflow, `${host}/${tracker}`).not.toContain("--attempts=<total>");
+        expect(workflow, `${host}/${tracker}`).not.toContain("{CI_REENTRY}");
+        snapshots.set(`${host}/${tracker}`, {
+          contract: correction(workflow),
+          cli: read(dir, ".bkit/cli.md"),
+          jsonl: read(dir, ".bkit/jsonl.md"),
+          workflows: read(dir, ".bkit/workflows.md"),
+          prompts: read(dir, ".bkit/prompts.md"),
+        });
+      }
+    }
+    // One wording and one set of docs across the matrix.
+    const contracts = new Set([...snapshots.values()].map((s) => s.contract));
+    expect(contracts.size).toBe(1);
+    const first = [...snapshots.values()][0]!;
+    for (const s of snapshots.values()) {
+      expect(s.cli).toBe(first.cli);
+      expect(s.jsonl).toBe(first.jsonl);
+    }
+    // The shipped docs state each ownership boundary, and the catalog lists the new verbs.
+    for (const verb of ["ledgers query", "runs handoff", "counters correction"]) {
+      expect(first.cli, verb).toContain(verb);
+    }
+    expect(first.cli).toContain("--correction-of");
+    expect(first.cli).toContain("--operation");
+    expect(first.jsonl).toContain("ci-handoff");
+    expect(first.jsonl).toContain("correction-rejected");
+    expect(first.jsonl).toMatch(/receipt/i);
+    expect(first.workflows).toContain("Bounded correction");
+    expect(first.prompts).toMatch(/modelSource/);
+
+    // Upgrade: stale managed files are put back to the fresh bytes, and a further install writes nothing.
+    const dir = consumer();
+    install("claude", "github");
+    const fresh = {
+      workflow: read(dir, WORKFLOW_FILES.claude),
+      cli: read(dir, ".bkit/cli.md"),
+      jsonl: read(dir, ".bkit/jsonl.md"),
+    };
+    fs.writeFileSync(path.join(dir, WORKFLOW_FILES.claude), `${fresh.workflow}\nstale\n`);
+    fs.writeFileSync(
+      path.join(dir, ".bkit/cli.md"),
+      fresh.cli.replace("runs handoff", "runs wait"),
+    );
+    fs.writeFileSync(path.join(dir, ".bkit/jsonl.md"), "stale\n");
+    install("claude", "github");
+    expect(read(dir, WORKFLOW_FILES.claude)).toBe(fresh.workflow);
+    expect(read(dir, ".bkit/cli.md")).toBe(fresh.cli);
+    expect(read(dir, ".bkit/jsonl.md")).toBe(fresh.jsonl);
+    expect(install("claude", "github").writes).toEqual([]);
+
+    // The built CLI the consumer runs agrees with the installed catalog and completes the journey.
+    gitIn(dir, "init", "-q", "-b", "feat/1-x");
+    fs.writeFileSync(path.join(dir, "README.md"), "x\n");
+    gitIn(dir, "add", "-A");
+    gitIn(dir, "commit", "-q", "-m", "init");
+    const rel = "docs/plans/202611/logs/1-x/status.jsonl";
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, rel),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+    );
+    for (const verb of [
+      ["ledgers", "query"],
+      ["runs", "handoff"],
+      ["counters", "correction"],
+    ]) {
+      expect(bkit(dir, ...verb, "--help").code, verb.join(" ")).toBe(0);
+    }
+    // Missing observed model: the engine fills what it can verify and leaves the rest absent.
+    const issued = bkit(
+      dir,
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-plan-tests",
+      `--file=${rel}`,
+      "--host=claude",
+      "--configured-model=sonnet",
+      "--agent=bkit-build-plan-tests",
+    );
+    expect(issued.code).toBe(0);
+    const id = issued.json!["invocation"] as string;
+    const rowsFile = path.join(dir, "rows.json");
+    const append = (rows: unknown[], ...extra: string[]) => {
+      fs.writeFileSync(rowsFile, JSON.stringify(rows));
+      return bkit(
+        dir,
+        "ledgers",
+        "append",
+        `--root=${dir}`,
+        "--ledger=knowledge",
+        `--rows=${rowsFile}`,
+        `--invocation=${id}`,
+        ...extra,
+      );
+    };
+    const row = { kind: "knowledge", key: "gotcha", summary: "a gotcha worth keeping" };
+    // A guaranteed no-write rejection, then the corrected candidate, then a lost-response replay.
+    const rejected = append([{ ...row, status: "BOGUS" }], "--operation=op-1");
+    expect(rejected.code).toBe(8);
+    expect(rejected.json!["error"]).toMatchObject({ effects: "none", correctable: true });
+    expect(fs.existsSync(path.join(dir, "docs", "knowledge.jsonl"))).toBe(false);
+    const corrected = append([row], "--operation=op-2", "--correction-of=op-1");
+    expect(corrected.code).toBe(0);
+    expect(corrected.json!["correction"]).toMatchObject({ used: 1, limit: 2, verified: true });
+    const replayed = append([row], "--operation=op-2", "--correction-of=op-1");
+    expect(replayed.json!["receipt"]).toMatchObject({ operation: "op-2", replayed: true });
+    const stored = jsonRows(path.join(dir, "docs", "knowledge.jsonl"));
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!["by"]).toMatchObject({
+      workflow: "build",
+      step: "build-plan-tests",
+      subagent: "bkit-build-plan-tests",
+      configuredModel: "sonnet",
+      host: "claude",
+    });
+    expect(stored[0]!["by"]).not.toHaveProperty("model");
+    // The canonical read agrees with the append: one winner, a complete scan.
+    const queried = bkit(dir, "ledgers", "query", `--root=${dir}`, "--ledger=knowledge");
+    expect(queried.json!["rows"]).toHaveLength(1);
+    expect(queried.json!["coverage"]).toMatchObject({ status: "complete", clean: true });
+    // Resume with a new process and a new invocation: the correction budget and CI totals carry on.
+    const scope = (corrected.json!["correction"] as { scope: string }).scope;
+    const counter = bkit(
+      dir,
+      "counters",
+      "correction",
+      `--file=${rel}`,
+      "--workflow=build",
+      `--scope=${scope}`,
+      "--operation=op-3",
+    );
+    expect(counter.json).toMatchObject({ allowed: true, used: 2, limit: 2 });
+    const poll = (result: string) =>
+      bkit(
+        dir,
+        "runs",
+        "handoff",
+        `--invocation=${id}`,
+        "--repo=acme/test-project",
+        "--pr=7",
+        `--head=${"a".repeat(40)}`,
+        "--branch=feat/1-x",
+        "--budget-s=60",
+        "--interval-s=10",
+        `--result=${result}`,
+        "--polls=3",
+      );
+    expect(poll("none").json).toMatchObject({ attempts: 3, nextAction: "poll-again" });
+    expect(poll("none").json).toMatchObject({ attempts: 6, nextAction: "retrigger" });
   });
 });

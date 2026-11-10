@@ -1083,3 +1083,79 @@ describe("bkit counters rows", () => {
     expect((await run(missing)).code).toBe(3);
   });
 });
+
+describe("bkit counters correction", () => {
+  const correct = (file: string, scope: string, operation: string, ...extra: string[]) =>
+    run([
+      "counters",
+      "correction",
+      `--file=${file}`,
+      "--workflow=plan",
+      `--scope=${scope}`,
+      `--operation=${operation}`,
+      ...extra,
+    ]);
+  const candidates = (file: string) =>
+    fs
+      .readFileSync(file, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r["type"] === "correction-candidate");
+
+  it("shares correction budget across candidate operations and honors specific limits", async () => {
+    const file = log([started("plan", "2026-11-01T00:00:00Z")]);
+    const scope = "ledgers-append:failures:append";
+
+    // Two corrected retries by default, each candidate under a fresh operation id.
+    const first = await correct(file, scope, "op-1");
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ allowed: true, used: 1, limit: 2, remaining: 1 });
+    const second = await correct(file, scope, "op-2");
+    expect(second.json).toMatchObject({ allowed: true, used: 2, limit: 2, remaining: 0 });
+
+    // A third fresh operation, as a helper or a new tool call would mint, gains nothing.
+    const third = await correct(file, scope, "op-3");
+    expect(third.code).toBe(1);
+    expect(third.json).toMatchObject({ allowed: false, used: 2, limit: 2, remaining: 0 });
+    expect(candidates(file).map((r) => r["operation"])).toEqual(["op-1", "op-2"]);
+
+    // Asking again for an operation already counted is a replay: it spends nothing.
+    const replay = await correct(file, scope, "op-2");
+    expect(replay.code).toBe(0);
+    expect(replay.json).toMatchObject({ allowed: true, used: 2, replayed: true });
+
+    // A resume and other counter calls in between reset nothing.
+    fs.appendFileSync(
+      file,
+      `${JSON.stringify({ type: "workflow-meta", workflow: "plan", at: "2026-11-01T00:05:00Z", resumed: true })}\n${JSON.stringify(done("plan", "plan-review", "2026-11-01T00:06:00Z"))}\n`,
+    );
+    expect((await derive(file, "plan-review", "next")).code).toBe(0);
+    const afterResume = await correct(file, scope, "op-4");
+    expect(afterResume.code).toBe(1);
+    expect(afterResume.json).toMatchObject({ allowed: false, used: 2 });
+
+    // Another scope has its own budget.
+    const other = await correct(file, "ledgers-append:knowledge:append", "op-5");
+    expect(other.json).toMatchObject({ allowed: true, used: 1, limit: 2 });
+
+    // A route with a stricter limit of one never gains a second correction.
+    const strict = "ledgers-append:decisions:append";
+    expect((await correct(file, strict, "op-a", "--limit=1")).json).toMatchObject({
+      allowed: true,
+      used: 1,
+      limit: 1,
+      remaining: 0,
+    });
+    const denied = await correct(file, strict, "op-b", "--limit=1");
+    expect(denied.code).toBe(1);
+    expect(denied.json).toMatchObject({ allowed: false, used: 1, limit: 1 });
+    // Asking again under yet another operation id still gains nothing.
+    expect((await correct(file, strict, "op-c", "--limit=1")).code).toBe(1);
+
+    // A limit of zero permits no correction at all.
+    const none = await correct(file, "ledgers-append:roadmap:append", "op-z", "--limit=0");
+    expect(none.code).toBe(1);
+    expect(none.json).toMatchObject({ allowed: false, used: 0, limit: 0 });
+  });
+});
