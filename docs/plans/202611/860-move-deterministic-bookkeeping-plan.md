@@ -396,7 +396,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
+- [x] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: additive RowBy availability/source/configured-model fields and compatible writer/normalization validation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: optional invocation-aware append context, fill-before-validate and explicit conflicts; retain legacy positional callers.
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: actual/unavailable/configured model compatibility.

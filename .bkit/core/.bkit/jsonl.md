@@ -390,7 +390,7 @@ An identity match means the same thing, not an automatic skip:
 
 ## `ci-handoff` and correction rows
 
-These are rows in a run's `status.jsonl`; the status fold ignores types it does not know, so they never change a step's state.
+These are rows in a run's `status.jsonl`; the status fold ignores types it does not know, so they never change a step's state. A runless (standalone) invocation has no status log: it keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation.
 
 <!-- prettier-ignore -->
 | `type` | Written by | Fields |

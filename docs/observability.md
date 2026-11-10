@@ -35,7 +35,7 @@ Write friction in the active worktree's ledger. A failed friction write emits on
 
 ## Bookkeeping effects and receipts
 
-A `bkit` command that fails before any write prints a structured error with `effects: none`, `correctable` and, for ledger appends, a `scope`; an uncertain write prints `effects: uncertain`. An append success prints a `receipt` (`operation`, `replayed`, per-row `key` and `ts`); a corrected retry adds `correction` (`scope`, `used`, `limit`, `verified`). Status rows `correction-rejected`, `correction-candidate`, `correction-succeeded` and `ci-handoff` record the recovery path. None of them stores a secret, a row body or a token.
+A `bkit` command that fails before any write prints a structured error with `effects: none`, `correctable` and, for ledger appends, a `scope`; an uncertain write prints `effects: uncertain`. An append success prints a `receipt` (`operation`, `replayed`, per-row `key` and `ts`); a corrected retry adds `correction` (`scope`, `used`, `limit`, `verified`). Status rows `correction-rejected`, `correction-candidate`, `correction-succeeded` and `ci-handoff` record the recovery path in the run's status log; a runless (standalone) invocation keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation. None of them stores a secret, a row body or a token.
 
 ## Log Format
 

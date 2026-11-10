@@ -1484,6 +1484,10 @@ export const MARK_ROWS = new Set([
   "engine-call",
   "completeness",
   "invocation",
+  "ci-handoff",
+  "correction-rejected",
+  "correction-candidate",
+  "correction-succeeded",
 ]);
 
 /** A run row's key: `<fid fp>:<workflow>:<start>`. */
