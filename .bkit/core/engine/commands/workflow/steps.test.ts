@@ -2155,3 +2155,238 @@ describe("bkit steps finish — a step commit never changes bkit.workflows", () 
     ).toMatchObject({ build: { verify: { maxAttempts: 5 } } });
   });
 });
+
+describe("bkit steps stub --result-file", () => {
+  const finding = (n: number, o: Record<string, unknown> = {}) => ({
+    severity: "HIGH",
+    fixable: true,
+    location: `src/f${n}.ts:${n}`,
+    title: `Finding ${n}`,
+    doneWhen: `finding ${n} fixed`,
+    tests: [`\`src/f${n}.test.ts\` \`covers ${n}\` fails on finding ${n}.`],
+    ...o,
+  });
+  const resultFile = (cwd: string, rel: string, o: Record<string, unknown>) =>
+    write(
+      cwd,
+      rel,
+      JSON.stringify({
+        findings: [],
+        judgments: {},
+        body: "# Report\n\n## Scope\n\n`Group 3`\n",
+        ...o,
+      }),
+    );
+  const stubArgs = (agent: string, result: string, to: string) => [
+    "steps",
+    "stub",
+    `--agent=${agent}`,
+    `--result-file=${result}`,
+    `--to=${to}`,
+  ];
+  const headerFields = (text: string): Record<string, string> =>
+    Object.fromEntries(
+      text
+        .split("\n")
+        .map((l) => /^([A-Z][A-Za-z ]*):\s*(.*)$/.exec(l))
+        .filter((m): m is RegExpExecArray => m !== null)
+        .map((m) => [m[1]!, m[2]!]),
+    );
+  const header = (cwd: string, rel: string) =>
+    fs.readFileSync(path.join(cwd, rel), "utf-8").split("<!-- verdict:end -->")[0]!;
+
+  it("derives supported header fields and rejects stale bodies without false PASS", async () => {
+    const cwd = repo();
+
+    // Every registered header kind: counts and booleans come from the findings, judgments pass through.
+    const kinds: Array<[string, Record<string, string>, Record<string, string>]> = [
+      ["bkit-build-challenge-1", {}, { Verdict: "FAIL", Failures: "2" }],
+      [
+        "bkit-plan-review-1",
+        { Redesign: "false" },
+        { Verdict: "FAIL", Failures: "2", Redesign: "false" },
+      ],
+      [
+        "bkit-build-plan-verify",
+        { Tasks: "1, 2", Loosened: "none" },
+        { Verdict: "FAIL", Failures: "2", Fixable: "false", Tasks: "1, 2", Loosened: "none" },
+      ],
+    ];
+    for (const [agent, judgments, expected] of kinds) {
+      resultFile(cwd, "logs/r.json", {
+        findings: [finding(1), finding(2, { fixable: false })],
+        judgments,
+      });
+      const res = await run(cwd, stubArgs(agent, "logs/r.json", `logs/${agent}.md`));
+      expect(res.code).toBe(0);
+      const fields = headerFields(header(cwd, `logs/${agent}.md`));
+      expect(fields).toMatchObject(expected);
+      expect(
+        (await run(cwd, ["steps", "verdict", `--file=logs/${agent}.md`, `--agent=${agent}`])).code,
+      ).toBe(0);
+    }
+
+    // No findings and complete evidence is a PASS with zero failures.
+    resultFile(cwd, "logs/clean.json", { judgments: { Tasks: "1", Loosened: "none" } });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/clean.json", "logs/clean.md"));
+    expect(header(cwd, "logs/clean.md")).toContain("Verdict: PASS");
+    expect(header(cwd, "logs/clean.md")).toContain("Failures: 0");
+    expect(header(cwd, "logs/clean.md")).toContain("Fixable: true");
+
+    // Incomplete evidence never becomes PASS.
+    resultFile(cwd, "logs/partial.json", {
+      evidenceComplete: false,
+      judgments: { Tasks: "1", Loosened: "none" },
+    });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/partial.json", "logs/partial.md"));
+    expect(header(cwd, "logs/partial.md")).not.toContain("Verdict: PASS");
+
+    // A body edited after generation is stale: the verdict read refuses it (EXIT_INVALID).
+    const generated = fs.readFileSync(path.join(cwd, "logs/clean.md"), "utf-8");
+    write(cwd, "logs/clean.md", `${generated}\nA late edit.\n`);
+    const stale = await run(cwd, [
+      "steps",
+      "verdict",
+      "--file=logs/clean.md",
+      "--agent=bkit-build-plan-verify",
+    ]);
+    expect(stale.code).toBe(6);
+    expect(stale.err).toMatch(/stale|fingerprint/i);
+
+    // So is a header edited to disagree with its findings, and a result changed after rendering.
+    write(cwd, "logs/clean.md", generated);
+    const verdictArgs = [
+      "steps",
+      "verdict",
+      "--file=logs/clean.md",
+      "--agent=bkit-build-plan-verify",
+    ];
+    expect((await run(cwd, verdictArgs)).code).toBe(0);
+    resultFile(cwd, "logs/clean.json", {
+      findings: [finding(9)],
+      judgments: { Tasks: "1", Loosened: "none" },
+    });
+    expect((await run(cwd, [...verdictArgs, "--result-file=logs/clean.json"])).code).toBe(6);
+    write(cwd, "logs/clean.md", generated.replace("Failures: 0", "Failures: 3"));
+    expect((await run(cwd, verdictArgs)).code).toBe(6);
+  });
+
+  it("retains special verdict judgments and legacy stub behavior", async () => {
+    const cwd = repo();
+
+    // An evidence-dependent verdict survives: no findings does not turn HANDOVER into PASS.
+    resultFile(cwd, "logs/h.json", { judgments: { Verdict: "HANDOVER" } });
+    expect(
+      (await run(cwd, stubArgs("bkit-build-plan-tests", "logs/h.json", "logs/h.md"))).code,
+    ).toBe(0);
+    expect(header(cwd, "logs/h.md")).toContain("Verdict: HANDOVER");
+    const read = await run(cwd, [
+      "steps",
+      "verdict",
+      "--file=logs/h.md",
+      "--agent=bkit-build-plan-tests",
+    ]);
+    expect(read.code).toBe(0);
+    expect(read.json.verdict).toBe("HANDOVER");
+
+    // A judged CONCERNS stays CONCERNS when the arithmetic alone would say PASS.
+    resultFile(cwd, "logs/c.json", {
+      judgments: { Verdict: "CONCERNS", Tasks: "none", Loosened: "none" },
+    });
+    await run(cwd, stubArgs("bkit-build-plan-verify", "logs/c.json", "logs/c.md"));
+    expect(header(cwd, "logs/c.md")).toContain("Verdict: CONCERNS");
+
+    // A judged PASS cannot contradict findings: refused, nothing written.
+    resultFile(cwd, "logs/p.json", {
+      findings: [finding(1)],
+      judgments: { Verdict: "PASS", Tasks: "none", Loosened: "none" },
+    });
+    const refused = await run(cwd, stubArgs("bkit-build-plan-verify", "logs/p.json", "logs/p.md"));
+    expect(refused.code).toBe(6);
+    expect(fs.existsSync(path.join(cwd, "logs/p.md"))).toBe(false);
+
+    // Legacy copy and strip-header output are byte-identical to before, with or without --agent.
+    write(cwd, "logs/v1.md", "# Design\n\nBody.\n");
+    await run(cwd, ["steps", "stub", "--from=logs/v1.md", "--to=logs/v2.md"]);
+    expect(fs.readFileSync(path.join(cwd, "logs/v2.md"), "utf-8")).toBe(
+      "Verdict: PENDING\n<!-- verdict:end -->\n\n# Design\n\nBody.\n",
+    );
+    await run(cwd, [
+      "steps",
+      "stub",
+      "--from=logs/verify-1.md",
+      "--to=logs/v3.md",
+      "--agent=bkit-build-plan-verify",
+      "--strip-header",
+    ]);
+    const stripped = fs.readFileSync(path.join(cwd, "logs/v3.md"), "utf-8");
+    expect(stripped.startsWith("Verdict: PENDING\n<!-- verdict:end -->\n\n")).toBe(true);
+    expect(stripped).not.toContain("Verdict: FAIL");
+    expect(stripped).toContain("# Verify");
+  });
+
+  it("derives audit IDs totals ledger payloads and coverage from one result", async () => {
+    const cwd = repo();
+    const audit = (n: string, severity: string, extra: Record<string, unknown> = {}) => ({
+      severity,
+      title: `Problem ${n}`,
+      location: `src/${n}.ts:${n.length}`,
+      ...extra,
+    });
+    const findings = [
+      audit("aa", "LOW"),
+      audit("b", "HIGH", { priorKey: "existing-token-leak" }),
+      audit("cccc", "LOW"),
+    ];
+    const base = {
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202611/security.md",
+      notChecked: ["Mobile client: no device available"],
+    };
+    write(cwd, "logs/a.json", JSON.stringify({ ...base, findings }));
+    write(cwd, "logs/b.json", JSON.stringify({ ...base, findings: [...findings].reverse() }));
+    const args = (result: string, to: string) => [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      `--result-file=${result}`,
+      `--to=${to}`,
+    ];
+    const a = await run(cwd, args("logs/a.json", "logs/a.md"));
+    const b = await run(cwd, args("logs/b.json", "logs/b.md"));
+    expect(a.code).toBe(0);
+
+    // Totals come from the findings, in the report header; no hand-written count exists to disagree.
+    const text = fs.readFileSync(path.join(cwd, "logs/a.md"), "utf-8");
+    expect(text).toContain("Status: COMPLETE");
+    expect(text).toContain("Report: docs/audits/202611/security.md");
+    expect(text).toContain("Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2");
+    expect(a.json.totals).toEqual({ CRITICAL: 0, HIGH: 1, MEDIUM: 0, LOW: 2 });
+
+    // IDs are report-local, stable and independent of the order the findings arrived in.
+    expect(a.json.ids).toHaveLength(3);
+    expect(new Set(a.json.ids)).toEqual(new Set(["security-1", "security-2", "security-3"]));
+    expect(fs.readFileSync(path.join(cwd, "logs/b.md"), "utf-8")).toBe(text);
+    expect(b.json.ids).toEqual(a.json.ids);
+
+    // Coverage is carried, not dropped.
+    expect(text).toContain("Mobile client: no device available");
+
+    // Ledger payloads: one per finding, the agent's explicit prior key is kept, the rest are distinct.
+    const ledger = a.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(ledger).toHaveLength(3);
+    expect(ledger.map((r) => r["kind"])).toEqual(["failure", "failure", "failure"]);
+    expect(ledger.filter((r) => r["key"] === "existing-token-leak")).toHaveLength(1);
+    expect(ledger.find((r) => r["key"] === "existing-token-leak")).toMatchObject({
+      severity: "HIGH",
+    });
+    expect(new Set(ledger.map((r) => r["key"])).size).toBe(3);
+
+    // A hand-supplied count that could disagree is refused.
+    write(cwd, "logs/c.json", JSON.stringify({ ...base, findings, counts: { HIGH: 5 } }));
+    const bad = await run(cwd, args("logs/c.json", "logs/c.md"));
+    expect(bad.code).not.toBe(0);
+    expect(fs.existsSync(path.join(cwd, "logs/c.md"))).toBe(false);
+  });
+});

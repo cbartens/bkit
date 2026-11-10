@@ -2029,3 +2029,79 @@ describe("bkit ledgers query", () => {
     expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
   });
 });
+
+describe("bkit ledgers append --operation", () => {
+  const failure = (o: Record<string, unknown> = {}) => ({
+    kind: "failure",
+    by: { workflow: "build", step: "build-challenge" },
+    key: "parser-drops-last-line",
+    summary: "parser drops the last line",
+    severity: "HIGH",
+    status: "OPEN",
+    ...o,
+  });
+
+  async function appendOp(r: string, rows: unknown, operation: string) {
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify(rows));
+    return run(r, [
+      "append",
+      `--root=${r}`,
+      "--ledger=failures",
+      `--rows=${file}`,
+      `--operation=${operation}`,
+    ]);
+  }
+
+  it("returns durable append receipt and permits a deliberate same-key update", async () => {
+    const r = repo();
+    const ledgerFile = path.join(r, "docs/failures.jsonl");
+    const lines = () =>
+      fs
+        .readFileSync(ledgerFile, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+    const first = await appendOp(r, [failure()], "op-1");
+    expect(first.code).toBe(0);
+    expect(first.json.receipt).toMatchObject({
+      operation: "op-1",
+      ledger: "failures",
+      file: "docs/failures.jsonl",
+      offset: 0,
+      replayed: false,
+      rows: [{ key: "parser-drops-last-line", ts: expect.any(Number) }],
+    });
+    const bytes = fs.readFileSync(ledgerFile, "utf-8");
+    expect(first.json.receipt.bytes).toBe(Buffer.byteLength(bytes));
+    expect(first.json.receipt.rows[0].ts).toBe(lines()[0]!["ts"]);
+
+    // Replay: the original receipt comes back, nothing is minted or written.
+    const replay = await appendOp(r, [failure()], "op-1");
+    expect(replay.code).toBe(0);
+    expect(replay.json.receipt).toEqual({ ...first.json.receipt, replayed: true });
+    expect(replay.json.appended).toBe(0);
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(bytes);
+
+    // The same operation id with a different request is a collision: refused, nothing written.
+    const conflict = await appendOp(r, [failure({ summary: "something else" })], "op-1");
+    expect(conflict.code).toBe(EXIT_ROW_REFUSED);
+    expect(conflict.err).toContain("op-1");
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(bytes);
+
+    // A new operation on the same key is a deliberate update: it appends and carries lineage.
+    const update = await appendOp(r, [failure({ summary: "parser drops two lines" })], "op-2");
+    expect(update.code).toBe(0);
+    expect(update.json.receipt).toMatchObject({
+      operation: "op-2",
+      offset: Buffer.byteLength(bytes),
+      replayed: false,
+    });
+    const [a, b] = lines();
+    expect(lines()).toHaveLength(2);
+    expect(b).toMatchObject({ firstTs: a!["ts"], updates: 2, summary: "parser drops two lines" });
+    expect(b!["ts"]).toBeGreaterThan(a!["ts"] as number);
+    expect(update.json.receipt.rows[0].ts).toBe(b!["ts"]);
+  });
+});

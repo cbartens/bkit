@@ -12,7 +12,9 @@ import {
   alreadyDone,
   appendLine,
   fold,
+  ledgerOperation,
   recordAction,
+  recordLedgerOperation,
   validateCiSelection,
   ciSelectionIdentity,
 } from "./status";
@@ -276,5 +278,65 @@ describe("engine-action rows", () => {
     expect(fold(readStatusEvents(file))).toEqual([
       { workflow: "build", startedAt: "2026-10-01T00:00:00Z", status: "IN_PROGRESS", steps: [] },
     ]);
+  });
+});
+
+describe("ledger operation receipts", () => {
+  const tmpFile = () =>
+    path.join(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ledger-op-")), "logs", "status.jsonl");
+
+  it("preserves tracker changed-hash actions while rejecting ledger operation collisions", () => {
+    const file = tmpFile();
+
+    // Tracker contract: the same key with a changed hash is a deliberate edit and acts again.
+    const key = actionKey("tracker", "comment", "run-1");
+    const v1 = recordAction(file, {
+      action: "comment",
+      key,
+      hash: actionHash("v1"),
+      ref: "https://c/1",
+    });
+    expect(alreadyDone(file, key, actionHash("v1"))).toEqual(v1);
+    expect(alreadyDone(file, key, actionHash("v2"))).toBeUndefined();
+    const v2 = recordAction(file, {
+      action: "comment",
+      key,
+      hash: actionHash("v2"),
+      ref: "https://c/2",
+    });
+    expect(alreadyDone(file, key, actionHash("v2"))).toEqual(v2);
+    expect(alreadyDone(file, key, actionHash("v1"))).toEqual(v1);
+
+    // Ledger contract: one operation id, one request hash.
+    const h1 = actionHash("request-1");
+    const h2 = actionHash("request-2");
+    expect(ledgerOperation(file, "op-1", h1)).toEqual({ state: "new" });
+    const receipt = recordLedgerOperation(file, {
+      operation: "op-1",
+      hash: h1,
+      ref: "docs/failures.jsonl@0+120",
+    });
+    expect(receipt).toMatchObject({
+      type: "engine-action",
+      hash: h1,
+      ref: "docs/failures.jsonl@0+120",
+    });
+    expect(ledgerOperation(file, "op-1", h1)).toEqual({ state: "replay", row: receipt });
+    expect(ledgerOperation(file, "op-1", h2)).toEqual({ state: "conflict", row: receipt });
+    // A new operation with the same request hash is a new effect, not a replay.
+    expect(ledgerOperation(file, "op-2", h1)).toEqual({ state: "new" });
+
+    // Recording a conflicting hash for a known operation is refused and writes nothing.
+    const before = fs.readFileSync(file, "utf-8");
+    expect(() => recordLedgerOperation(file, { operation: "op-1", hash: h2, ref: null })).toThrow();
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+
+    // The generic action policy is untouched: the ledger row's own key still accepts a changed hash there.
+    expect(() =>
+      recordAction(file, { action: "comment", key: receipt.key, hash: h2, ref: null }),
+    ).not.toThrow();
+
+    // The fold ignores every one of these rows.
+    expect(fold(readStatusEvents(file))).toEqual([]);
   });
 });

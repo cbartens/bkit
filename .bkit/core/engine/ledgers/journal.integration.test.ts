@@ -6,7 +6,7 @@
 // from a worktree resolves to the main checkout, a different inode), nothing in the main
 // checkout's, and nothing at all when no run is active in the cwd.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { INVOCATION_FLAG, runCommand, type CommandSpec } from "../commands/lib";
 import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
-import { ledgersCommand } from "../commands/workflow/ledgers";
+import { appendLedgerRows, ledgersCommand } from "../commands/workflow/ledgers";
 
 const FID = "901-journal";
 const STATUS_REL = path.join("docs", "plans", "202610", "logs", FID, "status.jsonl");
@@ -536,5 +536,314 @@ describe("canonical ledger reads on real files", () => {
     // Reads wrote nothing beyond the ledger fixture this test itself created.
     fs.rmSync(file);
     expect(porcelain()).toBe(before);
+  });
+});
+
+describe("replay-safe ledger appends on real files", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const d of roots.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+  });
+  const bookRoot = (): string => {
+    const d = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-op-int-")));
+    roots.push(d);
+    git(d, ["init", "-q", "-b", "dev"]);
+    return d;
+  };
+  const failureRow = (o: Record<string, unknown> = {}) => ({
+    kind: "failure",
+    by: { workflow: "build", step: "build-challenge" },
+    key: "parser-drops-last-line",
+    summary: "parser drops the last line",
+    severity: "HIGH",
+    status: "OPEN",
+    ...o,
+  });
+
+  const failAt = (point: string) => (name: string) => {
+    if (name === point) throw new Error("response lost");
+  };
+
+  it("reconciles lost append response at each durable checkpoint without duplicate rows", () => {
+    for (const checkpoint of ["prepared", "written", "receipted"] as const) {
+      const root = bookRoot();
+      const file = path.join(root, "docs", "failures.jsonl");
+      const operation = `op-${checkpoint}`;
+
+      // The response is lost at this checkpoint: the caller sees a failure, whatever is on disk.
+      expect(() =>
+        appendLedgerRows(root, "failures", [failureRow()], undefined, {
+          operation,
+          checkpoint: failAt(checkpoint),
+        }),
+      ).toThrow();
+
+      // The same operation again reconciles to the one effect and never appends a second row.
+      const replay = appendLedgerRows(root, "failures", [failureRow()], undefined, { operation });
+      const written = rows(file);
+      expect(written).toHaveLength(1);
+      expect(replay.receipt).toMatchObject({
+        operation,
+        offset: 0,
+        bytes: fs.statSync(file).size,
+        rows: [{ key: "parser-drops-last-line", ts: written[0]!["ts"] }],
+      });
+
+      // A further replay is a pure read: same receipt, same bytes.
+      const bytes = fs.readFileSync(file, "utf-8");
+      const again = appendLedgerRows(root, "failures", [failureRow()], undefined, { operation });
+      expect(again.appended).toBe(0);
+      expect(again.receipt).toMatchObject({ rows: replay.receipt!.rows, replayed: true });
+      expect(fs.readFileSync(file, "utf-8")).toBe(bytes);
+    }
+  });
+
+  // One writer process: pauses after preparing its append when `ready` is set, until `release` exists.
+  const WRITER = `
+    const j = await import(process.argv[1]);
+    const fs = await import("node:fs");
+    const [, , book, ready, release, workflow, reason] = process.argv;
+    const row = j.pauseFrictionRow({ workflow, reason, bookRoot: book });
+    const res = j.appendFrictionRow(book, row, {
+      checkpoint: (name) => {
+        if (name !== "prepared" || ready === "-") return;
+        fs.writeFileSync(ready, "1");
+        while (!fs.existsSync(release)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      },
+    });
+    console.log(JSON.stringify(res));
+  `;
+  const JOURNAL = path.resolve(__dirname, "journal.ts");
+
+  function writer(book: string, ready: string, release: string, workflow: string, reason: string) {
+    return new Promise<{ code: number | null; result: Record<string, any> }>((resolve) => {
+      const child = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "-e",
+          WRITER,
+          JOURNAL,
+          book,
+          ready,
+          release,
+          workflow,
+          reason,
+        ],
+        { cwd: __dirname, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let out = "";
+      child.stdout.on("data", (t) => (out += String(t)));
+      child.on("close", (code) => {
+        const last = out.trim().split("\n").at(-1) ?? "{}";
+        resolve({ code, result: JSON.parse(last) as Record<string, any> });
+      });
+    });
+  }
+  const until = async (file: string) => {
+    for (let i = 0; i < 1000 && !fs.existsSync(file); i += 1)
+      await new Promise((r) => setTimeout(r, 20));
+    expect(fs.existsSync(file)).toBe(true);
+  };
+
+  it("serializes concurrent append operations and blocks partial uncertain ledger writes", async () => {
+    // Two real processes: the first pauses after preparing its append, the second writes meanwhile.
+    for (const [second, sameKey] of [
+      [["build", "same"], true],
+      [["debug", "other"], false],
+    ] as const) {
+      const book = bookRoot();
+      const file = path.join(book, ".bkit", "friction.jsonl");
+      const ready = path.join(book, "ready");
+      const release = path.join(book, "release");
+      const first = writer(book, ready, release, "build", "same");
+      await until(ready);
+      const other = writer(book, "-", release, second[0], second[1]);
+      await new Promise((r) => setTimeout(r, 800));
+      fs.writeFileSync(release, "1");
+      const [a, b] = await Promise.all([first, other]);
+
+      // The paused writer prepared against an empty ledger, so its row is first at offset 0.
+      expect(a.result["ok"]).toBe(true);
+      const text = fs.readFileSync(file, "utf-8");
+      expect(text.endsWith("\n")).toBe(true);
+      const written = rows(file);
+      const okCount = [a, b].filter((w) => w.result["ok"] === true).length;
+      expect(written).toHaveLength(okCount);
+      // The second either serialised behind the first or visibly refused; it never tore or reordered a row.
+      const outcome = ({ true: "written", false: "refused" } as const)[
+        String(b.result["ok"] === true) as "true" | "false"
+      ];
+      expect({ written: undefined, refused: "string" }[outcome]).toBe(
+        { written: undefined, refused: typeof b.result["error"] }[outcome],
+      );
+      const sizes = text
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => Buffer.byteLength(`${l}\n`));
+      expect(a.result["receipt"]).toMatchObject({ offset: 0, bytes: sizes[0] });
+      expect(b.result["receipt"]?.offset).toBe({ written: sizes[0], refused: undefined }[outcome]);
+      expect(b.result["receipt"]?.bytes).toBe({ written: sizes[1], refused: undefined }[outcome]);
+      expect(written.map((r) => r["recurrenceCount"])).toEqual(
+        {
+          written: { true: [1, 2], false: [1, 1] }[String(sameKey) as "true" | "false"],
+          refused: [1],
+        }[outcome],
+      );
+      const lastRow = written.at(-1)!;
+      expect(lastRow["lastConfirmed"]).toBe(
+        {
+          written: { true: lastRow["ts"], false: undefined }[String(sameKey) as "true" | "false"],
+          refused: undefined,
+        }[outcome],
+      );
+      expect(written.map((r) => r["ts"] as number)).toEqual(
+        written.map((r) => r["ts"] as number).sort((x, y) => x - y),
+      );
+    }
+
+    // A response lost with the bytes written but not all durable is uncertain: it blocks, and truncates nothing.
+    const root = bookRoot();
+    const file = path.join(root, "docs", "failures.jsonl");
+    expect(() =>
+      appendLedgerRows(root, "failures", [failureRow()], undefined, {
+        operation: "op-torn",
+        checkpoint: failAt("written"),
+      }),
+    ).toThrow();
+    const full = fs.readFileSync(file);
+    fs.writeFileSync(file, full.subarray(0, full.length - 15));
+    const torn = fs.readFileSync(file);
+    expect(() =>
+      appendLedgerRows(root, "failures", [failureRow()], undefined, { operation: "op-torn" }),
+    ).toThrow(/uncertain/i);
+    expect(fs.readFileSync(file).equals(torn)).toBe(true);
+
+    // Compact refuses to rewrite a ledger while an operation on it has bytes without a receipt.
+    const pending = bookRoot();
+    const pendingFile = path.join(pending, "docs", "failures.jsonl");
+    expect(() =>
+      appendLedgerRows(pending, "failures", [failureRow()], undefined, {
+        operation: "op-pending",
+        checkpoint: failAt("written"),
+      }),
+    ).toThrow();
+    const before = fs.readFileSync(pendingFile, "utf-8");
+    const compacted = await call(
+      pending,
+      [ledgersCommand],
+      ["ledgers", "compact", `--root=${pending}`, "--ledger=failures"],
+    );
+    expect(compacted.code).not.toBe(0);
+    expect(fs.readFileSync(pendingFile, "utf-8")).toBe(before);
+    // Replaying the operation completes its receipt without a second row, and then compact may run.
+    const done = appendLedgerRows(pending, "failures", [failureRow()], undefined, {
+      operation: "op-pending",
+    });
+    expect(done.receipt).toMatchObject({ offset: 0, rows: [{ key: "parser-drops-last-line" }] });
+    expect(rows(pendingFile)).toHaveLength(1);
+    expect(
+      (
+        await call(
+          pending,
+          [ledgersCommand],
+          ["ledgers", "compact", `--root=${pending}`, "--ledger=failures"],
+        )
+      ).code,
+    ).toBe(0);
+  });
+
+  it("keeps rendered audit report appended rows and tracker draft counts identical", async () => {
+    // A runless audit: a fresh checkout with no status file, run or FID.
+    const repo = bookRoot();
+    fs.writeFileSync(path.join(repo, "README.md"), "x\n");
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "init"]);
+    const inv = await call(repo, COMMANDS, [
+      "status",
+      "invocation",
+      "--standalone=audit",
+      "--name=security",
+    ]);
+    expect(inv.code).toBe(0);
+    const invocation = inv.json!["invocation"] as string;
+
+    const result = {
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202611/security.md",
+      findings: [
+        { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Old cipher", location: "src/c.ts:7" },
+      ],
+      notChecked: ["Mobile client: no device available"],
+    };
+    fs.writeFileSync(path.join(repo, "result.json"), JSON.stringify(result));
+    const totals = "CRITICAL 0 \u00b7 HIGH 1 \u00b7 MEDIUM 0 \u00b7 LOW 2";
+
+    // 1. The report header and ledger payloads come from the one result.
+    const stub = await call(repo, COMMANDS, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=result.json",
+      "--to=docs/audits/202611/security-summary.md",
+    ]);
+    expect(stub.code).toBe(0);
+    const summary = fs.readFileSync(
+      path.join(repo, "docs/audits/202611/security-summary.md"),
+      "utf-8",
+    );
+    expect(summary).toContain(`Findings: ${totals}`);
+
+    // 2. The same payloads append once under one operation, with the standalone invocation.
+    const payload = (stub.json!["ledgerRows"] as Array<Record<string, unknown>>).map(
+      ({ by: _by, ...row }) => row,
+    );
+    fs.writeFileSync(path.join(repo, "rows.json"), JSON.stringify(payload));
+    const appendArgs = [
+      "ledgers",
+      "append",
+      `--root=${repo}`,
+      "--ledger=failures",
+      `--rows=${path.join(repo, "rows.json")}`,
+      `--invocation=${invocation}`,
+      "--operation=audit-security-1",
+    ];
+    const appended = await call(repo, [ledgersCommand], appendArgs);
+    expect(appended.code).toBe(0);
+    const persisted = rows(path.join(repo, "docs", "failures.jsonl"));
+    expect(persisted).toHaveLength(3);
+
+    // 3. The tracker draft is rendered from the same result.
+    const draft = await call(repo, COMMANDS, [
+      "issues",
+      "comment",
+      "--kind=audit",
+      "--audit-slug=security",
+      "--result-file=result.json",
+    ]);
+    expect(draft.code).toBe(0);
+    expect(draft.json!["comment"]).toContain(`Findings: ${totals}`);
+
+    // The three surfaces agree: header, persisted rows and draft.
+    const bySeverity = (sev: string) => persisted.filter((r) => r["severity"] === sev).length;
+    expect(
+      `CRITICAL ${bySeverity("CRITICAL")} \u00b7 HIGH ${bySeverity("HIGH")} \u00b7 MEDIUM ${bySeverity("MEDIUM")} \u00b7 LOW ${bySeverity("LOW")}`,
+    ).toBe(totals);
+
+    // 4. Replaying the publication appends nothing and returns the original receipt.
+    const before = fs.readFileSync(path.join(repo, "docs", "failures.jsonl"), "utf-8");
+    const replay = await call(repo, [ledgersCommand], appendArgs);
+    expect(replay.code).toBe(0);
+    expect(replay.json!["receipt"]).toMatchObject({
+      replayed: true,
+      operation: "audit-security-1",
+    });
+    expect(fs.readFileSync(path.join(repo, "docs", "failures.jsonl"), "utf-8")).toBe(before);
+    expect(fs.existsSync(path.join(repo, "docs", "plans"))).toBe(false);
   });
 });
