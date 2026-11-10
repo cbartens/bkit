@@ -95,3 +95,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T06:56:31Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"3cb20d47099a1a9c0c6f7c285d187f9006c2d507ab6ed4306efcfc78619f6284","ref":"https://github.com/cbartens/bkit/issues/849#issuecomment-6760359200","at":"2026-11-10T06:56:35Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T06:56:35Z","parentSha":"8836b8f2538766d51db1d987db07491d1e02167c","artifacts":["docs/plans/202611/logs/849-keep-local-dev/plan-v2-reviewed.md","docs/plans/202611/logs/849-keep-local-dev/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:57:10Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:57:11Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:57:21Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:57:23Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T06:57:31Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"ecb403f80f1c0da7ff44118b28597cbcd4bc412692a71da36ce763665c8870d9","ref":"https://github.com/cbartens/bkit/issues/849#issuecomment-6760359200","at":"2026-11-10T06:57:36Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-10T06:57:36Z","parentSha":"389c3bff194d421550dcf19c8b566d74bd54bc79","artifacts":["docs/plans/202611/logs/849-keep-local-dev/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
