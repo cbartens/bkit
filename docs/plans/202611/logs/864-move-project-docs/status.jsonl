@@ -519,3 +519,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T06:30:45Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/1/comment","hash":"f9a18ba8b24348b1d0b8d53fa4561c8864f899a28bbb0231e9365d3eb048e38a","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6755824020","at":"2026-11-10T06:30:47Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-10T06:30:47Z","parentSha":"dfb383dbc3ddbdc87cd7c97d4ae473d5deb42727","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-verify-6-1.md"],"verdict":"CONCERNS","attempt":1,"group":6,"failures":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:30:50Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:30:50Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:30:54Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:32:08Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:42:09Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T07:06:42Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/6/1/comment","hash":"bf38e8881f6fc09fe28501a27789f737a0019defc12923e64897a0711ff01285","ref":"https://github.com/cbartens/bkit/issues/864#issuecomment-6761296290","at":"2026-11-10T07:06:43Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-10T07:06:43Z","parentSha":"f69ff837cfd06ff2b90310764e5800ff09977ccb","artifacts":["docs/plans/202611/logs/864-move-project-docs/build-plan-gaps-remediate-6-1-log.md"],"verdict":"FAIL","attempt":1,"group":6,"strategy":"STANDARD"}

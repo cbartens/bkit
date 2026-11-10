@@ -184,4 +184,14 @@ describe("syncProjectDocs", () => {
     expect(after).toBe(before);
     expect(after).not.toContain("`docs/security.md`");
   });
+
+  it("adds no row and reports a problem when the index has a row it cannot read", () => {
+    fs.writeFileSync(path.join(root, "docs/noise.md"), "# Noise\n");
+    fs.appendFileSync(path.join(root, ".agents/docs.md"), "| **docs/noise.md** | Noise |\n");
+    const before = fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8");
+    const r = syncProjectDocs(root, { dryRun: false });
+    expect(r.registered).toEqual([]);
+    expect(r.indexProblem).toContain("cannot read");
+    expect(fs.readFileSync(path.join(root, ".agents/docs.md"), "utf8")).toBe(before);
+  });
 });

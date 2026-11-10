@@ -354,7 +354,7 @@ function cellPath(cell: string): string | null {
   if (tick) return tick[1]!.trim() || null;
   const link = /^\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/.exec(cell);
   if (link) return link[1]!;
-  return /^[^\s`|()[\]]+$/.test(cell) ? cell : null;
+  return /^[^\s`|()[\]*~]+$/.test(cell) ? cell : null;
 }
 
 /** The `Project Documents` table of the index: the heading below the last `bkit:end`, then the first table. */
@@ -444,18 +444,23 @@ export function findIndexedEquivalent(
   topic: ProjectDocTopic,
   usable: (rel: string) => boolean = () => true,
 ): string | null {
+  return listIndexedEquivalents(rows, topic).find(usable) ?? null;
+}
+
+/** Every indexed row that claims to cover `topic` at another path, in table order. */
+export function listIndexedEquivalents(
+  rows: readonly IndexRow[],
+  topic: ProjectDocTopic,
+): string[] {
   const recommended = projectDocPath(topic);
   const base = `${topic}.md`;
+  const mentions = new RegExp(`equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}\`?`, "i");
+  const found: string[] = [];
   for (const row of rows) {
-    if (row.path === recommended || !usable(row.path)) continue;
-    if (path.posix.basename(row.path) === base) return row.path;
-    const mentions = new RegExp(
-      `equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}\`?`,
-      "i",
-    );
-    if (mentions.test(row.scope)) return row.path;
+    if (row.path === recommended) continue;
+    if (path.posix.basename(row.path) === base || mentions.test(row.scope)) found.push(row.path);
   }
-  return null;
+  return found;
 }
 
 // ---------------------------------------------------------------------------
@@ -564,6 +569,8 @@ export function syncProjectDocs(root: string, opts: { dryRun: boolean }): Projec
         index.status === "missing"
           ? `${PROJECT_INDEX_PATH} does not exist`
           : `${PROJECT_INDEX_PATH} has no readable Project Documents table (${index.reason})`;
+    } else if ((index.unparsed ?? []).length > 0) {
+      report.indexProblem = `${PROJECT_INDEX_PATH} has a Project Documents row bkit cannot read (${(index.unparsed ?? [])[0]!.slice(0, 80)}), so it may already list the document`;
     } else {
       const rows = edits.map((rel) => projectDocRow(topicOfPath(rel)!));
       const insertion = (index.needsEol ? index.eol : "") + rows.join(index.eol) + index.eol;

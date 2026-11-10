@@ -659,6 +659,15 @@ describe("detectProjectDocs", () => {
     expect(unpopulated!.detect).toContain("docs/deployments.md");
   });
 
+  it("names every unusable indexed row when none of them can be read", () => {
+    writeIndex([{ doc: "old/security.md" }, { doc: "older/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const ambiguous = findings.find((f) => f.id === "project-docs-ambiguous");
+    expect(ambiguous).toBeDefined();
+    expect(ambiguous!.detect).toContain("old/security.md");
+    expect(ambiguous!.detect).toContain("older/security.md");
+  });
+
   it("returns an advisory instead of throwing when docs is a regular file", () => {
     fs.writeFileSync(path.join(tmpDir, "docs"), "not a directory\n");
     writeIndex([{ doc: "docs/security.md" }]);

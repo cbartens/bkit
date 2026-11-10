@@ -13,6 +13,7 @@ import {
   PROJECT_INDEX_PATH,
   type ProjectDocTopic,
   findIndexedEquivalent,
+  listIndexedEquivalents,
   inspectRepoFile,
   isInTreePath,
   legacyStarterTopic,
@@ -494,14 +495,20 @@ export function detectProjectDocs(
     const recommended = projectDocPath(topic);
     const isUsableRow = (row: string) =>
       isInTreePath(row) && inspectRepoFile(cwd, row) === "regular";
-    // The first valid same-topic row wins; when none is valid the first row is named in the advisory.
-    const equivalent =
-      findIndexedEquivalent(rows, topic, isUsableRow) ?? findIndexedEquivalent(rows, topic);
+    // The first valid same-topic row wins; when none is valid every candidate row is named.
+    const equivalent = findIndexedEquivalent(rows, topic, isUsableRow);
+    const candidates = listIndexedEquivalents(rows, topic);
     const defaultState = inspectRepoFile(cwd, recommended);
     let target = recommended;
     if (defaultState === "absent") {
       if (equivalent === null) {
-        missing.push(recommended);
+        if (candidates.length > 0) {
+          ambiguous.push(
+            `${candidates.join(", ")} (${recommended}: every indexed row for it is unusable)`,
+          );
+        } else {
+          missing.push(recommended);
+        }
         continue;
       }
       target = equivalent;

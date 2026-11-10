@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readPackageJson } from "../../shared/package-json.js";
 import { readTextFile } from "../../shared/json.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
-import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, inspectRepoFile, isInTreePath, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
+import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, listIndexedEquivalents, inspectRepoFile, isInTreePath, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
 import { stripManagedWrapper } from "../../install/managed-block.js";
 import { isAdvisorySuppressed } from "./suppression.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
@@ -391,13 +391,19 @@ export function detectProjectDocs(cwd, onSuppressed) {
     for (const topic of PROJECT_DOC_TOPICS) {
         const recommended = projectDocPath(topic);
         const isUsableRow = (row) => isInTreePath(row) && inspectRepoFile(cwd, row) === "regular";
-        // The first valid same-topic row wins; when none is valid the first row is named in the advisory.
-        const equivalent = findIndexedEquivalent(rows, topic, isUsableRow) ?? findIndexedEquivalent(rows, topic);
+        // The first valid same-topic row wins; when none is valid every candidate row is named.
+        const equivalent = findIndexedEquivalent(rows, topic, isUsableRow);
+        const candidates = listIndexedEquivalents(rows, topic);
         const defaultState = inspectRepoFile(cwd, recommended);
         let target = recommended;
         if (defaultState === "absent") {
             if (equivalent === null) {
-                missing.push(recommended);
+                if (candidates.length > 0) {
+                    ambiguous.push(`${candidates.join(", ")} (${recommended}: every indexed row for it is unusable)`);
+                }
+                else {
+                    missing.push(recommended);
+                }
                 continue;
             }
             target = equivalent;

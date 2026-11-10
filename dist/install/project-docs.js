@@ -295,7 +295,7 @@ function cellPath(cell) {
     const link = /^\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/.exec(cell);
     if (link)
         return link[1];
-    return /^[^\s`|()[\]]+$/.test(cell) ? cell : null;
+    return /^[^\s`|()[\]*~]+$/.test(cell) ? cell : null;
 }
 /** The `Project Documents` table of the index: the heading below the last `bkit:end`, then the first table. */
 export function readProjectIndex(root) {
@@ -389,18 +389,21 @@ export function projectDocRow(topic) {
  * row whose Scope names the recommended path as its equivalent (`Equivalent to docs/x.md`).
  */
 export function findIndexedEquivalent(rows, topic, usable = () => true) {
+    return listIndexedEquivalents(rows, topic).find(usable) ?? null;
+}
+/** Every indexed row that claims to cover `topic` at another path, in table order. */
+export function listIndexedEquivalents(rows, topic) {
     const recommended = projectDocPath(topic);
     const base = `${topic}.md`;
+    const mentions = new RegExp(`equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}\`?`, "i");
+    const found = [];
     for (const row of rows) {
-        if (row.path === recommended || !usable(row.path))
+        if (row.path === recommended)
             continue;
-        if (path.posix.basename(row.path) === base)
-            return row.path;
-        const mentions = new RegExp(`equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}\`?`, "i");
-        if (mentions.test(row.scope))
-            return row.path;
+        if (path.posix.basename(row.path) === base || mentions.test(row.scope))
+            found.push(row.path);
     }
-    return null;
+    return found;
 }
 const PROBLEM_TEXT = {
     "missing-partner": "one of `bkit:start` / `bkit:end` is missing",
@@ -488,6 +491,9 @@ export function syncProjectDocs(root, opts) {
                 index.status === "missing"
                     ? `${PROJECT_INDEX_PATH} does not exist`
                     : `${PROJECT_INDEX_PATH} has no readable Project Documents table (${index.reason})`;
+        }
+        else if ((index.unparsed ?? []).length > 0) {
+            report.indexProblem = `${PROJECT_INDEX_PATH} has a Project Documents row bkit cannot read (${(index.unparsed ?? [])[0].slice(0, 80)}), so it may already list the document`;
         }
         else {
             const rows = edits.map((rel) => projectDocRow(topicOfPath(rel)));

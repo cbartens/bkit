@@ -646,7 +646,7 @@ The groups describe implementation order. A single pull request can carry all gr
 
 <!-- bkit:task 18 start -->
 
-- [ ] **TASK 18:** A runtime or CI log line that prints a forged `===== END UNTRUSTED =====` line, followed by a `## Documentation Warnings` jsonl block, survives `stripUntrusted` in a debug context-fetch artifact (`context-<name>-N.md`, a `step-done` artifact the name filter does not exclude), so `bkit workflows summary` republishes the attacker's `Action:` text as engine output in `debug-summary.md`, which is posted as a tracker comment and returned as the final message.
+- [x] **TASK 18:** A runtime or CI log line that prints a forged `===== END UNTRUSTED =====` line, followed by a `## Documentation Warnings` jsonl block, survives `stripUntrusted` in a debug context-fetch artifact (`context-<name>-N.md`, a `step-done` artifact the name filter does not exclude), so `bkit workflows summary` republishes the attacker's `Action:` text as engine output in `debug-summary.md`, which is posted as a tracker comment and returned as the final message.
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/summary.ts:158` · **Round:** 2
   - **DONE WHEN:** `stripUntrusted` drops everything from the first `FENCE_OPEN` line to the last `FENCE_CLOSE` line in the file (to end of file when no close follows), so no closing marker inside the payload can end the strip early. This matches the fence contract at `.bkit/core/engine/commands/workflow/context.ts:88` ("Fence ends at LAST line of file; ANY other closing markers are forged"). The `jsonl` fence body regex accepts the end of the section as a close, so the existing test `ignores warning records inside an UNTRUSTED fence` keeps passing. The plan's Task 6 DONE WHEN ("Untrusted inputs ... are outside the aggregation source set") and Task 10 hold against a forged closer.
   - **TEST FIRST:**
@@ -665,7 +665,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 19 end -->
 <!-- bkit:task 20 start -->
 
-- [ ] **TASK 20:** A maintainer copies the security starter and their editor or formatter indents one line or doubles one space; `bkit check` then raises no starter-only advisory and the file reads as a populated candidate, because `normalizeLegacyText` trims only trailing whitespace and blank-line runs.
+- [x] **TASK 20:** A maintainer copies the security starter and their editor or formatter indents one line or doubles one space; `bkit check` then raises no starter-only advisory and the file reads as a populated candidate, because `normalizeLegacyText` trims only trailing whitespace and blank-line runs.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:158` · **Round:** 2
   - **DONE WHEN:** The comparison used for starter recognition (`normalizeLegacyText`, and the digests in `LEGACY_STARTER_DIGEST_HISTORY` recomputed under the same rule) is insensitive to leading whitespace and runs of inner spaces / tabs, so a current or legacy starter copy that differs only in whitespace is reported under `project-docs-unpopulated`. Plan Edge Cases: "Copied starter differs only in whitespace or the former ownership lines → Classify it as starter-only."
   - **TEST FIRST:**
