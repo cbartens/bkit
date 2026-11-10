@@ -38,3 +38,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:38Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"b2f89f05d7fafdc735c704e83c24c5d93807aa66ecc763229ac08f73bc5156d5","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T07:45:41Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T07:45:41Z","parentSha":"1d27555a4d70480f11fbd88ffd5a36566d2032c0","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-v2-reviewed.md","docs/plans/202611/logs/911-ship-failed-merge/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:53Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:54Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:59Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:59Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:46:06Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"e8eef23c8cb5446299143f5067f29fca89e61e11ba5b0d93f9e8246bcff9f696","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T07:46:09Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-10T07:46:09Z","parentSha":"1ba8f80c98610fdd25c4f1acd03d97f20d9fcf67","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
