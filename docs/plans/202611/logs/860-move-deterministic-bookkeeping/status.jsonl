@@ -645,3 +645,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T23:41:12Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/5/1/comment","hash":"727a199efadc4a4bbc5ba8d461c84e2096f4886dde26662e004d0ceed0929236","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6782400159","at":"2026-11-10T23:41:14Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-10T23:41:14Z","parentSha":"978dc121cbb060f0e700087a8dae654f62321c2a","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-tasks-5-log.md"],"verdict":"FAIL","attempt":1,"group":5}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:41:23Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:41:33Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:41:33Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:42:51Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:42:52Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T23:56:02Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/5/1/comment","hash":"2f9e14e751a408530fce221115e358df96052f3052157927895bd509a724eb60","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6782657587","at":"2026-11-10T23:56:03Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-10T23:56:03Z","parentSha":"a3ef071810e9c7fd855914df54991db31aab78e4","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-5-1.md"],"verdict":"PASS","attempt":1,"group":5,"failures":0}
