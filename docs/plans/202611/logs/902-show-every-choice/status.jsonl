@@ -9,3 +9,11 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T23:07:19Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"c895dc2c861a5e9c7602d9951babb75921b34b5a4b636d25459d1c55e5a79847","ref":"https://github.com/cbartens/bkit/issues/902#issuecomment-6781775836","at":"2026-11-10T23:07:21Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-10T23:07:21Z","parentSha":"1afb96fd32aa6bb0b20b5c349d7eb77c30cd48c5","artifacts":["docs/plans/202611/logs/902-show-every-choice/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:27:27Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:28:51Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:33:08Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:33:46Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:34:22Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:34:27Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"e8d9f6f23e4779e8caeddeed68a05e9982e2fcbe1da9fd399a077b12648d5e9a","ref":"https://github.com/cbartens/bkit/issues/902#issuecomment-6782278799","at":"2026-11-10T23:34:29Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-10T23:34:29Z","parentSha":"d87c71fc3baae068a3500a280933cdba6c09e82d","artifacts":["docs/plans/202611/logs/902-show-every-choice/plan-v1-draft.md","docs/plans/202611/logs/902-show-every-choice/plan-generate-check.md"],"attempt":1}
