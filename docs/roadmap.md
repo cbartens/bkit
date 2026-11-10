@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-10T23:54:07Z)_
+_(refreshed 2026-11-10T23:55:07Z)_
 
 ### Design
 
@@ -51,6 +51,7 @@ _(refreshed 2026-11-10T23:54:07Z)_
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
+| 903-build-owner-s | 903-build-owner-s | 1794354907249 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794296871309 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794294436861 |
