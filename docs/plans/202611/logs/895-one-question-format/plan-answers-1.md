@@ -38,3 +38,12 @@ The owner reviewed sample questions rendered from the plan and answered "fix the
   - Decision: 895-shared-question-shape
 - **The Loop Question and Merge Question each carry a `Default if unanswered: the run waits for you` line, though they are only asked when someone can answer:** the owner answered "that is ok". No change.
   - Decision: none
+
+## Plain English
+
+- **The shape did not require the recommendation's reason, or the open questions subagents write, to be plain English:** the owner answered "Yes, add them" to three fixes.
+  - `workflow-question-plain` widens to `State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.` and gains `bkit-plan` as a carrier (Task 4).
+  - A new prompt clause `prompt-open-questions-plain` carries the same rule in `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-design-generate` and `bkit-design-update` (Task 10). A clause, not local lines, because a sentence two prompt files share with no clause covering it is an `unlistedShared` finding.
+  - § Human questions keeps its plain-English bullet, widened to the same three parts (Task 3).
+  - The one-by-one open-questions pass keeps each item's options, `Recommended` and `Default if unanswered` as written instead of "verbatim", so the question sentence can be restated plainly (Task 8).
+  - Decision: 895-shared-question-shape
