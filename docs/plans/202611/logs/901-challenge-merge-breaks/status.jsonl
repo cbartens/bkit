@@ -10,3 +10,7 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T06:21:30Z","noun":"steps","verb":"finish","flags":["workflow","step","file","artifact","number","post","title","tree","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-worktree-setup/-/-/comment","hash":"9ecdfc75524ff940c562c04e791f451009dd90699378b5b849428874e82149bf","ref":"https://github.com/cbartens/bkit/issues/901#issuecomment-6760592485","at":"2026-11-10T06:21:33Z"}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-11-10T06:21:33Z","parentSha":"f0a2df9067c548d20f68ff27cd7a536c3f14bd88","artifacts":["docs/plans/202611/logs/901-challenge-merge-breaks/build-input-1.md"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:21:47Z","noun":"branches","verb":"sync","flags":["merge-docs"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T06:21:48Z","noun":"steps","verb":"finish","flags":["workflow","step","file","number","post","title","tree","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-branch-sync/-/-/comment","hash":"cc9ed9061da387508fa00a7849b86f290f7923b1e4b59fe3ba17255e819fef73","ref":"https://github.com/cbartens/bkit/issues/901#issuecomment-6760592485","at":"2026-11-10T06:21:50Z"}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-11-10T06:21:50Z","parentSha":"8a14eb3bee7664fe04679f7a4004cb9ad5b9c13c","artifacts":[]}
