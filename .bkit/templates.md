@@ -92,7 +92,7 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists the changed, added and removed template paths. For each one you adopted, run `diff .bkit/templates/<path> <path>`, and merge what you want. The placeholder lines differ by design. `git diff .bkit/templates` in the upgrade commit shows the package change.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `prettierignore.example`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python and shell launchers; git hooks: POSIX `sh`; local stack lock: bash and perl, because shell runners source it).
 - `bkit.dependencies.updater` names the adopted updater (`"renovate"` / `"dependabot"`). Install fills it from the config present. `"none"` skips the install-time absence advisory. `bkit check` blocks when the setting and the configs disagree.
 - No template has a manifest key. `docs/templates/bkit-audit-adoption.md` lists every template on each run, as adopted and wired, or as not adopted with the reason.
