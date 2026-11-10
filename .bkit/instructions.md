@@ -12056,9 +12056,9 @@ Re-list every row on each run, and diff against the previous report: newly adopt
 **Done when:** `Adoption` holds one row per template file and per context: adopted · verdict · evidence · age.
 **Step 9 — Templates:** For each adopted template, check:
 (a) Filled: no raw `{{…}}` placeholder is left, the default branch and runner are real, and no stub sentinel is left.
-(b) Reconciled: run `diff .bkit/templates/<path> <path>`, and mark each difference adopt or reject (saying why). Placeholder lines differ by design.
+(b) Reconciled: run `diff .bkit/templates/<path> <dest>`, where `<dest>` is the destination `.bkit/templates.md` § Contract names (Step 8), and mark each difference adopt or reject (saying why). Placeholder lines differ by design.
 (c) Merged:
-**If** the package changed the template after the copy's last change (Step 3, `git log` on `.bkit/templates/<path>`) → mark it merged, rejected (saying why) or pending.
+**If** the package changed the template after the copy's last change (Step 3, `git log --follow` on `.bkit/templates/<path>`, against `git log` on `<dest>`) → mark it merged, rejected (saying why) or pending.
 (d) Wired: the tool behind it is installed, and invoked where the template expects. For example, the hook manager is installed by a `prepare` script, the hooks are executable and `core.hooksPath` is set; `pre-commit` calls lint-staged; the prose linter's styles are synced and its config loads them; the scanner plugin path resolves; the tool-server snippet is merged into the host's server config; the secrets config names real stores; the cloud workflow waits on a workflow `name:` that exists; and the CI template's job names are the ones the repo requires.
 (e) Runs: one read-only invocation, where one exists (e.g., `sh -n` on a hook, `prettier --check`, `vale` on one doc, `actionlint` on a workflow).
 (f) Ignored: every repo-wide gate (formatter, prose linter, scanner, linter, type checker) skips `.bkit/templates/`.
