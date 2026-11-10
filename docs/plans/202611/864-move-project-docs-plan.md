@@ -386,6 +386,8 @@ The groups describe implementation order. A single pull request can carry all gr
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `preserves ambiguous legacy markers and reports cleanup without blocking check` fails on changing or ignoring the malformed copy, creating a missing file, or classifying the retired copy as owned drift.
     - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `previews project document migration without mutating the checkout` fails on missing migration output or a dry-run file or index edit.
     - `.bkit/core/engine/commands/install/uninstall.integration.test.ts` `preserves project document copies on full uninstall` fails on removing a migrated or adopted copy or removing its consumer index row while removing the still-owned template files.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `migrates legacy ownership without changing project text or core ownership` — accepted on the recommendation: the test passes in the full test run on this branch and the whole-plan check judged Task 1 satisfied; the missing red proof is the only gap (owner, 2026-11-11)
 
 <!-- bkit:task 1 end -->
 
@@ -493,6 +495,8 @@ The groups describe implementation order. A single pull request can carry all gr
     - `.bkit/core/engine/checks/after/tools.test.ts` `recognizes current and migrated untouched starters` fails on treating generated text or placeholder-only content as substantive project guidance.
     - `.bkit/core/engine/checks/after/tools.test.ts` `resolves an indexed equivalent without a missing default warning` fails on reporting absence for a valid alternative or consulting an out-of-tree target.
     - `.bkit/core/engine/checks/after/index.test.ts` `reports and suppresses project documentation advisories without a blocker` fails on warnings bypassing the shared rendering and suppression pipeline or becoming blockers.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/checks/after/tools.test.ts` `resolves an indexed equivalent without a missing default warning` — accepted on the recommendation: the repaired test passes in the full test run and still asserts the equivalent is resolved with no out-of-tree read; the missing red proof comes from a test-setup crash, not from the assertion (owner, 2026-11-11)
 
 <!-- bkit:task 5 end -->
 
