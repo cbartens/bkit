@@ -5,7 +5,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Ship: remove the unreachable Failure Diagnose / Remediate steps Implementation Plan
@@ -58,11 +58,15 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gate and names `/bkit-debug {FID}` as the next step, and the workflow holds no diagnose or fix step that no route reaches.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+1. `bkit-ship.md` has no Failure Diagnose or Failure Remediate step and names no `ship-failure-*` key.
+2. Ship's steps are numbered 1-12 in the workflow, the step table and the docs.
+3. A red CI run at the Step 2 CI wait, the merge gate or the post-merge capstone ends with `Next step: /bkit-debug {FID}` in the failure comment and the final message, and an owner's Stop at the Merge Question on a used-up red run ends with it in the handover and the final message.
+4. `bkit status resume` and `bkit workflows summary` exit 0 on a status file holding `ship-failure-*` rows, and resume lands at the merge step.
+5. `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` keep serving build and debug unchanged.
 
 ### Process Sketch
 
@@ -106,7 +110,7 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 | The merge gate refuses for a reason other than a red run (13, 15, 16, 18, 20) | The Failure Path names the gate's reason and no next-step line |
 | `--next-step` holds a line break, or does not start with `/bkit-` | `bkit workflows fail` exits 2 (usage) before any write: no row, no lock release, no comment |
 | `bkit workflows fail` runs without `--next-step`, or with an empty one (a value not held yet, as for `--fid` and `--token`) | `nextStep` prints null and the failure comment has no `Next step:` line, as today |
-| The post-merge squash capstone is red at Step 12 (Close Workflow after the renumber) | The run takes the Failure Path with `NEXT_STEP` = `/bkit-debug {FID}` (Open Question 3, default A) |
+| The post-merge squash capstone is red at Step 12 (Close Workflow after the renumber) | The run takes the Failure Path with `NEXT_STEP` = `/bkit-debug {FID}` (owner answer A, decision `911-ship-red-ci-next-step-flag`) |
 | The post-merge capstone check exits non-zero for any other reason | The Failure Path names the reason and no next-step line, as today |
 
 ### Derived Test Matrix
@@ -147,7 +151,7 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 | Change | Kind | Who it affects | Handling |
 | --- | --- | --- | --- |
 | Ship Step 13 — Update Local Dev becomes Step 11, and Step 14 — Close Workflow becomes Step 12 (`--number=11` / `--number=12`, Gate 11 / Gate 12) | Renumber | Progress lines, tracker step comments, docs and tests that cite the numbers | Every in-repo citation is rewritten in the runbook; old tracker comments keep the old numbers as history (Assumption 4) |
-| Step keys `ship-failure-diagnose` and `ship-failure-remediate` are removed from `WORKFLOW_STEPS.ship`, `ROW_FIELDS`, `SHIP_STEP_ORDER` and the canonical key set | Removed name | Status files written before the change | Resume ignores the rows; summary lists them; the hole detector lists them as `unexpected` (Open Question 2) |
+| Step keys `ship-failure-diagnose` and `ship-failure-remediate` are removed from `WORKFLOW_STEPS.ship`, `ROW_FIELDS`, `SHIP_STEP_ORDER` and the canonical key set | Removed name | Status files written before the change | Resume ignores the rows; summary lists them; the hole detector lists them as `unexpected` (owner answer A, decision `911-status-holes-retired-ship-rows-unexpected`) |
 | Decision `467-ship-step-names-frozen` changes from 14 names to 12 | Frozen-contract change | Anything that counts ship's keys | Same-key decision row; `CANONICAL_SHIP_STEP_KEYS` drops the two keys, and its comment drops "Keys are added, never renamed" in favour of the current rule |
 | The `/bkit-ship` catalog heading `### \`/bkit-ship\` — 14 steps` becomes `— 12 steps` | Anchor change | Links to the heading's anchor | `docs/setup.md` and the `.husky/pre-push` comment are rewritten in Task 6, `.bkit/templates/.husky/pre-push` in Task 6, and `.bkit/core/.bkit/templates.md` in Task 5 |
 | `bkit workflows fail` gains the optional flag `--next-step` and the output key `nextStep` | New name (additive) | Callers of `workflows fail` | Optional: without it, the output carries `nextStep: null` and the comment is unchanged |
@@ -168,18 +172,6 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question 1:** The issue is a bug-shape issue, so it has no `Narrative` or `Success Criteria`, and the Acceptance Scenario carries the `⚠️ MISSING` marker. → The owner resolves it by choosing wording below, or writing their own, before ticking the Acceptance Scenario box.
-  - **Options:** A) Adopt this wording — Narrative: "The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gate and names `/bkit-debug {FID}` as the next step, and the workflow holds no diagnose or fix step that no route reaches." Success Criteria: (1) `bkit-ship.md` has no Failure Diagnose or Failure Remediate step and names no `ship-failure-*` key; (2) ship's steps are numbered 1-12 in the workflow, the step table and the docs; (3) a red CI run at the Step 2 CI wait, the merge gate or the post-merge capstone ends with `Next step: /bkit-debug {FID}` in the failure comment and the final message, and an owner's Stop at the Merge Question on a used-up red run ends with it in the handover and the final message; (4) `bkit status resume` and `bkit workflows summary` exit 0 on a status file holding `ship-failure-*` rows, and resume lands at the merge step; (5) `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` keep serving build and debug unchanged. — matches the owner's scope comment one to one · B) The owner writes the Narrative and Success Criteria — exact wording, but one more round before build.
-  - **Recommended:** A) — every criterion is the owner's own scope bullet, restated as an outcome.
-  - **Default if unanswered:** None — the plan does not proceed to build until the owner picks A or B; plan-update then copies the chosen wording into `Narrative` and `Success Criteria`. A ticked Acceptance Scenario box alone does not adopt option A.
-- **Open Question 2:** The advisory hole detector (`checks/status-holes.ts`) lists any recorded step the current workflow lacks as `unexpected (invented names)`, so a pre-change run holding `ship-failure-*` rows gets two `unexpected` entries. → The owner decides.
-  - **Options:** A) Accept the `unexpected` entries — the build workflow's retired `build-challenge-*` rows already show the same way, `unexpected` never changes a verdict, and the CLI exits 0 · B) Teach the detector the retired names (read `RETIRED_STEPS` or a new list) so old rows are not reported — a quieter sweep, but it changes how build's retired rows report too and adds a list to keep in step.
-  - **Recommended:** A) — it follows the existing precedent and keeps the detector a pure comparison against the current workflow.
-  - **Default if unanswered:** A).
-- **Open Question 3:** The owner's scope says that when ship stops on a red CI run, the stop message names `/bkit-debug {FID}`. Three places stop on a red run before the merge or after it: the Step 2 CI wait on a PR ship opened itself (`prs checks` with a failed check), the Step 10 merge gate (`runs gate` exit 12, including an owner's Stop at the Merge Question on a used-up regenerable red run), and the post-merge squash capstone in Close Workflow (Step 12 after the renumber, `runs gate --capstone-only` exit 12). The first two are pre-merge red-CI stops on the feature branch and are covered by the scope sentence; the post-merge capstone runs on `dev`. → The owner decides whether the post-merge capstone is covered.
-  - **Options:** A) All three — one rule for every red CI stop; `/bkit-debug` runs on `dev` as well as on a feature branch · B) The two pre-merge stops only — the post-merge case keeps today's message, recorded as a `needs-decision` deferral · C) The post-merge case names a different next step — needs a command nobody has specified.
-  - **Recommended:** A) — the owner's sentence names every red CI stop, and debug already supports a run on `dev`.
-  - **Default if unanswered:** A).
 - **Assumption:** Every `ship-failure-*` row in an old status file follows a `ship-merge-pr` row, because Step 11's finish used `--attempt-of=ship-merge-pr:current`. → If wrong, a resumed old run lands after its last earlier step instead of the merge step; ship still returns to Step 3 for any number from 3 to 10.
 - **Assumption:** A run stopped between a `ship-failure-remediate` `PASS` row and its fix commit is too rare to need its own route, because Steps 11-12 have been reachable only on resume since #896. → If wrong, the uncommitted fix sits in the worktree when the resumed run returns to Step 3, and the owner commits or discards it by hand.
 - **Assumption:** `bkit workflows summary` keeps its generic row handling, so a `FAIL` `ship-failure-diagnose` row in a resumed old run still makes a refreshed Step 6 summary `FAIL`, exactly as it does today. → If wrong (the owner wants old rows ignored), such a run stops at Step 6; a fresh `/bkit-ship` run starts a new run without the old rows and proceeds.
@@ -202,7 +194,7 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 | Map the old `ship-failure-*` rows in `RETIRED_STEPS` to `ship-merge-pr` | The resume point is the same without an entry: the existing rule ignores rows of steps a workflow no longer has, and the `ship-merge-pr` row before them already resumes at the merge step. An entry would only change `after`, which no ship text reads any more |
 | Put the next step in the error text the Failure Path writes to `error.md` | It mixes the next command into `Error:` and depends on the orchestrator writing it every time; a flag puts the wording in one engine function with a test |
 | A generic `--line` flag on `workflows fail` (as on `issues comment`) | It would work, but leaves the `Next step:` wording to each workflow; `--next-step` gives one format, a validated value and a printed `nextStep` the final message can reuse |
-| Teach the hole detector the retired step names | Open Question 2, option B |
+| Teach the hole detector the retired step names | The owner rejected it (decision `911-status-holes-retired-ship-rows-unexpected`): the build workflow's retired `build-challenge-*` rows already show as `unexpected`, `unexpected` never changes a verdict, and the CLI exits 0 |
 | Have `bkit workflows fail` derive the next step from the step key (red-CI steps map to `/bkit-debug`) instead of a `--next-step` flag | Fewer call sites to keep in step, but the engine cannot tell a red-CI stop from another failure of the same step (Step 10 fails for many reasons), so the workflow would still have to pass which arm it took; the explicit flag matches the existing held-value pattern. Noted for the owner |
 | Drop an invalid `--next-step` with a warning instead of exiting 2 | It keeps the run from stranding, but a silent drop hides a malformed workflow line; the Failure Path re-runs the call without the flag on exit 2 instead (Edge Cases) |
 
@@ -230,7 +222,7 @@ The two `docs/failures.jsonl` rows the issue cites (`ship-failure-diagnose-remed
 | #849 retires ship Step 13 (Update Local Dev) in WS-9 | `related-issues.md` | The same step table, the renumbered citations and the `/bkit-ship` heading's step count | Keep separate; sequence #849 after #911 and rebase its step numbers on 1-12 |
 | #811 Failure Path flush | `related-issues.md` | § Failure Path in `bkit-ship.md` and `.bkit/core/.bkit/workflows.md`, which Task 4 and Task 5 edit | Keep separate |
 | `.bkit/core/.bkit/prompts.md` says "Build Steps 12-13" for the steps build numbers 13-14 | Found while planning | The sentence Task 5 edits for ship | Needs a human decision: fixing it is outside #911's scope, but it sits in the same sentence |
-| Promote the status-hole detector from advisory to gate | `docs/deferrals.jsonl` `384-promote-status-hole-detector-from-advisory-to-gate` | `checks/status-holes.ts`, which Task 1 edits; a gate would turn old `unexpected` rows into failures | Keep deferred; if promoted, Open Question 2 option B becomes required |
+| Promote the status-hole detector from advisory to gate | `docs/deferrals.jsonl` `384-promote-status-hole-detector-from-advisory-to-gate` | `checks/status-holes.ts`, which Task 1 edits; a gate would turn old `unexpected` rows into failures | Keep deferred; if promoted, teaching the detector the retired names (the alternative decision `911-status-holes-retired-ship-rows-unexpected` rejects) becomes required |
 | Whether the question advisor covers the Merge Question | #904 (open question 6) | The Merge Question Task 2 trims | Keep in #904; the trimmed question is still the one #904 asks about |
 | #902's table of choices made without asking | #902 | Ship's old Step 11 row in that table | Note on #902; no file in this branch holds the table |
 
@@ -247,7 +239,7 @@ None of the other rows apply — no new API route, DB table, role-gated mutation
 - [ ] **Package Management:** No package is added or removed; `package.json` and `pnpm-lock.yaml` stay unchanged.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-10) lists dev-only minor and major bumps (`oxlint` 1.89.0 → 1.90.0, `oxlint-tsgolint`, `vitest` and `@vitest/coverage-v8` 5.0.5 → 5.1.0, `@types/node` 24 → 26, `vite` 6 → 8); none blocks this change. Toolchain: Node v24.16.0 (`engines.node` `>=24`), pnpm 10.34.7 (matches `packageManager`), `gh` 2.102.0.
 - [ ] **Existing-Solution Search (reuse over duplicate):** recorded in `Reuse Inventory`.
-- [ ] **User Context:** Every file the runbook names was opened in this session. No user information is missing, apart from Open Questions 1-3.
+- [ ] **User Context:** Every file the runbook names was opened in this session. No user information is missing.
 - [ ] **Project Context:** Read `docs/decisions.jsonl` (`467-ship-step-names-frozen`, `842-ship-revalidates-moving-base-before-merge`, `715-lite-workflows-retired`) and `docs/knowledge.jsonl` (`renumbering-a-workflow-leaves-instructions-md-local-entries-stale`: a renumbered workflow's `- source:` block in `.bkit/instructions.md` must be rewritten by hand before `pnpm instructions:sync` passes).
 - [ ] **Testing & Quality:** Every behaviour is a Unit row (engine commands in process, markdown invariants, the render baseline), except the `bkit workflow progress` CLI wiring, which is an Integration row (`progress.integration.test.ts` drives the CLI), per `docs/testing.md` § Which tier does a behaviour need?. No row crosses a database, network or model boundary. The planning run could not execute tests: the machine `tests` lock was held by another checkout's `bkit:gate:changed` run.
 - [ ] **Render baselines clean before build:** `pnpm vitest run .bkit/core/engine/render/trackers.test.ts` passes on the unchanged tree. All five `*.none.txt` baselines already hold "Read-only helper recovery", so it is expected to pass. **If** another baseline fails → that drift predates this change: report it to the owner, and scope the `trackers.test.ts` `DONE WHEN` clauses to the `bkit-ship` case, instead of regenerating the other baselines here.
@@ -300,7 +292,7 @@ None — `ship-failure-diagnose` and `ship-failure-remediate` rows stop being wr
 
 Sources only: `.bkit/core/workflows/`, `.bkit/core/.bkit/` and the engine. The mirrors (`.bkit/workflows.md`, `.bkit/prompts.md`, `.bkit/README.md`, `.bkit/templates.md`, `.bkit/cli.md`, `.claude/commands/bkit-ship.md`, `.cursor/`, `.opencode/`, `.agents/skills/bkit-ship/SKILL.md`, `.agents/plugins/bkit/skills/bkit-ship/SKILL.md`) and `dist/` are regenerated by the `REGEN` procedure (`Agent Execution Runbook`) in Tasks 2 and 4, and by `pnpm tsx .bkit/core/engine/cli.ts upgrade` in Tasks 3, 5 and 6, never hand-edited. `docs/deployments.md`'s managed block is rendered from `.bkit/shared/docs/deployments.md` the same way.
 
-**Ledger rows:** `911-ship-failed-merge-steps-removed`, `911-ship-steps-renumbered`, `467-ship-step-names-frozen`, `911-ship-red-ci-next-step-flag`, `911-ship-strategy-field-removal-via-907`
+**Ledger rows:** `911-ship-failed-merge-steps-removed`, `911-ship-steps-renumbered`, `467-ship-step-names-frozen`, `911-ship-red-ci-next-step-flag`, `911-ship-strategy-field-removal-via-907`, `911-status-holes-retired-ship-rows-unexpected`
 
 ### Database Migrations
 
