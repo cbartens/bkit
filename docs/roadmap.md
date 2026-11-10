@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T12:25:50Z)_
+_(refreshed 2026-11-09T23:14:28Z)_
 
 ### Design
 
@@ -57,7 +57,6 @@ _(refreshed 2026-11-09T12:25:50Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 
 ### Debug
 
@@ -68,6 +67,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
@@ -77,7 +77,6 @@ _(none)_
 | 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 | 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
-| 701-engine-work-build | 701-engine-work-build | 1793191338658 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

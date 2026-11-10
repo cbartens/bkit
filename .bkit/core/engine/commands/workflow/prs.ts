@@ -100,8 +100,48 @@ export function probePr(
     number?: string;
     /** Honour `--repo`: resolve the PR in this owner/repo, not the checkout's remote. */
     repo?: string;
+    shipEntry?: boolean;
+    facts?: unknown;
   },
 ): Probe {
+  const qualify = (pr: PrInfo | undefined): Probe =>
+    opts.shipEntry === true && pr?.state === "MERGED"
+      ? qualifyMergedEntry(cwd, pr, opts.head, opts.base)
+      : { kind: "ok", pr };
+  if (opts.facts !== undefined) {
+    const facts = opts.facts;
+    if (
+      opts.shipEntry !== true ||
+      opts.repo === undefined ||
+      opts.head === undefined ||
+      opts.base === undefined ||
+      typeof facts !== "object" ||
+      facts === null ||
+      !("ownerRepo" in facts) ||
+      facts.ownerRepo !== opts.repo ||
+      !("headRefName" in facts) ||
+      facts.headRefName !== opts.head ||
+      !("baseRefName" in facts) ||
+      facts.baseRefName !== opts.base ||
+      !("pr" in facts)
+    )
+      return {
+        kind: "failed",
+        message: "ship PR facts require matching ownerRepo, headRefName and baseRefName scope",
+      };
+    if (facts.pr === null) return qualify(undefined);
+    if (
+      !validPrFacts(facts.pr) ||
+      prRepoSlug(facts.pr.url) !== opts.repo ||
+      facts.pr.headRefName !== opts.head ||
+      facts.pr.baseRefName !== opts.base
+    )
+      return {
+        kind: "failed",
+        message: "ship PR facts have an unreadable or mismatched PR identity, head or base scope",
+      };
+    return qualify(facts.pr);
+  }
   if (opts.number !== undefined) {
     const args = ["pr", "view", opts.number, "--json", `${PR_FIELDS},mergeable`];
     if (opts.repo !== undefined) args.push("--repo", opts.repo);
@@ -109,7 +149,7 @@ export function probePr(
     if (!res.ok) return ghFailure(res, `gh pr view ${opts.number}`);
     const parsed = parseJson(res.stdout);
     if (!parsed.ok) return { kind: "failed", message: "gh pr view printed no JSON" };
-    return { kind: "ok", pr: parsed.value as PrInfo };
+    return qualify(parsed.value as PrInfo);
   }
   const args = ["pr", "list", "--head", opts.head!, "--state", opts.state, "--json", PR_FIELDS];
   if (opts.base !== undefined) args.push("--base", opts.base);
@@ -125,7 +165,86 @@ export function probePr(
     opts.state === "open"
       ? prs[0]
       : (prs.find((p) => p.state === "OPEN") ?? prs.find((p) => p.state === "MERGED"));
-  return { kind: "ok", pr };
+  return qualify(pr);
+}
+
+export function validPrFacts(value: unknown): value is PrInfo {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    "number" in value &&
+    typeof value.number === "number" &&
+    Number.isSafeInteger(value.number) &&
+    value.number > 0 &&
+    "url" in value &&
+    typeof value.url === "string" &&
+    "state" in value &&
+    typeof value.state === "string" &&
+    ["OPEN", "MERGED", "CLOSED"].includes(value.state) &&
+    "baseRefName" in value &&
+    typeof value.baseRefName === "string" &&
+    "headRefName" in value &&
+    typeof value.headRefName === "string" &&
+    "headRefOid" in value &&
+    typeof value.headRefOid === "string" &&
+    /^[0-9a-f]{40,64}$/i.test(value.headRefOid) &&
+    "title" in value &&
+    typeof value.title === "string" &&
+    "mergeCommit" in value &&
+    (value.mergeCommit === null ||
+      (typeof value.mergeCommit === "object" &&
+        "oid" in value.mergeCommit &&
+        typeof value.mergeCommit.oid === "string"))
+  );
+}
+
+function qualifyMergedEntry(cwd: string, pr: PrInfo, head?: string, base?: string): Probe {
+  if (
+    !head ||
+    pr.headRefName !== head ||
+    pr.baseRefName !== (base ?? DEV) ||
+    !/^[0-9a-f]{40,64}$/i.test(pr.headRefOid)
+  )
+    return {
+      kind: "failed",
+      message: "merged ship entry has unreadable or mismatched feature head/base evidence",
+    };
+  const local = git(cwd, ["rev-parse", "--verify", "--quiet", `refs/heads/${head}^{commit}`]);
+  if (local === null)
+    return { kind: "failed", message: `cannot read local feature evidence for ${head}` };
+  const remote = runGit(cwd, ["ls-remote", "--heads", "origin", `refs/heads/${head}`]);
+  if (!remote.ok)
+    return {
+      kind: "failed",
+      message: `cannot read remote feature evidence for ${head}: ${remote.stderr}`,
+    };
+  let remoteHead: string | null = null;
+  if (remote.stdout.trim() !== "") {
+    const fetched = runGit(cwd, [
+      "fetch",
+      "origin",
+      `+refs/heads/${head}:refs/remotes/origin/${head}`,
+    ]);
+    if (!fetched.ok)
+      return {
+        kind: "failed",
+        message: `cannot fetch feature evidence for ${head}: ${fetched.stderr}`,
+      };
+    remoteHead = git(cwd, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `refs/remotes/origin/${head}^{commit}`,
+    ]);
+    if (remoteHead === null)
+      return { kind: "failed", message: `cannot read fetched feature evidence for ${head}` };
+  }
+  return {
+    kind: "ok",
+    pr:
+      local === pr.headRefOid && (remoteHead === null || remoteHead === pr.headRefOid)
+        ? pr
+        : undefined,
+  };
 }
 
 export function prOutput(pr: PrInfo | undefined) {
@@ -431,6 +550,9 @@ export interface MergeInput {
   /** `--match-head-commit`: the server refuses when the head moved. */
   matchHead?: string;
   deleteBranch?: boolean;
+  shipRetry?: boolean;
+  repo?: string;
+  facts?: unknown;
 }
 
 export interface MergeResult {
@@ -443,6 +565,8 @@ export interface MergeResult {
     subject: string;
     verdict: "PASS" | "FAIL";
     failures: number;
+    route?: "merged" | "revalidate" | "integrate" | "stop";
+    reason?: string;
   };
 }
 
@@ -454,7 +578,14 @@ export interface MergeResult {
  * EXIT.USE_MCP (merge through `merge_pull_request` with `subject`).
  */
 export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): MergeResult {
-  const read = () => probePr(cwd, { number: o.number, state: "open" });
+  if (o.shipRetry && !o.matchHead)
+    throw new CommandError(EXIT.USAGE, "--ship-retry requires --match-head");
+  if (o.shipRetry && o.deleteBranch)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--ship-retry leaves branch cleanup to guarded workflow close",
+    );
+  const read = () => probePr(cwd, { number: o.number, state: "open", repo: o.repo });
   const result = (code: number, pr: PrInfo | undefined, already: boolean): MergeResult => {
     const merged = pr?.state === "MERGED";
     return {
@@ -467,17 +598,84 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
         subject: o.subject,
         verdict: merged ? "PASS" : "FAIL",
         failures: merged ? 0 : 1,
+        ...(o.shipRetry
+          ? {
+              route: merged ? ("merged" as const) : ("stop" as const),
+              reason: merged ? "PR merged" : "merge refused",
+            }
+          : {}),
       },
     };
   };
-  const before = read();
+  const stop = (code: number, reason: string, pr?: PrInfo): MergeResult => {
+    log(reason);
+    const r = result(code, pr, false);
+    return o.shipRetry ? { ...r, out: { ...r.out, route: "stop", reason } } : r;
+  };
+  const classify = (pr: PrInfo | undefined): MergeResult => {
+    if (!o.shipRetry || pr?.state === "MERGED") return result(EXIT.OK, pr, false);
+    if (pr?.baseRefName !== DEV) return stop(EXIT_BASE_NOT_DEV, "merge reread base is not dev", pr);
+    if (pr.state !== "OPEN") return stop(EXIT_NOT_MERGED, "merge refused: PR is not open", pr);
+    if (!/^[0-9a-f]{40,64}$/i.test(pr.headRefOid))
+      return stop(EXIT_GH_FAILED, "merge head reread is unavailable", pr);
+    const moved = pr.headRefOid !== o.matchHead;
+    const conflict = pr.mergeable === "CONFLICTING";
+    if (!moved && !conflict)
+      return stop(EXIT_NOT_MERGED, "merge refused without a moved head or new dev conflict", pr);
+    const reason = moved
+      ? "PR head moved after validation; revalidate the new head"
+      : "PR conflicts with dev; integrate the fresh base";
+    log(reason);
+    const r = result(moved ? 9 : 10, pr, false);
+    return { ...r, out: { ...r.out, route: moved ? "revalidate" : "integrate", reason } };
+  };
+  let before: Probe;
+  let afterFacts: PrInfo | undefined;
+  if (o.facts !== undefined) {
+    const facts = o.facts;
+    if (
+      !o.shipRetry ||
+      !o.repo ||
+      typeof facts !== "object" ||
+      facts === null ||
+      !("ownerRepo" in facts) ||
+      facts.ownerRepo !== o.repo ||
+      !("prNumber" in facts) ||
+      facts.prNumber !== Number(o.number) ||
+      !("matchHead" in facts) ||
+      facts.matchHead !== o.matchHead ||
+      !("headRefName" in facts) ||
+      typeof facts.headRefName !== "string" ||
+      !("baseRefName" in facts) ||
+      facts.baseRefName !== DEV ||
+      !("before" in facts) ||
+      !validPrFacts(facts.before) ||
+      !("after" in facts) ||
+      !validPrFacts(facts.after) ||
+      [facts.before, facts.after].some(
+        (pr) =>
+          pr.number !== Number(o.number) ||
+          prRepoSlug(pr.url) !== o.repo ||
+          pr.headRefName !== facts.headRefName ||
+          pr.baseRefName !== DEV,
+      ) ||
+      facts.before.headRefOid !== o.matchHead ||
+      facts.before.state !== "OPEN"
+    )
+      return stop(
+        EXIT_GH_FAILED,
+        "merge facts scope or independent post-attempt reread is unavailable or mismatched",
+      );
+    before = { kind: "ok", pr: facts.before };
+    afterFacts = facts.after;
+  } else before = read();
   if (before.kind === "unavailable") {
     log(`${before.message} — merge through merge_pull_request with this subject and an empty body`);
     return result(EXIT.USE_MCP, undefined, false);
   }
   if (before.kind === "failed") {
     log(before.message);
-    return result(EXIT_GH_FAILED, undefined, false);
+    return stop(EXIT_GH_FAILED, before.message);
   }
   if (before.pr?.state === "MERGED") return result(EXIT.OK, before.pr, true);
   if (before.pr?.baseRefName !== DEV) {
@@ -486,7 +684,20 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
     );
     return result(EXIT_BASE_NOT_DEV, before.pr, false);
   }
+  if (
+    o.shipRetry &&
+    (before.pr.number !== Number(o.number) ||
+      (o.repo !== undefined && prRepoSlug(before.pr.url) !== o.repo))
+  )
+    return stop(
+      EXIT_GH_FAILED,
+      "merge pre-attempt PR repository or number scope mismatch",
+      before.pr,
+    );
+  if (o.shipRetry && before.pr.headRefOid !== o.matchHead) return classify(before.pr);
+  if (afterFacts !== undefined) return classify(afterFacts);
   const args = ["pr", "merge", o.number, "--squash", "--subject", o.subject, "--body", ""];
+  if (o.repo !== undefined) args.push("--repo", o.repo);
   if (o.deleteBranch === true) args.push("--delete-branch");
   if (o.matchHead !== undefined) args.push("--match-head-commit", o.matchHead);
   const merged = runGh(cwd, args);
@@ -500,9 +711,19 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
     log(`gh pr merge ${o.number} failed: ${merged.stderr || `exit ${String(merged.status)}`}`);
   const after = read();
   if (after.kind !== "ok") {
-    log(after.message);
-    return result(EXIT_GH_FAILED, undefined, false);
+    return stop(EXIT_GH_FAILED, `merge state reread unavailable: ${after.message}`);
   }
+  if (
+    o.shipRetry &&
+    (after.pr?.number !== Number(o.number) ||
+      after.pr.headRefName !== before.pr.headRefName ||
+      (o.repo !== undefined && prRepoSlug(after.pr.url) !== o.repo))
+  )
+    return stop(
+      EXIT_GH_FAILED,
+      "merge post-attempt PR repository, number or branch scope mismatch",
+      after.pr,
+    );
   // A retarget between the base check and the merge is caught here, loudly.
   if (after.pr?.state === "MERGED" && after.pr.baseRefName !== DEV) {
     log(
@@ -511,7 +732,7 @@ export function mergePr(cwd: string, o: MergeInput, log: (m: string) => void): M
     const r = result(EXIT_BASE_NOT_DEV, after.pr, false);
     return { ...r, out: { ...r.out, verdict: "FAIL", failures: 1 } };
   }
-  return result(EXIT.OK, after.pr, false);
+  return classify(after.pr);
 }
 
 // ---------------------------------------------------------------------------
@@ -964,6 +1185,21 @@ export const prsCommand: CommandSpec = {
         { name: "base", type: "string", help: "only PRs into this base (default: any base)" },
         { name: "state", type: "string", help: "open (default) | all: OPEN wins, then MERGED" },
         { name: "number", type: "string", help: "read this PR instead of listing by --head" },
+        {
+          name: "ship-entry",
+          type: "boolean",
+          help: "qualify a merged PR against fresh local and remote feature tips before resuming ship",
+        },
+        {
+          name: "owner-repo",
+          type: "string",
+          help: "owner/repo scope for ship entry and MCP facts",
+        },
+        {
+          name: "facts-file",
+          type: "string",
+          help: "ship entry: scoped MCP JSON {ownerRepo, headRefName, baseRefName, pr}, used without gh",
+        },
       ],
       output: PR_OUTPUT_KEYS,
       exitCodes: { 4: "gh errored — the probe could not answer" },
@@ -976,6 +1212,13 @@ export const prsCommand: CommandSpec = {
         if (number !== undefined && !/^[1-9][0-9]*$/.test(number)) {
           throw new CommandError(EXIT.USAGE, "--number must be a PR number");
         }
+        const factsFile = str(ctx.flags.factsFile);
+        const facts =
+          factsFile === undefined
+            ? undefined
+            : parseJson(fs.readFileSync(path.resolve(ctx.cwd, factsFile), "utf-8"));
+        if (facts !== undefined && !facts.ok)
+          throw new CommandError(EXIT.USAGE, "ship PR facts file is not valid JSON");
         const res = probePr(ctx.cwd, {
           number,
           state,
@@ -986,6 +1229,9 @@ export const prsCommand: CommandSpec = {
                 ? currentBranch(ctx.cwd)
                 : refFlag(ctx.flags.head, "head"),
           base: ctx.flags.base === undefined ? undefined : refFlag(ctx.flags.base, "base"),
+          repo: str(ctx.flags.ownerRepo),
+          shipEntry: ctx.flags.shipEntry === true,
+          facts: facts?.ok === true ? facts.value : undefined,
         });
         if (res.kind !== "ok") {
           ctx.log(res.message);
@@ -1000,6 +1246,21 @@ export const prsCommand: CommandSpec = {
         "Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back.",
       use: "workflow",
       flags: [
+        {
+          name: "ship-retry",
+          type: "boolean",
+          help: "ship only: classify independently re-read merge refusals as revalidate (9), integrate (10), or stop (7)",
+        },
+        {
+          name: "facts-file",
+          type: "string",
+          help: "with --ship-retry: scoped pre-attempt and independent post-attempt MCP PR facts; classify without another mutation",
+        },
+        {
+          name: "owner-repo",
+          type: "string",
+          help: "owner/repo for the merge and scoped MCP facts",
+        },
         { name: "number", type: "string", required: true, help: "the PR number" },
         {
           name: "subject",
@@ -1032,19 +1293,40 @@ export const prsCommand: CommandSpec = {
         subject: "the squash subject used",
         verdict: "PASS when merged, else FAIL",
         failures: "0 when merged, else 1",
+        route: "--ship-retry: merged | revalidate | integrate | stop",
+        reason: "--ship-retry: the reread decision or refusal",
       },
       exitCodes: {
         [EXIT_GH_FAILED]: "gh could not read the PR",
         [EXIT_NOT_MERGED]: "--expect-merged and the PR did not reach MERGED",
         [EXIT_BASE_NOT_DEV]: `the PR's base is not ${DEV}, or could not be read — nothing merged`,
+        9: "--ship-retry: PR head moved; revalidate",
+        10: "--ship-retry: new dev conflict; integrate",
       },
       run: (ctx) => {
         const number = String(ctx.flags.number);
         if (!/^[1-9][0-9]*$/.test(number))
           throw new CommandError(EXIT.USAGE, "--number must be a PR number");
+        const factsPath = str(ctx.flags.factsFile);
+        const parsed =
+          factsPath === undefined
+            ? undefined
+            : parseJson(fs.readFileSync(path.resolve(ctx.cwd, factsPath), "utf-8"));
+        if (parsed !== undefined && !parsed.ok)
+          throw new CommandError(EXIT.USAGE, "merge facts JSON is unreadable");
+        const facts = parsed?.ok ? parsed.value : undefined;
         let subject = str(ctx.flags.subject);
         if (subject === undefined) {
-          const pr = probePr(ctx.cwd, { number, state: "open" });
+          const candidate =
+            typeof facts === "object" && facts !== null && "before" in facts
+              ? facts.before
+              : undefined;
+          const pr: Probe =
+            facts !== undefined
+              ? validPrFacts(candidate)
+                ? { kind: "ok", pr: candidate }
+                : { kind: "failed", message: "merge facts pre-attempt PR is unreadable" }
+              : probePr(ctx.cwd, { number, state: "open", repo: str(ctx.flags.ownerRepo) });
           if (pr.kind === "unavailable") {
             ctx.log(`${pr.message} — merge through merge_pull_request`);
             return EXIT.USE_MCP;
@@ -1064,6 +1346,9 @@ export const prsCommand: CommandSpec = {
             subject,
             matchHead: str(ctx.flags.matchHead),
             deleteBranch: ctx.flags.deleteBranch === true,
+            shipRetry: ctx.flags.shipRetry === true,
+            repo: str(ctx.flags.ownerRepo),
+            facts,
           },
           ctx.log,
         );

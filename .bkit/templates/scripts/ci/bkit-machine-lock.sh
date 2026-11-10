@@ -287,14 +287,16 @@ _local_stack_lock() {
   # answered (a failed fork under load, a killed perl): the loop stops once it is gone.
   _lsl_reply="$(
     exec 3<>"$_lsl_fifo"
+    _lsl_partial=""
     while :; do
       if IFS= read -r -t 1 _lsl_line <&3; then
-        printf '%s' "$_lsl_line"
+        printf '%s' "$_lsl_partial$_lsl_line"
         break
       fi
+      _lsl_partial="$_lsl_partial$_lsl_line"
       if ! kill -0 "$_lsl_pid" 2>/dev/null; then
         # The holder may have answered and exited between the read timing out and this check.
-        if IFS= read -r -t 1 _lsl_line <&3; then printf '%s' "$_lsl_line"; fi
+        if IFS= read -r -t 1 _lsl_line <&3; then printf '%s' "$_lsl_partial$_lsl_line"; fi
         break
       fi
     done
@@ -326,6 +328,7 @@ _local_stack_lock() {
       echo "[machine-lock] ❌ could not take the lock for $_lsl_label: ${_lsl_reply#error }" >&2
       ;;
   esac
+  kill "$_lsl_pid" 2>/dev/null || true
   wait "$_lsl_pid" 2>/dev/null || true
   return 1
 }

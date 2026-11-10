@@ -12,7 +12,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { newRecord, writeRecord } from "./ledgers";
-import { addAllButCopied, ownershipMarker, worktreeDir, worktreesCommand } from "./worktrees";
+import {
+  addAllButCopied,
+  ownershipMarker,
+  removeWorktree,
+  worktreeDir,
+  worktreesCommand,
+} from "./worktrees";
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -411,6 +417,87 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
 });
 
 describe("bkit worktrees setup — ship branch", () => {
+  function inheritedShip(mode: "created" | "resumed" | "adopted") {
+    const cwd = repo("dev");
+    fs.rmSync(path.join(cwd, ".env"));
+    git(cwd, "config", "user.email", "t@t");
+    git(cwd, "config", "user.name", "t");
+    const origin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-origin-")));
+    dirs.push(origin);
+    git(origin, "init", "-q", "--bare", "-b", "dev");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "origin", "dev");
+    git(cwd, "commit", "-q", "--allow-empty", "-m", "feat: unpublished dev ownership");
+    const inherited = git(cwd, "rev-parse", "HEAD");
+    git(cwd, "branch", `feat/${FID}`);
+    const flags: string[] = [];
+    if (mode !== "adopted") flags.push("--worktrees");
+    if (mode === "resumed") {
+      git(cwd, "worktree", "add", "-q", worktreeDir(cwd, FID), `feat/${FID}`);
+    }
+    if (mode === "adopted") git(cwd, "switch", "-q", `feat/${FID}`);
+    return { cwd, origin, inherited, flags };
+  }
+
+  it("fetches a remote only ship branch before adopting it", async () => {
+    const cwd = repo("claude/session");
+    const origin = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ship-remote-only-")),
+    );
+    dirs.push(origin);
+    git(origin, "init", "-q", "--bare", "-b", "dev");
+    git(cwd, "remote", "add", "origin", origin);
+    git(cwd, "push", "-q", "origin", "HEAD:dev", `HEAD:feat/${FID}`);
+    git(cwd, "update-ref", "-d", `refs/remotes/origin/feat/${FID}`);
+    git(cwd, "config", "remote.origin.fetch", "+refs/heads/dev:refs/remotes/origin/dev");
+    const expected = git(origin, "rev-parse", `refs/heads/feat/${FID}`);
+    const result = await setup(cwd, "ship", `--branch=feat/${FID}`);
+    expect(result.code, result.err).toBe(0);
+    expect(result.json).toMatchObject({
+      mode: "adopted",
+      branch: `feat/${FID}`,
+      worktreePath: cwd,
+    });
+    expect(git(cwd, "branch", "--show-current")).toBe(`feat/${FID}`);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(expected);
+    expect(git(cwd, "rev-parse", `refs/remotes/origin/feat/${FID}`)).toBe(expected);
+  });
+
+  it("refuses inherited unpublished dev commits in every ship mode", async () => {
+    const created = inheritedShip("created");
+    const resumed = inheritedShip("resumed");
+    const adopted = inheritedShip("adopted");
+    const a = await setup(created.cwd, "ship", ...created.flags);
+    const b = await setup(resumed.cwd, "ship", ...resumed.flags);
+    const c = await setup(adopted.cwd, "ship", ...adopted.flags);
+    expect([a.code, b.code, c.code]).toEqual([7, 7, 7]);
+    expect(a.err).toMatch(/unpublished|unpushed/);
+    expect(b.err).toMatch(/unpublished|unpushed/);
+    expect(c.err).toMatch(/unpublished|unpushed/);
+    expect(git(created.origin, "branch", "--list", `feat/${FID}`)).toBe("");
+    expect(git(resumed.cwd, "rev-parse", `feat/${FID}`)).toBe(resumed.inherited);
+    expect(git(adopted.cwd, "rev-parse", `feat/${FID}`)).toBe(adopted.inherited);
+
+    const independent = inheritedShip("adopted");
+    git(independent.cwd, "switch", "-q", "-c", "independent", "origin/dev");
+    git(independent.cwd, "commit", "-q", "--allow-empty", "-m", "feat: independent work");
+    const allowed = await setup(independent.cwd, "ship", "--branch=independent");
+    expect(allowed.code, allowed.err).toBe(0);
+    expect(allowed.json.branch).toBe("independent");
+  }, 60_000);
+
+  it("names inherited commits and ship recovery in the refusal", async () => {
+    const f = inheritedShip("adopted");
+    const result = await setup(f.cwd, "ship");
+    expect(result.code).toBe(7);
+    expect(result.err).toContain(f.inherited.slice(0, 7));
+    expect(result.err).toContain("unpublished dev ownership");
+    expect(result.err).toMatch(/publish.*dev|push origin dev/);
+    expect(result.err).toMatch(/ship/);
+    expect(result.err).not.toMatch(/re-run \/bkit-(?:design|plan)/);
+    expect(git(f.cwd, "rev-parse", `feat/${FID}`)).toBe(f.inherited);
+  });
+
   it("ships the prompt-named branch, else feat/{fid} when it exists, else the session branch", async () => {
     const cwd = repo("claude/work");
     git(cwd, "branch", "named");
@@ -635,23 +722,26 @@ describe("bkit worktrees remove", () => {
     expect(fs.existsSync(wt)).toBe(true);
   });
 
-  it("removes a marked worktree with uncommitted changes and clears the marker", async () => {
+  it("preserves a marked worktree with uncommitted changes and its marker", async () => {
     const cwd = repo();
+    fs.writeFileSync(path.join(cwd, "dirty.txt"), "base\n");
+    git(cwd, "add", "dirty.txt");
+    git(cwd, "commit", "-qm", "tracked cleanup fixture");
     const wt = linked(cwd, FID, true);
     fs.writeFileSync(path.join(wt, "dirty.txt"), "x\n");
     const r = await remove(cwd);
     expect(r.json).toEqual({
-      removed: true,
-      reason: null,
+      removed: false,
+      reason: "uncommitted",
       worktreePath: wt,
       repoRoot: cwd,
       branchDeleted: null,
       remoteDeleted: null,
       branchBlockedBy: null,
     });
-    expect(fs.existsSync(wt)).toBe(false);
-    expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(false);
-    expect(git(cwd, "worktree", "list")).not.toContain(".worktrees");
+    expect(fs.readFileSync(path.join(wt, "dirty.txt"), "utf-8")).toBe("x\n");
+    expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(true);
+    expect(git(cwd, "worktree", "list")).toContain(".worktrees");
     expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
   });
 
@@ -693,9 +783,76 @@ describe("bkit worktrees remove", () => {
     const remoteHas = (origin: string) =>
       git(origin, "branch", "--list", `feat/${FID}`).includes(`feat/${FID}`);
 
-    it("deletes the local and remote branch once the marked worktree is gone", async () => {
+    it.each([
+      { change: "content", stage: (file: string) => fs.writeFileSync(file, "staged-only work\n") },
+      { change: "mode", stage: (file: string) => fs.chmodSync(file, 0o755) },
+      {
+        change: "type",
+        stage: (file: string) => {
+          fs.unlinkSync(file);
+          fs.symlinkSync("staged target", file);
+        },
+      },
+      { change: "deletion", stage: (file: string) => fs.unlinkSync(file) },
+    ])("preserves staged-only $change during landed cleanup", ({ stage }) => {
+      const cwd = repo();
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "landed\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "landed file");
+      const origin = withOrigin(cwd);
+      git(cwd, "push", "-q", "origin", "dev");
+      const wt = linked(cwd, FID, true);
+      const file = path.join(wt, "staged.txt");
+      stage(file);
+      git(wt, "add", "staged.txt");
+      const staged = git(wt, "ls-files", "--stage", "--", "staged.txt");
+      fs.rmSync(file, { force: true });
+      fs.writeFileSync(file, "landed\n");
+      fs.chmodSync(file, 0o644);
+
+      const messages: string[] = [];
+      const result = removeWorktree(cwd, FID, `feat/${FID}`, (m) => messages.push(m), {
+        landed: true,
+      });
+
+      expect(result).toMatchObject({
+        removed: false,
+        reason: "uncommitted",
+        branchDeleted: false,
+        remoteDeleted: false,
+      });
+      expect(messages.join("\n")).toContain("staged.txt");
+      expect(fs.readFileSync(file, "utf-8")).toBe("landed\n");
+      expect(git(wt, "ls-files", "--stage", "--", "staged.txt")).toBe(staged);
+      expect(fs.existsSync(ownershipMarker(cwd, FID))).toBe(true);
+      expect(git(cwd, "branch", "--list", `feat/${FID}`)).toContain(`feat/${FID}`);
+      expect(git(origin, "branch", "--list", "dev")).toContain("dev");
+    });
+
+    it("removes landed staged content when both index and working contents are on dev", () => {
+      const cwd = repo();
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "base\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "base file");
+      withOrigin(cwd);
+      const wt = linked(cwd, FID, true);
+      fs.writeFileSync(path.join(cwd, "staged.txt"), "landed\n");
+      git(cwd, "add", "staged.txt");
+      git(cwd, "commit", "-qm", "landed file");
+      git(cwd, "push", "-q", "origin", "dev");
+      fs.writeFileSync(path.join(wt, "staged.txt"), "landed\n");
+      git(wt, "add", "staged.txt");
+
+      const result = removeWorktree(cwd, FID, `feat/${FID}`, () => {}, { landed: true });
+
+      expect(result).toMatchObject({ removed: true, branchDeleted: true });
+      expect(fs.existsSync(wt)).toBe(false);
+    });
+
+    it("deletes the proved local and remote branch at their landed tips", async () => {
       const cwd = repo();
       const origin = withOrigin(cwd);
+      git(cwd, "push", "-q", "origin", "dev");
       linked(cwd, FID, true);
       git(cwd, "push", "-q", "origin", `feat/${FID}`);
       expect(remoteHas(origin)).toBe(true);
@@ -709,6 +866,27 @@ describe("bkit worktrees remove", () => {
       });
       expect(git(cwd, "branch", "--list", `feat/${FID}`)).toBe("");
       expect(remoteHas(origin)).toBe(false);
+    });
+
+    it("retains the remote branch when origin refuses its conditional deletion", async () => {
+      const cwd = repo();
+      const origin = withOrigin(cwd);
+      git(cwd, "push", "-q", "origin", "dev");
+      linked(cwd, FID, true);
+      git(cwd, "push", "-q", "origin", `feat/${FID}`);
+      const hook = path.join(origin, "hooks", "pre-receive");
+      fs.writeFileSync(hook, "#!/bin/sh\necho refused >&2\nexit 1\n");
+      fs.chmodSync(hook, 0o755);
+      const r = await remove(cwd, `--branch=feat/${FID}`);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({
+        removed: true,
+        branchDeleted: true,
+        remoteDeleted: false,
+        branchBlockedBy: null,
+      });
+      expect(remoteHas(origin)).toBe(true);
+      expect(r.err).toContain(`remote origin/feat/${FID} not deleted — preserved`);
     });
 
     it("an unmarked worktree holding the branch blocks BOTH deletes and is named", async () => {
@@ -745,12 +923,12 @@ describe("bkit worktrees remove", () => {
       expect(remoteHas(origin)).toBe(true);
     });
 
-    it("a branch already gone everywhere is reported deleted", async () => {
+    it("a branch already gone is reported as unavailable without claiming deletion", async () => {
       const cwd = repo();
       withOrigin(cwd);
       const r = await remove(cwd, `--branch=feat/${FID}`);
       expect(r.json).toMatchObject({
-        branchDeleted: true,
+        branchDeleted: false,
         remoteDeleted: false,
         branchBlockedBy: null,
       });
