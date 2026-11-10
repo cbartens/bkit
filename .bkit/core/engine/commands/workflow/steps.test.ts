@@ -2210,7 +2210,7 @@ describe("bkit steps stub --result-file", () => {
       [
         "bkit-build-plan-verify",
         { Tasks: "1, 2", Loosened: "none" },
-        { Verdict: "FAIL", Failures: "2", Fixable: "false", Tasks: "1, 2", Loosened: "none" },
+        { Verdict: "FAIL", Failures: "2", Fixable: "true", Tasks: "1, 2", Loosened: "none" },
       ],
     ];
     for (const [agent, judgments, expected] of kinds) {
@@ -2232,7 +2232,7 @@ describe("bkit steps stub --result-file", () => {
     await run(cwd, stubArgs("bkit-build-plan-verify", "logs/clean.json", "logs/clean.md"));
     expect(header(cwd, "logs/clean.md")).toContain("Verdict: PASS");
     expect(header(cwd, "logs/clean.md")).toContain("Failures: 0");
-    expect(header(cwd, "logs/clean.md")).toContain("Fixable: true");
+    expect(header(cwd, "logs/clean.md")).toContain("Fixable: false");
 
     // Incomplete evidence never becomes PASS.
     resultFile(cwd, "logs/partial.json", {

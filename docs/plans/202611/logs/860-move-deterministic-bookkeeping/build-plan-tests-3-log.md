@@ -25,3 +25,4 @@ SOURCE — TASK 6: audit comment format "### Audit Summary: {slug} - Status: …
 WROTE — TASK 6: `.bkit/core/engine/commands/workflow/issues.test.ts` `renders audit comments from validated result and preserves tracker adapters`
 SOURCE — TASK 6: status invocation --standalone=audit --name from .bkit/core/engine/commands/workflow/status.ts:580-660; the compiled-CLI import-cycle probe is not testable in a unit run (needs pnpm build) and is left to the code step/group gate
 WROTE — TASK 6: `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps rendered audit report appended rows and tracker draft counts identical`
+WROTE — TASK 3: `.bkit/core/engine/commands/workflow/steps.test.ts` `derives supported header fields and rejects stale bodies without false PASS`: corrected two Fixable expectations (verify row now "true"; clean log now "false") to follow bkit-build-plan-verify.md
