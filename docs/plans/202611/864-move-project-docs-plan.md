@@ -655,7 +655,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 18 end -->
 <!-- bkit:task 19 start -->
 
-- [ ] **TASK 19:** A Project Documents table that lists a deleted `old/security.md` above a populated `eng/security.md` gets `bkit check` saying "No project document covers: docs/security.md", because `findIndexedEquivalent` returns the first same-topic row and the detector calls it with the default `usable = () => true`.
+- [x] **TASK 19:** A Project Documents table that lists a deleted `old/security.md` above a populated `eng/security.md` gets `bkit check` saying "No project document covers: docs/security.md", because `findIndexedEquivalent` returns the first same-topic row and the detector calls it with the default `usable = () => true`.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:426` · **Round:** 2
   - **DONE WHEN:** When the default path is absent, the detector (`.bkit/core/engine/checks/after/tools.ts:495`) resolves the topic to the first indexed row that is in-tree and a regular file (the same `usable` predicate sync passes at `project-docs.ts:528`), so a stale or out-of-tree row ahead of a valid one yields neither `project-docs-missing` nor `project-docs-ambiguous` for that topic; when every candidate row is unusable, the advisory names those rows. Plan Edge Cases: "Indexed equivalent uses a different path → Consult it; do not emit a false missing-default-path warning."
   - **TEST FIRST:**
@@ -675,7 +675,7 @@ The groups describe implementation order. A single pull request can carry all gr
 <!-- bkit:task 20 end -->
 <!-- bkit:task 21 start -->
 
-- [ ] **TASK 21:** A consumer whose Project Documents row is `| [docs/security.md](docs/security.md) | ... |` gets a second `docs/security.md` row written into their own table on the next install / upgrade, and a row with no trailing pipe has its `Equivalent to docs/security.md` Scope ignored, because the row parser only sees a backticked first cell and takes Scope as `cells[length - 2]`.
+- [x] **TASK 21:** A consumer whose Project Documents row is `| [docs/security.md](docs/security.md) | ... |` gets a second `docs/security.md` row written into their own table on the next install / upgrade, and a row with no trailing pipe has its `Equivalent to docs/security.md` Scope ignored, because the row parser only sees a backticked first cell and takes Scope as `cells[length - 2]`.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.ts:338` · **Round:** 2
   - **DONE WHEN:** `readProjectIndex` reads a row's path from a backticked cell, a Markdown link target or a bare path, and takes Scope as the last non-empty cell whether or not the row ends in `|` (escaped `\|` not splitting a cell); a row it cannot parse is reported as ambiguous rather than treated as absent. `syncProjectDocs` adds no row for a path already listed in any of those forms. Plan Success Criteria: "Register adopted project docs ... without duplicates or overwriting existing entries."
   - **TEST FIRST:**
