@@ -1040,6 +1040,40 @@ describe("buildSummary", () => {
     expect(s.markdown).not.toContain("## Documentation Warnings");
   });
 
+  it("excludes the debug tracker sweep context-related-N.md from documentation warnings", () => {
+    const text = [
+      "# Related issues",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "TRACKER-EVIDENCE",
+        action: "DEBUG-TRACKER-INJECTED-ACTION",
+      }),
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "debug-context",
+            verdict: "PASS",
+            artifacts: ["log/context-related-1.md"],
+          },
+        ],
+        read: reader({ "log/context-related-1.md": text }),
+      }),
+    );
+    expect(s.markdown).not.toContain("DEBUG-TRACKER-INJECTED-ACTION");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
+  });
+
   it("ignores warning records inside an UNTRUSTED fence", () => {
     const rec = (action: string) =>
       JSON.stringify({

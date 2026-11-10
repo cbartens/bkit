@@ -701,6 +701,22 @@ describe("detectProjectDocs", () => {
     expect(cleanup!.severity).toBe("advisory");
   });
 
+  it("does not promise bkit upgrade for an unindexed doc whose wrapper is ambiguous", () => {
+    writeDoc(
+      "docs/security.md",
+      "<!-- bkit:start -->\n# Security\n\nAuth uses session cookies issued by the api service.\n",
+    );
+    writeIndex([]);
+    const findings = detectProjectDocs(tmpDir);
+    expect(findings.some((f) => f.id === "project-docs-cleanup")).toBe(true);
+    const actions = findings
+      .filter((f) => f.id === "project-docs-unindexed")
+      .map((f) => f.action)
+      .join("\n");
+    expect(actions).toContain("once the wrapper is gone");
+    expect(actions).not.toContain("to register the default paths");
+  });
+
   it("reports an index row through a regular file as ambiguous instead of throwing", () => {
     fs.writeFileSync(path.join(tmpDir, "README.md"), "# readme\n");
     writeIndex([{ doc: "README.md/security.md" }]);

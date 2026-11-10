@@ -205,13 +205,14 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 | `project-docs-empty` | A covering document is empty |
 | `project-docs-unpopulated` | A covering document is still a current or legacy starter, or only headings |
 | `project-docs-unindexed` | A populated candidate exists but the index does not list it, or lists another document for the same topic |
+| `project-docs-cleanup` | A project document keeps a bkit ownership wrapper (`bkit:start` / `bkit:end` lines or the `bkit:managed` notice) that could not be removed safely |
 | `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |
 
 A document that differs from every starter is a candidate for agent assessment; the check does not claim it is complete.
 
 ## Phase documentation warnings
 
-Agents that consult project documents write gaps as `jsonl` records (`topic`, `gap`, `recommendedPath`, `alternativeEvidence`, `action`) under `## Documentation Warnings`. `bkit workflows summary` (`commands/workflow/summary.ts`) reads those records only from the active run's step artifacts, skips raw `*-input-*` files and malformed lines, merges records by topic and gap, and prints one `## Documentation Warnings` section in the summary. The section is advisory and never changes the verdict or failure count.
+Agents that consult project documents write gaps as `jsonl` records (`topic`, `gap`, `recommendedPath`, `alternativeEvidence`, `action`) under `## Documentation Warnings`. `bkit workflows summary` (`commands/workflow/summary.ts`) reads those records only from the active run's step artifacts, skips raw `*-input-*` files, the tracker artifacts `related-(issues|failures|deferrals).md` and `context-related-*.md`, text between `===== BEGIN UNTRUSTED =====` / `===== END UNTRUSTED =====` markers, and malformed lines, merges records by topic and gap, and prints one `## Documentation Warnings` section in the summary. The section is advisory and never changes the verdict or failure count.
 
 ## Phase 3 Credential + Migration Findings
 

@@ -485,6 +485,7 @@ export function detectProjectDocs(
   const empty: string[] = [];
   const unpopulated: string[] = [];
   const unindexed: string[] = [];
+  const unindexedWrapped: string[] = [];
   const duplicates: string[] = [];
   const ambiguous: string[] = [];
   const cleanup: string[] = [];
@@ -532,6 +533,7 @@ export function detectProjectDocs(
       );
       if (covering !== null && target === recommended)
         duplicates.push(`${target} (beside ${covering})`);
+      else if (wrapper.status === "ambiguous") unindexedWrapped.push(target);
       else unindexed.push(target);
     }
   }
@@ -577,6 +579,14 @@ export function detectProjectDocs(
       severity: "advisory",
       detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them: ${unindexed.join(", ")}.`,
       action: `Add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH}, or run \`bkit upgrade\` to register the default paths.`,
+    });
+  }
+  if (unindexedWrapped.length > 0) {
+    findings.push({
+      id: "project-docs-unindexed",
+      severity: "advisory",
+      detect: `These project documents exist but ${PROJECT_INDEX_PATH} does not list them, and bkit will not register them while their ownership wrapper stays: ${unindexedWrapped.join(", ")}.`,
+      action: `Remove the wrapper as the cleanup advisory describes, then add a row for each to \`## Project Documents\` in ${PROJECT_INDEX_PATH} (or run \`bkit upgrade\` once the wrapper is gone).`,
     });
   }
   if (duplicates.length > 0) {

@@ -152,7 +152,8 @@ const WARNING_FIELDS = [
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
 const isRawInput = (rel: string) =>
   /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
-  /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel);
+  /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
+  /(^|\/)context-related-[^/]*$/.test(rel);
 /** Text between the untrusted-content markers is external data: never a source of warnings. */
 const stripUntrusted = (text: string) =>
   text.replace(

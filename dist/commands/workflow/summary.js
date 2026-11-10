@@ -77,7 +77,8 @@ const WARNING_FIELDS = [
 ];
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
 const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
-    /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel);
+    /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
+    /(^|\/)context-related-[^/]*$/.test(rel);
 /** Text between the untrusted-content markers is external data: never a source of warnings. */
 const stripUntrusted = (text) => text.replace(/^[^\n]*={5} BEGIN UNTRUSTED ={5}[\s\S]*?(?:={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)|(?![\s\S]))/gm, "");
 /**
