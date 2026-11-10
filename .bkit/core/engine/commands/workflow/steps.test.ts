@@ -2272,20 +2272,46 @@ describe("bkit steps stub --result-file", () => {
     expect((await run(cwd, verdictArgs)).code).toBe(6);
   });
 
-  it("renders and verifies the header of every prompt that declares one", async () => {
-    const cwd = repo();
-    const agents = fs
+  const headerPromptAgents = (): string[] =>
+    fs
       .readdirSync(getPromptsRoot())
       .filter((n) => n.endsWith(".md"))
       .map((n) => n.slice(0, -3))
-      .filter((agent) => {
-        try {
-          return promptHeader(agent).verdicts.length > 0 && agent !== "bkit-audit-generate";
-        } catch {
-          return false;
-        }
-      });
+      .filter((agent) =>
+        fs
+          .readFileSync(path.join(getPromptsRoot(), `${agent}.md`), "utf-8")
+          .split("\n")
+          .some((l) => l.startsWith("Verdict: ")),
+      )
+      .filter(
+        (agent) => promptHeader(agent).verdicts.length > 0 && agent !== "bkit-audit-generate",
+      );
+
+  const judgmentsFor = (declared: ReturnType<typeof promptHeader>): Record<string, string> => {
+    const judgments: Record<string, string> = {};
+    for (const f of declared.fields) {
+      if (f.name === "Failures" || f.name === "Fixable") continue;
+      judgments[f.name] = f.values ? f.values[0]! : f.integer ? "1" : "none";
+    }
+    return judgments;
+  };
+
+  // Asserts the derived Failures / Fixable fields only for headers that declare them.
+  const expectDerived = (
+    declared: ReturnType<typeof promptHeader>,
+    fields: Record<string, string>,
+    agent: string,
+    failures: string,
+    fixable: string,
+  ): void => {
+    const has = (name: string) => declared.fields.some((f) => f.name === name);
+    if (has("Failures")) expect(fields["Failures"], agent).toBe(failures);
+    if (has("Fixable")) expect(fields["Fixable"], agent).toBe(fixable);
+  };
+
+  it("registers every named header kind", () => {
     // The registered header kinds named by the review: each must be in the table.
+    const agents = headerPromptAgents();
     for (const named of [
       "bkit-build-challenge-2",
       "bkit-plan-review-2",
@@ -2299,15 +2325,13 @@ describe("bkit steps stub --result-file", () => {
       "bkit-ship-deferred-sweep",
     ])
       expect(agents).toContain(named);
+  });
 
-    for (const agent of agents) {
+  it("renders and verifies the header of every prompt that declares one", async () => {
+    const cwd = repo();
+    for (const agent of headerPromptAgents()) {
       const declared = promptHeader(agent);
-      const judgments: Record<string, string> = {};
-      for (const f of declared.fields) {
-        if (f.name === "Failures" || f.name === "Fixable") continue;
-        judgments[f.name] = f.values ? f.values[0]! : f.integer ? "1" : "none";
-      }
-      const has = (name: string) => declared.fields.some((f) => f.name === name);
+      const judgments = judgmentsFor(declared);
 
       // One fixable finding: FAIL with derived counts, and the read accepts what was rendered.
       resultFile(cwd, `logs/${agent}.json`, { findings: [finding(1)], judgments });
@@ -2315,8 +2339,7 @@ describe("bkit steps stub --result-file", () => {
       expect(res.code, agent).toBe(0);
       const fields = headerFields(header(cwd, `logs/${agent}.md`));
       expect(fields["Verdict"], agent).toBe("FAIL");
-      if (has("Failures")) expect(fields["Failures"], agent).toBe("1");
-      if (has("Fixable")) expect(fields["Fixable"], agent).toBe("true");
+      expectDerived(declared, fields, agent, "1", "true");
       for (const [k, v] of Object.entries(judgments)) expect(fields[k], `${agent} ${k}`).toBe(v);
       expect(
         (await run(cwd, ["steps", "verdict", `--file=logs/${agent}.md`, `--agent=${agent}`])).code,
@@ -2332,8 +2355,7 @@ describe("bkit steps stub --result-file", () => {
       expect(clean.code, agent).toBe(0);
       const cleanFields = headerFields(header(cwd, `logs/${agent}-clean.md`));
       expect(cleanFields["Verdict"], agent).toBe("PASS");
-      if (has("Failures")) expect(cleanFields["Failures"], agent).toBe("0");
-      if (has("Fixable")) expect(cleanFields["Fixable"], agent).toBe("false");
+      expectDerived(declared, cleanFields, agent, "0", "false");
     }
   });
 

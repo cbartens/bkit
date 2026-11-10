@@ -485,7 +485,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Reconcile ledger operations with durable receipts (deterministic-bookkeeping-7; R3, R8, R16, R20–R21, R25).
+- [x] **TASK 4:** Reconcile ledger operations with durable receipts (deterministic-bookkeeping-7; R3, R8, R16, R20–R21, R25).
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: strict ledger operation/receipt helpers on existing action key/hash primitives, preserving tracker changed-hash behavior; cycle-free exclusive-create helper. This is the single lock-and-confirm helper (append, flush, read-back, interrupted-write check) shared by `status.jsonl` and the `docs/*.jsonl` ledgers; extend #836's boundary if it landed first.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.ts`: delegate only low-level exclusive creation while preserving workflow lock public behavior and ownership.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: engine-issued operation preparation (the same operation context that #836 passes through `commitOwnSet`, `ownPathCommit`, `commitBookkeeping` and `retriggerCommit`; issue the ID into that context or read it from there), immutable request hash, target lock, exact prepared bytes, fsync/completion receipt and explicit reconciliation; make union/compact coordinate pending target effects.
