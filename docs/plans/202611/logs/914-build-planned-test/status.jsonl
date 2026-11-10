@@ -37,3 +37,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:08Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"7f613db7e74eaf605dd6d767e989cc339dea8d9aa4af03b7e4e5afb0ccf9df40","ref":"https://github.com/cbartens/bkit/issues/914#issuecomment-6781780058","at":"2026-11-10T23:51:10Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T23:51:10Z","parentSha":"d1924c1a6d8b561125c15f032b58e66afe1c18fd","artifacts":["docs/plans/202611/logs/914-build-planned-test/plan-v2-reviewed.md","docs/plans/202611/logs/914-build-planned-test/plan-update-check.md"],"verdict":"PASS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:20Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:21Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:26Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:26Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:33Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"218c8c0f4a8bb5c41f1db7eef1d07cce2355a9a1017fd58fbf41c314859624e0","ref":"https://github.com/cbartens/bkit/issues/914#issuecomment-6781780058","at":"2026-11-10T23:51:36Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-10T23:51:36Z","parentSha":"2155a63b69c3cc659ba9f4b18b1627dcf4a8c77f","artifacts":["docs/plans/202611/logs/914-build-planned-test/plan-summary.md"],"verdict":"PASS","attempt":1,"failures":0}
