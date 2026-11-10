@@ -124,6 +124,18 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | refuses to issue an invocation into a status file outside the issuing checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 11 |
 | starts a step clock at the previous step row, not at an invocation row | Unit | `.bkit/core/engine/commands/workflow/run-facts.test.ts` | 11 |
 | accepts verified unavailable model without confusing configured and observed models | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 12 |
+| audit result render keeps an existing anchored report intact | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 13 |
+| resolves a pending ledger intent after its invocation is stale | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 14 |
+| appends the printed audit ledgerRows verbatim under the standalone invocation | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 15 |
+| blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 16 |
+| refuses to re-append a partly landed block after a foreign writer appended | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 17 |
+| issues the same operation for rows whose keys are reordered | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 18 |
+| derives audit ledger keys under the audit-slug prefix | Unit | `.bkit/core/engine/commands/workflow/issues.test.ts` | 19 |
+| renders no PASS from a result that omits its evidence | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 20 |
+| routes every ledgers query reader on coverage status | Unit | `.bkit/core/engine/tools/instructions.test.ts` | 21 |
+| writes no absolute checkout path into the run's committed invocation event | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 22 |
+| keeps ledger operation intents and receipts out of committed book paths | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 23 |
+| refuses line breaks in header-bound result values | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 24 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -643,6 +655,132 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 9 end -->
 <!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [ ] **TASK 13:** An audit run that follows its prompt overwrites its own finished report: `steps stub --result-file --to=<Create>` replaces the anchored audit report (Probe Steps, Findings, Report, Project Instructions) with the short summary
+      **Severity:** CRITICAL · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:2328` · **Round:** 1
+  - **DONE WHEN:** Rendering an audit result never destroys an existing populated report: the `bkit:anchor` block and every template section the agent wrote survive the render. No agent can settle this alone, because `.bkit/core/prompts/bkit-audit-generate.md:164` sends the summary to `<Create>` (the report itself) while the audit result carries no body; the owner must decide whether the engine splices the Status / Report / Findings header and derived tables into the existing report, or writes the summary to its own path.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `audit result render keeps an existing anchored report intact` fails on `steps stub --agent=bkit-audit-generate --result-file` overwriting a report that holds a `bkit:anchor` block and filled Probe Steps / Findings sections, leaving only the rendered summary.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [ ] **TASK 14:** A ledger append that crashes between its intent and its receipt can never be reconciled once its invocation goes stale, so the committed pending intent blocks `ledgers union`, compact, migrate and every `--correction-of` on that ledger for good
+      **Severity:** HIGH · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1699` · **Round:** 1
+  - **DONE WHEN:** A pending intent always has a reachable resolution: reconciliation by operation id alone (checking the prepared bytes at the recorded offset) works without the original invocation, or an engine verb resolves or abandons it with evidence, and teardown union does not fail forever on an intent another checkout wrote. No agent can settle this alone, because the request hash binds the invocation id (`ledgers.ts:1571`), invocations go stale when a newer run starts (`commands/lib.ts` `resolveInvocation`) and `.bkit/ledger-operations.jsonl` rides every bookkeeping commit via `.bkit/*.jsonl`, although the plan's Data Schema Changes row 'Ledger operation' places receipts in the git-common outbox; the owner must decide who may reconcile an intent and whether it is checkout-local or committed state.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `resolves a pending ledger intent after its invocation is stale` fails on a crash at the `prepared` checkpoint followed by a new run start leaving `ledgers union` exiting with 'replay them first' and every replay of the operation refused as a different request.
+
+<!-- bkit:task 14 end -->
+<!-- bkit:task 15 start -->
+
+- [ ] **TASK 15:** Feeding the audit `ledgerRows` the engine prints straight into `ledgers append --invocation` is refused, because each row's `by.step` is `audit-<slug>` while the standalone invocation vouches for `audit:<slug>`; the integration test hides this by stripping `by`
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:747` · **Round:** 1
+  - **DONE WHEN:** The rows `steps stub --agent=bkit-audit-generate --result-file` prints append unchanged under the `--standalone=audit --name=<slug>` invocation: `auditLedgerRows` emits no `by` block (or one equal to the invocation's), and the integration test passes the printed rows verbatim.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `appends the printed audit ledgerRows verbatim under the standalone invocation` fails on exit 8 with `conflict: by.step="audit-security" disagrees with invocation`.
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [ ] **TASK 16:** A resumed re-trigger push on a feature branch force-overwrites a commit someone else pushed, whenever any fetch already moved `origin/<branch>` to it: the remote-movement guard only blocks when the tracking ref is stale, which is exactly when `--force-with-lease` would have failed anyway
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:1103` · **Round:** 1
+  - **DONE WHEN:** At the `commit-created` checkpoint, a remote tip that is neither the re-trigger commit nor its ancestor blocks the push whatever `origin/<branch>` says, the remote commit stays reachable, and no `push-completed` row is written.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it` fails on the bare remote's foreign commit becoming unreachable after the dispatcher resumes from `commit-created`.
+
+<!-- bkit:task 16 end -->
+<!-- bkit:task 17 start -->
+
+- [ ] **TASK 17:** After a crash leaves part of a prepared block in the ledger and the lock is cleared as the error message advises, a friction or plain append lands next (neither checks pending intents), and reconciling the operation then takes the 'none of ours landed: prepare afresh' branch and appends rows that already landed a second time
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1740` · **Round:** 1
+  - **DONE WHEN:** Reconciliation prepares afresh only when no byte of the prepared block landed at the recorded offset; any landed prefix of the block followed by foreign bytes reports `UncertainEffect` and appends nothing, and no fold winner or lineage count is duplicated.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended` fails on a two-row operation whose first row and half of its second landed, followed by an `appendFrictionRow` write, being reconciled with exit 0 and the first row present twice.
+
+<!-- bkit:task 17 end -->
+<!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 18 start -->
+
+- [ ] **TASK 18:** An agent that retries a lost `--issue-operation` append with the same rows but a different JSON key order gets a new engine-issued operation id and appends every row a second time, because the request hash is `JSON.stringify` of the raw rows, not a canonical form
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1471` · **Round:** 1
+  - **DONE WHEN:** The issued operation id and the stored request hash (`ledgers.ts:1471`, `ledgers.ts:1571`) are computed from a key-sorted canonical serialization, so semantically equal rows replay the original receipt and append nothing.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `issues the same operation for rows whose keys are reordered` fails on the second `--issue-operation` call returning `replayed: false` and the ledger gaining a second copy of the row.
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [ ] **TASK 19:** Audit ledger keys the engine derives are `<slug>-<title>`, while `bkit-audit-generate.md` defines new keys as `audit-<slug>-<content-slug>` and closes stale rows by the `audit-<slug>-` prefix, so rows the engine keys are never closed by later audit runs
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:734` · **Round:** 1
+  - **DONE WHEN:** `auditEntries` derives new keys as `audit-<slug>-<content-slug>`, matching the prompt's key format and its closure prefix, and a derived key can never equal a report finding ID such as `<slug>-1`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/issues.test.ts` `derives audit ledger keys under the audit-slug prefix` fails on `auditEntries` returning `security-missing-csrf-token` instead of `audit-security-missing-csrf-token`.
+
+<!-- bkit:task 19 end -->
+<!-- bkit:task 20 start -->
+
+- [ ] **TASK 20:** A result file that is just `{}` (or omits `evidenceComplete` and `body`) renders a `Verdict: PASS` challenge or review artifact with an empty body, because `evidenceComplete` defaults to true
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:1660` · **Round:** 1
+  - **DONE WHEN:** `renderResult` requires an explicit boolean `evidenceComplete` (and a non-empty `body` for a PASS) and exits 6 writing nothing when either is missing, so missing evidence never becomes PASS.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `renders no PASS from a result that omits its evidence` fails on `renderResult(cwd, 'bkit-build-challenge-1', {})` returning text with `Verdict: PASS`.
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [ ] **TASK 21:** On a fresh consumer with no `docs/failures.jsonl` (coverage `missing`) or a ledger holding one malformed line (coverage `partial`), the prompts' 'follow `nextCursor` until `coverage.clean` is true' never terminates and names no route, so the agent loops, stops, or quietly treats the scan as clean
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/prompts/bkit-audit-generate.md:165` · **Round:** 1
+  - **DONE WHEN:** Every prompt that reads `bkit ledgers query` (audit-generate, ship-deferred-sweep, debug-failure-diagnose and the five utility-update prompts) stops paging when `nextCursor` is null and routes on `coverage.status`: `missing` = no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/tools/instructions.test.ts` `routes every ledgers query reader on coverage status` fails on a prompt that cites `coverage.clean` without naming the `missing` and `partial` routes.
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [ ] **TASK 22:** Every issued invocation commits the developer's absolute checkout paths (home directory and username, e.g. `/Users/<name>/...`) into the tracked run `status.jsonl`, which ships in consumer repo history and bkit's public repo.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/status.ts:742` · **Round:** 1
+  - **DONE WHEN:** The `invocation` event appended to the run's tracked `status.jsonl` holds no absolute path: `statusPath` and `bookRoot` are stored relative to the checkout top, and `worktree` is dropped or replaced by a one-way fingerprint. `rebuildInvocation` (`.bkit/core/engine/commands/lib.ts`) resolves them against the current top and still refuses a receipt for another checkout. Absolute paths stay only in the private outbox receipt.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `writes no absolute checkout path into the run's committed invocation event` fails on the appended `invocation` row containing the temporary checkout's absolute path in `statusPath`, `bookRoot` or `worktree`.
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 1 findings
+
+<!-- bkit:task 23 start -->
+
+- [ ] **TASK 23:** Ledger-operation intents and receipts live in the committed, union-carried `.bkit/ledger-operations.jsonl`, not the private git-common outbox the plan names. A crash, or a branch that commits a receipt-less intent row, then propagates on merge and blocks `ledgers union` (worktree teardown), `ledgers compact` and the upgrade-path `migrateLedgers` in every checkout. The replay that would clear it needs the original request, which no other checkout can reproduce.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/ledgers/status.ts:675` · **Round:** 1
+  - **DONE WHEN:** Intents and receipts are written under `<git common dir>/bkit-outbox/` with private file permissions, as the plan's Data Schema Changes row and `docs/security.md` § Workflow comment ownership require. No `bookPathspecs` or `UNION_PATHSPECS` entry stages or carries them. An intent row arriving in tracked content no longer blocks union, compact or migrate.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `keeps ledger operation intents and receipts out of committed book paths` fails on `appendLedgerRows` with an `operation` creating `<root>/.bkit/ledger-operations.jsonl`, or on a receipt-less intent row in that tracked file making `unionLedgers` throw.
+
+<!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [ ] **TASK 24:** A line break in a header-bound result value (`report`, `issue` or `parent` in an audit result, or any free-text judgment) injects forged header lines and an early `<!-- verdict:end -->`. For example, a multi-line `report` that adds `Findings: CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW 0` makes `readHeader` read zero findings over the engine-derived `CRITICAL 1`. Because the cut-off header carries no `Fingerprint`, `fingerprintProblem` treats the artifact as hand-written and skips the stale check.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:1566` · **Round:** 1
+  - **DONE WHEN:** `renderResult` / `renderAudit` and `parseAuditResult` refuse (EXIT_INVALID, nothing written) any value that is rendered into a header line and contains CR or LF, including `report`, `issue`, `parent` and every judgment at `steps.ts:1652`. The `Report:` line `issues comment --result-file` builds applies the same rule.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `refuses line breaks in header-bound result values` fails on `renderResult(cwd, "bkit-audit-generate", …)` with a CRITICAL finding and a multi-line `report` returning rendered text, whose written file `readHeader` then reads as `Findings: CRITICAL 0 …` with no fingerprint check.
+
+<!-- bkit:task 24 end -->
+<!-- bkit:group 7 end -->
 
 The required shared wording in Task 9 is copied from #860:
 
