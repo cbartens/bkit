@@ -1954,6 +1954,118 @@ describe("bkit ledgers append --invocation", () => {
     expect(fs.existsSync(path.join(elsewhere, "docs/knowledge.jsonl"))).toBe(false);
     expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
   });
+
+  it("gives a runless invocation a correction scope and a bounded two-retry budget", async () => {
+    const r = repo();
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+    const bad = [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })];
+    const scope = "ledgers-append:knowledge:append:audit:run0:audit:bkit-audit-example";
+    const invoke = [`--invocation=${id}`];
+
+    // A no-write rejection names the scope the corrected retries share.
+    const first = await appendWith(r, "knowledge", bad, [...invoke, "--operation=op-1"]);
+    expect(first.code).toBe(EXIT_ROW_REFUSED);
+    expect(first.json.error).toMatchObject({ scope, correctable: true });
+    expect(fs.existsSync(ledgerFile)).toBe(false);
+
+    // A correction naming a never-rejected operation is refused.
+    const unknown = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-9",
+      "--correction-of=op-0",
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.err).toContain("names no rejected knowledge append");
+
+    // Two corrected retries spend the budget; the second is final and the third is refused.
+    const second = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-2",
+      "--correction-of=op-1",
+    ]);
+    expect(second.code).toBe(EXIT_ROW_REFUSED);
+    const third = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-3",
+      "--correction-of=op-2",
+    ]);
+    expect(third.code).toBe(EXIT_ROW_REFUSED);
+    expect(third.err).not.toContain('"correctable":true');
+    const fourth = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "fixed" })],
+      [...invoke, "--operation=op-4", "--correction-of=op-3"],
+    );
+    expect(fourth.err).toContain("budget");
+    expect(fs.existsSync(ledgerFile)).toBe(false);
+  });
+
+  it("lands a standalone corrected candidate and reports the spend", async () => {
+    const r = repo();
+    const out: string[] = [];
+    await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const invoke = [`--invocation=${id}`];
+    const rejected = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })],
+      [...invoke, "--operation=op-1"],
+    );
+    expect(rejected.code).toBe(EXIT_ROW_REFUSED);
+    const fixed = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x" })],
+      [...invoke, "--operation=op-2", "--correction-of=op-1"],
+    );
+    expect(fixed.code).toBe(0);
+    expect(fixed.json.correction).toMatchObject({
+      operation: "op-2",
+      of: "op-1",
+      used: 1,
+      limit: 2,
+      verified: true,
+    });
+    expect(fs.readFileSync(path.join(r, "docs/knowledge.jsonl"), "utf-8")).toContain('"x"');
+  });
 });
 
 describe("bkit ledgers query", () => {

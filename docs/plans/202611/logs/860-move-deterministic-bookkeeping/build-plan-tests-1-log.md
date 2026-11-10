@@ -29,3 +29,4 @@ WROTE — TASK 10: `.bkit/core/engine/ledgers/journal.integration.test.ts` `keep
 SOURCE — TASK 11: MARK_ROWS lacks invocation from .bkit/core/engine/commands/workflow/run-facts.ts:338; invocation row appended from .bkit/core/engine/commands/workflow/status.ts:718
 WROTE — TASK 11: `.bkit/core/engine/commands/workflow/status.test.ts` `refuses to issue an invocation into a status file outside the issuing checkout`
 WROTE — TASK 11: `.bkit/core/engine/commands/workflow/run-facts.test.ts` `starts a step clock at the previous step row, not at an invocation row`
+PASSES — TASK 2: `.bkit/core/engine/ledgers/telemetry.test.ts` `accepts verified unavailable model without confusing configured and observed models`: Task 12 (group 2) names the same test; its tests step replaced a double cast with a plain spread, which changed this test's lines after Task 2's red, so the red record is re-taken against the corrected test, which passes because the group 1 code is built

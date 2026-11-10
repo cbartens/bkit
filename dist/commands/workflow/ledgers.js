@@ -18,7 +18,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, queryLedger, mintTs, resolveRepoSlug, validate, withLineage, writerProblem, } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers } from "../../ledgers/compact.js";
 import { CORRECTION_REJECTED_ROW, CORRECTION_SUCCEEDED_ROW, LEDGER_OPERATIONS_FILE, actionHash, appendHeld, appendLine, correctionScope, ledgerIntent, ledgerOperation, pendingLedgerIntents, recordLedgerIntent, recordLedgerOperation, statusTimestamp, withTargetLock, writePrepared, } from "../../ledgers/status.js";
-import { CommandError, CorrectionExhausted, EXIT, INVOCATION_FLAG, isIgnoredPath, isSharedBranch, NoWriteRejection, parseJson, UncertainEffect, wholeNumber, } from "../lib.js";
+import { CommandError, CorrectionExhausted, EXIT, INVOCATION_FLAG, invocationDir, isIgnoredPath, isSharedBranch, NoWriteRejection, parseJson, UncertainEffect, wholeNumber, } from "../lib.js";
 import { CORRECTION_LIMIT, spendCorrection } from "./counters.js";
 import { readStatusRows, str } from "./status.js";
 import { NO_MARKERS_REASON, outOfScope, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
@@ -1159,22 +1159,52 @@ export function appendOperationId(ledger, rows, invocation, options) {
     const hash = actionHash(JSON.stringify({ ledger, rows, invocation: invocation.id }));
     return `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`;
 }
-/** The correction scope of an append by a workflow-run invocation; null for any other caller. */
+/**
+ * The correction scope of an append by a workflow-run or a standalone (audit or utility)
+ * invocation; null for any other caller.
+ */
 export function appendCorrectionScope(invocation, ledger) {
-    if (invocation.scope !== "run" ||
-        invocation.statusPath === null ||
-        invocation.workflow === null ||
-        invocation.step === null)
+    const book = correctionBookKey(invocation);
+    if (book === null)
         return null;
     return correctionScope({
-        workflow: invocation.workflow,
+        workflow: book.workflow,
         run: invocation.run,
-        step: invocation.step,
+        step: book.step,
         group: invocation.group,
         attempt: invocation.attempt,
         ledger,
         substep: "append",
     });
+}
+/** The workflow and step a correction scope is cut from; the declared step for a standalone call. */
+function correctionBookKey(invocation) {
+    if (invocation.scope === "run")
+        return invocation.statusPath === null ||
+            invocation.workflow === null ||
+            invocation.step === null
+            ? null
+            : { workflow: invocation.workflow, step: invocation.step };
+    return invocation.standalone === null || invocation.declaredStep === null
+        ? null
+        : { workflow: invocation.standalone, step: invocation.declaredStep };
+}
+/**
+ * Where the correction events of `invocation` live: the run's `status.jsonl`, or for a standalone
+ * call the event file beside its outbox receipt. Null when the caller has no correction scope.
+ */
+function correctionBook(cwd, invocation) {
+    const key = correctionBookKey(invocation);
+    if (key === null)
+        return null;
+    if (invocation.scope === "run")
+        return invocation.statusPath === null ? null : { file: invocation.statusPath, ...key };
+    const dir = invocationDir(cwd);
+    if (dir === null)
+        return null;
+    const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
+    fs.appendFileSync(file, "");
+    return { file, ...key };
 }
 /** The `{key, ts}` of each row in prepared `block` bytes. */
 function receiptRows(block) {
@@ -1416,15 +1446,16 @@ function append(ctx) {
     const operation = appendOperationId(ledger, parsed.value, run, request);
     const correctionOf = str(ctx.flags.correctionOf);
     let spend;
+    const book = run === undefined || scope === null ? null : correctionBook(ctx.cwd, run);
     if (correctionOf !== undefined) {
-        if (run === undefined || scope === null || run.statusPath === null || run.workflow === null)
-            throw new CommandError(EXIT.USAGE, "--correction-of needs a workflow-run --invocation: the correction budget lives in that run");
+        if (run === undefined || scope === null || book === null)
+            throw new CommandError(EXIT.USAGE, "--correction-of needs an --invocation with a correction scope: a workflow-run call, or a standalone audit or utility call");
         if (operation === undefined || operation === correctionOf)
             throw new CommandError(EXIT.USAGE, "--correction-of needs a fresh --operation or --issue-operation: a corrected candidate has its own operation id");
-        const rejected = readStatusRows(run.statusPath).some((row) => row.type === CORRECTION_REJECTED_ROW &&
+        const rejected = readStatusRows(book.file).some((row) => row.type === CORRECTION_REJECTED_ROW &&
             row.operation === correctionOf &&
             row.scope === scope &&
-            row.workflow === run.workflow);
+            row.workflow === book.workflow);
         if (!rejected)
             throw new CommandError(EXIT.USAGE, `--correction-of=${correctionOf} names no rejected ${ledger} append in this step; only a guaranteed no-write rejection of this sub-step can be corrected`);
         // An earlier operation on this ledger whose effect is unconfirmed is reconciled first.
@@ -1434,9 +1465,9 @@ function append(ctx) {
         if (target !== undefined &&
             pendingLedgerIntents(path.join(root, LEDGER_OPERATIONS_FILE), target).length > 0)
             throw new UncertainEffect(EXIT_STAGE, `${target} holds an operation whose effect is unconfirmed; reconcile it before any corrected candidate — nothing was written`);
-        spend = spendCorrection(run.statusPath, run.workflow, scope, operation, CORRECTION_LIMIT, {
+        spend = spendCorrection(book.file, book.workflow, scope, operation, CORRECTION_LIMIT, {
             of: correctionOf,
-            step: run.step,
+            step: book.step,
             substep: "append",
         });
         if (!spend.allowed)
@@ -1447,18 +1478,15 @@ function append(ctx) {
         r = appendLedgerRows(root, ledger, parsed.value, ctx.invocation, request);
     }
     catch (err) {
-        if (err instanceof NoWriteRejection &&
-            run?.statusPath != null &&
-            run.workflow !== null &&
-            operation !== undefined) {
-            fs.appendFileSync(run.statusPath, appendLine({
+        if (err instanceof NoWriteRejection && book !== null && operation !== undefined) {
+            fs.appendFileSync(book.file, appendLine({
                 type: CORRECTION_REJECTED_ROW,
-                workflow: run.workflow,
+                workflow: book.workflow,
                 at: statusTimestamp(),
                 scope: err.detail.scope,
                 substep: err.detail.substep,
                 operation,
-                step: run.step,
+                step: book.step,
             }));
             // The last allowed retry was just used: the rejection is final, not correctable.
             if (spend !== undefined && spend.remaining === 0)
@@ -1469,23 +1497,22 @@ function append(ctx) {
     ctx.log(r.receipt?.replayed === true
         ? `operation ${r.receipt.operation} already appended to ${r.file}; nothing written`
         : `appended ${r.appended} row(s) to ${r.file}`);
-    if (spend === undefined || run?.statusPath == null || run.workflow === null || scope === null) {
+    if (spend === undefined || book === null || scope === null) {
         ctx.emit({ ...r });
         return EXIT.OK;
     }
     const verified = r.receipt?.replayed === true || r.appended === parsed.value.length;
-    const statusPath = run.statusPath;
-    const succeeded = readStatusRows(statusPath).some((row) => row.type === CORRECTION_SUCCEEDED_ROW && row.operation === operation);
+    const succeeded = readStatusRows(book.file).some((row) => row.type === CORRECTION_SUCCEEDED_ROW && row.operation === operation);
     if (verified && !succeeded)
-        fs.appendFileSync(statusPath, appendLine({
+        fs.appendFileSync(book.file, appendLine({
             type: CORRECTION_SUCCEEDED_ROW,
-            workflow: run.workflow,
+            workflow: book.workflow,
             at: statusTimestamp(),
             scope,
             substep: "append",
             operation,
             of: correctionOf,
-            step: run.step,
+            step: book.step,
         }));
     ctx.emit({
         ...r,

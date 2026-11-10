@@ -343,6 +343,10 @@ export const MARK_ROWS: ReadonlySet<string> = new Set([
   "engine-call",
   "completeness",
   "invocation",
+  "ci-handoff",
+  "correction-rejected",
+  "correction-candidate",
+  "correction-succeeded",
 ]);
 
 /** The `session` fingerprints on the run's status rows, in row order, each once. */
