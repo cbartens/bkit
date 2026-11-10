@@ -2477,4 +2477,57 @@ describe("bkit steps stub --result-file", () => {
     expect(bad.code).not.toBe(0);
     expect(fs.existsSync(path.join(cwd, "logs/c.md"))).toBe(false);
   });
+
+  it("audit result render keeps an existing anchored report intact", async () => {
+    const cwd = repo();
+    const report = [
+      "# Security audit",
+      "",
+      "<!-- bkit:anchor baseSha=abc1234 -->",
+      "<!-- bkit:outdated -->",
+      "",
+      "## Probe Steps",
+      "",
+      "1. Grepped every handler for unchecked input: MARKER-PROBE-STEPS",
+      "",
+      "## Findings",
+      "",
+      "### security-1 token leak in logs: MARKER-FINDINGS",
+      "",
+      "## Project Instructions",
+      "",
+      "Read CLAUDE.md first: MARKER-INSTRUCTIONS",
+      "",
+    ].join("\n");
+    write(cwd, "docs/audits/security.md", report);
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/security.md",
+        findings: [{ severity: "HIGH", title: "Token leak", location: "src/a.ts:1" }],
+        notChecked: [],
+      }),
+    );
+    await run(cwd, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=docs/audits/security.md",
+    ]);
+    const after = fs.readFileSync(path.join(cwd, "docs/audits/security.md"), "utf-8");
+    for (const kept of [
+      "<!-- bkit:anchor baseSha=abc1234 -->",
+      "## Probe Steps",
+      "MARKER-PROBE-STEPS",
+      "## Findings",
+      "MARKER-FINDINGS",
+      "## Project Instructions",
+      "MARKER-INSTRUCTIONS",
+    ])
+      expect(after).toContain(kept);
+  });
 });

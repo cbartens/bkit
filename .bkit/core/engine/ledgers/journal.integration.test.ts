@@ -13,7 +13,13 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { INVOCATION_FLAG, runCommand, type CommandSpec, type GhResult } from "../commands/lib";
+import {
+  INVOCATION_FLAG,
+  resolveInvocation,
+  runCommand,
+  type CommandSpec,
+  type GhResult,
+} from "../commands/lib";
 import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
 import {
@@ -854,6 +860,150 @@ describe("replay-safe ledger appends on real files", () => {
     expect(fs.readFileSync(path.join(repo, "docs", "failures.jsonl"), "utf-8")).toBe(before);
     expect(fs.existsSync(path.join(repo, "docs", "plans"))).toBe(false);
   });
+
+  it("resolves a pending ledger intent after its invocation is stale", async () => {
+    // The ledger already holds a row, so a later union takes the existing-file path.
+    appendLedgerRows(worktree, "failures", [failureRow({ key: "earlier-row" })]);
+    const first = resolveInvocation(worktree, await issue(worktree), {});
+    const rowNoBy = {
+      kind: "failure",
+      key: "lost-row",
+      summary: "a lost row",
+      severity: "HIGH",
+      status: "OPEN",
+    };
+
+    // The response is lost after the intent is recorded and before the bytes land.
+    expect(() =>
+      appendLedgerRows(worktree, "failures", [rowNoBy], first, {
+        operation: "op-stale",
+        checkpoint: failAt("prepared"),
+      }),
+    ).toThrow();
+    const intents = rows(path.join(worktree, ".bkit", "ledger-operations.jsonl")).filter(
+      (r) => r["type"] === "ledger-intent",
+    );
+    expect(intents).toHaveLength(1);
+
+    // A newer run of the same workflow starts: the first invocation is stale.
+    fs.appendFileSync(
+      path.join(worktree, STATUS_REL),
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-29T12:00:00Z" })}\n`,
+    );
+    expect(() => resolveInvocation(worktree, first.id, {})).toThrow(/stale/);
+    const second = resolveInvocation(worktree, await issue(worktree), {});
+
+    // The operation is still reachable: replaying it by id completes it with exactly one row.
+    const replay = appendLedgerRows(worktree, "failures", [rowNoBy], second, {
+      operation: "op-stale",
+    });
+    expect(replay.receipt).toMatchObject({ operation: "op-stale", rows: [{ key: "lost-row" }] });
+    const ledger = rows(path.join(worktree, "docs", "failures.jsonl"));
+    expect(ledger.map((r) => r["key"])).toEqual(["earlier-row", "lost-row"]);
+
+    // A teardown union into this checkout is no longer blocked by the intent.
+    fs.mkdirSync(path.join(main, "docs"), { recursive: true });
+    fs.writeFileSync(
+      path.join(main, "docs", "failures.jsonl"),
+      `${JSON.stringify(failureRow({ key: "from-elsewhere", ts: 1, schema: 1 }))}\n`,
+    );
+    const unioned = await call(
+      worktree,
+      [ledgersCommand],
+      ["ledgers", "union", `--src=${main}`, `--dst=${worktree}`],
+    );
+    expect(unioned.code).toBe(0);
+    expect(unioned.err).not.toContain("replay them first");
+  });
+
+  it("appends the printed audit ledgerRows verbatim under the standalone invocation", async () => {
+    const repo = bookRoot();
+    fs.writeFileSync(path.join(repo, "README.md"), "x\n");
+    git(repo, ["add", "."]);
+    git(repo, ["commit", "-q", "-m", "init"]);
+    const inv = await call(repo, COMMANDS, [
+      "status",
+      "invocation",
+      "--standalone=audit",
+      "--name=security",
+    ]);
+    expect(inv.code).toBe(0);
+    fs.writeFileSync(
+      path.join(repo, "result.json"),
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [
+          { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
+          { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        ],
+        notChecked: [],
+      }),
+    );
+    const stub = await call(repo, COMMANDS, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=result.json",
+      "--to=docs/audits/202611/security-summary.md",
+    ]);
+    expect(stub.code).toBe(0);
+    // The printed rows go in exactly as printed, `by` included.
+    const printed = stub.json!["ledgerRows"] as Array<Record<string, unknown>>;
+    expect(printed).toHaveLength(2);
+    fs.writeFileSync(path.join(repo, "rows.json"), JSON.stringify(printed));
+    const appended = await call(
+      repo,
+      [ledgersCommand],
+      [
+        "ledgers",
+        "append",
+        `--root=${repo}`,
+        "--ledger=failures",
+        `--rows=${path.join(repo, "rows.json")}`,
+        `--invocation=${inv.json!["invocation"] as string}`,
+      ],
+    );
+    expect(appended.err).not.toContain("disagrees with invocation");
+    expect(appended.code).toBe(0);
+    expect(rows(path.join(repo, "docs", "failures.jsonl")).map((r) => r["key"])).toEqual(
+      printed.map((r) => r["key"]),
+    );
+  });
+
+  it("refuses to re-append a partly landed block after a foreign writer appended", () => {
+    const root = bookRoot();
+    const file = path.join(root, "docs", "failures.jsonl");
+    const request = [failureRow({ key: "first-landed" }), failureRow({ key: "second-torn" })];
+    expect(() =>
+      appendLedgerRows(root, "failures", request, undefined, {
+        operation: "op-partial",
+        checkpoint: failAt("prepared"),
+      }),
+    ).toThrow();
+    const intent = rows(path.join(root, ".bkit", "ledger-operations.jsonl")).find(
+      (r) => r["type"] === "ledger-intent",
+    )!;
+    const lines = String(intent["block"])
+      .split("\n")
+      .filter((l) => l !== "");
+    expect(lines).toHaveLength(2);
+
+    // The first row and half of the second landed; the response was lost; the lock was cleared.
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${lines[0]}\n${lines[1]!.slice(0, Math.floor(lines[1]!.length / 2))}`);
+    // A plain append from another writer lands next; it checks no pending intent.
+    appendLedgerRows(root, "failures", [failureRow({ key: "foreign-writer" })]);
+    const before = fs.readFileSync(file, "utf-8");
+
+    expect(() =>
+      appendLedgerRows(root, "failures", request, undefined, { operation: "op-partial" }),
+    ).toThrow(/uncertain/i);
+    const after = fs.readFileSync(file, "utf-8");
+    expect(after).toBe(before);
+    expect(after.split('"key":"first-landed"')).toHaveLength(2);
+  });
 });
 
 describe("persistent CI handoff on a real local remote", () => {
@@ -1095,6 +1245,40 @@ describe("persistent CI handoff on a real local remote", () => {
     expect(handoffRows(shared).at(-1)).toMatchObject({
       retrigger: { state: "receipt-completed", remote: shared.tip(), receipt: "handoff-1" },
     });
+  });
+
+  it("blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it", async () => {
+    const moved = remoteRepo("feat/1-x", false);
+    await expect(
+      ciDispatchGate(options(moved, { checkpoint: crashAt("commit-created") }), {
+        gh: pollingGh(none(30)).gh,
+        ...quiet(),
+      }),
+    ).rejects.toThrow("process lost at commit-created");
+
+    // Someone else pushes, and a fetch moves origin/<branch> onto their commit.
+    const other = path.join(moved.root, "other");
+    git(moved.root, ["clone", "-q", "-b", "feat/1-x", moved.remote, other]);
+    git(other, ["commit", "-q", "--allow-empty", "-m", "someone else moved the branch"]);
+    git(other, ["push", "-q", "origin", "feat/1-x"]);
+    const foreign = moved.tip();
+    git(moved.work, ["fetch", "-q", "origin"]);
+    expect(git(moved.work, ["rev-parse", "origin/feat/1-x"])).toBe(foreign);
+
+    const blocked = await ciDispatchGate(options(moved), {
+      gh: pollingGh([FOUND]).gh,
+      ...quiet(),
+    });
+    expect(blocked).toMatchObject({ handoff: 6, ciDispatch: null });
+    expect(moved.tip()).toBe(foreign);
+    expect(moved.log()[0]).toBe("someone else moved the branch");
+    expect(moved.retriggers()).toBe(0);
+    expect(handoffRows(moved).at(-1)).toMatchObject({ retrigger: { state: "commit-created" } });
+    expect(
+      handoffRows(moved).filter(
+        (row) => (row["retrigger"] as { state?: string } | undefined)?.state === "push-completed",
+      ),
+    ).toHaveLength(0);
   });
 });
 
