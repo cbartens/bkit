@@ -1278,61 +1278,65 @@ describe("the recovery precedence contract", () => {
     /\*\*Bounded correction:\*\*[\s\S]*?(?:\n\s*\n|$)/.exec(text)?.[0].trim() ?? "";
   const failuresLine = (text: string) => /\*\*Failures:\*\*[^\n]*/.exec(text)?.[0] ?? "";
 
-  it("renders one recovery precedence contract for all hosts and tracker adapters", () => {
-    expect(workflows.length).toBeGreaterThanOrEqual(5);
-    for (const file of workflows) {
-      const rendered = renderings(file);
-      const contracts = new Set(rendered.map((r) => correction(r.text).replace(/\s+/g, " ")));
-      // One wording, whatever the host transform or tracker variant.
-      expect({ file: file.name, wordings: contracts.size }).toEqual({
-        file: file.name,
-        wordings: 1,
-      });
-      const [contract] = [...contracts];
-      expect(contract, file.name).toMatch(/guaranteed no-write/i);
-      expect(contract, file.name).toMatch(/engine (?:deterministic )?fill/i);
-      expect(contract, file.name).toMatch(/two corrected retries/i);
-      expect(contract, file.name).toMatch(/same (?:sub-step|substep)/i);
-      expect(contract, file.name).toMatch(/uncertain/i);
-      expect(contract, file.name).toMatch(/reconcile/i);
-      // A stricter command-specific route beats the general allowance.
-      expect(contract, file.name).toMatch(/stricter[^.]*(?:route|limit)[^.]*(?:wins|first)/i);
-      // Authorization, gates and checks keep their own routes.
-      expect(contract, file.name).toMatch(/authori[sz]ation/i);
-      expect(contract, file.name).toMatch(/gate/i);
+  it(
+    "renders one recovery precedence contract for all hosts and tracker adapters",
+    CORPUS_CASE,
+    () => {
+      expect(workflows.length).toBeGreaterThanOrEqual(5);
+      for (const file of workflows) {
+        const rendered = renderings(file);
+        const contracts = new Set(rendered.map((r) => correction(r.text).replace(/\s+/g, " ")));
+        // One wording, whatever the host transform or tracker variant.
+        expect({ file: file.name, wordings: contracts.size }).toEqual({
+          file: file.name,
+          wordings: 1,
+        });
+        const [contract] = [...contracts];
+        expect(contract, file.name).toMatch(/guaranteed no-write/i);
+        expect(contract, file.name).toMatch(/engine (?:deterministic )?fill/i);
+        expect(contract, file.name).toMatch(/two corrected retries/i);
+        expect(contract, file.name).toMatch(/same (?:sub-step|substep)/i);
+        expect(contract, file.name).toMatch(/uncertain/i);
+        expect(contract, file.name).toMatch(/reconcile/i);
+        // A stricter command-specific route beats the general allowance.
+        expect(contract, file.name).toMatch(/stricter[^.]*(?:route|limit)[^.]*(?:wins|first)/i);
+        // Authorization, gates and checks keep their own routes.
+        expect(contract, file.name).toMatch(/authori[sz]ation/i);
+        expect(contract, file.name).toMatch(/gate/i);
 
-      for (const r of rendered) {
-        // The Failures carrier names the correction route beside the other explicit routes,
-        // before the Failure Path fallback it still ends in.
-        const failures = failuresLine(r.text);
-        expect(failures, r.label).toContain("Sandbox recovery");
-        expect(failures, r.label).toContain("Bounded correction");
-        expect(failures.indexOf("Bounded correction"), r.label).toBeLessThan(
-          failures.indexOf("Failure Path"),
-        );
-        // No blanket carrier sends every failure to the Failure Path, ahead of its recovery routes.
-        expect(r.text, r.label).not.toMatch(
-          /\*\*If\*\* any step, tool,? command fails, or gate cannot pass → \*\*Failure Path\*\*/,
-        );
-        // A generic non-zero exit still is not a retry: only a declared route recovers.
-        expect(r.text, r.label).toMatch(
-          /Exit non-zero with no `Route:` or recovery under \*\*Failures\*\*/,
-        );
-        expect(correction(r.text), r.label).not.toMatch(
-          /any (?:non-zero|failing) (?:exit|command)[^.]*retry/i,
-        );
+        for (const r of rendered) {
+          // The Failures carrier names the correction route beside the other explicit routes,
+          // before the Failure Path fallback it still ends in.
+          const failures = failuresLine(r.text);
+          expect(failures, r.label).toContain("Sandbox recovery");
+          expect(failures, r.label).toContain("Bounded correction");
+          expect(failures.indexOf("Bounded correction"), r.label).toBeLessThan(
+            failures.indexOf("Failure Path"),
+          );
+          // No blanket carrier sends every failure to the Failure Path, ahead of its recovery routes.
+          expect(r.text, r.label).not.toMatch(
+            /\*\*If\*\* any step, tool,? command fails, or gate cannot pass → \*\*Failure Path\*\*/,
+          );
+          // A generic non-zero exit still is not a retry: only a declared route recovers.
+          expect(r.text, r.label).toMatch(
+            /Exit non-zero with no `Route:` or recovery under \*\*Failures\*\*/,
+          );
+          expect(correction(r.text), r.label).not.toMatch(
+            /any (?:non-zero|failing) (?:exit|command)[^.]*retry/i,
+          );
+        }
       }
-    }
 
-    // The workflows that wait for CI re-enter on persisted observations, with no copied counters.
-    const waiting = workflows.filter((f) => f.content.includes("CI wait turn-loop"));
-    expect(waiting.map((f) => f.name).sort()).toEqual(["bkit-build", "bkit-debug"]);
-    for (const file of waiting) {
-      for (const r of renderings(file)) {
-        expect(r.text, r.label).toContain("bkit runs handoff");
-        expect(r.text, r.label).not.toContain("--attempts=<total>");
-        expect(r.text, r.label).not.toContain("{CI_REENTRY}");
+      // The workflows that wait for CI re-enter on persisted observations, with no copied counters.
+      const waiting = workflows.filter((f) => f.content.includes("CI wait turn-loop"));
+      expect(waiting.map((f) => f.name).sort()).toEqual(["bkit-build", "bkit-debug"]);
+      for (const file of waiting) {
+        for (const r of renderings(file)) {
+          expect(r.text, r.label).toContain("bkit runs handoff");
+          expect(r.text, r.label).not.toContain("--attempts=<total>");
+          expect(r.text, r.label).not.toContain("{CI_REENTRY}");
+        }
       }
-    }
-  });
+    },
+  );
 });
