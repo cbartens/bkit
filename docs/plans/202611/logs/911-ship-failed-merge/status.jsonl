@@ -28,3 +28,13 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T07:34:09Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-review/-/1/comment","hash":"cebc7ce7e9b3815ddf5795986af381a0907fe9cb8b78870c3b979081b8b65487","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T07:34:23Z"}
 {"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-11-10T07:34:24Z","parentSha":"77572bfc0460794ff18cb25c387d241a03705867","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-review-1.md","docs/plans/202611/logs/911-ship-failed-merge/plan-review-2.md","docs/plans/202611/logs/911-ship-failed-merge/plan-scope-check.md"],"verdict":"CONCERNS","attempt":1,"failures":8}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:34:57Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:35:23Z","noun":"steps","verb":"stub","flags":["from","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:44:26Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:44:38Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:44:46Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:29Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:37Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T07:45:38Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"b2f89f05d7fafdc735c704e83c24c5d93807aa66ecc763229ac08f73bc5156d5","ref":"https://github.com/cbartens/bkit/issues/911#issuecomment-6761101854","at":"2026-11-10T07:45:41Z"}
+{"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-10T07:45:41Z","parentSha":"1d27555a4d70480f11fbd88ffd5a36566d2032c0","artifacts":["docs/plans/202611/logs/911-ship-failed-merge/plan-v2-reviewed.md","docs/plans/202611/logs/911-ship-failed-merge/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
