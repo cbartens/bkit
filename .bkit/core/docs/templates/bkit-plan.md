@@ -193,17 +193,7 @@ Carry each required read and each doc update into the runbook task that needs it
 
 ## Documentation Warnings
 
-[One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
-
-```jsonl
-{
-  "topic": "security",
-  "gap": "starter-only",
-  "recommendedPath": "docs/security.md",
-  "alternativeEvidence": "The CI configuration defines token permissions.",
-  "action": "Populate the security document with the project's credential and permission boundaries."
-}
-```
+[One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). Example line: `{"topic": "security", "gap": "starter-only", "recommendedPath": "docs/security.md", "alternativeEvidence": "The CI configuration defines token permissions.", "action": "Populate the security document with the project's credential and permission boundaries."}`. **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
 
 ## Data Schema Integration
 

@@ -302,6 +302,10 @@ function errorReason(error: unknown): string {
 /** True when `rel` is a repo-relative path with no parent or absolute segments. */
 export function isInTreePath(rel: string): boolean {
   if (rel === "" || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel)) return false;
+  for (const ch of rel) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return false;
+  }
   return !rel.split(/[\\/]/).includes("..");
 }
 

@@ -268,6 +268,11 @@ function errorReason(error) {
 export function isInTreePath(rel) {
     if (rel === "" || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel))
         return false;
+    for (const ch of rel) {
+        const code = ch.charCodeAt(0);
+        if (code < 0x20 || code === 0x7f)
+            return false;
+    }
     return !rel.split(/[\\/]/).includes("..");
 }
 const ROW_RE = /^\|\s*`([^`]+)`\s*\|/;

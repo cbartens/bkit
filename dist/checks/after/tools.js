@@ -7,6 +7,7 @@ import { readPackageJson } from "../../shared/package-json.js";
 import { readTextFile } from "../../shared/json.js";
 import { getPkgRoot } from "../../shared/package-roots.js";
 import { PROJECT_DOC_TOPICS, PROJECT_INDEX_PATH, findIndexedEquivalent, inspectRepoFile, isInTreePath, legacyStarterTopic, normalizeLegacyText, projectDocPath, readProjectIndex, starterPath, } from "../../install/project-docs.js";
+import { stripManagedWrapper } from "../../install/managed-block.js";
 import { isAdvisorySuppressed } from "./suppression.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import { DEP_UPDATER_NAMES, findDepUpdaterConfigs, } from "../../shared/dep-updater.js";
@@ -385,6 +386,7 @@ export function detectProjectDocs(cwd, onSuppressed) {
     const unindexed = [];
     const duplicates = [];
     const ambiguous = [];
+    const cleanup = [];
     for (const topic of PROJECT_DOC_TOPICS) {
         const recommended = projectDocPath(topic);
         const equivalent = findIndexedEquivalent(rows, topic);
@@ -415,6 +417,9 @@ export function detectProjectDocs(cwd, onSuppressed) {
             ambiguous.push(`${target} (it could not be read)`);
             continue;
         }
+        const wrapper = stripManagedWrapper(read.text);
+        if (wrapper.status === "ambiguous")
+            cleanup.push(`${target} (${wrapper.problem})`);
         const assessed = assessDocText(cwd, topic, read.text);
         if (assessed === "empty")
             empty.push(target);
@@ -478,6 +483,14 @@ export function detectProjectDocs(cwd, onSuppressed) {
             severity: "advisory",
             detect: `These project documents exist but ${PROJECT_INDEX_PATH} lists another document for the same topic: ${duplicates.join(", ")}.`,
             action: `bkit does not register them while the other document is indexed. Keep one: delete the unused file, or add a row for the second one by hand under \`## Project Documents\` in ${PROJECT_INDEX_PATH}.`,
+        });
+    }
+    if (cleanup.length > 0) {
+        findings.push({
+            id: "project-docs-cleanup",
+            severity: "advisory",
+            detect: `These project documents still carry a bkit ownership wrapper (\`<!-- bkit:start -->\` / \`<!-- bkit:end -->\` lines or the \`bkit:managed\` notice) that bkit could not remove safely: ${cleanup.join("; ")}.`,
+            action: `Edit each file by hand: delete the \`<!-- bkit:start -->\` and \`<!-- bkit:end -->\` lines and the \`bkit:managed\` notice line, keeping the text between them. These documents belong to the project now; bkit changes none of them itself.`,
         });
     }
     if (ambiguous.length > 0) {
