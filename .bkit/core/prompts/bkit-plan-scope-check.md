@@ -81,6 +81,9 @@ autoCompactWindow: 300000
 13. Sort findings into the three categories `CRITICAL`, `OPTIONAL` and `OUT OF SCOPE`.
 14. Mark each `CRITICAL` finding `(plan edit)` when an edit to the plan resolves it, or `(design change)` when only a change to the source design resolves it.
 15. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+
+- **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-plan-scope-check --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand.
+
 16. Set `Redesign` in **Create** with `Edit` = `true` when at least one `CRITICAL` finding is marked `(design change)`, and `false` otherwise.
 17. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no `CRITICAL` items.

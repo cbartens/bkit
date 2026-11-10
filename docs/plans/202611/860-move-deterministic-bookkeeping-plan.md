@@ -565,7 +565,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Enforce bounded correction and effect-aware recovery (deterministic-bookkeeping-8; R1, R3, R8, R19).
+- [x] **TASK 8:** Enforce bounded correction and effect-aware recovery (deterministic-bookkeeping-8; R1, R3, R8, R19).
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: declared pre-effect validation/effects/recovery metadata in receiving handlers and structured error output; no blanket generic-exit retry.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: engine-derived stable correction scope and rejection/candidate/success events tied to exact interrupted sub-step.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/counters.ts`: persistent correction usage with two corrected retries default, command-specific limits precedence and no tool/resume reset.

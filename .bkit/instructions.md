@@ -1138,11 +1138,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:420`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:425`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:203`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:217`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
@@ -1235,11 +1235,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:420`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:425`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:203`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:217`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:585`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:590`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1555,6 +1555,18 @@ Clause section lines:
 **Fix code not gates:** NEVER make gates (anything a `bkit:gate:*` script runs) pass by weakening them; do not use type-system escapes (e.g. TS `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`; Python `# type: ignore`), linter disables (e.g. `eslint-disable`, `//nolint`), test skips (e.g. `.skip`, `xfail`), deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation. Confirmation unavailable inside `/bkit-*` workflows: Record the block per your own blocker contract, and continue; NEVER self-authorize the opt-out.
 ```
 
+### recovery-precedence
+
+- rule: Universal Rules › Testing & Debugging
+- refs:
+  - `.bkit/workflows.md`
+- workflow:
+  - specialised: `bkit-auto`, `bkit-build`, `bkit-debug`, `bkit-design`, `bkit-plan`, `bkit-ship`
+
+```text
+**Recovery precedence:** Apply a command's explicit recovery route and its limit first. Correct and retry at most twice per scope only after a rejection that the engine reports as guaranteed no-write (effects = none, correctable = true); reconcile an uncertain effect before any retry. A recovered command error alone does not enter Failure Path; an exhausted budget, a failing check, missing authorization or an unsafe recovery does, and recovery never weakens a test, bypasses a gate or grants approval.
+```
+
 ### check-gotchas-first
 
 - rule: Universal Rules › Testing & Debugging
@@ -1572,10 +1584,12 @@ Clause section lines:
     - kept: every append-only ledger is read by folding on `key` with the highest `ts` winning (`.bkit/jsonl.md`); `check-gotchas-first` names the knowledge ledger only
 
 ```text
-**Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent.
+**Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent; the engine does the fold, so run `bkit ledgers query --ledger=knowledge --status=ACTIVE` instead of reading the file (an agent without a shell reads the query output its caller names under **Read**).
 ```
 
 ```retired
+**Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent; the engine does the fold, so run `bkit ledgers query --ledger=knowledge --status=ACTIVE` instead of reading the file.
+**Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent.
 **Check gotchas first:** Before touching code, fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
 **Check gotchas first:** Search before touching code → fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read ONLY winning rows where `status` is `ACTIVE` or absent; NEVER read any other rows.
 **Check gotchas first:** Search before touching code → fold the `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only winning rows where `status` is `ACTIVE` or absent; never read any other rows.
@@ -1668,7 +1682,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:585`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:590`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -2921,6 +2935,57 @@ Continue from the interrupted sub-step only after the retry is verified.
 
 ```text
 **Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
+```
+
+### workflow-deterministic-bookkeeping
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Deterministic bookkeeping:** Use the engine's validated execution context and artifact data for metadata, counts, paths and serialization. Agents supply substantive findings and judgments. Do not invent missing attribution or replace conflicting evidence with a guess.
+```
+
+### workflow-recoverable-execution-errors
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Recoverable execution errors:** Apply the command's explicit recovery route first. If validation guarantees that no changes were made, correct the input from verified evidence and retry at most twice. Keep this correction budget across helper rewrites, tool switches and resume. Verify the required outputs and continue from the interrupted sub-step after success.
+```
+
+### workflow-uncertain-effects
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Uncertain effects:** Inspect and reconcile the operation's durable state before retrying a write. Retry only when the engine can establish that it will not duplicate or corrupt an effect. Preserve work and report a blocker when the outcome cannot be established.
+```
+
+### workflow-failure-boundary
+
+- workflow: required
+- block: protocol
+- carriers: workflow all
+
+```text
+**Failure boundary:** Enter Failure Path when the applicable recovery budget is exhausted, a required check still fails, required information or authorization is unavailable, or recovery cannot proceed safely. Recovery does not permit weakening tests, bypassing gates or granting approval. A recovered command error alone does not fail the workflow.
+```
+
+### workflow-recovery-precedence
+
+- workflow: required
+- block: protocol
+- tags: recovery-precedence
+- carriers: workflow all
+
+```text
+**Recovery precedence:** A specific recovery route supplies its own limit and eligibility before the generic two-correction route. Optional model telemetry unavailability is diagnostic, while missing author or run authority or required substantive evidence blocks the affected action. A permission escalation follows its existing authorization policy, never the generic correction allowance.
 ```
 
 ### contract-lead
@@ -4807,6 +4872,97 @@ Per `key` changed above → append one row to `docs/{{ledger}}.jsonl` with `bkit
 Copy unchanged field values verbatim.
 ```
 
+### ledger-runless-invocation
+
+- prompt: where-used
+- carriers: prompt `bkit-audit-generate`, `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+Issue one runless invocation first with `bkit status invocation --standalone={{kind}} --name={{name}}` and hold its `invocation`.
+```
+
+### ledger-append-invocation
+
+- prompt: where-used
+- carriers: prompt `bkit-audit-generate`, `bkit-plan-generate`, `bkit-ship-deferred-sweep`, `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+Pass it as `--invocation` with a fresh `--operation` on each `bkit ledgers append`, and retry a lost response with the same `--operation`; `receipt.replayed: true` means the rows are already on disk.
+```
+
+### ledger-engine-attribution
+
+- prompt: where-used
+- carriers: prompt `bkit-audit-generate`, `bkit-plan-generate`, `bkit-ship-deferred-sweep`, `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
+```
+
+### ledger-invocation-named
+
+- prompt: where-used
+- carriers: prompt `bkit-plan-generate`, `bkit-ship-deferred-sweep`
+
+```text
+**If** your Context names an invocation id:
+```
+
+### ledger-query-each
+
+- prompt: where-used
+- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
+
+```text
+Query each ledger with `bkit ledgers query --ledger=<name>`, which folds by `key` with the highest `ts` winning.
+```
+
+### structured-result-file
+
+- prompt: where-used
+- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
+
+```text
+**If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it.
+```
+
+### structured-result-render
+
+- prompt: where-used
+- carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
+
+```text
+The caller renders **Create** with `bkit steps stub --agent={{agent}} --result-file`, and the engine derives {{derived}}.
+The caller renders **Create** with `bkit steps stub --agent={{agent}} --result-file`, and the engine derives the header counts and its `Fingerprint`.
+```
+
+### structured-supply-only
+
+- prompt: where-used
+- carriers: prompt `bkit-design-review-*`, `bkit-debug-failure-diagnose`, `bkit-design-spike`
+
+```text
+You supply only {{fields}}.
+```
+
+### steps-finish-derives
+
+- prompt: where-used
+- carriers: prompt `bkit-build-plan-current`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-debug-failure-soak`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`
+
+```text
+`bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name {{where}}.
+```
+
+### stub-seed-fingerprint
+
+- prompt: where-used
+- carriers: prompt `bkit-design-organise`, `bkit-design-update`, `bkit-plan-update`
+
+```text
+The seed comes from `bkit steps stub`. Keep a `Fingerprint` header line when one is present: `bkit steps verdict` treats a body that no longer matches it as stale, so re-render through the caller instead of hand-editing a rendered body.
+```
+
 ### ledger-impact-search
 
 - prompt: where-used
@@ -4818,15 +4974,6 @@ For each `key` appended above, search the other three of `docs/decisions.jsonl`,
 
 ```retired
 Per `key` appended above → search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced. Fold each ledger by `key`, highest `ts` wins; skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
-```
-
-### ledger-impact-fold
-
-- prompt: where-used
-- carriers: prompt `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`
-
-```text
-Fold each ledger by `key`, highest `ts` wins.
 ```
 
 ### ledger-impact-skip-closed
@@ -9437,6 +9584,16 @@ Task checkboxes are verify's derived view of the codebase. The executor's durabl
 Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections: `Strategy` lives in the machine-parseable header alongside `Verdict`, and the reasoning is implicit in the `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). `Verdict` flips PENDING → PASS / CONCERNS / FAIL at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience: partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record, where ~30 ticks clustered at the end would all be lost on a timeout; (2) `Bash echo >>` is cheaper than `Edit`, because it needs no file read for an `old_string` match. **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) is added only where the workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in its Read) and `bkit-build-plan-tasks` (one `build-plan-tasks-{GROUP}-log.md` per group; every attempt — a turn-cap re-run or a Decision Pause `Fix now` re-run — appends to it, and `bkit context brief --next` leaves out tasks it logs `DONE — TASK {N}:`). On PENDING (subagent timeout) the verify→remediate loop bounded by `build.verify.maxAttempts` absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt takes a fresh strategy via `bkit-debug-failure-diagnose`), so skip-done would be the wrong shape. It gets stub+log only, but the flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence.
 ```
 
+### engine-owned-model-evidence
+
+- behavior: **Engine-owned model evidence**
+- agents: every subagent whose rows carry `by.model`
+- source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
+
+```text
+`bkit ledgers append --invocation=<id>` fills the row's `by.model`, `by.configuredModel` and `by.modelSource` (`host`, `configured` or `unavailable`) from the issued invocation; an agent never copies a model name into a row.
+```
+
 ## Authoring Rules
 
 Rules for writing workflows, copied whole from their catalog sections (installed as `.bkit/workflows.md`). One `### {name}` per section: `- source:` (`` `{file}` § {heading} ``), then the section body, up to the next heading of the same or a higher level. Generated by `pnpm instructions:sync`.
@@ -9771,6 +9928,8 @@ Hold `phase` as `PHASE`, `mode` as `MODE`, `ownerRepo` as `OWNER_REPO`, `owner` 
 Run context recovered
 `REF` is the issue as `runs context` printed it (`#N` on GitHub, the key uppercased on Linear / Jira, empty with no tracker).
 [tracker-issue-creation] Never pass a bare `FID` or bare number: the dispatched workflow's Step 1 stops when no issue reference matches. It never creates an issue.
+The dispatched workflow issues its own invocations with `bkit status invocation` and owns its run's recovery state. Pass only the references below, never an invocation id, an operation id, an attempt count or a model name.
+[recovery-precedence] **If** a command in this step is rejected with a correctable no-write error → correct it under **Bounded correction**, then resume this step at the interrupted sub-step.
 [workflows-commands] Invoke the matching phase skill with the `Skill` tool, then exit.
 `PHASE` = `ship` → `/bkit-ship {FID} {REF}`
 `PHASE` = `debug` → `/bkit-debug {FID} {REF} https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID}` when `RUN_ID` is held; otherwise `/bkit-debug {FID} {REF}`.
@@ -10348,6 +10507,7 @@ Apply round counted (`counters derive`)
 Check that the latest review did not fail:
 **If** `verdict` = FAIL → Step 5. Step 6 applied that review, so the applied plan gets its one re-review.
 Latest review checked (`status route`)
+Save the active knowledge rows for the reviewers, who have no shell:
 ```
 
 #### bkit-ship
@@ -10546,10 +10706,8 @@ The approach is open (options, trade-offs, unanswered questions) → `/bkit-desi
 The approach is settled, not broken into tasks → `/bkit-plan`.
 The change is clear → `/bkit-build`.
 `Reason` = the deciding fact, in one clause.
-[discovered-bugs] Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with `by: {workflow: "audit", step: "audit-{slug}"}`.
 **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
 Complete the report first.
-Open rows = fold by `key`, highest `ts` wins, `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
 Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
 For each `MEDIUM`+ finding:
 [discovered-bugs] **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.
@@ -10608,6 +10766,9 @@ Post the comment:
 `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`). **If** the body is over 32,767 characters → post consecutive comments split at line breaks, in order.
 [verify-tools] **If** it still fails → `Issue` = `{ISSUE_ID} failed`.
 **Else** → `Issue` = `{ISSUE_ID} posted`.
+Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
+Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
+Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until `coverage.clean` is true), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
 ```
 
 #### bkit-build-challenge-1
@@ -10888,6 +11049,7 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 **If** any unresolved gap is `Fixable: true` → `CONCERNS`.
 **If** `Mode` = `Holistic` **and** the `Groups Verified` count differs from the plan's group count → `CONCERNS`.
 **Else** → `PASS`.
+**If** your Context names a structured result file (`Result:`) → give each gap its own `fixable` judgment there. The caller renders the report with `bkit steps stub --agent=bkit-build-plan-verify --result-file`; the engine derives `Failures`, the header `Fixable` and the `Fingerprint`, and it never overrides a `Verdict` that depends on evidence (`CONCERNS` and the `Loosened` decision stay yours).
 ```
 
 #### bkit-debug-abort-handover
@@ -11282,6 +11444,7 @@ Keep each group and task within the plan caps your Context names (`bkit.workflow
 Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
 `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
 `Verification Plan` from Test Matrix and Execution Runbook.
+Find an existing entry before reusing its `key` with `bkit ledgers query --ledger=decisions --key=<key>`; never fold the ledger by hand.
 ```
 
 #### bkit-plan-review-1
@@ -11463,7 +11626,6 @@ For each intended deliverable under `Planned vs Delivered`, check that the codeb
 Move them to `Blocking Deferrals`, and append their test details with source evidence.
 **If** any items are still `Planned`:
 Mark them `Lazy`, and move them to `Lazy Deferrals`.
-For each of them, look for a deferral row of the FID in your Context that already defers the item:
 **If** one exists → append nothing. The triage below tests that row and writes its `unjustified` / `TRIAGED` row, so a row of your own would record the item twice.
 Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds candidates, including removed assertions, with each hit's `file:line` and test name.
 **If** the scan fails to return a complete result (including an error, missing base or unreadable output) → record the failure under `Blocking Deferrals`.
@@ -11485,6 +11647,7 @@ Set the counts in **Create** with `Edit`:
 `Lazy` = the number of `Lazy Deferrals` entries.
 `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, every scanner hit is adjudicated, and there are no `Blocking Deferrals`.
 `FAIL` = any intended deliverable is `Blocked`, **or** there is a scan error or unresolved scanner hit, **or** there are any `Blocking Deferrals`.
+For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until `coverage.clean` is true):
 ```
 
 #### bkit-ship-update-docs

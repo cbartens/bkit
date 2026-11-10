@@ -33,6 +33,10 @@ Unavailable fallback-source files and invalid or unreadable session associations
 
 Write friction in the active worktree's ledger. A failed friction write emits one bounded diagnostic without recursively attempting friction. Reporting and diagnostic failures remain nonfatal. If a provider accepts a write but its response is lost, an unprovable reconciliation can produce a duplicate new comment; diagnostics must not claim an exactly-once guarantee.
 
+## Bookkeeping effects and receipts
+
+A `bkit` command that fails before any write prints a structured error with `effects: none`, `correctable` and, for ledger appends, a `scope`; an uncertain write prints `effects: uncertain`. An append success prints a `receipt` (`operation`, `replayed`, per-row `key` and `ts`); a corrected retry adds `correction` (`scope`, `used`, `limit`, `verified`). Status rows `correction-rejected`, `correction-candidate`, `correction-succeeded` and `ci-handoff` record the recovery path. None of them stores a secret, a row body or a token.
+
 ## Log Format
 
 All bkit CLI output uses bracketed context prefixes:

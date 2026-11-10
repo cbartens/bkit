@@ -109,6 +109,7 @@ autoCompactWindow: 300000
      - **If** the gap is `Fixable: false` → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Update **Create** via `Edit`:
     - Set `Failures` = the count of unresolved gaps.
+    - **If** your Context names a structured result file (`Result:`) → give each gap its own `fixable` judgment there. The caller renders the report with `bkit steps stub --agent=bkit-build-plan-verify --result-file`; the engine derives `Failures`, the header `Fixable` and the `Fingerprint`, and it never overrides a `Verdict` that depends on evidence (`CONCERNS` and the `Loosened` decision stay yours).
     - Set `Fixable`:
       - **If** any of those gaps is `Fixable: true` → `true`.
       - **Else** → `false`.

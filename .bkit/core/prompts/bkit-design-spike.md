@@ -81,6 +81,7 @@ autoCompactWindow: 300000
    - `DISPROVEN` = the captured evidence contradicts it.
    - `BLOCKED` = it is neither settled nor disproven.
 8. Set `Verdict` in **Create** with `Edit`:
+   - **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-design-spike --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only the `Verdict` judgment.
    - `PASS` = every claim is `SETTLED`.
    - `CONCERNS` = at least one claim is `BLOCKED`, and none is `DISPROVEN`.
    - `FAIL` = at least one claim is `DISPROVEN`.

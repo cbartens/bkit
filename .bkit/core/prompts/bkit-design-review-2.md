@@ -80,9 +80,8 @@ autoCompactWindow: 300000
    - Each open question lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → an `OPTIONAL` finding naming the missing parts.
 9. Surface explicitly each new on-call burden the design adds: a dashboard, an alert or a runbook. It is not a blocker. List it under `Operational Dependencies`.
 10. Set `Verdict` in **Create** with `Edit`:
-    - `PASS` = operable as designed: the failure modes have observability and recovery paths, and the design proceeds.
-    - `CONCERNS` = operable with caveats: the observability or runbook gaps are addressable.
-    - `FAIL` = not operable in the current monitoring or on-call stack, and the design does not proceed.
+
+- **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-design-review-2 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand. You supply only the `Verdict` judgment. - `PASS` = operable as designed: the failure modes have observability and recovery paths, and the design proceeds. - `CONCERNS` = operable with caveats: the observability or runbook gaps are addressable. - `FAIL` = not operable in the current monitoring or on-call stack, and the design does not proceed.
 
 **Output format:**
 

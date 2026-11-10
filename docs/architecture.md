@@ -219,6 +219,8 @@ Deterministic, advisory-only grader on `git diff parentSha..HEAD` → `kind:"com
 
 `references[]` = single cross-entry pointer for EVERY kind (envelope, not payload) — feature ids, tracker ids, PRs, SHAs, paths, row `key` in the same or another ledger, `KN-N` / `DE-N` ids. No separate identity field. `key` = identity; `references[]` = pointers. Contract: `.bkit/jsonl.md` § Key & References. Cite slug `key`, never bare number.
 
+**Deterministic bookkeeping:** the engine owns metadata, counts and replay accounting. Invocations are issued by `bkit status invocation` into the run's `status.jsonl`; `bkit ledgers append` fills `by` and the model fields from the invocation, records an operation receipt (a replay returns it and writes nothing) and holds the ledger lock; `bkit ledgers query` reads canonical winners without writing. `ci-handoff` and correction rows live in the run's status log and are ignored by the step fold. Agents supply findings and judgments only.
+
 ## Roadmap Ledger & Board
 
 `.bkit/issues.jsonl` (`kind:"feature"`) = canonical feature-state ledger, appended at every phase close. `docs/roadmap.md` = generated board, a pure projection of it. Consumer-inherited (`.gitattributes` managed block, `merge=union`).

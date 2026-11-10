@@ -856,7 +856,7 @@ function resolveHandoffHead(
   const latest = mine.at(-1);
   if (latest === undefined || latest.target.head === current) return current;
   const rt = latest.retrigger;
-  if (rt?.commit === current) return latest.target.head;
+  if (rt?.commit === current || rt?.remote === current) return latest.target.head;
   if (
     rt?.state === "intended" &&
     git(cwd, ["rev-parse", "HEAD^"]) === rt.original &&
@@ -2079,8 +2079,9 @@ function runHandoff(ctx: RunContext): number {
   }
   const text = (v: FlagValue) => (typeof v === "string" ? v : "");
   const repo = text(f.repo);
-  const pr = text(f.pr);
-  const head = text(f.head);
+  // A run in place on a shared branch has no PR: an empty --pr names that target.
+  const pr = text(f.pr) === "" ? null : text(f.pr);
+  const suppliedHead = text(f.head);
   const branch = text(f.branch);
   const result = CI_HANDOFF_RESULTS.find((r) => r === text(f.result));
   if (result === undefined) {
@@ -2089,6 +2090,13 @@ function runHandoff(ctx: RunContext): number {
   const polls = wholeNumber(f.polls, "polls", 0, 1);
   const budgetS = wholeNumber(f.budgetS, "budget-s", 60);
   const intervalS = wholeNumber(f.intervalS, "interval-s", 10, 1);
+  // After a re-trigger the printed head is the re-trigger commit; its rows live under the original head.
+  const head = resolveHandoffHead(
+    handoffRowsOf(inv.statusPath),
+    { provider: "github", repo, pr, branch },
+    ctx.cwd,
+    suppliedHead,
+  );
   const target: CiHandoffTarget = { provider: "github", repo, pr, head, branch };
   const probe = {
     type: "ci-handoff",
@@ -2230,6 +2238,13 @@ async function runDispatch(ctx: RunContext): Promise<number> {
   if (pollResult === undefined && (f.attempts !== undefined || f.allErrored === true)) {
     throw new CommandError(EXIT.USAGE, "--attempts / --all-errored go with --poll-result");
   }
+  const handoffInv =
+    ctx.invocation !== undefined &&
+    ctx.invocation.scope === "run" &&
+    ctx.invocation.statusPath !== null &&
+    pollResult === undefined
+      ? ctx.invocation.id
+      : undefined;
   const r = await ciDispatchGate(
     {
       cwd: ctx.cwd,
@@ -2276,7 +2291,7 @@ async function runDispatch(ctx: RunContext): Promise<number> {
   let row: Record<string, unknown> | null = null;
   let progressLine: string | undefined;
   let transport: Record<string, unknown> | null = null;
-  const code = dispatchCode(r, pr, scanResult, ctx.log);
+  const code = dispatchCode(r, pr, scanResult, ctx.log, handoffInv);
   if (file !== undefined && r.ciDispatch !== null) {
     const status = path.resolve(ctx.cwd, file);
     const written = writeStepRow(
@@ -2348,6 +2363,7 @@ function dispatchCode(
   pr: string | null,
   scanResult: ReturnType<typeof scanBody> | null,
   log: (m: string) => void,
+  invocation?: string,
 ): number {
   if (r.handoff === EXIT.AGENT_WAIT || r.handoff === EXIT.USE_MCP) {
     const again = r.phase === "repoll" ? " --retriggered" : "";
@@ -2355,8 +2371,11 @@ function dispatchCode(
       r.runBranch === null
         ? [`--pr=${pr ?? "<n>"}`, ""]
         : [`--head=${r.head} --branch=${r.runBranch} --until=present`, ` --sha=${r.head}`];
+    const lead = `${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\``;
     log(
-      `${r.handoff === EXIT.USE_MCP ? GH_MISSING : "this runtime cannot wait"}: resolve the ${r.phase} each turn with \`bkit runs wait ${wait} --once\`, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}${keep}`,
+      invocation === undefined
+        ? `${lead}, then re-run with --poll-result=<found|none|err> --attempts=<total>${again}${keep}`
+        : `${lead}, record what it saw with \`bkit runs handoff --invocation=${invocation} --head=${r.head} --result=<none|pending|success|failure|provider-error> --polls=1\`, follow its nextAction, then re-run this command with the same --invocation${keep}`,
     );
     return r.handoff;
   }
@@ -3062,7 +3081,11 @@ export const runsCommand: CommandSpec = {
       flags: [
         INVOCATION_FLAG,
         { name: "repo", type: "string", required: true, help: "owner/repo of the PR" },
-        { name: "pr", type: "string", required: true, help: "PR number" },
+        {
+          name: "pr",
+          type: "string",
+          help: "PR number; empty for a run in place on a shared branch (no PR)",
+        },
         { name: "head", type: "string", required: true, help: "full commit sha the polls ran at" },
         { name: "branch", type: "string", required: true, help: "branch the PR is on" },
         BUDGET_FLAG,

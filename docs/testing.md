@@ -643,6 +643,17 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 | `commands/workflow/summary.test.ts` | Unit | `bkit workflows summary` verdict from status rows: unticked build task / last test FAIL / a build with no plan file (`No plan file`) → FAIL; a FAIL a later step answers, a CONCERNS row, a Decision Pause accept or a new deferral → CONCERNS; next step per workflow and verdict; issue ref per tracker; the `## Challenge` line naming a skipped challenge-1 from the latest `challenge-gate` row; `Publish: held` and `Docs: not synced` lines on a held build (`Publish: pr` otherwise), with the verdict and next step unchanged by `publish` |
 | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | Unit (markdown-invariant) | No prose `Init` / `Increment`, no bare `*_ATTEMPT` comparison outside fenced blocks; counters derived in the block that routes on them, or by the routing / writing command itself (`steps finish --attempt=next` / `--attempt-of`, `counters route --of`); each derived counter maps to the right step; counted steps commit in-block or are exempted |
 
+## Deterministic bookkeeping test coverage
+
+<!-- prettier-ignore -->
+| File | Tier | Scope |
+| --- | --- | --- |
+| `ledgers/journal.integration.test.ts` | Integration | Real ledger files and a local bare remote: lost-response replay, torn writes, corrected substeps, exhausted and uncertain effects, CI re-trigger resume without a second commit or push |
+| `commands/workflow/runs.test.ts` | Unit | `runs handoff` decisions from persisted observations and target identity |
+| `commands/workflow/counters.test.ts` | Unit | Shared correction budget and command-specific limits |
+| `tools/instructions.test.ts` | Unit | One recovery precedence contract across hosts and tracker adapters |
+| `install/modules/core.integration.test.ts` | Integration | Fresh install and upgrade of consumers with the bookkeeping contracts |
+
 ## Worktree-copy commit exclusion test coverage
 
 A `bkit.workflows.worktree.copy` entry copied into a worktree is never committed, gitignored or not (`addAllButCopied`, `commands/workflow/worktrees.ts`). The helper excludes each entry by `:(exclude)`, except one git already ignores: naming an ignored file in a pathspec trips git's ignored-paths guard and fails the whole `add`, so an ignored entry is left out of the exclude list (`git add -A` skips it anyway, `isIgnoredPath` in `commands/lib.ts`). `commands/workflow/worktrees.test.ts` pins the helper (a gitignored entry plus a non-ignored one commits the tracked change and neither copied file); `commands/workflow/steps.test.ts` runs `bkit steps finish --commit=auto` in a worktree whose copy list names a gitignored entry and asserts exit 0, the source committed, the ignored entry not; `commands/workflow/branches.test.ts` asserts `bkit branches push --commit` leaves a copied `.env` out of the marker commit and the pushed branch; `commands/workflow/ledgers.test.ts` asserts `bkit ledgers commit --path` and `commitOwnSet` name a gitignored path in the error instead of leaking git's guard message.

@@ -87,6 +87,7 @@ autoCompactWindow: 300000
    - `class: architectural` = a redesign, such as a wrong layer or abstraction, an expansion of scope, a multi-step write that is not atomic, a broken design principle, or work that needs the plan or design redone → `fixable: false`. Its `done when` names why no agent can settle it and the decision the owner must make.
 8. Cross-reference each finding against the relevant docs that `.agents/docs.md` lists.
 9. Set `Failures` in **Create** with `Edit` = the number of `CRITICAL` findings, counting only complete ones.
+   - **If** your Context names a structured result file (`Result:`) → put only your findings and judgments in it. The caller renders **Create** with `bkit steps stub --agent=bkit-build-challenge-1 --result-file`, and the engine derives `Failures` and the header `Fingerprint`, so write neither by hand.
 10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no findings.
     - `CONCERNS` = findings present, max `severity` <= `HIGH`.

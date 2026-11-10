@@ -116,9 +116,8 @@ autoCompactWindow: 300000
 
 11. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 12. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
-    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up.
-    - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here.
-    - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
+
+- `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header. - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up. - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here. - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
 
 **Output format:**
 

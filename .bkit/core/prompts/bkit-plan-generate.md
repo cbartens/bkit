@@ -123,6 +123,10 @@ autoCompactWindow: 300000
    - `Architecture & Component Changes`, derived from `Reuse Inventory`.
      - As each decision is made, append one row per design `Decisions` item and per new architecture or technology decision to `docs/decisions.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
      - **If** a decision changed → write a new row with the same `key`.
+     - Find an existing entry before reusing its `key` with `bkit ledgers query --ledger=decisions --key=<key>`; never fold the ledger by hand.
+     - **If** your Context names an invocation id:
+       - Pass it as `--invocation` with a fresh `--operation` on each `bkit ledgers append`, and retry a lost response with the same `--operation`; `receipt.replayed: true` means the rows are already on disk.
+       - The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
 9. Derived from design:
    - `Breaking Changes & Naming Review` from Architecture.
    - `Supersession Inventory` from Architecture `[DELETE]` rows.
