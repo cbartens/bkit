@@ -295,3 +295,13 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:03Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/2/1/comment","hash":"04dd017f3baf962851388a045304c57174f47721251f5df272cae7bb0e3b8e32","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6755758178","at":"2026-11-10T00:57:05Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-10T00:57:05Z","parentSha":"6521b0a20675772e081cb7a40d0986e3977733de","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-tasks-2-log.md"],"verdict":"PASS","attempt":1,"group":2}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:06Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:12Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:12Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:13Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:13Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T00:57:56Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T01:39:47Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-10T01:40:33Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/2/1/comment","hash":"f01bb373359ab55ffacdb4b78e1705ef4dbcef2c1768ba890d0221f86a8a7936","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6755758178","at":"2026-11-10T01:40:35Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-10T01:40:35Z","parentSha":"3755f8479ce89af40c507efe30aae8cca2f6ee00","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-2-1.md"],"verdict":"PASS","attempt":1,"group":2,"failures":0}
