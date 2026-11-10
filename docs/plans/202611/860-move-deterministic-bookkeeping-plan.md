@@ -506,7 +506,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Extend existing step artifacts with deterministic result serialization (deterministic-bookkeeping-3; R12–R14, R23).
+- [x] **TASK 5:** Extend existing step artifacts with deterministic result serialization (deterministic-bookkeeping-3; R12–R14, R23).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: structured `stub --result-file` mode, registered field derivations, body/result fingerprint and verdict/finish verification; preserve legacy copy mode and special gates.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/challenge.ts`: share compatible structured finding validation and explicit semantic inputs with existing parse/merge path.
   - **READ:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: keep canonical task/finding grammar.
