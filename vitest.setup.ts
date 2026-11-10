@@ -6,6 +6,7 @@
 // budget as each test file starts (bottom, via vitest.timeout-budget.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, afterEach, expect, vi } from "vitest";
@@ -77,6 +78,22 @@ process.env.BKIT_ENGINE_JOURNAL = "off";
 const xdg = path.join(os.tmpdir(), `bkit-test-xdg-${process.pid}`);
 process.env.XDG_CONFIG_HOME = path.join(xdg, "config");
 process.env.XDG_CACHE_HOME = path.join(xdg, "cache");
+
+// The GateGuard hooks keep per-session state in `os.tmpdir()/bkit-gateguard-<uid>` and scan
+// that whole folder on every call to drop old session files. The hook suites leave tens of
+// thousands of files there, which makes each hook call cost hundreds of milliseconds and a
+// many-call test time out under load. A hook suite gets a private temp folder of its own, so
+// it only ever scans the session files it wrote; the folder is removed with the file.
+if (testPath.includes(`${path.sep}audits${path.sep}hooks${path.sep}`)) {
+  const savedTmp = process.env.TMPDIR;
+  process.env.TMPDIR = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-hooks-tmp-"));
+  const privateTmp = process.env.TMPDIR;
+  afterAll(() => {
+    if (savedTmp === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmp;
+    fs.rmSync(privateTmp, { recursive: true, force: true });
+  });
+}
 
 // Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
 // contended the machine is RIGHT NOW.
