@@ -32,4 +32,4 @@ None.
 
 ## Planned test names already in use (reported only)
 
-- `docs/plans/202611/901-challenge-merge-breaks-plan.md:29` TASK 1: `.bkit/core/engine/commands/workflow/tests.test.ts` already holds a test named "plan-check refuses a matrix header with no Task column, naming the column to add" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/901-challenge-merge-breaks-plan.md:30` TASK 1: `.bkit/core/engine/commands/workflow/tests.test.ts` already holds a test named "plan-check refuses a matrix header with no Task column, naming the column to add" — name the update to it in TEST FIRST, or give the new test a new name
