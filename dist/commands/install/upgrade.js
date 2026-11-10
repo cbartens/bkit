@@ -795,7 +795,7 @@ export async function runUpgradeCommand(upgradeFlags) {
     // `.bkit/advisories.md` describes the upgraded repo, not the last install or check.
     // A real upgrade prints the missing-lint-staged line through the advisories; a dry run prints it here.
     if (upgradeFlags.dryRun)
-        warnMissingLintStagedConfig(process.cwd());
+        warnMissingLintStagedConfig(process.cwd(), LOG_PREFIX);
     if (!upgradeFlags.dryRun)
         await runUpgradeAdvisories();
     // Non-interactive mode: exit non-zero on conflicts

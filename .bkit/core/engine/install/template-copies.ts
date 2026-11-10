@@ -138,9 +138,9 @@ export function formatTemplateChanges(changes: TemplateCopyChanges): string {
   ].join("\n");
 }
 
-/** The one line install and upgrade print when a gating lint-staged has no config to read. */
+/** The line install, check and upgrade print after their log prefix when a gating lint-staged has no config to read. */
 export const MISSING_LINT_STAGED_CONFIG_LINE =
-  "bkit upgrade: no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
+  "no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
 
 // True when `bkit:gate:format` runs `lint-staged` without a `--config` / `-c` path.
 function formatGateRunsBareLintStaged(cwd: string): boolean {
@@ -153,12 +153,13 @@ function formatGateRunsBareLintStaged(cwd: string): boolean {
 
 // bkit writes no lint-staged config into a consumer repo. When the format gate runs lint-staged
 // bare, lint-staged is installed and no config exists, the commit hook fails: print the one-line
-// fix. Prints in a dry run too; writes nothing. Returns true when it printed. No-op in dogfood.
-export function warnMissingLintStagedConfig(cwd: string): boolean {
+// fix after the calling command's `logPrefix`. Prints in a dry run too; writes nothing. Returns
+// true when it printed. No-op in dogfood.
+export function warnMissingLintStagedConfig(cwd: string, logPrefix: string): boolean {
   if (path.resolve(cwd) === getPkgRoot()) return false;
   if (!formatGateRunsBareLintStaged(cwd)) return false;
   if (!readDependencyNames(cwd).includes("lint-staged")) return false;
   if (hasLintStagedConfig(cwd)) return false;
-  console.log(MISSING_LINT_STAGED_CONFIG_LINE);
+  console.log(`${logPrefix} ${MISSING_LINT_STAGED_CONFIG_LINE}`);
   return true;
 }

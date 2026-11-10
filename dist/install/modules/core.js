@@ -1702,7 +1702,7 @@ export function runCoreModule(ctx) {
             console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
         }
     }
-    warnMissingLintStagedConfig(cwd);
+    warnMissingLintStagedConfig(cwd, logPrefix);
     // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
     // installed package (browse-only, gitignored; no-op in dogfood). A real
     // directory or file at either path is never clobbered (advisory); a platform

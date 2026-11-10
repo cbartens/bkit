@@ -2393,7 +2393,7 @@ describe("#892 — upgrade replaces the old sample config names", () => {
   });
 });
 
-describe("#892 — upgrade warns about a missing root lint-staged config instead of writing one", () => {
+describe("#892 — install, check and upgrade warn about a missing root lint-staged config instead of writing one", () => {
   const cli = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
   const COPY_LINE = "cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json";
   function runCli(args: string[]) {
@@ -2464,9 +2464,33 @@ describe("#892 — upgrade warns about a missing root lint-staged config instead
     expect(up.status, combinedOutput(up)).toBe(0);
 
     expect(combinedOutput(up)).toContain(
-      `bkit upgrade: no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+      `[bkit-upgrade] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
     );
     expect(combinedOutput(up).split(COPY_LINE).length - 1).toBe(1);
+  });
+
+  it("install names the missing root lint-staged config under its own log prefix", () => {
+    seedNestedSampleConsumer();
+
+    const install = runCli(["install", "--claude", "--tracker=github"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+
+    expect(combinedOutput(install)).toContain(
+      `[bkit-install] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(install)).not.toContain("bkit upgrade:");
+    expect(combinedOutput(install).split(COPY_LINE).length - 1).toBe(1);
+  });
+
+  it("check names the missing root lint-staged config under its own log prefix", () => {
+    seedNestedSampleConsumer();
+
+    const check = runCli(["check"]);
+
+    expect(combinedOutput(check)).toContain(
+      `[bkit-check] no root lint-staged config — commits will fail. Fix: ${COPY_LINE}`,
+    );
+    expect(combinedOutput(check)).not.toContain("bkit upgrade:");
   });
 
   it("upgrade --dry-run names the missing root lint-staged config once and writes none", () => {
