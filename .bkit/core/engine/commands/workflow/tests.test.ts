@@ -1560,6 +1560,44 @@ describe("bkit tests plan-check", () => {
     expect(r.json.problems[0].message).toContain("TASK 2");
   });
 
+  it("plan-check refuses rows left in the old column order under the template header", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["case a", "Unit", "2", "`t1.test.ts`"],
+        ["case b", "Unit", "1", "`t2.test.ts`"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    const lines = r.json.problems
+      .filter((p: { kind: string }) => p.kind === "matrix")
+      .map((p: { line: number }) => p.line);
+    expect(lines).toContain(lineOf("plan.md", "| case a"));
+    expect(lines).toContain(lineOf("plan.md", "| case b"));
+  });
+
+  it("plan-check refuses rows with an extra cell under the template header", async () => {
+    write(
+      "plan.md",
+      matrix(
+        MATRIX,
+        ["1", "case a", "Unit", "`t1.test.ts`", "1"],
+        ["2", "case b", "Unit", "`t2.test.ts`", "2"],
+      ),
+      groupBlock(1, okTask(1), okTask(2)),
+    );
+    const r = await check();
+    expect(r.code).toBe(1);
+    const lines = r.json.problems
+      .filter((p: { kind: string }) => p.kind === "matrix")
+      .map((p: { line: number }) => p.line);
+    expect(lines).toContain(lineOf("plan.md", "| 1 | case a"));
+    expect(lines).toContain(lineOf("plan.md", "| 2 | case b"));
+  });
+
   it("plan-check refuses a task no matrix row maps to", async () => {
     write(
       "plan.md",
