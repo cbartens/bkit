@@ -835,3 +835,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T04:58:24Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
 {"type":"engine-call","workflow":"build","at":"2026-11-11T04:58:29Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-11T04:58:29Z","parentSha":"64d21e1179d6f43917bd2e91835acee3bca9834e","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-gaps-remediate-8-1-log.md"],"verdict":"PASS","attempt":1,"group":8,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T04:58:38Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T04:58:38Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T04:58:38Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T04:59:14Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:04:13Z","noun":"steps","verb":"stub","flags":["agent","result-file","to"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:04:13Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/8/2/comment","hash":"b59be10686d9ab2c2a1076fc739cd02bc41395bd5cc4378a270ab45ff4c4fb1a","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6783084317","at":"2026-11-11T05:04:16Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-11T05:04:16Z","parentSha":"38e0c5f031ed395764cd303a77691fc1926198d1","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-8-2.md"],"verdict":"PASS","attempt":2,"group":8,"failures":0}
