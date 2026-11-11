@@ -764,7 +764,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 23 start -->
 
-- [ ] **TASK 23:** Ledger-operation intents and receipts live in the committed, union-carried `.bkit/ledger-operations.jsonl`, not the private git-common outbox the plan names. A crash, or a branch that commits a receipt-less intent row, then propagates on merge and blocks `ledgers union` (worktree teardown), `ledgers compact` and the upgrade-path `migrateLedgers` in every checkout. The replay that would clear it needs the original request, which no other checkout can reproduce.
+- [x] **TASK 23:** Ledger-operation intents and receipts live in the committed, union-carried `.bkit/ledger-operations.jsonl`, not the private git-common outbox the plan names. A crash, or a branch that commits a receipt-less intent row, then propagates on merge and blocks `ledgers union` (worktree teardown), `ledgers compact` and the upgrade-path `migrateLedgers` in every checkout. The replay that would clear it needs the original request, which no other checkout can reproduce.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/ledgers/status.ts:675` · **Round:** 1
   - **DONE WHEN:** Intents and receipts are written under `<git common dir>/bkit-outbox/` with private file permissions, as the plan's Data Schema Changes row and `docs/security.md` § Workflow comment ownership require. No `bookPathspecs` or `UNION_PATHSPECS` entry stages or carries them. An intent row arriving in tracked content no longer blocks union, compact or migrate.
   - **TEST FIRST:**
@@ -773,7 +773,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 23 end -->
 <!-- bkit:task 24 start -->
 
-- [ ] **TASK 24:** A line break in a header-bound result value (`report`, `issue` or `parent` in an audit result, or any free-text judgment) injects forged header lines and an early `<!-- verdict:end -->`. For example, a multi-line `report` that adds `Findings: CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW 0` makes `readHeader` read zero findings over the engine-derived `CRITICAL 1`. Because the cut-off header carries no `Fingerprint`, `fingerprintProblem` treats the artifact as hand-written and skips the stale check.
+- [x] **TASK 24:** A line break in a header-bound result value (`report`, `issue` or `parent` in an audit result, or any free-text judgment) injects forged header lines and an early `<!-- verdict:end -->`. For example, a multi-line `report` that adds `Findings: CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW 0` makes `readHeader` read zero findings over the engine-derived `CRITICAL 1`. Because the cut-off header carries no `Fingerprint`, `fingerprintProblem` treats the artifact as hand-written and skips the stale check.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:1566` · **Round:** 1
   - **DONE WHEN:** `renderResult` / `renderAudit` and `parseAuditResult` refuse (EXIT_INVALID, nothing written) any value that is rendered into a header line and contains CR or LF, including `report`, `issue`, `parent` and every judgment at `steps.ts:1652`. The `Report:` line `issues comment --result-file` builds applies the same rule.
   - **TEST FIRST:**
