@@ -10519,6 +10519,7 @@ Check that the latest review did not fail:
 **If** `verdict` = FAIL → Step 5. Step 6 applied that review, so the applied plan gets its one re-review.
 Latest review checked (`status route`)
 Save the active knowledge rows for the reviewers, who have no shell:
+**If** the saved output's `nextCursor` is not null → run the same command again with `--limit` set to the saved output's `total`, so `related-knowledge.md` holds every row and never a truncated page.
 ```
 
 #### bkit-ship

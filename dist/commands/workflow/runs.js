@@ -496,7 +496,9 @@ function pushCurrentBranch(cwd) {
  * to validate, and no foreign local commit rides along. `not-empty` hands the push to
  * `pushBranch`, whose landing gate covers content.
  */
-function landEmptyOwnCommits(cwd, fid, branch, log) {
+function landEmptyOwnCommits(cwd, fid, branch, log, 
+/** Called with the copy's SHA before it is pushed, so a lost push response is recoverable. */
+onCopy) {
     const rec = readRecord(cwd, fid);
     if (rec === null || !runGit(cwd, ["fetch", "origin", branch]).ok)
         return { kind: "failed" };
@@ -506,10 +508,10 @@ function landEmptyOwnCommits(cwd, fid, branch, log) {
         return { kind: "failed" };
     const landed = new Set(rec.pushed ?? []);
     const pending = rec.commits.filter((c) => !landed.has(c) && !runGit(cwd, ["merge-base", "--is-ancestor", c, tip]).ok);
-    if (pending.length === 0) {
-        const sha = rec.pushed?.at(-1);
-        return sha === undefined ? { kind: "failed" } : { kind: "landed", sha };
-    }
+    // Every run commit is already on the remote, or was pushed as a copy with a SHA of its own:
+    // the remote tip is what holds them, never a recorded local original.
+    if (pending.length === 0)
+        return { kind: "landed", sha: tip };
     const empty = (c) => {
         const tree = git(cwd, ["rev-parse", `${c}^{tree}`]);
         return tree !== null && tree === git(cwd, ["rev-parse", `${c}^^{tree}`]);
@@ -530,6 +532,7 @@ function landEmptyOwnCommits(cwd, fid, branch, log) {
             return { kind: "failed" };
         parent = made.stdout;
     }
+    onCopy?.(parent);
     const pushed = runGit(cwd, ["push", "origin", `${parent}:refs/heads/${branch}`]);
     if (!pushed.ok) {
         log(`pushing the run's empty commits to ${branch} failed: ${pushed.stderr}`);
@@ -801,7 +804,23 @@ export async function ciDispatchGate(o, deps) {
                 remoteSha = remoteTip(o.cwd, branch) === cur.commit ? cur.commit : null;
             }
             else {
-                const empties = landEmptyOwnCommits(o.cwd, o.fid, branch, deps.log);
+                // A copy persisted by an earlier attempt may already be on the remote: the push
+                // response can be lost, so check before copying again.
+                const earlier = cur.copy;
+                const held = earlier !== undefined &&
+                    runGit(o.cwd, ["fetch", "origin", branch]).ok &&
+                    runGit(o.cwd, ["merge-base", "--is-ancestor", earlier, `origin/${branch}`]).ok;
+                if (held) {
+                    markRecordPushed(o.cwd, o.fid, [cur.commit]);
+                    remoteSha = earlier;
+                }
+                const empties = held
+                    ? { kind: "landed", sha: earlier }
+                    : landEmptyOwnCommits(o.cwd, o.fid, branch, deps.log, (copy) => {
+                        cur = { ...cur, copy };
+                        curRt = cur;
+                        persist("poll", lastResult);
+                    });
                 if (empties.kind === "landed")
                     remoteSha = empties.sha;
                 else if (empties.kind === "failed")

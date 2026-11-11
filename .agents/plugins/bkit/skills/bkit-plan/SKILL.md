@@ -305,6 +305,7 @@ Before generating, ask the engine for this step's invocation id and keep the pri
      ```bash
      "{BKIT}" ledgers query --ledger=knowledge --status=ACTIVE --limit=500 > "docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md"
      ```
+   - **If** the saved output's `nextCursor` is not null → run the same command again with `--limit` set to the saved output's `total`, so `related-knowledge.md` holds every row and never a truncated page.
 2. Launch these subagents in parallel using `view_file` tool:
    - **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-plan-review-1.md` using `view_file` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.

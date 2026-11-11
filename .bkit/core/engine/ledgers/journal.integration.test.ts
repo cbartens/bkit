@@ -546,7 +546,7 @@ describe("canonical ledger reads on real files", () => {
     fs.writeFileSync(file, `${dec("a")}\n${dec("b")}\n`);
     const clean = await query();
     expect(clean.json!["diagnostics"]).toEqual([]);
-    expect(clean.json!["coverage"]).toMatchObject({ status: "complete", clean: true });
+    expect(clean.json!["coverage"]).toMatchObject({ status: "clean", clean: true });
 
     // Reads wrote nothing beyond the ledger fixture this test itself created.
     fs.rmSync(file);

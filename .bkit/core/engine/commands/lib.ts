@@ -145,6 +145,11 @@ export interface FlagSpec {
    * cannot rewrite.
    */
   positional?: boolean;
+  /**
+   * For `--invocation` only: the verb compares the id itself, so the dispatcher does not
+   * resolve it as an issued invocation (it may name one this checkout never issued).
+   */
+  unresolved?: boolean;
   help: string;
 }
 
@@ -898,7 +903,7 @@ export async function runCommand(
     const invocationId = ctx.flags["invocation"];
     if (
       typeof invocationId === "string" &&
-      spec.flags.some((f) => f.name === INVOCATION_FLAG.name)
+      spec.flags.some((f) => f.name === INVOCATION_FLAG.name && f.unresolved !== true)
     ) {
       ctx.invocation = resolveInvocation(ctx.cwd, invocationId, ctx.flags);
     }

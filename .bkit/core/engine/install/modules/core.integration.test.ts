@@ -2656,7 +2656,7 @@ describe("deterministic bookkeeping contracts in a fresh consumer", { timeout: 1
     // The canonical read agrees with the append: one winner, a complete scan.
     const queried = bkit(dir, "ledgers", "query", `--root=${dir}`, "--ledger=knowledge");
     expect(queried.json!["rows"]).toHaveLength(1);
-    expect(queried.json!["coverage"]).toMatchObject({ status: "complete", clean: true });
+    expect(queried.json!["coverage"]).toMatchObject({ status: "clean", clean: true });
     // Resume with a new process and a new invocation: the correction budget and CI totals carry on.
     const scope = (corrected.json!["correction"] as { scope: string }).scope;
     const counter = bkit(

@@ -687,7 +687,7 @@ export async function runCommand(argv, commands, options) {
         ctx.flags = parseFlags(own, spec.flags);
         const invocationId = ctx.flags["invocation"];
         if (typeof invocationId === "string" &&
-            spec.flags.some((f) => f.name === INVOCATION_FLAG.name)) {
+            spec.flags.some((f) => f.name === INVOCATION_FLAG.name && f.unresolved !== true)) {
             ctx.invocation = resolveInvocation(ctx.cwd, invocationId, ctx.flags);
         }
         input = { noun: cmd.noun, verb, argv: rest, flags: ctx.flags, cwd: ctx.cwd };

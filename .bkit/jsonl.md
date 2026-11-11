@@ -397,7 +397,7 @@ These are rows in a run's `status.jsonl`; the status fold ignores types it does 
 | --- | --- | --- |
 | `ci-handoff` | `bkit runs handoff`, `bkit runs dispatch --invocation` | the target (`provider`, `repo`, `pr`, `head`, `branch`), the cumulative observation (`result`, `attempts`, `errors`) and an optional re-trigger checkpoint `intended`, `commit-created`, `push-completed` or `receipt-completed` (the receipt) |
 | `correction-rejected` | `bkit ledgers append --correction-of` | the rejected `operation`, the `scope` and the engine's rejection code |
-| `correction-candidate` | `bkit counters correction` | the candidate `operation` that spent one retry in the `scope` |
+| `correction-candidate` | `bkit counters correction` | the candidate `operation` that spent one retry in the `scope`, and its `requestHash` |
 | `correction-succeeded` | `bkit ledgers append --correction-of` | the verified `operation` and the `scope` it closed |
 
 - **Phase and totals** are derived by the engine from these rows; a caller never supplies an attempt count.

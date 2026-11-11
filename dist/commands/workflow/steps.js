@@ -1922,6 +1922,12 @@ export const stepsCommand = {
                     help: "render the artifact from this structured result JSON {findings, judgments, body, evidenceComplete} (audit: the audit result) instead of copying --from",
                 },
                 {
+                    name: "invocation",
+                    type: "string",
+                    unresolved: true,
+                    help: "with --result-file: the invocation id this step runs under; a result that names another invocation is stale and refused (exit 6, nothing written)",
+                },
+                {
                     name: "strip-header",
                     type: "boolean",
                     help: "drop the prior version's own header (everything down to its <!-- verdict:end -->)",
@@ -1948,7 +1954,15 @@ export const stepsCommand = {
                     if (ctx.flags.agent === undefined)
                         throw new CommandError(EXIT.USAGE, "--result-file needs --agent");
                     try {
-                        const rendered = renderResult(ctx.cwd, String(ctx.flags.agent), readResult(ctx.cwd, String(ctx.flags.resultFile)));
+                        const result = readResult(ctx.cwd, String(ctx.flags.resultFile));
+                        const issued = str(ctx.flags.invocation);
+                        const carried = typeof result === "object" && result !== null && !Array.isArray(result)
+                            ? result.invocation
+                            : undefined;
+                        // A result written under another invocation is left over from an earlier round or run.
+                        if (issued !== undefined && carried !== undefined && carried !== issued)
+                            throw new CommandError(EXIT_INVALID, `result: ${String(ctx.flags.resultFile)} was written under invocation ${String(carried)}, not ${issued}; it is a stale result from an earlier round or run (nothing written)`);
+                        const rendered = renderResult(ctx.cwd, String(ctx.flags.agent), result);
                         const requested = path.resolve(ctx.cwd, String(ctx.flags.to));
                         // An audit's --to is the finished report; the summary never replaces it.
                         const keepsReport = ctx.flags.agent === AUDIT_AGENT &&

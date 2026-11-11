@@ -125,6 +125,8 @@ export type CiHandoffRetrigger = {
   state: CiRetriggerState;
   original: string;
   commit?: string;
+  /** Shared branch: the copy of `commit` made for the remote tip, persisted before it is pushed. */
+  copy?: string;
   ref?: string;
   remote?: string;
   receipt?: string;
@@ -179,6 +181,7 @@ function validRetrigger(value: unknown): value is CiHandoffRetrigger {
   if (state === undefined) return false;
   if (typeof value.original !== "string" || !SHA_RE.test(value.original)) return false;
   const sha = (k: string) => typeof value[k] === "string" && SHA_RE.test(value[k]);
+  if (value.copy !== undefined && !sha("copy")) return false;
   if (state === "intended") return true;
   if (!sha("commit")) return false;
   if (state === "commit-created") return true;

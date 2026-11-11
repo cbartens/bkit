@@ -718,7 +718,7 @@ export const ledgersCommand = {
                 snapshot: "digest of the bytes read; every page of one scan shares it",
                 total: "winners that pass the filter, across all pages",
                 diagnostics: "each unreadable line: {line, reason}; on every page",
-                coverage: "{status: complete|partial|missing|unreadable, clean, malformedLines, lines}; clean is true only for a complete scan with no unreadable line",
+                coverage: "{status: clean|incomplete|partial|missing|unreadable, clean, malformedLines, lines}; clean is true only for a finished scan (nextCursor null) with no unreadable line, so a page with a nextCursor is incomplete",
             },
             run: (ctx) => query(ctx),
         },
@@ -1403,12 +1403,21 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
                         options.checkpoint?.("receipted");
                         return result(intent, intent.block, true);
                     }
+                    // Whole lines decide "landed": rows share a byte prefix (`{"schema":3,"ts":...`), so a
+                    // foreign row is told apart by being a complete line that differs from ours.
+                    const wantNl = want.indexOf(0x0a);
+                    const wantFirst = wantNl < 0 ? want : want.subarray(0, wantNl + 1);
+                    const tail = have.subarray(intent.offset);
+                    const haveNl = tail.indexOf(0x0a);
+                    const haveFirst = haveNl < 0 ? tail : tail.subarray(0, haveNl + 1);
+                    const foreignWholeLine = haveNl >= 0 && !haveFirst.equals(wantFirst);
                     let landedBytes = 0;
                     while (landedBytes < seg.length &&
                         landedBytes < want.length &&
                         seg[landedBytes] === want[landedBytes])
                         landedBytes++;
-                    if (landedBytes > 0 || (seg.length > 0 && have.length === intent.offset + seg.length))
+                    if (!foreignWholeLine &&
+                        (landedBytes > 0 || (seg.length > 0 && have.length === intent.offset + seg.length)))
                         throw new UncertainEffect(EXIT_STAGE, `operation ${operation}: ${file} holds ${landedBytes} of ${want.length} prepared bytes at the recorded offset; the effect is uncertain, nothing was truncated or retried`);
                     if (have.length === intent.offset) {
                         // Nothing landed: write the exact prepared bytes again.
@@ -1493,9 +1502,12 @@ function append(ctx) {
             of: correctionOf,
             step: book.step,
             substep: "append",
+            requestHash: actionHash(canonicalJson({ ledger, rows: parsed.value })),
         });
         if (!spend.allowed)
-            throw new CorrectionExhausted(EXIT.NO, `the correction budget of ${scope} is spent (${spend.used} of ${spend.limit}); nothing was written`, scope);
+            throw new CorrectionExhausted(EXIT.NO, spend.conflict === true
+                ? `operation ${operation} was already counted as a correction of ${scope} for different rows; a changed candidate needs a fresh operation id and spends the budget (${spend.used} of ${spend.limit}); nothing was written`
+                : `the correction budget of ${scope} is spent (${spend.used} of ${spend.limit}); nothing was written`, scope);
     }
     let r;
     try {
@@ -1596,7 +1608,9 @@ function query(ctx) {
             ? "unreadable"
             : result.diagnostics.length > 0
                 ? "partial"
-                : "complete";
+                : next !== null
+                    ? "incomplete"
+                    : "clean";
     ctx.emit({
         ledger,
         file,
@@ -1607,7 +1621,7 @@ function query(ctx) {
         diagnostics: result.diagnostics,
         coverage: {
             status,
-            clean: status === "complete",
+            clean: status === "clean",
             malformedLines: result.diagnostics.length,
             lines: result.lines,
             ...(!read.ok && !missing ? { error: read.error } : {}),

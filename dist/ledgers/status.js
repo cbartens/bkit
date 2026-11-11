@@ -111,6 +111,8 @@ function validRetrigger(value) {
     if (typeof value.original !== "string" || !SHA_RE.test(value.original))
         return false;
     const sha = (k) => typeof value[k] === "string" && SHA_RE.test(value[k]);
+    if (value.copy !== undefined && !sha("copy"))
+        return false;
     if (state === "intended")
         return true;
     if (!sha("commit"))
