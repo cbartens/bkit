@@ -1291,3 +1291,10 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T22:45:04Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/6/comment","hash":"29e172c8b35fa99fddbad9360315df2b881b68491e403474a01175bd18d67182","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6808894699","at":"2026-11-11T22:45:05Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-11T22:45:05Z","parentSha":"60ed0ca9bdbf1e0309ee1df957d81e025511f6bd","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-decision-1-6.md"],"attempt":6,"route":"summary"}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:45:28Z","noun":"status","verb":"route","flags":["workflow","file","prompt-file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:45:32Z","noun":"workflows","verb":"summary","flags":["workflow","file","publish"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:49:02Z","noun":"workflows","verb":"summary","flags":["workflow","file","publish"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:49:08Z","noun":"workflows","verb":"summary","flags":["workflow","file","publish"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:49:16Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt","verdict","failures","artifact","number","post","title","link-ref","comment-body","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-summary/-/1/comment","hash":"b39288f396b5e363d4f226bf24a283de8a3f47fcd6d1339752bff0bafbd9aecb","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6808970507","at":"2026-11-11T22:49:17Z"}
+{"type":"step-done","workflow":"build","step":"build-summary","status":"DONE","at":"2026-11-11T22:49:17Z","parentSha":"f2015d52e7af9359aaa3f88b03afad00eaeb07cc","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
