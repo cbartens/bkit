@@ -590,6 +590,7 @@ const EVIDENCE_LIMITS = {
   sourceBytes: 64 * 1024,
   depth: 3,
   targets: 64,
+  targetChars: 160,
   deadlineMs: 200,
 };
 
@@ -674,6 +675,15 @@ function addEvidenceTarget(st, literal, cwd, force) {
   const abs = path.resolve(cwd === null ? path.sep : cwd, literal);
   if (isQuietLiteral(literal) && !insideRoot(st, abs)) return;
   const shown = insideRoot(st, abs) ? path.relative(st.root, abs).split(path.sep).join("/") : abs;
+  // A target reaches hook output, and inspected files can name it: control characters,
+  // backticks and overlong names become uncertainty instead of text.
+  if (
+    shown.length > EVIDENCE_LIMITS.targetChars ||
+    /[\u0000-\u001f\u007f-\u009f\u2028\u2029`]/.test(shown)
+  ) {
+    st.uncertain.add("unresolved-target");
+    return;
+  }
   if (st.seen.has(shown)) return;
   if (st.targets.length >= EVIDENCE_LIMITS.targets) {
     evidenceLimit(st, "target-count");
@@ -1398,8 +1408,10 @@ function patchPaths(text, strip, st) {
       add(m[2], strip);
     } else if (line.startsWith("diff --git ")) {
       st.uncertain.add("unresolved-target");
-    } else if ((m = /^(?:rename|copy) (?:from|to) (.+?)\s*$/.exec(line))) {
-      add(m[1], Math.max(0, strip - 1));
+    } else if (/^(?:rename|copy) (?:from|to) /.test(line)) {
+      // Linear: a prefix test, then trimEnd (a lazy group before `\s*$` is quadratic).
+      const rest = line.slice(line.indexOf(" ", line.indexOf(" ") + 1) + 1).trimEnd();
+      if (rest) add(rest, Math.max(0, strip - 1));
     } else if (line.startsWith("--- ") && (lines[i + 1] || "").startsWith("+++ ")) {
       add(line.slice(4).split("\t")[0].trim(), strip);
       add(lines[i + 1].slice(4).split("\t")[0].trim(), strip);
@@ -2137,9 +2149,9 @@ function shellEditAdvisory(ev) {
   const shown = [];
   let used = 0;
   for (const t of ev.targets) {
-    if (shown.length > 0 && used + t.length > 200) break;
-    shown.push(t);
-    used += t.length + 2;
+    if (shown.length > 0 && used + JSON.stringify(t).length > 200) break;
+    shown.push(JSON.stringify(t));
+    used += JSON.stringify(t).length + 2;
   }
   const more = ev.targets.length - shown.length;
   const lines = [

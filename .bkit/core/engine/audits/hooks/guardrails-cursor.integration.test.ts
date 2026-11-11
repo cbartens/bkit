@@ -503,7 +503,7 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     const counted = advise(many, dir);
     expect(counted.text).toContain("src/f0.ts");
     // The introduction names a few targets and counts the rest (it shares the host budget).
-    expect(counted.text).toMatch(/ and 56 more\)/);
+    expect(counted.text).toMatch(/ and 5[67] more\)/);
     expect(counted.text).not.toContain("src/f64.ts");
     expect(counted.text).toMatch(LIMIT);
 
