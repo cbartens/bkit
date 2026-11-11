@@ -24,3 +24,9 @@
 - **Owner requirement (raised during the answers, not an Open Question):** "could we add a feature to give priority to a waiting issue? make something jump to the top of the queue?" — then: "fold into 916, and it must be requested by human, i.e. we create tool to jump to top of queue but use is limited to approval by human user"
   - **Answer:** Add to this plan a command that moves one waiting run to the front of the machine-lock queue. It never takes the lock from the current holder. Every use needs the human's approval: an agent cannot approve it for itself. The orchestrator's suggested mechanism (not yet confirmed by the owner): a separate `bkit` verb such as `bkit locks jump <run>`, marked as an "ask" permission in bkit's shipped settings for Claude Code, with the nearest equivalent on every other host. Raise unsettled details (verb name and shape, a second jump against the first, how a jump names its target run, which hosts have no ask equivalent) as new Open Questions with a recommendation and default.
   - Decision: 916-priority-jump-human-approved
+
+- **Open Question 8:** What is the jump command called, and what can it reach?
+  - **Answer:** A)
+  - Decision: 916-jump-verb-tests-noun
+- **Open Questions 9, 10 and 11:** not asked. The owner said to ask only questions that really need an answer from them. Questions 9 and 10 keep their stated defaults (A), and they stay listed as unanswered. Question 11 is not answered by the owner either: option A follows from the owner's requirement that every jump needs the human's approval, but the question stays listed with its default until the owner confirms it.
+  - Decision: none
