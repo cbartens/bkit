@@ -177,17 +177,36 @@ function mergeManagedList(base, override) {
                     templateCommands.add(`bkit-file:${file}`);
             }
         }
+        const isTemplateCommand = (c) => {
+            const file = bkitHookFile(c);
+            return (templateCommands.has(c) || (file !== undefined && templateCommands.has(`bkit-file:${file}`)));
+        };
         const templateKeys = new Set(override.map((g) => JSON.stringify(g)));
-        const kept = base.filter((g) => {
+        const merged = override.map((g) => ({ ...g }));
+        const kept = [];
+        for (const g of base) {
             if (templateKeys.has(JSON.stringify(g)))
-                return false;
-            return !groupCommands(g).some((c) => {
-                const file = bkitHookFile(c);
-                return (templateCommands.has(c) ||
-                    (file !== undefined && templateCommands.has(`bkit-file:${file}`)));
-            });
-        });
-        return [...override, ...kept];
+                continue;
+            const group = g;
+            const cmds = groupCommands(group);
+            if (!cmds.some(isTemplateCommand)) {
+                kept.push(g);
+                continue;
+            }
+            // A replaced bkit group: its consumer-added hooks move into the matching template group.
+            if (!Array.isArray(group.hooks))
+                continue;
+            const extras = group.hooks.filter((h) => isPlainObject(h) && typeof h.command === "string" && !isTemplateCommand(h.command));
+            if (extras.length === 0)
+                continue;
+            const target = merged.find((t) => groupCommands(t).some((c) => cmds.some((bc) => bc === c || (bkitHookFile(c) !== undefined && bkitHookFile(c) === bkitHookFile(bc)))));
+            if (!target || !Array.isArray(target.hooks))
+                continue;
+            const have = new Set(target.hooks.map((h) => JSON.stringify(h)));
+            const add = extras.filter((h) => !have.has(JSON.stringify(h)));
+            target.hooks = [...target.hooks, ...add];
+        }
+        return [...merged, ...kept];
     }
     const seen = new Set(override.map((e) => JSON.stringify(e)));
     const extras = base.filter((e) => !seen.has(JSON.stringify(e)));

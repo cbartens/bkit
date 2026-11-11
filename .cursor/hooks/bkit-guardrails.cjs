@@ -705,11 +705,39 @@ function addWordTarget(st, cmd, text, cwd, force) {
 function matchParen(text, from) {
   let depth = 1;
   let quote = "";
+  const heredocs = [];
   for (let i = from; i < text.length; i++) {
     const ch = text[i];
     if (quote) {
       if (ch === "\\" && quote === '"') i++;
       else if (ch === quote) quote = "";
+      continue;
+    }
+    if (ch === "<" && text[i + 1] === "<" && text[i + 2] !== "<" && text[i + 2] !== "(") {
+      const m = /^<<(-?)[ \t]*(?:'([^'\n]*)'|"([^"\n]*)"|\\?([A-Za-z0-9_.-]+))/.exec(
+        text.slice(i, i + 200),
+      );
+      if (m) {
+        heredocs.push({ delim: m[2] ?? m[3] ?? m[4], strip: m[1] === "-" });
+        i += m[0].length - 1;
+        continue;
+      }
+    }
+    if (ch === "\n" && heredocs.length > 0) {
+      // Heredoc bodies are data: skip to the line holding each delimiter.
+      let pos = i + 1;
+      for (const h of heredocs) {
+        while (pos < text.length) {
+          let eol = text.indexOf("\n", pos);
+          if (eol < 0) eol = text.length;
+          let line = text.slice(pos, eol);
+          if (h.strip) line = line.replace(/^\t+/, "");
+          pos = eol + 1;
+          if (line === h.delim) break;
+        }
+      }
+      heredocs.length = 0;
+      i = pos - 2;
       continue;
     }
     if (ch === "\\") i++;
@@ -1153,6 +1181,20 @@ function awkFiles(args) {
   return pos;
 }
 
+const SCRIPT_FILE_RE = /\.(?:ts|tsx|mts|cts|rb|pl|php|lua|py|js|mjs|cjs)$/;
+const RUNNER_PROGRAMS = new Set(["tsx", "ts-node", "bun", "deno", "ruby", "perl"]);
+
+/** `cp` / `mv` destination as a produced file: the lone literal source's body, else unknown. */
+function markCopied(st, cmd, ops, cwd) {
+  const dest = ops[ops.length - 1];
+  if (cmd.dyn.has(dest)) return;
+  let body = null;
+  if (ops.length === 2 && !cmd.dyn.has(ops[0]) && /\.(?:py|js|mjs|cjs|sh|bash|zsh)$/.test(dest)) {
+    body = readBoundedSource(st, ops[0], cwd);
+  }
+  markProduced(st, dest, cwd, body);
+}
+
 function evalCommand(cmd, st, depth, cwd) {
   const { words, viaXargs } = stripCommandPrefix(cmd.words);
   for (const target of cmd.redirects) {
@@ -1208,6 +1250,11 @@ function evalCommand(cmd, st, depth, cwd) {
     case "ruby": {
       const files = perlRubyFiles(args);
       if (files) inPlaceTargets(files);
+      else if (!args.some((a) => /^-[A-Za-z]*[eE]/.test(a) && !a.startsWith("--"))) {
+        // A script file run by an interpreter that is not analysed: effects are unknown.
+        if (operands(args).some((a) => SCRIPT_FILE_RE.test(a)))
+          st.uncertain.add("unknown-script-effect");
+      }
       return cwd;
     }
     case "awk":
@@ -1225,11 +1272,56 @@ function evalCommand(cmd, st, depth, cwd) {
       }
       if (args.some((a) => a === "-t" || a.startsWith("--target-directory"))) {
         st.uncertain.add("unresolved-target");
-      } else if (ops.length > 1) addWordTarget(st, cmd, ops[ops.length - 1], cwd, false);
+      } else if (ops.length > 1) {
+        addWordTarget(st, cmd, ops[ops.length - 1], cwd, false);
+        markCopied(st, cmd, ops, cwd);
+      }
       return cwd;
     }
     case "mv": {
-      for (const f of operands(args)) addWordTarget(st, cmd, f, cwd, false);
+      const ops = operands(args);
+      for (const f of ops) addWordTarget(st, cmd, f, cwd, false);
+      if (!args.some((a) => a === "-t" || a.startsWith("--target-directory")) && ops.length > 1) {
+        markCopied(st, cmd, ops, cwd);
+      }
+      return cwd;
+    }
+    case "curl":
+    case "wget": {
+      for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        let out = null;
+        if (
+          a === "-o" ||
+          a === "--output" ||
+          (program === "wget" && (a === "-O" || a === "--output-document"))
+        ) {
+          out = args[i + 1];
+        } else if (a.startsWith("--output=") || a.startsWith("--output-document=")) {
+          out = a.slice(a.indexOf("=") + 1);
+        } else if (/^-o./.test(a) && program === "curl") out = a.slice(2);
+        else if (/^-O./.test(a) && program === "wget") out = a.slice(2);
+        if (out && !cmd.dyn.has(out)) markProduced(st, out, cwd, null);
+        else if (out) st.uncertain.add("unresolved-target");
+      }
+      return cwd;
+    }
+    case "tsx":
+    case "ts-node":
+    case "bun":
+    case "deno":
+      if (operands(args).some((a) => SCRIPT_FILE_RE.test(a)))
+        st.uncertain.add("unknown-script-effect");
+      return cwd;
+    case "npx":
+    case "pnpx":
+    case "bunx":
+    case "pnpm":
+    case "yarn": {
+      const idx = args.findIndex((a) => RUNNER_PROGRAMS.has(a));
+      if (idx >= 0 && !args.slice(0, idx).some((a) => a === "--")) {
+        evalCommand({ ...cmd, words: args.slice(idx), redirects: [] }, st, depth, cwd);
+      }
       return cwd;
     }
     case "bash":
@@ -1304,6 +1396,8 @@ function evalCommand(cmd, st, depth, cwd) {
           [words[0], ...args],
           cwd,
         );
+      } else if (/\//.test(words[0]) && SCRIPT_FILE_RE.test(words[0])) {
+        st.uncertain.add("unknown-script-effect");
       }
       return cwd;
   }
