@@ -612,7 +612,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    Context: You are a subagent in the Build phase. Group verification. Group `{GROUP}`, attempt `{VERIFY_ATTEMPT}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
    Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-diff-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`.
-   Result: `{OUTBOX}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}-result.json`.
+   Result: `{OUTBOX}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    When the verifier is done, produce the group's verify report from its result:
    ```bash
    "{BKIT}" steps stub --agent=bkit-build-plan-verify --result-file="{OUTBOX}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md"
@@ -774,7 +774,7 @@ This step checks the whole feature against the plan after the last group, and ag
    Context: You are a subagent in the Build phase. Holistic plan verification (every group), attempt `{HOLISTIC_ATTEMPT}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff; review full feature diff for cross-group integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md`.
-   Result: `{OUTBOX}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}-result.json`.
+   Result: `{OUTBOX}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    When the holistic verifier is done, produce the holistic report from its result:
    ```bash
    "{BKIT}" steps stub --agent=bkit-build-plan-verify --result-file="{OUTBOX}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md"
@@ -883,12 +883,12 @@ This step checks the whole feature against the plan after the last group, and ag
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
-     Result: `{OUTBOX}/build-challenge-1-result.json`.
+     Result: `{OUTBOX}/build-challenge-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-build-challenge-2` using `Agent` tool:
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
-     Result: `{OUTBOX}/build-challenge-2-result.json`.
+     Result: `{OUTBOX}/build-challenge-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
      Once the subagents return, render each challenge report from its result. **If** `CHALLENGE_SIZE` = small → render only `bkit-build-challenge-2`:
    ```bash
    "{BKIT}" steps stub --agent=bkit-build-challenge-1 --result-file="{OUTBOX}/build-challenge-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md"
@@ -998,7 +998,7 @@ This step checks the whole feature against the plan after the last group, and ag
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. `Strategy`: `{STRATEGY}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` (highest number, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
-   Result: `{OUTBOX}/build-failure-diagnose-{TEST_ATTEMPT}-result.json`.
+   Result: `{OUTBOX}/build-failure-diagnose-{TEST_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    When the diagnosing agent is done, produce the test-failure diagnosis from its result:
    ```bash
    "{BKIT}" steps stub --agent=bkit-debug-failure-diagnose --result-file="{OUTBOX}/build-failure-diagnose-{TEST_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md"
