@@ -25,3 +25,11 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-11T02:29:28Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-review/-/1/comment","hash":"3f24b02be8aac42f045055bf4952c435180e2c1ad29ae387325e2ed7c1c1a555","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:29:31Z"}
 {"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-11-11T02:29:31Z","parentSha":"c5db120f0fa65da7cfa51cb286c6902034031e55","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-review-1.md","docs/plans/202611/logs/915-min-push-ignores/plan-review-2.md","docs/plans/202611/logs/915-min-push-ignores/plan-scope-check.md"],"verdict":"CONCERNS","attempt":1,"failures":4}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:29:41Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:30:00Z","noun":"steps","verb":"stub","flags":["from","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:37:40Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:37:51Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:38:44Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:38:49Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"f5415d42a8e7bcd828d817027a4f2e0705fb4fe77ea94e90fd6640e80b6670e3","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:38:52Z"}
+{"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-11T02:38:52Z","parentSha":"20f66d22544f677635792cd7aa54a48feb68cf64","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-v2-reviewed.md","docs/plans/202611/logs/915-min-push-ignores/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
