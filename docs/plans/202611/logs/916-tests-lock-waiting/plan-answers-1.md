@@ -1,0 +1,26 @@
+## Owner answers
+
+- **Open Question 1:** The issue is a bug-shape issue, so it has no `Narrative` or `Success Criteria` fields, and there is no design. Where do the two come from?
+  - **Answer:** A)
+  - Decision: none
+- **Open Question 2:** Do consumers' adopted copies of `scripts/ci/bkit-machine-lock.sh` need anything beyond the template change?
+  - **Answer:** A migration for this one
+  - Decision: 916-stale-lock-copy-upgrade-report-note
+- **Open Question 3:** Which waiters try the `flock` when `BKIT_TEST_SLOTS=N`?
+  - **Answer:** A
+  - Decision: 916-queue-first-in-line-only-tries
+- **Open Question 4:** Does the queue cover every lock, or only `tests`?
+  - **Answer:** A
+  - Decision: 916-queue-covers-every-lock
+- **Open Question 5:** Should the waiting note also estimate the wait from `<name>.last`?
+  - **Answer:** A
+  - Decision: 916-waiting-note-place-only-no-estimate
+- **Open Question 6:** How does a run keep its place in line when it gives up and asks again?
+  - **Answer:** A
+  - Decision: 916-queue-keeps-place-across-give-up
+- **Open Question 7:** What happens to the line when its first waiter is suspended (Ctrl-Z, `SIGSTOP`)?
+  - **Answer:** A
+  - Decision: 916-stopped-first-in-line-holds-the-line
+- **Owner requirement (raised during the answers, not an Open Question):** "could we add a feature to give priority to a waiting issue? make something jump to the top of the queue?" — then: "fold into 916, and it must be requested by human, i.e. we create tool to jump to top of queue but use is limited to approval by human user"
+  - **Answer:** Add to this plan a command that moves one waiting run to the front of the machine-lock queue. It never takes the lock from the current holder. Every use needs the human's approval: an agent cannot approve it for itself. The orchestrator's suggested mechanism (not yet confirmed by the owner): a separate `bkit` verb such as `bkit locks jump <run>`, marked as an "ask" permission in bkit's shipped settings for Claude Code, with the nearest equivalent on every other host. Raise unsettled details (verb name and shape, a second jump against the first, how a jump names its target run, which hosts have no ask equivalent) as new Open Questions with a recommendation and default.
+  - Decision: 916-priority-jump-human-approved
