@@ -897,9 +897,8 @@ export function checkPlanText(text: string, caps: TaskCaps = CONFIG_DEFAULTS.tas
   if (matrix !== null) {
     const expected = "Test description | Type | Target file | Task";
     const header = (matrix.head[0] ?? "")
-      .trim()
-      .replace(/^\||\|$/g, "")
       .split("|")
+      .slice(1, -1)
       .map((c) => c.trim().toLowerCase())
       .join(" | ");
     if (header !== expected.toLowerCase())
