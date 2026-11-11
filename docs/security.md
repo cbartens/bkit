@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Security
 
 > [!CAUTION]
@@ -58,8 +54,6 @@ When all three are present, an embedded directive executes.
 - scan any text that reaches a privileged action (merge body, commit message)
 
 Prose never substitutes for token scope.
-
-<!-- bkit:end -->
 
 ## Workflow comment ownership
 

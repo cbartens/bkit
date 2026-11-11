@@ -481,6 +481,106 @@ const ADOPTED: Record<string, Entry> = {
     ],
   },
   "docs/capabilities.md": { status: "generated", what: "pnpm bkit:graph:rollup writes it" },
+  "docs/architecture.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Architecture\n", null], copy: ["# Architecture\n", null] },
+      },
+    ],
+  },
+  "docs/technology.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Technology\n", null], copy: ["# Technology\n", null] },
+      },
+    ],
+  },
+  "docs/security.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Security\n", null], copy: ["# Security\n", null] },
+      },
+    ],
+  },
+  "docs/data-schema.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Data Schema\n", null], copy: ["# Data Schema\n", null] },
+      },
+    ],
+  },
+  "docs/testing.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Testing\n", null], copy: ["# Testing\n", null] },
+      },
+    ],
+  },
+  "docs/deployments.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Deployments\n", null], copy: ["# Deployments\n", null] },
+      },
+    ],
+  },
+  "docs/observability.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Observability\n", null], copy: ["# Observability\n", null] },
+      },
+    ],
+  },
+  "docs/design.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Design\n", null], copy: ["# Design\n", null] },
+      },
+    ],
+  },
+  "docs/noise.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Noise\n", null], copy: ["# Noise\n", null] },
+      },
+    ],
+  },
+  "docs/setup.md": {
+    status: "adopted",
+    edits: [
+      {
+        kind: "adapt",
+        what: "this repo's own facts, recorded over the starter",
+        region: { template: ["# Setup\n", null], copy: ["# Setup\n", null] },
+      },
+    ],
+  },
   "docs/components.md": {
     status: "adopted",
     edits: [

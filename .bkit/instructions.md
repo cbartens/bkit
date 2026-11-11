@@ -50,7 +50,7 @@ Rule section lines:
 | `audit` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-audit-*.md` |
 | `plan-template` | `bkit:start` / `bkit:end` block of `.bkit/core/docs/templates/bkit-plan.md` |
 | `entry` | `.bkit/core/AGENTS.md` |
-| `doc` | `bkit:start` / `bkit:end` block of each shipped doc master holding one: `.bkit/core/.agents/*.md` (not `rules.md`), `.bkit/core/.bkit/*.md`, `.bkit/shared/*.md`, `.bkit/shared/docs/*.md`, `.bkit/shared/.cursor/rules/*.mdc`; never the installed copies |
+| `doc` | `bkit:start` / `bkit:end` block of each shipped doc master holding one: `.bkit/core/.agents/*.md` (not `rules.md`), `.bkit/core/.bkit/*.md`, `.bkit/shared/*.md`, `.bkit/shared/.cursor/rules/*.mdc`; never the installed copies |
 | `hook` | `## Hook Text` entries |
 | `permission` | `## Permissions` groups |
 
@@ -399,7 +399,7 @@ Clause section lines:
 - hook:
   - partial: `gateguard-docs`
 - drift:
-  - `bkit-utility-update-documentation:56`: "index as the full catalog of docs to check" Reads docs.md as a full catalog to check, not lazy-load by phase matrix (fits a full-sync task)
+  - `bkit-utility-update-documentation:56`: "index as the catalog of docs to check" Reads docs.md as a full catalog to check, not lazy-load by phase matrix (fits a full-sync task)
     - kept: a full docs sync checks every doc the index lists, so it reads the whole catalog
 
 ```text
@@ -560,10 +560,11 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-plan-generate`
 
 ```text
-**New files:** Put each new file where `docs/architecture.md` places its kind. When it does not place that kind, add the kind there in the same change and say why.
+**New files:** Put each new file where `docs/architecture.md` places its kind. When that document is present and does not place that kind, add the kind there in the same change and say why; if it is missing, warn and follow the nearest existing structure.
 ```
 
 ```retired
+**New files:** Put each new file where `docs/architecture.md` places its kind. When it does not place that kind, add the kind there in the same change and say why.
 **New files:** Put each new file where `docs/architecture.md` places its kind; when it does not place that kind, add the kind there in the same change and say why.
 **New files:** Put each new file where `docs/architecture.md` places its kind; when it doesn't place that kind, add it there in the same change and say why.
 **New files:** Put each new file where `docs/architecture.md` places its kind, and say why when the topology does not cover it.
@@ -667,10 +668,11 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-plan-generate`
 
 ```text
-**UI design:** Build every user interface to `docs/design.md`.
+**UI design:** Build every user interface to `docs/design.md` when it is present and the change touches UI; if it is missing or still the starter, warn and follow the existing UI conventions.
 ```
 
 ```retired
+**UI design:** Build every user interface to `docs/design.md`.
 **UI design:** Build any user interface to `docs/design.md`.
 **UI design:** Build frontend and mobile UI to `docs/design.md`.
 ```
@@ -884,7 +886,7 @@ Clause section lines:
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
   - `bkit-build-plan-gaps-remediate:33`: "NEVER append to `docs/deferrals.jsonl`" Says never append to docs/deferrals.jsonl; consistent with `finish-over-deferrals` (blocked in-scope work is not a deferral) but reads as the inverse of `deferred-work`'s ALWAYS-append
     - kept: a blocked in-scope plan task is not a deferral; it is reported to the orchestrator, which routes it
-  - `bkit-ship-update-docs:68`: "Do not write `docs/deferrals.jsonl`." Forbids writing `docs/deferrals.jsonl`; deferrals are surfaced for human review only
+  - `bkit-ship-update-docs:72`: "Do not write `docs/deferrals.jsonl`." Forbids writing `docs/deferrals.jsonl`; deferrals are surfaced for human review only
     - kept: the rows it surfaces already sit in `docs/deferrals.jsonl`; it reads them for human review and adds no deferral of its own
 
 ```text
@@ -1369,7 +1371,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:644`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:646`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1668,7 +1670,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:644`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:646`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1796,7 +1798,7 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:77`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-debug-failure-remediate:87`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -1918,6 +1920,10 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-plan-generate`
 
 ```text
+**Explicit logging:** Automatic capture (e.g. log drains, change-data capture) does not replace explicit logs. Log each edge case it misses with the project's structured logger, per `docs/observability.md` when it is present; if it is missing, warn and follow the project's existing logging conventions.
+```
+
+```retired
 **Explicit logging:** Automatic capture (e.g. log drains, change-data capture) does not replace explicit logs. Log each edge case it misses with the project's structured logger, per `docs/observability.md`.
 ```
 
@@ -3333,14 +3339,68 @@ Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 - prompt: where-used
 - audit: forbidden
 - tags: review-docs-first
-- carriers: prompt all except `bkit-build-plan-convert`, `bkit-utility-compress-markdown`, `bkit-utility-update-documentation`; repo-agent all
+- carriers: prompt `bkit-build-challenge-*`, `bkit-debug-*`, `bkit-design-*`, `bkit-plan-review-*`, `bkit-build-install-skills`, `bkit-build-plan-current`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-verify`, `bkit-plan-scope-check`, `bkit-ship-conflict-resolve`, `bkit-ship-deferred-sweep`, `bkit-utility-update-decisions`, `bkit-utility-update-deferrals`, `bkit-utility-update-failures`, `bkit-utility-update-knowledge`, `bkit-utility-update-roadmap`, `bkit-utility-update-tracker`; repo-agent all
 
 ```text
-Read `.agents/docs.md`, and load the docs it lists for this task{{focus?}}. Skip any listed doc that does not exist
+Read `.agents/docs.md`, and load the docs it lists for this task{{focus?}}. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently
 ```
 
 ```retired
+Read `.agents/docs.md`, and load the docs it lists for this task{{focus?}}. Skip any listed doc that does not exist
 Read `.agents/docs.md` → load docs for workflow / step / task{{focus?}}; skip missing
+```
+
+### doc-warning-record
+
+- prompt: where-used
+- audit: where-used
+- tags: review-docs-first
+- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-debug-failure-diagnose`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`; audit `bkit-audit-adoption`, `bkit-audit-documentation`
+
+```text
+Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+```
+
+### doc-gap-continue
+
+- prompt: where-used
+- audit: where-used
+- tags: review-docs-first
+- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`; audit `bkit-audit-adoption`, `bkit-audit-documentation`
+
+```text
+**If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently.
+```
+
+### doc-topic-not-applicable
+
+- prompt: where-used
+- audit: where-used
+- tags: review-docs-first
+- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-plan-generate`, `bkit-ship-update-docs`
+
+```text
+Mark an irrelevant topic not applicable, with the reason.
+```
+
+### doc-indexed-equivalent
+
+- prompt: where-used
+- tags: review-docs-first
+- carriers: prompt `bkit-audit-generate`, `bkit-build-plan-convert`, `bkit-plan-generate`
+
+```text
+Read the recommended path or a valid indexed equivalent (`Equivalent to docs/{topic}.md` in its Scope cell).
+```
+
+### doc-warnings-summary
+
+- workflow: where-used
+- tags: review-docs-first
+- carriers: workflow all except `bkit-auto`
+
+```text
+The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
 ```
 
 ### replace-pending
@@ -3789,10 +3849,11 @@ Record `partial diff coverage` in the verdict.
 - carriers: prompt `bkit-build-plan-tasks`, `bkit-plan-generate`
 
 ```text
-**Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that must be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
+**Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that must be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md` when it is present; new logs, audit tables or traces → `docs/observability.md` when it is present; warn and continue when a named document is missing; alerts or toasts → the notifications doc via `.agents/docs.md`.
 ```
 
 ```retired
+**Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that must be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
 **Pre-Flight:** Every Core item applies; a Conditional item applies when its trigger does; a required item missing stops the plan. Run the repo's `bkit:deps:outdated` script and check toolchain and stack CLI versions, flagging outdated ones that may block the build (a CLI and backend version mismatch often shows as an infra error). Confirm access to the files the plan needs and ask for missing user information up front. List the plans that MUST be fully built and verified first. New credentials → check the project's secret store and service-account roles; database reads or writes → confirm the schema against `docs/data-schema.md`; new logs, audit tables or traces → `docs/observability.md`; alerts or toasts → the notifications doc via `.agents/docs.md`.
 ```
 
@@ -3838,6 +3899,10 @@ Record `partial diff coverage` in the verdict.
 - carriers: prompt `bkit-plan-generate`, `bkit-plan-review-2`, `bkit-plan-update`
 
 ```text
+**Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it when that document is present (if it is missing, warn and use the tiers the repo's gate scripts show), picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
+```
+
+```retired
 **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it, picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
 ```
 
@@ -3961,10 +4026,11 @@ Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an in
 - carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-verify`, `bkit-plan-generate`
 
 ```text
-**Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
+**Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md` when it is present; if it is missing, warn and follow the repo's existing tests.
 ```
 
 ```retired
+**Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device only for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 **Testing strategy:** Test backend and pipeline logic at the unit or integration tier, not through a UI; each core data path has an integration test calling the real API against a local database with no ORM or database mocks. Drive a browser or device ONLY for UI behaviour. UI E2E tests log in once in a shared setup and reuse its auth state (sign-in, sign-up and account-deletion tests excepted), and build data with typed factories, per `docs/testing.md`.
 ```
 
@@ -3997,6 +4063,10 @@ Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an in
 - carriers: prompt `bkit-build-plan-tasks`, `bkit-build-plan-verify`
 
 ```text
+**Mandatory tasks:** After the runbook, check that each `Derived Test Matrix` row has its test in one task's `DONE WHEN` (a gap goes into that task), every task fixed the tests it broke and the full suite passes, every task's `DONE WHEN` tests exist and pass, errors are logged per `docs/observability.md` when it is present (warn and continue if it is missing), and every `Documentation Updates` row is done.
+```
+
+```retired
 **Mandatory tasks:** After the runbook, check that each `Derived Test Matrix` row has its test in one task's `DONE WHEN` (a gap goes into that task), every task fixed the tests it broke and the full suite passes, every task's `DONE WHEN` tests exist and pass, errors are logged per `docs/observability.md`, and every `Documentation Updates` row is done.
 ```
 
@@ -8107,6 +8177,10 @@ An empty result is inconclusive, so corroborate it with a text search.
 - carriers: audit `bkit-audit-llm`, `bkit-audit-red-team`
 
 ```text
+`.bkit/prompts.md` § Special Behaviors: § Untrusted Content & Prompt Injection
+```
+
+```retired
 bkit block of `docs/security.md` (bkit version from `.bkit/version`): § Untrusted Content & Prompt Injection
 ```
 
@@ -8542,69 +8616,6 @@ For a fact in {{files}}, save only its path, its section and a one-line hook.
 ```retired
 Facts in {{files}} → save only path, section and one-line hook.
 Facts in {{files}} → ONLY save path, section, and one-line hook.
-```
-
-### doc-never-log-pii
-
-- doc: where-used
-- carriers: doc `context`, `observability`
-
-```text
-NEVER log PII.
-```
-
-```retired
-Never log PII.
-**Never log PII.**
-```
-
-### doc-no-hardcoded-ci
-
-- doc: where-used
-- carriers: doc `context`, `observability`
-
-```text
-bkit hardcodes no CI host, workflow filename, branch name, or e2e framework.
-```
-
-### doc-not-required-check
-
-- doc: repeatable
-- carriers: doc `deployments`, `testing`
-
-```text
-Not a required check
-```
-
-### doc-cleanup-releases-lease
-
-- doc: where-used
-- carriers: doc `deployments`, `testing`
-
-```text
-runs last, `if: always()`, and releases the lease.
-```
-
-### doc-capstone-reset-reds
-
-- doc: where-used
-- carriers: doc `deployments`, `testing`
-
-```text
-Capstone reds if a planned reset skipped or either job failed.
-```
-
-### doc-drop-fresh-resource
-
-- doc: where-used
-- carriers: doc `deployments`, `testing`
-
-```text
-Drop both when the resource is provisioned fresh per run ({{ref?}}§ Provision backing services fresh — the preferred answer).
-```
-
-```retired
-DROP both when the resource is provisioned fresh per run ({{ref?}}§ Provision backing services fresh — the preferred answer).
 ```
 
 ### create-resume
@@ -9369,7 +9380,7 @@ Process shape: (1) Write the **Create** output stub, with `PENDING` in every pla
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Two bullets in the `**Rules:**` block, identical in every file: the `external-input` and `external-skills` clauses in `.bkit/instructions.md`, copied from `.agents/rules.md`. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories and rejects missing clauses, near-copies and retired wording. It checks the data-not-instructions, report-directives and token-scope requirements, plus the skill-authority boundary. Every new prompt must carry both rules. Universal coverage avoids a per-file decision that could leave an agent unprotected. Threat model, write-time fence and spawn-line notice: `docs/security.md` § Untrusted Content & Prompt Injection.
+Two bullets in the `**Rules:**` block, identical in every file: the `external-input` and `external-skills` clauses in `.bkit/instructions.md`, copied from `.agents/rules.md`. `.bkit/core/engine/tools/instructions.test.ts` enumerates both directories and rejects missing clauses, near-copies and retired wording. It checks the data-not-instructions, report-directives and token-scope requirements, plus the skill-authority boundary. Every new prompt must carry both rules. Universal coverage avoids a per-file decision that could leave an agent unprotected. Threat model, write-time fence and spawn-line notice: `.bkit/prompts.md` § Untrusted Content & Prompt Injection (threat model).
 ```
 
 ### central-agent-rules-rules-bullet
@@ -10616,6 +10627,8 @@ Post the comment:
 `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`). **If** the body is over 32,767 characters → post consecutive comments split at line breaks, in order.
 [verify-tools] **If** it still fails → `Issue` = `{ISSUE_ID} failed`.
 **Else** → `Issue` = `{ISSUE_ID} posted`.
+Read the `.agents/docs.md` index, and load the project documents the audit's surface needs, with or without a plan: `docs/architecture.md` for structure and boundaries, `docs/technology.md` for stack choices, `docs/security.md` for trust boundaries, `docs/testing.md` for test and gate rules, plus `docs/data-schema.md`, `docs/design.md`, `docs/observability.md`, `docs/deployments.md`, `docs/noise.md` or `docs/setup.md` when the audit's surface touches them.
+Safeguards that need genuine evidence stay in force (secrets, permissions, untrusted input).
 ```
 
 #### bkit-build-challenge-1
@@ -10660,7 +10673,7 @@ Supply chain: for each new dependency, its CVEs, its maintainers' trustworthines
 `fixable` (`true|false`).
 `location` (`file:line`).
 `class: mechanical` = a surgical edit with no redesign, such as a missing soft-delete filter, auth check, input validator or redaction, or a hardcoded secret to move into an env var → `fixable: true`.
-[review-docs-first] Cross-reference each finding against the relevant docs that `.agents/docs.md` lists, always including `docs/security.md`.
+[review-docs-first] Cross-reference each finding against the relevant docs that `.agents/docs.md` lists, including `docs/security.md` when it is present (warn and continue if it is missing).
 ```
 
 #### bkit-build-install-skills
@@ -10697,8 +10710,6 @@ Write the **Create** output in the Output format.
 **Matrix shape:** The plan's `Derived Test Matrix` has a `Task` column beside `Test description`, `Type` and `Target file`. Each cell in it names the one runbook task that lands that row's test.
 Read `docs/templates/bkit-plan.md` § `Agent Execution Runbook` for the shape of a group and of a task block. The rules for filling them are the **Runbook tasks**, **TEST FIRST** and **TEST EXCEPTION** clauses above.
 Set up the plan file:
-**If** the plan file exists → keep every section except `Agent Execution Runbook` as written, and rewrite the runbook.
-**Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Reuse Inventory` and `## Agent Execution Runbook`.
 In both cases, carry over every end state and test that the inputs name, in their order. You may tighten them, but never weaken them.
 Split the work into tasks, each one a testable change, and group the tasks in build order:
 Keep each group within the per-group plan caps that your Context names (`bkit.workflows.tasks`: tasks, and `TEST FIRST` tests in all).
@@ -10708,6 +10719,10 @@ For each `CREATE` file, add one `NEW` row to `Reuse Inventory` that records the 
 **If** it exits 0 → stop.
 **If** it exits non-zero on the third run → stop, and leave the plan as it stands. The caller runs the same check and handles the problems that are left.
 **If** it exits non-zero → fix each problem its report lists, and run it again.
+Read the `.agents/docs.md` index, and consult the project documents the converted tasks need: always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`; add `docs/data-schema.md` when a task changes the database, `docs/design.md` for UI work, `docs/observability.md` for logging, `docs/deployments.md` for release or CI work, and `docs/noise.md` or `docs/setup.md` when a task touches them.
+Record each topic, the path and section used, coverage, gap and action in the plan's `Documentation Consultation`, and put each `READ` / `UPDATE` line for these documents in the task that needs it.
+**If** the plan file exists → keep every section except `Agent Execution Runbook` as written (add or refresh `Documentation Consultation` and `Documentation Warnings` from step 1), and rewrite the runbook.
+**Else** → create the plan with `# {title} Implementation Plan`, `## Context & Goals` (the goal in 1-3 lines), `## Documentation Consultation`, `## Documentation Warnings`, `## Reuse Inventory` and `## Agent Execution Runbook`.
 ```
 
 #### bkit-build-plan-current
@@ -10908,6 +10923,7 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 **Output cap:** Apply max 500 token limit to **Create** prose; sections that list items verbatim are exempt.
 Extract `Rot Signals` from the diagnose attempts, and aggregate them into the handover: dedupe the slugs, and keep all the evidence.
 [scope-discipline] Extract `Out-of-Scope Recommendations` from the diagnose attempts, and aggregate them: dedupe the paths, and keep all the rationales.
+[scope-discipline] Collect the `## Documentation Warnings` records from the diagnose, remediate and reproduce logs of the run, and copy them verbatim into the handover's `Documentation Warnings` section, dropping exact duplicates. Take no records from raw `*-input-*.md` files.
 ```
 
 #### bkit-debug-failure-diagnose
@@ -11279,7 +11295,7 @@ Design:
 Derived from design:
 `Breaking Changes & Naming Review` from Architecture.
 `Supersession Inventory` from Architecture `[DELETE]` rows.
-`Security & Privacy` from Architecture, per `docs/security.md`. Tick each row that applies, or justify `None`.
+`Security & Privacy` from Architecture, per `docs/security.md` when it is present (warn and continue if it is missing). Tick each row that applies, or justify `None`.
 `Documentation Updates`: the docs the changes touch.
 `Rollback Strategy` from Data schema / Architecture.
 Scope hygiene:
@@ -11290,6 +11306,10 @@ Keep each group and task within the plan caps your Context names (`bkit.workflow
 Put the groups in build order: a group's `DEPENDS ON` names only tasks in earlier groups or in its own group.
 `READ` / `UPDATE` / `DELETE` name only symbols and files you opened this session. Open an unopened one first, or leave it out.
 `Verification Plan` from Test Matrix and Execution Runbook.
+Read the `.agents/docs.md` index, and consult the project documents the plan needs. Always assess `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md`. Consult `docs/data-schema.md` for database changes, `docs/design.md` for UI, `docs/observability.md` for logging, `docs/deployments.md` for release or CI behaviour, and `docs/noise.md` or `docs/setup.md` when relevant.
+Record each topic, the path and section actually used, coverage, gap, action, alternative evidence and remaining uncertainty in `Documentation Consultation`.
+`Documentation Consultation` and `Documentation Warnings`, from step 3.
+Give each task that touches an assessed topic a `READ` line for its recommended document (or the indexed equivalent), and an `UPDATE` line for each document the task changes. A gap that the task cannot close stays in `Documentation Warnings`.
 ```
 
 #### bkit-plan-review-1
@@ -11388,6 +11408,9 @@ Add each decision or deferral `key` you wrote to the plan's `**Ledger rows:**` l
 **If** applied findings add or reword questions under `Open Questions & Assumptions` → shape each per **Open questions** above.
 Remove the answered question from `Open Questions & Assumptions`.
 **If** the answer carries `Decision: {key}` → add that `key` to the plan's `**Ledger rows:**` line.
+Read the `.agents/docs.md` index, and load the docs it lists for this task. Keep the plan's `Documentation Consultation` and `Documentation Warnings` sources as recorded.
+**If** a finding changes a topic the plan covers (architecture, technology, security, testing, data schema, UI, logging, release or setup) → re-consult its recommended document or indexed equivalent, update that topic's source, coverage, gap and action, and carry any new `READ` / `UPDATE` line into the task it touches.
+Never drop an earlier warning the review did not resolve.
 ```
 
 #### bkit-ship-conflict-resolve
@@ -11511,6 +11534,9 @@ Read the history shipped this cycle:
 Run `git log --oneline --stat origin/dev..HEAD` for the files shipped this cycle.
 [deferred-work] Fill `Pending Items` from the `ship-pending-items.md` deferral scan supplied in your Read paths, one entry per line.
 [deferred-work] Do not write `docs/deferrals.jsonl`.
+Read `.agents/docs.md`, and load the docs it lists for this task.
+Check coverage before editing, for each of the ten recommended topics (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) the shipped files touch: presence (absent or missing file), index accuracy (a row without a file, a file without a row, an `Equivalent to docs/{topic}.md` Scope cell), and project content (empty, or still the `.bkit/templates/docs/{topic}.md` starter).
+Populate a relevant absent or starter-only document only within the ship's scope and from facts verified in the shipped files; otherwise report the gap.
 ```
 
 #### bkit-utility-compress-markdown
@@ -11548,7 +11574,7 @@ Never trim either side of a Good / Bad example pair.
 Match these pairs:
 `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `To verify the build, run the test suite and check the output for failures.`
 `Read the plan and update the checkboxes in the plan file.` → `Read the plan and update its checkboxes.`
-`[docs/security.md](../../docs/security.md)` → `docs/security.md`
+`[docs/roadmap.md](../../docs/roadmap.md)` → `docs/roadmap.md`
 `` `pnpm bkit:gate:static-unit` `` → unchanged
 `## Verification Record` → unchanged
 `**Verdict:** ✅ PASS | ❌ FAIL` → unchanged
@@ -11602,7 +11628,12 @@ Report to the caller, never into the file: the original vs new line / word count
 
 ```text
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
-[review-docs-first] Read the `.agents/docs.md` index as the full catalog of docs to check.
+Read the `.agents/docs.md` index as the catalog of docs to check, then check project documentation coverage before editing:
+**Presence:** for each of the ten recommended topics (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`), decide whether the change touched it (relevant) or not (not applicable, with the reason). Review every relevant topic, including one the index does not list and one whose file is absent or missing.
+**Index accuracy:** compare each `Project Documents` row with the repository. Report a row whose file is missing, a present file with no row, and an equivalent document (an indexed file whose Scope cell reads `Equivalent to docs/{topic}.md`).
+**Project content:** report a document that is empty or still the shipped starter (compare it with `.bkit/templates/docs/{topic}.md`); an irrelevant topic is not a gap. A document that differs from the starter is a candidate: assess its coverage against the code, and never call it complete from a mechanical check.
+**Populate** a relevant absent, empty or starter-only document only within the authorized scope and only with facts you verified in the repository; copy the starter from `.bkit/templates/docs/`, fill it in, and add its row to `Project Documents`. **If** the evidence is not there → leave the document alone and report the gap.
+Record the coverage result:
 ```
 
 #### bkit-utility-update-failures
@@ -12043,7 +12074,6 @@ Check that there is one context-fetch block per context with a lane, and that ea
 **Step 3 — Version:** Compare `pinnedVersion`, the installed package and the registry latest. **If** pinned != installed → the package was bumped without `bkit upgrade`. **If** the repo is behind → record the release count, the release-note changes that touch this repo, and the template paths changed since the pinned version. **Done when:** `Version` names all three versions and every relevant release-note change.
 **Step 4 — Check and Doctor:** Run `bkit check`, and record its exit code and the cause of each drift line. Run `bkit doctor`, and mark each advisory adopt, reject (saying why) or not applicable. Carry the previous report's rejects forward, and re-raise one only when the advisory text changed. **Done when:** `Check and Doctor` holds one row per drift line and per advisory.
 **Step 5 — Hosts:** Compare the agent hosts in use with the bkit hosts installed. Find the hosts in use from the repo's config directories and from team use. Use the `Hosts` section of the newest `bkit-audit-agents` report as a cross-check, not as the source. For each installed host, check for one agent copy per `core/prompts/` source, one command copy per `core/workflows/` source, and every `core/` hook file present, executable and wired in that host's settings. Record these as findings: a host in use with no bkit install, because agents there run without bkit gates; a missing or extra copy; and a hook file present but unwired, or wired but absent. Whether hooks fire and agree across hosts goes to `bkit-audit-agents`. **Done when:** `Hosts` holds one row per host: in use · installed · agent copies · command copies · hooks wired.
-**Step 6 — Written Files:** (a) Check that every `bkit:start` / `bkit:end` block and owned key is untouched (the Step 4 drift). **If** one holds a hand edit → the fix moves the edit below `bkit:end` or to `Project Instructions`. **If** the defect is in what bkit shipped → the fix is upstream in bkit. (b) In each file bkit shares with you (`shared/docs/*.md`, `AGENTS.md`, `CLAUDE.md`, `.agents/*.md`, `.gitignore`, `.gitattributes`, settings, tool-server config), check that your part is present for every block that expects one. A doc that holds only bkit's block is unadopted. **If** `.bkit/.env.example` exists → check that `.bkit/.env` is present and git-ignored, and that every listed key is set (names only). **If** bkit wrote a tracker or tool-server entry → check that the credential env var it names is set. Whether your part is true goes to `bkit-audit-documentation`. **Done when:** `Written Files` holds one row per shared file: block untouched · your part present · verdict.
 **Step 7 — Audits:** For each `docs/templates/bkit-audit-*.md`, record whether its `**Applies when:**` is met, yes or no, with evidence; its `**Cadence:**`; and its newest report under `docs/audits/` by commit date. An audit never run is due, by the same rule as `bkit-utility-update-roadmap`. An `N/A` report with evidence counts as a run. Record these as findings: an audit that applies and was never run; an audit overdue by more than one cadence; and `Process Improvements` `Project` edits that a report proposed and that are absent from that template's `Project Instructions`. **Done when:** `Audits` holds one row per template: applies · cadence · last run · overdue by · verdict.
 **Step 8 — Adoption:** Join each file in the package's `templates/` to `.bkit/templates.md` § Contract.
 **If** a file is missing from the Contract → the fix is an upstream bkit doc fix.
@@ -12070,6 +12100,11 @@ For each context-fetch block, check that its job regex and artifact name match e
 **Hosts:** `Summary` names the hosts.
 **Template counts:** `Summary` gives the count of templates adopted / `gap` / `covered` / `not applicable`.
 **Throwaways removed:** the throwaway package unpack is removed.
+**Step 6 — Written Files:** (a) Check that every `bkit:start` / `bkit:end` block and owned key is untouched (the Step 4 drift). **If** one holds a hand edit → the fix moves the edit below `bkit:end` or to `Project Instructions`. **If** the defect is in what bkit shipped → the fix is upstream in bkit. (b) In each file bkit shares with you (`AGENTS.md`, `CLAUDE.md`, `.agents/*.md`, `.gitignore`, `.gitattributes`, settings, tool-server config), check that your part is present for every block that expects one. A shared file that holds only bkit's block is unadopted. The ten project documents belong to you, so check them against their starters in `.bkit/templates/docs/` and `Project Documents` in `.agents/docs.md`, topic by topic:
+**Presence:** a relevant topic with no file (absent or missing) is a finding. An indexed equivalent document counts (`Equivalent to docs/{topic}.md` in its Scope cell).
+**Index accuracy:** a file with no row, and a row with no file, are findings.
+**Content:** an empty file, or a file that still matches its starter, is a finding; a file that differs is a candidate for assessment, never proof of coverage. A topic that does not apply (no UI, no database) is irrelevant and recorded as not applicable with the reason.
+**If** `.bkit/.env.example` exists → check that `.bkit/.env` is present and git-ignored, and that every listed key is set (names only). **If** bkit wrote a tracker or tool-server entry → check that the credential env var it names is set. Whether your part is true goes to `bkit-audit-documentation`. **Done when:** `Written Files` holds one row per shared file and per project document topic: block untouched · your part present · state (populated, starter-only, empty, absent or not applicable) · verdict.
 ```
 
 #### bkit-audit-agents
@@ -12685,7 +12720,9 @@ Platform production checklist (e.g., Supabase Production Checklist).
 TLS certificate validity schedule (e.g., CA/Browser Forum Baseline Requirements, Ballot SC-081v3).
 DNS CAA (RFC 8659); MTA-STS (RFC 8461) and TLS reporting (RFC 8460).
 Mailbox-provider sender requirements (e.g., Gmail, Yahoo) and one-click unsubscribe (RFC 8058).
-bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Autonomous phase-close prerequisites; § Post-merge dev CI auto-routing; § Promotion-lag warning (`Check Default Branch Lags Dev`)
+bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Promotion-lag warning (`Check Default Branch Lags Dev`)
+
+`.bkit/workflows.md` § Test and release mechanics (Autonomous phase-close prerequisites; Post-merge dev CI auto-routing)
 Check the variables across every environment and secret store.
 Check that secret values match across stores.
 Check that each secret has one declared source.
@@ -12876,7 +12913,7 @@ Platform backup / restore docs.
 Platform serverless connection guidance.
 DB routine-maintenance docs, edition = hosted major (e.g., PostgreSQL Routine Database Maintenance Tasks).
 Safe-migration rule set (e.g., Squawk); record version.
-bkit block of `docs/setup.md` (bkit version from `.bkit/version`): Rules
+The project's `docs/setup.md` (local database setup and reset) and `docs/data-schema.md` (documented schema), when present; a missing or starter-only document is a warning, not a stop.
 Check the catalogue privileges on functions, tables and sequences.
 Find the role each write in the code actually runs as.
 Check the row-level access coverage, and the exposure outside the main schema (file storage, change feeds, views, exposed schemas).
@@ -13358,7 +13395,6 @@ Check that each topic has one doc, and label each live doc with its Diátaxis qu
 **API Doc Validator:** **If** the project has shared packages **or** an HTTP API → Step 9 — e.g., TypeDoc `--validation`, `eslint-plugin-jsdoc`. Fallback: read the exports, and mark broken links `Not Checked`.
 [honest-reporting] **Local Memory:** **If** the run is on a maintainer machine → Step 10 — the IDE auto-memory directory. Fallback: a cloud session skips it and records that in `Not Checked`.
 **Step 2 — Scope:** **If** there are no live docs → write one `N/A` row with evidence, then **STOP**. Otherwise take every live doc, and rank them by drift: for each live doc, count the commits to the repo paths it cites since the doc last changed, and add a column for the cited paths that no longer resolve. Record the ranking. Start from an up-to-date default branch with a clean `git status`. Historical records are citers. A pointer in one that leads nowhere is a finding, fixed at the target. A stale fact inside one is history, not a defect. **Done when:** `Scope` holds every live doc and the drift ranking.
-**Step 3 — Catalogue:** Check `.agents/docs.md`. Every file on disk under `docs/`, outside `plans/`, `archive/` and `audits/`, has a row, and every row's file exists. No doc is listed twice. Two docs on one topic is a bug, and that includes one doc in both tables with different reading columns. Each row's one-line scope still matches the doc. The root `README.md` works as the entry point: it says what the project is, links the setup doc, the architecture doc and `.agents/docs.md`, and says how to report a security issue. A missing community-health file with no README substitute is a finding. **Done when:** `Catalogue` names every mismatch, and every clean check.
 **Step 4 — Mechanical:** Run prose lint, the format check and the managed-block check. Then:
 Check that every backticked repo path in a live doc exists, and that every `*.md` name in a live doc resolves, backticked or not. The output is candidates. A path named on purpose as removed is not a finding. A path that moved is a finding. Section anchors and `file:line` wait for `Claims`.
 [empty-is-inconclusive] Check relative links and heading anchors offline across every doc, plans and archive included, because they are citers. Then check external URLs in live docs, with a cache. The anchor builder must match the host (e.g., GitHub). Open a failed fragment before calling it broken. The path check cannot see Markdown links.
@@ -13404,6 +13440,13 @@ Never name a doc that tests parse, or a ledger, as a compress candidate.
 **Docs untouched:** no live doc, memory file or instruction file changed, other than the template's `Project Instructions`.
 **Ledger rows untouched:** no existing ledger row changed.
 [tmp-files] **Scratch in tmp:** scratch files are only under the repo-root `tmp/`.
+**Presence:** a topic the project needs with no file (absent or missing) is a finding. An equivalent document counts when its `Project Documents` row names the recommended path in its Scope cell (`Equivalent to docs/{topic}.md`).
+**Index accuracy:** a present file with no `Project Documents` row, and a row whose file is missing, are findings.
+**Project content:** compare each file with `.bkit/templates/docs/{topic}.md`. An empty file or one that still matches the starter is a finding. A file that differs is a candidate: read it against the code and name the undercovered topics. Never call a topic covered from a mechanical comparison alone.
+**Not applicable:** a topic the project does not need (for example `docs/design.md` for a project with no UI) is irrelevant and recorded as not applicable with the reason. Absence, incomplete coverage and an irrelevant topic are three different outcomes; report each one apart.
+**Done when:** `Catalogue` names every mismatch and every clean check, and `Project Documentation` holds one row per topic: path, state (populated, starter-only, empty, absent or not applicable), index accuracy and evidence.
+**If** every topic is covered and indexed → write `None`; Step 3's records belong in this section.
+**Project documents:** `Project Documentation` has a row for every topic, and no absent, starter-only or undercovered topic reads as clean.
 ```
 
 #### bkit-audit-duplication
@@ -13643,8 +13686,12 @@ Policy as code (e.g., Conftest / OPA; JSON Schema).
 Required status checks and a merge queue (e.g., GitHub rulesets).
 OpenSSF Scorecard checks, at the Scorecard version read.
 DORA continuous integration capability.
-bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently; § JUnit reports for bkit
-bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Commit-message force tags; § Workflow-file limits GitHub does not enforce visibly; § Ship gate + bookkeeping
+bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § CI test tiers (the bkit scaffold); § Accepted divergences; § Step names say whether a red is real; § Composite actions: two rules that fail silently
+`.bkit/workflows.md` § Local gate scripts (Failure count from JUnit reports)
+
+bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Workflow-file limits GitHub does not enforce visibly
+
+`.bkit/workflows.md` § Test and release mechanics (Commit-message force tags; Ship gate + bookkeeping)
 bkit block of `docs/design.md` (bkit version from `.bkit/version`): § Machine-checked reference
 Collect candidates from sibling audits, repeat defects, and standard gates nobody proposed.
 Score each candidate, check its disqualifiers, and set its tier, moment, enforcement point, positive control and report-only bar.
@@ -14256,7 +14303,9 @@ Google SRE Workbook (online edition): Implementing SLOs, Alerting on SLOs (multi
 Google SRE Book (online edition): Postmortem Culture.
 AWS Well-Architected Framework, Reliability Pillar: REL05 BP01-BP07 (graceful degradation, throttling, retries, fail fast, client timeouts, stateless, emergency levers), REL11 (static stability), REL13 (disaster recovery). Record the publication date read.
 Background-job flow-control docs (e.g., Inngest concurrency and `createFunction`, Temporal task queues).
-bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Consumer rollback path; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
+bkit block of `docs/deployments.md` (bkit version from `.bkit/version`): § Production rollback runbook; § Dev rollback runbook; § Smoke trigger plumbing; § Applying migrations at deploy time; § Build-vs-migration race; § Promote before the lanes (`bkit-tests-deploy`)
+
+`.bkit/workflows.md` § Test and release mechanics (Consumer rollback path)
 List the outbound calls, webhook receivers, background work and write paths.
 Mark each dependency hard or soft, including transitive dependencies.
 Check the critical journeys, SLOs and the error-budget policy.
@@ -14661,7 +14710,9 @@ Visual and accessibility snapshots (e.g., Playwright `toHaveScreenshot` / `toMat
 Test-smell catalogue (e.g., xUnit Test Patterns, Meszaros 2007).
 Test lint (e.g., `@vitest/eslint-plugin`, `eslint-plugin-playwright`, `eslint-plugin-testing-library`, or Oxlint's `vitest` + `typescript` plugins); record each version. typescript-eslint type-aware rules need a TypeScript version it supports; newer → Oxlint `--type-aware` (oxlint-tsgolint).
 Network mock that fails closed (e.g., MSW); record the major read.
-bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § Test first; § Tests lock; § Local test sleep prevention; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+bkit block of `docs/testing.md` (bkit version from `.bkit/version`): § Validated means executed, not "didn't fail"; § A guard asserts the rule, not the sentence that explains it; § Which tier does a behaviour need?; § What each tier must do; § Design assertions are a dimension, not a lane; § Schema-invariant DB checks (e.g. RLS coverage); § Provision backing services fresh; § Optional hardening (adopt when the cost is justified); § Coverage on PRs
+
+`.bkit/workflows.md` § Test and release mechanics (Tests lock; Local test sleep prevention); `.bkit/workflows.md` § Test-first
 Build the should-test list: promises, never-events, platforms, roles, failure paths, and data that outlives the request.
 Check that each item is tested at the right tier, not only at some tier.
 Check that database rules and boundary contracts have tests, not only the guards in front of them.
@@ -14886,7 +14937,6 @@ These are the unknowns and assumptions this plan relies on. An unresolved questi
 **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
 **User Context:** access to the files is confirmed, and missing user information is requested.
 **Project Context:** the relevant `docs/knowledge.jsonl` and `docs/decisions.jsonl` rows are read.
-**Testing & Quality:** the testing strategy matches `docs/testing.md`.
 **Prerequisite Plans:** [the plans to finish first. **If** none → `None`.]
 **Secrets & Env Vars:** the secret store and the service-account roles are checked.
 **Schema State:** the database state is confirmed against `docs/data-schema.md`.
@@ -14949,6 +14999,9 @@ These are the unknowns and assumptions this plan relies on. An unresolved questi
 **Run all tests:** [The local unit and integration suites (e.g., `pnpm test`, `pnpm test:integration`) pass.]
 **Gate 4 — Verified:** every Automated Tests box is checked, with proof (test output, a CLI result or an API response).
 **Step 1:** [How to verify the feature end to end through the CLI or the database.]
+**Project Documents:** `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md` are assessed through the `.agents/docs.md` index (a missing or starter-only document is a warning, not a stop), and the plan's strategy matches `docs/testing.md`. Record each source in `Documentation Consultation`.
+**Deployments & Setup:** release, CI and branch behaviour follows `docs/deployments.md`, and local-setup changes follow `docs/setup.md`.
+[One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). Example line: `{"topic": "security", "gap": "starter-only", "recommendedPath": "docs/security.md", "alternativeEvidence": "The CI configuration defines token permissions.", "action": "Populate the security document with the project's credential and permission boundaries."}`. **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
 ```
 
 ### Entry file

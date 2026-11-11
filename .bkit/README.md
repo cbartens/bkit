@@ -291,7 +291,7 @@ Block updates keep the comment prefixes (`# `, `// `) before the markers.
 | `.gitignore` | core | `.bkit/shared/gitignore` | Tier 2 html-comment |
 | `AGENTS.md` | core | `.bkit/core/AGENTS.md` | Tier 2 html-comment |
 | `CLAUDE.md` | claude | `.bkit/shared/CLAUDE.md` | Tier 2 html-comment |
-| `docs/*.md` (blocks) | core | `.bkit/shared/docs/` | Tier 2 html-comment |
+| `docs/{architecture,technology,security,data-schema,testing,deployments,observability,design,noise,setup}.md` | project | starters in `.bkit/templates/docs/` | Never written by install or upgrade. Copy a starter into `docs/` and add its row to `Project Documents` in `.agents/docs.md`; install and upgrade register present documents, and remove the ownership wrapper from a copy an older release installed. |
 | `docs/templates/bkit-*.md` | core | `.bkit/core/docs/templates/` | Tier 2 html-comment |
 | `.gitattributes` | core | `.bkit/shared/.gitattributes` | Tier 2 html-comment (`merge=union` for the append-only ledgers) |
 | `.bkit/templates/**` | — | the whole `.bkit/templates/` root | Raw copies, refreshed on every install and upgrade; never hashed. Upgrade prints the changed paths. |

@@ -14,6 +14,7 @@ import { formatChecklist, readChangelogVersionDelta, runPostInstallCheck, writeA
 import { collectTips } from "../../checks/tips/index.js";
 import { findMissingOwnedHooks, detectOwnedHookMissing } from "../../checks/after/managed.js";
 import { resolveTokens } from "../../install/placeholders.js";
+import { syncProjectDocs } from "../../install/project-docs.js";
 import { parseModelLookup, applyModelOverrides, unknownModelOverrides, buildOpencodeModelLookup, buildAntigravityModelLookup, parseEffortMap, } from "../../render/models.js";
 import { getBkitDocsRoot } from "../../shared/package-roots.js";
 import { migrateBkitLayout, migrateGithubProjectKey, migrateLinearTeamKey, } from "../../install/modules/core.js";
@@ -436,6 +437,11 @@ export async function runInstall(args, upgradeReport = false) {
     finally {
         discardAllStaging();
     }
+    // The ten project documents belong to the project: drop a legacy ownership wrapper and list
+    // each present document in `Project Documents`. Runs after the managed index is rendered and
+    // before the advisories read the result. `check` is read-only, so it never gets here.
+    if (!dryRun)
+        syncProjectDocs(process.cwd(), { dryRun: false });
     const totalWrites = ws.writes.length;
     // Done banner first so the line count is easy to find above the checklist.
     // For check, "would occur" makes intent explicit; for install, writes already happened.

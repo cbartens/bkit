@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Technology
 
 > [!CAUTION]
@@ -11,8 +7,6 @@
 >
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - List each technology and how it is used. Put the reason for a choice in `decisions.jsonl`.
-
-<!-- bkit:end -->
 
 ## Runtime & Language
 

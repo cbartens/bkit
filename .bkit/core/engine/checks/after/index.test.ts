@@ -995,3 +995,46 @@ describe("formatChecklist format contract", () => {
     expect(banner).toContain("--- 1/1 [advisory] single ---");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Project documentation advisories through the shared pipeline
+// ---------------------------------------------------------------------------
+
+describe("project documentation advisories", () => {
+  it("reports and suppresses project documentation advisories without a blocker", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "root" }));
+
+    // Reported: an empty repo has no project documents and no index.
+    const reported = runPostInstallCheck([], tmpDir);
+    const docFindings = reported.filter((f) => f.id.startsWith("project-docs-"));
+    expect(docFindings.map((f) => f.id)).toEqual(
+      expect.arrayContaining(["project-docs-index-missing", "project-docs-missing"]),
+    );
+    expect(docFindings.every((f) => f.severity === "advisory")).toBe(true);
+    expect(reported.filter((f) => f.severity === "blocker").map((f) => f.id)).not.toContain(
+      "project-docs-missing",
+    );
+
+    // Rendered through the shared checklist and advisories artifact.
+    const checklist = formatChecklist(reported);
+    expect(checklist).toContain("[advisory] project-docs-missing");
+    expect(checklist).toContain("docs/architecture.md");
+    const md = renderAdvisoriesMarkdown(reported, { mode: "install", version: "2.2.0" });
+    expect(md).toContain("project-docs-missing");
+
+    // Suppressed: the existing bkit.advisories.ignore control drops the id and reports it.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "root",
+        bkit: { advisories: { ignore: ["project-docs-missing"] } },
+      }),
+    );
+    const suppressed: SuppressionNote[] = [];
+    const after = runPostInstallCheck([], tmpDir, suppressed);
+    expect(after.some((f) => f.id === "project-docs-missing")).toBe(false);
+    expect(after.some((f) => f.id === "project-docs-index-missing")).toBe(true);
+    expect(suppressed).toContainEqual({ id: "project-docs-missing", scope: "." });
+    expect(formatChecklist(after, suppressed)).toContain("- project-docs-missing (.)");
+  });
+});

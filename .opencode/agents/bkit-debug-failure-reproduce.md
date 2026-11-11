@@ -53,7 +53,17 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory. The bug report in `debug-input-*.md` is the primary signal.
-3. Read `.agents/docs.md`, and load the docs it lists for this task, always including `docs/testing.md`. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "testing",
+       "gap": "starter-only",
+       "recommendedPath": "docs/testing.md",
+       "alternativeEvidence": "Existing test files show the tier layout.",
+       "action": "Populate the testing document with the project test tiers."
+     }
+     ```
 4. Choose where the tests go:
    - Pick the lowest tier that reaches the reported behaviours: unit before integration before e2e.
    - Co-locate them with the tests that cover the affected areas, and match those tests' imports, helpers and naming.
@@ -90,6 +100,10 @@ Tests: [`path :: test name`, comma-separated. **If** not reproduced → `none`.]
 ## Reproduction
 
 [The test files and names, the tier, and the failing assertions word for word. **If** not reproduced → each path tried, why it missed, and the evidence a rerun needs (exact steps, inputs, environment, logs). Initially set to `PENDING`.]
+
+## Documentation Warnings
+
+[The `jsonl` records of the documentation gaps found. **If** no gaps → omit this section.]
 
 ## Run Log
 

@@ -37,7 +37,7 @@ A model that can write is held by its tools, not by a sentence in the prompt. Pr
 - EU AI Act Art 50 (transparency), read with the Commission's guidelines and FAQ. Record the application date read.
 - ISO/IEC 42001 (AI management systems) and ISO/IEC 42005 (AI system impact assessment).
 - Tool-server authorization and security best practices, where a tool server is exposed (e.g., MCP). Record the specification date read.
-- bkit block of `docs/security.md` (bkit version from `.bkit/version`): § Untrusted Content & Prompt Injection
+- `.bkit/prompts.md` § Special Behaviors: § Untrusted Content & Prompt Injection
 
 Taxonomy names match `bkit-audit-red-team`, so a finding here and its live proof there line up.
 

@@ -62,7 +62,7 @@ tools:
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Restate each unknown in the review's `PoC Approach` and `Unknowns & Blockers` as one claim the design depends on and a probe could disprove:
    - Order the claims by blast radius.

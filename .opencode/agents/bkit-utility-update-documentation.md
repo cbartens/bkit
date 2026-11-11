@@ -52,17 +52,33 @@ tools:
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read the `.agents/docs.md` index as the full catalog of docs to check.
+2. Read the `.agents/docs.md` index as the catalog of docs to check, then check project documentation coverage before editing:
+   - **Presence:** for each of the ten recommended topics (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`), decide whether the change touched it (relevant) or not (not applicable, with the reason). Review every relevant topic, including one the index does not list and one whose file is absent or missing.
+   - **Index accuracy:** compare each `Project Documents` row with the repository. Report a row whose file is missing, a present file with no row, and an equivalent document (an indexed file whose Scope cell reads `Equivalent to docs/{topic}.md`).
+   - **Project content:** report a document that is empty or still the shipped starter (compare it with `.bkit/templates/docs/{topic}.md`); an irrelevant topic is not a gap. A document that differs from the starter is a candidate: assess its coverage against the code, and never call it complete from a mechanical check.
+   - **Populate** a relevant absent, empty or starter-only document only within the authorized scope and only with facts you verified in the repository; copy the starter from `.bkit/templates/docs/`, fill it in, and add its row to `Project Documents`. **If** the evidence is not there → leave the document alone and report the gap.
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Never report a clean sync while a relevant topic is absent or incomplete.
 3. Per doc, always follow its `Rules` headers when making edits.
 4. Per doc, four passes in order: Sync content (gaps vs implementation) → reorganize structure (dedupe, move misplaced) → compress wording (more token-efficient) → update cross-references (inline `docs/*.md` links).
-5. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
-6. Collect setup tips:
+5. Record the coverage result:
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "testing",
+       "gap": "starter-only",
+       "recommendedPath": "docs/testing.md",
+       "alternativeEvidence": "The test runner configuration names the available tiers",
+       "action": "Populate the testing document with the lane graph and tier rules."
+     }
+     ```
+6. Ensure agent memories (`MEMORY.md` / `memory/*.md`) do not duplicate content and only contain pointers (path, section, one-line hook) to relevant `docs/*.md` sections / `docs/*.jsonl` entries. **If** memory contains duplicate / stale content → update memory.
+7. Collect setup tips:
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" tips --workflow=utility
    ```
    - Hold stdout as `BKIT_TIPS`. It is plain text, not JSON.
    - **If** it prints nothing or exits non-zero → `BKIT_TIPS` is empty.
-7. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
+8. Final return: Display the output format verbatim as the final message to the user. Do not summarise or trim it.
    - Append a `## Suggested Replies` heading.
    - Append `Would you like me to explain any of this in plain English? Then write 'yes, explain in plain english'.`
    - **If** `BKIT_TIPS` is not empty:
@@ -81,6 +97,14 @@ tools:
 ## Drift Resolved
 
 [For each file, which passes applied and which gaps closed. **If** none → `None`.]
+
+## Project Documentation Coverage
+
+[One row per topic: recommended path, state (populated, starter-only, empty, absent or not-applicable), index accuracy, and evidence. A coverage gap here is never `None`.]
+
+## Documentation Warnings
+
+[The `jsonl` records from step 5. **If** no gaps → omit this section.]
 
 ## Memories
 

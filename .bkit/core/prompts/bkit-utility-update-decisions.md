@@ -58,7 +58,7 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 3. Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent.
 4. Check each remaining entry against `docs/` and the codebase, never trusting the entry's own claims. Classify it, then apply its class:
    - `HOLDS` = docs or code confirm what the entry states, and none of them state otherwise → no change.

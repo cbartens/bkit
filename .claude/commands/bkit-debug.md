@@ -460,6 +460,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Read: `{CI_SELECTION_FILE}`, `docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, the current-generation `context-*` artifacts recorded in Step 4.
    Update: Test files.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-reproduce-{NORMAL_ATTEMPT}.md`.
+   Project documents: a debug run has no plan, so the subagents read the `.agents/docs.md` index and consult `docs/testing.md` for the test tiers and `docs/noise.md` for registered signal downgrades (also `docs/observability.md` or `docs/architecture.md` when they are present and relevant to the failure). A missing index or a missing, empty or starter-only document is a warning: continue from repository evidence, and record the gap in `## Documentation Warnings`. A handover keeps the unresolved warnings.
 2. Finish — commits the test:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-failure-reproduce --field=ciGeneration={CI_GENERATION} --attempt-of=debug-run-tests:current --agent=bkit-debug-failure-reproduce --artifact="docs/plans/{YYYYMM}/logs/{FID}/debug-failure-reproduce-<attempt>.md" --message="test({FID}): reproduce reported failure" --number=5 --post --title="Failure Reproduce"
@@ -603,6 +604,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    "{BKIT}" workflows summary --workflow=debug --file="{STATUS}"
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
+   The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
 2. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md --message="chore({FID}): summary" --verbose-ci-local --number=10 --post --title="Summary" --link-ref={BRANCH} --comment-body

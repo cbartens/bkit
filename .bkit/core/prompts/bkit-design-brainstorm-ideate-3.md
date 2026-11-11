@@ -46,7 +46,7 @@ autoCompactWindow: 300000
 **Process:**
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
-2. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+2. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` and `docs/security.md` when they are present (warn and continue if any is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 3. Propose 2-3 approaches framed by failure mode, not by happy-path shape.
    - Lead with the recommended approach.
    - For each approach, include additive risk-mitigation guidance to layer onto whichever approach is picked, not separate "safer" approaches.

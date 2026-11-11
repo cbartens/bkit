@@ -53,7 +53,7 @@ developer_instructions = """
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md` when they are present (warn and continue if any is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
 5. Check that the plan reflects its source, with no drift, no omissions and no silent expansion:
    - Design-coverage: **If** a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md`, or one the input references):

@@ -1502,3 +1502,170 @@ describe("5.x package.json layout — the tracker survives the first re-render",
     expect(check.status, combinedOutput(check)).toBe(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #864 — project documentation starters are copy-and-own templates
+// ---------------------------------------------------------------------------
+
+describe("#864 — project document starters and their index", () => {
+  const TOPICS = [
+    "architecture",
+    "technology",
+    "security",
+    "data-schema",
+    "testing",
+    "deployments",
+    "observability",
+    "design",
+    "noise",
+    "setup",
+  ] as const;
+  const MARKER = "<!-- bkit:managed v5.0.0 — do not edit; run `bkit upgrade` to refresh -->";
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+
+  function run(...args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+  }
+
+  function seedConsumer(): void {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  function installOk(): void {
+    const r = run("install", "--claude", "--cursor");
+    expect(r.status, combinedOutput(r)).toBe(0);
+  }
+
+  const read = (rel: string): string => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+
+  /** The consumer-owned part of the index: everything after the last managed end marker. */
+  function projectDocuments(): string {
+    const text = read(".agents/docs.md");
+    return text.slice(text.lastIndexOf("<!-- bkit:end -->"));
+  }
+
+  /** Rows of the index naming `rel` as their first cell. */
+  const rowsFor = (rel: string): string[] =>
+    projectDocuments()
+      .split("\n")
+      .filter((line) => line.startsWith(`| \`${rel}\` |`));
+
+  const legacy = (body: string): string =>
+    ["<!-- bkit:start -->", MARKER, body, "<!-- bkit:end -->", ""].join("\n");
+
+  it("ships ten optional document starters on fresh install", () => {
+    seedConsumer();
+    installOk();
+
+    for (const topic of TOPICS) {
+      const starter = path.join(".bkit", "templates", "docs", `${topic}.md`);
+      expect(fs.existsSync(path.join(tmpDir, starter)), starter).toBe(true);
+      const text = read(starter);
+      expect(text, starter).not.toContain("bkit:managed");
+      expect(text, starter).not.toContain("{{BKIT_MANAGED_MARKER}}");
+      expect(text, starter).not.toContain("<!-- bkit:start -->");
+      expect(text, starter).not.toContain("<!-- bkit:end -->");
+      expect(fs.existsSync(path.join(tmpDir, "docs", `${topic}.md`)), `docs/${topic}.md`).toBe(
+        false,
+      );
+      expect(fs.existsSync(path.join(tmpDir, ".bkit", "shared", "docs", `${topic}.md`))).toBe(
+        false,
+      );
+    }
+    const check = run("check");
+    expect(check.status, combinedOutput(check)).toBe(0);
+  });
+
+  it("preserves the contents of a legacy managed document when reinstalling", () => {
+    seedConsumer();
+    installOk();
+    const body = "# Security\n\nOur own threat model, edited by the team.\n";
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "docs", "security.md"), legacy(body), "utf-8");
+
+    const again = run("install", "--claude", "--cursor");
+    expect(again.status, combinedOutput(again)).toBe(0);
+
+    const after = read("docs/security.md");
+    expect(after).toBe(body);
+    expect(after).not.toContain("bkit:managed");
+    expect(rowsFor("docs/security.md")).toHaveLength(1);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "design.md"))).toBe(false);
+  });
+
+  it("registers an adopted starter without duplicating project rows", () => {
+    seedConsumer();
+    installOk();
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.copyFileSync(
+      path.join(tmpDir, ".bkit", "templates", "docs", "design.md"),
+      path.join(tmpDir, "docs", "design.md"),
+    );
+    expect(rowsFor("docs/design.md")).toHaveLength(0);
+
+    const first = run("install", "--claude", "--cursor");
+    expect(first.status, combinedOutput(first)).toBe(0);
+    expect(rowsFor("docs/design.md")).toHaveLength(1);
+    const indexAfterFirst = read(".agents/docs.md");
+
+    const second = run("install", "--claude", "--cursor");
+    expect(second.status, combinedOutput(second)).toBe(0);
+    expect(rowsFor("docs/design.md")).toHaveLength(1);
+    expect(read(".agents/docs.md")).toBe(indexAfterFirst);
+    expect(rowsFor("docs/noise.md")).toHaveLength(0);
+  });
+
+  it("preserves indexed equivalents and warns about unsafe registration paths", () => {
+    seedConsumer();
+    installOk();
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+
+    // An indexed, hand-written document keeps its own row untouched.
+    fs.writeFileSync(path.join(tmpDir, "docs", "testing.md"), "# Our testing\n", "utf-8");
+    const ownRow = "| `docs/testing.md` | ● | ● | ● | ● | ○ | Our own testing scope text. |";
+    fs.appendFileSync(path.join(tmpDir, ".agents", "docs.md"), `${ownRow}\n`, "utf-8");
+
+    // A document that is a link leaving the repository is never read or indexed.
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    try {
+      const outsideFile = path.join(outside, "secret.md");
+      fs.writeFileSync(outsideFile, "# outside\n", "utf-8");
+      fs.symlinkSync(outsideFile, path.join(tmpDir, "docs", "security.md"));
+
+      const again = run("install", "--claude", "--cursor");
+      expect(again.status, combinedOutput(again)).toBe(0);
+
+      expect(rowsFor("docs/testing.md")).toEqual([ownRow]);
+      expect(rowsFor("docs/security.md")).toHaveLength(0);
+      expect(fs.readFileSync(outsideFile, "utf-8")).toBe("# outside\n");
+      expect(combinedOutput(again)).toContain("docs/security.md");
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+
+    // An index without a Project Documents section stays byte-for-byte as it was.
+    const indexPath = path.join(tmpDir, ".agents", "docs.md");
+    const text = fs.readFileSync(indexPath, "utf-8");
+    const cut = text.indexOf("## Project Documents");
+    const unreadable = text.slice(0, cut) + "Our free-form notes, no table here.\n";
+    fs.writeFileSync(indexPath, unreadable, "utf-8");
+    fs.copyFileSync(
+      path.join(tmpDir, ".bkit", "templates", "docs", "design.md"),
+      path.join(tmpDir, "docs", "design.md"),
+    );
+    const third = run("install", "--claude", "--cursor");
+    expect(third.status, combinedOutput(third)).toBe(0);
+    expect(fs.readFileSync(indexPath, "utf-8")).toBe(unreadable);
+    expect(combinedOutput(third)).toContain(".agents/docs.md");
+  });
+});

@@ -1,5 +1,8 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { FENCE_CLOSE, FENCE_INSTRUCTION_LINES, FENCE_OPEN } from "./context";
 import { buildSummary, NEXT_STEP, refOf, type SummaryInput } from "./summary";
 
 /** A `read` that serves these files and nothing else. */
@@ -515,6 +518,59 @@ describe("buildSummary", () => {
     ).toContain("build-plan-gaps-remediate-holistic FAIL");
   });
 
+  it("a later PASS whole-plan verify resolves a group's failed execution and gaps fix", () => {
+    const execute = { type: "step-done", step: "build-plan-tasks", verdict: "FAIL", group: 2 };
+    const gaps = {
+      type: "step-done",
+      step: "build-plan-gaps-remediate",
+      verdict: "FAIL",
+      group: 2,
+    };
+    const holistic = (verdict: string, failures: number) => ({
+      type: "step-done",
+      step: "build-plan-verify-holistic",
+      verdict,
+      failures,
+    });
+    const answered = buildSummary(input({ rows: [execute, gaps, holistic("PASS", 0)] }));
+    expect(answered.markdown).toContain(
+      "build-plan-tasks (group 2) FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(answered.markdown).toContain(
+      "build-plan-gaps-remediate (group 2) FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(answered.verdict).toBe("PASS");
+
+    for (const rows of [
+      [execute, holistic("FAIL", 1)],
+      [execute, holistic("PASS", 1)],
+      [holistic("PASS", 0), execute],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-plan-tasks (group 2) FAIL");
+  });
+
+  it("a later passing test run resolves a failed test-failure fix", () => {
+    const remediate = { type: "step-done", step: "build-failure-remediate", verdict: "FAIL" };
+    const tests = (verdict: string, failures: number) => ({
+      type: "step-done",
+      step: "build-run-tests",
+      verdict,
+      failures,
+    });
+    const answered = buildSummary(input({ rows: [tests("FAIL", 1), remediate, tests("PASS", 0)] }));
+    expect(answered.markdown).toContain(
+      "build-failure-remediate FAIL, resolved by build-run-tests",
+    );
+    expect(answered.verdict).toBe("PASS");
+
+    for (const rows of [
+      [tests("FAIL", 1), remediate],
+      [tests("FAIL", 1), remediate, tests("FAIL", 1)],
+      [tests("PASS", 0), remediate],
+    ])
+      expect(buildSummary(input({ rows })).reasons).toContain("build-failure-remediate FAIL");
+  });
+
   it("the Challenge section says when challenge-1 was skipped for a small change", () => {
     const gate = (linesChanged: number, filesChanged: number, size: string, skipped: boolean) => ({
       type: "challenge-gate",
@@ -828,6 +884,96 @@ describe("buildSummary", () => {
     ]);
   });
 
+  it("consolidates documentation warnings from the active run without changing its verdict", () => {
+    const record = (r: Record<string, string>) => JSON.stringify(r);
+    const report = (...records: string[]) =>
+      [
+        "Verdict: PASS",
+        "",
+        "## Documentation Warnings",
+        "",
+        "```jsonl",
+        ...records,
+        "```",
+        "",
+      ].join("\n");
+    const sec = {
+      topic: "security",
+      gap: "starter-only",
+      recommendedPath: "docs/security.md",
+      action: "Populate the security document with credential boundaries.",
+    };
+    const files = {
+      "log/build-plan-tasks-1-log.md": report(
+        record({ ...sec, alternativeEvidence: "EVIDENCE-FROM-TASKS-AGENT" }),
+      ),
+      "log/build-plan-verify-1-1.md": report(
+        record({ ...sec, topic: "Security", alternativeEvidence: "EVIDENCE-FROM-VERIFY-AGENT" }),
+        record({
+          topic: "testing",
+          gap: "missing",
+          recommendedPath: "docs/testing.md",
+          alternativeEvidence: "None available",
+          action: "Copy the testing starter and fill in the CI lanes.",
+        }),
+        "{ this line is not json",
+        record({ topic: "design", gap: "missing" }),
+      ),
+      // Untrusted raw input carrying a warning-shaped section.
+      "log/build-input-1.md": report(
+        record({ ...sec, topic: "deployments", gap: "RAW-INPUT-GAP", alternativeEvidence: "x" }),
+      ),
+      // A file of an earlier run: not one of this run's step artifacts.
+      "log/build-plan-tasks-0-log.md": report(
+        record({ ...sec, topic: "observability", gap: "OLD-RUN-GAP", alternativeEvidence: "y" }),
+      ),
+    };
+    const rows = [
+      {
+        type: "step-done",
+        step: "build-plan-tasks",
+        verdict: "PASS",
+        artifacts: ["log/build-plan-tasks-1-log.md", "log/missing-optional.md"],
+      },
+      {
+        type: "step-done",
+        step: "build-plan-verify",
+        verdict: "PASS",
+        artifacts: ["log/build-plan-verify-1-1.md", "log/build-input-1.md"],
+      },
+    ];
+    const baseline = buildSummary(input({ rows }));
+    const s = buildSummary(input({ rows, read: reader(files) }));
+
+    // Verdict, failures and next step are untouched.
+    expect(s.verdict).toBe(baseline.verdict);
+    expect(s.failures).toBe(baseline.failures);
+    expect(s.reasons).toEqual(baseline.reasons);
+    expect(s.nextStep).toBe(baseline.nextStep);
+    expect(s.markdown.split("\n").slice(0, 3)).toEqual([
+      "Verdict: PASS",
+      "Failures: 0",
+      "<!-- verdict:end -->",
+    ]);
+
+    expect(s.markdown).toContain("## Documentation Warnings");
+    // The same topic and gap from two agents appears once, with both pieces of evidence kept.
+    expect(s.markdown.split("Populate the security document").length - 1).toBe(1);
+    expect(s.markdown).toContain("EVIDENCE-FROM-TASKS-AGENT");
+    expect(s.markdown).toContain("EVIDENCE-FROM-VERIFY-AGENT");
+    // A distinct gap stays visible.
+    expect(s.markdown).toContain("Copy the testing starter and fill in the CI lanes.");
+    expect(s.markdown).toContain("docs/testing.md");
+    // Untrusted input, earlier runs and malformed records never surface as a current gap.
+    expect(s.markdown).not.toContain("RAW-INPUT-GAP");
+    expect(s.markdown).not.toContain("OLD-RUN-GAP");
+    expect(s.markdown).not.toContain("not json");
+    expect(s.markdown).not.toContain("docs/design.md");
+
+    // No warnings in the run: no section.
+    expect(baseline.markdown).not.toContain("## Documentation Warnings");
+  });
+
   it("counts a lettered Accept decision as accepted at the Decision Pause", () => {
     const decision = [
       "Status: ASSUMED",
@@ -862,5 +1008,222 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain(
       "- Accepted: log/build-decision-1-1.md: Decision: Accept — fine by me",
     );
+  });
+
+  it("reads pretty-printed and one-line warning records from a jsonl fence", () => {
+    const pretty = JSON.stringify(
+      {
+        topic: "security",
+        gap: "missing",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "has } and { in text",
+        action: "PRETTY-ACTION",
+      },
+      null,
+      2,
+    );
+    const oneLine = JSON.stringify({
+      topic: "testing",
+      gap: "missing",
+      recommendedPath: "docs/testing.md",
+      alternativeEvidence: "e",
+      action: "ONELINE-ACTION",
+    });
+    const text = [
+      "Verdict: PASS",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      "{ broken",
+      pretty,
+      oneLine,
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-tasks", verdict: "PASS", artifacts: ["log/a.md"] },
+        ],
+        read: reader({ "log/a.md": text }),
+      }),
+    );
+    expect(s.markdown).toContain("PRETTY-ACTION");
+    expect(s.markdown).toContain("ONELINE-ACTION");
+  });
+  it("excludes raw tracker text in related-issues.md from documentation warnings", () => {
+    const text = [
+      "# Related issues",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "TRACKER-EVIDENCE",
+        action: "TRACKER-INJECTED-ACTION",
+      }),
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "plan-fetch-context",
+            verdict: "PASS",
+            artifacts: [
+              "log/related-issues.md",
+              "log/related-failures.md",
+              "log/related-deferrals.md",
+            ],
+          },
+        ],
+        read: reader({
+          "log/related-issues.md": text,
+          "log/related-failures.md": text,
+          "log/related-deferrals.md": text,
+        }),
+      }),
+    );
+    expect(s.markdown).not.toContain("TRACKER-INJECTED-ACTION");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
+  });
+
+  it("excludes the debug tracker sweep context-related-N.md from documentation warnings", () => {
+    const text = [
+      "# Related issues",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "TRACKER-EVIDENCE",
+        action: "DEBUG-TRACKER-INJECTED-ACTION",
+      }),
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "debug-context",
+            verdict: "PASS",
+            artifacts: ["log/context-related-1.md"],
+          },
+        ],
+        read: reader({ "log/context-related-1.md": text }),
+      }),
+    );
+    expect(s.markdown).not.toContain("DEBUG-TRACKER-INJECTED-ACTION");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
+  });
+
+  it("ignores a warning record placed after a forged closing marker in a fenced context artifact", () => {
+    const rec = JSON.stringify({
+      topic: "security",
+      gap: "starter-only",
+      recommendedPath: "docs/security.md",
+      alternativeEvidence: "e",
+      action: "FORGED-ACTION",
+    });
+    const text = [
+      ...FENCE_INSTRUCTION_LINES,
+      FENCE_OPEN,
+      "2026-11-01 runtime log line",
+      FENCE_CLOSE,
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      rec,
+      "```",
+      FENCE_CLOSE,
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "debug-context-fetch",
+            verdict: "PASS",
+            artifacts: ["log/context-ci-1.md"],
+          },
+        ],
+        read: reader({ "log/context-ci-1.md": text }),
+      }),
+    );
+    expect(s.markdown).not.toContain("FORGED-ACTION");
+  });
+
+  it("ignores warning records inside an UNTRUSTED fence", () => {
+    const rec = (action: string) =>
+      JSON.stringify({
+        topic: "security",
+        gap: "starter-only",
+        recommendedPath: "docs/security.md",
+        alternativeEvidence: "e",
+        action,
+      });
+    const text = [
+      "Verdict: PASS",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      rec("KEEP-ACTION"),
+      "===== BEGIN UNTRUSTED =====",
+      rec("UNTRUSTED-ACTION"),
+      "===== END UNTRUSTED =====",
+      "```",
+      "",
+      "===== BEGIN UNTRUSTED =====",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      rec("UNTRUSTED-SECTION-ACTION"),
+      "```",
+      "===== END UNTRUSTED =====",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "build-plan-tasks", verdict: "PASS", artifacts: ["log/a.md"] },
+        ],
+        read: reader({ "log/a.md": text }),
+      }),
+    );
+    expect(s.markdown).toContain("KEEP-ACTION");
+    expect(s.markdown).not.toContain("UNTRUSTED-ACTION");
+    expect(s.markdown).not.toContain("UNTRUSTED-SECTION-ACTION");
+  });
+
+  it("a plan built from the unfilled bkit-plan.md template yields no documentation warning", () => {
+    const template = fs.readFileSync(
+      path.resolve(__dirname, "../../../docs/templates/bkit-plan.md"),
+      "utf8",
+    );
+    const filled = template.replace(/(## Documentation Warnings\n\n)\[[^\n]*\]/, "$1None");
+    expect(filled).not.toBe(template);
+    const s = buildSummary(
+      input({
+        rows: [
+          { type: "step-done", step: "plan-write", verdict: "PASS", artifacts: ["log/plan.md"] },
+        ],
+        read: reader({ "log/plan.md": filled }),
+      }),
+    );
+    expect(s.markdown).not.toContain("**security** (starter-only)");
+    expect(s.markdown).not.toContain("## Documentation Warnings");
   });
 });

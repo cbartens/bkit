@@ -6,6 +6,7 @@ import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
 import { parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
+import { parseJson } from "../../shared/json.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"];
 /** Per workflow and verdict, the next command the summary recommends. */
@@ -47,16 +48,20 @@ export function refOf(fid, tracker = "any") {
     return /^[0-9]+$/.test(id) ? `#${id}` : id;
 }
 /**
- * Review updates cover their review's findings. Group verification covers failed
- * execution, but does not cover a remediation agent's separate warnings or flakes.
+ * Review updates cover their review's findings. The same group's verification, or a
+ * whole-plan verification, covers failed execution; a passing test run covers a failed
+ * test-failure fix. None covers a remediation agent's separate warnings or flakes.
  */
 const RESOLVED_BY = {
     "plan/plan-review": ["plan-apply-review"],
     "design/design-review": ["design-apply-review"],
-    "build/build-plan-tasks": ["build-plan-verify"],
-    "build/build-plan-gaps-remediate": ["build-plan-verify"],
+    "build/build-plan-tasks": ["build-plan-verify", "build-plan-verify-holistic"],
+    "build/build-plan-gaps-remediate": ["build-plan-verify", "build-plan-verify-holistic"],
     "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+    "build/build-failure-remediate": ["build-run-tests"],
 };
+/** Steps that check the whole run, so they answer a failure in any task group. */
+const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 const TEST_EXCEPTION = "**TEST EXCEPTION:**";
@@ -67,6 +72,126 @@ const taskGroupOf = (r) => {
     const taskGroup = r.group ?? r.subPlan;
     return typeof taskGroup === "number" ? taskGroup : undefined;
 };
+const WARNING_FIELDS = [
+    "topic",
+    "gap",
+    "recommendedPath",
+    "alternativeEvidence",
+    "action",
+];
+/** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
+const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
+    /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
+    /(^|\/)context-related-[^/]*$/.test(rel);
+/** Text between the untrusted-content markers is external data: never a source of warnings. */
+const stripUntrusted = (text) => {
+    const open = /^[^\n]*={5} BEGIN UNTRUSTED ={5}/m.exec(text);
+    if (!open)
+        return text;
+    // The fence ends at the LAST closing marker: any earlier closer inside the payload is forged.
+    const closers = [...text.matchAll(/^[^\n]*={5} END UNTRUSTED ={5}[^\n]*(?:\r?\n|$)/gm)].filter((m) => m.index >= open.index + open[0].length);
+    const last = closers.at(-1);
+    const end = last ? last.index + last[0].length : text.length;
+    return text.slice(0, open.index) + text.slice(end);
+};
+/**
+ * The top-level `{...}` objects in a fence body, in order. Each may span several lines (prettier
+ * rewrites a one-line record into that shape); braces inside strings are ignored. Text outside
+ * an object and an unterminated object are dropped.
+ */
+function jsonObjectChunks(body) {
+    const chunks = [];
+    let depth = 0;
+    let start = -1;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+        if (inString) {
+            if (escaped)
+                escaped = false;
+            else if (ch === "\\")
+                escaped = true;
+            else if (ch === '"')
+                inString = false;
+            continue;
+        }
+        if (ch === '"' && depth > 0)
+            inString = true;
+        else if (ch === "{") {
+            if (depth === 0)
+                start = i;
+            depth++;
+        }
+        else if (ch === "}" && depth > 0) {
+            depth--;
+            if (depth === 0)
+                chunks.push(body.slice(start, i + 1));
+        }
+    }
+    if (depth > 0) {
+        // An unterminated object must not swallow the records after it: rescan after its first line.
+        const nl = body.indexOf("\n", start);
+        if (nl !== -1)
+            chunks.push(...jsonObjectChunks(body.slice(nl + 1)));
+    }
+    return chunks;
+}
+/**
+ * The structured records under `## Documentation Warnings` (JSON objects, one per line or pretty-printed, in a
+ * `jsonl` fence) of the run's own step artifacts, merged by normalised topic and gap. A missing
+ * section, a malformed line or a record without all five non-empty fields is skipped.
+ */
+function documentationWarnings(rows, read) {
+    const merged = new Map();
+    const seenFiles = new Set();
+    for (const row of rows) {
+        if (row.type !== "step-done")
+            continue;
+        for (const rel of artifactsOf(row)) {
+            if (!rel.endsWith(".md") || isRawInput(rel) || seenFiles.has(rel))
+                continue;
+            seenFiles.add(rel);
+            const raw = read(rel);
+            if (raw === null)
+                continue;
+            const text = stripUntrusted(raw);
+            const section = /^## Documentation Warnings[ \t]*\r?\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text);
+            const fence = section === null
+                ? null
+                : /```jsonl[ \t]*\r?\n([\s\S]*?)(?:```|(?![\s\S]))/.exec(section[1]);
+            if (fence === null)
+                continue;
+            for (const chunk of jsonObjectChunks(fence[1])) {
+                const parsed = parseJson(chunk);
+                if (!parsed.ok)
+                    continue;
+                const value = parsed.value;
+                if (typeof value !== "object" || value === null || Array.isArray(value))
+                    continue;
+                const rec = value;
+                const fields = WARNING_FIELDS.map((f) => rec[f]);
+                if (!fields.every((f) => typeof f === "string" && f.trim() !== ""))
+                    continue;
+                const [topic, gap, recommendedPath, evidence, action] = fields.map((f) => f.trim());
+                const key = `${topic.toLowerCase()}\u0000${gap.toLowerCase()}`;
+                const found = merged.get(key) ?? {
+                    topic: topic.toLowerCase(),
+                    gap: gap.toLowerCase(),
+                    recommendedPath: recommendedPath,
+                    evidence: [],
+                    actions: [],
+                };
+                if (!found.evidence.includes(evidence))
+                    found.evidence.push(evidence);
+                if (!found.actions.includes(action))
+                    found.actions.push(action);
+                merged.set(key, found);
+            }
+        }
+    }
+    return [...merged.values()];
+}
 /** The run's step rows grouped per step (and task group), in first-seen order. */
 function stepGroups(rows) {
     const groups = new Map();
@@ -194,7 +319,7 @@ export function buildSummary(input) {
             answers.includes(String(r.step)) &&
             (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
             (r.failures === undefined || r.failures === 0) &&
-            taskGroupOf(r) === sub &&
+            (WHOLE_RUN.has(String(r.step)) || taskGroupOf(r) === sub) &&
             (!review || r.attempt === row.attempt));
         if (answer !== undefined && spike) {
             const reports = artifactsOf(row).map((p) => read(p));
@@ -341,6 +466,18 @@ export function buildSummary(input) {
     }
     if (unconfirmed.length > 0)
         out.push("", "## Ship Completed with Assumed Items", "", "Accepted without the owner and not confirmed; each is a `needs-decision` deferral.", "", ...unconfirmed.map((u) => `- ${u}`));
+    // Documentation warnings: advisory only, never part of the verdict.
+    const docWarnings = documentationWarnings(input.rows, read);
+    if (docWarnings.length > 0) {
+        out.push("", "## Documentation Warnings", "");
+        for (const w of docWarnings) {
+            out.push(`- **${w.topic}** (${w.gap}) — \`${w.recommendedPath}\``);
+            for (const e of w.evidence)
+                out.push(`  - Evidence: ${e}`);
+            for (const a of w.actions)
+                out.push(`  - Action: ${a}`);
+        }
+    }
     // Risks and action items.
     const items = [];
     for (const g of groups) {

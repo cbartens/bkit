@@ -62,13 +62,6 @@ function readFile(relPath: string): string {
   return fs.readFileSync(path.join(tmpDir, relPath), "utf-8");
 }
 
-/** The docs/*.md files the shared templates ship; capabilities.md is a template bkit does not install. */
-function shippedDocNames(): string[] {
-  return fs
-    .readdirSync(path.join(getSharedRoot(), "docs"))
-    .filter((f) => f.endsWith(".md") && f !== "capabilities.md");
-}
-
 function writeBkitVersionFile(v: BkitVersion): void {
   const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
@@ -229,19 +222,16 @@ describe("buildDecisionTable — markered-text format", () => {
     const marker = "<!-- bkit:managed v4.0.0 — do not edit; run `bkit upgrade` to refresh -->";
     const block = `<!-- bkit:start -->\n\n${marker}\n\n# Testing\n\nbkit doctrine\n\n<!-- bkit:end -->\n`;
 
-    it("strips bkit's block, managed marker included, from docs/*.md and keeps the consumer's content", async () => {
-      const consumer = "## Project Testing\n\nour own notes\n";
-      writeFile("docs/testing.md", `${block}${consumer}`);
-      writeFile("docs/security.md", `${block}`);
+    it("leaves the project docs and their wrapper text alone, because the project owns them", async () => {
+      const text = `${block}## Project Testing\n\nour own notes\n`;
+      writeFile("docs/testing.md", text);
+      writeFile("docs/security.md", block);
       const table = buildDecisionTable(["core"], makeCtx());
-      expect(table.find((r) => r.file === "docs/testing.md")?.decision).toBe("strip-block");
-      const r = await runUninstall(["core"], makeCtx());
-      expect(readFile("docs/testing.md")).toBe(consumer);
-      expect(readFile("docs/testing.md")).not.toContain("bkit:managed");
-      // Nothing but bkit's block → the file goes.
-      expect(fileExists("docs/security.md")).toBe(false);
-      expect(r.stripped).toContain("docs/testing.md");
-      expect(r.deleted).toContain("docs/security.md");
+      expect(table.some((r) => r.file === "docs/testing.md")).toBe(false);
+      expect(table.some((r) => r.file === "docs/security.md")).toBe(false);
+      await runUninstall(["core"], makeCtx());
+      expect(readFile("docs/testing.md")).toBe(text);
+      expect(readFile("docs/security.md")).toBe(block);
     });
 
     it("deletes the owned docs/templates/bkit-*.md and keeps the consumer's own templates", async () => {
@@ -278,16 +268,6 @@ describe("buildDecisionTable — markered-text format", () => {
       writeFile("docs/capabilities.md", `${block}`);
       const table = buildDecisionTable(["core"], makeCtx());
       expect(table.some((r) => r.file === "docs/capabilities.md")).toBe(false);
-    });
-
-    it("covers every docs/*.md the templates ship", () => {
-      const shipped = shippedDocNames();
-      expect(shipped.length).toBeGreaterThan(0);
-      for (const f of shipped) writeFile(path.join("docs", f), block);
-      const table = buildDecisionTable(["core"], makeCtx());
-      for (const f of shipped) {
-        expect(table.find((r) => r.file === path.join("docs", f))?.decision, f).toBe("strip-block");
-      }
     });
   });
 

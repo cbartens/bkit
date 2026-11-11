@@ -60,7 +60,7 @@ autoCompactWindow: 300000
    ```
    **If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
 5. Apply every `CRITICAL` item. No consensus is required. **If** findings conflict → prefer the stricter wording.
 6. Apply each `OPTIONAL` item on merit. No consensus is required. **If** it conflicts with an applied `CRITICAL` item or expands scope → skip it.

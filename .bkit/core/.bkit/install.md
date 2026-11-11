@@ -330,6 +330,10 @@ Findings render as `--- i/N [severity] id ---` with `Detect:` and `Action:` line
 | Visibility | The console banner and `.bkit/advisories.md` carry one suppressed-advisory line per dismissal (`N advisory` / `N advisories`), so a stale opt-out cannot hide a finding silently. |
 | Coverage | Per package: `tagged-tests-no-ci-home` and `test-integration-env-not-asserted`. Repo root: every setup tip id and every advisory a tip reuses (§ Setup tips). No other advisory is suppressible; an id matching no advisory or tip is ignored. |
 
+## Project document ownership
+
+Project docs (`docs/{architecture,technology,security,data-schema,testing,deployments,observability,design,noise,setup}.md`) belong to the project. Install and upgrade never write them except to strip the old `bkit:start` / `bkit:end` wrapper and `bkit:managed` notice from a copy a pre-6.2 release made, then register present docs in `.agents/docs.md` `## Project Documents`. Ambiguous wrappers are kept and reported. Uninstall leaves the docs and their index rows alone. The starters live in `.bkit/templates/docs/`; see `.bkit/templates.md` § Project documents.
+
 ## Optional post-install decisions
 
 Two capabilities are opt-in, and a plain host / tooling install never wires them. The default install never enables them, and the post-install advisory banner nudges you to choose, once. Each choice is recorded in `package.json` (`bkit.tracker.default`, `bkit.cloud.agent`), so the nudge knows whether you've decided or deliberately opted out.
@@ -383,6 +387,39 @@ There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` �
 To reverse the tracker or cloud-agent choice, re-run install with the other flag. Updater files stay until you delete them.
 
 **GitHub notifications.** bkit's agents comment as you, so every workflow those comments trigger notifies you, even ones that skip. To see only failures: GitHub → Settings → Notifications → System → Actions → "Only notify for failed workflows".
+
+## Agent hosts and remote access
+
+Run each host (`claude`, `codex`, `opencode`) in its own terminal window, not inside an IDE or a desktop app.
+
+- Separate processes let you restart one host without quitting the others.
+- Terminal sessions inherit the direnv-loaded `.bkit/.env`. GUI-launched apps do not (`.bkit/providers.md` § macOS GUI-isolation).
+- On macOS, use [Ghostty](https://ghostty.org).
+
+### Remote access
+
+This section matters mostly for OpenCode, because Claude / Codex / Cursor ship their own mobile / desktop clients. Reach an OpenCode host terminal from another device over a private mesh VPN. Suggested services:
+
+- [Tailscale](https://tailscale.com/), a mesh VPN. Its free Personal plan covers device-to-device access.
+- [OpenLens](https://apps.apple.com/us/app/openlens-opencode-client/id6759910797), an OpenCode iOS client.
+
+Set it up as follows:
+
+- Bind:
+  - Run `opencode service set hostname 0.0.0.0` for all interfaces, or set the tailnet IP for tailnet only.
+  - Run `opencode service set port <port>`.
+  - Run `opencode service start` to apply.
+  - The loopback-only default keeps the service off the LAN. Tailnet ACLs still apply.
+- HTTPS proxy: `tailscale serve --bg <port>` serves the port at `https://<host>.<tailnet>.ts.net`.
+  - It requires tailnet HTTPS certificates to be enabled (on the DNS page).
+  - It publishes machine names to the certificate-transparency log (free).
+- Auth: HTTP Basic, with username `opencode`.
+  - The password is in `~/.config/opencode/service.json`, mirrored at `~/.local/state/opencode/service.json`. It persists across restarts.
+  - Run `opencode service set password <value>` to rotate it.
+  - NEVER commit the password.
+- Client CLI: `OPENCODE_PASSWORD=<password> opencode --server https://<host>.<tailnet>.ts.net`.
+- Browser / app pairing: `opencode pair --url https://<host>.<tailnet>.ts.net` returns a one-time link with a 5-minute expiry.
+- Pin the port. The service port is dynamic, but `serve` targets a fixed port, so pin it or the proxy breaks on restart.
 
 ## Setup tips
 

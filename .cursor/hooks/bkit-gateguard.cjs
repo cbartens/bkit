@@ -351,7 +351,7 @@ function isDocTemplatePath(filePath) {
 
 /**
  * § Docs scope: `.agents/**`, `.bkit/*.md` and `docs/*.md`. The patterns match at any
- * depth, so the sources (`.bkit/core/.agents/`, `.bkit/core/.bkit/`, `.bkit/shared/docs/`)
+ * depth, so the sources (`.bkit/core/.agents/`, `.bkit/core/.bkit/`)
  * match too.
  */
 const DOC_PATTERNS = [/(^|\/)\.agents\//, /(^|\/)\.bkit\/[^/]+\.md$/, /(^|\/)docs\/[^/]+\.md$/];

@@ -61,6 +61,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { detectInstalledModules } from "./check.js";
 import { remapTemplateDest } from "../../install/template-copies.js";
+import { syncProjectDocs } from "../../install/project-docs.js";
 import {
   CLAUDE_CLOUD_RELPATH,
   CODEX_CLOUD_RELPATH,
@@ -1020,6 +1021,11 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
       }
     }
   }
+
+  // Project documents belong to the project: remove a legacy ownership wrapper and register each
+  // present document in `Project Documents` (a dry run only prints the preview). They carry no
+  // hash, so nothing here feeds `.bkit/version`.
+  syncProjectDocs(process.cwd(), { dryRun: upgradeFlags.dryRun });
 
   // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
   // to the version we just upgraded TO, so the next `bkit check` has nothing to write.

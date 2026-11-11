@@ -35,7 +35,7 @@ tools:
 - **Example tools:** Tools and commands `docs/templates/bkit-plan.md` names are examples; write the project's own and drop what does not apply.
 - **Acceptance Scenario:** `Narrative` and `Success Criteria` come word for word from the first source that has them: the design's `Acceptance Scenario`, else the issue's change-shape fields (`.bkit/trackers.md` § Issue shapes), else, for an audit-only plan, the user or operator impact of the in-scope findings. With no source, both read `⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds`; NEVER invent them. `Narrative` is 1-2 sentences from the user's side: what they do and what they get back. `Success Criteria` are at most 5 measurable outcomes, not steps; an audit plan has one per in-scope finding id, from its `Expected`, with no cap. `Context & Goals` does not repeat them.
 - **Scenario detail:** `Process Sketch` restates the `Concrete Example` and `Edge Cases` as 3-7 `WHEN X → THEN Y` outcome lines, with no new examples. `Concrete Example` is one scenario: role, starting state, numbered steps, observable outcome. `Edge Cases` keep the design's Key Edge Cases, else the issue's rows, word for word, and add validation, error and boundary cases. `Derived Test Matrix` has one row per testable behaviour, each with a target file and a `Task` cell naming the one runbook task that lands its test; issue rows stay word for word, and each in-scope audit behaviour has a row.
-- **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it, picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
+- **Test tiers:** A `Derived Test Matrix` row's `Type` is a tier name exactly as `docs/testing.md` writes it when that document is present (if it is missing, warn and use the tiers the repo's gate scripts show), picked by its tier-selection rubric: the lowest tier that exercises the behaviour, or several. Boundary rows reach the real boundary and assert a ground-truth signal, with `@live` for an external or deployed boundary.
 - **Open questions:** Each open question gives 2-3 options with their trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter and the default if unanswered; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
 - **Out of Scope:** Plan work is in scope by default. An `Out of Scope` row is `Exempt` ONLY when no `Success Criteria`, `Acceptance Scenario`, `Derived Test Matrix` row or design item (non-goals aside) needs it, and it says why and where the item belongs. Required work parked there is a `Blocking` deferral and belongs in the runbook. Each `Exempt` row has a matching `docs/deferrals.jsonl` row; an audit `LOW` finding left out is an `Exempt` row.
 - **Suggested Scope Expansion:** List prior work overlapping the plan's surfaces as candidates (related open issues, open `docs/deferrals.jsonl` and `docs/failures.jsonl` rows, audit findings the input did not name), each with source, overlap and recommendation. Candidates are for the human, not runbook tasks; one joins the plan ONLY through design scope or a human decision, and then leaves the list.
@@ -81,7 +81,19 @@ tools:
    ```
    **If** the caller names **Update** and no **Create** → skip the seed: set the `Verdict` of **Update** to `PENDING`, and apply the findings to **Update** in place wherever the steps below name **Create**.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read the `.agents/docs.md` index, and load the docs it lists for this task. Keep the plan's `Documentation Consultation` and `Documentation Warnings` sources as recorded.
+   - **If** a finding changes a topic the plan covers (architecture, technology, security, testing, data schema, UI, logging, release or setup) → re-consult its recommended document or indexed equivalent, update that topic's source, coverage, gap and action, and carry any new `READ` / `UPDATE` line into the task it touches.
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "security",
+       "gap": "starter-only",
+       "recommendedPath": "docs/security.md",
+       "alternativeEvidence": "The CI configuration defines token permissions.",
+       "action": "Populate the security document with the project's credential and permission boundaries."
+     }
+     ```
+   - Never drop an earlier warning the review did not resolve.
 4. Update **Create** — apply findings via `Edit` as content becomes available.
 5. Keep every `Agent Execution Runbook` task's `DONE WHEN` and `TEST FIRST` intact through the merge:
    - A critique may edit the task text around them.

@@ -56,7 +56,7 @@ autoCompactWindow: 300000
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<Read>" --to="<Create>" --strip-header
    ```
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Identify the decomposition boundaries: domain boundaries, organisational structure and chronological dependencies. Do not use token or context-window size as a factor.
 5. Group the design work into workstreams at the identified boundaries.
 6. For each workstream:

@@ -1,7 +1,3 @@
-<!-- bkit:start -->
-
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
-
 # Observability
 
 > [!CAUTION]
@@ -18,8 +14,6 @@
 Configure failure-evidence fetching for `/bkit-debug` (`context-fetch:*` blocks and cloud CLI provisioning) in `.agents/context.md`. `.bkit/templates/context/` holds ready-made blocks, one file per provider (`.bkit/templates.md` § Context-fetch blocks). Author and enable each context in `.agents/context.md`: `ci`, `diff`, `e2e`, `runtime` (default) and the optional `web`. bkit hardcodes no CI host, workflow filename, branch name, or e2e framework. A context with no enabled block is fetched for no run, and is reported `NOT CONFIGURED` on every attempt. The `context=web` search host ships in bkit's egress registry, so it needs no declaration. A block whose host is unreachable anyway self-skips, and the external signal is then `UNCHECKED`, never "no known upstream issue".
 
 The workflow commits every captured payload inside an untrusted fence (`===== BEGIN UNTRUSTED =====` … `===== END UNTRUSTED =====`, with the data-only instruction above it), because fetched web / log / diff text is data, never instructions. A block emits no fence of its own, because two wraps read as one nested payload.
-
-<!-- bkit:end -->
 
 ## Scope
 
@@ -207,6 +201,27 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 - Blockers (Phase 1) → `stderr`, exit 1 before writes.
 - Advisories (Phase 1 + Phase 3) → numbered checklist after install.
 - `bkit check` (dry-run) → Phase 1 + Phase 3 advisories (read-only); exit 1 on Tier-1 / Tier-2 drift. No writes.
+
+## Project documentation advisories
+
+`detectProjectDocs` (`checks/after/tools.ts`) runs in Phase 3 and returns advisories only; none blocks install, upgrade, check or doctor. A document an indexed row covers at another path (same basename, or a Scope cell `Equivalent to docs/{topic}.md`) counts for its topic. The detector never reads a symbolic link or a path outside the repository.
+
+<!-- prettier-ignore -->
+| Finding id | Raised when |
+| --- | --- |
+| `project-docs-index-missing` | `.agents/docs.md` is absent |
+| `project-docs-missing` | A recommended topic has no document and no indexed equivalent |
+| `project-docs-empty` | A covering document is empty |
+| `project-docs-unpopulated` | A covering document is still a current or legacy starter, or only headings |
+| `project-docs-unindexed` | A populated candidate exists but the index does not list it, or lists another document for the same topic |
+| `project-docs-cleanup` | A project document keeps a bkit ownership wrapper (`bkit:start` / `bkit:end` lines or the `bkit:managed` notice) that could not be removed safely |
+| `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |
+
+A document that differs from every starter is a candidate for agent assessment; the check does not claim it is complete.
+
+## Phase documentation warnings
+
+Agents that consult project documents write gaps as `jsonl` records (`topic`, `gap`, `recommendedPath`, `alternativeEvidence`, `action`) under `## Documentation Warnings`. `bkit workflows summary` (`commands/workflow/summary.ts`) reads those records only from the active run's step artifacts, skips raw `*-input-*` files, the tracker artifacts `related-(issues|failures|deferrals).md` and `context-related-*.md`, text between `===== BEGIN UNTRUSTED =====` / `===== END UNTRUSTED =====` markers, and malformed lines, merges records by topic and gap, and prints one `## Documentation Warnings` section in the summary. The section is advisory and never changes the verdict or failure count.
 
 ## Phase 3 Credential + Migration Findings
 

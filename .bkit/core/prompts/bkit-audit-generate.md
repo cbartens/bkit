@@ -129,7 +129,20 @@ autoCompactWindow: 300000
      - **If** it exits non-zero → **STOP** and report the reason.
      - NEVER hand-write or edit the `bkit:anchor` block or the `bkit:outdated` line the stamp writes under it.
 3. Read every supplied input once at the start, and work from what it says, not from session memory. Do not re-read the template on every loop iteration.
-4. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+4. Read the `.agents/docs.md` index, and load the project documents the audit's surface needs, with or without a plan: `docs/architecture.md` for structure and boundaries, `docs/technology.md` for stack choices, `docs/security.md` for trust boundaries, `docs/testing.md` for test and gate rules, plus `docs/data-schema.md`, `docs/design.md`, `docs/observability.md`, `docs/deployments.md`, `docs/noise.md` or `docs/setup.md` when the audit's surface touches them.
+   - Read the recommended path or a valid indexed equivalent (`Equivalent to docs/{topic}.md` in its Scope cell).
+   - **If** the index or a document is missing, empty or still the starter → warn and continue from repository evidence; never skip the topic silently. Mark an irrelevant topic not applicable, with the reason.
+   - Safeguards that need genuine evidence stay in force (secrets, permissions, untrusted input).
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "testing",
+       "gap": "missing",
+       "recommendedPath": "docs/testing.md",
+       "alternativeEvidence": "The CI workflow defines the lanes.",
+       "action": "Copy the testing starter and describe the project's tiers and lanes."
+     }
+     ```
 5. Update **Create** — replace each `PENDING` via `Edit` as content becomes available.
    - **If** a section has no content → `None`.
 6. Populate the template sections in template order, without changing the order. Take each section's shape from the template and every rule from this prompt, and verify every gate before you proceed:

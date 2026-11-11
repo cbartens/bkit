@@ -314,10 +314,9 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(fs.existsSync(path.join(tmpDir, ".graphifyignore"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".serena", "project.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, "docs", "capabilities.md"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(true);
-    expect(fs.readFileSync(path.join(tmpDir, "docs", "setup.md"), "utf-8")).toContain(
-      ".bkit/templates.md",
-    );
+    // Project docs are copied from `.bkit/templates/docs/` by the project, never written.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "setup.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "templates", "docs", "setup.md"))).toBe(true);
   });
 
   it("upgrade does not rewrite a consumer-owned bkit-graphify.sh", () => {
@@ -377,9 +376,8 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     );
     writeVersionFile();
 
-    // docs/*.md have NO manifest entry — this proves the full CLI wiring
-    // (collectTemplates → no format → content-detected block-merge) protects the
-    // consumer's project prose written AFTER the end marker. End-to-end, not a unit stub.
+    // A real `bkit upgrade` migrates the legacy wrapper and keeps every other byte of the
+    // project's prose. End-to-end, not a unit stub.
     const consumerDoc =
       "<!-- bkit:start -->\n# Testing\n\n> stale bkit guidance to be replaced\n<!-- bkit:end -->\n\n" +
       "## Our project testing notes — MUST SURVIVE\n\n- Custom Vitest + Playwright suite.\n";
@@ -392,8 +390,10 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     // Consumer prose after bkit:end is intact.
     expect(after).toContain("## Our project testing notes — MUST SURVIVE");
     expect(after).toContain("Custom Vitest + Playwright suite.");
-    // bkit block was updated to the shipped template (not whole-file-overwritten).
-    expect(after).not.toContain("stale bkit guidance to be replaced");
+    // The project owns the whole file: only the old wrapper lines go, the text inside stays.
+    expect(after).toContain("stale bkit guidance to be replaced");
+    expect(after).not.toContain("bkit:start");
+    expect(after).not.toContain("bkit:end");
   });
 });
 
@@ -2349,6 +2349,162 @@ describe("#715 — upgrade retires a 5.2.4 .bkit/lite.md", () => {
     expect(after).not.toContain("bkit:start");
     expect(after.split("\n")[0]).toBe("<!-- bkit:retired-lite-stub -->");
     expect(runCli(["check"]).status).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #864 — a legacy managed project document becomes the project's own
+// ---------------------------------------------------------------------------
+
+describe("#864 — upgrade migrates legacy project document ownership", () => {
+  const MARKER = "<!-- bkit:managed v5.0.0 — do not edit; run `bkit upgrade` to refresh -->";
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 120_000,
+    });
+  }
+
+  function seedInstalled(): void {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = runCli(["install", "--claude", "--cursor"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+  }
+
+  const read = (rel: string): string => fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+  const write = (rel: string, text: string): void =>
+    fs.writeFileSync(path.join(tmpDir, rel), text, "utf-8");
+
+  function snapshot(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const abs of listFilesRecursive(tmpDir)) {
+      const rel = path.relative(tmpDir, abs).split(path.sep).join("/");
+      if (rel.startsWith(".git/") || rel.startsWith("node_modules/")) continue;
+      out[rel] = fs.readFileSync(abs, "utf-8");
+    }
+    return out;
+  }
+
+  // These two change on every upgrade by design: the cache-bust counter and the `_Mode:` line.
+  const CHANGES_EVERY_RUN = new Set([".claude/bkit-cloud.md", ".bkit/advisories.md"]);
+  function stableSnapshot(): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(snapshot()).filter(([rel]) => !CHANGES_EVERY_RUN.has(rel)),
+    );
+  }
+
+  it("leaves project docs, the index and the version file unchanged when upgrade runs twice", () => {
+    seedInstalled();
+    write(
+      "docs/testing.md",
+      `<!-- bkit:start -->\n${MARKER}\n# Testing\nOur table\n<!-- bkit:end -->\n`,
+    );
+    const first = runCli(["upgrade", "--auto-apply"]);
+    expect(first.status, combinedOutput(first)).toBe(0);
+    const settled = stableSnapshot();
+    expect(settled["docs/testing.md"]).toBe("# Testing\nOur table\n");
+    const again = runCli(["upgrade", "--auto-apply"]);
+    expect(again.status, combinedOutput(again)).toBe(0);
+    const after = stableSnapshot();
+    expect(after["docs/testing.md"]).toBe(settled["docs/testing.md"]);
+    expect(after[".agents/docs.md"]).toBe(settled[".agents/docs.md"]);
+    expect(after[".bkit/version"]).toBe(settled[".bkit/version"]);
+    expect(after).toEqual(settled);
+  });
+
+  it("migrates legacy ownership without changing project text or core ownership", () => {
+    seedInstalled();
+    const pre = "Intro the team wrote above the block\r\n";
+    const body = "# Testing\r\n\r\nOur edited tier table\r\n";
+    const post = "Footer the team wrote below the block\r\n";
+    write(
+      "docs/testing.md",
+      `${pre}<!-- bkit:start -->\r\n${MARKER}\r\n${body}<!-- bkit:end -->\r\n${post}`,
+    );
+    // An existing project row for the same path keeps its own scope text.
+    const ownRow = "| `docs/testing.md` | ● | ● | ● | ● | ○ | Our own scope wording. |";
+    fs.appendFileSync(path.join(tmpDir, ".agents", "docs.md"), `${ownRow}\n`, "utf-8");
+    // A second legacy document with no index row at all.
+    write("docs/noise.md", `<!-- bkit:start -->\n${MARKER}\n# Noise\n<!-- bkit:end -->\n`);
+    const versionBefore = read(".bkit/version");
+    const indexBefore = read(".agents/docs.md");
+    const managedHead = indexBefore.slice(0, indexBefore.lastIndexOf("<!-- bkit:end -->"));
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(read("docs/testing.md")).toBe(pre + body + post);
+    expect(read("docs/noise.md")).toBe("# Noise\n");
+    const index = read(".agents/docs.md");
+    expect(index.startsWith(managedHead)).toBe(true);
+    expect(index.split(ownRow)).toHaveLength(2);
+    expect(index.split("| `docs/testing.md` |")).toHaveLength(2);
+    expect(index.split("| `docs/noise.md` |")).toHaveLength(2);
+    // No retired doc contributes an ownership hash, before or after.
+    expect(versionBefore).not.toContain("docs/testing.md");
+    expect(read(".bkit/version")).not.toContain("docs/testing.md");
+    expect(read(".bkit/version")).not.toContain("docs/noise.md");
+    expect(runCli(["check"]).status).toBe(0);
+
+    // A second run changes nothing.
+    const settled = stableSnapshot();
+    const again = runCli(["upgrade", "--auto-apply"]);
+    expect(again.status, combinedOutput(again)).toBe(0);
+    expect(stableSnapshot()).toEqual(settled);
+  });
+
+  it("preserves ambiguous legacy markers and reports cleanup without blocking check", () => {
+    seedInstalled();
+    // A start marker with no end marker: ownership cannot be told apart from project text.
+    const malformed = `<!-- bkit:start -->\n${MARKER}\n# Security\nOur text, no closing marker.\n`;
+    write("docs/security.md", malformed);
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    expect(read("docs/security.md")).toBe(malformed);
+    expect(combinedOutput(up)).toContain("docs/security.md");
+    // A missing file stays missing.
+    expect(fs.existsSync(path.join(tmpDir, "docs", "design.md"))).toBe(false);
+    expect(read(".bkit/version")).not.toContain("docs/security.md");
+
+    const check = runCli(["check"]);
+    expect(check.status, combinedOutput(check)).toBe(0);
+    expect(read("docs/security.md")).toBe(malformed);
+    expect(fs.existsSync(path.join(tmpDir, "docs", "design.md"))).toBe(false);
+  });
+
+  it("previews project document migration without mutating the checkout", () => {
+    seedInstalled();
+    write(
+      "docs/architecture.md",
+      `<!-- bkit:start -->\n${MARKER}\n# Architecture\nOurs.\n<!-- bkit:end -->\n`,
+    );
+    const before = snapshot();
+
+    const dry = runCli(["upgrade", "--dry-run"]);
+    expect(dry.status, combinedOutput(dry)).toBe(0);
+
+    const out = combinedOutput(dry);
+    // The preview names the document in a line that says it is being migrated to project ownership.
+    expect(out).toMatch(
+      /^.*docs\/architecture\.md.*migrat.*$|^.*migrat.*docs\/architecture\.md.*$/im,
+    );
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*project).*$/im);
+    // The preview also announces the project index registration for that path.
+    expect(out).toMatch(/^(?=.*docs\/architecture\.md)(?=.*\.agents\/docs\.md).*$/im);
+    expect(snapshot()).toEqual(before);
+    expect(read("docs/architecture.md")).toContain("<!-- bkit:start -->");
   });
 });
 

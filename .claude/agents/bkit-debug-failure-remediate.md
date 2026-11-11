@@ -60,7 +60,17 @@ autoCompactWindow: 300000
 
 1. Write the **Create** output stub, with `PENDING` in every placeholder. Leave the log section empty.
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
-3. Read `.agents/docs.md`, and load the docs it lists for this task. Skip any listed doc that does not exist.
+3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/testing.md` when it is present (warn and continue if it is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
+   - Write each gap as one JSON object per line in a fenced `jsonl` block under `## Documentation Warnings`, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action` (all non-empty; `"None available"` when no alternative evidence exists):
+     ```jsonl
+     {
+       "topic": "testing",
+       "gap": "starter-only",
+       "recommendedPath": "docs/testing.md",
+       "alternativeEvidence": "Existing test files show the tier layout.",
+       "action": "Populate the testing document with the project test tiers."
+     }
+     ```
 4. Update **Create** after each remediation: append `DONE|BLOCKED` at EOF with Bash `echo {log entry} >> {output}`.
 5. Read `Strategy` from the input Context. **If** it is missing → set `Verdict` = `FAIL` in **Create**, change no other file, and go straight to the final return. Apply the matching strategy:
    - `STANDARD` → apply the diagnosis as written.
@@ -97,6 +107,10 @@ Strategy: STANDARD | PIVOT | FINAL
 <!-- verdict:end -->
 
 # Debug Failure
+
+## Documentation Warnings
+
+[The `jsonl` records of the documentation gaps found. **If** no gaps → omit this section.]
 
 ## Remediation Log
 

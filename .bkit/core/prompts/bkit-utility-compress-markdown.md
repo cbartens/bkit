@@ -74,7 +74,7 @@ autoCompactWindow: 300000
 6. Match these pairs:
    - `In order to verify the build, we will need to run the test suite and check the output for any failures.` → `To verify the build, run the test suite and check the output for failures.`
    - `Read the plan and update the checkboxes in the plan file.` → `Read the plan and update its checkboxes.`
-   - `[docs/security.md](../../docs/security.md)` → `docs/security.md`
+   - `[docs/roadmap.md](../../docs/roadmap.md)` → `docs/roadmap.md`
    - `` `pnpm bkit:gate:static-unit` `` → unchanged
    - `## Verification Record` → unchanged
    - `**Verdict:** ✅ PASS | ❌ FAIL` → unchanged

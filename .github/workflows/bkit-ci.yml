@@ -329,7 +329,7 @@ jobs:
     # [force build] / [force full] / [force cache] / [skip ci] (independent contains() per marker).
     # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
     # (e.g. `bkit [verbose ci]`); substring match honours both forms.
-    # See docs/deployments.md § "Commit-message force tags" for where to put the marker
+    # See .bkit/workflows.md § "Test and release mechanics" (Commit-message force tags) for where to put the marker
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #

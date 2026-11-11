@@ -196,6 +196,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - **If** the stack is not Node → point each gate at your own commands, and keep the gate names.
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
+  - jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`.
+  - **If** jest gets the path without `--runTestsByPath` → it reads the path as a regex, so a folder such as `(tabs)` matches no file and no report is written.
   - Call the runner directly, not through a caching task runner.
 - `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it on each planned test file before running the file, and records a `lint` gap for the file's tests while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
@@ -217,7 +219,7 @@ Copy `.bkit/templates/scripts/ci/bkit-test-awake.mjs` and its adjacent test into
 
 Keep each script's existing runner flags and report settings when adding the prefix. Run the wrapper's tests with `node --test scripts/ci/bkit-test-awake.test.mjs`. For a direct runner invocation, use `node scripts/ci/bkit-test-awake.mjs pnpm exec vitest run path/to/example.test.ts`.
 
-On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. POSIX `--shell` chains stop after cancellation and wait for descendant cleanup. Signals reach command owners first; surviving orphan roots receive cancellation after their owner exits. Live owners retain responsibility for their descendants and machine-lock lifetime. A command that starts cleanup children during cancellation must wait for them before exiting. If process inspection is unavailable, the wrapper reports that limitation and waits for foreground completion or a successful cleanup inspection. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `docs/testing.md` § Local test sleep prevention describes the limits.
+On macOS, the wrapper holds `caffeinate -is -w` against its own process and releases it when the command exits. It forwards cancellation to the command and retains the caller's process group so external hard timeouts still reach the tests. POSIX `--shell` chains stop after cancellation and wait for descendant cleanup. Signals reach command owners first; surviving orphan roots receive cancellation after their owner exits. Live owners retain responsibility for their descendants and machine-lock lifetime. A command that starts cleanup children during cancellation must wait for them before exiting. If process inspection is unavailable, the wrapper reports that limitation and waits for foreground completion or a successful cleanup inspection. Linux and Windows do not require `caffeinate`. Test timeouts are unchanged. Keep the lid open; `.bkit/workflows.md` § Test and release mechanics describes the limits.
 
 `bkit tests` already protects the commands it launches using the packaged wrapper. Adopt this template for direct scripts and hooks. Existing consumer-owned scripts are not rewritten on upgrade.
 
@@ -652,6 +654,10 @@ Issues are the first input every workflow reads. There is one form per way work 
 - Never add `bkit:*` labels, because workflows own them.
 - **If** the repo has existing forms → copy only the `bkit-*` files you want. The names never collide.
 
+## Project documents — starters and the index
+
+The ten project docs (architecture, technology, security, data-schema, testing, deployments, observability, design, noise, setup) ship as starters in `.bkit/templates/docs/`. Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not.
+
 ## Component map — purpose and responsibilities
 
 Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, worked examples, document registration and completion checks.
@@ -958,5 +964,5 @@ cp .bkit/templates/scripts/ci/bkit-machine-lock.sh scripts/ci/
 - Wait: `LOCAL_STACK_LOCK_WAIT_S` when set, else 60 seconds without a TTY, else 3600 seconds. Waiting notes name the budget and holders once a minute; the give-up line names the holder again.
 - A named release records held seconds by checkout in `<name>.last`, with one tab-separated line per checkout. A waiting note and give-up line name the current holder's `last run took <N>m<N>s`, or `no earlier run`.
 - `CI=true` / `CI=1` makes every lock a no-op.
-- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` and their run name to a wrapped gate; a tests-lock give-up of this run maps 75 → 81 with `lockHolder`, and a tests-lock refusal maps 73 → 4. A lock wait writes no `test-run` status row. Light runs (`red`, `green`, `bkit:test:file`) take no tests lock. Nested wraps reuse their live parent's tests lock. See `docs/testing.md` § Tests lock for host wait budgets.
+- `bkit tests run` and `bkit tests changed` pass `--lock-wait-s` and their run name to a wrapped gate; a tests-lock give-up of this run maps 75 → 81 with `lockHolder`, and a tests-lock refusal maps 73 → 4. A lock wait writes no `test-run` status row. Light runs (`red`, `green`, `bkit:test:file`) take no tests lock. Nested wraps reuse their live parent's tests lock. See `.bkit/workflows.md` § Test and release mechanics for host wait budgets.
 - Fix hints and docs name the locked scripts, never the raw command (`supabase db reset`, `docker compose down`), because the raw command skips the lock. See `.agents/rules.md` § Shared local stack.

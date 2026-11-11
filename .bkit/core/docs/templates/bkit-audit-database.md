@@ -41,7 +41,7 @@ Migrations and integration tests exercise queries, but neither checks that privi
 - Platform serverless connection guidance.
 - DB routine-maintenance docs, edition = hosted major (e.g., PostgreSQL Routine Database Maintenance Tasks).
 - Safe-migration rule set (e.g., Squawk); record version.
-- bkit block of `docs/setup.md` (bkit version from `.bkit/version`): Rules
+- The project's `docs/setup.md` (local database setup and reset) and `docs/data-schema.md` (documented schema), when present; a missing or starter-only document is a warning, not a stop.
 
 ### Scope
 

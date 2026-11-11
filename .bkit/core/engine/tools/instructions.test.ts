@@ -186,7 +186,6 @@ describe("the corpus matches the instructions store", () => {
 
   it("loads every shipped doc master with a bkit block as a doc, never an installed copy", () => {
     const ids = CORPUS.filter((f) => f.surface === "doc").map((f) => f.id);
-    expect(ids).toContain(".bkit/shared/docs/testing.md");
     expect(ids).toContain(".bkit/core/.agents/docs.md");
     expect(ids).toContain(".bkit/shared/CLAUDE.md");
     expect(ids).toContain(".bkit/shared/.cursor/rules/bkit-rules.mdc");
