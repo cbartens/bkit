@@ -4917,13 +4917,22 @@ The engine fills `by` and the model fields from the invocation; never write `by`
 Query each ledger with `bkit ledgers query --ledger=<name>`, which folds by `key` with the highest `ts` winning.
 ```
 
+### result-path-cleared
+
+- workflow: repeatable
+- carriers: workflow all except `bkit-auto`
+
+```text
+Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+```
+
 ### structured-result-file
 
 - prompt: where-used
 - carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
 
 ```text
-**If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; if you cannot, say so in your final reply and do not leave the step to fail silently.
+**If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; the caller deletes any older file at that path before it launches you, so a file there is always yours. If you cannot write it, say so in your final reply and do not leave the step to fail silently.
 ```
 
 ### structured-result-render

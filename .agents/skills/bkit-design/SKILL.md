@@ -358,12 +358,12 @@ description: "Design Feature — Autonomous design phase"
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
-     Result: `{OUTBOX}/design-review-1-result.json`.
+     Result: `{OUTBOX}/design-review-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-design-review-2` using `Agent` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
-     Result: `{OUTBOX}/design-review-2-result.json`.
+     Result: `{OUTBOX}/design-review-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
      Once both subagents return, render the two design reviews from their results:
    ```bash
    "{BKIT}" steps stub --agent=bkit-design-review-1 --result-file="{OUTBOX}/design-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md"
@@ -395,7 +395,7 @@ description: "Design Feature — Autonomous design phase"
    Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code only under `docs/plans/{YYYYMM}/logs/{FID}/spike/`. Never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
-   Result: `{OUTBOX}/design-spike-result.json`.
+   Result: `{OUTBOX}/design-spike-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    Once the subagent returns, render the spike report from its result:
    ```bash
    "{BKIT}" steps stub --agent=bkit-design-spike --result-file="{OUTBOX}/design-spike-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-spike.md"

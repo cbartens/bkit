@@ -1405,12 +1405,21 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
                     }
                     // Whole lines decide "landed": rows share a byte prefix (`{"schema":3,"ts":...`), so a
                     // foreign row is told apart by being a complete line that differs from ours.
-                    const wantNl = want.indexOf(0x0a);
-                    const wantFirst = wantNl < 0 ? want : want.subarray(0, wantNl + 1);
-                    const tail = have.subarray(intent.offset);
-                    const haveNl = tail.indexOf(0x0a);
-                    const haveFirst = haveNl < 0 ? tail : tail.subarray(0, haveNl + 1);
-                    const foreignWholeLine = haveNl >= 0 && !haveFirst.equals(wantFirst);
+                    // Compare by content, without the newline and without one leading separator newline:
+                    // a torn prefix of our line that a later writer completed with its own newline is a
+                    // proper prefix of our first line, so it stays uncertain rather than foreign.
+                    const stripSeparator = (b) => (b[0] === 0x0a ? b.subarray(1) : b);
+                    const firstLine = (b) => {
+                        const nl = b.indexOf(0x0a);
+                        return nl < 0
+                            ? { line: b, complete: false }
+                            : { line: b.subarray(0, nl), complete: true };
+                    };
+                    const wantLine = firstLine(stripSeparator(want)).line;
+                    const haveLine = firstLine(stripSeparator(have.subarray(intent.offset)));
+                    const foreignWholeLine = haveLine.complete &&
+                        !(haveLine.line.length <= wantLine.length &&
+                            wantLine.subarray(0, haveLine.line.length).equals(haveLine.line));
                     let landedBytes = 0;
                     while (landedBytes < seg.length &&
                         landedBytes < want.length &&

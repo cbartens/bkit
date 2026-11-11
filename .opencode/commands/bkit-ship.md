@@ -709,7 +709,7 @@ Asked from Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NEXT` held) 
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/ship-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present), `{STATUS}`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
-   Result: `{OUTBOX}/ship-failure-diagnose-{MERGE_ATTEMPT}-result.json`.
+   Result: `{OUTBOX}/ship-failure-diagnose-{MERGE_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    Once the diagnosing agent has answered, render the merge-failure diagnosis from its result:
    ```bash
    "{BKIT}" steps stub --agent=bkit-debug-failure-diagnose --result-file="{OUTBOX}/ship-failure-diagnose-{MERGE_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md"

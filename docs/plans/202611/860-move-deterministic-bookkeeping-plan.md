@@ -804,7 +804,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 25 end -->
 <!-- bkit:task 26 start -->
 
-- [ ] **TASK 26:** On a shared branch, a re-trigger whose push response is lost (process killed during or right after `git push`, before `push-completed` persists) is pushed a second time on resume: `landEmptyOwnCommits` re-copies the original commit because the pushed copy has a new SHA and is not in `rec.pushed`, so dev gets two empty re-trigger commits and two CI runs; if the kill lands after `markRecordPushed`, resume instead returns the local original SHA (`rec.pushed.at(-1)`), which the remote never received, and the re-poll watches that SHA
+- [x] **TASK 26:** On a shared branch, a re-trigger whose push response is lost (process killed during or right after `git push`, before `push-completed` persists) is pushed a second time on resume: `landEmptyOwnCommits` re-copies the original commit because the pushed copy has a new SHA and is not in `rec.pushed`, so dev gets two empty re-trigger commits and two CI runs; if the kill lands after `markRecordPushed`, resume instead returns the local original SHA (`rec.pushed.at(-1)`), which the remote never received, and the re-poll watches that SHA
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:814` · **Round:** 2
   - **DONE WHEN:** The copy SHA is persisted (handoff checkpoint or shared-checkout record) before the copy is pushed, and a resumed `commit-created` re-trigger on a shared branch first checks whether the remote tip already is or contains that copy: if so it records `push-completed` with the copy SHA and pushes nothing; `rec.pushed` never stands in for the remote SHA of a copied commit.
   - **TEST FIRST:**
@@ -822,7 +822,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 27 end -->
 <!-- bkit:task 28 start -->
 
-- [ ] **TASK 28:** An agent that keeps one `--operation` for its corrected retries gets unlimited corrections: a rejected candidate leaves no intent or receipt, so its id carries no request hash, and `spendCorrection` returns `allowed` (replayed) for any operation already in the scope whatever rows it now carries, so `remaining` never reaches 0 and every rejection stays a correctable `NoWriteRejection`
+- [x] **TASK 28:** An agent that keeps one `--operation` for its corrected retries gets unlimited corrections: a rejected candidate leaves no intent or receipt, so its id carries no request hash, and `spendCorrection` returns `allowed` (replayed) for any operation already in the scope whatever rows it now carries, so `remaining` never reaches 0 and every rejection stays a correctable `NoWriteRejection`
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/counters.ts:229` · **Round:** 2
   - **DONE WHEN:** Each `correction-candidate` row records the candidate's canonical request hash; `spendCorrection` treats a known operation as a free replay only when the hash matches, and refuses (nothing written) a known candidate id with another request, so a scope allows at most `CORRECTION_LIMIT` distinct corrected requests and the third rejection is final.
   - **TEST FIRST:**
@@ -831,7 +831,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 28 end -->
 <!-- bkit:task 29 start -->
 
-- [ ] **TASK 29:** `ledgers query` reports `coverage.clean: true` on a page whose `nextCursor` is non-null, and the plan workflow saves exactly one `--limit=500` page into `related-knowledge.md` for reviewers who have no shell; past 500 active rows the newest knowledge rows (the page is oldest-first) are silently dropped while the saved output says the scan is clean
+- [x] **TASK 29:** `ledgers query` reports `coverage.clean: true` on a page whose `nextCursor` is non-null, and the plan workflow saves exactly one `--limit=500` page into `related-knowledge.md` for reviewers who have no shell; past 500 active rows the newest knowledge rows (the page is oldest-first) are silently dropped while the saved output says the scan is clean
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:2004` · **Round:** 2
   - **DONE WHEN:** `coverage.clean` (and `coverage.status`) report an unfinished scan whenever `nextCursor` is non-null, and every block that captures a query for an agent without a shell (`.bkit/core/workflows/bkit-plan.md` related-knowledge save) writes all pages or stops on a non-null `nextCursor` instead of saving a truncated page.
   - **TEST FIRST:**

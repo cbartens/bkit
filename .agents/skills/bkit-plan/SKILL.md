@@ -311,17 +311,17 @@ Before generating, ask the engine for this step's invocation id and keep the pri
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
-     Result: `{OUTBOX}/plan-review-1-result.json`.
+     Result: `{OUTBOX}/plan-review-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-plan-review-2` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
-     Result: `{OUTBOX}/plan-review-2-result.json`.
+     Result: `{OUTBOX}/plan-review-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_CHECK}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
-     Result: `{OUTBOX}/plan-scope-check-result.json`.
+     Result: `{OUTBOX}/plan-scope-check-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
      Once all three subagents return, render the plan reviews and the scope check from their results:
    ```bash
    "{BKIT}" steps stub --agent=bkit-plan-review-1 --result-file="{OUTBOX}/plan-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md"
