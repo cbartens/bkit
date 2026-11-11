@@ -5,7 +5,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Min-Push Accepts Audit Reports and Audit-Template Project Sections Implementation Plan
@@ -33,7 +33,7 @@ Verdict: CONCERNS
 - One code path (row 3) and the minimum gate's own tools (row 9). Neither can change a gate result that a min push skips.
 - Two bkit-repo unit tests (rows 12 and 13). Both read bkit's installed audit templates below the marker, and bkit's own `bkit:gate:min` (`package.json:58`) runs neither, so a `[skip ci]` push to `dev` could leave either one red with nothing run.
 
-The plan therefore stops here: Open Question 1 brings all four readers back to the owner, and Gate 1 stays open until the owner answers. The runbook carries the recommended remedy (Task 6: add both tests to bkit's own `bkit:gate:min`).
+The owner reviewed all four readers and chose option A: the audit-template exception goes ahead, both tests go into bkit's own `bkit:gate:min` beside `ledger-integrity.test.ts` (Task 6), and `detectManagedDuplicate` stays as it is (`docs/decisions.jsonl` `915-min-push-audit-template-project-section`).
 
 <!-- prettier-ignore -->
 | # | Reader | What it reads | Reads below `bkit:end`? | Can a below-marker change alter a gate result a min push skips? |
@@ -49,8 +49,8 @@ The plan therefore stops here: Open Question 1 brings all four readers back to t
 | 9 | `bkit:gate:min` steps: `format:check` (prettier), `bkit:lint:prose` (Vale), `bkit:slop:delta`; the pre-commit `lint-staged` prettier pass | Whole markdown files. | Yes. | No: they run on the min push itself. |
 | 10 | `@bkit-audit-generate` (agent) | Reads and edits `Project Instructions`. | Yes. | Not code, build or test. |
 | 11 | A consumer's own tests | Unknown, consumer-owned. | Unknown. | Covered by the existing guidance: a test that reads a min-push file goes into `bkit:gate:min` (`.bkit/templates.md` § Git hooks — Husky). |
-| 12 | `.bkit/core/engine/audits/templates/templates.test.ts` `%s dogfood managed block differs only by the managed-version stamp` (`:211-228`, bkit repo only) | bkit's installed `docs/templates/bkit-audit-*.md` (`path.resolve(relPath)`, `:215`); asserts the text from `<!-- bkit:end -->` on starts `<!-- bkit:end -->\n\n## Project Instructions\n` (`:224-226`). | **Yes.** | **Yes, in the bkit repo.** bkit's own `bkit:gate:min` (`package.json:58`) does not run it, and a `[skip ci]` head starts no CI. Task 6 adds it to `bkit:gate:min` (Open Question 1, option A). |
-| 13 | `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` `shipped audit templates have no leaked host path` (`:27-36`, `:63-68`, bkit repo only) | Every installed `docs/templates/bkit-audit-*.md`, whole file, for a `/Users/<name>/` or `/home/<name>/` path. | **Yes.** | **Yes, in the bkit repo**, for the same reason as row 12. Task 6 adds it to `bkit:gate:min` (Open Question 1, option A). |
+| 12 | `.bkit/core/engine/audits/templates/templates.test.ts` `%s dogfood managed block differs only by the managed-version stamp` (`:211-228`, bkit repo only) | bkit's installed `docs/templates/bkit-audit-*.md` (`path.resolve(relPath)`, `:215`); asserts the text from `<!-- bkit:end -->` on starts `<!-- bkit:end -->\n\n## Project Instructions\n` (`:224-226`). | **Yes.** | **Yes, in the bkit repo.** bkit's own `bkit:gate:min` (`package.json:58`) does not run it, and a `[skip ci]` head starts no CI. Task 6 adds it to `bkit:gate:min` (the owner's option A). |
+| 13 | `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` `shipped audit templates have no leaked host path` (`:27-36`, `:63-68`, bkit repo only) | Every installed `docs/templates/bkit-audit-*.md`, whole file, for a `/Users/<name>/` or `/home/<name>/` path. | **Yes.** | **Yes, in the bkit repo**, for the same reason as row 12. Task 6 adds it to `bkit:gate:min` (the owner's option A). |
 
 **Related Issues:**
 
@@ -70,11 +70,16 @@ The plan therefore stops here: Open Question 1 brings all four readers back to t
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+An operator pushes a `[skip ci]` commit to `dev` that holds only files bkit wrote, including an audit report and the `Project Instructions` section of an audit template, and the push takes the light gate with no `--no-verify` and no empty "trigger CI" commit.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+1. `bkit ci min-push` accepts a change under `docs/audits/**`, at any depth, beside `docs/plans/**`.
+2. `bkit ci min-push` accepts a change to a top-level `docs/templates/bkit-audit-*.md` when every changed line sits below its `<!-- bkit:end -->`; a change at or above that marker still needs the full gate.
+3. Any other template, such as `docs/templates/bkit-plan.md`, still needs the full gate, and `docs/**` is not added to `minPushPaths`.
+4. `bkit ci min-push --ref`, `bkit ci min-push --update` (including the receipt path in `hasVerifiedIncrement`) and the landing routine's gate choice give the same answer for the same files.
+5. bkit's own `bkit:gate:min` runs `templates.test.ts` and `template-no-userpath.test.ts`.
+6. `.bkit/templates.md` § Git hooks — Husky describes the new floor and the audit-template exception, and the `minPushPaths` guidance matches.
 
 ### Process Sketch
 
@@ -160,7 +165,7 @@ The plan therefore stops here: Open Question 1 brings all four readers back to t
 | `minPushOutside` in `.bkit/core/engine/commands/ci/ci.ts` | New export name | Engine only | Named after `minPushPathspecs` beside it. |
 | `gitRaw` in `.bkit/core/engine/commands/workflow/ledgers.ts` | Becomes exported | Engine only | No behaviour change. |
 | `hasVerifiedIncrement` fourth parameter: `paths: string[]` → `outsideOf` callback | Internal signature change | Engine only | One caller (`minPushUpdates`), updated in the same task. |
-| bkit's own `bkit:gate:min` script (`package.json:58`) also runs `templates.test.ts` and `template-no-userpath.test.ts` | Gate change (bkit repo only) | bkit contributors | Applies Open Question 1 option A. Consumers' seeded `bkit:gate:min` does not change. |
+| bkit's own `bkit:gate:min` script (`package.json:58`) also runs `templates.test.ts` and `template-no-userpath.test.ts` | Gate change (bkit repo only) | bkit contributors | Applies the owner's choice of option A. Consumers' seeded `bkit:gate:min` does not change. |
 
 No database, route, file name or layout changes.
 
@@ -176,19 +181,6 @@ No database, route, file name or layout changes.
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question 1 (blocking, owner-required):** Four readers read below `<!-- bkit:end -->` (Context & Goals):
-  - `detectManagedDuplicate` in `.bkit/core/engine/checks/after/managed.ts` (row 3): `advisory`, never changes `bkit check`'s exit code, and `bkit check` runs on every push, min push included.
-  - The minimum gate's prettier, Vale and slop steps (row 9): they run on the min push itself.
-  - `.bkit/core/engine/audits/templates/templates.test.ts` (row 12): asserts the text after the marker starts with `## Project Instructions`. bkit repo only; bkit's own `bkit:gate:min` does not run it.
-  - `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` (row 13): fails on an absolute home path anywhere in an installed audit template. bkit repo only; bkit's own `bkit:gate:min` does not run it.
-  - The owner asked the plan to stop and bring back any such reader. The last two can leave `dev` with a red unit suite that nothing ran. How does the exception go ahead? → The owner answers on #915 or ticks this section.
-  - **Options:** A) Proceed, and add both tests to bkit's own `bkit:gate:min` in `package.json` beside `ledger-integrity.test.ts` (Task 6) — applies the existing `.bkit/templates.md` guidance "a test that reads a min-push file goes into `bkit:gate:min`" to bkit as a consumer, and leaves `detectManagedDuplicate` as it is; the light gate runs two more unit files · B) Proceed, and narrow the two tests so they no longer read below the marker (cut `templates.test.ts`'s after-marker assertion and `template-no-userpath.test.ts`'s scan to the managed block) — removes the reads and keeps the light gate as it is, but drops the leaked-home-path check on the project section, which is the failure that test exists to catch · C) Drop point 2 and ship point 1 only — every audit run still leaves a full-gate commit, which is the problem the owner decided to fix.
-  - **Recommended:** A) — it closes the gap with existing guidance and keeps both checks.
-  - **Default if unanswered:** none; Gate 1 stays open until the owner answers, because the owner said to stop on such a reader. Task 6 applies only under A); under B) or C) the build stops at its Decision Pause for a plan revision.
-- **Open Question 2:** Narrative and Success Criteria are missing, because #915 is not in the change shape and has no design. → The owner writes them into this plan.
-  - **Options:** A) The owner writes both sections — the contract is the owner's words · B) The owner copies the two goals of the 2026-11-10 decision comment as the Narrative, and adopts the Concrete Example's outcome (the push lands on `dev` with no `--no-verify` and no empty trigger commit, and `bkit ci min-push --ref=<sha> --json` reports `minPush: true` and `outside: []`) plus the Edge Cases' first, second, third and eighth rows as the Success Criteria (five in all) — fastest, and keeps one outcome measured from the operator's side, but the contract is assembled from plan text instead of the owner's own words.
-  - **Recommended:** A) — the plan may not write them itself.
-  - **Default if unanswered:** none; Gate 1 stays open until both sections hold the owner's text.
 - **Open Question 3:** Should the upgrade migration `pruneMinPushPaths` (`MIN_PUSH_FLOOR_ENTRIES` in `.bkit/core/engine/install/modules/core.ts`) also drop a consumer's own `docs/audits/**` entry from `bkit.testing.minPushPaths`, now that the floor covers it? → The owner decides; `.agents/rules.md` § Migrations requires the owner's confirmation for any migration change.
   - **Options:** A) Leave the migration alone — a repeated entry is harmless, because `bkit ci min-push` only unions the lists · B) Add `docs/audits/**` to `MIN_PUSH_FLOOR_ENTRIES` and update the `docs/migrations.md` row — consumer lists stay minimal, at the cost of rewriting consumers' `package.json` on upgrade for no behaviour change.
   - **Recommended:** A) — nothing breaks for old installs, so no migration is due.
@@ -254,7 +246,7 @@ None — no new routes, DB writes, secrets, or user input. The change loosens a 
 - [ ] **Package Management:** no package is added or removed; `package.json` and `pnpm-lock.yaml` stay as they are.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (run 2026-11-11) lists dev dependencies only, none blocking: `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@vitest/coverage-v8` and `vitest` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.91.0, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5. Toolchain: Node v24.16.0, pnpm 10.34.7, git 2.56.0. `dist/cli.js` and `node_modules/.bin/tsx` exist in the worktree.
 - [ ] **Existing-Solution Search (reuse over duplicate):** recorded in `Reuse Inventory`.
-- [ ] **User Context:** every file the runbook reads or edits is in this worktree and readable. The owner must answer Open Question 1 (blocking: two bkit unit tests read below `<!-- bkit:end -->`) and write the Narrative and Success Criteria (Open Question 2).
+- [ ] **User Context:** every file the runbook reads or edits is in this worktree and readable. The owner chose option A for the two bkit unit tests that read below `<!-- bkit:end -->` (Task 6). The Narrative and Success Criteria were written from #915's "Problem" and "Suggested change" sections and the owner's 2026-11-10 decision comment, at the owner's direction.
 - [ ] **Project Context:** read `docs/decisions.jsonl` `min-push-floor-is-ship-allow-list` (the floor stays out of `bookPathspecs`, because that list is also ship's staging list) and `pre-push-open-pr-guard-mirrors-ship-carry-forward`. `docs/knowledge.jsonl` has no min-push row.
 - [ ] **Testing & Quality:** every behaviour is tested at the Unit tier against a real temporary git repo, and the hook boundary at the Integration tier through the real `.husky/pre-push` and `.bkit/templates/.husky/pre-push` running the built `dist/cli.js` (`docs/testing.md` § Tiers, § Which tier does a behaviour need?). No E2E or `@live` tier applies: bkit has no deployed surface.
 - [ ] **Prerequisite Plans:** None.
@@ -301,7 +293,7 @@ None.
 | The `--ref` and `--update` paths use the classifier | `.bkit/core/engine/commands/ci/ci.ts` | Read `minPush` and `minPushUpdates` (`ci.ts:626-735`) | Both call `changedOutside` directly | EXTEND | Swap the three calls for `minPushOutside`, and log each accepted template. |
 | The receipt path uses the classifier | `.bkit/core/engine/commands/ci/push-gate.ts` | serena references to `hasVerifiedIncrement` (one caller: `minPushUpdates`) | `hasVerifiedIncrement(cwd, oldSha, newSha, paths)` — calls `changedOutside` itself | EXTEND | Replace `paths` with a classifier callback, so `push-gate.ts` needs no import from `ci.ts`. |
 | The landing routine uses the classifier | `.bkit/core/engine/commands/land.ts` | Read `checkLanding` (`land.ts:188-210`) | Calls `changedOutside` with `minPushPathspecs` | EXTEND | Call `minPushOutside` instead. |
-| bkit's own minimum gate runs the tests that read below `bkit:end` | `package.json` | `grep -n 'bkit:gate:min' package.json`; read `.bkit/core/engine/audits/templates/templates.test.ts:205-228` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts:20-70`; `rg -l 'gate:min' --glob '*.test.ts' .bkit/core/engine` (no test pins bkit's own `bkit:gate:min` text) | `bkit:gate:min` — already runs one test file (`ledger-integrity.test.ts`) after the static steps | EXTEND | Add the two test files to its `vitest run` (Open Question 1, option A). |
+| bkit's own minimum gate runs the tests that read below `bkit:end` | `package.json` | `grep -n 'bkit:gate:min' package.json`; read `.bkit/core/engine/audits/templates/templates.test.ts:205-228` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts:20-70`; `rg -l 'gate:min' --glob '*.test.ts' .bkit/core/engine` (no test pins bkit's own `bkit:gate:min` text) | `bkit:gate:min` — already runs one test file (`ledger-integrity.test.ts`) after the static steps | EXTEND | Add the two test files to its `vitest run` (the owner's option A). |
 | Describe what bkit writes for the min push | `.bkit/core/.bkit/templates.md` | `grep -n 'min-push\|minPush\|docs/plans/\*\*' .bkit/core/.bkit/templates.md` | § Git hooks — Husky, bullets "What bkit writes" and "Min-push paths" | EXTEND | Add `docs/audits/**`, the project-section rule, and the `minPushPaths` guidance; mirror to `.bkit/templates.md` with `bkit upgrade`. |
 
 ## Architecture & Component Changes
@@ -372,7 +364,7 @@ None.
 #### [MODIFY] `package.json`
 
 - **Existence Check:** `bkit:gate:min` (`package.json:58`) ends `vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts`.
-- Add `.bkit/core/engine/audits/templates/templates.test.ts` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` to that `vitest run`. bkit repo only: the seeded consumer default (`BKIT_GATE_SCRIPTS` in `.bkit/core/engine/install/manifest.ts:245`) does not change. Applies only under Open Question 1 option A.
+- Add `.bkit/core/engine/audits/templates/templates.test.ts` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` to that `vitest run`. bkit repo only: the seeded consumer default (`BKIT_GATE_SCRIPTS` in `.bkit/core/engine/install/manifest.ts:245`) does not change. Applies the owner's choice of option A.
 
 ### Docs
 
@@ -550,7 +542,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 <!-- bkit:task 6 start -->
 
 - [ ] **TASK 6:** Run the below-marker test readers in bkit's own `bkit:gate:min`
-  - **UPDATE:** `package.json`: the `bkit:gate:min` script's `vitest run` adds `.bkit/core/engine/audits/templates/templates.test.ts` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` beside `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`. Applies only under Open Question 1 option A.
+  - **UPDATE:** `package.json`: the `bkit:gate:min` script's `vitest run` adds `.bkit/core/engine/audits/templates/templates.test.ts` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` beside `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`. Applies the owner's choice of option A.
   - **READ:** `.bkit/core/engine/audits/templates/templates.test.ts`: `%s dogfood managed block differs only by the managed-version stamp` (`:211-228`), which asserts the text after `<!-- bkit:end -->`.
   - **READ:** `.bkit/core/engine/audits/templates/template-no-userpath.test.ts`: `shipped audit templates have no leaked host path` (`:27-36`, `:63-68`), which scans each installed audit template whole.
   - **READ:** `BKIT_GATE_SCRIPTS` in `.bkit/core/engine/install/manifest.ts`: the seeded consumer `bkit:gate:min`, which stays as it is.
