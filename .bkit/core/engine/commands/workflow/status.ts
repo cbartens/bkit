@@ -1,5 +1,6 @@
 // bkit status route|resume|meta|path|row — read and annotate a workflow's `status.jsonl`.
 
+import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -13,6 +14,7 @@ import {
   ciSelectionIdentity,
   allRunsDoneSteps,
   appendLine,
+  type InvocationEvent,
   fold,
   lastDoneStepAllRuns,
   lastRun,
@@ -31,7 +33,10 @@ import {
   parseJson,
   resolveActiveRun,
   statusLocation,
+  worktreeFingerprint,
+  writeInvocation,
   type CommandSpec,
+  type Invocation,
   type FlagSpec,
   type FlagValue,
   type RunContext,
@@ -549,6 +554,232 @@ export const statusCommand: CommandSpec = {
         for (const [k, v] of differ)
           ctx.log(`${k} is ${String((out as Record<string, unknown>)[k])}, expected ${v}`);
         return failed.length === 0 && differ.length === 0 ? EXIT.OK : EXIT_ROUTE_MISSING;
+      },
+    },
+    invocation: {
+      summary:
+        "Issue an engine-bound invocation: a run's step (and agent), or a runless audit or utility call.",
+      use: "workflow",
+      flags: [
+        { ...WORKFLOW_FLAG, required: false, help: "workflow name, with --step and --file" },
+        { ...STEP_FLAG, required: false, help: "registered step of the workflow" },
+        { ...FILE_FLAG, required: false, help: "the run's status.jsonl, relative to the cwd" },
+        { name: "group", type: "string", help: "the task group a group-scoped step runs for" },
+        { name: "attempt", type: "string", help: "the attempt of that group or remediation round" },
+        { name: "agent", type: "string", help: "the subagent this invocation is for" },
+        { name: "host", type: "string", help: "the host running the agent" },
+        {
+          name: "configured-model",
+          type: "string",
+          help: "the pin the agent was launched with; kept apart from the observed model",
+        },
+        {
+          name: "observed-model",
+          type: "string",
+          help: "the model the host reported, or `unavailable`",
+        },
+        { name: "standalone", type: "string", help: "audit|utility: a call with no run" },
+        { name: "name", type: "string", help: "with --standalone: the audit or utility name" },
+      ],
+      output: {
+        invocation: "the id to pass as --invocation to later commands",
+        receipt: "the outbox file holding the issued context",
+        scope: "run (bound to a status.jsonl) or outbox (runless audit or utility)",
+        workflow: "the workflow, or null",
+        step: "the registered step, or null",
+        number: "the step's registered number, or null",
+        title: "the step's registered title, or null",
+        run: "the workflow's run number, or null without a run",
+        statusPath: "absolute path to the run's status.jsonl, or null",
+        bookRoot: "root the run's books live under, or null",
+        group: "the task group, or null",
+        attempt: "the attempt, or null",
+        declaredStep: "audit|utility:<name> for a runless call, or null",
+        allowedAgent: "the one agent a runless call may write as, or null",
+        agent: "the agent, or null",
+        host: "the host, or null",
+        configuredModel: "the launch pin, or null",
+        observedModel: "the reported model or `unavailable`, or null",
+      },
+      exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+      run: (ctx) => {
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]);
+        if (top === null) throw new CommandError(EXIT.USAGE, "not inside a git repository");
+        const standalone = str(ctx.flags.standalone);
+        const workflow = str(ctx.flags.workflow);
+        const step = str(ctx.flags.step);
+        const file = str(ctx.flags.file);
+        const agent = str(ctx.flags.agent) ?? null;
+        if (agent !== null && !/^[a-z0-9][a-z0-9._-]*$/.test(agent))
+          throw new CommandError(EXIT.USAGE, `--agent "${agent}" is not an agent name`);
+        const group = str(ctx.flags.group);
+        const attempt = str(ctx.flags.attempt);
+        for (const [flag, v] of [
+          ["group", group],
+          ["attempt", attempt],
+        ] as const)
+          if (v !== undefined && !/^[A-Za-z0-9._-]+$/.test(v))
+            throw new CommandError(EXIT.USAGE, `--${flag} "${v}" is not a ${flag} id`);
+        const base = {
+          group: group ?? null,
+          attempt: attempt ?? null,
+          agent,
+          host: str(ctx.flags.host) ?? null,
+          configuredModel: str(ctx.flags.configuredModel) ?? null,
+          // An agent whose host reported no model is recorded `unavailable`, so its rows stay writable.
+          observedModel: str(ctx.flags.observedModel) ?? (agent !== null ? "unavailable" : null),
+        };
+        let inv: Omit<Invocation, "id" | "issuedAt" | "version" | "worktree">;
+        if (standalone !== undefined) {
+          oneOf(standalone, ["audit", "utility"], "--standalone");
+          if ([workflow, step, file].some((v) => v !== undefined))
+            throw new CommandError(
+              EXIT.USAGE,
+              "--standalone has no run: drop --workflow, --step and --file",
+            );
+          const name = str(ctx.flags.name);
+          if (name === undefined || name === "")
+            throw new CommandError(EXIT.USAGE, "--standalone needs --name");
+          if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
+            throw new CommandError(EXIT.USAGE, `--name "${name}" is not an audit or utility name`);
+          if (group !== undefined || attempt !== undefined)
+            throw new CommandError(EXIT.USAGE, "--standalone has no group or attempt");
+          inv = {
+            scope: "outbox",
+            workflow: null,
+            step: null,
+            number: null,
+            title: null,
+            run: null,
+            statusPath: null,
+            bookRoot: null,
+            standalone,
+            name,
+            declaredStep: `${standalone}:${name}`,
+            allowedAgent: agent,
+            ...base,
+          };
+        } else {
+          if (workflow === undefined || step === undefined || file === undefined)
+            throw new CommandError(
+              EXIT.USAGE,
+              "give --workflow, --step and --file, or --standalone=audit|utility with --name",
+            );
+          if (ctx.flags.name !== undefined)
+            throw new CommandError(EXIT.USAGE, "--name is for --standalone");
+          if (!isResumable(workflow))
+            throw new CommandError(
+              EXIT.USAGE,
+              `--workflow must be ${Object.keys(WORKFLOW_STEPS).join("|")}, got "${workflow}"`,
+            );
+          const registered = WORKFLOW_STEPS[workflow].find((s) => s.step === step);
+          if (registered === undefined)
+            throw new CommandError(
+              EXIT.USAGE,
+              `--step ${step} is not a registered ${workflow} step`,
+            );
+          const statusPath = path.resolve(ctx.cwd, file);
+          const realFile = (() => {
+            let dir = path.dirname(statusPath);
+            const tail: string[] = [path.basename(statusPath)];
+            while (!fs.existsSync(dir) && path.dirname(dir) !== dir) {
+              tail.unshift(path.basename(dir));
+              dir = path.dirname(dir);
+            }
+            return path.join(fs.realpathSync(dir), ...tail);
+          })();
+          const realTop = fs.realpathSync(top);
+          // A status file that is itself a symlink resolves wherever it points; the parent
+          // directory alone says nothing about where appends land.
+          if (fs.lstatSync(statusPath, { throwIfNoEntry: false })?.isSymbolicLink() === true)
+            throw new CommandError(
+              EXIT.USAGE,
+              `--file ${file} is a symbolic link; issue the invocation for the status file itself`,
+            );
+          // The checkout that owns the file: a worktree nested under this one has its own top
+          // folder, so a plain path-prefix test would accept it.
+          let ownerDir = path.dirname(realFile);
+          while (!fs.existsSync(ownerDir) && path.dirname(ownerDir) !== ownerDir)
+            ownerDir = path.dirname(ownerDir);
+          const fileTop = git(ownerDir, ["rev-parse", "--show-toplevel"]);
+          const ownerTop = fileTop === null ? null : fs.realpathSync(fileTop);
+          if (
+            (realFile !== realTop && !realFile.startsWith(realTop + path.sep)) ||
+            (ownerTop !== null && ownerTop !== realTop)
+          )
+            throw new CommandError(
+              EXIT.USAGE,
+              `--file ${file} is outside this checkout (${top}); issue the invocation from the checkout that owns the run`,
+            );
+          const logs = path.dirname(path.dirname(statusPath));
+          if (
+            path.basename(statusPath) !== "status.jsonl" ||
+            path.basename(logs) !== "logs" ||
+            path.basename(path.dirname(path.dirname(logs))) !== "plans"
+          )
+            throw new CommandError(
+              EXIT.USAGE,
+              `--file ${file} is not a docs/plans/<month>/logs/<fid>/status.jsonl`,
+            );
+          inv = {
+            scope: "run",
+            workflow,
+            step,
+            number: registered.number,
+            title: registered.title,
+            run: runNumber(readRuns(statusPath), workflow),
+            statusPath,
+            bookRoot: path.dirname(path.dirname(path.dirname(path.dirname(logs)))),
+            standalone: null,
+            name: null,
+            declaredStep: null,
+            allowedAgent: null,
+            ...base,
+          };
+        }
+        const id = `inv-${randomBytes(16).toString("hex")}`;
+        const issued: Invocation = {
+          id,
+          version: 1,
+          ...inv,
+          worktree: top,
+          issuedAt: statusTimestamp(),
+        };
+        if (issued.scope === "run" && fs.existsSync(issued.statusPath!)) {
+          // The run's status log is the authority; the receipt is an index rebuilt from it.
+          const event: InvocationEvent = {
+            type: "invocation",
+            workflow: issued.workflow!,
+            at: issued.issuedAt,
+            id,
+            step: issued.step!,
+            number: issued.number!,
+            title: issued.title!,
+            run: issued.run!,
+            statusPath: path.relative(top, issued.statusPath!),
+            bookRoot: path.relative(top, issued.bookRoot!) || ".",
+            group: issued.group,
+            attempt: issued.attempt,
+            agent: issued.agent,
+            host: issued.host,
+            configuredModel: issued.configuredModel,
+            observedModel: issued.observedModel,
+            worktree: worktreeFingerprint(top),
+          };
+          fs.appendFileSync(issued.statusPath!, appendLine(event));
+        }
+        const receipt = writeInvocation(ctx.cwd, issued);
+        const {
+          id: _id,
+          version: _v,
+          worktree: _w,
+          issuedAt: _at,
+          standalone: _s,
+          name: _n,
+          ...out
+        } = issued;
+        ctx.emit({ invocation: id, receipt, ...out });
+        return EXIT.OK;
       },
     },
     resume: {

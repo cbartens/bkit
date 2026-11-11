@@ -118,6 +118,31 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | resumes corrected substep and blocks exhausted unauthorized or uncertain effects | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 8 |
 | renders one recovery precedence contract for all hosts and tracker adapters | Unit | `.bkit/core/engine/tools/instructions.test.ts` | 9 |
 | installs and upgrades fresh consumers with deterministic bookkeeping contracts | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 9 |
+| records the issued invocation in the run status log and rebuilds a deleted receipt | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 10 |
+| writes the engine-call row for an invocation-bound command | Unit | `.bkit/core/engine/commands/lib.test.ts` | 10 |
+| keeps invocation events and engine-call rows inside the issuing worktree after receipt loss | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 10 |
+| refuses to issue an invocation into a status file outside the issuing checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 11 |
+| starts a step clock at the previous step row, not at an invocation row | Unit | `.bkit/core/engine/commands/workflow/run-facts.test.ts` | 11 |
+| accepts verified unavailable model without confusing configured and observed models | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 12 |
+| audit result render keeps an existing anchored report intact | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 13 |
+| resolves a pending ledger intent after its invocation is stale | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 14 |
+| appends the printed audit ledgerRows verbatim under the standalone invocation | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 15 |
+| blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 16 |
+| refuses to re-append a partly landed block after a foreign writer appended | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 17 |
+| issues the same operation for rows whose keys are reordered | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 18 |
+| derives audit ledger keys under the audit-slug prefix | Unit | `.bkit/core/engine/commands/workflow/issues.test.ts` | 19 |
+| renders no PASS from a result that omits its evidence | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 20 |
+| routes every ledgers query reader on coverage status | Unit | `.bkit/core/engine/tools/instructions.test.ts` | 21 |
+| writes no absolute checkout path into the run's committed invocation event | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 22 |
+| keeps ledger operation intents and receipts out of committed book paths | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 23 |
+| refuses line breaks in header-bound result values | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 24 |
+| prepares afresh when nothing landed and a foreign row followed | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 25 |
+| does not push a second re-trigger copy after a lost push response on a shared branch | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 26 |
+| refuses a result file left from an earlier round | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 27 |
+| refuses a reused correction candidate id with different rows | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 28 |
+| marks a page with a next cursor as not clean | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 29 |
+| derives a fresh audit key when the ledger already holds it | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 30 |
+| refuses to issue an invocation through a status file symlinked out of the checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 31 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -313,7 +338,7 @@ All following files were found and read; no new source module is required. `E` i
 
 - Extend `steps stub` with proposed `--result-file` structured-result mode; `--from` remains required only for legacy copy mode, `--to` remains destination. Agent/result kind comes from invocation or explicit standalone `--agent`. Reuse `promptHeader`, `readHeader`, `parseFindings` and existing finish/gates. No `steps seed` command or separate serializer noun.
 - Deterministically render headers/body/counts for registered result kinds; map each declared field to a derivation or explicit judgment. Preserve special verdict rules, incomplete finding exclusion and immediate critical-finding failure. Store and validate result/body fingerprint at `steps verdict/finish`; stale edits regenerate explicitly or reject before DONE. Missing evidence never produces PASS.
-- Audit mode takes structured findings plus coverage and explicit prior-key/closure/grouping judgments once. Export its common validator/derivation API from existing `issues.ts`, which steps already imports; both steps rendering and comment result-file mode consume that API, with no issues→steps import or duplicated validator. Derive report-local IDs, counts, source links and ledger payloads; expose prior-key candidates without deciding equivalence. A runless audit/utility caller first obtains Task 1's explicit standalone binding and Task 4's operation receipts. All audit ledger writes use receipt-aware append; all tracker posting uses the existing publisher/#826 semantics. Group 2 finishes with `pnpm build` and compiled CLI result-render/comment smoke probes to catch import cycles before Group 3.
+- Audit mode takes structured findings plus coverage and explicit prior-key/closure/grouping judgments once. Export its common validator/derivation API from existing `issues.ts`, which steps already imports; both steps rendering and comment result-file mode consume that API, with no issues→steps import or duplicated validator. Derive report-local IDs, counts, source links and ledger payloads; expose prior-key candidates without deciding equivalence. A runless audit/utility caller first obtains Task 1's explicit standalone binding and Task 4's operation receipts. All audit ledger writes use receipt-aware append; all tracker posting uses the existing publisher/#826 semantics. Group 3 finishes with `pnpm build` and compiled CLI result-render/comment smoke probes to catch import cycles before Group 4.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/runs.ts`, `.bkit/core/engine/commands/workflow/counters.ts`, `.bkit/core/engine/ledgers/status.ts`
 
@@ -360,7 +385,7 @@ Code-only — `git revert` of the implementation commits is sufficient after act
 
 ## Agent Execution Runbook
 
-Nine tasks in three groups. Maximum actual group size is three tasks and ten TEST FIRST cases, below the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate.
+Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen TEST FIRST cases, within the 5/25 caps; each task uses at most four cases in three files, below the 10/3 caps. `UPDATE` includes its named tests; each task fixes affected existing tests. One PR for all tasks is fine. Suggested sequencing is advisory, not a merge-method gate. Shared pieces with #836 (`docs/plans/202611/836-record-host-model-plan.md`) are built once: before Tasks 1, 4 and the commit-helper wiring in Task 4, check what #836 has landed (invocation record and receipt, the locked read-back status/ledger append boundary, current operation context for commit helpers); whichever lands first creates it, and this plan extends it without a second copy. Build #860 Task 4 and #836 Task 6 one after the other, never in parallel.
 
 <!-- bkit:group 1 start -->
 
@@ -368,10 +393,10 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Bind managed commands to engine-issued invocation context (deterministic-bookkeeping-4; R1–R7, R21–R22).
-  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add common explicit invocation resolution, conflict/path validation and help/spec support without using implicit journal discovery as authority.
+- [x] **TASK 1:** Bind managed commands to engine-issued invocation context (deterministic-bookkeeping-4; R1–R7, R21–R22).
+  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: add common explicit invocation resolution (one `--invocation` flag/receipt shared with #836's host pass-through), conflict/path validation and help/spec support without using implicit journal discovery as authority.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: specialize typed workflow invocation issuance/lookup plus explicit standalone audit/utility issuance into the existing outbox; return validated scope and operation/correction inputs without inventing a run/FID.
-  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation events and exact run/step occurrence resolution; retain existing reducer contracts.
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation events and exact run/step occurrence resolution; retain existing reducer contracts. One record per agent call carries run, step and agent (this plan) plus host and configured model at start (#836); reuse whatever #836 has landed and add no second invocation type to `status.jsonl`.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.ts`: lifecycle integration/cache rehydration and existing book-root/path output reuse.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/step-table.ts`: derive registered number/title and supported step/agent artifact metadata.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.ts`: consume the current #836 authoritative observation contract or explicit unavailable state; no new detector.
@@ -390,7 +415,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
+- [x] **TASK 2:** Complete verified ledger attribution before validation (deterministic-bookkeeping-1; R6–R9).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: additive RowBy availability/source/configured-model fields and compatible writer/normalization validation.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: optional invocation-aware append context, fill-before-validate and explicit conflicts; retain legacy positional callers.
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: actual/unavailable/configured model compatibility.
@@ -407,7 +432,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Expose canonical complete ledger reads (deterministic-bookkeeping-2; R8–R11, R23).
+- [x] **TASK 3:** Expose canonical complete ledger reads (deterministic-bookkeeping-2; R8–R11, R23).
   - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.ts`: detailed line diagnostics around the existing parser and canonical fold, preserving existing callers.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: proposed query verb, key/status filters, deterministic order, snapshot-bound paging and coverage results.
   - **READ:** `.bkit/core/engine/ledgers/compact.ts`: preserve normalized identity/lineage and malformed-history retention.
@@ -422,20 +447,69 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `folds numeric timestamps and equal timestamp ties before filtering` fails on the new query/filter path resurrecting an older ACTIVE row after its newer SUPERSEDED winner is filtered out; include numeric/equal-ts regressions rather than using already-green fold-only assertions as the red gate.
     - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `pages canonical winners with diagnostics and rejects stale cursors` fails on missing/duplicated page winners, absent line diagnostics or accepting a changed snapshot.
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `distinguishes unreadable missing malformed and clean ledger coverage without writing` fails on reporting a clean empty scan for unread input or altering original bytes.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `distinguishes unreadable missing malformed and clean ledger coverage without writing` fails on reporting a clean empty scan for unread input or altering original bytes. — accepted: the only change after it was recorded red was group 8's one-word rename of the `ledgers query` status from `complete` to `clean`; the full static/unit/integration gate passes (owner, 2026-11-12)
 
 <!-- bkit:task 3 end -->
+
+<!-- bkit:task 10 start -->
+
+- [x] **TASK 10:** Record invocations and invocation-bound engine calls in the run's status log (owner decision, build decision 1; closes Task 1's status-authority and journal gaps).
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: additive invocation event for a workflow-mode invocation, with exact run/step/agent/group/attempt resolution; status is the authority and the outbox receipt is an index rebuilt from it. Add no second invocation type.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` appends that event to the run's own `status.jsonl` and writes the receipt from it; a lookup whose receipt is missing rebuilds it from the event.
+  - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: `runCommand` writes the `engine-call` row for invocation-bound calls again, into the issuing run's own status log only, never another worktree's.
+  - **UPDATE:** `docs/observability.md`: `[bkit-telemetry]` states that invocation-bound calls write their `engine-call` row to the issuing run's status log.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.test.ts`: the owner approved replacing the assertion in `issues invocation metadata from an explicit run and registered step` that issuing changes no run state with: the issuing run's own status log gains the invocation event. Keep every other expectation of that test.
+  - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: the owner approved replacing the assertion in `resumes explicit invocation across two real worktrees without identity leakage` that the status bytes stay unchanged with: only the issuing run's own status log gains the invocation event and `engine-call` rows, and the other worktree's files stay byte-identical. Keep every other expectation of that test.
+  - **DEPENDS ON:** 1.
+  - **DONE WHEN:** A workflow-mode invocation is an additive event in the run's `status.jsonl` and the outbox receipt is rebuilt from it when missing; invocation-bound commands write their `engine-call` row so `bkit completeness check` sees them; nothing is written to another worktree's status or artifacts; runless audit/utility issuance still creates no run, status file or `docs/` directory; `docs/observability.md` matches; and the three tests below pass together with the two updated Task 1 tests.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `records the issued invocation in the run status log and rebuilds a deleted receipt` fails on issuance leaving `status.jsonl` unchanged or a deleted receipt making a live run's id unresolvable.
+    - `.bkit/core/engine/commands/lib.test.ts` `writes the engine-call row for an invocation-bound command` fails on `runCommand` skipping the journal row when `--invocation` is present.
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps invocation events and engine-call rows inside the issuing worktree after receipt loss` fails on a missing event or row in the issuing worktree's status log, any write to the other worktree, or a resumed command failing after the receipt is deleted.
+
+<!-- bkit:task 10 end -->
+
+<!-- bkit:task 11 start -->
+
+- [x] **TASK 11:** Keep invocation issuance inside the issuing checkout and out of step timing (owner decision, build decision 2; closes verify attempt 5 gaps).
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/status.ts`: `status invocation` refuses a `--file` outside the issuing checkout's top folder before any write, so an invocation row never lands in another worktree's `status.jsonl` and an id is never tied to another worktree's run.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/run-facts.ts`: add the `invocation` row type to `MARK_ROWS` so a step's minutes start at the previous step's row, not at an invocation row.
+  - **DEPENDS ON:** 10.
+  - **DONE WHEN:** `status invocation` with a `--file` from another worktree exits non-zero and changes no file, an id issued for one worktree's run is not accepted from another, step minutes ignore `invocation` rows, and the two tests below pass.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `refuses to issue an invocation into a status file outside the issuing checkout` fails on the command exiting 0 or appending a row to the other worktree's log.
+    - `.bkit/core/engine/commands/workflow/run-facts.test.ts` `starts a step clock at the previous step row, not at an invocation row` fails on the step reporting fewer minutes than it took.
+
+<!-- bkit:task 11 end -->
 <!-- bkit:group 1 end -->
 
 <!-- bkit:group 2 start -->
 
-### TASK GROUP 2: Replay-safe writes and shared result rendering
+### TASK GROUP 2: Close the group 1 quality gate
+
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** Retype the one planned test call that fails the slop check (owner decision, build decision 3; closes the group 1 quality-gate gap).
+  - **UPDATE:** `.bkit/core/engine/ledgers/telemetry.test.ts`: the owner approved changing the call in `accepts verified unavailable model without confusing configured and observed models` from `writerProblem(unavailable as unknown as Record<string, unknown>)` to a call that passes a plain object, the way the other `writerProblem` calls in the file do, with no `as unknown as` cast. Keep every expectation of that test.
+  - **DEPENDS ON:** 2.
+  - **DONE WHEN:** The test no longer contains a double type cast, every expectation of it is unchanged and it passes, `pnpm bkit:slop:delta` reports no net-new finding for `telemetry.test.ts`, and `bkit:gate:static-unit` passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/telemetry.test.ts` `accepts verified unavailable model without confusing configured and observed models` fails on the slop check flagging its double type cast (the test itself passes before and after, so it may be reported unproven and left for the owner at Step 15).
+
+<!-- bkit:task 12 end -->
+<!-- bkit:group 2 end -->
+
+<!-- bkit:group 3 start -->
+
+### TASK GROUP 3: Replay-safe writes and shared result rendering
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Reconcile ledger operations with durable receipts (deterministic-bookkeeping-7; R3, R8, R16, R20–R21, R25).
-  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: strict ledger operation/receipt helpers on existing action key/hash primitives, preserving tracker changed-hash behavior; cycle-free exclusive-create helper.
+- [x] **TASK 4:** Reconcile ledger operations with durable receipts (deterministic-bookkeeping-7; R3, R8, R16, R20–R21, R25).
+  - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: strict ledger operation/receipt helpers on existing action key/hash primitives, preserving tracker changed-hash behavior; cycle-free exclusive-create helper. This is the single lock-and-confirm helper (append, flush, read-back, interrupted-write check) shared by `status.jsonl` and the `docs/*.jsonl` ledgers; extend #836's boundary if it landed first.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/locks.ts`: delegate only low-level exclusive creation while preserving workflow lock public behavior and ownership.
-  - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: engine-issued operation preparation, immutable request hash, target lock, exact prepared bytes, fsync/completion receipt and explicit reconciliation; make union/compact coordinate pending target effects.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/ledgers.ts`: engine-issued operation preparation (the same operation context that #836 passes through `commitOwnSet`, `ownPathCommit`, `commitBookkeeping` and `retriggerCommit`; issue the ID into that context or read it from there), immutable request hash, target lock, exact prepared bytes, fsync/completion receipt and explicit reconciliation; make union/compact coordinate pending target effects.
   - **UPDATE:** `.bkit/core/engine/ledgers/journal.ts`: coordinate appendFrictionRow and its dispatcher/owner-pause callers with the shared cycle-free target lock; retain append-only recurrence and optional telemetry failure policy; inventory and coordinate all other direct managed-target writers.
   - **READ:** `.bkit/core/engine/commands/workflow/tracker.ts`: keep existing changed-body action contract.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.test.ts`: separate strict ledger collision policy from generic action hash reuse.
@@ -453,7 +527,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Extend existing step artifacts with deterministic result serialization (deterministic-bookkeeping-3; R12–R14, R23).
+- [x] **TASK 5:** Extend existing step artifacts with deterministic result serialization (deterministic-bookkeeping-3; R12–R14, R23).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: structured `stub --result-file` mode, registered field derivations, body/result fingerprint and verdict/finish verification; preserve legacy copy mode and special gates.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/challenge.ts`: share compatible structured finding validation and explicit semantic inputs with existing parse/merge path.
   - **READ:** `.bkit/core/engine/commands/workflow/plan-blocks.ts`: keep canonical task/finding grammar.
@@ -470,7 +544,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Derive audit bookkeeping from one validated result (deterministic-bookkeeping-6; R8–R9, R12, R15–R16).
+- [x] **TASK 6:** Derive audit bookkeeping from one validated result (deterministic-bookkeeping-6; R8–R9, R12, R15–R16).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.ts`: own/export the common audit result validation/derivation contract and proposed comment result-file mode, preserving existing buildComment/poster; do not import steps.ts.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/steps.ts`: consume the issues-owned contract through its existing import direction to render stable IDs, coverage, totals, links and ledger payloads; preserve explicit semantic prior-key/closure/grouping decisions.
   - **READ:** `.bkit/core/engine/commands/workflow/ledgers.ts`: canonical prior-key candidates and receipt-aware append path.
@@ -479,22 +553,22 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
   - **UPDATE:** `.bkit/core/engine/commands/workflow/issues.test.ts`: audit result comments and tracker modes.
   - **UPDATE:** `.bkit/core/engine/ledgers/journal.integration.test.ts`: real structured artifact → append → comment-draft flow.
   - **DEPENDS ON:** 3, 4, 5.
-  - **DONE WHEN:** The one issues-owned validated audit contract supplies report/header/ledger/comment counts and IDs without an import cycle or duplicated validator; coverage/links and explicit semantic judgments agree, supported tracker/none contracts stay intact and all three named tests pass. Starting with no active run/status/FID, the real-files audit obtains standalone invocation/operation context, renders, appends and drafts its comment, then replays publication without duplicate rows. `pnpm build` and compiled CLI result/comment smoke probes pass within Group 2 before Group 3 begins.
+  - **DONE WHEN:** The one issues-owned validated audit contract supplies report/header/ledger/comment counts and IDs without an import cycle or duplicated validator; coverage/links and explicit semantic judgments agree, supported tracker/none contracts stay intact and all three named tests pass. Starting with no active run/status/FID, the real-files audit obtains standalone invocation/operation context, renders, appends and drafts its comment, then replays publication without duplicate rows. `pnpm build` and compiled CLI result/comment smoke probes pass within Group 3 before Group 4 begins.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/steps.test.ts` `derives audit IDs totals ledger payloads and coverage from one result` fails on unstable local IDs, duplicated manually supplied counts or lost not-checked coverage.
     - `.bkit/core/engine/commands/workflow/issues.test.ts` `renders audit comments from validated result and preserves tracker adapters` fails on divergent counts/links or a result path bypassing existing provider/none formatting.
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `keeps rendered audit report appended rows and tracker draft counts identical` fails on a real runless audit/utility flow (no FID/status/active run) lacking issuance/receipt prerequisites, actual persisted rows disagreeing with result-derived artifact/comment, duplicate replay events or compiled CLI import-cycle failure; exercise the standalone variants from Tasks 1/4.
 
 <!-- bkit:task 6 end -->
-<!-- bkit:group 2 end -->
+<!-- bkit:group 3 end -->
 
-<!-- bkit:group 3 start -->
+<!-- bkit:group 4 start -->
 
-### TASK GROUP 3: Durable continuation and maintained caller contracts
+### TASK GROUP 4: Durable continuation and maintained caller contracts
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Persist CI handoff observations and derive reentry (deterministic-bookkeeping-5; R3, R17–R19).
+- [x] **TASK 7:** Persist CI handoff observations and derive reentry (deterministic-bookkeeping-5; R3, R17–R19).
   - **UPDATE:** `.bkit/core/engine/commands/workflow/runs.ts`: invocation-bound wait/dispatch observations, persistent phase/attempt/error/retrigger identity, nextAction output and stale evidence checks; preserve standalone provider contracts.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: own the extended target/observation union and validators for none/pending/success/failure/provider-error and unresolved retrigger intent, retained across fold/resume; preserve failed-only CiSelection/debug consumers unchanged.
   - **READ:** `.bkit/core/engine/commands/workflow/counters.ts`: reuse active-run event derivation and existing limits.
@@ -512,7 +586,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Enforce bounded correction and effect-aware recovery (deterministic-bookkeeping-8; R1, R3, R8, R19).
+- [x] **TASK 8:** Enforce bounded correction and effect-aware recovery (deterministic-bookkeeping-8; R1, R3, R8, R19).
   - **UPDATE:** `.bkit/core/engine/commands/lib.ts`: declared pre-effect validation/effects/recovery metadata in receiving handlers and structured error output; no blanket generic-exit retry.
   - **UPDATE:** `.bkit/core/engine/ledgers/status.ts`: engine-derived stable correction scope and rejection/candidate/success events tied to exact interrupted sub-step.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/counters.ts`: persistent correction usage with two corrected retries default, command-specific limits precedence and no tool/resume reset.
@@ -531,7 +605,7 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Migrate maintained callers and generated consumers to engine bookkeeping (all eight findings; R1–R25).
+- [x] **TASK 9:** Migrate maintained callers and generated consumers to engine bookkeeping (all eight findings; R1–R25).
   - **UPDATE:** `.bkit/instructions.md`: master clauses and carrier registry for the exact approved four-paragraph recovery wording and deterministic ownership; retire conflicting blanket failure wording.
   - **UPDATE:** `.bkit/core/.agents/rules.md`: shared Commands/Failures/recovery rules with unambiguous precedence.
   - **UPDATE:** `.bkit/core/workflows/bkit-auto.md`: explicit invocation/recovery dispatch contract.
@@ -587,9 +661,216 @@ Nine tasks in three groups. Maximum actual group size is three tasks and ten TES
   - **TEST FIRST:**
     - `.bkit/core/engine/tools/instructions.test.ts` `renders one recovery precedence contract for all hosts and tracker adapters` fails on a blanket failure carrier, missing deterministic ownership, generic retries overriding a specific route or a host/tracker variant retaining manual copied counters/model pins.
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs and upgrades fresh consumers with deterministic bookkeeping contracts` fails on source/rendered/compiled CLI drift or fresh consumer invocation/query/result/receipt/recovery probes producing divergent rows, limits or attribution.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs and upgrades fresh consumers with deterministic bookkeeping contracts` fails on source/rendered/compiled CLI drift or fresh consumer invocation/query/result/receipt/recovery probes producing divergent rows, limits or attribution. — accepted: same one-word `complete` to `clean` rename forced by group 8; the install and upgrade checks run in the full gate, which passes (owner, 2026-11-12)
 
 <!-- bkit:task 9 end -->
-<!-- bkit:group 3 end -->
+<!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** An audit run that follows its prompt overwrites its own finished report: `steps stub --result-file --to=<Create>` replaces the anchored audit report (Probe Steps, Findings, Report, Project Instructions) with the short summary
+      **Severity:** CRITICAL · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:2328` · **Round:** 1
+  - **DONE WHEN:** Rendering an audit result never destroys an existing populated report: the `bkit:anchor` block and every template section the agent wrote survive the render. No agent can settle this alone, because `.bkit/core/prompts/bkit-audit-generate.md:164` sends the summary to `<Create>` (the report itself) while the audit result carries no body; the owner must decide whether the engine splices the Status / Report / Findings header and derived tables into the existing report, or writes the summary to its own path.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `audit result render keeps an existing anchored report intact` fails on `steps stub --agent=bkit-audit-generate --result-file` overwriting a report that holds a `bkit:anchor` block and filled Probe Steps / Findings sections, leaving only the rendered summary.
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** A ledger append that crashes between its intent and its receipt can never be reconciled once its invocation goes stale, so the committed pending intent blocks `ledgers union`, compact, migrate and every `--correction-of` on that ledger for good
+      **Severity:** HIGH · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1699` · **Round:** 1
+  - **DONE WHEN:** A pending intent always has a reachable resolution: reconciliation by operation id alone (checking the prepared bytes at the recorded offset) works without the original invocation, or an engine verb resolves or abandons it with evidence, and teardown union does not fail forever on an intent another checkout wrote. No agent can settle this alone, because the request hash binds the invocation id (`ledgers.ts:1571`), invocations go stale when a newer run starts (`commands/lib.ts` `resolveInvocation`) and `.bkit/ledger-operations.jsonl` rides every bookkeeping commit via `.bkit/*.jsonl`, although the plan's Data Schema Changes row 'Ledger operation' places receipts in the git-common outbox; the owner must decide who may reconcile an intent and whether it is checkout-local or committed state.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `resolves a pending ledger intent after its invocation is stale` fails on a crash at the `prepared` checkpoint followed by a new run start leaving `ledgers union` exiting with 'replay them first' and every replay of the operation refused as a different request.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `resolves a pending ledger intent after its invocation is stale` fails on a crash at the `prepared` checkpoint followed by a new run start leaving `ledgers union` exiting with 'replay them first' and every replay of the operation refused as a different request. — accepted: group 7 moved where ledger intents are stored, so the test was repointed and re-recorded; it still exercises the stale-invocation path and passes in the full gate (owner, 2026-11-12)
+
+<!-- bkit:task 14 end -->
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** Feeding the audit `ledgerRows` the engine prints straight into `ledgers append --invocation` is refused, because each row's `by.step` is `audit-<slug>` while the standalone invocation vouches for `audit:<slug>`; the integration test hides this by stripping `by`
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:747` · **Round:** 1
+  - **DONE WHEN:** The rows `steps stub --agent=bkit-audit-generate --result-file` prints append unchanged under the `--standalone=audit --name=<slug>` invocation: `auditLedgerRows` emits no `by` block (or one equal to the invocation's), and the integration test passes the printed rows verbatim.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `appends the printed audit ledgerRows verbatim under the standalone invocation` fails on exit 8 with `conflict: by.step="audit-security" disagrees with invocation`.
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** A resumed re-trigger push on a feature branch force-overwrites a commit someone else pushed, whenever any fetch already moved `origin/<branch>` to it: the remote-movement guard only blocks when the tracking ref is stale, which is exactly when `--force-with-lease` would have failed anyway
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:1103` · **Round:** 1
+  - **DONE WHEN:** At the `commit-created` checkpoint, a remote tip that is neither the re-trigger commit nor its ancestor blocks the push whatever `origin/<branch>` says, the remote commit stays reachable, and no `push-completed` row is written.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `blocks a resumed re-trigger push when the remote moved and the tracking ref already holds it` fails on the bare remote's foreign commit becoming unreachable after the dispatcher resumes from `commit-created`.
+
+<!-- bkit:task 16 end -->
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** After a crash leaves part of a prepared block in the ledger and the lock is cleared as the error message advises, a friction or plain append lands next (neither checks pending intents), and reconciling the operation then takes the 'none of ours landed: prepare afresh' branch and appends rows that already landed a second time
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1740` · **Round:** 1
+  - **DONE WHEN:** Reconciliation prepares afresh only when no byte of the prepared block landed at the recorded offset; any landed prefix of the block followed by foreign bytes reports `UncertainEffect` and appends nothing, and no fold winner or lineage count is duplicated.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended` fails on a two-row operation whose first row and half of its second landed, followed by an `appendFrictionRow` write, being reconciled with exit 0 and the first row present twice.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended` fails on a two-row operation whose first row and half of its second landed, followed by an `appendFrictionRow` write, being reconciled with exit 0 and the first row present twice. — accepted: group 7 moved where ledger intents are stored, so the test was repointed and re-recorded; it still exercises the foreign-writer path and passes in the full gate (owner, 2026-11-12)
+
+<!-- bkit:task 17 end -->
+<!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** An agent that retries a lost `--issue-operation` append with the same rows but a different JSON key order gets a new engine-issued operation id and appends every row a second time, because the request hash is `JSON.stringify` of the raw rows, not a canonical form
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1471` · **Round:** 1
+  - **DONE WHEN:** The issued operation id and the stored request hash (`ledgers.ts:1471`, `ledgers.ts:1571`) are computed from a key-sorted canonical serialization, so semantically equal rows replay the original receipt and append nothing.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `issues the same operation for rows whose keys are reordered` fails on the second `--issue-operation` call returning `replayed: false` and the ledger gaining a second copy of the row.
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** Audit ledger keys the engine derives are `<slug>-<title>`, while `bkit-audit-generate.md` defines new keys as `audit-<slug>-<content-slug>` and closes stale rows by the `audit-<slug>-` prefix, so rows the engine keys are never closed by later audit runs
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:734` · **Round:** 1
+  - **DONE WHEN:** `auditEntries` derives new keys as `audit-<slug>-<content-slug>`, matching the prompt's key format and its closure prefix, and a derived key can never equal a report finding ID such as `<slug>-1`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/issues.test.ts` `derives audit ledger keys under the audit-slug prefix` fails on `auditEntries` returning `security-missing-csrf-token` instead of `audit-security-missing-csrf-token`.
+
+<!-- bkit:task 19 end -->
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** A result file that is just `{}` (or omits `evidenceComplete` and `body`) renders a `Verdict: PASS` challenge or review artifact with an empty body, because `evidenceComplete` defaults to true
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:1660` · **Round:** 1
+  - **DONE WHEN:** `renderResult` requires an explicit boolean `evidenceComplete` (and a non-empty `body` for a PASS) and exits 6 writing nothing when either is missing, so missing evidence never becomes PASS.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `renders no PASS from a result that omits its evidence` fails on `renderResult(cwd, 'bkit-build-challenge-1', {})` returning text with `Verdict: PASS`.
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [x] **TASK 21:** On a fresh consumer with no `docs/failures.jsonl` (coverage `missing`) or a ledger holding one malformed line (coverage `partial`), the prompts' 'follow `nextCursor` until `coverage.clean` is true' never terminates and names no route, so the agent loops, stops, or quietly treats the scan as clean
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/prompts/bkit-audit-generate.md:165` · **Round:** 1
+  - **DONE WHEN:** Every prompt that reads `bkit ledgers query` (audit-generate, ship-deferred-sweep, debug-failure-diagnose and the five utility-update prompts) stops paging when `nextCursor` is null and routes on `coverage.status`: `missing` = no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/tools/instructions.test.ts` `routes every ledgers query reader on coverage status` fails on a prompt that cites `coverage.clean` without naming the `missing` and `partial` routes.
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** Every issued invocation commits the developer's absolute checkout paths (home directory and username, e.g. `/Users/<name>/...`) into the tracked run `status.jsonl`, which ships in consumer repo history and bkit's public repo.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/status.ts:742` · **Round:** 1
+  - **DONE WHEN:** The `invocation` event appended to the run's tracked `status.jsonl` holds no absolute path: `statusPath` and `bookRoot` are stored relative to the checkout top, and `worktree` is dropped or replaced by a one-way fingerprint. `rebuildInvocation` (`.bkit/core/engine/commands/lib.ts`) resolves them against the current top and still refuses a receipt for another checkout. Absolute paths stay only in the private outbox receipt.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `writes no absolute checkout path into the run's committed invocation event` fails on the appended `invocation` row containing the temporary checkout's absolute path in `statusPath`, `bookRoot` or `worktree`.
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 1 findings
+
+<!-- bkit:task 23 start -->
+
+- [x] **TASK 23:** Ledger-operation intents and receipts live in the committed, union-carried `.bkit/ledger-operations.jsonl`, not the private git-common outbox the plan names. A crash, or a branch that commits a receipt-less intent row, then propagates on merge and blocks `ledgers union` (worktree teardown), `ledgers compact` and the upgrade-path `migrateLedgers` in every checkout. The replay that would clear it needs the original request, which no other checkout can reproduce.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/ledgers/status.ts:675` · **Round:** 1
+  - **DONE WHEN:** Intents and receipts are written under `<git common dir>/bkit-outbox/` with private file permissions, as the plan's Data Schema Changes row and `docs/security.md` § Workflow comment ownership require. No `bookPathspecs` or `UNION_PATHSPECS` entry stages or carries them. An intent row arriving in tracked content no longer blocks union, compact or migrate.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `keeps ledger operation intents and receipts out of committed book paths` fails on `appendLedgerRows` with an `operation` creating `<root>/.bkit/ledger-operations.jsonl`, or on a receipt-less intent row in that tracked file making `unionLedgers` throw.
+
+<!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [x] **TASK 24:** A line break in a header-bound result value (`report`, `issue` or `parent` in an audit result, or any free-text judgment) injects forged header lines and an early `<!-- verdict:end -->`. For example, a multi-line `report` that adds `Findings: CRITICAL 0 · HIGH 0 · MEDIUM 0 · LOW 0` makes `readHeader` read zero findings over the engine-derived `CRITICAL 1`. Because the cut-off header carries no `Fingerprint`, `fingerprintProblem` treats the artifact as hand-written and skips the stale check.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:1566` · **Round:** 1
+  - **DONE WHEN:** `renderResult` / `renderAudit` and `parseAuditResult` refuse (EXIT_INVALID, nothing written) any value that is rendered into a header line and contains CR or LF, including `report`, `issue`, `parent` and every judgment at `steps.ts:1652`. The `Report:` line `issues comment --result-file` builds applies the same rule.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `refuses line breaks in header-bound result values` fails on `renderResult(cwd, "bkit-audit-generate", …)` with a CRITICAL finding and a multi-line `report` returning rendered text, whose written file `readHeader` then reads as `Findings: CRITICAL 0 …` with no fingerprint check.
+
+<!-- bkit:task 24 end -->
+<!-- bkit:group 7 end -->
+
+<!-- bkit:group 8 start -->
+
+### TASK GROUP 8: Challenge round 2 findings
+
+<!-- bkit:task 25 start -->
+
+- [x] **TASK 25:** A ledger append killed at its `prepared` checkpoint, followed by any ordinary write to the same ledger (a dispatcher friction row, a plain append), can never be reconciled: every schema-3 row starts `{"schema":3,"ts":179...`, so the byte-prefix count at `ledgers.ts:1753` always finds "landed" bytes, the replay throws `UncertainEffect` instead of preparing afresh, and the pending intent blocks `ledgers union`, `compact`, `migrate` and `--correction-of` on that ledger for good
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1753` · **Round:** 2
+  - **DONE WHEN:** Reconciliation decides "landed" by whole lines, not by a shared byte prefix: when the first line at the recorded offset is a complete line that is neither equal to nor a proper prefix of the block's first line, nothing of ours landed and the operation prepares afresh and appends once; a landed whole line, or a torn proper prefix of our first line, still reports `UncertainEffect` and writes nothing (Task 17's test still passes).
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `prepares afresh when nothing landed and a foreign row followed` fails on a crash at `failAt("prepared")` followed by a plain `appendLedgerRows` of another schema-3 row, then the replay with the same `--operation` and rows throwing `/uncertain/` instead of appending its row exactly once and leaving no pending intent.
+
+<!-- bkit:task 25 end -->
+<!-- bkit:task 26 start -->
+
+- [x] **TASK 26:** On a shared branch, a re-trigger whose push response is lost (process killed during or right after `git push`, before `push-completed` persists) is pushed a second time on resume: `landEmptyOwnCommits` re-copies the original commit because the pushed copy has a new SHA and is not in `rec.pushed`, so dev gets two empty re-trigger commits and two CI runs; if the kill lands after `markRecordPushed`, resume instead returns the local original SHA (`rec.pushed.at(-1)`), which the remote never received, and the re-poll watches that SHA
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:814` · **Round:** 2
+  - **DONE WHEN:** The copy SHA is persisted (handoff checkpoint or shared-checkout record) before the copy is pushed, and a resumed `commit-created` re-trigger on a shared branch first checks whether the remote tip already is or contains that copy: if so it records `push-completed` with the copy SHA and pushes nothing; `rec.pushed` never stands in for the remote SHA of a copied commit.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `does not push a second re-trigger copy after a lost push response on a shared branch` fails on a `remoteRepo("dev", true)` run whose first `ciDispatchGate` pushes the copy and is then interrupted before `push-completed` (copy on the bare remote, record unmarked), the resumed run leaving `shared.retriggers()` at 2, or `retrigger.remote` naming a SHA the bare remote does not hold.
+
+<!-- bkit:task 26 end -->
+<!-- bkit:task 27 start -->
+
+- [x] **TASK 27:** A subagent that dies before writing its result (turn cap, crash, refusal) still gets a well-formed artifact: Result paths are reused across rounds and runs (`{OUTBOX}/build-challenge-1-result.json` has no round; `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}` and `build-failure-diagnose-{TEST_ATTEMPT}` restart in a new run), nothing clears them before launch, and `steps stub --result-file` renders whatever file is there, so round 1's findings render as round 2's report and an earlier run's PASS verify result renders as this group's PASS
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:2327` · **Round:** 2
+  - **DONE WHEN:** A result file that predates the subagent launch it is rendered for never renders: the result is bound to the current step occurrence (the workflow clears or rotates each Result path before launching its subagent, or the result carries the issued invocation id and `steps stub --result-file` refuses one from another invocation, run or round with exit 6, writing nothing), so a missing fresh result always takes the step's Failure Path.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `refuses a result file left from an earlier round` fails on `steps stub --agent=bkit-build-challenge-1 --result-file` rendering a result written before the current challenge round began and exiting 0 with the old findings in the new artifact.
+
+<!-- bkit:task 27 end -->
+<!-- bkit:task 28 start -->
+
+- [x] **TASK 28:** An agent that keeps one `--operation` for its corrected retries gets unlimited corrections: a rejected candidate leaves no intent or receipt, so its id carries no request hash, and `spendCorrection` returns `allowed` (replayed) for any operation already in the scope whatever rows it now carries, so `remaining` never reaches 0 and every rejection stays a correctable `NoWriteRejection`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/counters.ts:229` · **Round:** 2
+  - **DONE WHEN:** Each `correction-candidate` row records the candidate's canonical request hash; `spendCorrection` treats a known operation as a free replay only when the hash matches, and refuses (nothing written) a known candidate id with another request, so a scope allows at most `CORRECTION_LIMIT` distinct corrected requests and the third rejection is final.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/counters.test.ts` `refuses a reused correction candidate id with different rows` fails on three `ledgers append --operation=op-b --correction-of=op-a` calls with three different invalid row sets all exiting with a correctable rejection while the scope shows one candidate spent.
+
+<!-- bkit:task 28 end -->
+<!-- bkit:task 29 start -->
+
+- [x] **TASK 29:** `ledgers query` reports `coverage.clean: true` on a page whose `nextCursor` is non-null, and the plan workflow saves exactly one `--limit=500` page into `related-knowledge.md` for reviewers who have no shell; past 500 active rows the newest knowledge rows (the page is oldest-first) are silently dropped while the saved output says the scan is clean
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:2004` · **Round:** 2
+  - **DONE WHEN:** `coverage.clean` (and `coverage.status`) report an unfinished scan whenever `nextCursor` is non-null, and every block that captures a query for an agent without a shell (`.bkit/core/workflows/bkit-plan.md` related-knowledge save) writes all pages or stops on a non-null `nextCursor` instead of saving a truncated page.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `marks a page with a next cursor as not clean` fails on `ledgers query --ledger=knowledge --limit=1` over a two-winner ledger returning `coverage.clean: true` alongside a non-null `nextCursor`.
+
+<!-- bkit:task 29 end -->
+<!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### TASK GROUP 9: Challenge round 2 findings
+
+<!-- bkit:task 30 start -->
+
+- [x] **TASK 30:** A new audit finding whose title matches an earlier audit row of a different problem (same title, other `file:line`, which the prompt calls "a different problem") gets that row's key: `auditEntries` checks a derived `audit-<slug>-<title>` key only against this result's `priorKey`s, never against `docs/failures.jsonl`, so the append lands as a later row of the old key and the old, still-open failure drops out of the fold winners
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:735` · **Round:** 2
+  - **DONE WHEN:** A derived key is unique against every key already in the target ledger as well as within the result (the renderer reads the ledger's winners and suffixes `-2`, `-3` ...), so reusing an existing key happens only through an explicit `priorKey`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `derives a fresh audit key when the ledger already holds it` fails on `renderResult` for a `security` result with a new `Token logged` finding, in a checkout whose `docs/failures.jsonl` already holds an OPEN `audit-security-token-logged` row, printing `ledgerRows[0].key` = `audit-security-token-logged`.
+
+<!-- bkit:task 30 end -->
+<!-- bkit:task 31 start -->
+
+- [x] **TASK 31:** A committed `docs/plans/<month>/logs/<fid>/status.jsonl` that is a symlink to another checkout's (or any empty or NDJSON) file passes the Task 11 containment check, because only the parent directory is resolved with `realpathSync`; `status invocation` then appends its `invocation` event through the symlink, and every later invocation-bound `engine-call` row and correction row follows it into the other checkout's log.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/status.ts:682` · **Round:** 2
+  - **DONE WHEN:** `status invocation` resolves the full `--file` path, symlinks included (`fs.lstatSync` refuses a symlinked final component, or `realpathSync` of the file itself when it exists), before the containment test, and exits non-zero with no write when the resolved file lies outside the issuing checkout or in a nested worktree. `resolveInvocation` and `rebuildInvocation` (`.bkit/core/engine/commands/lib.ts`) refuse a receipt or event whose status file now resolves outside the checkout.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `refuses to issue an invocation through a status file symlinked out of the checkout` fails on `status invocation --file=<REL>` exiting 0 and the other repository's `status.jsonl` gaining an `invocation` row, when `<REL>` in the issuing repository is a symlink to that file.
+
+<!-- bkit:task 31 end -->
+<!-- bkit:group 9 end -->
 
 The required shared wording in Task 9 is copied from #860:
 
@@ -625,7 +906,7 @@ Documentation verification: Task 9 covers every Documentation Updates row and ge
 
 - [ ] **Static:** `pnpm instructions:sync`, `pnpm cli:sync`, instruction coverage/source checks, command help/catalog parity and syntax/prose/format checks.
 - [ ] **Unit:** The matrix's command/codec/field/identity cases, plus impacted existing steps/challenge/locks/tracker/status/run-facts/host/model tests. Keep tests out of production tsconfig inputs.
-- [ ] **Integration:** Real temporary git repositories/worktrees/files, direct journal/owner-pause competing writers, append concurrency and fault checkpoints, standalone audit/utility replay without a fabricated run, durable correction/CI resume and local bare-remote commit/push reconciliation. Check actual artifact/ledger/comment equality and fresh-consumer install/upgrade. Group 2's compiled CLI import-cycle probe must pass before Group 3. Ground truth includes exact ledger bytes/lineage/offsets, remote SHA, reachable retrigger count, owned tree contents, receipts and status events, not only exit status.
+- [ ] **Integration:** Real temporary git repositories/worktrees/files, direct journal/owner-pause competing writers, append concurrency and fault checkpoints, standalone audit/utility replay without a fabricated run, durable correction/CI resume and local bare-remote commit/push reconciliation. Check actual artifact/ledger/comment equality and fresh-consumer install/upgrade. Group 3's compiled CLI import-cycle probe must pass before Group 4. Ground truth includes exact ledger bytes/lineage/offsets, remote SHA, reachable retrigger count, owned tree contents, receipts and status events, not only exit status.
 - [ ] **Full Local Gate Suite:** Deepest applicable `bkit:gate:static-unit-integration`, `pnpm build` and `bkit check`; follow existing awake wrapper/machine-lock scripts. No new migration, UI E2E or live provider lane is introduced; unchanged network calls remain exercised by existing provider fixtures and contracts.
 - [ ] **Test Synchronization:** All 27 matrix cases belong to one task and run at their owning task. New files are unnecessary; reuse existing fixtures and maintain five-host/four-tracker rendered parity.
 

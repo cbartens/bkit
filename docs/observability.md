@@ -33,6 +33,10 @@ Unavailable fallback-source files and invalid or unreadable session associations
 
 Write friction in the active worktree's ledger. A failed friction write emits one bounded diagnostic without recursively attempting friction. Reporting and diagnostic failures remain nonfatal. If a provider accepts a write but its response is lost, an unprovable reconciliation can produce a duplicate new comment; diagnostics must not claim an exactly-once guarantee.
 
+## Bookkeeping effects and receipts
+
+A `bkit` command that fails before any write prints a structured error with `effects: none`, `correctable` and, for ledger appends, a `scope`; an uncertain write prints `effects: uncertain`. An append success prints a `receipt` (`operation`, `replayed`, per-row `key` and `ts`); a corrected retry adds `correction` (`scope`, `used`, `limit`, `verified`). Status rows `correction-rejected`, `correction-candidate`, `correction-succeeded` and `ci-handoff` record the recovery path in the run's status log; a runless (standalone) invocation keeps its correction events in `<outbox>/invocation-context/<id>.corrections.jsonl` next to the receipt, and its two-retry budget is per invocation. None of them stores a secret, a row body or a token. A ledger operation's intent (the prepared row bytes) and receipt live in `<git common dir>/bkit-outbox/ledger-operations/<root hash>.jsonl` (0600 file, 0700 directories), never in a committed or unioned path, so no row body reaches committed content through the operation store.
+
 ## Log Format
 
 All bkit CLI output uses bracketed context prefixes:
@@ -66,7 +70,7 @@ Compliance grader stderr. Canonical grep patterns:
 - `[bkit-telemetry] {kind} row {key} not written: {reason}` — harvest scan row failing its totals check, on stderr; not appended.
 - `[bkit-telemetry] {kind} row not written: {reason}` — a `completeness` row the close could not append (`{kind}` is `completeness`); the close continues.
 - `[bkit-telemetry] journal looks dead at close: no engine-call rows for this run; the completeness verdict cannot be trusted` — `bkit workflows close` found no `engine-call` row for the run; one line per close on stderr, stdout and the exit code unchanged.
-- `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged.
+- `[bkit-telemetry] journal write failed: {message}` — the engine-call / friction journal at command dispatch could not write a row; logged once per command run, the command's exit code is unchanged. An invocation-bound call (`--invocation`) writes its `engine-call` row to the issuing run's own `status.jsonl`, never another worktree's, so `bkit completeness check` counts it; `bkit status invocation` records itself as the run's `invocation` event instead, and a runless audit or utility invocation writes no row.
 
 The journal seam writes `engine-call` and `friction` rows to the active run's `status.jsonl` / `.bkit/friction.jsonl`. `BKIT_ENGINE_JOURNAL=off` is its kill switch: any other value (or unset) leaves it on. A command git launched (a hook, seen by `GIT_EXEC_PATH` in its environment) writes no `engine-call` row; its friction row is still written. A command run while the run's repo has a rebase paused (its git dir holds `rebase-merge` or `rebase-apply`) writes no `engine-call` row either, so `git rebase --continue` finds no unstaged change in the tracked `status.jsonl`. Rows are evidence for `bkit completeness check`; the seam never changes an exit code.
 

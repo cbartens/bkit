@@ -75,6 +75,7 @@ tools:
    A finding that lacks any of the four fields does not count toward `Affected`.
 
 10. Set `Affected` in **Create** with `Edit` to the number of `Reword` plus `Broken` findings. Count only complete findings.
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the artifact.
 11. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = no task is affected.
     - `CONCERNS` = at least one task is `Reword`, and none is `Broken`.

@@ -45,6 +45,8 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
+| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
@@ -64,6 +66,8 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
+| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 

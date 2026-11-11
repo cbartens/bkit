@@ -33,7 +33,7 @@ import { testsCommand } from "./workflow/tests.js";
 import { workflowsCommand } from "./workflow/workflows.js";
 import { worktreesCommand } from "./workflow/worktrees.js";
 
-export const COMMANDS: readonly CommandSpec[] = [
+export const COMMANDS: CommandSpec[] = [
   statusCommand,
   countersCommand,
   stepsCommand,

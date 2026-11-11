@@ -83,6 +83,7 @@ autoCompactWindow: 300000
 12. Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. The caller records the header's `Strategy` on the step's row, and refuses the row without one.
     - **If** Context names no `Strategy` → leave the field `PENDING`, because the caller then stops the run.
 13. Set `Verdict` in **Create** with `Edit`:
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header.
     - `PASS` = every remediation step has a `DONE` line across the logs, the last local test run passes, no test passed only on a rerun, and no warning needs a follow-up.
     - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
     - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any step ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here.

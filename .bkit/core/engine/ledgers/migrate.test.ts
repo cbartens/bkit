@@ -1,9 +1,11 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { isSchemaLedger, migrateLedgerText, migrateLedgers, SCHEMA_LEDGERS } from "./migrate.js";
+import { ledgerOperationsFile } from "./status.js";
 import { normalize } from "./telemetry.js";
 
 const OLD_DEFERRAL = {
@@ -113,6 +115,20 @@ describe("migrateLedgers", () => {
     expect(stats).toBe(`${line(normalize(OLD_OUTCOME))}\n{bad\n`);
     expect(migrateLedgers(root, false)).toEqual([]);
     expect(fs.readdirSync(path.join(root, ".bkit"))).toEqual(["stats.jsonl"]);
+  });
+
+  it("refuses to rewrite a ledger holding a pending operation's prepared bytes", () => {
+    const file = path.join(root, "docs/deferrals.jsonl");
+    const before = `${line(OLD_DEFERRAL)}\n`;
+    fs.writeFileSync(file, before);
+    spawnSync("git", ["init", "-q"], { cwd: root });
+    fs.writeFileSync(
+      ledgerOperationsFile(root, true)!,
+      `${JSON.stringify({ type: "ledger-intent", operation: "op-1", hash: "h", file: "docs/deferrals.jsonl", offset: 0, bytes: 1, block: "x", at: "t" })}\n`,
+    );
+    expect(() => migrateLedgers(root, false)).toThrow(/op-1/);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect(fs.existsSync(`${file}.bkit-lock`)).toBe(false);
   });
 
   it("dry run counts without writing", () => {

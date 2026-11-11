@@ -255,6 +255,50 @@ const taskBlock = (n: number, f: Finding, round: number) => [
   `<!-- bkit:task ${n} end -->`,
 ];
 
+/**
+ * Findings given as structured data (a step result file), checked by the rules
+ * {@link parseFindings} applies to a written report. Severity, fixable, location and
+ * done-when are the reviewer's judgments: a missing one is refused, never defaulted.
+ * Throws a CommandError (EXIT_OLD_FORMAT) naming the finding and field.
+ */
+export function structuredFindings(input: unknown, cwd: string): Finding[] {
+  if (!Array.isArray(input)) throw new CommandError(EXIT_OLD_FORMAT, "findings must be an array");
+  return input.map((raw, i) => {
+    const refuse = (why: string) => new CommandError(EXIT_OLD_FORMAT, `finding ${i + 1} ${why}`);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+      throw refuse("is not an object");
+    const f = raw as Record<string, unknown>;
+    if (!SEVERITY_ORDER.includes(f["severity"] as Severity))
+      throw refuse("has no severity CRITICAL|HIGH|MEDIUM|LOW");
+    if (typeof f["fixable"] !== "boolean") throw refuse("has no fixable true|false");
+    const location = normalizeLocation(typeof f["location"] === "string" ? f["location"] : "", cwd);
+    if (location === null) throw refuse("has no location path:line");
+    if (typeof f["doneWhen"] !== "string" || f["doneWhen"].trim() === "")
+      throw refuse("has no doneWhen");
+    const tests = f["tests"] ?? [];
+    if (!Array.isArray(tests) || tests.some((t) => typeof t !== "string"))
+      throw refuse("has tests that are not an array of strings");
+    if (f["cls"] !== undefined && typeof f["cls"] !== "string") throw refuse("has a non-text cls");
+    const title = typeof f["title"] === "string" && f["title"] !== "" ? f["title"] : "";
+    return {
+      severity: f["severity"] as Severity,
+      ...(typeof f["cls"] === "string" && f["cls"] !== "" ? { cls: f["cls"] } : {}),
+      fixable: f["fixable"],
+      location,
+      title: title || `Challenge finding at ${location}`,
+      doneWhen: f["doneWhen"],
+      tests: tests as string[],
+    };
+  });
+}
+
+/** The `## Findings Log` section for `findings`, in the task-block form {@link parseFindings} reads. */
+export function renderFindingsLog(findings: Finding[], round = 1): string {
+  return ["## Findings Log", "", ...findings.flatMap((f, i) => [...taskBlock(i + 1, f, round), ""])]
+    .join("\n")
+    .replace(/\n+$/, "");
+}
+
 /** The test tier `docs/testing.md` records for a test file's name. */
 const testTier = (file: string) =>
   /\.integration\.test\./.test(file)
