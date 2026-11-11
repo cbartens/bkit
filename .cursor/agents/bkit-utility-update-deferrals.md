@@ -54,7 +54,7 @@ tools:
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
 2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. Skip any listed doc that does not exist.
-3. Fold `docs/deferrals.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is not `CLOSED`; the engine does the fold, so run `bkit ledgers query --ledger=deferrals`, follow `nextCursor` until it is null and `coverage.clean` is true, and skip the `CLOSED` rows.
+3. Fold `docs/deferrals.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is not `CLOSED`; the engine does the fold, so run `bkit ledgers query --ledger=deferrals`, follow `nextCursor` until it is null, skip the `CLOSED` rows, and route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
 4. For each remaining entry, check in the codebase whether its work is done, never trusting the entry's own claims:
    - **If** it is done in code → set `status` to `CLOSED`, with `references` naming the evidence.
    - **Else** → leave it open (not done **or** cannot be judged from code).

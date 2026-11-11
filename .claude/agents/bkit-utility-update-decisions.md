@@ -60,7 +60,7 @@ autoCompactWindow: 300000
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
 2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. Skip any listed doc that does not exist.
-3. Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent; the engine does the fold, so run `bkit ledgers query --ledger=decisions --status=ACTIVE` and follow `nextCursor` until it is null and `coverage.clean` is true.
+3. Fold `docs/decisions.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent; the engine does the fold, so run `bkit ledgers query --ledger=decisions --status=ACTIVE` and follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
 4. Check each remaining entry against `docs/` and the codebase, never trusting the entry's own claims. Classify it, then apply its class:
    - `HOLDS` = docs or code confirm what the entry states, and none of them state otherwise → no change.
    - `CONTRADICTED` = docs or code now state otherwise and one replacement is unambiguous → correct the decision, and set `status` to `ACTIVE`, with `references` naming the evidence.

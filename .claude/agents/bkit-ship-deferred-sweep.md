@@ -81,7 +81,7 @@ autoCompactWindow: 300000
      - In **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
    - **If** any items are still `Planned`:
      - Mark them `Lazy`, and move them to `Lazy Deferrals`.
-     - For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until `coverage.clean` is true):
+     - For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report):
        - **If** one exists → append nothing. The triage below tests that row and writes its `unjustified` / `TRIAGED` row, so a row of your own would record the item twice.
        - **Else** → append one deferral row, with `reason` `unjustified`, `status` `TRIAGED` and `references` naming the FID, to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item. The FID reference lets the triage read the row as already settled, so it writes no second one.
          - **If** your Context names an invocation id:

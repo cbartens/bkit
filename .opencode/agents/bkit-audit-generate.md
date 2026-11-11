@@ -146,7 +146,7 @@ tools:
     - **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
     - Complete the report first.
     - Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
-    - Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until `coverage.clean` is true), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
+    - Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
     - Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
     - For each `MEDIUM`+ finding:
       - **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.
