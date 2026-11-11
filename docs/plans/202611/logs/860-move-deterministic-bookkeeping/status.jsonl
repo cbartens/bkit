@@ -670,3 +670,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T00:19:57Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/5/1/comment","hash":"32269b38c86adf374e11691b0c9eb34d94e6a8e3501ac0853d99b3ac80ba7084","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6783084317","at":"2026-11-11T00:20:04Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-11T00:20:04Z","parentSha":"4dcda22c9a9035ac846664876e1d68f884a05884","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-gaps-remediate-5-1-log.md"],"verdict":"PASS","attempt":1,"group":5,"strategy":"STANDARD"}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:20:06Z","noun":"branches","verb":"scan-diff","flags":["base","code"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:20:14Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:20:14Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:20:35Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:20:35Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:22:20Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T00:30:09Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/5/2/comment","hash":"d7df2b219ba6c50afb55a0b7e34c006f76271f918cdef42abeaa6c192d29d1c3","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6783084317","at":"2026-11-11T00:30:11Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-11T00:30:11Z","parentSha":"c388fe5cae4756124e2186983126603cae461b8c","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-5-2.md"],"verdict":"PASS","attempt":2,"group":5,"failures":0}
