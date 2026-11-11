@@ -529,6 +529,53 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     expect(huge.text).toMatch(LIMIT);
   });
 
+  it("flags a script the same command writes before running it", () => {
+    const dir = workDir("selfwrite");
+    const heredoc = advise(
+      "cat > /tmp/bkit-w.py <<'PY'\nopen('src/tmp-script.py','w').write('x')\nPY\npython3 /tmp/bkit-w.py",
+      dir,
+    );
+    expect(heredoc.text).toMatch(/src\/tmp-script\.py|cannot be determined/i);
+    expect(heredoc.permission).toBe("allow");
+
+    const printed = advise("printf x > gen.py && python3 gen.py", dir);
+    expect(printed.text).toContain("gen.py");
+    expect(printed.text).toMatch(UNCERTAIN);
+  });
+
+  it("marks shell scripts run by name or on stdin", () => {
+    const dir = workDir("shscript");
+    fs.writeFileSync(path.join(dir, "fix.sh"), "sed -i s/a/b/ src/sh-named.ts\n");
+    for (const command of ["bash fix.sh", "./fix.sh"]) {
+      const r = advise(command, dir);
+      expect({ command, text: r.text }).toEqual({
+        command,
+        text: expect.stringMatching(/src\/sh-named\.ts|cannot be determined/i),
+      });
+      expect(r.permission).toBe("allow");
+    }
+    const here = advise("bash <<'SH'\nsed -i s/a/b/ src/sh-heredoc.ts\nSH", dir);
+    expect(here.text).toMatch(/src\/sh-heredoc\.ts|cannot be determined/i);
+
+    expect(advise("cat fix.sh | bash", dir).text).toMatch(UNCERTAIN);
+  });
+
+  it("follows wrapper options and find -exec to the edit they run", () => {
+    const dir = workDir("wrapopts");
+    expect(advise("sudo -u me sed -i s/a/b/ src/sudo-u.ts", dir).text).toContain("src/sudo-u.ts");
+    expect(advise("timeout 5 sed -i s/a/b/ src/timeout.ts", dir).text).toContain("src/timeout.ts");
+    expect(advise("xargs -I{} sed -i s/a/b/ {} < list.txt", dir).text).toMatch(UNCERTAIN);
+    expect(advise("find src -name '*.ts' -exec sed -i s/a/b/ {} +", dir).text).toMatch(UNCERTAIN);
+  });
+
+  it("treats stdout-carrying fd redirects as edits", () => {
+    const dir = workDir("fdredir");
+    expect(advise("echo x &> src/amp.ts", dir).text).toContain("src/amp.ts");
+    expect(advise("echo x &>> src/amp-append.ts", dir).text).toContain("src/amp-append.ts");
+    expect(advise("echo x 1> src/fd1.ts", dir).text).toContain("src/fd1.ts");
+    expect(advise("echo x 2> src/err.ts", dir).text).toBe("");
+  });
+
   describe("in-process evidence seams", () => {
     type Evidence = { targets: string[]; uncertain: string[]; limit: string | null };
     function loadEvidence(): (cmd: string, ctx: { cwd: string; root: string }) => Evidence {
