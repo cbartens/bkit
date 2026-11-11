@@ -9,11 +9,13 @@ import { runCommand } from "../lib";
 import {
   EXIT_ROWS_MISSING,
   EXIT_ROW_REFUSED,
+  appendLedgerRows,
   bookPathspecs,
   commitOwnSet,
   ledgersCommand,
   newRecord,
   readRecord,
+  unionLedgers,
   writeRecord,
 } from "./ledgers";
 import { COMMANDS } from "../registry";
@@ -2241,6 +2243,50 @@ describe("bkit ledgers append --operation", () => {
     expect(b).toMatchObject({ firstTs: a!["ts"], updates: 2, summary: "parser drops two lines" });
     expect(b!["ts"]).toBeGreaterThan(a!["ts"] as number);
     expect(update.json.receipt.rows[0].ts).toBe(b!["ts"]);
+  });
+
+  it("keeps ledger operation intents and receipts out of committed book paths", () => {
+    const r = repo();
+    appendLedgerRows(r, "failures", [failure()], undefined, { operation: "op-1" });
+
+    // Nothing lands in the committed, union-carried store.
+    expect(fs.existsSync(path.join(r, ".bkit/ledger-operations.jsonl"))).toBe(false);
+    // The intent and receipt live under the git common dir's private outbox.
+    const outbox = path.join(r, ".git", "bkit-outbox");
+    expect(fs.existsSync(outbox)).toBe(true);
+    const files = (fs.readdirSync(outbox, { recursive: true }) as string[])
+      .map((f) => path.join(outbox, f))
+      .filter((f) => fs.statSync(f).isFile());
+    const holding = files.filter((f) => fs.readFileSync(f, "utf-8").includes("op-1"));
+    expect(holding.length).toBeGreaterThan(0);
+    for (const f of holding) expect(fs.statSync(f).mode & 0o077).toBe(0);
+    // No allow-list entry stages the operations store.
+    const staged = bookPathspecs("202610", "1-x", "pr").join("\n");
+    expect(staged).not.toContain("ledger-operations");
+
+    // A receipt-less intent row arriving in tracked content no longer blocks union.
+    const dst = repo();
+    put(dst, "docs/failures.jsonl", '{"a":1}\n');
+    put(
+      dst,
+      ".bkit/ledger-operations.jsonl",
+      `${JSON.stringify({
+        type: "ledger-intent",
+        operation: "op-x",
+        hash: "h",
+        file: "docs/failures.jsonl",
+        offset: 0,
+        bytes: 8,
+        block: '{"a":1}\n',
+        at: "2026-11-01T00:00:00Z",
+      })}\n`,
+    );
+    commitAll(dst);
+    const src = repo();
+    put(src, "docs/failures.jsonl", '{"a":1}\n{"a":2}\n');
+    commitAll(src);
+    expect(() => unionLedgers(src, dst)).not.toThrow();
+    expect(fs.readFileSync(path.join(dst, "docs/failures.jsonl"), "utf-8")).toContain('{"a":2}');
   });
 
   it("refuses --issue-operation without an invocation or beside --operation, writing nothing", async () => {
