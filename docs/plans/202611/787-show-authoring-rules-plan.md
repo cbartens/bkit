@@ -577,7 +577,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** An agent writes a temp script with a heredoc and runs it in the same command (`cat > /tmp/w.py <<'PY' … PY` then `python3 /tmp/w.py`), and the script's `docs/testing.md` write gets no advice at all
+- [x] **TASK 14:** An agent writes a temp script with a heredoc and runs it in the same command (`cat > /tmp/w.py <<'PY' … PY` then `python3 /tmp/w.py`), and the script's `docs/testing.md` write gets no advice at all
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:821` · **Round:** 1
   - **DONE WHEN:** `readBoundedSource` no longer treats every `ENOENT` after an earlier command (`st.commands > 0`) as harmless build output. A named script that an earlier command of the same line wrote (a redirect, `tee` or heredoc target, including quiet `/tmp` paths) is either analysed from the literal body that produced it or reports `unknown-script-effect`; a missing file no earlier command named stays covered by the existing `pnpm build && node dist/x.js` quiet case. Probe today: `{"targets":[],"uncertain":[],"limit":null}` for the heredoc-to-`/tmp` form, and only the script itself (`gen.py`) for `printf … > gen.py && python3 gen.py`, with no uncertainty for its effects.
   - **TEST FIRST:**
@@ -586,7 +586,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 14 end -->
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** `bash fix.sh`, `./fix.sh` or `bash <<'SH' … SH` runs `sed -i` on an agent-read file, and the shell check reports nothing, not even uncertainty
+- [x] **TASK 15:** `bash fix.sh`, `./fix.sh` or `bash <<'SH' … SH` runs `sed -i` on an agent-read file, and the shell check reports nothing, not even uncertainty
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:742` · **Round:** 1
   - **DONE WHEN:** The `bash`/`sh`/`zsh`/`dash`/`ksh` case handles more than `-c`: a literal heredoc, here-string or stdin file is lexed like a `-c` script (depth-limited), and a directly named shell script (`bash fix.sh`, `sh ./x.sh`) and a `./x.sh` / `*.sh` program in the default branch are read through `readBoundedSource` and lexed, or report `unknown-script-effect`. A piped shell (`cat x | bash`) reports `unknown-stdin`. Probe today: all three forms return empty evidence.
   - **TEST FIRST:**
@@ -595,7 +595,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 15 end -->
 <!-- bkit:task 16 start -->
 
-- [ ] **TASK 16:** Wrapper options and `find -exec` hide an in-place edit: `xargs -I{} sed -i …`, `sudo -u me sed -i … docs/testing.md`, `timeout 5 sed -i …` and `find docs -name '*.md' -exec sed -i … {} +` all report nothing
+- [x] **TASK 16:** Wrapper options and `find -exec` hide an in-place edit: `xargs -I{} sed -i …`, `sudo -u me sed -i … docs/testing.md`, `timeout 5 sed -i …` and `find docs -name '*.md' -exec sed -i … {} +` all report nothing
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:527` · **Round:** 1
   - **DONE WHEN:** `stripCommandPrefix` skips the options (and option arguments) of the wrappers it already strips (`xargs -I/-0/-n/-P`, `sudo -u/-g`, `nice -n`, `env -u`), treats `timeout DURATION` and `find … -exec/-execdir/-ok … ;|+` as wrappers of the command they run, and the wrapped in-place editor yields its literal target or `unresolved-target` / `unknown-stdin`. Probe today: all four forms return `{"targets":[],"uncertain":[],"limit":null}`.
   - **TEST FIRST:**
@@ -604,7 +604,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 16 end -->
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** `echo x &> docs/testing.md` and `echo x 1> docs/testing.md` overwrite the file, but the lexer files both under ignored fd redirects
+- [x] **TASK 17:** `echo x &> docs/testing.md` and `echo x 1> docs/testing.md` overwrite the file, but the lexer files both under ignored fd redirects
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:440` · **Round:** 1
   - **DONE WHEN:** `&>file`, `&>>file`, `>&file` with a non-numeric word, and `1>` / `1>>` redirect into a file are recorded as redirect targets (filtered by the existing source-extension / agent-read rules); `2>file`, `>&2` and `2>&1` stay ignored. Probe today: both forms return empty evidence.
   - **TEST FIRST:**
