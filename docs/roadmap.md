@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-09T23:14:28Z)_
+_(refreshed 2026-11-11T07:02:56Z)_
 
 ### Design
 
@@ -57,6 +57,7 @@ _(refreshed 2026-11-09T23:14:28Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 
 ### Debug
 
