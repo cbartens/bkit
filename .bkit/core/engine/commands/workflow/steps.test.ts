@@ -2175,6 +2175,7 @@ describe("bkit steps stub --result-file", () => {
       JSON.stringify({
         findings: [],
         judgments: {},
+        evidenceComplete: true,
         body: "# Report\n\n## Scope\n\n`Group 3`\n",
         ...o,
       }),

@@ -7,7 +7,7 @@ import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledge
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
-import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, writeInvocation, } from "../lib.js";
+import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, worktreeFingerprint, writeInvocation, } from "../lib.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -636,15 +636,15 @@ export const statusCommand = {
                         number: issued.number,
                         title: issued.title,
                         run: issued.run,
-                        statusPath: issued.statusPath,
-                        bookRoot: issued.bookRoot,
+                        statusPath: path.relative(top, issued.statusPath),
+                        bookRoot: path.relative(top, issued.bookRoot) || ".",
                         group: issued.group,
                         attempt: issued.attempt,
                         agent: issued.agent,
                         host: issued.host,
                         configuredModel: issued.configuredModel,
                         observedModel: issued.observedModel,
-                        worktree: top,
+                        worktree: worktreeFingerprint(top),
                     };
                     fs.appendFileSync(issued.statusPath, appendLine(event));
                 }

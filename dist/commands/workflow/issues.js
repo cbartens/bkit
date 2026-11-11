@@ -568,7 +568,7 @@ export function auditEntries(result) {
     return ordered.map((f, i) => {
         let key = f.priorKey;
         if (key === undefined) {
-            const base = `${result.slug}-${kebab(f.title) || "finding"}`;
+            const base = `audit-${result.slug}-${kebab(f.title) || "finding"}`;
             key = base;
             for (let n = 2; used.has(key); n += 1)
                 key = `${base}-${n}`;

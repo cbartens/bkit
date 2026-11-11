@@ -4923,7 +4923,7 @@ Query each ledger with `bkit ledgers query --ledger=<name>`, which folds by `key
 - carriers: prompt `bkit-build-challenge-*`, `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-design-spike`, `bkit-plan-scope-check`
 
 ```text
-**If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (`false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; if you cannot, say so in your final reply and do not leave the step to fail silently.
+**If** your Context names a structured result file (`Result:`) → write it as one JSON object with only these keys: `findings` (array; each item has `severity` (`CRITICAL`, `HIGH`, `MEDIUM` or `LOW`), boolean `fixable`, `location` (`path:line`) and `doneWhen`, plus optional `title`, `cls` and `tests`), `judgments` (object of header-field name to text, number or boolean; it holds `Verdict` and each header field the engine does not derive, never `Failures` or `Fixable`), `body` (the report text below the header, written in full: Scope, Notes and every section of your Output format except the generated Findings Log; omit it and the report keeps nothing but the header) and `evidenceComplete` (always `true` or `false`; `false` when you could not check everything). The engine sets `Failures` to the number of entries in `findings`, of every severity, in place of any other count in your steps, so list there only items that need a fix and keep the rest in `body`. A missing or invalid result file makes `bkit steps stub` exit 6 and sends the step to its Failure Path, so write the file before you finish; if you cannot, say so in your final reply and do not leave the step to fail silently.
 ```
 
 ### structured-result-render
@@ -10779,7 +10779,7 @@ Post the comment:
 **Else** → `Issue` = `{ISSUE_ID} posted`.
 Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
 Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
-Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until `coverage.clean` is true), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
+Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
 ```
 
 #### bkit-build-challenge-1
@@ -11660,7 +11660,7 @@ Set the counts in **Create** with `Edit`:
 `Lazy` = the number of `Lazy Deferrals` entries.
 `PASS` = no `Planned` items remain, every intended deliverable is `Delivered`, `Exempt` or `Lazy`, every scanner hit is adjudicated, and there are no `Blocking Deferrals`.
 `FAIL` = any intended deliverable is `Blocked`, **or** there is a scan error or unresolved scanner hit, **or** there are any `Blocking Deferrals`.
-For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until `coverage.clean` is true):
+For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report):
 ```
 
 #### bkit-ship-update-docs

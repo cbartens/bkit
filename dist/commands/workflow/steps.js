@@ -1352,7 +1352,9 @@ export function renderResult(cwd, agent, raw) {
         if (k in DERIVED_FIELDS)
             throw bad(`${k} is derived from the findings and cannot be supplied`);
     }
-    const evidenceComplete = r["evidenceComplete"] !== false;
+    if (typeof r["evidenceComplete"] !== "boolean")
+        throw bad("evidenceComplete must be stated as true or false");
+    const evidenceComplete = r["evidenceComplete"];
     const arithmetic = findings.length > 0
         ? "FAIL"
         : !evidenceComplete
@@ -1381,6 +1383,8 @@ export function renderResult(cwd, agent, raw) {
     const given = r["body"] ?? "";
     if (typeof given !== "string")
         throw bad("body must be text");
+    if (verdict === "PASS" && given.trim() === "")
+        throw bad("a PASS result needs a non-empty body");
     if (given.split("\n").includes(VERDICT_END))
         throw bad(`body holds a ${VERDICT_END} line`);
     const log = findings.length > 0 && !/^## Findings Log\b/m.test(given)

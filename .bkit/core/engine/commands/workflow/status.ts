@@ -33,6 +33,7 @@ import {
   parseJson,
   resolveActiveRun,
   statusLocation,
+  worktreeFingerprint,
   writeInvocation,
   type CommandSpec,
   type Invocation,
@@ -748,15 +749,15 @@ export const statusCommand: CommandSpec = {
             number: issued.number!,
             title: issued.title!,
             run: issued.run!,
-            statusPath: issued.statusPath!,
-            bookRoot: issued.bookRoot!,
+            statusPath: path.relative(top, issued.statusPath!),
+            bookRoot: path.relative(top, issued.bookRoot!) || ".",
             group: issued.group,
             attempt: issued.attempt,
             agent: issued.agent,
             host: issued.host,
             configuredModel: issued.configuredModel,
             observedModel: issued.observedModel,
-            worktree: top,
+            worktree: worktreeFingerprint(top),
           };
           fs.appendFileSync(issued.statusPath!, appendLine(event));
         }

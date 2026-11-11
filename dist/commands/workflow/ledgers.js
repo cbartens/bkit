@@ -1146,6 +1146,20 @@ function withInvocationBy(row, inv, refuse) {
     }
     return { ...row, by };
 }
+/** `JSON.stringify` with object keys sorted at every depth: equal requests serialize equally. */
+export function canonicalJson(value) {
+    if (Array.isArray(value))
+        return `[${value.map((v) => canonicalJson(v)).join(",")}]`;
+    if (value !== null && typeof value === "object") {
+        const o = value;
+        return `{${Object.keys(o)
+            .filter((k) => o[k] !== undefined)
+            .sort()
+            .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+            .join(",")}}`;
+    }
+    return JSON.stringify(value) ?? "null";
+}
 /**
  * The operation id of an append request: the caller's `--operation`, else (with
  * `--issue-operation`) one issued from the invocation and the request, so retrying a lost
@@ -1156,7 +1170,7 @@ export function appendOperationId(ledger, rows, invocation, options) {
         return options.operation;
     if (options.issueOperation !== true || invocation === undefined)
         return undefined;
-    const hash = actionHash(JSON.stringify({ ledger, rows, invocation: invocation.id }));
+    const hash = actionHash(canonicalJson({ ledger, rows, invocation: invocation.id }));
     return `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`;
 }
 /**
@@ -1248,7 +1262,7 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
     const ops = path.join(root, LEDGER_OPERATIONS_FILE);
     // The request is the ledger and rows alone: an operation stays reconcilable after its
     // invocation goes stale, and replay writes the recorded bytes, never a re-derived `by`.
-    const hash = actionHash(JSON.stringify({ ledger, rows }));
+    const hash = actionHash(canonicalJson({ ledger, rows }));
     if (options.operation !== undefined && options.issueOperation === true)
         throw new CommandError(EXIT.USAGE, "--issue-operation and --operation are exclusive: the engine issues the id, or the caller names it");
     if (options.issueOperation === true && invocation === undefined)

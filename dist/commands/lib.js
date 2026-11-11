@@ -8,6 +8,7 @@
 // output keys and exit codes in its spec; `--help` and the convention test both read
 // that spec, so the help text cannot drift from what the command accepts.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -418,6 +419,10 @@ export function writeInvocation(cwd, inv) {
     fs.writeFileSync(file, `${JSON.stringify(inv)}\n`, { mode: 0o600, flag: "wx" });
     return file;
 }
+/** A one-way fingerprint of a checkout's top: the committed `invocation` event never holds its path. */
+export function worktreeFingerprint(top) {
+    return createHash("sha256").update(top).digest("hex").slice(0, 16);
+}
 /**
  * Rebuild the outbox receipt of run-scoped invocation `id` from its `invocation` event in a
  * `status.jsonl` under this checkout. Reads only this checkout's books, so another
@@ -442,7 +447,8 @@ function rebuildInvocation(cwd, id) {
                 if (!row.ok || !isInvocationEvent(row.value) || row.value.id !== id)
                     continue;
                 const e = row.value;
-                if (e.worktree !== top || e.statusPath !== statusPath)
+                // The event holds checkout-relative paths; they resolve against this top only.
+                if (e.worktree !== worktreeFingerprint(top) || path.join(top, e.statusPath) !== statusPath)
                     return false;
                 try {
                     writeInvocation(cwd, {
@@ -455,7 +461,7 @@ function rebuildInvocation(cwd, id) {
                         title: e.title,
                         run: e.run,
                         statusPath,
-                        bookRoot: e.bookRoot,
+                        bookRoot: path.join(top, e.bookRoot),
                         group: e.group,
                         attempt: e.attempt,
                         agent: e.agent,
