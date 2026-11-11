@@ -50,6 +50,7 @@ tools:
 **Process:**
 
 1. Seed **Create** from the prior versioned design, its verdict header stripped, under a `Verdict: PENDING` header:
+   - The seed comes from `bkit steps stub`. Keep a `Fingerprint` header line when one is present: `bkit steps verdict` treats a body that no longer matches it as stale, so re-render through the caller instead of hand-editing a rendered body.
    ```bash
    "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit" steps stub --from="<Read>" --to="<Create>" --strip-header
    ```

@@ -79,9 +79,12 @@ tools:
      - In **Create**, set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
    - **If** any items are still `Planned`:
      - Mark them `Lazy`, and move them to `Lazy Deferrals`.
-     - For each of them, look for a deferral row of the FID in your Context that already defers the item:
+     - For each of them, look for a deferral row of the FID in your Context that already defers the item, reading the canonical rows from `bkit ledgers query --ledger=deferrals` (follow `nextCursor` until `coverage.clean` is true):
        - **If** one exists → append nothing. The triage below tests that row and writes its `unjustified` / `TRIAGED` row, so a row of your own would record the item twice.
        - **Else** → append one deferral row, with `reason` `unjustified`, `status` `TRIAGED` and `references` naming the FID, to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item. The FID reference lets the triage read the row as already settled, so it writes no second one.
+         - **If** your Context names an invocation id:
+           - Pass it as `--invocation` with a fresh `--operation` on each `bkit ledgers append`, and retry a lost response with the same `--operation`; `receipt.replayed: true` means the rows are already on disk.
+           - The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
 
 8. Scan the run's diff for disabled tests with `bkit branches scan-diff --disabled-tests --base=` the diff base your Context names. Its `disabled` list holds candidates, including removed assertions, with each hit's `file:line` and test name.
    - **If** the scan fails to return a complete result (including an error, missing base or unreadable output) → record the failure under `Blocking Deferrals`.
@@ -99,6 +102,7 @@ tools:
      - **If** `bucket` = `Exempt` → record the row under `Exempt Deferrals`, or move it there. The row stands as written.
      - **Else** → record the row under `Lazy Deferrals`, or keep it there, naming the tests the verb reports for it.
 10. Set the counts in **Create** with `Edit`:
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the artifact.
     - `Failures` = the number of `Blocking Deferrals` entries.
     - `Lazy` = the number of `Lazy Deferrals` entries.
 11. Set `Verdict` in **Create** with `Edit`:

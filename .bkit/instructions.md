@@ -10778,7 +10778,7 @@ Post the comment:
 [verify-tools] **If** it still fails → `Issue` = `{ISSUE_ID} failed`.
 **Else** → `Issue` = `{ISSUE_ID} posted`.
 Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
-Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
+Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
 Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until `coverage.clean` is true), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
 ```
 
