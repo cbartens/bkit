@@ -9,3 +9,11 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T23:44:12Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"1384e9f65467ec0f54ca1a61768cb6a86e4c1e2441c0cfcec802d762770a3ef3","ref":"https://github.com/cbartens/bkit/issues/918#issuecomment-6782449100","at":"2026-11-10T23:44:14Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-10T23:44:14Z","parentSha":"1afb96fd32aa6bb0b20b5c349d7eb77c30cd48c5","artifacts":["docs/plans/202611/logs/918-ad-hoc-agent/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:58:49Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:00:44Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:04:03Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:04:21Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:04:50Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:04:55Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"ef96b56f026b79d6e561638fc0a4ed9ce5f1752b11343eef7209d976bd1cbf1c","ref":"https://github.com/cbartens/bkit/issues/918#issuecomment-6782449100","at":"2026-11-11T00:04:57Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-11T00:04:57Z","parentSha":"fabcdc4373d1bea0a275f13a240d9d618790420c","artifacts":["docs/plans/202611/logs/918-ad-hoc-agent/plan-v1-draft.md","docs/plans/202611/logs/918-ad-hoc-agent/plan-generate-check.md"],"attempt":1}
