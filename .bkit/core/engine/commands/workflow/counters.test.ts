@@ -1158,4 +1158,36 @@ describe("bkit counters correction", () => {
     expect(none.code).toBe(1);
     expect(none.json).toMatchObject({ allowed: false, used: 0, limit: 0 });
   });
+
+  it("refuses a reused correction candidate id with different rows", async () => {
+    const file = log([started("plan", "2026-11-01T00:00:00Z")]);
+    const scope = "ledgers-append:failures:append";
+    const withRows = (operation: string, hash: string) =>
+      correct(file, scope, operation, `--request-hash=${hash}`);
+
+    // The first candidate under op-b is spent once.
+    const first = await withRows("op-b", "hash-1");
+    expect(first.code).toBe(0);
+    expect(first.json).toMatchObject({ allowed: true, used: 1, limit: 2, remaining: 1 });
+
+    // The same id with the same request is a free replay.
+    const replay = await withRows("op-b", "hash-1");
+    expect(replay.code).toBe(0);
+    expect(replay.json).toMatchObject({ allowed: true, used: 1, replayed: true });
+
+    // The same id carrying other rows is refused and writes nothing: it is no replay and no new spend.
+    const changed = await withRows("op-b", "hash-2");
+    expect(changed.code).toBe(1);
+    expect(changed.json).toMatchObject({ allowed: false });
+    expect(changed.json).not.toMatchObject({ replayed: true });
+    expect(candidates(file)).toHaveLength(1);
+
+    // Distinct requests under their own ids spend the budget, and the limit then holds.
+    const second = await withRows("op-c", "hash-3");
+    expect(second.json).toMatchObject({ allowed: true, used: 2, remaining: 0 });
+    const final = await withRows("op-d", "hash-4");
+    expect(final.code).toBe(1);
+    expect(final.json).toMatchObject({ allowed: false, used: 2, limit: 2, remaining: 0 });
+    expect(candidates(file)).toHaveLength(2);
+  });
 });

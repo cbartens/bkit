@@ -2168,6 +2168,29 @@ describe("bkit ledgers query", () => {
     await q(r, "--key=k1");
     expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
   });
+
+  it("marks a page with a next cursor as not clean", async () => {
+    const r = repo();
+    put(r, FILE, `${dec("k1", 1001, "ACTIVE")}\n${dec("k2", 1002, "ACTIVE")}\n`);
+
+    // A page that stops before the last winner is an unfinished scan, whatever the ledger holds.
+    const partial = await q(r, "--limit=1");
+    expect(partial.code).toBe(0);
+    expect(partial.json.rows).toHaveLength(1);
+    expect(partial.json.nextCursor).not.toBeNull();
+    expect(partial.json.coverage.clean).toBe(false);
+    expect(partial.json.coverage.status).not.toBe("clean");
+
+    // The last page of the same clean ledger finishes the scan.
+    const last = await q(r, "--limit=1", `--cursor=${partial.json.nextCursor}`);
+    expect(last.json.nextCursor).toBeNull();
+    expect(last.json.coverage).toMatchObject({ clean: true });
+
+    // One page that holds every winner is clean.
+    const whole = await q(r, "--limit=5");
+    expect(whole.json.nextCursor).toBeNull();
+    expect(whole.json.coverage).toMatchObject({ clean: true, status: "clean" });
+  });
 });
 
 describe("bkit ledgers append --operation", () => {

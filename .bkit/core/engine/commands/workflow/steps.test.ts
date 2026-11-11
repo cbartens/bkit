@@ -2555,6 +2555,24 @@ describe("bkit steps stub --result-file", () => {
     expect(fs.existsSync(path.join(cwd, "logs/c.md"))).toBe(false);
   });
 
+  it("refuses a result file left from an earlier round", async () => {
+    const cwd = repo();
+    const agent = "bkit-build-challenge-1";
+    // Round 1's subagent wrote this result, carrying the invocation it ran under.
+    resultFile(cwd, "logs/build-challenge-1-result.json", {
+      findings: [finding(1)],
+      invocation: "inv-round-1",
+    });
+    // Round 2 launched under another invocation and its subagent died before writing a result.
+    const res = await run(cwd, [
+      ...stubArgs(agent, "logs/build-challenge-1-result.json", "logs/challenge-2.md"),
+      "--invocation=inv-round-2",
+    ]);
+    expect(res.code).toBe(6);
+    expect(res.err).toMatch(/invocation|round|earlier|stale/i);
+    expect(fs.existsSync(path.join(cwd, "logs/challenge-2.md"))).toBe(false);
+  });
+
   it("audit result render keeps an existing anchored report intact", async () => {
     const cwd = repo();
     const report = [

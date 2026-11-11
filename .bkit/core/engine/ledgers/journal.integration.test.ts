@@ -20,7 +20,7 @@ import {
   type CommandSpec,
   type GhResult,
 } from "../commands/lib";
-import { ledgerOperationsFile } from "./status";
+import { ledgerOperationsFile, pendingLedgerIntents } from "./status";
 import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
 import {
@@ -1003,6 +1003,41 @@ describe("replay-safe ledger appends on real files", () => {
     expect(after).toBe(before);
     expect(after.split('"key":"first-landed"')).toHaveLength(2);
   });
+
+  it("prepares afresh when nothing landed and a foreign row followed", () => {
+    const root = bookRoot();
+    const file = path.join(root, "docs", "failures.jsonl");
+    const request = [failureRow({ key: "ours-never-landed" })];
+    expect(() =>
+      appendLedgerRows(root, "failures", request, undefined, {
+        operation: "op-nothing-landed",
+        checkpoint: failAt("prepared"),
+      }),
+    ).toThrow();
+    expect(fs.existsSync(file)).toBe(false);
+
+    // Nothing of ours landed. Another writer's schema-3 row takes the recorded offset.
+    appendLedgerRows(root, "failures", [failureRow({ key: "foreign-writer" })]);
+    const foreign = fs.readFileSync(file, "utf-8");
+
+    const replay = appendLedgerRows(root, "failures", request, undefined, {
+      operation: "op-nothing-landed",
+    });
+    expect(replay.appended).toBe(1);
+    const written = rows(file);
+    expect(written.map((r) => r["key"])).toEqual(["foreign-writer", "ours-never-landed"]);
+    expect(fs.readFileSync(file, "utf-8").startsWith(foreign)).toBe(true);
+    expect(replay.receipt).toMatchObject({ operation: "op-nothing-landed", replayed: false });
+
+    // The operation is settled: a further replay is a pure read and no intent stays pending.
+    const bytes = fs.readFileSync(file, "utf-8");
+    const again = appendLedgerRows(root, "failures", request, undefined, {
+      operation: "op-nothing-landed",
+    });
+    expect(again.appended).toBe(0);
+    expect(fs.readFileSync(file, "utf-8")).toBe(bytes);
+    expect(pendingLedgerIntents(ledgerOperationsFile(root)!, "docs/failures.jsonl")).toEqual([]);
+  });
 });
 
 describe("persistent CI handoff on a real local remote", () => {
@@ -1278,6 +1313,51 @@ describe("persistent CI handoff on a real local remote", () => {
         (row) => (row["retrigger"] as { state?: string } | undefined)?.state === "push-completed",
       ),
     ).toHaveLength(0);
+  });
+
+  it("does not push a second re-trigger copy after a lost push response on a shared branch", async () => {
+    const shared = remoteRepo("dev", true);
+    await expect(
+      ciDispatchGate(options(shared, { checkpoint: crashAt("push-completed") }), {
+        gh: pollingGh(none(30)).gh,
+        ...quiet(),
+      }),
+    ).rejects.toThrow("process lost at push-completed");
+    // The copy is on the bare remote.
+    expect(shared.retriggers()).toBe(1);
+    const copy = shared.tip();
+
+    // The push response was lost: nothing after the push persisted. Put the handoff row back to
+    // its state before `push-completed` and unmark the shared-checkout record.
+    const lines = fs
+      .readFileSync(shared.status, "utf-8")
+      .split("\n")
+      .filter((l) => l !== "");
+    const handoffAt = lines
+      .map((l, i) => ({ type: (JSON.parse(l) as Record<string, unknown>)["type"], i }))
+      .filter((r) => r.type === "ci-handoff");
+    const at = handoffAt.at(-1)!.i;
+    const last = JSON.parse(lines[at]!) as { retrigger: Record<string, unknown> };
+    expect(last.retrigger["state"]).toBe("push-completed");
+    const { remote: _remote, ref: _ref, ...rest } = last.retrigger;
+    lines[at] = JSON.stringify({ ...last, retrigger: { ...rest, state: "commit-created" } });
+    fs.writeFileSync(shared.status, `${lines.join("\n")}\n`);
+    const rec = readRecord(shared.work, "1-x")!;
+    const { pushed: _pushed, ...unmarked } = rec;
+    writeRecord(shared.work, unmarked);
+
+    const resumedGh = pollingGh([FOUND]);
+    const resumed = await ciDispatchGate(options(shared), { gh: resumedGh.gh, ...quiet() });
+    expect(resumed.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true });
+    // No second copy was pushed; the remote still ends at the one copy.
+    expect(shared.retriggers()).toBe(1);
+    expect(shared.tip()).toBe(copy);
+    const remoteSha = (handoffRows(shared).at(-1)!["retrigger"] as { remote?: string }).remote;
+    expect(remoteSha).toBe(copy);
+    expect(git(shared.remote, ["cat-file", "-t", remoteSha!])).toBe("commit");
+    expect(handoffRows(shared).at(-1)).toMatchObject({
+      retrigger: { state: "receipt-completed", remote: copy },
+    });
   });
 });
 

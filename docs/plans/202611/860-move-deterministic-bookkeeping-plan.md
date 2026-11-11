@@ -136,6 +136,13 @@ The twelve issue validation scenarios appear verbatim in Edge Cases; the cases b
 | writes no absolute checkout path into the run's committed invocation event | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 22 |
 | keeps ledger operation intents and receipts out of committed book paths | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 23 |
 | refuses line breaks in header-bound result values | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 24 |
+| prepares afresh when nothing landed and a foreign row followed | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 25 |
+| does not push a second re-trigger copy after a lost push response on a shared branch | Integration | `.bkit/core/engine/ledgers/journal.integration.test.ts` | 26 |
+| refuses a result file left from an earlier round | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 27 |
+| refuses a reused correction candidate id with different rows | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 28 |
+| marks a page with a next cursor as not clean | Unit | `.bkit/core/engine/commands/workflow/ledgers.test.ts` | 29 |
+| derives a fresh audit key when the ledger already holds it | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 30 |
+| refuses to issue an invocation through a status file symlinked out of the checkout | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 31 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -781,6 +788,81 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 24 end -->
 <!-- bkit:group 7 end -->
+
+<!-- bkit:group 8 start -->
+
+### TASK GROUP 8: Challenge round 2 findings
+
+<!-- bkit:task 25 start -->
+
+- [ ] **TASK 25:** A ledger append killed at its `prepared` checkpoint, followed by any ordinary write to the same ledger (a dispatcher friction row, a plain append), can never be reconciled: every schema-3 row starts `{"schema":3,"ts":179...`, so the byte-prefix count at `ledgers.ts:1753` always finds "landed" bytes, the replay throws `UncertainEffect` instead of preparing afresh, and the pending intent blocks `ledgers union`, `compact`, `migrate` and `--correction-of` on that ledger for good
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1753` · **Round:** 2
+  - **DONE WHEN:** Reconciliation decides "landed" by whole lines, not by a shared byte prefix: when the first line at the recorded offset is a complete line that is neither equal to nor a proper prefix of the block's first line, nothing of ours landed and the operation prepares afresh and appends once; a landed whole line, or a torn proper prefix of our first line, still reports `UncertainEffect` and writes nothing (Task 17's test still passes).
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `prepares afresh when nothing landed and a foreign row followed` fails on a crash at `failAt("prepared")` followed by a plain `appendLedgerRows` of another schema-3 row, then the replay with the same `--operation` and rows throwing `/uncertain/` instead of appending its row exactly once and leaving no pending intent.
+
+<!-- bkit:task 25 end -->
+<!-- bkit:task 26 start -->
+
+- [ ] **TASK 26:** On a shared branch, a re-trigger whose push response is lost (process killed during or right after `git push`, before `push-completed` persists) is pushed a second time on resume: `landEmptyOwnCommits` re-copies the original commit because the pushed copy has a new SHA and is not in `rec.pushed`, so dev gets two empty re-trigger commits and two CI runs; if the kill lands after `markRecordPushed`, resume instead returns the local original SHA (`rec.pushed.at(-1)`), which the remote never received, and the re-poll watches that SHA
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/runs.ts:814` · **Round:** 2
+  - **DONE WHEN:** The copy SHA is persisted (handoff checkpoint or shared-checkout record) before the copy is pushed, and a resumed `commit-created` re-trigger on a shared branch first checks whether the remote tip already is or contains that copy: if so it records `push-completed` with the copy SHA and pushes nothing; `rec.pushed` never stands in for the remote SHA of a copied commit.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `does not push a second re-trigger copy after a lost push response on a shared branch` fails on a `remoteRepo("dev", true)` run whose first `ciDispatchGate` pushes the copy and is then interrupted before `push-completed` (copy on the bare remote, record unmarked), the resumed run leaving `shared.retriggers()` at 2, or `retrigger.remote` naming a SHA the bare remote does not hold.
+
+<!-- bkit:task 26 end -->
+<!-- bkit:task 27 start -->
+
+- [ ] **TASK 27:** A subagent that dies before writing its result (turn cap, crash, refusal) still gets a well-formed artifact: Result paths are reused across rounds and runs (`{OUTBOX}/build-challenge-1-result.json` has no round; `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}` and `build-failure-diagnose-{TEST_ATTEMPT}` restart in a new run), nothing clears them before launch, and `steps stub --result-file` renders whatever file is there, so round 1's findings render as round 2's report and an earlier run's PASS verify result renders as this group's PASS
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/steps.ts:2327` · **Round:** 2
+  - **DONE WHEN:** A result file that predates the subagent launch it is rendered for never renders: the result is bound to the current step occurrence (the workflow clears or rotates each Result path before launching its subagent, or the result carries the issued invocation id and `steps stub --result-file` refuses one from another invocation, run or round with exit 6, writing nothing), so a missing fresh result always takes the step's Failure Path.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `refuses a result file left from an earlier round` fails on `steps stub --agent=bkit-build-challenge-1 --result-file` rendering a result written before the current challenge round began and exiting 0 with the old findings in the new artifact.
+
+<!-- bkit:task 27 end -->
+<!-- bkit:task 28 start -->
+
+- [ ] **TASK 28:** An agent that keeps one `--operation` for its corrected retries gets unlimited corrections: a rejected candidate leaves no intent or receipt, so its id carries no request hash, and `spendCorrection` returns `allowed` (replayed) for any operation already in the scope whatever rows it now carries, so `remaining` never reaches 0 and every rejection stays a correctable `NoWriteRejection`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/counters.ts:229` · **Round:** 2
+  - **DONE WHEN:** Each `correction-candidate` row records the candidate's canonical request hash; `spendCorrection` treats a known operation as a free replay only when the hash matches, and refuses (nothing written) a known candidate id with another request, so a scope allows at most `CORRECTION_LIMIT` distinct corrected requests and the third rejection is final.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/counters.test.ts` `refuses a reused correction candidate id with different rows` fails on three `ledgers append --operation=op-b --correction-of=op-a` calls with three different invalid row sets all exiting with a correctable rejection while the scope shows one candidate spent.
+
+<!-- bkit:task 28 end -->
+<!-- bkit:task 29 start -->
+
+- [ ] **TASK 29:** `ledgers query` reports `coverage.clean: true` on a page whose `nextCursor` is non-null, and the plan workflow saves exactly one `--limit=500` page into `related-knowledge.md` for reviewers who have no shell; past 500 active rows the newest knowledge rows (the page is oldest-first) are silently dropped while the saved output says the scan is clean
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:2004` · **Round:** 2
+  - **DONE WHEN:** `coverage.clean` (and `coverage.status`) report an unfinished scan whenever `nextCursor` is non-null, and every block that captures a query for an agent without a shell (`.bkit/core/workflows/bkit-plan.md` related-knowledge save) writes all pages or stops on a non-null `nextCursor` instead of saving a truncated page.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `marks a page with a next cursor as not clean` fails on `ledgers query --ledger=knowledge --limit=1` over a two-winner ledger returning `coverage.clean: true` alongside a non-null `nextCursor`.
+
+<!-- bkit:task 29 end -->
+<!-- bkit:group 8 end -->
+
+<!-- bkit:group 9 start -->
+
+### TASK GROUP 9: Challenge round 2 findings
+
+<!-- bkit:task 30 start -->
+
+- [ ] **TASK 30:** A new audit finding whose title matches an earlier audit row of a different problem (same title, other `file:line`, which the prompt calls "a different problem") gets that row's key: `auditEntries` checks a derived `audit-<slug>-<title>` key only against this result's `priorKey`s, never against `docs/failures.jsonl`, so the append lands as a later row of the old key and the old, still-open failure drops out of the fold winners
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:735` · **Round:** 2
+  - **DONE WHEN:** A derived key is unique against every key already in the target ledger as well as within the result (the renderer reads the ledger's winners and suffixes `-2`, `-3` ...), so reusing an existing key happens only through an explicit `priorKey`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/steps.test.ts` `derives a fresh audit key when the ledger already holds it` fails on `renderResult` for a `security` result with a new `Token logged` finding, in a checkout whose `docs/failures.jsonl` already holds an OPEN `audit-security-token-logged` row, printing `ledgerRows[0].key` = `audit-security-token-logged`.
+
+<!-- bkit:task 30 end -->
+<!-- bkit:task 31 start -->
+
+- [ ] **TASK 31:** A committed `docs/plans/<month>/logs/<fid>/status.jsonl` that is a symlink to another checkout's (or any empty or NDJSON) file passes the Task 11 containment check, because only the parent directory is resolved with `realpathSync`; `status invocation` then appends its `invocation` event through the symlink, and every later invocation-bound `engine-call` row and correction row follows it into the other checkout's log.
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/status.ts:682` · **Round:** 2
+  - **DONE WHEN:** `status invocation` resolves the full `--file` path, symlinks included (`fs.lstatSync` refuses a symlinked final component, or `realpathSync` of the file itself when it exists), before the containment test, and exits non-zero with no write when the resolved file lies outside the issuing checkout or in a nested worktree. `resolveInvocation` and `rebuildInvocation` (`.bkit/core/engine/commands/lib.ts`) refuse a receipt or event whose status file now resolves outside the checkout.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `refuses to issue an invocation through a status file symlinked out of the checkout` fails on `status invocation --file=<REL>` exiting 0 and the other repository's `status.jsonl` gaining an `invocation` row, when `<REL>` in the issuing repository is a symlink to that file.
+
+<!-- bkit:task 31 end -->
+<!-- bkit:group 9 end -->
 
 The required shared wording in Task 9 is copied from #860:
 
