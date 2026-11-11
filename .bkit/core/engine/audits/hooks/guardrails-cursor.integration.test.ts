@@ -616,6 +616,39 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     expect(r.ms).toBeLessThan(1000);
   });
 
+  it("keeps commands after a heredoc substitution that holds an apostrophe", () => {
+    const dir = workDir("heredocapos");
+    const r = advise(
+      "git commit -m \"$(cat <<'EOF'\nFix: don't break\nEOF\n)\" && sed -i s/a/b/ src/after-commit.ts",
+      dir,
+    );
+    expect(r.permission).toBe("allow");
+    expect(r.text).toMatch(/src\/after-commit\.ts|cannot be determined/i);
+  });
+
+  it("flags a script an earlier copy or move produced", () => {
+    const dir = workDir("copyrun");
+    fs.writeFileSync(path.join(dir, "tpl.py"), "open('src/copied.py','w').write('x')\n");
+    const cp = advise("cp tpl.py /tmp/bkit-run.py && python3 /tmp/bkit-run.py", dir);
+    expect(cp.text).toMatch(/src\/copied\.py|cannot be determined/i);
+    const mv = advise("mv tpl.py /tmp/bkit-mv.py && python3 /tmp/bkit-mv.py", dir);
+    expect(mv.text).toMatch(/src\/copied\.py|cannot be determined/i);
+    expect(cp.permission).toBe("allow");
+    expect(mv.permission).toBe("allow");
+  });
+
+  it("marks scripts run by unanalysed interpreters as uncertain", () => {
+    const dir = workDir("otherinterp");
+    for (const command of ["ruby fix.rb", "perl fix.pl", "npx tsx gen.ts"]) {
+      const r = advise(command, dir);
+      expect({ command, permission: r.permission }).toEqual({ command, permission: "allow" });
+      expect({ command, text: r.text }).toEqual({
+        command,
+        text: expect.stringMatching(UNCERTAIN),
+      });
+    }
+  });
+
   describe("in-process evidence seams", () => {
     type Evidence = { targets: string[]; uncertain: string[]; limit: string | null };
     function loadEvidence(): (cmd: string, ctx: { cwd: string; root: string }) => Evidence {

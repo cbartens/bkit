@@ -801,3 +801,12 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T22:45:53Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/8/comment","hash":"afdee99e5fb6937effa203863b7e39679bf8a1031e66cbc3ee589f42eebf1c93","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6808910138","at":"2026-11-11T22:45:54Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-11T22:45:54Z","parentSha":"2dfed429b975ae54182be6c461e9d8c785c10d3b","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-decision-1-8.md"],"attempt":8,"route":"fix"}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:45:56Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:46:02Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:46:07Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:46:08Z","noun":"steps","verb":"done","flags":["workflow","step","file","group","commit"]}
+{"type":"step-done","workflow":"build","step":"build-group-start","status":"DONE","at":"2026-11-11T22:46:08Z","parentSha":"0ec4357bc98ff03e993cdac12dfe94eb47eb6f64","artifacts":[],"group":6}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:46:08Z","noun":"context","verb":"brief","flags":["plan","group","tests-only","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T22:47:27Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/6/1/comment","hash":"1e402fdd53c5c9bf1dbbfad80b93b883e3d17d12e9576fb29400a77362f3b0db","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6808937962","at":"2026-11-11T22:47:28Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-11T22:47:28Z","parentSha":"0ec4357bc98ff03e993cdac12dfe94eb47eb6f64","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-tests-6-log.md"],"verdict":"PASS","attempt":1,"group":6}
