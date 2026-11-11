@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-11T00:01:47Z)_
+_(refreshed 2026-11-11T00:04:58Z)_
 
 ### Design
 
@@ -33,7 +33,6 @@ _(refreshed 2026-11-11T00:01:47Z)_
 | 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
-| 803-close-codex-opencode | 803-close-codex-opencode | 1793702114105 |
 
 ### Plan
 
@@ -44,6 +43,7 @@ _(refreshed 2026-11-11T00:01:47Z)_
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
+| 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
