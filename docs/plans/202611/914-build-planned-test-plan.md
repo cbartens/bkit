@@ -48,11 +48,17 @@ Verdict: PASS
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+The owner runs `/bkit-build`, and the lock still makes sure a code agent can't quietly weaken a test until it passes. Every change to a planned test reaches the owner, without failing a run whose change is correct.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+The owner chose these (Open Question Q1, answer A): the issue's `Expected` bullets and the owner's decisions (issue comment 2026-11-10T06:56:35Z), word for word.
+
+1. A code step that changes another group's planned test is flagged in that step, not in a later holistic round.
+2. A red row whose test the plan no longer names is not checked.
+3. When a code step genuinely has to change a planned test, for example new setup lines that a correct code change forces while the assertions stay the same, it keeps the edit and logs the task BLOCKED, naming the test and saying why the change is needed. `steps finish` reads that line and lets the step through instead of refusing with exit 11.
+4. The changed test then appears as an item at the build Decision Pause, where the owner accepts or rejects it. A headless or `ask: false` run takes the recommendation and records it as an assumed accept, the same as other assumed accepts, so ship asks the owner to confirm it.
+5. A planned test that changed with no BLOCKED line naming it is still refused, as today.
 
 ### Process Sketch
 
@@ -184,10 +190,6 @@ Verdict: PASS
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question Q1:** The Narrative and Success Criteria have no source: there is no design doc, the issue is not in the change shape (`.bkit/trackers.md` § Issue shapes) and there is no audit report. → The owner resolves it by answering here.
-  - **Options:** A) Adopt the issue's `Expected` bullets and the owner's three decisions word for word as the Success Criteria, and write a Narrative from the owner comment's `Why` paragraph — the criteria then come only from text the owner already wrote, and the owner confirms the wording. The criteria would be: point 1, a code step that changes another group's planned test is flagged in that step, not in a later holistic round; point 2, a red row whose test the plan no longer names is not checked; point 3, a `BLOCKED` line naming the test lets the step through, the change reaches the owner at the build Decision Pause, a headless or `ask: false` run records an assumed accept that ship asks the owner to confirm, and a changed test with no `BLOCKED` line naming it is still refused · B) The owner writes both sections — the exact words the owner wants, at the cost of a round trip before build.
-  - **Recommended:** A) — every criterion the plan tests already sits in the issue's `Expected` list and the owner's decisions, so adopting them adds nothing new.
-  - **Default if unanswered:** Both sections keep the `⚠️ MISSING` marker, and the plan does not proceed to build.
 - **Open Question Q2:** Where a planned test that a code step changed under a `BLOCKED` line reaches the owner. → The owner resolves it; the plan is written for the recommendation.
   - **Options:** A) A separate `CHANGED_TESTS` Decision Pause at Step 15, asked once, before the `UNPROVEN` pause — clear item semantics and the same ask-once shape as `UNPROVEN`, but a run with both kinds stops twice at the end · B) Items inside the `UNPROVEN` pause — one stop, but an `UNPROVEN` Accept writes a `TEST EXCEPTION`, which is the wrong record for a changed test, and the ask-once rule then covers two kinds · C) A gap in the group's verify report (Step 8) — the owner hears sooner, but verify pauses only when a limit is used up or a gap is unfixable, and an unfixable gap is a hard blocker that sends a headless run to the Failure Path, against the owner's decision.
   - **Recommended:** A) — it is the only option that keeps a headless run going with an assumed accept and records an owner Accept as a `docs/decisions.jsonl` row.
@@ -269,7 +271,7 @@ None — no new routes, DB writes, secrets, or user input. Two points follow `do
 - [ ] **Package Management:** no package is added; `package.json` and `pnpm-lock.yaml` stay unchanged.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-11) lists dev-only minor or patch updates (`vitest` 5.0.5 → 5.1.0, `@vitest/coverage-v8` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.91.0, `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5); none blocks this build. Toolchain: Node v24.16.0 (`engines.node` `>=24`), pnpm 10.34.7 (matches `packageManager`).
 - [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
-- [ ] **User Context:** every file the runbook names was opened this session; Q1 (Narrative and Success Criteria) needs the owner's answer before build.
+- [ ] **User Context:** every file the runbook names was opened this session; the Narrative and Success Criteria come from the owner's answer to Q1 (A).
 - [ ] **Project Context:** read `docs/knowledge.jsonl` key `steps-finish-refuses-a-code-step-whose-planned-test-file-changed` (its remediation still says "log the task `BLOCKED`"), `docs/decisions.jsonl` key `796-red-proven-per-group-blob-identity`, and `docs/failures.jsonl` key `.bkit/core/engine/commands/workflow/steps.test.ts bkit steps finish — the tests step touches only tests, the code steps never touch a test > passes the execute step when every planned test file matches the row, and checks nothing without a row` (an open pre-push timeout on a test this plan edits).
 - [ ] **Testing & Quality:** Unit tests use real temp git repos and no mocks at the git boundary; the Integration test spawns `bkit` through `requireTsx()` (`docs/testing.md` § Spawning `bkit` from tests); no E2E or `@live` tier applies (`docs/testing.md` § Tiers: none for bkit).
 - [ ] **Prerequisite Plans:** #891's change, built, verified and merged to `dev` first, because #891 edits `tests.ts`, `decisions.ts`, `bkit-build.md` and `bkit-build-plan-verify.md`. #891's re-plan replaces `docs/plans/202611/891-build-gate-stuck-plan.md`, so re-check the overlapping files and this plan's line numbers (`tests.ts`, `bkit-build.md` § Decision Pause item list and Step 15 sub-step numbers) once it lands.
