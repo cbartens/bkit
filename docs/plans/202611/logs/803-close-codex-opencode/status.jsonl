@@ -82,3 +82,13 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:19Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-review/-/1/comment","hash":"be4389114852e8115c0b9be406ec2bb47423004d421e1857583c742e86a74d80","ref":"https://github.com/cbartens/bkit/issues/803#issuecomment-6781766085","at":"2026-11-10T23:51:22Z"}
 {"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-11-10T23:51:22Z","parentSha":"6d33c8fcfda4d4e52616716f08b0fe54802e56f2","artifacts":["docs/plans/202611/logs/803-close-codex-opencode/plan-review-1.md","docs/plans/202611/logs/803-close-codex-opencode/plan-review-2.md","docs/plans/202611/logs/803-close-codex-opencode/plan-scope-check.md"],"verdict":"CONCERNS","attempt":1,"failures":10}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:32Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-10T23:51:52Z","noun":"steps","verb":"stub","flags":["from","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:01:19Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:01:32Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:01:47Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:02:19Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:06Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:11Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"09a82bdcd8e1503eb9ac2c52aaee1dada5e5f1d9d741bbf41291090c2ac7699e","ref":"https://github.com/cbartens/bkit/issues/803#issuecomment-6781766085","at":"2026-11-11T00:03:14Z"}
+{"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-11T00:03:14Z","parentSha":"00ee53d94958be5259cd3bb8e31850f201d8a4cb","artifacts":["docs/plans/202611/logs/803-close-codex-opencode/plan-v2-reviewed.md","docs/plans/202611/logs/803-close-codex-opencode/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
