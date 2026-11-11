@@ -22,7 +22,7 @@
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Make the plan check refuse any `Derived Test Matrix` header other than the template's
+- [x] **TASK 1:** Make the plan check refuse any `Derived Test Matrix` header other than the template's
   - **UPDATE:** `checkPlanText` in `.bkit/core/engine/commands/workflow/tests.ts`: report one `matrix` problem naming the expected header `Test description | Type | Target file | Task` when the header differs (case and cell-edge spaces ignored); a missing `Task` column is covered by the same single problem
   - **READ:** `derivedTestMatrix` in `.bkit/core/engine/commands/workflow/plan-blocks.ts`: `head` and `taskColumn` already parsed
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests.test.ts`: change the existing no-Task-column test's expectation only if its message check needs it; add the new header tests
