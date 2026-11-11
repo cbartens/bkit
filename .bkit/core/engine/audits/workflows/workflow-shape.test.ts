@@ -1640,12 +1640,17 @@ describe("issue-less runs", () => {
     },
   );
 
-  it("ship's merge MCP fallback asserts base.ref = dev before merging", () => {
-    const line = workflow("ship")
-      .split("\n")
-      .find((l) => l.includes("`pull_request_read` (`get`) and assert `base.ref` = `dev`"));
-    expect(line).toBeDefined();
-    expect(line!.indexOf("assert")).toBeLessThan(line!.indexOf("merge_pull_request"));
+  it("ship's merge MCP fallback proves the scoped dev base through the engine before merging", () => {
+    const ship = workflow("ship");
+    const baseProof = ship.indexOf("The engine must establish `base.ref` = `dev`");
+    const mergeProof = ship.indexOf("run that engine gate again before mutation");
+    const mutation = ship.indexOf("Only exit 0 authorizes `merge_pull_request`");
+    expect(baseProof).toBeGreaterThan(-1);
+    expect(mergeProof).toBeGreaterThan(baseProof);
+    expect(mutation).toBeGreaterThan(mergeProof);
+    expect(ship.slice(baseProof, mergeProof)).toContain(
+      '--facts-file="{OUTBOX}/ship-gate-facts.json"',
+    );
   });
 
   it.each(PHASES)("%s: Placeholders rule lets ISSUE_ID be empty in every workflow", (name) => {

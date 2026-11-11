@@ -30,7 +30,7 @@ import { FID_PATTERNS, fromBranch, fromMarker, issueIdOf, readIssueTracker } fro
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { fetchRemoteRef, pushBranch } from "./branches.js";
 import { activeRecord, appendRecordCommit, checkOnlyBookkeeping, commitOwnSet, markRecordPushed, readRecord, retriggerCommit, } from "./ledgers.js";
-import { closeTransportRow, crossCheckFile, devRequiresChecks, prRepoSlug, probePr, } from "./prs.js";
+import { closeTransportRow, crossCheckFile, devRequiresChecks, prRepoSlug, probePr, validPrFacts, } from "./prs.js";
 import { originOwnerRepo, resolveOwnerRepo, splitSlug } from "./repo.js";
 import { restateOutcome } from "./run-facts.js";
 import { extraField, readRuns, readStatusRows, str } from "./status.js";
@@ -987,6 +987,8 @@ export const GATE = {
     NOT_BOOKKEEPING: 17,
     /** --pr: the PR title carries a CI-suppressing token (its squash would skip CI on dev). */
     TITLE_SKIP: 18,
+    /** The current dev is absent from the validated code head. */
+    STALE_BASE: 19,
     /** API error, rate limit, or auth — distinct from "no run". */
     API_ERROR: 20,
 };
@@ -1859,6 +1861,31 @@ function logResolvedPrRepo(repoFlag, prNumber, pr, log) {
 }
 function runGate(ctx) {
     const f = ctx.flags;
+    const freshBase = f.freshBase === true;
+    if (freshBase && (f.pr === undefined || f.capstoneOnly === true))
+        throw new CommandError(EXIT.USAGE, "--fresh-base requires --pr without --capstone-only");
+    const factsPath = str(f.factsFile);
+    let facts;
+    if (factsPath !== undefined) {
+        if (!freshBase)
+            throw new CommandError(EXIT.USAGE, "--facts-file requires --fresh-base");
+        const parsed = readJsonFile(path.resolve(ctx.cwd, factsPath));
+        if (!parsed.ok)
+            throw new CommandError(EXIT.USAGE, "cannot read scoped gate facts");
+        facts = obj(parsed.value);
+        const info = facts.pr;
+        if (!validPrFacts(info) ||
+            facts.ownerRepo !== prRepoSlug(info.url) ||
+            (str(f.repo) !== undefined && facts.ownerRepo !== str(f.repo)) ||
+            facts.prNumber !== Number(f.pr) ||
+            info.number !== Number(f.pr) ||
+            facts.headRefName !== info.headRefName ||
+            (str(f.branch) !== undefined && facts.headRefName !== str(f.branch)) ||
+            facts.baseRefName !== DEV ||
+            info.baseRefName !== DEV ||
+            info.state !== "OPEN")
+            throw new CommandError(EXIT.USAGE, "gate facts repository, PR, head or base scope mismatch");
+    }
     let selection;
     const selectionFile = str(f.ciSelectionFile);
     if (selectionFile !== undefined) {
@@ -1880,7 +1907,71 @@ function runGate(ctx) {
             ctx.log(`fetch of origin/${branch} failed: ${fetched.stderr.trim()}`);
     }
     const root = checkoutRoot(ctx.cwd);
-    const gh = (args) => runGh(ctx.cwd, args);
+    const gh = facts === undefined
+        ? (args) => runGh(ctx.cwd, args)
+        : (args) => {
+            const reply = (value) => ({
+                ok: true,
+                stdout: JSON.stringify(value),
+                stderr: "",
+                missing: false,
+            });
+            const ci = obj(facts.ci);
+            const repo = text(facts.ownerRepo);
+            const endpoint = args[1]?.replace(/^\//, "") ?? "";
+            if (args[0] === "repo" && args[1] === "view")
+                return { ok: true, stdout: repo, stderr: "", missing: false };
+            const workflow = readBkitConfig(checkoutRoot(ctx.cwd)).ciWorkflow;
+            const scopedRuns = arr(obj(ci.workflowRuns).workflow_runs).map(obj);
+            const workflowPath = workflow.startsWith(".github/workflows/")
+                ? workflow
+                : `.github/workflows/${workflow}`;
+            const validRun = (run) => Number.isSafeInteger(run.id) &&
+                Number(run.id) > 0 &&
+                text(obj(run.repository).full_name).toLowerCase() === repo.toLowerCase() &&
+                text(obj(run.head_repository).full_name).toLowerCase() === repo.toLowerCase() &&
+                (text(run.path) === workflowPath ||
+                    (/^[1-9][0-9]*$/.test(workflow) && String(run.workflow_id) === workflow)) &&
+                run.head_sha === (str(f.validated) ?? obj(facts.pr).headRefOid) &&
+                run.head_branch === facts.headRefName &&
+                run.html_url === `https://github.com/${repo}/actions/runs/${run.id}`;
+            const invalidEvidence = () => ({
+                ok: false,
+                stdout: "",
+                stderr: "scoped gate CI provenance is missing or mismatched",
+                missing: false,
+            });
+            if (args[0] === "api" &&
+                endpoint.startsWith(`repos/${repo}/actions/workflows/${workflow}/runs?`)) {
+                if (!Array.isArray(obj(ci.workflowRuns).workflow_runs) ||
+                    scopedRuns.some((run) => !validRun(run)))
+                    return invalidEvidence();
+                return reply(ci.workflowRuns);
+            }
+            const jobMatch = new RegExp(`^repos/${repo}/actions/runs/([0-9]+)/jobs$`).exec(endpoint);
+            if (args[0] === "api" && jobMatch) {
+                const run = scopedRuns.find((candidate) => String(candidate.id) === jobMatch[1]);
+                const pages = Array.isArray(ci.jobs) ? ci.jobs : [ci.jobs];
+                if (!run ||
+                    !validRun(run) ||
+                    pages.length === 0 ||
+                    pages.some((page) => !Array.isArray(obj(page).jobs) ||
+                        arr(obj(page).jobs).some((value) => {
+                            const job = obj(value);
+                            return (job.run_id !== run.id ||
+                                job.head_sha !== run.head_sha ||
+                                job.run_url !== `https://api.github.com/repos/${repo}/actions/runs/${run.id}`);
+                        })))
+                    return invalidEvidence();
+                return reply(ci.jobs);
+            }
+            return {
+                ok: false,
+                stdout: "",
+                stderr: "scoped gate facts do not contain this API evidence",
+                missing: false,
+            };
+        };
     const record = str(f.record);
     const recordFile = record === undefined ? undefined : path.resolve(ctx.cwd, record);
     const prNumber = str(f.pr) ?? str(f.squashOf);
@@ -1890,7 +1981,10 @@ function runGate(ctx) {
     if (prNumber !== undefined) {
         if (!/^[1-9][0-9]*$/.test(prNumber))
             throw new CommandError(EXIT.USAGE, "--pr / --squash-of take a PR number");
-        pr = probePr(ctx.cwd, { number: prNumber, state: "open", repo: str(f.repo) });
+        pr =
+            facts !== undefined && validPrFacts(facts.pr)
+                ? { kind: "ok", pr: facts.pr }
+                : probePr(ctx.cwd, { number: prNumber, state: "open", repo: str(f.repo) });
         if (pr.kind === "unavailable") {
             ctx.log(pr.message);
             return EXIT.USE_MCP;
@@ -1912,6 +2006,47 @@ function runGate(ctx) {
     }
     if (head === "")
         throw new CommandError(EXIT.USAGE, "--head needs a non-empty value");
+    const info = pr?.kind === "ok" ? pr.pr : undefined;
+    const repo = str(f.repo) ?? prRepoSlug(info?.url);
+    const codeHead = str(f.validated) ?? head;
+    let baseEvidence;
+    if (freshBase) {
+        baseEvidence = { devSha: "", comparedHead: codeHead, ancestor: null };
+        if (facts !== undefined) {
+            const base = obj(facts.base);
+            if (base.ref === DEV &&
+                /^[0-9a-f]{40,64}$/i.test(text(base.sha)) &&
+                base.comparedHead === codeHead &&
+                ["ahead", "identical", "behind", "diverged"].includes(text(base.status))) {
+                baseEvidence.devSha = text(base.sha);
+                baseEvidence.ancestor = ["ahead", "identical"].includes(text(base.status));
+            }
+        }
+        else if (repo !== undefined && isForeignRepo(ctx.cwd, repo)) {
+            const dev = gh(["api", `repos/${repo}/commits/dev`, "--jq", ".sha"]);
+            if (dev.ok && /^[0-9a-f]{40,64}$/i.test(dev.stdout.trim())) {
+                baseEvidence.devSha = dev.stdout.trim();
+                const compare = gh([
+                    "api",
+                    `repos/${repo}/compare/${baseEvidence.devSha}...${codeHead}`,
+                    "--jq",
+                    ".status",
+                ]);
+                if (compare.ok &&
+                    ["ahead", "identical", "behind", "diverged"].includes(compare.stdout.trim()))
+                    baseEvidence.ancestor = ["ahead", "identical"].includes(compare.stdout.trim());
+            }
+        }
+        else {
+            const fetched = fetchRemoteRef(ctx.cwd, "origin/dev");
+            if (fetched?.ok) {
+                baseEvidence.devSha = git(ctx.cwd, ["rev-parse", "--verify", "origin/dev^{commit}"]) ?? "";
+                const compared = runTool("git", ["merge-base", "--is-ancestor", baseEvidence.devSha, codeHead], ctx.cwd);
+                if (compared.status === 0 || compared.status === 1)
+                    baseEvidence.ancestor = compared.status === 0;
+            }
+        }
+    }
     // The pre-merge snapshot, written BEFORE the gate decides.
     const snapshot = str(f.snapshot);
     if (snapshot !== undefined) {
@@ -1921,7 +2056,11 @@ function runGate(ctx) {
         // A foreign repo's dev and ancestry come from the API: the checkout's origin/dev is another repo's.
         let dev;
         let ancestor;
-        if (foreign && repoFlag !== undefined) {
+        if (baseEvidence !== undefined) {
+            dev = baseEvidence.devSha;
+            ancestor = baseEvidence.ancestor === true;
+        }
+        else if (foreign && repoFlag !== undefined) {
             const devRes = gh(["api", `repos/${repoFlag}/commits/dev`, "--jq", ".sha"]);
             dev = devRes.ok ? devRes.stdout.trim() : "";
             const cmp = gh(["api", `repos/${repoFlag}/compare/dev...${head}`, "--jq", ".status"]);
@@ -1954,6 +2093,12 @@ function runGate(ctx) {
             validatedHead: str(f.validated) ?? "",
             devSha: dev,
             ancestor: String(ancestor),
+            ...(baseEvidence === undefined
+                ? {}
+                : {
+                    comparedHead: baseEvidence.comparedHead,
+                    baseEvidenceAvailable: baseEvidence.ancestor !== null,
+                }),
             capstone,
             mergeable: info?.mergeable ?? "",
         })}\n`);
@@ -1961,9 +2106,20 @@ function runGate(ctx) {
     // A title carrying a skip token would squash into a dev commit CI never runs on.
     const title = pr?.kind === "ok" ? (pr.pr?.title ?? "") : "";
     const titleToken = f.pr !== undefined ? SKIP_CI_TOKEN.exec(title)?.[0] : undefined;
-    let r = titleToken !== undefined
+    const baseUnavailable = baseEvidence?.ancestor === null || (freshBase && info?.baseRefName !== DEV);
+    const baseRefused = freshBase && (baseEvidence?.ancestor !== true || baseUnavailable);
+    const safetyReason = baseRefused
+        ? baseUnavailable
+            ? "fresh dev base evidence is unavailable or the PR base is not dev"
+            : `dev base ${baseEvidence?.devSha ?? ""} is absent from validated code head ${codeHead}; integrate dev and revalidate`
+        : `PR title '${title}' contains the CI-suppressing token ${titleToken ?? ""}`;
+    let r = baseRefused || titleToken !== undefined
         ? {
-            code: GATE.TITLE_SKIP,
+            code: baseRefused
+                ? baseUnavailable
+                    ? GATE.API_ERROR
+                    : GATE.STALE_BASE
+                : GATE.TITLE_SKIP,
             passed: false,
             overridden: false,
             head,
@@ -1974,12 +2130,12 @@ function runGate(ctx) {
             conclusion: null,
             capstone: "",
             ciWorkflow: "",
-            repo: str(f.repo) ?? null,
+            repo: repo ?? null,
             skippedLanes: [],
             nonBookkeepingPaths: [],
             failedSteps: [],
             regenerable: false,
-            reason: `PR title '${title}' contains the CI-suppressing token ${titleToken}`,
+            reason: safetyReason,
         }
         : shipGate({
             root,
@@ -1994,7 +2150,7 @@ function runGate(ctx) {
             override: process.env.BKIT_SHIP_GATE_OVERRIDE || undefined,
             statusFile: f.file === undefined ? undefined : path.resolve(ctx.cwd, String(f.file)),
         }, gh, ctx.log);
-    if (titleToken !== undefined)
+    if (baseRefused || titleToken !== undefined)
         ctx.log(r.reason);
     // Debug retains the configured gate above and also proves the original
     // selected workflow at the pushed head. A different workflow need not contain
@@ -2101,6 +2257,7 @@ async function runRevalidate(ctx) {
     // CI must pass at the code head while the PR head adds bookkeeping only and dev
     // demands no status checks; otherwise at the PR head.
     let validated = codeHead;
+    let reconcileRequired = current !== codeHead;
     if (foreign) {
         // The bookkeeping diff reads the checkout's git, which is not the named repo's history.
         ctx.log(`--repo ${repoFlag} is not this checkout's repo — bookkeeping diff skipped, validating at the PR head ${current}`);
@@ -2113,8 +2270,23 @@ async function runRevalidate(ctx) {
             from: codeHead,
             to: current,
         });
+        reconcileRequired = !book.ok;
         if (!book.ok)
             validated = current;
+    }
+    if (f.requireReconciled === true && reconcileRequired) {
+        auditRow(status, "ship-gate-refusal", { exitCode: 21, head: current });
+        ctx.log(`feature code changed at ${current} — reconcile before CI validation`);
+        ctx.emit({
+            reconcileRequired: true,
+            validatedHead: null,
+            currentHead: current,
+            revalidated: false,
+            probe: null,
+            dispatched: false,
+            wait: null,
+        });
+        return 21;
     }
     const repo = repoFlag ?? resolveOwnerRepo(ctx.cwd)?.ownerRepo;
     if (repo !== undefined && devRequiresChecks(d.gh, repo)) {
@@ -2122,6 +2294,7 @@ async function runRevalidate(ctx) {
         validated = current;
     }
     const out = {
+        ...(f.requireReconciled === true ? { reconcileRequired: false } : {}),
         validatedHead: validated,
         currentHead: current,
         revalidated: false,
@@ -2588,6 +2761,16 @@ export const runsCommand = {
                     type: "string",
                     help: "validated original debug selection: additionally require its workflow to succeed at the exact pushed head",
                 },
+                {
+                    name: "fresh-base",
+                    type: "boolean",
+                    help: "ship pre-merge: require fresh dev ancestry in the validated code head; CI overrides cannot waive it",
+                },
+                {
+                    name: "facts-file",
+                    type: "string",
+                    help: "with --fresh-base: scoped independently read PR, CI and dev comparison facts, without gh calls",
+                },
                 { ...HEAD_FLAG, help: "the PR head to merge (or --pr / --squash-of)" },
                 {
                     name: "pr",
@@ -2674,6 +2857,7 @@ export const runsCommand = {
                 [GATE.LANE_SKIPPED]: "a required lane concluded skipped",
                 [GATE.NOT_BOOKKEEPING]: "non-bookkeeping change past --validated, or not its descendant",
                 [GATE.TITLE_SKIP]: "--pr: the PR title carries a CI-suppressing token",
+                [GATE.STALE_BASE]: "fresh dev is absent from the validated code head; integrate and revalidate",
                 [GATE.API_ERROR]: "API error / rate limit / auth, or the PR head / squash commit unreadable",
             },
             run: runGate,
@@ -2682,6 +2866,11 @@ export const runsCommand = {
             summary: "Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete.",
             use: "workflow",
             flags: [
+                {
+                    name: "require-reconciled",
+                    type: "boolean",
+                    help: "refuse newly observed feature code before CI validation",
+                },
                 { name: "pr", type: "string", required: true, help: "the PR number" },
                 { name: "entry-head", type: "string", required: true, help: "the PR head read at Step 2" },
                 {
@@ -2718,13 +2907,17 @@ export const runsCommand = {
             ],
             output: {
                 validatedHead: "the head CI was (or must be) checked at",
+                reconcileRequired: "with --require-reconciled, whether new feature code needs reconciliation",
                 currentHead: "the PR head now",
                 revalidated: "a probe / wait ran (the head moved, or a gate refusal re-entered)",
                 probe: "the presence probe's wait result, or null",
                 dispatched: "the probe found no run and dispatched one",
                 wait: "the completion wait's result, or null",
             },
-            exitCodes: { [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed" },
+            exitCodes: {
+                [EXIT_TRIGGER_FAILED]: "no run and gh workflow run failed",
+                21: "--require-reconciled: new feature code needs reconciliation",
+            },
             run: runRevalidate,
         },
         mirror: {

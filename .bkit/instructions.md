@@ -331,7 +331,7 @@ Clause section lines:
   - specialised: all except `bkit-audit-adoption`, `bkit-audit-analytics`, `bkit-audit-config`, `bkit-audit-security`, `bkit-audit-slop`
   - applies: `bkit-audit-agents`, `bkit-audit-dead-code`, `bkit-audit-deferrals`, `bkit-audit-models`
 - drift:
-  - `bkit-ship-conflict-resolve:107`: "Run `pnpm bkit:gate:install-static-unit-build`." Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
+  - `bkit-ship-conflict-resolve:109`: "Run `pnpm bkit:gate:install-static-unit-build`." Runs `pnpm bkit:gate:install-static-unit-build`, not the push gate the pre-push hook runs
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -1369,7 +1369,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:594`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:654`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1682,7 +1682,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:594`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:654`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -6732,7 +6732,7 @@ skipped when `ISSUE_ID` empty)
 ### workflow-merge-base-mismatch
 
 - workflow: where-used
-- carriers: workflow `bkit-design`, `bkit-plan`, `bkit-ship`
+- carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
 mismatch → **Failure Path** with nothing merged
@@ -7313,7 +7313,7 @@ Kill-switch propagation checked
 ### workflow-gate-worktree-removed
 
 - workflow: where-used
-- carriers: workflow `bkit-design`, `bkit-plan`, `bkit-ship`
+- carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
 Worktree removed and feature branch deleted
@@ -10580,7 +10580,6 @@ Assumed items listed (`decisions pending`)
 Asked in the session, never headless
 Confirmations and rejections written (`decisions apply --by=owner`)
 Each unconfirmed item deferred (`decisions pending --defer`)
-Determine whether `origin/dev` is an ancestor of the PR head:
 **If** `BASE_PATH` = A → Step 5 (skip integration — dev has not moved; no `bkit:generate`, because CI fails on a stale generated file and Step 10 regenerates when that is the only failure).
 **If** `BASE_PATH` = B → Step 4 (integration required; its merge runs `bkit:generate`).
 Ancestor verdict determined
@@ -10596,10 +10595,7 @@ Finish (bookkeeping to `$BOOK_ROOT`):
 Path classified
 `origin/dev` merged locally (`branches sync --merge`), never rebased
 Merged branch pushed plain
-Fast-forward to the PR head, never onto a diverged branch:
 Check for the plan:
-[fit `workflow-summary-route` 0.62; keep: routes on PASS alone, not PASS or CONCERNS] **If** `verdict` = PASS → Step 6.
-Worktree fast-forwarded
 Write the FID's deferral lines to the artifact the docs agent reads `Pending Items` from:
 Wait for the subagent to complete. Then append the `SHIPPED` row to the worktree ledger, re-render the mechanical `roadmap-status` board from it, and finish the step (bookkeeping to `$BOOK_ROOT`). The block exits 1 when the row did not land:
 Write `ship-summary.md` from this run's status rows and the PR's size:
@@ -10616,7 +10612,9 @@ Branch pushed
 Validated head resolved
 CI re-validated (`runs revalidate`)
 [merge-bodies] Assert the gate at the PR's current head, with CI checked at `VALIDATED_HEAD`. This gate is the ONLY merge precondition. The block writes the pre-merge snapshot to the outbox before the gate decides, refuses a title that carries a skip token (18), and records a refusal in `{STATUS}`:
-[polls-loops] **If** exit 11 (in progress — poll), 14 (stale green), 10 (no run) **or** 17 (non-bookkeeping change past `VALIDATED_HEAD`) → route on the failed arrivals at Step 10, without asking:
+[polls-loops] **If** exit 21 → set `RECONCILE_REQUIRED` = true → route the recorded failed arrival to reconciliation:
+[polls-loops] **If** exit 17 (non-bookkeeping change past `VALIDATED_HEAD`) → set `RECONCILE_REQUIRED` = true → route the recorded failed arrival to reconciliation:
+[polls-loops] **If** exit 11 (in progress — poll), 14 (stale green) **or** 10 (no run) → route on the failed arrivals at Step 10, without asking:
 **If** exit 1 **and** `MERGE_ASK` = true → set `{REVALIDATE_REASON}` = `gate-refusal`, `LIMIT_NEXT` = Step 9 → **Merge Question**.
 **If** exit 12 **and** `regenerable` = true → every failed CI step is one `bkit:generate` fixes (`bkit.testing.ciGenerated`). Route on the failed arrivals at Step 10, without asking:
 **If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
@@ -10624,10 +10622,7 @@ Then set `REVALIDATE_REASON` empty → Step 9 (re-validate at the regenerated he
 **Else** → **Failure Path** (`unchanged`: regenerating does not fix the failed steps; `undeclared`; or the block failed).
 **If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = sub-step 1, which routes the red run again within the new allowance → **Merge Question**.
 [integration-merge] Merge with an empty body and `--match-head`, so GitHub refuses when the head moved. Re-read the labels from the tracker, so that ` bkit [auto route]` rides the squash subject on `bkit:auto`. The labels are never carried forward from Step 1's `{LABELS}`. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when no tracker is wired<!-- bkit:tracker true start --> or `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
-**If** exit 0 **or** 7 → hold `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state`.
 **If** `state` = MERGED → Step 13.
-**If** `state` != MERGED → run counter routing:
-**If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 11 → **Merge Question**.
 Merge gate asserted (`runs gate`)
 Failed arrivals counted against `ship.merge.maxAttempts` (`counters route`)
 Used-up merge step sent to the **Merge Question** in a session, or to the Failure Path
@@ -10655,10 +10650,37 @@ Fix committed and pushed
 Fast-forward local `dev` to `origin/dev`, then finish:
 Local `dev` synced (`branches sync-dev`)
 Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing:
-Close the run. The block keeps the summary in the outbox (the close removes the worktree it lives in), lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, removes the worktree and `SHIP_BRANCH`, and returns to `REPO_ROOT`:
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
 Squash-merge CI capstone green (`runs gate`)
 Close landed (`workflows close`)
+**If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 2 → Step 4 sub-step 2.
+**If** exit 80 **or** `runtimeGithubCli` = false → read open PRs first, then merged PRs through MCP, independently reread the selected PR, and write `{ ownerRepo, headRefName, baseRefName: "dev", pr }` to `{OUTBOX}/ship-entry-facts.json`. `pr` is the complete `PrInfo` shape (`number`, `url`, `state`, `baseRefName`, `headRefName`, `headRefOid`, `title`, `mergeCommit`, `mergeable`), or null when neither exists. Record the single transport transition under **gh MCP fallback**, then use the engine's result:
+Missing or mismatched facts → **Failure Path** before opening or merging anything. A merged PR with extra feature work returns exit 1: open a new PR, preserving that work.
+Reconcile again on every integration retry, then publish before selecting `BASE_PATH`:
+Hold `basePath` as `BASE_PATH`, `reconciledHead` as `ENTRY_HEAD` and `CODE_HEAD`. **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 3 → Step 4 sub-step 2. **If** another non-zero exit → **Failure Path**.
+Hold `featureCodeState` as `FEATURE_CODE_STATE`. Non-zero exit → **Failure Path**. Bookkeeping commits and proven automatic base-only merges retain coverage. New feature commits, imported feature merges and semantic conflict resolutions invalidate coverage. Unproven merge results remain in the state. Record this exact state with each successful sweep/docs completion below; read those rows from `{STATUS}` on resume.
+**If** `RECONCILE_NEXT` is held → return there and reconcile again. **Else** → refresh `ENTRY_HEAD` and `CODE_HEAD` with `git rev-parse HEAD` → Step 5, which recomputes coverage after the integration and any conflict resolution.
+Refresh `FEATURE_CODE_STATE` from `featureCodeState`; non-zero exit → **Failure Path**.
+Hold the current `featureCodeState` as `FEATURE_CODE_STATE`; non-zero exit → **Failure Path**.
+Read the latest successful `ship-feature-coverage` row for `step=ship-deferred-sweep` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and its artifact still exists → reuse it and skip to Step 6. **If** the state changed, differs or is missing → invoke the sweep again below. Never reuse a completion from a different feature state.
+**If** `verdict` = PASS → record the covered feature-code state → Step 6:
+Reconciled feature-code state compared with recorded sweep coverage
+Read the latest successful `ship-feature-coverage` row for `step=ship-update-docs` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and the docs artifact exists → reuse it and skip sub-steps 1–3. **If** the state changed, differs or is missing → run the docs agent again. Always refresh the summary in sub-step 4.
+**If** `RECONCILE_REQUIRED` = true → clear it → Step 3 before validation. A previous `DONE` row alone never proves coverage of imported feature code.
+**If** exit 80 **or** `runtimeGithubCli` = false → use narrowly scoped MCP PR/Actions reads and compare `dev` against `VALIDATED_HEAD`. The engine must establish `base.ref` = `dev`; a mismatch takes the **Failure Path**. Write `{ ownerRepo, prNumber, headRefName, baseRefName: "dev", pr, ci: { workflowRuns, jobs }, base: { ref: "dev", sha, comparedHead, status } }` to `{OUTBOX}/ship-gate-facts.json`. `workflowRuns` and `jobs` use the Actions API payloads, and `base.sha` is the freshly read dev commit used by the compare API. Each run must carry its positive integer `id`, `repository.full_name`, `head_repository.full_name`, configured workflow `path` (or matching numeric `workflow_id`), `head_sha`, `head_branch` and repository-scoped `html_url`. Both repositories must match `ownerRepo`; the head must match `VALIDATED_HEAD` and `headRefName`. Each job must carry `run_id`, `run_url` and `head_sha` matching its selected run and repository. Retain every jobs page in the paginated array. Independently reread the PR and base before accepting the facts, and record the single transport transition under **gh MCP fallback**. Missing, unavailable or mismatched evidence → **Failure Path** before mutation. Return the facts to the same gate:
+**If** exit 19 (stale base) → the gate already recorded one failed arrival; route to integration:
+**If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 3 → **Merge Question**.
+**Else** → **Failure Path**, preserving the branch and worktree on exhaustion.
+**If** exit 0, 5, 7, 8, 9 **or** 10 → hold `route` as `MERGE_ROUTE`, `reason` as `MERGE_REASON`, `verdict` as `MERGE_VERDICT`, `failures` as `MERGE_FAILURES`, and hold `state` → sub-step 3. Missing output fields → **Failure Path**.
+**If** exit 80 **or** `runtimeGithubCli` = false → read fresh pre-attempt PR facts through `pull_request_read` (`get`). Refresh the scoped gate facts above with this PR, fresh CI and base evidence, and run that engine gate again before mutation. Only exit 0 authorizes `merge_pull_request`, with `sha` = the newly printed `GATE_HEAD`, the skip-token-free PR subject and an empty body. A gate refusal takes sub-step 1's route and consumes only its existing refusal row. After the attempt, independently reread post-attempt PR state through `pull_request_read`; never copy the mutation response or pre-attempt facts into `after`. Write `{ ownerRepo, prNumber, headRefName, baseRefName: "dev", matchHead, before, after }` to `{OUTBOX}/ship-merge-facts.json`, with complete `PrInfo` values for both reads and `matchHead` = `GATE_HEAD`. Missing or mismatched evidence → **Failure Path**. Record the single transport transition under **gh MCP fallback**, then classify without a second mutation:
+Hold the same route, reason, verdict, failures and state as the gh-backed result → sub-step 3.
+**If** `MERGE_ROUTE` = revalidate (exit 9) → Step 9 through the durable counter:
+**If** exit 1 **and** `MERGE_ASK` = true → `LIMIT_NEXT` = Step 9 → **Merge Question**.
+**If** `MERGE_ROUTE` = integrate (exit 10) → Step 3 through the same durable counter:
+**Else** → **Failure Path** on exhaustion.
+**Else** → terminal stop → **Failure Path**, naming `MERGE_REASON`. Recoverable merge refusals never enter Steps 11–12. Each attempted merge is counted by its one `ship-merge-pr` row; each refused gate is counted by its one `ship-gate-refusal` row. Do not add another refusal row for either event.
+Close the run. The block keeps the summary in the outbox, lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, and returns to `REPO_ROOT`. Guarded cleanup removes only a clean worktree and a local branch whose inspected content is landed, binding local deletion to the inspected tip. It preserves dirty or unlanded work and reports retained paths/refs. The remote feature branch is deleted only at its inspected landed tip and retained when origin refuses that conditional deletion; this does not block close-record landing or lock release. Repository-managed automatic branch deletion is a separate GitHub setting outside this cleanup guarantee:
+Guarded cleanup and retained paths/refs reported, back in the repo root
 ```
 
 ### Prompts
@@ -11577,7 +11599,6 @@ Remove the answered question from `Open Questions & Assumptions`.
 Confirm the merge state the caller left:
 Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.
 Run `git rev-parse -q --verify MERGE_HEAD`.
-**If** it prints nothing → no merge of `origin/dev` is in progress, so there is no conflict here to resolve:
 Go straight to setting `Verdict`.
 Append a log entry.
 Run the auto-resolver before any hand-classification. It resolves every append-only ledger, the dependency lockfile, a generated register, the generated block of an embedding doc (a doc the register's script copies that block into) and the install record (`.bkit/version`), commits the merge once no conflicted path is left, runs a declared `bkit:generate`, and stops with the merge still in progress when a conflict needs judgement. `{STATUS}` is the `status.jsonl` path the Read list names:
@@ -11589,11 +11610,9 @@ Set `Verdict` = `FAIL` with `Edit`.
 Go straight to setting `Verdict`.
 Classify the conflicts:
 List the conflicted files with `git diff --name-only --diff-filter=U`.
-List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev`, then append a log entry.
 Classify each conflicted file against these two lists, then append a log entry:
 `Allowed resolutions`:
 Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
-Formatting-only drift (whitespace, trailing newline, prettier output) → take `origin/dev`'s format.
 A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
 Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
 `Refused resolutions`:
@@ -11613,7 +11632,6 @@ Run the auto-resolver again. With no conflicted path left it commits the merge a
 **If** `Verdict` != `FAIL` → run the verify gate:
 Run `pnpm bkit:gate:install-static-unit-build`.
 Append a log entry with its exit code.
-[honest-reporting] `PASS` = a merge of `origin/dev` was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
 `FAIL` = no merge was in progress, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the merge, **or** any verify command exited non-zero.
 **If** `Verdict` = `FAIL`:
 **If** `git rev-parse -q --verify MERGE_HEAD` prints a SHA:
@@ -11622,6 +11640,12 @@ Run `git merge --abort`.
 Confirm that the working tree is clean with `git status --short`.
 Leave the sentinel in place.
 Append the log entry `ABORTED — clean tree restored`.
+Resolve the caller's engine-recorded `{MERGE_TARGET}` with `git rev-parse --verify "{MERGE_TARGET}^{commit}"` and compare it with `MERGE_HEAD`.
+**If** either value is unreadable or the values differ → set `Verdict` = `FAIL` with `Edit`, name the target mismatch in the log and go straight to setting `Verdict`.
+**If** it prints nothing → no merge of the recorded target is in progress, so there is no conflict here to resolve:
+List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline "{MERGE_TARGET}"`, then append a log entry.
+Formatting-only drift (whitespace, trailing newline, prettier output) → take the recorded target's format.
+[honest-reporting] `PASS` = a merge of the recorded target was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
 ```
 
 #### bkit-ship-deferred-sweep
@@ -12232,9 +12256,9 @@ Re-list every row on each run, and diff against the previous report: newly adopt
 **Done when:** `Adoption` holds one row per template file and per context: adopted · verdict · evidence · age.
 **Step 9 — Templates:** For each adopted template, check:
 (a) Filled: no raw `{{…}}` placeholder is left, the default branch and runner are real, and no stub sentinel is left.
-(b) Reconciled: run `diff .bkit/templates/<path> <path>`, and mark each difference adopt or reject (saying why). Placeholder lines differ by design.
+(b) Reconciled: run `diff .bkit/templates/<path> <dest>`, where `<dest>` is the destination `.bkit/templates.md` § Contract names (Step 8), and mark each difference adopt or reject (saying why). Placeholder lines differ by design.
 (c) Merged:
-**If** the package changed the template after the copy's last change (Step 3, `git log` on `.bkit/templates/<path>`) → mark it merged, rejected (saying why) or pending.
+**If** the package changed the template after the copy's last change (Step 3, `git log --follow` on `.bkit/templates/<path>`, against `git log` on `<dest>`) → mark it merged, rejected (saying why) or pending.
 (d) Wired: the tool behind it is installed, and invoked where the template expects. For example, the hook manager is installed by a `prepare` script, the hooks are executable and `core.hooksPath` is set; `pre-commit` calls lint-staged; the prose linter's styles are synced and its config loads them; the scanner plugin path resolves; the tool-server snippet is merged into the host's server config; the secrets config names real stores; the cloud workflow waits on a workflow `name:` that exists; and the CI template's job names are the ones the repo requires.
 (e) Runs: one read-only invocation, where one exists (e.g., `sh -n` on a hook, `prettier --check`, `vale` on one doc, `actionlint` on a workflow).
 (f) Ignored: every repo-wide gate (formatter, prose linter, scanner, linter, type checker) skips `.bkit/templates/`.

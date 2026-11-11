@@ -896,6 +896,316 @@ describe("bkit runs gate", () => {
   });
   const deployFailed: Job = { name: "deploy", status: "completed", conclusion: "failure" };
 
+  function freshBaseFixture() {
+    const origin = tmp("bkit-fresh-base-origin-");
+    gitIn(origin, "init", "-q", "--bare", "-b", "dev");
+    const cwd = tmp("bkit-fresh-base-local-");
+    gitIn(cwd, "init", "-q", "-b", "dev");
+    fs.mkdirSync(path.join(cwd, "docs"));
+    fs.writeFileSync(path.join(cwd, "docs/architecture.md"), "base docs\n");
+    gitIn(cwd, "add", "docs/architecture.md");
+    gitIn(cwd, "commit", "-qm", "base");
+    gitIn(cwd, "remote", "add", "origin", origin);
+    gitIn(cwd, "push", "-q", "origin", "dev");
+    gitIn(cwd, "switch", "-q", "-c", "feat/842-gate");
+    fs.writeFileSync(path.join(cwd, "feature.ts"), "export const feature = true;\n");
+    gitIn(cwd, "add", "feature.ts");
+    gitIn(cwd, "commit", "-qm", "feat: validated code");
+    const head = gitIn(cwd, "rev-parse", "HEAD");
+    const seed = tmp("bkit-fresh-base-seed-");
+    gitIn(seed, "clone", "-q", "-b", "dev", origin, ".");
+    fixtureRun(head, { status: "completed", conclusion: "success" }, [
+      capstone("completed", "success"),
+    ]);
+    const fixtureRoot = String(process.env.BKIT_FAKE_GH_FIXTURE_ROOT);
+    const pr = (ownerRepo: string, tip = head) => ({
+      number: 7,
+      url: `https://github.com/${ownerRepo}/pull/7`,
+      state: "OPEN",
+      baseRefName: "dev",
+      headRefName: "feat/842-gate",
+      headRefOid: tip,
+      title: "feat: validated feature",
+      mergeCommit: { oid: head },
+      mergeable: "MERGEABLE",
+    });
+    const configurePr = (ownerRepo = "example/example", tip = head) => {
+      fs.writeFileSync(
+        path.join(fixtureRoot, "prs", `${ownerRepo.replaceAll("/", "_")}__7.json`),
+        JSON.stringify(pr(ownerRepo, tip)),
+      );
+    };
+    configurePr();
+    configurePr("foreign/repo");
+    const bin = tmp("bkit-fresh-base-gh-");
+    fs.symlinkSync(FIXTURE_GH, path.join(bin, "gh"));
+    const calls = path.join(bin, "calls");
+    const body = path.join(bin, "body.sh");
+    fs.writeFileSync(
+      body,
+      [
+        `printf '%s\\n' "$*" >> '${calls}'`,
+        `[ ! -f '${bin}/unavailable' ] || exit 127`,
+        `case "$1 $2" in`,
+        `  'repo view') echo example/example; exit 0 ;;`,
+        `esac`,
+        `case "$2" in`,
+        `  *'/commits/dev') [ ! -f '${bin}/missing-base' ] || exit 1; cat '${bin}/dev-sha'; exit 0 ;;`,
+        `  *'/compare/'*) [ ! -f '${bin}/missing-base' ] || exit 1; cat '${bin}/comparison'; exit 0 ;;`,
+        `esac`,
+        `exec '${FIXTURE_GH}' "$@"`,
+      ].join("\n"),
+    );
+    env({ PATH: `${bin}${path.delimiter}${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: body });
+    const record = path.join(cwd, "gate-status.jsonl");
+    const snapshot = path.join(cwd, "snapshot.jsonl");
+    fs.writeFileSync(record, "");
+    const advance = (file = "dev.ts") => {
+      fs.writeFileSync(path.join(seed, file), "new dev work\n");
+      gitIn(seed, "add", file);
+      gitIn(seed, "commit", "-qm", "feat: dev advanced");
+      gitIn(seed, "push", "-q", "origin", "dev");
+      const tip = gitIn(seed, "rev-parse", "HEAD");
+      fs.writeFileSync(path.join(bin, "dev-sha"), tip);
+      fs.writeFileSync(path.join(bin, "comparison"), "diverged\n");
+      return tip;
+    };
+    fs.writeFileSync(path.join(bin, "dev-sha"), gitIn(cwd, "rev-parse", "origin/dev"));
+    fs.writeFileSync(path.join(bin, "comparison"), "ahead\n");
+    const run = (...extra: string[]) =>
+      gate(cwd, "--pr=7", `--validated=${head}`, "--month=202610", "--fid=842-gate", ...extra);
+    return {
+      cwd,
+      origin,
+      seed,
+      head,
+      bin,
+      fixtureRoot,
+      pr,
+      configurePr,
+      calls,
+      record,
+      snapshot,
+      advance,
+      run,
+    };
+  }
+
+  it("refuses green CI when dev advanced beyond the validated code head", async () => {
+    const f = freshBaseFixture();
+    expect((await f.run()).code).toBe(0);
+    const oldDev = gitIn(f.cwd, "rev-parse", "origin/dev");
+    const dev = f.advance();
+    expect(gitIn(f.cwd, "rev-parse", "origin/dev")).toBe(oldDev);
+    const result = await f.run("--fresh-base", `--record=${f.record}`, `--snapshot=${f.snapshot}`);
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ code: 19, passed: false, overridden: false });
+    expect(result.json.reason).toMatch(/dev|base/i);
+    expect(gitIn(f.cwd, "rev-parse", "origin/dev")).toBe(dev);
+    const snapshot = fs
+      .readFileSync(f.snapshot, "utf-8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row));
+    expect(snapshot.at(-1)).toMatchObject({
+      gateHead: f.head,
+      validatedHead: f.head,
+      devSha: dev,
+      ancestor: "false",
+    });
+    const rows = fs
+      .readFileSync(f.record, "utf-8")
+      .trim()
+      .split("\n")
+      .map((row) => JSON.parse(row));
+    expect(rows.at(-1)).toMatchObject({ type: "ship-gate-refusal", exitCode: 19 });
+  });
+
+  it("does not let bookkeeping or a CI override waive stale dev ancestry", async () => {
+    const f = freshBaseFixture();
+    const dev = f.advance("docs/architecture.md");
+    gitIn(f.cwd, "fetch", "-q", "origin", "dev");
+    gitIn(f.cwd, "merge", "--no-edit", "-m", "docs: integrate documentation", "origin/dev");
+    const bookkeepingHead = gitIn(f.cwd, "rev-parse", "HEAD");
+    f.configurePr("example/example", bookkeepingHead);
+    const carried = await f.run();
+    expect(carried.code, carried.err).toBe(0);
+    expect(carried.json).toMatchObject({ head: f.head, mergeHead: bookkeepingHead });
+    env({ BKIT_SHIP_GATE_OVERRIDE: f.head });
+    const result = await f.run("--fresh-base");
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ passed: false, overridden: false });
+    expect(result.json.reason).toMatch(/dev|base/i);
+    expect(gitIn(f.cwd, "merge-base", dev, bookkeepingHead)).toBe(dev);
+    env({ BKIT_SHIP_GATE_OVERRIDE: bookkeepingHead });
+    expect((await f.run("--fresh-base")).code).toBe(19);
+  });
+
+  it("checks the named repository base and fails closed on missing evidence", async () => {
+    const f = freshBaseFixture();
+    const foreignDev = "d".repeat(40);
+    fs.writeFileSync(path.join(f.bin, "dev-sha"), foreignDev);
+    fs.writeFileSync(path.join(f.bin, "comparison"), "diverged\n");
+    const result = await cli(f.cwd, [
+      "gate",
+      "--pr=7",
+      "--repo=foreign/repo",
+      "--fresh-base",
+      `--snapshot=${f.snapshot}`,
+    ]);
+    expect(result.code, result.err).toBe(19);
+    expect(result.json).toMatchObject({ passed: false, repo: "foreign/repo" });
+    const calls = fs.readFileSync(f.calls, "utf-8");
+    expect(calls).toMatch(/(?:\/)?repos\/foreign\/repo\/commits\/dev/);
+    expect(calls).toMatch(/(?:\/)?repos\/foreign\/repo\/compare\//);
+    expect(calls).not.toMatch(/repos\/example\/example\/(?:commits|compare)/);
+    fs.writeFileSync(path.join(f.bin, "missing-base"), "");
+    const missing = await cli(f.cwd, ["gate", "--pr=7", "--repo=foreign/repo", "--fresh-base"]);
+    expect(missing.code, missing.err).toBe(20);
+    expect(missing.json.passed).toBe(false);
+    expect(missing.json.reason).toMatch(/base|dev|evidence/i);
+  });
+
+  it("refuses stale or missing MCP base evidence despite green CI without gh", async () => {
+    const f = freshBaseFixture();
+    const dev = f.advance();
+    const facts = path.join(f.bin, "gate-facts.json");
+    const ci = {
+      workflowRuns: JSON.parse(
+        fs.readFileSync(path.join(f.fixtureRoot, "runs", `${f.head}.json`), "utf-8"),
+      ),
+      jobs: JSON.parse(fs.readFileSync(path.join(f.fixtureRoot, "jobs", "1900.json"), "utf-8")),
+    };
+    const scope = {
+      ownerRepo: "example/example",
+      prNumber: 7,
+      headRefName: "feat/842-gate",
+      baseRefName: "dev",
+      pr: f.pr("example/example"),
+      ci,
+    };
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({
+        ...scope,
+        base: { ref: "dev", sha: dev, comparedHead: f.head, status: "diverged" },
+      }),
+    );
+    fs.writeFileSync(path.join(f.bin, "unavailable"), "");
+    const stale = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(stale.code, stale.err).toBe(19);
+    expect(stale.json).toMatchObject({ passed: false, overridden: false, repo: "example/example" });
+    fs.writeFileSync(facts, JSON.stringify(scope));
+    const missing = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(missing.code, missing.err).toBe(20);
+    expect(missing.json.passed).toBe(false);
+    fs.writeFileSync(
+      facts,
+      JSON.stringify({
+        ...scope,
+        ownerRepo: "foreign/repo",
+        base: { ref: "dev", sha: dev, comparedHead: f.head, status: "ahead" },
+      }),
+    );
+    const foreign = await f.run("--fresh-base", `--facts-file=${facts}`);
+    expect(foreign.code).not.toBe(0);
+    expect(foreign.json?.passed).not.toBe(true);
+    expect(foreign.err).toMatch(/scope|repository|ownerRepo/i);
+  });
+
+  function scopedMcpCiFixture() {
+    const f = freshBaseFixture();
+    const run = {
+      id: 1900,
+      workflow_id: 456,
+      path: ".github/workflows/bkit-ci.yml",
+      repository: { full_name: "example/example" },
+      head_repository: { full_name: "example/example" },
+      head_sha: f.head,
+      head_branch: "feat/842-gate",
+      event: "push",
+      status: "completed",
+      conclusion: "success",
+      html_url: "https://github.com/example/example/actions/runs/1900",
+    };
+    const job = {
+      id: 19001,
+      name: "bkit-tests-check",
+      status: "completed",
+      conclusion: "success",
+      run_id: run.id,
+      run_url: "https://api.github.com/repos/example/example/actions/runs/1900",
+      head_sha: f.head,
+    };
+    const facts = path.join(f.bin, "ci-provenance-facts.json");
+    const write = (runs: unknown[], jobs: unknown) =>
+      fs.writeFileSync(
+        facts,
+        JSON.stringify({
+          ownerRepo: "example/example",
+          prNumber: 7,
+          headRefName: "feat/842-gate",
+          baseRefName: "dev",
+          pr: f.pr("example/example"),
+          ci: { workflowRuns: { total_count: runs.length, workflow_runs: runs }, jobs },
+          base: {
+            ref: "dev",
+            sha: gitIn(f.cwd, "rev-parse", "origin/dev"),
+            comparedHead: f.head,
+            status: "ahead",
+          },
+        }),
+      );
+    fs.writeFileSync(path.join(f.bin, "unavailable"), "");
+    return { run, job, write, gate: () => f.run("--fresh-base", `--facts-file=${facts}`) };
+  }
+
+  it("rejects MCP green runs from another repository or workflow at the same head", async () => {
+    const f = scopedMcpCiFixture();
+    f.write([f.run], { total_count: 1, jobs: [f.job] });
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json.passed).toBe(true);
+    for (const run of [
+      { ...f.run, repository: { full_name: "foreign/repo" } },
+      { ...f.run, path: ".github/workflows/unrelated.yml" },
+      { ...f.run, repository: undefined },
+      { ...f.run, path: undefined, workflow_id: undefined },
+    ]) {
+      f.write([run], { total_count: 1, jobs: [f.job] });
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(run)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
+
+  it("rejects MCP capstone jobs belonging to another run", async () => {
+    const f = scopedMcpCiFixture();
+    // Actions --paginate --slurp yields page objects; the capstone can be on page two.
+    const pages = (job: unknown) => [
+      { total_count: 2, jobs: [{ ...f.job, id: 19002, name: "bkit-tests-unit" }] },
+      { total_count: 2, jobs: [job] },
+    ];
+    f.write([f.run], pages(f.job));
+    const control = await f.gate();
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({ passed: true, runId: 1900 });
+    for (const job of [
+      { ...f.job, run_id: 9999 },
+      { ...f.job, run_url: "https://api.github.com/repos/example/example/actions/runs/9999" },
+      { ...f.job, head_sha: "a".repeat(40) },
+      { ...f.job, run_url: "https://api.github.com/repos/foreign/repo/actions/runs/1900" },
+      { ...f.job, run_id: undefined },
+      { ...f.job, run_url: undefined },
+      { ...f.job, head_sha: undefined },
+    ]) {
+      f.write([f.run], pages(job));
+      const refused = await f.gate();
+      expect(refused.code, JSON.stringify(job)).not.toBe(0);
+      expect(refused.json).toMatchObject({ passed: false });
+    }
+  });
+
   it("accepts a green capstone at the head (exit 0) and says so", async () => {
     fixtureGh();
     const r = await gate(tmp(), "--head=green-capstone");
@@ -2754,6 +3064,85 @@ describe("bkit runs revalidate", () => {
         ["api", "repos/other/repo/rules/branches/dev"],
         ["workflow", "run", "ci.yml"],
       ]);
+    });
+  });
+
+  it("requires reconciliation for remote code first observed during revalidation while retaining bookkeeping reuse", async () => {
+    const { cwd, code, file } = shipRepo();
+    const origin = tmp("bkit-revalidate-origin-");
+    gitIn(origin, "init", "-q", "--bare");
+    gitIn(cwd, "remote", "add", "origin", origin);
+    fs.mkdirSync(path.join(cwd, "docs"));
+    fs.writeFileSync(path.join(cwd, "docs/architecture.md"), "ship bookkeeping\n");
+    gitIn(cwd, "add", "docs/architecture.md");
+    gitIn(cwd, "commit", "-qm", "docs: ship bookkeeping");
+    const bookkeeping = gitIn(cwd, "rev-parse", "HEAD");
+    gitIn(cwd, "push", "-qu", "origin", "feat/7-x");
+    const collaborator = tmp("bkit-revalidate-collaborator-");
+    gitIn(collaborator, "clone", "-q", "-b", "feat/7-x", origin, ".");
+    fs.writeFileSync(
+      path.join(collaborator, "late-feature.ts"),
+      "export const lateFeature = true;\n",
+    );
+    gitIn(collaborator, "add", "late-feature.ts");
+    gitIn(collaborator, "commit", "-qm", "feat: late remote feature");
+    gitIn(collaborator, "push", "-q", "origin", "feat/7-x");
+    const remote = gitIn(collaborator, "rev-parse", "HEAD");
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(bookkeeping);
+    const replies = {
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: remote })),
+      "run-list": JSON.stringify([{ status: "completed", conclusion: "success", headSha: remote }]),
+    };
+    fakeGhBin(replies);
+    const generic = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+    );
+    expect(generic.code, generic.err).toBe(0);
+    expect(generic.json).toMatchObject({ validatedHead: remote, revalidated: true });
+    const fake = fakeGhBin(replies);
+    const late = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(late.code, late.err).toBe(21);
+    expect(late.json).toMatchObject({
+      reconcileRequired: true,
+      currentHead: remote,
+      validatedHead: null,
+      revalidated: false,
+      dispatched: false,
+      probe: null,
+      wait: null,
+    });
+    expect(gitIn(cwd, "rev-parse", "origin/feat/7-x")).toBe(remote);
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(bookkeeping);
+    expect(fake.calls()).not.toMatch(/run list|workflow run/);
+
+    fakeGhBin({
+      "repo-view": "example/example",
+      "pr-view": JSON.stringify(openPr({ headRefOid: bookkeeping })),
+    });
+    const control = await revalidate(
+      cwd,
+      `--entry-head=${code}`,
+      `--code-head=${code}`,
+      `--file=${file}`,
+      "--require-reconciled",
+    );
+    expect(control.code, control.err).toBe(0);
+    expect(control.json).toMatchObject({
+      validatedHead: code,
+      currentHead: bookkeeping,
+      reconcileRequired: false,
+      revalidated: false,
+      dispatched: false,
     });
   });
 

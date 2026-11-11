@@ -1,5 +1,5 @@
 Verdict: CONCERNS
-Failures: 5
+Failures: 6
 Redesign: false
 
 <!-- verdict:end -->
@@ -10,93 +10,60 @@ Lens: Regression risk — touched surfaces, backwards compatibility, design-cove
 
 ## Surface-Area Map
 
-No design artifact exists (plan `Context & Goals`: "There is no design doc"), so step 7 design-coverage has nothing to check against.
+No design artifact exists (`docs/plans/202611/` holds only `891-build-gate-stuck-plan.md`, and the input names none), so design-coverage (Process step 7) does not apply. Group gate = `bkit:gate:static-unit` (static + `test:coverage:unit` + bats); it does not run `bkit:check:dist` or the capability check.
 
-- **Task 1** — `.bkit/core/engine/commands/workflow/tests.ts`: `JunitCase` (`:543`, public type export), `parseJunit` (`:582`), new `failingCases`, `MAX_FAILED_CASES`, `run` verb output and `test-run` row (`appendTestRun` `:178`, verdict `:1873-1880`).
-  - Consumers of `parseJunit` / `JunitCase`: `countReportFailures` (`tests.ts:156-164`), `judgeRed` / `judgeGreen` (`:630`, `:661`), `runTestFile` (`:1126-1132`), green loop (`:2328`), `.bkit/core/engine/audits/repo/test-file-script.integration.test.ts:17,90,152`, `.bkit/core/engine/commands/workflow/tests.test.ts:707-764,796` (two `toEqual<JunitCase[]>` assertions at `:717-727` and `:737-745`).
-  - Readers of `test-run` rows: `ledgers/status.ts:121` (`testRunProblem`), `commands/workflow/steps.ts:1177-1183`, `commands/workflow/run-facts.ts`, `checks/status-holes.ts:726,762`, `ledgers/telemetry.test.ts`, harvest (`scripts/harvest/bkit-harvest.mjs`). All read by key, so the additive fields are safe.
-- **Task 2** — `tests.ts` `testsCommand` (new `accept` verb, writes the new `accepted-failures` status row); `run-facts.ts` `MARK_ROWS` (`:338-345`).
-  - `MARK_ROWS` has a second, hand-kept copy at `scripts/harvest/bkit-harvest.mjs:1479` (used at `:1629`), pinned equal by `scripts/harvest/bkit-harvest.test.mjs:3021-3028`.
-  - New verbs are `use: "workflow"`, so they land in the engine-call journal that `checks/status-holes.ts` (advisory, fail-open) matches against the workflow contract.
-- **Task 3** — `tests.ts` `run` verb (`--accepted-from`, `{log}.accepted.json`, `BKIT_ACCEPTED_TESTS` in the `runToLog` env at `:1856-1860`). New consumer-facing env contract. The `run` verb's CI-evidence branch (`--ci-run`, `tests.ts:1790-1828`) returns before any gate runs, and debug Step 3 sends both modes through one call (`bkit-debug.md:374-376`). New `tests-accepted.integration.test.ts`.
-- **Task 4** — `tests.ts` new `failures` verb, which reads `test-run` and `accepted-failures` rows. Unknown verbs today exit `EXIT.USAGE` = 2 (`commands/lib.ts:41`, `:583-584`).
-- **Task 5** — `.bkit/core/engine/commands/workflow/decisions.ts` `pending` (`:527-583`) adds the `acceptedTests` output. Consumers: `bkit-ship.md:339` (holds `items` and `count` only), `bkit-ship.md:371` (`--defer`), `ledgers/telemetry.ts:428`. `count` and `--defer` are unchanged.
-- **Task 6** — `.bkit/core/workflows/bkit-build.md` § Decision Pause step 2 (`:134-152`), step 5 (`:194-221`), § Gate (`:288-297`). Behaviour is driven by `decisions compose` / `applyRecommendations` (`decisions.ts:231-259`, `:389-417`). Per-group verify (`bkit-build-plan-verify.md` steps 6 and 9) also produces gap items for the same pause. Render snapshot `bkit-build.none.txt`. Shared instruction text goes through `.bkit/instructions.md`.
-- **Task 7** — `bkit-build.md` Step 8 sub-step 8 (`:704`), Step 9 Context (`:792`, a prose `Context:` line, not a bash block), Step 12 (`:945`); `bkit-debug.md` Step 3 (`:376`, local and CI-evidence modes). Guarded by `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` (call-site probes at `:333-401`, Context probe at `:302-331`). Render snapshots `bkit-build.none.txt` and `bkit-debug.none.txt`.
-- **Task 8** — `.bkit/core/workflows/bkit-ship.md` § Confirm Assumed Items step 1 (`:337-346`). Routing on `ASSUMED_COUNT` is unchanged. Render snapshot `bkit-ship.none.txt`.
-- **Task 9** — `.bkit/shared/docs/testing.md` (new consumer runner contract), `.bkit/core/.bkit/workflows.md` § Group gate / § Local gate scripts, `docs/testing.md` § Key test files, `.bkit/core/.bkit/cli.md` (generated), mirrors and `dist/`.
-- **Untouched surfaces whose behaviour depends on the change**: `bkit tests changed` as run by holistic verify (`bkit-build-plan-verify.md:84`), gaps-remediate (`bkit-build-plan-gaps-remediate.md:104`) and debug-remediate (`bkit-debug-failure-remediate.md:77`). None of them receives `BKIT_ACCEPTED_TESTS`.
+- **TASK 1** — `JunitCase`, `parseJunit`, `runTestFile` in `.bkit/core/engine/commands/workflow/tests.ts`.
+  - Consumers of `JunitCase`: `judgeRed`, `judgeGreen`, `caseNames`, the `green` verb (all in tests.ts); `tests.test.ts:717` and `:737` (`toEqual<JunitCase[]>`, updated by the task). Additive nullable fields; no consumer reads them by spread into an output, so no shape break.
+  - `runTestFile` (tests.ts:1121-1134, private today): export only; signature unchanged. Runs `[...scriptCommand(BKIT_TEST_FILE_SCRIPT), test]` with `$BKIT_TEST_REPORT`.
+- **TASK 2** — shared utilities (high-risk, flagged).
+  - `installCommand` in `.bkit/core/engine/shared/package-manager.ts:23`: callers land.ts:167, worktrees.ts:641, branches.ts:2471, package-manager.test.ts:28, settings.test.ts:427. Optional field, default unchanged → backwards compatible.
+  - `install` (worktrees.ts:640-649) and `copyListed` (worktrees.ts:519) exported; `withCleanup` (ci/ci.ts:250, synchronous body, SIGINT/SIGTERM → `process.exit(128+signo)`, `CLEANUP_SIGNALS` at ci.ts:101, used by `slop` at ci.ts:314) exported unchanged.
+  - `runtime.ts` `assert` verb (inline `runtime-resolved` filter at runtime.ts:296-301) refactored to `latestRuntimeRow` — behaviour-preserving extraction of a live verb.
+- **TASK 3** — `loopProgress` / `LoopProgress` in `.bkit/core/engine/commands/workflow/counters.ts:267-335`; `LOOPS` (decisions.ts:173-197) and `compose` (decisions.ts:361-445).
+  - Consumers of `loopProgress`: `counters progress` verb (counters.ts:662-674; its output help does not list the new fields) and `decisions compose`. `loopTrend` (counters.ts:257-265) is unchanged but now sees gate counts folded in.
+  - Consumer of `counters progress` output: bkit-build.md Step 12 TESTS_LOOP (stuck/worse) — trend semantics change for the verify loop only.
+  - Ledger read: `test-run` rows written by `tests run` (tests.ts ~1840-1933, `appendTestRun` tests.ts:177-223) with `step`, `attempt`, `failures` (null when no reports / FAIL with 0 counted).
+- **TASK 4** — new pure module `tests-base.ts` (`caseFile`, `baseVerdict`); no existing consumers.
+- **TASK 5** — new verb `bkit tests base` registered in `testsCommand` (tests.ts).
+  - Reaches: `shipGate` (runs.ts:1088; `GateOptions.repo` optional at runs.ts:983; `gh repo view` fallback at runs.ts:1281-1285; code 80 when gh missing), `devBase` (worktrees.ts:179-195), `withoutHooks` (land.ts:104), `dropLandTree` (land.ts:90), `withCleanup`, `copyListed`, `install`, `runTestFile`, `latestRuntimeRow`.
+  - Boundaries crossed: git (worktree add/remove, merge-base), package-manager install, gh CLI (CI run lookup), child test runs. Test doubles: `tests/fixtures/gh/bin/gh` (non-`api`/non-`pr view` → exit 1 at gh:86-88), `tests/fixtures/gates/pnpm.cjs` (changed by this task; install branch requires `--frozen-lockfile`, records `fixture-install-args`).
+  - `pnpm.cjs` consumers: every `useGateRunner` integration test — changing arg forwarding touches all of them.
+  - `.bkit/cli.md` generated region.
+- **TASK 6** — `compose --base-check` in decisions.ts. Unknown flags are rejected today at lib.ts:238. Options list unchanged (`["Try again","Stop"]` / `["Try again","Decide"]`), so `applyRecommendations` (picks the loop item by its "Try again" option) is unaffected. `loopRecommended` changes meaning for `all`; it has no workflow reader.
+- **TASK 7** — `apply` in decisions.ts:476-537; `--by` gate at decisions.ts:500 (`--by must be headless or owner`). Writes the decision file (`Status: DECIDED`), read by `openDecision` and the resume path.
+- **TASK 8** — `OpenDecision` / `openDecision` (workflows.ts:245-298), header read by `^Key:` regex; consumers: `workflows start` resume facts output, bkit-build.md Contract **Resume** (bkit-build.md:43), `workflows.test.ts:488`, `:508`, `:526`, `workflow-shape.test.ts:250-266` ("resume facts" field list).
+- **TASK 9** — `.bkit/core/workflows/bkit-build.md` Decision Pause (lines 127-311: item rules at 140 and 147, `LOOP_FLAGS` at 151, compose at 158, step 4 owner route, step 6 route + `steps finish build-decision` at 272) and Step 9 sub-step 5 (lines 814-822). Consumers: render snapshot `bkit-build.none.txt`, `workflow-shape.test.ts`, `local-gate-audit.test.ts` (one `tests run` site per probe), **`.bkit/instructions.md` entries at lines 9788, 9795, 9965 and `instructions-coverage.test.ts:277-279`**, host mirrors.
+- **TASK 10** — bkit-build.md Contract **Resume** (line 43), Step 8 sub-steps 8-11 (lines 703-744: gate `tests run` block at 716, `steps finish build-group-gate` at 724, `counters route` with `{PAUSE_MAX}` in sub-step 11), Step 12 sub-step 4 (lines 996-1035). Same consumers as Task 9, plus the `resume facts` shape test.
+- **TASK 11** — `.bkit/core/prompts/bkit-build-plan-verify.md` Process step 6 (lines 71-84). Consumers: `.bkit/instructions.md` coverage, `.bkit/prompts.md` index, host mirrors. No render snapshot exists for prompts.
+- **TASK 12** — `.bkit/core/.bkit/workflows.md`, `docs/testing.md`, `docs/capabilities.md` (graph refresh), `dist/`, `.bkit/workflows.md` + host mirrors via `upgrade`.
 
 ## CRITICAL
 
-1. **(plan edit) Task 2 adds `accepted-failures` to one `MARK_ROWS` copy only, which repeats a known-broken pattern.**
-   - The engine copy is `run-facts.ts:338-345`. The harvest copy at `scripts/harvest/bkit-harvest.mjs:1479-1485` is not in the task, and `scripts/harvest/bkit-harvest.test.mjs:3021-3028` asserts the two sets are equal.
-   - Knowledge row `mark-rows-copies-must-stay-in-parity` (`docs/knowledge.jsonl:129`, winning row, no status so active) says: "Update both copies in the same change; the harvest parity test pins them equal."
-   - Without the second edit, the parity test fails. Harvest would also count the minutes before each accept toward the next step, so engine and harvest step minutes disagree.
-   - `test:harvest` (`package.json:83`) is in neither `bkit:gate:static-unit` nor CI, so no gate would catch this.
-   - Fix: add `**UPDATE:** MARK_ROWS in scripts/harvest/bkit-harvest.mjs` to Task 2. Add a `TEST FIRST` (and matrix row) to `bkit-harvest.test.mjs` asserting that `accepted-failures` is a mark row, next to the existing `engine-call` / `completeness` check at `:3028`.
-2. **(plan edit) Task 1 breaks two existing `parseJunit` tests and does not name them.**
-   - `tests.test.ts:717-727` and `:737-745` assert `toEqual<JunitCase[]>` objects with no `classname`.
-   - The fixture helpers `passed` / `failed` (`tests.test.ts:702-704`) write `classname="f"`, so after the change the parsed cases carry `classname: "f"`, or `""` for bare `<testcase>`.
-   - Both assertions fail, and the typed literal arrays stop type-checking against the widened required field.
-   - The tests step may only touch planned tests, so these updates must be declared.
-   - Fix: add `**UPDATE:**` lines for both tests in Task 1, and list them as updated tests with additive `classname` expectations.
-3. **(plan edit) Tests that cannot fail, or that are red only for an incidental reason.**
-   - Task 4 `exits 2 when the step has no test-run row` already passes on today's code. `bkit tests failures` is an unknown verb, and `runCommand` returns `EXIT.USAGE` = 2 for it (`commands/lib.ts:41`, `:583-584`). The planned red ("fails on exit 0") cannot happen.
-     - Fix: the test must also assert the verb's own refusal text (for example, that stderr names the step with no `test-run` row and does not say `unknown verb`). Alternatively, the verb can use a distinct exit code for "no row".
-   - Task 2 `refuses a truncated run` and `refuses a PASS run` give "a row being written" as their red. On today's code, `tests accept` is an unknown verb that writes nothing and exits 2, so a test asserting only "no row" passes before any code lands.
-     - Fix: each refusal test must assert exit 1 and the named refusal reason, as `DONE WHEN` already says.
-4. **(plan edit) Debug Step 3's CI-evidence mode gets `--accepted-from` with no defined behaviour and no test.**
-   - Task 7 adds `--accepted-from="{STATUS}"` to `bkit-debug.md:376`. That call also runs with `{CI_TEST_FLAGS}` = `--ci-run=… --ci-url=…` (`bkit-debug.md:374`).
-   - In that mode, the `run` verb records CI evidence and returns at `tests.ts:1828` before any gate runs. Task 3 does not say whether `--accepted-from` is ignored, refused, or still computes `onlyAccepted` / `unaccepted` there.
-   - An implementation that refuses the combination, or crashes on a missing JUnit folder, breaks debug's CI path. No `Derived Test Matrix` row exercises `--ci-run` with `--accepted-from`.
-   - Fix: state in Task 3 that with `--ci-run` the flag is accepted and no list is written. Add a Unit row and `TEST FIRST` in `tests.test.ts`: a `--ci-run --accepted-from` call exits as today and writes the same CI `test-run` row.
-5. **(plan edit) Accepted cases can still stall the build at Step 10 (holistic verify) and in fix rounds. The Out of Scope reason for deferring `tests changed` is contradicted by the code.**
-   - The plan defers `891-tests-changed-honours-accepted-tests` because "Agent self-checks report and do not route the workflow".
-   - That is not true of holistic verify. `bkit-build-plan-verify.md:84` runs `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit` across the whole feature diff. With no `bkit:gate:changed`, the fallback is the full unit gate, with no `BKIT_ACCEPTED_TESTS`. Its result feeds the report's `Verdict` / `Fixable`, which routes Step 10 into fix rounds and the Decision Pause (#889).
-   - Gaps-remediate (`bkit-build-plan-gaps-remediate.md:104`) and debug-remediate (`bkit-debug-failure-remediate.md:77`) are told "Every local test must pass". So any later fix round meets the accepted base-red tests and either edits the consumer's tests or reports `BLOCKED`.
-   - The Concrete Example's own case shows the risk: a dead-code registry test that fails because new files were added is exactly the kind of test `tests changed` selects.
-   - Fix (choose one, and add a matrix row for it):
-     - bring `tests changed --accepted-from` into scope for these three prompts; or
-     - add a task and Unit row proving that holistic verify and the remediate prompts treat failures of cases in an `accepted-failures` row (or in the build's decision file) as no gap / not theirs to fix. Then rewrite the Out of Scope reason to match.
+1. **(plan edit) Instruction-store drift breaks the group-4 gate.** Tasks 9, 10 and 11 reword and add standing lines in `.bkit/core/workflows/bkit-build.md` and `.bkit/core/prompts/bkit-build-plan-verify.md`, but no task UPDATEs `.bkit/instructions.md` or runs the instructions check then `pnpm instructions:sync`. The exact sentences the plan rewrites are stored at `.bkit/instructions.md:9788` ("A group-gate failure is never an item, because it is always fixed."), `:9795` (the TESTS_LOOP line) and `:9965` ("Fixable gaps and group-gate failures are always fixed, never asked."). `.bkit/core/engine/tools/instructions-coverage.test.ts:277-279` ("the repo > has no coverage findings") fails when a stored entry no longer exists in its file or a new standing line has no entry; the corpus includes `.bkit/core/workflows` (`instructions.ts:266`). It is a unit test, so it runs inside `bkit:gate:static-unit` and goes red after Task 9. Fix: add to Tasks 9, 10 and 11 an `**UPDATE:** .bkit/instructions.md` line (entries for the changed/added lines, by the no-flag instructions check first, then `pnpm instructions:sync --write`), and a `DONE WHEN` that `instructions-coverage.test.ts` passes.
+2. **(plan edit) Task 7 `TEST FIRST` cannot fail.** "apply --by=rerun refuses a file without `Gate: FAIL` or not `Status: OPEN` (usage error, nothing written)" already passes on current code: `.bkit/core/engine/commands/workflow/decisions.ts:500` throws `CommandError(EXIT.USAGE, "--by must be headless or owner")` for any `--by=rerun`, before writing. Fix: assert the refusal message names the missing `Gate: FAIL` / `Status: OPEN` condition, and pair it with the accepted positive case in the same test file so the refusal test is discriminating.
+3. **(plan edit) Task 6 `TEST FIRST` cannot fail.** "a malformed base check is a usage error" already passes on current code: `.bkit/core/engine/commands/workflow/lib.ts:238` throws `CommandError(EXIT.USAGE, "unknown flag --base-check")`. Fix: assert the error text names the shape problem (e.g. the missing/invalid `verdict` field), not only the exit code.
+4. **(plan edit) Task 5 fake gh cannot reach the `ci` source.** The plan has `testsBaseVerb` call `shipGate` at the base sha with no `repo`; `GateOptions.repo` is optional (`.bkit/core/engine/commands/workflow/runs.ts:983`) and when unset `shipGate` runs `gh repo view --json nameWithOwner` and refuses with "could not resolve repo" on failure (`runs.ts:1281-1285`). The planned stub `tests/fixtures/gh/bin/gh` exits 1 for anything but `gh api` / `pr view` (`tests/fixtures/gh/bin/gh:86-88`). So the row "a passing CI run at the exact base sha settles none (source ci)" cannot pass as planned, and the CI path would silently fall through to the local run in every test. Fix: Task 5 must resolve and pass `repo` explicitly (a `--repo` flag or a stated resolution), or the fixture must answer `repo view` (e.g. via `BKIT_FAKE_TOOL_SCRIPT`); name which in the task and the matrix row.
+5. **(plan edit) Task 5 fixture `dev` ref does not match what `devBase` reads.** The integration fixture describes "real temp git repos with a `dev` branch". `devBase` (`.bkit/core/engine/commands/workflow/worktrees.ts:179-182`) returns `origin/dev` when `refs/remotes/origin/dev` is absent, so `git merge-base HEAD origin/dev` fails and every case reports `unknown` ("no base commit"). The `all` / `some` / `none` rows cannot pass on such a fixture. Fix: the fixture creates `refs/remotes/origin/dev` (a bare origin or `git update-ref`), stated in Task 5's CREATE line.
+6. **(plan edit) Base-checkout environment copy is untested.** Task 5 runs `copyListed` (worktreeCopy, default `[".env", ".env.local"]`) into the detached base worktree, but no `Derived Test Matrix` row asserts a listed file is present during the base run. If the copy is missed, base cases fail for environment reasons, the verdict becomes a false `all`, and Task 6 tells the owner to "fix it on dev" — the exact wrong advice this feature exists to prevent. Fix: add a Task 5 integration row whose base-run test file reads a worktreeCopy entry and passes only when it was copied.
 
 ## OPTIONAL
 
-Flagged high-risk surfaces that no CRITICAL rule covers:
-
-- the public `JunitCase` type export;
-- the new consumer env contract `BKIT_ACCEPTED_TESTS`;
-- the Decision Pause, which is shared routing for every pause kind.
-
-Suggestions:
-
-1. **`onlyAccepted` can remove `Try again` while a fixable, unnamed failure is also present.**
-   - A gate that runs every stage (not chained with `&&`) can fail both on accepted cases its runner ignores and on a lint or typecheck step that writes no JUnit.
-   - `failures` counts only JUnit cases (`tests.ts:1874-1880`), so `onlyAccepted` = true. The pause then drops the loop question, although a round could fix the lint error.
-   - `Fix now` still leaves a way forward. Still, word the item so it says other unnamed failures may also be present, or set `onlyAccepted` only when no stage outside the reports failed, if that can be detected.
-2. **The headless edge case is not "as today".**
-   - Today, a stuck or worse `TESTS_LOOP` pause with no items gets options `Try again` / `Stop` with `Stop` recommended (`decisions.ts:389`, `:407-417`). A headless run then takes `Stop`: a handover, resumable.
-   - With the new hard-blocker item, the options become `Try again` / `Decide` with `Decide` recommended, so `decisions apply --by=headless` exits 4 and goes to the Failure Path (`bkit-build.md:171`).
-   - `ask` = false runs that are not headless now get asked, where today they are not (`bkit-build.md:172`).
-   - Record this under Breaking Changes, and add a Unit row to `decisions.test.ts` for the composed options.
-3. **The documented Vitest recipe skips by name, not by `classname` + `name`.**
-   - Vitest `testNamePattern` matches the full test name, not the file. A recipe built from `$BKIT_ACCEPTED_TESTS` also skips a same-named test in another file, which can hide a new failure there and break Success Criterion 2.
-   - The integration fixture skips by `classname` + `name`, so it does not reproduce this.
-   - Have the § Accepted failures docs warn about it, or give a per-file filter.
-4. **Task 7's test should cover the Step 9 `Context:` call explicitly.**
-   - The bash-block helper (`local-gate-audit.test.ts:333-348`) does not see the prose `Context:` line at `bkit-build.md:792`. Only the separate Context probe (`:302-331`) does.
-   - Without coverage, a missing `--accepted-from` there would leave the fix agent's gate red on accepted cases with no test failing.
-5. **The same failing tests can reach the pause twice.**
-   - The per-group verify report can also log the base-red failures as a gap (its step 9 checks `DONE WHEN` "a test passes"). In the reported incident, the owner's first `Accept` came from such an item, because `bkit-build.md:138` excludes gate failures.
-   - With Task 6, the pause can hold both a verify-gap item and the named-failure item. An `Accept` on the gap item writes only the `docs/decisions.jsonl` row, which is the original bug.
-   - Say in Task 6 which item wins, or run `tests accept` for any accepted gap that names the gate's failing cases. Add one `local-gate-audit.test.ts` assertion for it.
-6. **Make the integration case "a new failing case still fails the gate after an accept" also assert that `unaccepted` names the new case.**
-   - Its exit code comes from the fixture runner alone, so it does not show bkit's own matching.
-7. **After Task 6, run `bkit completeness check` on a dogfood build that pauses.**
-   - It confirms the new `tests failures` / `tests accept` journal entries in § Decision Pause match the derived contract (`checks/status-holes.ts` `workflowCalls`). The check is advisory, so a mismatch would otherwise go unseen.
+- **Concrete Example count.** The "3 → 3" gate-failure line does not match the described flow: one verify round yields a single count ("3") and trend `first-round`. Manual Verification step 1 inherits the same expectation.
+- **Mixed gate-ran / gate-skipped rounds.** The gate runs only when `VERIFY_VERDICT` = PASS and a later group exists (bkit-build.md Step 8 sub-steps 7-11). A round with no gate row counts 0, so `loopTrend` (counters.ts:257-265) can read a spurious `closing` (3 → 0) or `worse` (0 → 3). Add a Task 3 row across a round whose gate was skipped.
+- **Placeholder order on resume.** Task 10's `GATE_RERUN` route in Step 8 sub-step 11 and Step 12 sub-step 4 should sit after the `counters route` block that holds `{PAUSE_MAX}` (bkit-build.md:151), `PAUSE_STEP` and `PAUSE_POINT`; on a fresh-session resume the Decision Pause otherwise reaches compose with a literal placeholder.
+- **Resume ordering.** `apply --by=rerun` writes `Status: DECIDED` before `steps finish build-decision` (bkit-build.md:272). An interruption between them leaves no open decision, so the next resume goes through `status resume` without the re-run. Record the step first, or make the rerun apply idempotent.
+- **Headless Stop route.** A headless `Stop` re-runs Step 8 from verify (no Stop route in Decision Pause step 6). Pre-existing, but `all` makes `Stop` the recommendation more often; the plan already lists it in Suggested Scope Expansion.
+- **`counters progress` output help** (counters.ts:662-674) should name `gateCounts` and `rounds[].gateFailures`.
+- **`.bkit/prompts.md` index** — Task 11 changes a prompt's behaviour; confirm whether its index entry needs the new rule.
+- **CI-at-base manual check.** The `ci` source is proven only through the gh stub (`docs/testing.md:905` forbids real gh in tests). Add a Manual Verification step against a real green CI run at the exact base sha.
+- **Synchronous base run.** `withCleanup` (ci.ts:250) takes a synchronous body while `withoutHooks` (land.ts:104) is async; keep the base run's body synchronous inside it, or cleanup on SIGINT can race. Signal cleanup itself is covered in `ci.test.ts` / `push-gate.test.ts`.
+- **`pnpm.cjs` arg forwarding** (Task 5) changes the shared gate-runner fixture for every `useGateRunner` test; run the full integration lane, not only the new file, before closing Task 5.
+- **Last group.** The group-mode verify rule (Task 11) relies on the group gate, which does not run on the last group; state that Step 12 and holistic verify cover it there.
+- **Left-behind worktree.** A `bkit-base-*` worktree under `os.tmpdir()` survives SIGKILL; a prune on the next run would tidy it.
+- **Known failures acknowledged.** `docs/failures.jsonl:267` (`status-holes-tasks-tick-between-two-finish-lines`, OPEN) and the knowledge rows on dist staleness (`kn-7-dist-staleness…`) and the spawn-heavy unit suite are acknowledged by the plan; no re-entry found.
 
 ## OUT OF SCOPE
 
-1. **Wire bkit's own runners to `$BKIT_ACCEPTED_TESTS`** (deferral `891-bkit-repo-runners-skip-accepted-tests`). Until then, a `/bkit-build` of bkit itself on a red `dev` still stops at the "the gate does not skip accepted tests" item. The plan states this; it is noted here only so the dogfood run does not expect bkit's own gates to unblock.
-2. **Base-commit check before `Accept`** (Q1 option B, deferral `891-check-accepted-failures-on-the-base-commit`). This is the only way a headless run could accept base-red failures safely.
-3. **Make `MARK_ROWS` one shared source** (engine export read by harvest), so the parity gotcha in CRITICAL 1 cannot recur.
+- Detect environment-caused base failures by comparing base and head failure messages, instead of only the pass/fail state per case.
+- Redesign the headless `Stop` route of the Decision Pause.
+- Reuse the base check in `/bkit-ship` and `/bkit-debug` (already deferred by the plan).

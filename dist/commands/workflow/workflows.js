@@ -1236,7 +1236,7 @@ async function shipClose(ctx, o, token) {
         if (landed.via === "close-pr" && !fetchDev(root).ok)
             ctx.log(`fetch of dev after the close PR failed — origin/${DEV} is stale until the next fetch`);
         try {
-            worktree = removeWorktree(root, o.fid, o.branch, ctx.log);
+            worktree = removeWorktree(root, o.fid, o.branch, ctx.log, { landed: true });
         }
         catch (err) {
             ctx.log(`${err.message} — remove ${book} by hand`);

@@ -350,6 +350,25 @@ describe("gateguard behaviour parity — template copies", () => {
       expect(r.advisory).toContain("quality-gate config");
     });
 
+    it.each(["prettierignore.example", "lintstagedrc.example.json"])(
+      `${host}: bkit's own .bkit/templates/%s sample is a gate config`,
+      async (name) => {
+        const file = path.join(dogfood, ".bkit/templates", name);
+        const r = await run(host, { file, session: newSession() });
+        expect(r.advisory).toContain("quality-gate config");
+      },
+    );
+
+    it.each(["prettierignore.example", "lintstagedrc.example.json"])(
+      `${host}: a consumer's .bkit/templates/%s sample is not a gate config`,
+      async (name) => {
+        const file = path.join(consumer, ".bkit/templates", name);
+        const r = await run(host, { file, session: newSession() });
+        expect(r.advisory).toContain("[bkit GateGuard]");
+        expect(r.advisory).not.toContain("quality-gate config");
+      },
+    );
+
     it(`${host}: a relative .bkit/templates/.vale.ini resolves against the cwd's package (this is bkit's repo)`, async () => {
       const r = await run(host, { file: ".bkit/templates/.vale.ini", session: newSession() });
       expect(r.advisory).toContain("quality-gate config");

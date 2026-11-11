@@ -235,13 +235,40 @@ export function worktreeBase(cwd: string, workflow: string, log?: (m: string) =>
  * may bring docs and ledgers only, so such a branch can never land.
  */
 function inheritedDevCommits(root: string, branch: string): string[] {
+  if (!hasLocal(root, DEV)) return [];
+  const read = (args: string[]) => {
+    const result = runGit(root, args);
+    if (!result.ok)
+      throw new CommandError(
+        EXIT_REFUSED,
+        `cannot inspect unpublished ${DEV} work for ${branch}: ${result.stderr}`,
+      );
+    return result.stdout.trim();
+  };
   const unpushed = new Set(
-    (git(root, ["rev-list", `${ORIGIN_DEV}..${DEV}`]) ?? "").split("\n").filter(Boolean),
+    read(["rev-list", `${ORIGIN_DEV}..${DEV}`])
+      .split("\n")
+      .filter(Boolean),
   );
   if (unpushed.size === 0) return [];
-  return (git(root, ["rev-list", branch, "--not", ORIGIN_DEV]) ?? "")
+  return read(["rev-list", branch, "--not", ORIGIN_DEV])
     .split("\n")
     .filter((c) => unpushed.has(c));
+}
+
+/** Refuse a publication candidate that imports unpublished local dev ancestry. */
+export function assertShipEligible(root: string, candidate: string): void {
+  if (git(root, ["rev-parse", "--verify", "--quiet", `${candidate}^{commit}`]) === null)
+    throw new CommandError(EXIT_REFUSED, `cannot inspect ship candidate ${candidate}`);
+  const inherited = inheritedDevCommits(root, candidate);
+  if (inherited.length === 0) return;
+  const commits = inherited
+    .map((sha) => git(root, ["show", "-s", "--format=%h %s", sha]) ?? sha)
+    .join("; ");
+  throw new CommandError(
+    EXIT_REFUSED,
+    `${candidate} carries unpublished ${DEV} work: ${commits}. Publish ${DEV} separately (git push origin ${DEV}), then re-run ship; these commits must not be squashed into the feature.`,
+  );
 }
 
 /** Why a docs-only branch carrying unpushed `dev` cannot land, and what unblocks it. */
@@ -660,9 +687,143 @@ function install(wt: string, log: (m: string) => void): number {
 // Branch cleanup
 // ---------------------------------------------------------------------------
 
+/** Preserve NUL-delimited paths and the status columns that runGit trims. */
+function cleanupRead(root: string, args: string[]): ReturnType<typeof runGit> {
+  const result = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf-8",
+    env: gitEnv(),
+    maxBuffer: 1 << 26,
+  });
+  return {
+    ok: !result.error && result.status === 0,
+    stdout: result.stdout ?? "",
+    stderr: result.error?.message ?? result.stderr ?? "",
+  };
+}
+
+function treeEntry(root: string, rev: string, file: string): string | null {
+  const result = cleanupRead(root, ["ls-tree", "-z", rev, "--", file]);
+  if (!result.ok) throw new Error(`cannot inspect ${rev}:${file}: ${result.stderr}`);
+  return result.stdout === "" ? null : result.stdout.slice(0, result.stdout.indexOf("\t"));
+}
+
+function committedLines(root: string, rev: string, file: string): string[] {
+  if (treeEntry(root, rev, file) === null) return [];
+  const result = cleanupRead(root, ["show", `${rev}:${file}`]);
+  if (!result.ok) throw new Error(`cannot read ${rev}:${file}: ${result.stderr}`);
+  return result.stdout.split("\n").filter(Boolean);
+}
+
+/** Branch changes absent from dev, including deletions and tree-entry mode/type. */
+export function notOnDev(root: string, branch: string): string[] {
+  const base = git(root, ["merge-base", ORIGIN_DEV, branch]);
+  if (base === null) return [`${branch}: no common history with ${ORIGIN_DEV}`];
+  const changed = cleanupRead(root, ["diff", "--name-only", "-z", "--no-renames", base, branch]);
+  if (!changed.ok) return [`cannot inspect ${branch}: ${changed.stderr}`];
+  try {
+    return changed.stdout
+      .split("\0")
+      .filter((file) => file !== "" && file !== "docs/roadmap.md")
+      .filter((file) => {
+        const feature = treeEntry(root, branch, file);
+        const dev = treeEntry(root, ORIGIN_DEV, file);
+        if (feature === dev) return false;
+        if (
+          feature === null ||
+          dev === null ||
+          !file.endsWith(".jsonl") ||
+          !/^100(?:644|755) blob /.test(feature) ||
+          feature.split(" ").slice(0, 2).join(" ") !== dev.split(" ").slice(0, 2).join(" ")
+        )
+          return true;
+        const before = new Set(committedLines(root, base, file));
+        const onDev = new Set(committedLines(root, ORIGIN_DEV, file));
+        return committedLines(root, branch, file).some(
+          (line) => !before.has(line) && !onDev.has(line),
+        );
+      });
+  } catch (error) {
+    return [(error as Error).message];
+  }
+}
+
+/** Uncommitted files whose index or working contents are not already safely on dev. */
+function dirtyWork(root: string, wt: string, landed: boolean): string[] {
+  const status = cleanupRead(wt, [
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
+    "--",
+    ".",
+    ...copyExcludes(wt),
+  ]);
+  if (!status.ok) return [`cannot inspect dirty work: ${status.stderr}`];
+  const entries = status.stdout.split("\0").filter(Boolean);
+  const paths: string[] = [];
+  const staged = new Set<string>();
+  for (let i = 0; i < entries.length; i++) {
+    const row = entries[i]!;
+    const changed = [row.slice(3)];
+    if (/[RC]/.test(row.slice(0, 2))) changed.push(entries[++i]!);
+    paths.push(...changed);
+    if (row[0] !== " " && row[0] !== "?") {
+      for (const file of changed) staged.add(file);
+    }
+  }
+  if (!landed) return paths;
+  return paths.filter((file) => {
+    try {
+      if (
+        staged.has(file) &&
+        !cleanupRead(wt, ["diff", "--cached", "--quiet", ORIGIN_DEV, "--", file]).ok
+      )
+        return true;
+      const entry = treeEntry(root, ORIGIN_DEV, file);
+      const full = path.join(wt, file);
+      const stat = fs.lstatSync(full, { throwIfNoEntry: false });
+      if (stat === undefined) return entry !== null;
+      if (entry === null || (!stat.isFile() && !stat.isSymbolicLink())) return true;
+      const mode = stat.isSymbolicLink()
+        ? "120000"
+        : (stat.mode & 0o111) !== 0
+          ? "100755"
+          : "100644";
+      if (!entry.startsWith(`${mode} blob `)) return true;
+      const bytes = stat.isSymbolicLink()
+        ? Buffer.from(fs.readlinkSync(full))
+        : fs.readFileSync(full);
+      const hash = spawnSync("git", ["hash-object", "--stdin"], {
+        cwd: root,
+        input: bytes,
+        encoding: "utf-8",
+        env: gitEnv(),
+      });
+      if (hash.status !== 0) return true;
+      if (entry.endsWith(` ${hash.stdout.trim()}`)) return false;
+      if (!file.endsWith(".jsonl")) return true;
+      const onDev = new Set(committedLines(root, ORIGIN_DEV, file));
+      return bytes
+        .toString("utf-8")
+        .split("\n")
+        .filter(Boolean)
+        .some((line) => !onDev.has(line));
+    } catch {
+      return true;
+    }
+  });
+}
+
 /** The worktree (main checkout included) with `branch` checked out, else null. */
 export function worktreeHolding(root: string, branch: string): string | null {
-  const list = git(root, ["worktree", "list", "--porcelain"]) ?? "";
+  const result = cleanupRead(root, ["worktree", "list", "--porcelain"]);
+  if (!result.ok)
+    throw new CommandError(
+      EXIT_REMOVE,
+      `cannot inspect worktrees holding ${branch}: ${result.stderr}`,
+    );
+  const list = result.stdout;
   let current: string | null = null;
   for (const line of list.split("\n")) {
     if (line.startsWith("worktree ")) current = line.slice("worktree ".length);
@@ -672,14 +833,16 @@ export function worktreeHolding(root: string, branch: string): string | null {
 }
 
 /**
- * Delete `branch` locally and on origin. A worktree still holding it blocks
- * both deletes: the local one would fail, and the remote one would strand that
- * worktree's branch without its upstream.
+ * Delete the proved local tip atomically, then the proved remote tip. A worktree
+ * still holding the branch blocks both. The remote delete carries a lease on its
+ * proved tip, so origin refuses it when someone pushed after the proof.
  */
 function deleteBranch(
   root: string,
   branch: string,
   log: (m: string) => void,
+  expected: string,
+  remoteExpected: string | null,
 ): { branchDeleted: boolean; remoteDeleted: boolean; branchBlockedBy: string | null } {
   const holder = worktreeHolding(root, branch);
   if (holder !== null) {
@@ -688,17 +851,24 @@ function deleteBranch(
     );
     return { branchDeleted: false, remoteDeleted: false, branchBlockedBy: holder };
   }
-  if (hasLocal(root, branch)) {
-    const del = runGit(root, ["branch", "-D", branch]);
-    if (!del.ok) log(`git branch -D ${branch} failed: ${del.stderr}`);
+  const del = runGit(root, ["update-ref", "-d", `refs/heads/${branch}`, expected]);
+  if (!del.ok) log(`local ${branch} changed after its cleanup proof — preserved: ${del.stderr}`);
+  let remoteDeleted = false;
+  if (del.ok && remoteExpected !== null) {
+    const ref = `refs/heads/${branch}`;
+    const remote = runGit(root, [
+      "push",
+      `--force-with-lease=${ref}:${remoteExpected}`,
+      "origin",
+      `:${ref}`,
+    ]);
+    remoteDeleted = remote.ok;
+    if (!remote.ok) log(`remote origin/${branch} not deleted — preserved: ${remote.stderr}`);
   }
-  const remote = runGit(root, ["push", "origin", "--delete", branch]);
-  if (!remote.ok) log(`git push origin --delete ${branch} failed or it was already gone`);
-  runGit(root, ["fetch", "--prune", "origin"]);
   return {
-    branchDeleted: !hasLocal(root, branch),
-    remoteDeleted: remote.ok,
-    branchBlockedBy: null,
+    branchDeleted: del.ok,
+    remoteDeleted,
+    branchBlockedBy: del.ok ? null : "changed-after-proof",
   };
 }
 
@@ -714,14 +884,16 @@ export interface RemoveResult {
 
 /**
  * Remove `.worktrees/{fid}` when a workflow created it (the ownership marker),
- * prune stale entries, then delete `branch` locally and on origin unless another
- * worktree holds it. Throws EXIT_REMOVE when `git worktree remove` fails.
+ * preserve unlanded or dirty work, then delete the proved local and remote branch
+ * tips unless another worktree holds the branch. Throws EXIT_REMOVE
+ * when `git worktree remove` fails.
  */
 export function removeWorktree(
   cwd: string,
   fid: string,
   branch: string | undefined,
   log: (m: string) => void,
+  options: { landed?: boolean } = {},
 ): RemoveResult {
   if (branch !== undefined && isSharedBranch(branch)) {
     throw new CommandError(EXIT.USAGE, `refusing to delete branch ${branch}`);
@@ -729,25 +901,86 @@ export function removeWorktree(
   const root = repoRoot(cwd);
   const wt = worktreeDir(root, fid);
   const marker = ownershipMarker(root, fid);
-  const result = (removed: boolean, reason: string | null): RemoveResult => {
-    const cleanup = branch === undefined ? null : deleteBranch(root, branch, log);
+  let expected: string | null = null;
+  let remoteExpected: string | null = null;
+  const result = (removed: boolean, reason: string | null, removeBranch = false): RemoveResult => {
+    const cleanup =
+      branch === undefined || !removeBranch || expected === null
+        ? null
+        : deleteBranch(root, branch, log, expected, remoteExpected);
     return {
       removed,
       reason,
       worktreePath: wt,
       repoRoot: root,
-      branchDeleted: cleanup?.branchDeleted ?? null,
-      remoteDeleted: cleanup?.remoteDeleted ?? null,
-      branchBlockedBy: cleanup?.branchBlockedBy ?? null,
+      branchDeleted: cleanup?.branchDeleted ?? (branch === undefined ? null : false),
+      remoteDeleted: cleanup?.remoteDeleted ?? (branch === undefined ? null : false),
+      branchBlockedBy:
+        cleanup?.branchBlockedBy ?? (branch === undefined ? null : worktreeHolding(root, branch)),
     };
   };
+  if (fs.existsSync(wt) && !fs.existsSync(marker)) {
+    log(`${wt} exists but has no ownership marker (${marker}) — not ours, left in place`);
+    if (branch !== undefined)
+      log(
+        `${branch} is checked out in ${worktreeHolding(root, branch) ?? wt} — local and remote branch left in place`,
+      );
+    return result(false, "not-owned");
+  }
+  if (branch !== undefined) {
+    const holder = worktreeHolding(root, branch);
+    if (holder !== null && real(holder) !== real(wt)) {
+      log(`${branch} is checked out in ${holder} — local and remote branch left in place`);
+      return result(false, fs.existsSync(wt) ? "held-elsewhere" : "absent");
+    }
+    try {
+      fetchBranch(root, DEV);
+      expected = git(root, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+      if (expected === null) {
+        log(`cannot read local ${branch}; cleanup evidence unavailable — preserved`);
+        return result(false, "unavailable");
+      }
+      const missing = notOnDev(root, expected);
+      if (missing.length > 0) {
+        log(`${branch} carries work ${ORIGIN_DEV} does not — preserved: ${missing.join(", ")}`);
+        return result(false, "not-landed");
+      }
+      const remote = remoteHas(root, branch);
+      if (remote === "error") {
+        log(`cannot read remote origin/${branch}; cleanup evidence unavailable — preserved`);
+        return result(false, "unavailable");
+      }
+      if (remote === "yes") {
+        fetchBranch(root, branch);
+        const remoteMissing = notOnDev(root, `refs/remotes/origin/${branch}`);
+        if (remoteMissing.length > 0) {
+          log(
+            `remote origin/${branch} holds unlanded work — local worktree and remote branch preserved: ${remoteMissing.join(", ")}`,
+          );
+          return result(false, "remote-not-landed");
+        }
+        remoteExpected = git(root, [
+          "rev-parse",
+          "--verify",
+          "--quiet",
+          `refs/remotes/origin/${branch}^{commit}`,
+        ]);
+      }
+    } catch (error) {
+      log(`cleanup evidence unavailable — preserved: ${(error as Error).message}`);
+      return result(false, "unavailable");
+    }
+  }
+  if (fs.existsSync(wt)) {
+    const dirty = dirtyWork(root, wt, options.landed === true);
+    if (dirty.length > 0) {
+      log(`${wt} holds uncommitted work — preserved: ${dirty.join(", ")}`);
+      return result(false, "uncommitted");
+    }
+  }
   if (!fs.existsSync(wt)) {
     runGit(root, ["worktree", "prune"]);
-    return result(false, "absent");
-  }
-  if (!fs.existsSync(marker)) {
-    log(`${wt} exists but has no ownership marker (${marker}) — not ours, left in place`);
-    return result(false, "not-owned");
+    return result(false, "absent", true);
   }
   const inside = !path.relative(real(wt), real(cwd)).startsWith("..");
   const res = runGit(root, ["worktree", "remove", "--force", wt]);
@@ -755,7 +988,7 @@ export function removeWorktree(
   runGit(root, ["worktree", "prune"]);
   fs.rmSync(marker, { force: true });
   if (inside) log(`the working directory was inside ${wt} — cd to ${root}`);
-  return result(true, null);
+  return result(true, null, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -896,6 +1129,20 @@ export const worktreesCommand: CommandSpec = {
               : `refusing to ship ${target} as a feature branch`,
           );
         }
+        if (workflow === "ship" && git(root, ["remote", "get-url", "origin"]) !== null) {
+          fetchBranch(root, DEV);
+          const remote = remoteHas(root, target);
+          if (remote === "error")
+            throw new CommandError(
+              EXIT_FETCH,
+              `cannot fetch origin ${target}: remote branch evidence unavailable`,
+            );
+          if (remote === "yes") {
+            fetchBranch(root, target);
+            assertShipEligible(root, `refs/remotes/origin/${target}`);
+          }
+          if (hasLocal(root, target)) assertShipEligible(root, `refs/heads/${target}`);
+        }
         if (
           workflow === "debug" &&
           named &&
@@ -965,7 +1212,12 @@ export const worktreesCommand: CommandSpec = {
             );
           }
           if (workflow === "ship" && git(root, ["branch", "--show-current"]) !== target) {
-            const sw = runGit(root, ["switch", target]);
+            const sw = runGit(
+              root,
+              hasLocal(root, target)
+                ? ["switch", target]
+                : ["switch", "--no-track", "-c", target, `refs/remotes/origin/${target}`],
+            );
             if (!sw.ok) {
               if (!hasLocal(root, target) && remoteHas(root, target) !== "yes") {
                 throw new CommandError(
@@ -1140,27 +1392,28 @@ export const worktreesCommand: CommandSpec = {
     },
     remove: {
       summary:
-        "Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch.",
+        "Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local and remote branch at their proved landed tips.",
       use: "workflow",
       flags: [
         FID_FLAG,
         {
           name: "branch",
           type: "string",
-          help: "feature branch to delete locally and on origin once the worktree is gone; skipped when another worktree still holds it",
+          help: "feature branch to delete locally and on origin only at its proved landed tips; preserve unlanded/uncertain work",
         },
       ],
       output: {
         removed: "the worktree was removed",
-        reason: "why it was not: absent | not-owned (no .worktree-owned marker); null when removed",
+        reason:
+          "why it was not removed: absent | not-owned | held-elsewhere | uncommitted | not-landed | remote-not-landed | unavailable; null when removed",
         worktreePath: "the worktree's path",
         repoRoot: "the main checkout — cd here if the shell was inside the removed worktree",
         branchDeleted:
-          "--branch: the local branch is gone (deleted or already absent); null without --branch",
+          "--branch: the proved local tip was atomically deleted; false when preserved or unavailable, null without --branch",
         remoteDeleted:
-          "--branch: git push origin --delete succeeded; false when it failed or was already gone; null without --branch",
+          "--branch: the remote branch was deleted at its proved landed tip; false when absent, refused or changed, null without --branch",
         branchBlockedBy:
-          "--branch: the worktree still holding the branch, so neither the local nor the remote branch was deleted; null when none",
+          "--branch: the worktree still holding the branch or changed-after-proof; null when none",
       },
       exitCodes: { [EXIT_REMOVE]: "git worktree remove failed" },
       run: (ctx) => {

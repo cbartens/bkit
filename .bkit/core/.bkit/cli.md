@@ -85,7 +85,7 @@ Sync, push, land and rebase branches; stamp and read a doc's base-commit anchor.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `parse` | workflow | **`--prompt-file`** `--workflow` | Read an explicitly named or existing branch from the session prompt. |
-| `sync` | workflow | `--head` `--merge` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
+| `sync` | workflow | `--feature-state` `--month` `--reconcile-feature` `--head` `--merge` `--target` `--merge-docs` `--fid` `--file` `--sentinel` | Fetch origin/dev; report whether it is an ancestor of HEAD (Path A/B) and how far docs/ and the ledgers are behind; optionally merge it in. |
 | `regenerate` | workflow | `--fid` `--attempt` `--file` | Run a declared bkit:generate on the feature branch and commit only the paths it changed (ship Step 10's fix round). |
 | `push` | workflow | **`--mode`** `--set-upstream` `--ahead-of` `--commit` `--label` `--file` `--workflow` `--require-ci` `--open-pr` `--fid` | Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held. |
 | `fast-forward` | workflow | **`--onto`** | Fetch a remote branch and fast-forward the checkout onto it; refuse when diverged. |
@@ -257,8 +257,8 @@ Open and probe pull requests, and audit the close transport.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `open` | workflow | **`--fid`** **`--title`** `--issue` `--base` `--head` `--plan` `--note` `--existing` `--file` `--workflow` | Open a PR whose body carries the bkit:issue / bkit:fid marker (exit 80: use MCP). |
-| `probe` | by hand | `--head` `--base` `--state` `--number` | The open (or open-then-merged) PR for a branch, or one PR by number. |
-| `merge` | workflow | **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
+| `probe` | by hand | `--head` `--base` `--state` `--number` `--ship-entry` `--owner-repo` `--facts-file` | The open (or open-then-merged) PR for a branch, or one PR by number. |
+| `merge` | workflow | `--ship-retry` `--facts-file` `--owner-repo` **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
 | `update-branch` | workflow | **`--number`** `--only-if-required` | Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch). |
 | `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP). |
 | `verbose-ci` | workflow | **`--number`** **`--state`** | Add ` bkit [verbose ci]` to a PR title, or strip it (with an optional `bkit ` prefix); a no-op when already so. |
@@ -298,8 +298,8 @@ CI runs: wait for one, prove one was dispatched, re-validate and gate a merge on
 | `wait` | by hand | `--pr` `--head` `--branch` `--until` `--budget-s` `--interval-s` `--once` `--dispatch-if-absent` | Bounded poll for a CI check on a PR (--pr) or a CI run at a head (--head --branch), present or completed. |
 | `handoff` | workflow | `--invocation` **`--repo`** `--pr` **`--head`** **`--branch`** `--budget-s` `--interval-s` **`--result`** **`--polls`** | Persist one batch of CI poll observations into the invocation's run and derive the phase, cumulative attempts and errors, next action and verdict from the persisted rows (poll-again \| retrigger \| reconcile-retrigger \| verdict). Rows for another repo, PR or head never count. |
 | `dispatch` | workflow | `--invocation` `--pr` `--sha` **`--fid`** `--label` `--file` `--workflow` `--step` `--artifact` `--field` `--budget-s` `--interval-s` `--poll-result` `--attempts` `--all-errored` `--retriggered` | CI-Dispatch Gate after the last push: poll, one clean re-trigger, the ciDispatch verdict, and the body scan. A run in place on dev has no PR: it polls the push-event run at the pushed sha, and its re-trigger commits and pushes only the run's own work. With --invocation it resumes from the persisted `runs handoff` rows: attempts, errors and the re-trigger checkpoint are never supplied. |
-| `gate` | workflow | `--ci-selection-file` `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
-| `revalidate` | workflow | **`--pr`** **`--entry-head`** **`--code-head`** **`--branch`** **`--month`** **`--fid`** **`--file`** `--reason` `--repo` | Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete. |
+| `gate` | workflow | `--ci-selection-file` `--fresh-base` `--facts-file` `--head` `--pr` `--squash-of` `--snapshot` `--record` `--validated` `--month` `--fid` `--repo` `--branch` `--fetch` `--event` `--file` `--capstone-only` | Ship merge gate: the capstone job present and green at the head (exit 0), or why not. |
+| `revalidate` | workflow | `--require-reconciled` **`--pr`** **`--entry-head`** **`--code-head`** **`--branch`** **`--month`** **`--fid`** **`--file`** `--reason` `--repo` | Ship: pick the head CI must pass at, probe for a run there, dispatch only when none, wait for it to complete. |
 | `mirror` | workflow | **`--head`** `--branch` `--repo` `--ci-workflow` `--capstone` `--absent-minutes` `--max-minutes` `--interval-s` | Release PR: wait for the branch's push run at the head and copy its capstone verdict. |
 | `context` | workflow | **`--phase`** **`--arg`** `--marker` | /bkit-auto Step 1: the phase and mode, the repo, and the issue / FID / PR / run the dispatch carries. |
 | `declared` | by hand | — | Whether the repo declares a CI workflow: .github/workflows/<bkit.testing.ciWorkflow> exists (exit 0) or not (exit 1). |
@@ -408,6 +408,6 @@ Set up and remove the per-feature worktrees under .worktrees/.
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
 | `setup` | workflow | **`--workflow`** **`--fid`** **`--month`** `--worktrees` `--detect` `--branch` `--issue` | Create, resume or adopt the feature's worktree (Step 2 — Worktree Setup). |
-| `remove` | workflow | **`--fid`** `--branch` | Remove .worktrees/{fid} when a workflow created it, prune stale entries, and delete the feature branch. |
+| `remove` | workflow | **`--fid`** `--branch` | Remove a workflow-owned worktree when its work is safely on dev; conditionally delete its local and remote branch at their proved landed tips. |
 
 <!-- cli:end -->

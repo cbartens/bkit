@@ -57,7 +57,9 @@ tools:
 5. Confirm the merge state the caller left:
    - Record the branch head with `git rev-parse HEAD`, and append a log entry naming it.
    - Run `git rev-parse -q --verify MERGE_HEAD`.
-   - **If** it prints nothing → no merge of `origin/dev` is in progress, so there is no conflict here to resolve:
+   - Resolve the caller's engine-recorded `{MERGE_TARGET}` with `git rev-parse --verify "{MERGE_TARGET}^{commit}"` and compare it with `MERGE_HEAD`.
+   - **If** either value is unreadable or the values differ → set `Verdict` = `FAIL` with `Edit`, name the target mismatch in the log and go straight to setting `Verdict`.
+   - **If** it prints nothing → no merge of the recorded target is in progress, so there is no conflict here to resolve:
      - Set `Verdict` = `FAIL` with `Edit`.
      - Go straight to setting `Verdict`.
    - Append a log entry.
@@ -65,7 +67,7 @@ tools:
    ```bash
    BKIT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"
    [ -x "$BKIT" ] || BKIT="$(command -v bkit || echo "$BKIT")"
-   "$BKIT" branches sync --merge --file="{STATUS}"
+   "$BKIT" branches sync --merge --target="{MERGE_TARGET}" --file="{STATUS}"
    case $? in
      0) echo "MERGE_COMPLETE" ;;
      24) echo "HAND_RESOLVE" ;;
@@ -80,11 +82,11 @@ tools:
      - Go straight to setting `Verdict`.
 7. Classify the conflicts:
    - List the conflicted files with `git diff --name-only --diff-filter=U`.
-   - List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline origin/dev`, then append a log entry.
+   - List each side's recent commits with `git log -5 --oneline HEAD` and `git log -5 --oneline "{MERGE_TARGET}"`, then append a log entry.
    - Classify each conflicted file against these two lists, then append a log entry:
      - `Allowed resolutions`:
        - Non-overlapping additive edits to the same file → concatenate them, keeping both sides.
-       - Formatting-only drift (whitespace, trailing newline, prettier output) → take `origin/dev`'s format.
+       - Formatting-only drift (whitespace, trailing newline, prettier output) → take the recorded target's format.
        - A dependency manifest bump on one side only (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`) → take the bump.
        - Additive JSON array entries or object property additions with no key or position overlap → concatenate them.
      - `Refused resolutions`:
@@ -108,7 +110,7 @@ tools:
    - **If** it exits non-zero → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Set `Verdict` in **Create** with `Edit`:
     - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header.
-    - `PASS` = a merge of `origin/dev` was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
+    - `PASS` = a merge of the recorded target was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
     - `FAIL` = no merge was in progress, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the merge, **or** any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:
     - **If** `git rev-parse -q --verify MERGE_HEAD` prints a SHA:

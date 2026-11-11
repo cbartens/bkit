@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { writeTier1, writeTier2, ensurePackageJsonScripts } from "../write.js";
 import { readBkitVersion, writeBkitVersion, hashFile, mergeCanonicalHashes, sha256, } from "../version-file.js";
 import { extractManagedBlock, findLineAnchoredMarkers, selectMarkers, stripManagedBlock, } from "../managed-block.js";
-import { listFilesRecursive, syncTemplateCopies } from "../template-copies.js";
+import { listFilesRecursive, warnMissingLintStagedConfig, syncTemplateCopies, } from "../template-copies.js";
 import { PAYLOAD_LINK_RELPATHS, syncPayloadLinks } from "../payload-links.js";
 import { writeNetworkAllowlist } from "../network-allowlist.js";
 import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
@@ -1608,7 +1608,7 @@ export function detectGateAdvisories(cwd) {
             id: "test-file-script-missing",
             severity: "advisory",
             detect: `package.json does not declare \`${BKIT_TEST_FILE_SCRIPT}\`, so \`/bkit-build\` cannot check that each task's tests fail before its code is written.`,
-            action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\nCall the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
+            action: `Add \`${BKIT_TEST_FILE_SCRIPT}\` to package.json: it runs the ONE test file bkit appends as its argument (repo-relative path) and writes a JUnit report to the path in \`$BKIT_TEST_REPORT\`. Vitest example:\n\n    "${BKIT_TEST_FILE_SCRIPT}": "vitest run --reporter=default --reporter=junit --outputFile.junit=\\"$BKIT_TEST_REPORT\\""\n\njest reads a bare path as a regex, so a folder such as \`(tabs)\` matches no file: pass \`--runTestsByPath\`. Call the runner directly, not through a task runner that caches results or runs dependent packages first. A monorepo routes the path to the package and config that own it.`,
         });
     }
     // A red recorded before the linter sees the test: a lint rewrite after it reads as an
@@ -1702,6 +1702,7 @@ export function runCoreModule(ctx) {
             console.log(`${logPrefix} ${tag}template ${verb}: ${path.join(TEMPLATE_COPIES_DIR, p)}`);
         }
     }
+    warnMissingLintStagedConfig(cwd, logPrefix);
     // 3b3. Payload view links — `.bkit/core` + `.bkit/shared` symlinks into the
     // installed package (browse-only, gitignored; no-op in dogfood). A real
     // directory or file at either path is never clobbered (advisory); a platform

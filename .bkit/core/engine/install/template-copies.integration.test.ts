@@ -7,6 +7,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./modules/index";
 import { formatTemplateChanges, syncTemplateCopies } from "./template-copies";
@@ -84,7 +85,7 @@ describe("the templates root is the copy-and-own set", () => {
       ".husky/pre-push",
       ".vale.ini",
       ".vale/styles/Bkit/LLMSlop.yml",
-      ".prettierignore",
+      "prettierignore.example",
       ".oxlintrc.json",
       ".envrc",
       ".cursor/Dockerfile",
@@ -216,5 +217,73 @@ describe("uninstall", () => {
       logPrefix: "[bkit-test]",
     });
     expect(fs.existsSync(path.join(tmpDir, COPIES))).toBe(false);
+  });
+});
+
+describe("the sample configs do not act as live configs in a consumer", () => {
+  it("ships the sample configs under non-discoverable names", () => {
+    runCore();
+    const copies = copiedTemplates();
+    expect(copies).toContain("lintstagedrc.example.json");
+    expect(copies).toContain("prettierignore.example");
+    expect(copies).not.toContain(".lintstagedrc.json");
+    expect(copies).not.toContain(".prettierignore");
+
+    const stale = path.join(tmpDir, COPIES, ".lintstagedrc.json");
+    fs.writeFileSync(stale, "{}\n", "utf-8");
+    const live = syncTemplateCopies(tmpDir, { dryRun: false, ws: { writes: [] } });
+    expect(live.removed).toContain(".lintstagedrc.json");
+    expect(fs.existsSync(stale)).toBe(false);
+  });
+
+  it("leaves a staged template copy unchanged under plain lint-staged", () => {
+    runCore();
+    const repoRoot = path.resolve(getPkgRoot());
+    fs.symlinkSync(path.join(repoRoot, "node_modules"), path.join(tmpDir, "node_modules"));
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", private: true }),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".lintstagedrc.json"),
+      JSON.stringify({ "*": "prettier --write --ignore-unknown" }),
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(tmpDir, ".prettierignore"), ".bkit/templates/\n", "utf-8");
+
+    const git = (...args: string[]) =>
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.name=t",
+          "-c",
+          "user.email=t@example.com",
+          "-c",
+          "commit.gpgsign=false",
+          ...args,
+        ],
+        { cwd: tmpDir, encoding: "utf-8" },
+      );
+    expect(git("init", "-q").status).toBe(0);
+    expect(git("add", "package.json", ".lintstagedrc.json", ".prettierignore").status).toBe(0);
+    expect(git("commit", "-q", "-m", "init").status).toBe(0);
+
+    const rel = path.join(COPIES, "scripts", "unformatted-copy.mjs");
+    const abs = path.join(tmpDir, rel);
+    const bytes = "const   a  =   { b:1,\n c:2 }\n";
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, bytes, "utf-8");
+    expect(git("add", "-f", rel).status).toBe(0);
+
+    const run = spawnSync("pnpm", ["lint-staged"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 90_000,
+      env: { ...process.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined },
+    });
+    expect(run.status, `${run.stdout}\n${run.stderr}`).toBe(0);
+    expect(fs.readFileSync(abs, "utf-8")).toBe(bytes);
   });
 });
