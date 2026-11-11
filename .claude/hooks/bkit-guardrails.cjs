@@ -448,7 +448,27 @@ function shellEditContext(notice, edits, ctx, sessionId, agentId, budget, outsid
 // one source). Needs `fs` and `path` in scope; the host's own code above declares them.
 
 /** Wrappers that precede the real command; skipped when finding a command's program. */
-const CMD_WRAPPERS = new Set(["sudo", "env", "time", "nohup", "nice", "command", "exec", "xargs"]);
+const CMD_WRAPPERS = new Set([
+  "sudo",
+  "env",
+  "time",
+  "nohup",
+  "nice",
+  "command",
+  "exec",
+  "xargs",
+  "timeout",
+]);
+
+/** Short options of each wrapper that take the next word as their argument. */
+const WRAPPER_OPTION_ARGS = {
+  xargs: new Set(["-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "-J"]),
+  sudo: new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "-r", "-t"]),
+  nice: new Set(["-n"]),
+  env: new Set(["-u", "-C", "-S"]),
+  timeout: new Set(["-k", "-s"]),
+  exec: new Set(["-a"]),
+};
 
 /** Split a command line into pipeline / list segments. */
 function shellSegments(cmd) {
@@ -600,6 +620,7 @@ function newEvidence(ctx) {
     limit: null,
     halted: false,
     commands: 0,
+    produced: new Map(),
     startWall: Date.now(),
     startCpu: cpuMs(),
   };
@@ -735,6 +756,7 @@ function lexShell(text, st, depth) {
       else if (r.op === "<") cmd.stdinFile = word.t;
       else if (r.op === "<<<") cmd.hereString = word.t;
       else if (r.op === ">" && !r.ignore) cmd.redirects.push(word.t);
+      else if (r.op === ">" && r.dup && !/^(\d+|-)$/.test(word.t)) cmd.redirects.push(word.t);
       return;
     }
     cmd.words.push(word.t);
@@ -885,7 +907,7 @@ function lexShell(text, st, depth) {
         i++;
       } else if (text[i + 1] === ">") {
         pushWord();
-        pending = { op: ">", ignore: true };
+        pending = { op: ">", ignore: false };
         i += text[i + 2] === ">" ? 2 : 1;
       } else {
         endCommand(false);
@@ -907,18 +929,22 @@ function lexShell(text, st, depth) {
     }
     if (ch === ">" || ch === "<") {
       let fd = false;
+      let stdoutFd = false;
       if (cur.started && cur.digits && !cur.quoted) {
         fd = true;
+        stdoutFd = ch === ">" && cur.t === "1";
         cur = newLexWord();
       } else pushWord();
       let op = ch;
       let strip = false;
-      let ignore = fd;
+      let ignore = fd && !stdoutFd;
+      let dup = false;
       let j = i + 1;
       if (ch === ">") {
         if (text[j] === ">" || text[j] === "|") j++;
         else if (text[j] === "&") {
           ignore = true;
+          dup = !fd || stdoutFd;
           j++;
         }
       } else if (text[j] === "<") {
@@ -941,7 +967,7 @@ function lexShell(text, st, depth) {
         j++;
       }
       i = j - 1;
-      pending = { op, strip, ignore };
+      pending = { op, strip, ignore, dup };
       continue;
     }
     if (!cur.started && ch === "~") cur.dyn = true;
@@ -979,8 +1005,17 @@ function stripCommandPrefix(words) {
       CMD_WRAPPERS.has(words[i]) ||
       KEYWORD_PREFIX.has(words[i]))
   ) {
-    if (words[i] === "xargs") viaXargs = true;
+    const wrapper = words[i];
+    if (wrapper === "xargs") viaXargs = true;
     i++;
+    if (!CMD_WRAPPERS.has(wrapper)) continue;
+    const withArg = WRAPPER_OPTION_ARGS[wrapper];
+    while (i < words.length && words[i].startsWith("-") && words[i].length > 1) {
+      const opt = words[i++];
+      if (opt === "--") break;
+      if (withArg && withArg.has(opt)) i++;
+    }
+    if (wrapper === "timeout" && i < words.length) i++;
   }
   return { words: words.slice(i), viaXargs };
 }
@@ -1125,10 +1160,20 @@ function evalCommand(cmd, st, depth, cwd) {
         st.uncertain.add("unresolved-target");
       }
     } else if (!target.startsWith("&")) addEvidenceTarget(st, target, cwd, false);
+    if (!cmd.dyn.has(target) && !target.startsWith("&")) {
+      const sole = cmd.words.length === 1 && cmd.words[0].replace(/^.*\//, "") === "cat";
+      markProduced(
+        st,
+        target,
+        cwd,
+        sole && cmd.heredoc && cmd.heredoc.quoted ? cmd.heredoc.body : null,
+      );
+    }
   }
   if (words.length === 0) return cwd;
   const program = words[0].replace(/^.*\//, "");
   const args = words.slice(1);
+  if (viaXargs) cmd.dyn.add("{}");
   const inPlaceTargets = (files) => {
     for (const f of files) addWordTarget(st, cmd, f, cwd, true);
     if (viaXargs) st.uncertain.add("unknown-stdin");
@@ -1145,7 +1190,10 @@ function evalCommand(cmd, st, depth, cwd) {
     case "popd":
       return null;
     case "tee":
-      for (const f of operands(args)) addWordTarget(st, cmd, f, cwd, false);
+      for (const f of operands(args)) {
+        addWordTarget(st, cmd, f, cwd, false);
+        if (!cmd.dyn.has(f)) markProduced(st, f, cwd, null);
+      }
       return cwd;
     case "sed": {
       const files = sedFiles(args);
@@ -1186,17 +1234,43 @@ function evalCommand(cmd, st, depth, cwd) {
     case "dash":
     case "ksh": {
       const c = args.findIndex((w) => /^-[a-z]*c$/.test(w));
-      if (c < 0 || args[c + 1] === undefined) return cwd;
-      const script = args[c + 1];
-      if (cmd.dyn.has(script)) {
-        st.uncertain.add("unknown-script-effect");
-        return cwd;
+      let script = null;
+      if (c >= 0 && args[c + 1] !== undefined) {
+        script = args[c + 1];
+        if (cmd.dyn.has(script)) {
+          st.uncertain.add("unknown-script-effect");
+          return cwd;
+        }
+      } else {
+        const file = operands(args)[0];
+        if (file !== undefined) {
+          if (cmd.dyn.has(file)) {
+            st.uncertain.add("unavailable-source");
+            return cwd;
+          }
+          script = readBoundedSource(st, file, cwd);
+        } else if (cmd.heredoc || cmd.hereString !== null || cmd.stdinFile || cmd.piped) {
+          script = knownStdin(cmd, st, cwd);
+        }
+        if (script === null) return cwd;
       }
       if (depth + 1 > EVIDENCE_LIMITS.depth) {
         evidenceLimit(st, "depth");
         return cwd;
       }
       evalItems(lexShell(script, st, depth + 1), st, depth + 1, cwd);
+      return cwd;
+    }
+    case "find": {
+      const start = args.findIndex((w) => /^-(exec|execdir|ok|okdir)$/.test(w));
+      if (start < 0) return cwd;
+      let end = start + 1;
+      while (end < args.length && args[end] !== ";" && args[end] !== "+") end++;
+      const sub = args.slice(start + 1, end);
+      if (sub.length === 0) return cwd;
+      const dyn = new Set(cmd.dyn);
+      dyn.add("{}");
+      evalCommand({ ...cmd, words: sub, dyn, redirects: [] }, st, depth, cwd);
       return cwd;
     }
     case "git":
@@ -1212,7 +1286,13 @@ function evalCommand(cmd, st, depth, cwd) {
       evalInterpreter(cmd, st, program.startsWith("python") ? "python" : "js", args, cwd);
       return cwd;
     default:
-      if (/\//.test(words[0]) && /\.(py|js|mjs|cjs)$/.test(words[0])) {
+      if (/\//.test(words[0]) && /\.(sh|bash|zsh)$/.test(words[0])) {
+        const script = readBoundedSource(st, words[0], cwd);
+        if (script !== null) {
+          if (depth + 1 > EVIDENCE_LIMITS.depth) evidenceLimit(st, "depth");
+          else evalItems(lexShell(script, st, depth + 1), st, depth + 1, cwd);
+        }
+      } else if (/\//.test(words[0]) && /\.(py|js|mjs|cjs)$/.test(words[0])) {
         evalInterpreter(
           cmd,
           st,
@@ -1227,11 +1307,24 @@ function evalCommand(cmd, st, depth, cwd) {
 
 // --- Bounded source reads ----------------------------------------------------
 
+/** Remember a file an earlier command of the line writes, with its body when it is literal. */
+function markProduced(st, file, cwd, body) {
+  if (cwd === null && !path.isAbsolute(file)) return;
+  st.produced.set(path.resolve(cwd === null ? path.sep : cwd, file), body);
+}
+
 /** Text of a directly named regular file, or null with uncertainty / a limit recorded. */
 function readBoundedSource(st, file, cwd) {
   if (cwd === null && !path.isAbsolute(file)) {
     st.uncertain.add("unresolved-directory");
     return null;
+  }
+  // A file an earlier command of the same line writes is read from that command, not disk.
+  const made = path.resolve(cwd === null ? path.sep : cwd, file);
+  if (st.produced.has(made)) {
+    const body = st.produced.get(made);
+    if (body === null) st.uncertain.add("unknown-script-effect");
+    return body;
   }
   const max = EVIDENCE_LIMITS.sourceBytes;
   try {
