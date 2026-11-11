@@ -2555,6 +2555,52 @@ describe("bkit steps stub --result-file", () => {
     expect(fs.existsSync(path.join(cwd, "logs/c.md"))).toBe(false);
   });
 
+  it("derives a fresh audit key when the ledger already holds it", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+    const old = {
+      schema: 3,
+      ts: 1794028322438,
+      firstTs: 1794028322438,
+      updates: 1,
+      kind: "failure",
+      key: "audit-security-token-logged",
+      repo: "cbartens/bkit",
+      bkit: { version: "6.1.1" },
+      by: { workflow: "audit", step: "audit:security" },
+      references: ["src/old.ts:9"],
+      severity: "HIGH",
+      summary: "Token logged",
+      description: "Token logged (src/old.ts:9); audit security finding security-1",
+      status: "OPEN",
+    };
+    write(cwd, "docs/failures.jsonl", JSON.stringify(old) + "\n");
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const res = await run(cwd, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ]);
+    expect(res.code).toBe(0);
+    const rows = res.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    // The old, still-open row keeps its key; the new problem gets a suffixed one.
+    expect(rows[0]!["key"]).not.toBe("audit-security-token-logged");
+    expect(rows[0]!["key"]).toBe("audit-security-token-logged-2");
+  });
+
   it("refuses a result file left from an earlier round", async () => {
     const cwd = repo();
     const agent = "bkit-build-challenge-1";

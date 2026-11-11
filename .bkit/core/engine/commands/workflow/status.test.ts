@@ -1266,6 +1266,23 @@ describe("bkit status invocation", () => {
     expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
   });
 
+  it("refuses to issue an invocation through a status file symlinked out of the checkout", async () => {
+    const mine = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: mine });
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    fs.mkdirSync(path.dirname(path.join(mine, REL)), { recursive: true });
+    fs.symlinkSync(otherFile, path.join(mine, REL));
+    const r = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-branch-sync", `--file=${REL}`],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(otherFile, "utf-8")).not.toContain('"invocation"');
+  });
+
   it("writes no absolute checkout path into the run's committed invocation event", async () => {
     const root = runRepo();
     const statusFile = path.join(root, REL);
