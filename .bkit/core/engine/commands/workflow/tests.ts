@@ -911,7 +911,18 @@ export function checkPlanText(text: string, caps: TaskCaps = CONFIG_DEFAULTS.tas
       const mapped = new Set<number>();
       for (const row of matrix.rows) {
         const named = row.tasks.map((n) => `TASK ${n}`);
-        if (row.tasks.length === 0)
+        const taskCell = (row.cells[matrix.taskColumn] ?? "").trim();
+        if (
+          row.cells.length !== 4 ||
+          (taskCell !== "" &&
+            !/^(?:task\s*)?\d+(?:\s*(?:,|and)\s*(?:task\s*)?\d+)*$/i.test(taskCell))
+        )
+          problems.push({
+            line: row.number,
+            kind: "matrix",
+            message: `Derived Test Matrix row must have 4 cells in the template's order, with only task numbers (\`N\` or \`TASK N\`) in its \`Task\` cell`,
+          });
+        else if (row.tasks.length === 0)
           problems.push({
             line: row.number,
             kind: "matrix",

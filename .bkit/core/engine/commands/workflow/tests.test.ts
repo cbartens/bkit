@@ -1670,11 +1670,13 @@ describe("bkit tests plan-check", () => {
     );
     const r = await check();
     expect(r.code).toBe(1);
-    expect(r.json.problems).toEqual([
+    expect(r.json.problems[0]).toEqual(
       expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| #") }),
-    ]);
+    );
     expect(r.json.problems[0].message).toContain(EXPECTED_MATRIX_HEADER);
-    expect(report().match(/`matrix`/g)).toHaveLength(1);
+    const lines = r.json.problems.map((p: { line: number }) => p.line);
+    expect(lines).toContain(lineOf("plan.md", "| 1 | case a"));
+    expect(lines).toContain(lineOf("plan.md", "| 2 | case b"));
   });
 
   it("plan-check refuses a matrix header with Task not last", async () => {
