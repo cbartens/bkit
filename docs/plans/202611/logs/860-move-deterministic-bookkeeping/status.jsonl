@@ -912,3 +912,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T05:40:47Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/9/2/comment","hash":"e9f0ff467bac9dcc01d4d884742ab65a374f163bdeaf0d58093bbd94d13dbee4","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6787646181","at":"2026-11-11T05:40:49Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-11T05:40:49Z","parentSha":"ba1970874feda3a525cc05434c473b395ef78417","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-9-2.md"],"verdict":"PASS","attempt":2,"group":9,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:40:54Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:40:55Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:41:05Z","noun":"context","verb":"brief","flags":["plan","next","dir","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:41:06Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:41:06Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T05:50:37Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/6/comment","hash":"daa32b50cc3d85d75037c41377efc41f9574788c03a4ba3368ccacaee1bc7140","ref":"https://github.com/cbartens/bkit/issues/860#issuecomment-6787646181","at":"2026-11-11T05:50:40Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-11T05:50:40Z","parentSha":"ff9c710a475ff59d28562355e162fd49e458e328","artifacts":["docs/plans/202611/logs/860-move-deterministic-bookkeeping/build-plan-verify-holistic-6.md"],"verdict":"CONCERNS","attempt":6,"failures":1}

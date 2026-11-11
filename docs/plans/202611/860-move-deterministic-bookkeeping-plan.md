@@ -846,7 +846,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 
 <!-- bkit:task 30 start -->
 
-- [ ] **TASK 30:** A new audit finding whose title matches an earlier audit row of a different problem (same title, other `file:line`, which the prompt calls "a different problem") gets that row's key: `auditEntries` checks a derived `audit-<slug>-<title>` key only against this result's `priorKey`s, never against `docs/failures.jsonl`, so the append lands as a later row of the old key and the old, still-open failure drops out of the fold winners
+- [x] **TASK 30:** A new audit finding whose title matches an earlier audit row of a different problem (same title, other `file:line`, which the prompt calls "a different problem") gets that row's key: `auditEntries` checks a derived `audit-<slug>-<title>` key only against this result's `priorKey`s, never against `docs/failures.jsonl`, so the append lands as a later row of the old key and the old, still-open failure drops out of the fold winners
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/issues.ts:735` · **Round:** 2
   - **DONE WHEN:** A derived key is unique against every key already in the target ledger as well as within the result (the renderer reads the ledger's winners and suffixes `-2`, `-3` ...), so reusing an existing key happens only through an explicit `priorKey`.
   - **TEST FIRST:**
