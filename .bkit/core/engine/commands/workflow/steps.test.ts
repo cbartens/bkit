@@ -2636,6 +2636,47 @@ describe("bkit steps stub --result-file", () => {
     );
   });
 
+  // Added test (not a planned Task 30 test): keys come from the working directory's ledger, which is
+  // the file `ledgers append` writes, so a linked worktree does not read the main checkout's rows.
+  it("reads held audit keys from the linked worktree's own ledger", async () => {
+    const main = repo();
+    const wt = path.join(main, ".worktrees", "feat");
+    git(main, "worktree", "add", "-q", wt, "-b", "feat-wt");
+    fs.mkdirSync(path.join(wt, "docs"), { recursive: true });
+    fs.mkdirSync(path.join(wt, "logs"), { recursive: true });
+    fs.mkdirSync(path.join(main, "docs"), { recursive: true });
+    const held = {
+      schema: 3,
+      key: "audit-security-token-logged",
+      summary: "Token logged",
+      description: "Token logged (src/old.ts:9); HIGH",
+      status: "OPEN",
+    };
+    // The worktree's ledger holds the row; the main checkout's does not.
+    write(wt, "docs/failures.jsonl", JSON.stringify(held) + "\n");
+    write(
+      wt,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const res = await run(wt, [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ]);
+    expect(res.code).toBe(0);
+    const rows = res.json.ledgerRows as Array<Record<string, unknown>>;
+    expect(rows[0]!["key"]).toBe("audit-security-token-logged-2");
+  });
+
   it("refuses a result file left from an earlier round", async () => {
     const cwd = repo();
     const agent = "bkit-build-challenge-1";

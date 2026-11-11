@@ -1560,11 +1560,12 @@ const fingerprintOf = (text: string): string =>
   artifactFingerprint(text.split("\n"), text.split("\n").indexOf(VERDICT_END));
 
 /**
- * Every key the failures ledger (found from the repository root) already holds, with the finding
- * each row records, so a derived audit key never lands on a different finding's row.
+ * Every key the failures ledger (the working directory's `docs/failures.jsonl`, the file
+ * `ledgers append` and `ledgers query` use) already holds, with the finding each row records,
+ * so a derived audit key never lands on a different finding's row.
  */
 function ledgerKeys(cwd: string): Map<string, HeldRow> {
-  const file = path.join(repoRoot(cwd), "docs", "failures.jsonl");
+  const file = path.resolve(cwd, "docs", "failures.jsonl");
   const held = new Map<string, HeldRow>();
   if (!fs.existsSync(file)) return held;
   for (const row of queryLedger(fs.readFileSync(file, "utf8")).rows) {
