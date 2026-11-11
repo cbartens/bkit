@@ -33,3 +33,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-11T02:38:49Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"f5415d42a8e7bcd828d817027a4f2e0705fb4fe77ea94e90fd6640e80b6670e3","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:38:52Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-11T02:38:52Z","parentSha":"20f66d22544f677635792cd7aa54a48feb68cf64","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-v2-reviewed.md","docs/plans/202611/logs/915-min-push-ignores/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:39:00Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:39:00Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:39:04Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:39:04Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:39:18Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"585c830590814ffd7989b5a96ae4cea605fd9d46bb86c48d4707859d9a22639b","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:39:21Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-11T02:39:21Z","parentSha":"ff260094d02d12a1e42aa6ca181a9c8c27562138","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
