@@ -1253,13 +1253,32 @@ const withFingerprint = (head, body) => {
     return `${head.join("\n")}\n${FINGERPRINT}: ${fingerprint}\n${VERDICT_END}\n\n${body}`;
 };
 const fingerprintOf = (text) => artifactFingerprint(text.split("\n"), text.split("\n").indexOf(VERDICT_END));
-/** Every key the failures ledger already holds, so a derived audit key never lands on an old row. */
+/**
+ * Every key the failures ledger (found from the repository root) already holds, with the finding
+ * each row records, so a derived audit key never lands on a different finding's row.
+ */
 function ledgerKeys(cwd) {
-    const file = path.join(cwd, "docs", "failures.jsonl");
+    const file = path.join(repoRoot(cwd), "docs", "failures.jsonl");
+    const held = new Map();
     if (!fs.existsSync(file))
-        return new Set();
-    const keys = queryLedger(fs.readFileSync(file, "utf8")).rows.flatMap((r) => typeof r.key === "string" ? [r.key] : []);
-    return new Set(keys);
+        return held;
+    for (const row of queryLedger(fs.readFileSync(file, "utf8")).rows) {
+        const r = { ...row };
+        if (typeof r["key"] !== "string")
+            continue;
+        const locations = Array.isArray(r["references"])
+            ? r["references"].filter((x) => typeof x === "string")
+            : [];
+        const text = typeof r["description"] === "string" ? r["description"] : "";
+        const fromText = /\((\S+:\d+)\);/.exec(text);
+        if (fromText?.[1] !== undefined)
+            locations.push(fromText[1]);
+        held.set(r["key"], {
+            summary: typeof r["summary"] === "string" ? r["summary"] : "",
+            locations,
+        });
+    }
+    return held;
 }
 function renderAudit(cwd, result) {
     const held = ledgerKeys(cwd);

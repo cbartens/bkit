@@ -855,7 +855,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 30 end -->
 <!-- bkit:task 31 start -->
 
-- [ ] **TASK 31:** A committed `docs/plans/<month>/logs/<fid>/status.jsonl` that is a symlink to another checkout's (or any empty or NDJSON) file passes the Task 11 containment check, because only the parent directory is resolved with `realpathSync`; `status invocation` then appends its `invocation` event through the symlink, and every later invocation-bound `engine-call` row and correction row follows it into the other checkout's log.
+- [x] **TASK 31:** A committed `docs/plans/<month>/logs/<fid>/status.jsonl` that is a symlink to another checkout's (or any empty or NDJSON) file passes the Task 11 containment check, because only the parent directory is resolved with `realpathSync`; `status invocation` then appends its `invocation` event through the symlink, and every later invocation-bound `engine-call` row and correction row follows it into the other checkout's log.
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/status.ts:682` · **Round:** 2
   - **DONE WHEN:** `status invocation` resolves the full `--file` path, symlinks included (`fs.lstatSync` refuses a symlinked final component, or `realpathSync` of the file itself when it exists), before the containment test, and exits non-zero with no write when the resolved file lies outside the issuing checkout or in a nested worktree. `resolveInvocation` and `rebuildInvocation` (`.bkit/core/engine/commands/lib.ts`) refuse a receipt or event whose status file now resolves outside the checkout.
   - **TEST FIRST:**

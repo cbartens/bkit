@@ -722,10 +722,20 @@ export interface AuditEntry extends AuditFinding {
   key: string;
 }
 
-/** The findings in their one deterministic order, each with its ID and ledger key. */
+/** A ledger row already holding a key: what finding it records, so a re-render can recognise it. */
+export interface HeldRow {
+  summary: string;
+  locations: readonly string[];
+}
+
+/**
+ * The findings in their one deterministic order, each with its ID and ledger key. A held key whose
+ * row has the same summary and `file:line` is the same finding and is reused; a held key of a
+ * different finding is a collision and gets a suffix.
+ */
 export function auditEntries(
   result: AuditResult,
-  held: ReadonlySet<string> = new Set(),
+  held: ReadonlyMap<string, HeldRow> = new Map(),
 ): AuditEntry[] {
   const rank = (s: AuditSeverity) => AUDIT_SEVERITIES.indexOf(s);
   const ordered = [...result.findings].sort(
@@ -741,7 +751,11 @@ export function auditEntries(
     if (key === undefined) {
       const base = `audit-${result.slug}-${kebab(f.title) || "finding"}`;
       key = base;
-      for (let n = 2; used.has(key) || held.has(key); n += 1) key = `${base}-${n}`;
+      const same = (k: string) => {
+        const row = held.get(k);
+        return row !== undefined && row.summary === f.title && row.locations.includes(f.location);
+      };
+      for (let n = 2; used.has(key) || (held.has(key) && !same(key)); n += 1) key = `${base}-${n}`;
       used.add(key);
     }
     return { ...f, id: `${result.slug}-${i + 1}`, key };
@@ -751,7 +765,7 @@ export function auditEntries(
 /** One `failure` ledger payload per finding, ready for `bkit ledgers append`. */
 export function auditLedgerRows(
   result: AuditResult,
-  held: ReadonlySet<string> = new Set(),
+  held: ReadonlyMap<string, HeldRow> = new Map(),
 ): Array<Record<string, unknown>> {
   return auditEntries(result, held).map((e) => ({
     kind: "failure",

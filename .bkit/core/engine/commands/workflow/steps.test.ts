@@ -2601,6 +2601,41 @@ describe("bkit steps stub --result-file", () => {
     expect(rows[0]!["key"]).toBe("audit-security-token-logged-2");
   });
 
+  // Added test (not a planned Task 30 test): the key is stable across a re-render after the append.
+  it("keeps the audit key when the same finding is rendered again after its append", async () => {
+    const cwd = repo();
+    fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+    write(
+      cwd,
+      "logs/a.json",
+      JSON.stringify({
+        slug: "security",
+        status: "COMPLETE",
+        report: "docs/audits/202611/security.md",
+        findings: [{ severity: "HIGH", title: "Token logged", location: "src/new.ts:42" }],
+        notChecked: [],
+      }),
+    );
+    const args = [
+      "steps",
+      "stub",
+      "--agent=bkit-audit-generate",
+      "--result-file=logs/a.json",
+      "--to=logs/a.md",
+    ];
+    const first = await run(cwd, args);
+    expect(first.code).toBe(0);
+    const row = (first.json.ledgerRows as Array<Record<string, unknown>>)[0]!;
+    expect(row["key"]).toBe("audit-security-token-logged");
+    // The audit's own append lands in the ledger.
+    write(cwd, "docs/failures.jsonl", JSON.stringify({ schema: 3, ...row }) + "\n");
+    const again = await run(cwd, args);
+    expect(again.code).toBe(0);
+    expect((again.json.ledgerRows as Array<Record<string, unknown>>)[0]!["key"]).toBe(
+      "audit-security-token-logged",
+    );
+  });
+
   it("refuses a result file left from an earlier round", async () => {
     const cwd = repo();
     const agent = "bkit-build-challenge-1";

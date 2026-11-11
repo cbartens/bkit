@@ -63,6 +63,7 @@ import {
   buildComment,
   parseAuditResult,
   type AuditResult,
+  type HeldRow,
 } from "./issues.js";
 import {
   EXIT_FOREIGN_PATH,
@@ -1558,14 +1559,29 @@ const withFingerprint = (head: string[], body: string): Rendered["text"] => {
 const fingerprintOf = (text: string): string =>
   artifactFingerprint(text.split("\n"), text.split("\n").indexOf(VERDICT_END));
 
-/** Every key the failures ledger already holds, so a derived audit key never lands on an old row. */
-function ledgerKeys(cwd: string): Set<string> {
-  const file = path.join(cwd, "docs", "failures.jsonl");
-  if (!fs.existsSync(file)) return new Set();
-  const keys = queryLedger(fs.readFileSync(file, "utf8")).rows.flatMap((r) =>
-    typeof r.key === "string" ? [r.key] : [],
-  );
-  return new Set(keys);
+/**
+ * Every key the failures ledger (found from the repository root) already holds, with the finding
+ * each row records, so a derived audit key never lands on a different finding's row.
+ */
+function ledgerKeys(cwd: string): Map<string, HeldRow> {
+  const file = path.join(repoRoot(cwd), "docs", "failures.jsonl");
+  const held = new Map<string, HeldRow>();
+  if (!fs.existsSync(file)) return held;
+  for (const row of queryLedger(fs.readFileSync(file, "utf8")).rows) {
+    const r: Record<string, unknown> = { ...row };
+    if (typeof r["key"] !== "string") continue;
+    const locations = Array.isArray(r["references"])
+      ? r["references"].filter((x): x is string => typeof x === "string")
+      : [];
+    const text = typeof r["description"] === "string" ? r["description"] : "";
+    const fromText = /\((\S+:\d+)\);/.exec(text);
+    if (fromText?.[1] !== undefined) locations.push(fromText[1]);
+    held.set(r["key"], {
+      summary: typeof r["summary"] === "string" ? r["summary"] : "",
+      locations,
+    });
+  }
+  return held;
 }
 
 function renderAudit(cwd: string, result: AuditResult): Rendered {

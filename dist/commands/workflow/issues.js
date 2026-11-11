@@ -562,8 +562,12 @@ const kebab = (text) => text
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
-/** The findings in their one deterministic order, each with its ID and ledger key. */
-export function auditEntries(result, held = new Set()) {
+/**
+ * The findings in their one deterministic order, each with its ID and ledger key. A held key whose
+ * row has the same summary and `file:line` is the same finding and is reused; a held key of a
+ * different finding is a collision and gets a suffix.
+ */
+export function auditEntries(result, held = new Map()) {
     const rank = (s) => AUDIT_SEVERITIES.indexOf(s);
     const ordered = [...result.findings].sort((a, b) => rank(a.severity) - rank(b.severity) ||
         a.location.localeCompare(b.location) ||
@@ -575,7 +579,11 @@ export function auditEntries(result, held = new Set()) {
         if (key === undefined) {
             const base = `audit-${result.slug}-${kebab(f.title) || "finding"}`;
             key = base;
-            for (let n = 2; used.has(key) || held.has(key); n += 1)
+            const same = (k) => {
+                const row = held.get(k);
+                return row !== undefined && row.summary === f.title && row.locations.includes(f.location);
+            };
+            for (let n = 2; used.has(key) || (held.has(key) && !same(key)); n += 1)
                 key = `${base}-${n}`;
             used.add(key);
         }
@@ -583,7 +591,7 @@ export function auditEntries(result, held = new Set()) {
     });
 }
 /** One `failure` ledger payload per finding, ready for `bkit ledgers append`. */
-export function auditLedgerRows(result, held = new Set()) {
+export function auditLedgerRows(result, held = new Map()) {
     return auditEntries(result, held).map((e) => ({
         kind: "failure",
         key: e.key,
