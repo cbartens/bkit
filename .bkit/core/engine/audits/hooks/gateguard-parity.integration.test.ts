@@ -1200,7 +1200,10 @@ function runShellHost(
 }
 
 function shellSentence(text: string): string {
-  return (text.split("\n").find((l) => l.includes("edits files through the shell")) ?? "").trim();
+  for (const line of text.split("\n")) {
+    if (line.includes("edits files through the shell")) return line.trim();
+  }
+  return "";
 }
 
 const FETCH_EDIT_FITS: ShellHost[] = ["claude"];
