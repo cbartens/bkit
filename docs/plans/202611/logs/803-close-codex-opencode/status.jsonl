@@ -92,3 +92,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:11Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"09a82bdcd8e1503eb9ac2c52aaee1dada5e5f1d9d741bbf41291090c2ac7699e","ref":"https://github.com/cbartens/bkit/issues/803#issuecomment-6781766085","at":"2026-11-11T00:03:14Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-11T00:03:14Z","parentSha":"00ee53d94958be5259cd3bb8e31850f201d8a4cb","artifacts":["docs/plans/202611/logs/803-close-codex-opencode/plan-v2-reviewed.md","docs/plans/202611/logs/803-close-codex-opencode/plan-update-check.md"],"verdict":"CONCERNS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:25Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:25Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:31Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:31Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:03:41Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"6b12bd145867059b802a4bcd37d8e1c79ffa13a5b1b183584e463d8fa9bf7620","ref":"https://github.com/cbartens/bkit/issues/803#issuecomment-6781766085","at":"2026-11-11T00:03:44Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-11T00:03:44Z","parentSha":"0bb10480dbc60c386ea95cb10c857649b454e60d","artifacts":["docs/plans/202611/logs/803-close-codex-opencode/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
