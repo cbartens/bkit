@@ -36,3 +36,10 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:03Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-apply-review/-/1/comment","hash":"4ff09afc5730ac22793f0cc92049f7e795ab1981f5f6163a607a06a78a336b27","ref":"https://github.com/cbartens/bkit/issues/918#issuecomment-6782449100","at":"2026-11-11T00:27:05Z"}
 {"type":"step-done","workflow":"plan","step":"plan-apply-review","status":"DONE","at":"2026-11-11T00:27:05Z","parentSha":"82b8158e438c2c14a3c5e3b46f8810502724c209","artifacts":["docs/plans/202611/logs/918-ad-hoc-agent/plan-v2-reviewed.md","docs/plans/202611/logs/918-ad-hoc-agent/plan-update-check.md"],"verdict":"PASS","attempt":1}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:13Z","noun":"status","verb":"route","flags":["file","workflow","step","require"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:14Z","noun":"workflows","verb":"promote","flags":["workflow","fid","month","resolve"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:18Z","noun":"ledgers","verb":"check","flags":["plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:18Z","noun":"workflows","verb":"summary","flags":["workflow","file","plan"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T00:27:24Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","verdict","failures","artifact","message","number","post","title","link-ref","comment-body"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-summary/-/1/comment","hash":"e9a16076db3cdf28cbd9ae52418c17782b36d4de816ff0a32903ec9f9850e066","ref":"https://github.com/cbartens/bkit/issues/918#issuecomment-6782449100","at":"2026-11-11T00:27:27Z"}
+{"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-11-11T00:27:27Z","parentSha":"a3bb1e1cab59a80dffc4168d9fa61d2bd45a8507","artifacts":["docs/plans/202611/logs/918-ad-hoc-agent/plan-summary.md"],"verdict":"CONCERNS","attempt":1,"failures":0}
