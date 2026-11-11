@@ -126,6 +126,14 @@ The quoted names are planned test cases, parameterized over the variants in each
 | drops an entry the previous template shipped and the current one retired | Unit | `.bkit/core/engine/install/write.test.ts` | 18 |
 | never echoes inspected source text as hook instructions | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 19 |
 | parses hostile patch lines in linear time | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 20 |
+| keeps a consumer hook placed inside a bkit hook group | Unit | `.bkit/core/engine/install/write.test.ts` | 21 |
+| upgrades a shipped Claude edit group without dropping a consumer hook inside it | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 21 |
+| keeps a shell target eligible after an unverified Cursor edit reminder | Integration | `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` | 22 |
+| keeps commands after a heredoc substitution that holds an apostrophe | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 23 |
+| flags a script an earlier copy or move produced | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 24 |
+| marks scripts run by unanalysed interpreters as uncertain | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 25 |
+| keeps edit advice beside an off-list fetch | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 26 |
+| analyses dense script sources in linear time | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 27 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -645,6 +653,82 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 20 end -->
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 2 findings
+
+<!-- bkit:task 21 start -->
+
+- [ ] **TASK 21:** A consumer adds their own hook (`node scripts/my-check.js`) inside bkit's `PreToolUse` edit group, and this release's matcher change makes the upgrade merge silently delete it
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/write.ts:243` · **Round:** 2
+  - **DONE WHEN:** `mergeManagedList` no longer drops a whole consumer group because one of its hooks shares a bkit `command` or `bkit-*.cjs` file with a template group. The template group still replaces bkit's own hook entries and matcher, and every hook entry in that consumer group whose command is not a template command or bkit hook file is carried into the matching template group's `hooks` list (order kept, no duplicates, second run a no-op). Probe on the current `dist/install/write.js`: `mergeManagedJson({hooks:{PreToolUse:[{matcher:"Edit|Write|MultiEdit",hooks:[{type:"command",command:"node .claude/hooks/bkit-gateguard.cjs"},{type:"command",command:"node scripts/my-check.js"}]}]}}, <same group with matcher "Edit|Write|MultiEdit|NotebookEdit" and only the bkit hook>)` returns the template group alone; `my-check.js` is gone. The shipped Claude matcher change in this release (`NotebookEdit`) makes every consumer's `settings.json` drift, so this merge runs on every upgrade. The existing upgrade case at `.bkit/core/engine/install/modules/core.integration.test.ts:2568` only adds separate consumer groups, so it passes today.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/write.test.ts` `keeps a consumer hook placed inside a bkit hook group` fails on `mergeManagedJson` returning the template group without the consumer's `node scripts/my-check.js` hook entry.
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades a shipped Claude edit group without dropping a consumer hook inside it` fails on the upgraded `.claude/settings.json` (from the shipped `da97be38` layout plus a consumer hook appended to the gateguard group's `hooks`) no longer holding that consumer hook.
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** On Cursor, a `Write` to `docs/a.md` records the file as warned through the unverified `additional_context` route, so a later `sed -i … docs/a.md` gets no per-file checklist even if the first reminder never reached the model — accepted by owner
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/hooks/gateguard-edit-payload.js:20` · **Round:** 2
+  - **DONE WHEN:** No agent can settle this alone. The shared edit payload still calls `firstTouchAdvice`, which records the touch at once, and the Cursor driver's `additional_context` envelope is documented as unverified (`.bkit/core/.bkit/providers.md:413` and `:420`, decision `787-design-choice-16`). Because both channels now share one normalized identity, that unverified acknowledgement also suppresses the Cursor shell route's `agent_message` block. This contradicts the plan's Process Sketch ("an unverified route leaves it unacknowledged") and its Edge Case row ("share sequential acknowledgement on verified routes"). Probe: `firstTouchAdvice(<ws>/docs/a.md, sid, true)` then `shellTargetBlocks(["docs/a.md"], {root: ws}, sid)` returns 0 blocks. The fix cannot be surgical, because the Cursor and Claude managed blocks must stay byte-identical (`gateguard-cursor.integration.test.ts:176`) and the outer driver, which knows the host, is consumer-owned. The owner decides between: a host signal the shared block can read without breaking that parity, letting the Cursor edit route prepare without acknowledging (Cursor edits then repeat their reminder), or accepting the suppression and recording it in `.bkit/core/.bkit/providers.md` § host table.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `keeps a shell target eligible after an unverified Cursor edit reminder` fails on `runShell("sed -i s/a/b/ docs/a.md", session)` after `run(writePayload("docs/a.md", session))` returning an `agent_message` without `First edit to`.
+
+<!-- bkit:task 22 end -->
+<!-- bkit:task 23 start -->
+
+- [ ] **TASK 23:** An agent commits with the usual `git commit -m "$(cat <<'EOF' … don't … EOF)"` form and then runs `&& sed -i … docs/x.md` in the same command, and the shell check reports nothing at all
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:265` · **Round:** 2
+  - **DONE WHEN:** `matchParen` skips heredoc bodies the way the lexer does, so an apostrophe inside a heredoc body within `$( … )` no longer opens a quote that runs to the end of the text. Or, when no matching `)` is found, the remainder is reported as `unknown-script-effect` instead of being swallowed. Probe today: `git commit -m "$(cat <<'EOF'\nFix: don't break\nEOF\n)" && sed -i s/a/b/ docs/x.md` returns `{"targets":[],"uncertain":[],"limit":null}`, while the same command with `do not` returns `["docs/x.md"]`. The unclosed quote makes `matchParen` return `text.length`. The rest of the line is then lexed as the substitution body, where `)"` opens a double quote that never closes and absorbs `sed`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `keeps commands after a heredoc substitution that holds an apostrophe` fails on `advise("git commit -m \"$(cat <<'EOF'\nFix: don't break\nEOF\n)\" && sed -i s/a/b/ src/after-commit.ts", dir).text` not naming `src/after-commit.ts` and not matching `UNCERTAIN`.
+
+<!-- bkit:task 23 end -->
+<!-- bkit:task 24 start -->
+
+- [ ] **TASK 24:** An agent copies or downloads a script and runs it in the same command (`cp template.py /tmp/run.py && python3 /tmp/run.py`, `curl -o /tmp/s.py URL && python3 /tmp/s.py`), and the script's `docs/x.md` write gets no advice and no uncertainty
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:924` · **Round:** 2
+  - **DONE WHEN:** A script file that an earlier command of the same line creates through `cp` / `mv` destinations, `curl -o` / `--output`, `wget -O` or another non-redirect writer is recorded in `st.produced`. A `cp` / `mv` from a readable literal source carries that source's body, and anything else carries `null`, which gives `unknown-script-effect`. The `ENOENT && st.commands > 0` quiet branch then covers only files no earlier command named. Probe today: `cp template.py /tmp/run.py && python3 /tmp/run.py` (where `template.py` writes `docs/x.md`) and `curl -o /tmp/s.py https://x.example/s.py && python3 /tmp/s.py` both return empty evidence. `cp template.py run.py && python3 run.py` names only `run.py`, with no uncertainty for what the script writes. Plan task 14 covers redirect, `tee` and heredoc producers only.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `flags a script an earlier copy or move produced` fails on `cp tpl.py /tmp/bkit-run.py && python3 /tmp/bkit-run.py` and `mv tpl.py /tmp/bkit-mv.py && python3 /tmp/bkit-mv.py` (fixture `tpl.py` holds `open('src/copied.py','w').write('x')`) returning text that neither names `src/copied.py` nor matches `UNCERTAIN` (the `cp` form returns `""`; the `mv` form names only `tpl.py`). The download form is left out of this Cursor-driven test because Cursor's `fetch` tier drops edit evidence (task 6).
+
+<!-- bkit:task 24 end -->
+<!-- bkit:task 25 start -->
+
+- [ ] **TASK 25:** An agent runs `npx tsx scripts/gen.ts`, `ruby fix.rb` or `perl fix.pl` that rewrites an agent-read file, and the shell check stays silent instead of warning that the script's targets cannot be determined
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:846` · **Round:** 2
+  - **DONE WHEN:** A directly named script file run by an interpreter the detector does not analyse reports `unknown-script-effect`, as decision `787-design-choice-02` requires ("warn for possible writes with unknown targets"). This covers `ruby` / `perl` with a script operand and no `-e` / `-i`, `tsx` / `ts-node` / `bun` / `deno run`, the same runners behind `npx` / `pnpm` / `pnpm exec` / `yarn`, and `./x.ts`-style programs in the default branch. Probe today: `ruby fix.rb`, `perl fix.pl` and `npx tsx scripts/gen.ts` each return `{"targets":[],"uncertain":[],"limit":null}`. Only `python*` / `node*` and `./*.sh|py|js|mjs|cjs` reach `evalInterpreter` or the shell lexer.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `marks scripts run by unanalysed interpreters as uncertain` fails on `ruby fix.rb`, `perl fix.pl` and `npx tsx gen.ts` each returning `text === ""` instead of matching `UNCERTAIN`.
+
+<!-- bkit:task 25 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 2 findings
+
+<!-- bkit:task 26 start -->
+
+- [ ] **TASK 26:** On Cursor, `curl https://off-list.example/x -o /dev/null && sed -i s/a/b/ docs/x.md` asks the user about the fetch, and the edit of `docs/x.md` gets no shell notice and no per-file checklist
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.cursor/hooks/bkit-guardrails.cjs:84` · **Round:** 2
+  - **DONE WHEN:** Cursor's `decideShell` `fetch` case composes `v.edits` the way the Claude, Codex and Antigravity bridges do. The `ask` keeps its `user_message`, and its `agent_message` carries the fetch line plus `shellEditContext(shellEditAdvisory(v.edits), v.edits, ctx, session, undefined, ADVICE_BUDGETS.cursor, <fetch line>)` when `v.edits` is present. Today `classifyShell` returns `{ tier: "fetch", edits }` ("an allowed fetch never hides an edit", `.bkit/core/hooks/guardrails-tiers.js:273`), but the Cursor `fetch` case returns only `Command requires confirmation: …` and drops the evidence. No Cursor test runs a fetch together with an edit.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `keeps edit advice beside an off-list fetch` fails on `advise("curl https://off-list.example/x -o /dev/null && sed -i s/a/b/ src/fetch-edit.ts", dir)` returning `permission === "ask"` with text that does not contain `edits files through the shell`.
+
+<!-- bkit:task 26 end -->
+<!-- bkit:task 27 start -->
+
+- [ ] **TASK 27:** A dense script source (a planted or minified 64 KiB `.js` / `.py` file the agent runs, or a 250 KiB inline `node -e` / heredoc script) stalls every shell hook call for seconds, because the script analyzers are quadratic and never check the 200 ms deadline
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:1634` · **Round:** 2
+  - **DONE WHEN:** `analyzeJs` and `analyzePython` find a token's position in constant time (for example the tokenizer records each token's index, or `recognized` holds token objects), with no `tokens.indexOf(t)` inside the per-token loops at lines 1436, 1441 and 1634, and the analyzers stop at `evidenceExpired(st)` and report `analysis-limit` like the lexer does. Measured on the current code: a 64 KiB `a;` file run as `node scripts/min.js` takes 593 ms of CPU in the analyzer (3x the 200 ms deadline, 1.5 s wall under load), and the rendered Cursor hook takes 8.2 s of CPU (8.9 s wall) on `node -e '<250 KiB of a;>'` and 4.4 s on `python3 -c '<250 KiB of a.b\n>'`. The cost grows with the square of the source size. `evalItems` checks the deadline only between commands, so one analysis runs unbounded inside the 256 KiB command bound. The deny, ask and secret tiers in `classifyShell` return before the detector runs, so this is a hang on every host, not a bypass. The plan's Security & Privacy section and task 3 promise a cooperative 200 ms deadline.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `analyses dense script sources in linear time` fails on `advise("node -e '" + "a;".repeat(125 * 1024) + "'", dir)` taking longer than 1,000 ms to return its advise() result (8.9 s measured), with `permission` `allow`.
+
+<!-- bkit:task 27 end -->
+<!-- bkit:group 7 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
