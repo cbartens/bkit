@@ -874,6 +874,19 @@ function evalCommand(cmd, st, depth, cwd) {
     }
     case "curl":
     case "wget": {
+      // `wget -P dir` / `--directory-prefix=dir` / `curl --output-dir dir` save into another directory.
+      let outDir = null;
+      for (let i = 0; i < args.length; i++) {
+        const a = args[i];
+        if (program === "wget") {
+          if (a === "-P" || a === "--directory-prefix") outDir = args[i + 1] ?? null;
+          else if (a.startsWith("--directory-prefix=")) outDir = a.slice(a.indexOf("=") + 1);
+          else if (/^-P./.test(a)) outDir = a.slice(2);
+        } else if (a === "--output-dir") outDir = args[i + 1] ?? null;
+        else if (a.startsWith("--output-dir=")) outDir = a.slice(a.indexOf("=") + 1);
+      }
+      const dirDyn = outDir !== null && cmd.dyn.has(outDir);
+      const inDir = (name) => (outDir !== null && program === "curl" ? `${outDir}/${name}` : name);
       for (let i = 0; i < args.length; i++) {
         const a = args[i];
         let out = null;
@@ -892,7 +905,7 @@ function evalCommand(cmd, st, depth, cwd) {
           const outFlag = program === "curl" ? "o" : "O";
           if (a.endsWith(outFlag) && !a.slice(1, -1).includes(outFlag)) out = args[i + 1];
         }
-        if (out && !cmd.dyn.has(out)) markProduced(st, out, cwd, null);
+        if (out && !cmd.dyn.has(out) && !dirDyn) markProduced(st, inDir(out), cwd, null);
         else if (out) st.uncertain.add("unresolved-target");
       }
       // Remote-name downloads write the URL's last path segment into the working directory.
@@ -914,7 +927,9 @@ function evalCommand(cmd, st, depth, cwd) {
       if ((program === "wget" || named) && !hasOut) {
         for (const a of args) {
           const m = /^https?:\/\/[^?#]*\/([^/?#]+)(?:[?#].*)?$/.exec(a);
-          if (m && !cmd.dyn.has(a)) markProduced(st, m[1], cwd, null);
+          if (!m || cmd.dyn.has(a)) continue;
+          if (dirDyn) st.uncertain.add("unresolved-target");
+          else markProduced(st, outDir !== null ? `${outDir}/${m[1]}` : m[1], cwd, null);
         }
       }
       return cwd;
