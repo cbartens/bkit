@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-11T02:02:24Z)_
+_(refreshed 2026-11-11T02:42:15Z)_
 
 ### Design
 
@@ -55,6 +55,7 @@ _(refreshed 2026-11-11T02:02:24Z)_
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794296871309 |
 | 912-debug-loop-question | 912-debug-loop-question | 1794362544059 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
+| 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794294436861 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794356955782 |
 
