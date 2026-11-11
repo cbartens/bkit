@@ -58,18 +58,23 @@ The owner answers at `/bkit-build`'s Decision Pause, and a later step ignores th
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
-
-The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 4 describe the expected behaviour, but they are not change-shape `Narrative` / `Success Criteria` fields, so this plan does not copy them in.
+The owner answers `Fix now` at `/bkit-build`'s Decision Pause, giving a direction where the item needs one, and the build builds that direction, and the summary credits the verified fix instead of reporting FAIL. A test-fix step that ended FAIL no longer fails the summary once the next test run on the same scope passes.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+The owner approved this wording at plan approval; it is drawn from the issue's `What should happen` text for Parts 1, 2 and 4.
+
+1. A `**Fixable:** false` challenge task answered `Fix now` with a direction has its `DONE WHEN` and `TEST FIRST` rewritten to that direction before Step 7 runs.
+2. A hard blocker answered `Fix now` with no direction gets a follow-up question, and no task is built for it until the owner gives the direction.
+3. A group whose verify pause answered every item, with each `Fix now` task ticked and verified `PASS` in its own group after the pause, has no FAIL reason in `workflows summary`; each accepted item stays a concern. A verify pause that answered every item `Accept`, with no `Fix now`, clears the same FAIL rows, and its accepted items stay a concern.
+4. An unanswered item, a `Fix now` item with a missing or wrong `Fix task:` line, or an unticked or unverified fix task keeps the paused group's FAIL.
+5. A `build-failure-remediate` or `debug-failure-remediate` FAIL counts as resolved when a later test run in the same run passes with 0 failures on the same scope, and stays a failure without one.
 
 ### Process Sketch
 
 - **WHEN** the owner answers a verify-gaps pause with some items `Accept` and one item `Fix now` **→ THEN** the pause writes the new task block and adds `Fix task: {N}` under the `Fix now` item in the decision file.
 - **WHEN** that task is ticked and its own group's later verify passes, and Step 12 passes **→ THEN** `workflows summary` lists the paused group's FAIL rows under `Resolved Findings`, keeps the accepted items as a concern, prints `Verdict: CONCERNS`, and Step 15 goes on to Step 16.
+- **WHEN** the owner answers every item of a verify-gaps pause `Accept`, with no `Fix now` **→ THEN** `workflows summary` lists the paused group's FAIL rows from before the pause under `Resolved Findings` and keeps the accepted items as a concern.
 - **IF** an item is unanswered, the `Fix now` task is unticked or never verified after the pause, or the item has no `Fix task:` line or names a task the plan does not have **→ THEN** the paused group's FAIL rows stay and the verdict is FAIL.
 - **IF** the owner answers `Fix now` on a `**Fixable:** false` challenge task and names a direction **→ THEN** the pause rewrites that task's `DONE WHEN` and `TEST FIRST` to the direction in place, keeps its meta line, and Step 7 builds the direction.
 - **IF** a hard blocker is answered `Fix now` with no direction **→ THEN** the item stays undecided and the owner is asked for the direction before anything is built.
@@ -98,6 +103,8 @@ The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 
 | A hard blocker is left on a headless run | Unchanged: the run takes the Failure Path naming the hard blocker. |
 | A run resumes at Decision Pause step 3 after step 6 wrote an item's `Fix task:` line, before `steps finish` | Step 5 reuses the task that line names and writes no second task block. |
 | A verify pause holds `Accept` and `Fix now` items, and every `Fix now` task is ticked and verified `PASS` in its own group after the pause | The paused group's `build-plan-tasks`, `build-plan-verify` and `build-plan-gaps-remediate` FAIL rows are resolved; the accepted items stay a concern; the verdict is CONCERNS (or PASS with no other concern). |
+| A verify pause answers every item `Accept`, with no `Fix now` | The paused group's `build-plan-tasks`, `build-plan-verify` and `build-plan-gaps-remediate` FAIL rows before the pause are resolved; the accepted items stay a concern; the verdict is CONCERNS. |
+| An `Accept`-only verify pause is followed by a re-verify of the same group that ends CONCERNS or FAIL | The rows before the pause are resolved; the later rows are judged by the existing rules, so a later FAIL stays a failure and a later CONCERNS stays a concern. |
 | The verify pause is at its round limit, so its file holds the loop question as Q1 (`Verify`, `Decision: Decide — …`) before the gap items | The loop item counts as answered; the gap items from Q2 on are judged by the rule above. |
 | The verify pause comes before the round limit (a `Fixable: false` gap), so its file has no loop item | The same rule applies; the gap items start at Q1. |
 | A paused group's `build-plan-gaps-remediate` or `build-plan-verify` row ends CONCERNS, not FAIL | It stays under the reasons as a concern: the pause rule clears FAIL rows only, so remediation warnings are kept. |
@@ -136,10 +143,11 @@ The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 
 | A paused group's `build-plan-gaps-remediate` and `build-plan-verify` CONCERNS rows stay concerns after its `Fix now` task is verified; only its FAIL rows clear | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 3 |
 | A `From: holistic` or `From: challenge` decision file with `Group:` and `Fix task:` lines clears no group rows | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 3 |
 | A group that paused more than once is settled by its latest qualifying `From: verify` decision | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 3 |
-| The Decision Pause rewrites a challenge task answered `Fix now` to the owner's direction in place: its `DONE WHEN`, `TEST FIRST` and `Derived Test Matrix` rows, keeping its meta line | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 4 |
-| A hard blocker answered `Fix now` with no direction is asked again before anything is built | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 4 |
-| Each `Fix now` item records the task that carries its fix as `Fix task: {N}` before the decision row is finished, and a resumed step 5 reuses the task that line names | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 4 |
-| The Contract **Owner decisions** bullet names the task block as the carrier of a `Fix now` direction, and `### 🔒 Gate — Decision Pause` checks the `Fix task` lines | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 4 |
+| A verify pause that answers every item `Accept`, with no `Fix now`, resolves its group's FAIL rows before the pause, and the accepted items stay a concern | Unit | `.bkit/core/engine/commands/workflow/summary.test.ts` | 4 |
+| The Decision Pause rewrites a challenge task answered `Fix now` to the owner's direction in place: its `DONE WHEN`, `TEST FIRST` and `Derived Test Matrix` rows, keeping its meta line | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
+| A hard blocker answered `Fix now` with no direction is asked again before anything is built | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
+| Each `Fix now` item records the task that carries its fix as `Fix task: {N}` before the decision row is finished, and a resumed step 5 reuses the task that line names | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
+| The Contract **Owner decisions** bullet names the task block as the carrier of a `Fix now` direction, and `### 🔒 Gate — Decision Pause` checks the `Fix task` lines | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
 | `bkit workflows summary` on a temp tree reads the paused group's decision file and the plan from disk, and prints `CONCERNS` for a run whose only FAIL rows are the `Fix now` group's and a test-fix step's | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 3 |
 
 ### 👤 ✅ Human Confirmation
@@ -160,7 +168,7 @@ The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 
 | `DecisionItem.fixTask: number \| null` | New field on an exported interface | No | Additive; every existing caller (`applyRecommendations`, `apply`, `pending`, `buildSummary`, `challengeResolution`, `acceptedLocations`) ignores it. |
 | `decisionHeader(text)` exported from `decisions.ts` | New export | No | New name; no existing export is renamed. |
 | A challenge task answered `Fix now` with a direction is rewritten in place | Workflow behaviour | No | The task keeps its number and meta line, so the summary's challenge resolution, `context brief` and `tests plan-check` see the same task. A run paused before the upgrade and resumed after it follows the new step 5. |
-| Summary verdict of a run whose only FAIL rows are a `Fix now` group's or a test-fix step's | Summary behaviour | No | Moves from FAIL to CONCERNS or PASS only on the evidence above; nothing that was PASS or CONCERNS becomes FAIL. The pause rule clears FAIL rows only, so a CONCERNS run never turns PASS through it: a paused group's CONCERNS rows stay concerns. |
+| Summary verdict of a run whose only FAIL rows are a `Fix now` group's, an `Accept`-only verify pause's group's or a test-fix step's | Summary behaviour | No | Moves from FAIL to CONCERNS or PASS only on the evidence above; nothing that was PASS or CONCERNS becomes FAIL. The pause rule clears FAIL rows only, so a CONCERNS run never turns PASS through it: a paused group's CONCERNS rows stay concerns. |
 | A hard blocker answered `Fix now` with no direction gets a follow-up question | Owner-visible workflow behaviour | No | The owner is asked for the direction before anything is built; today the pause goes on to step 5 with no direction. Headless runs are unchanged. |
 
 ### 👤 ✅ Human Confirmation
@@ -187,22 +195,7 @@ The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 
   - **Options:** A) Keep FAIL: the step could not confirm its result, and with Part 4 the next full test run judges it — no prompt change · B) Report CONCERNS when the step changed no files and only the tests-lock re-run was blocked — the step row reads truer, but it changes a verdict contract that build Step 14 and debug Step 7 share, and `.bkit/prompts.md`.
   - **Recommended:** A) — Part 4 already settles the summary, and a step that could not confirm its fix is honestly FAIL.
   - **Default if unanswered:** A.
-- **Open Question Q4:** What are this plan's `Narrative` and `Success Criteria`? #903 is bug-shaped, with no design and no change-shape fields, so both sections read MISSING and the plan cannot invent them. → the owner decides at plan approval; Gate 1 stays blocked until both sections are filled.
-  - **Proposed Narrative:** The owner answers `Fix now` at `/bkit-build`'s Decision Pause, giving a direction where the item needs one, and the build builds that direction, and the summary credits the verified fix instead of reporting FAIL. A test-fix step that ended FAIL no longer fails the summary once the next test run on the same scope passes.
-  - **Proposed Success Criteria** (from the issue's `What should happen` text for Parts 1, 2 and 4):
-    1. A `**Fixable:** false` challenge task answered `Fix now` with a direction has its `DONE WHEN` and `TEST FIRST` rewritten to that direction before Step 7 runs.
-    2. A hard blocker answered `Fix now` with no direction gets a follow-up question, and no task is built for it until the owner gives the direction.
-    3. A group whose verify pause answered every item, with each `Fix now` task ticked and verified `PASS` in its own group after the pause, has no FAIL reason in `workflows summary`; each accepted item stays a concern.
-    4. An unanswered item, a `Fix now` item with a missing or wrong `Fix task:` line, or an unticked or unverified fix task keeps the paused group's FAIL.
-    5. A `build-failure-remediate` or `debug-failure-remediate` FAIL counts as resolved when a later test run in the same run passes with 0 failures on the same scope, and stays a failure without one.
-  - **Options:** A) Adopt the proposed wording — the plan proceeds at once, and the wording is drawn from the issue, but it is the planner's reading of it · B) The owner writes their own Narrative and Success Criteria — the contract is the owner's own words, but the plan waits for them.
-  - **Recommended:** A) — each criterion restates one of the issue's `What should happen` rules, and every one already has a `Derived Test Matrix` row.
-  - **Default if unanswered:** both sections keep the MISSING marker, and Gate 1 stays blocked.
-- **Open Question Q5:** Does a verify pause that the owner answered with `Accept` on every item (no `Fix now`) resolve its group's FAIL rows? The issue's Part 2 rule reads as yes ("answered every item, and each `Accept` item stays a concern"), but `summary.test.ts` `a group's failed execution stays unresolved when verification still has concerns` asserts that an `Accept` pause followed by a CONCERNS re-verify keeps the group's `build-plan-tasks` FAIL, and no ledger row records why. That case's `build-decision` rows carry no decision file, so it holds under every option below. → the owner decides at plan approval.
-  - **Options:** A) Keep the FAIL: the plan's rule needs at least one verified `Fix now` task, and the answer is recorded as a decision row — no new behaviour, but an `Accept`-only run still fails its summary and takes the Failure Path · B) Resolve the group: an `Accept`-only pause whose file answers every item clears its group's FAIL rows before the pause, and the accepted items stay a concern — matches the issue's wording and drops no signal, but widens Task 3's rule and adds a matrix row and a test · C) Defer it to its own decision — keeps this plan small, but the inconsistency stays live.
-  - **Recommended:** B) — the issue's rule covers it, and the accepted-items concern already carries the signal; a bare `build-decision` row with no answered decision file still clears nothing.
-  - **Default if unanswered:** A, the plan as written.
-- **Assumption:** #891 merges to `dev` before Groups 2 and 3 are built, and Step 3 (Branch Sync) brings it into this branch → if wrong, Task 2 (`decisions.ts`) and Task 4 (`bkit-build.md`) edit text #891 also changes, and the sync conflicts. Group 1 touches only `summary.ts` and `summary.test.ts`, which #891 does not change.
+- **Assumption:** #891 merges to `dev` before Groups 2 and 3 are built, and Step 3 (Branch Sync) brings it into this branch → if wrong, Task 2 (`decisions.ts`) and Task 5 (`bkit-build.md`) edit text #891 also changes, and the sync conflicts. Group 1 touches only `summary.ts` and `summary.test.ts`, which #891 does not change.
 - **Assumption:** A `*-run-tests` `PASS` row with no `failures` field (the gate wrote no JUnit report) counts as 0 failures, as the existing `answer` lookup treats it → if wrong, a consumer with no JUnit reporters keeps the test-fix FAIL; it never clears a FAIL wrongly, because `steps finish` refuses a `PASS` with failures.
 - **Assumption:** Two test runs ran "the same scope" when their `step-done` rows' `scope` strings are equal (`--scope="{TEST_SCOPE}"` in build Step 12 and debug Step 3; `steps finish` requires `scope` on `build-run-tests` / `debug-run-tests` rows, per the closed deferral `58-test-verdict-scope-arg-accepts-empty-silently`) → if wrong (a workflow wrote two names for one gate), the test-fix FAIL stays, which is the safe side.
 - **Assumption:** This plan lands before #895, which rewrites the decision-file layout and `parseDecisionItems`, and #895 rebases onto `fixTask` and `decisionHeader` → if #895 lands first, Task 2 is re-planned against #895's layout, and #895 must keep a per-item `Fix task:` line and a header block with `From:` and `Group:`, or every `Fix now` group keeps its FAIL.
@@ -248,18 +241,17 @@ The issue is bug-shaped. Its `What should happen` sections under Parts 1, 2 and 
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
 | --- | --- | --- | --- |
-| The headless `Stop` route: a headless pause that takes `Stop` re-runs the red gate by `From:` until its loop limit sends it to the Failure Path | #891's plan `docs/plans/202611/891-build-gate-stuck-plan.md` § Suggested Scope Expansion; Open Question Q1 B | Decision Pause step 6 routing; Task 4 | Needs a design decision; decide it with #913. |
-| #913 — Owner Stop writes the full handover in debug, build and ship (OPEN) | #913 | Decision Pause step 6 and step 8 handover in `bkit-build.md`; Task 4 | Keep separate; build it after this plan so Task 4's step 5-6 text is settled. |
-| #902 — Show every choice made without asking in each workflow's summary (OPEN) | #902 | `buildSummary` in `summary.ts`; Tasks 1 and 3 | Keep separate; it adds summary lines, this plan changes resolution rules. |
+| The headless `Stop` route: a headless pause that takes `Stop` re-runs the red gate by `From:` until its loop limit sends it to the Failure Path | #891's plan `docs/plans/202611/891-build-gate-stuck-plan.md` § Suggested Scope Expansion; Open Question Q1 B | Decision Pause step 6 routing; Task 5 | Needs a design decision; decide it with #913. |
+| #913 — Owner Stop writes the full handover in debug, build and ship (OPEN) | #913 | Decision Pause step 6 and step 8 handover in `bkit-build.md`; Task 5 | Keep separate; build it after this plan so Task 5's step 5-6 text is settled. |
+| #902 — Show every choice made without asking in each workflow's summary (OPEN) | #902 | `buildSummary` in `summary.ts`; Tasks 1, 3 and 4 | Keep separate; it adds summary lines, this plan changes resolution rules. |
 | #895 — One question format for every owner question in the workflows (OPEN) | #895 | The decision-file item layout this plan extends with `Fix task:`; `parseDecisionItems` (Task 2) | Keep separate, and build it after this plan (Assumption on #895); its format must keep the `Fix task:` line and the header block `decisionHeader` reads. |
-| #904 — Question advisor: a fresh top-tier agent behind every owner question (OPEN) | #904 | The Decision Pause asks (steps 3-4); Task 4 | Keep separate. |
+| #904 — Question advisor: a fresh top-tier agent behind every owner question (OPEN) | #904 | The Decision Pause asks (steps 3-4); Task 5 | Keep separate. |
 | `openDecision` in `workflows.ts` slices the decision file's header block inline instead of calling the new `decisionHeader` | This plan's investigation (`feat/891-build-gate-stuck`) | `decisions.ts` `decisionHeader` (Task 2) | Fold in only after #891 merges and only on owner decision; a one-call refactor with no behaviour change. |
 | A Decision Pause composed before a step renumber posts its old step number | `docs/deferrals.jsonl` `705-build-plan-convert-challenge-low-bkit-core-engine-commands-workflow-workflows-ts-279` | Decision file header lines (`Pause step`) that `decisionHeader` reads | Keep deferred; unrelated to the owner's answer. |
 | `/bkit-debug` base-red label, `/bkit-ship` base-red notice, CI JUnit artifact for red base runs | `docs/deferrals.jsonl` `891-debug-base-red-label`, `891-ship-base-red-notice`, `891-ci-junit-artifact-settles-red-base-runs` | Part 3 (what #891 leaves undone) | Keep deferred: each was declared out of scope by #891's owner rescope and is not an ignored owner answer. |
-| An `Accept`-only verify pause followed by a CONCERNS re-verify keeps the group's `build-plan-tasks` FAIL, with no recorded reason | `related-issues.md` #900, the `/bkit-debug #900` comment, item 2 (`summary.test.ts` `a group's failed execution stays unresolved when verification still has concerns`) | Task 3's pause rule | Put to the owner as Open Question Q5; it joins the plan only through that answer. |
 | A decision file written before this change gets a reason line saying why its group stays FAIL | `related-issues.md` #900 comment, item 4 | Task 3's summary reasons | Fold into Task 3 only on the owner's decision; Alternative Approaches says why the plan leaves it out. |
 | Match the decision to its verify round through the `Verify attempt:` header as well as `Group:` | `related-issues.md` #900 comment, item 3 | Task 3's pause rule | Keep as is: row order gives the same result (Alternative Approaches). |
-| #907 — fix-loop strategy labels (OPEN) | `related-issues.md` #907 | `decisions.ts`; the `STANDARD → PIVOT → FINAL` sentence inside the **Fixer reads the answer** bullet Task 5 rewrites | Keep separate; Task 5 leaves that sentence as it is. |
+| #907 — fix-loop strategy labels (OPEN) | `related-issues.md` #907 | `decisions.ts`; the `STANDARD → PIVOT → FINAL` sentence inside the **Fixer reads the answer** bullet Task 6 rewrites | Keep separate; Task 6 leaves that sentence as it is. |
 | `audit-deterministic-bookkeeping-agent-artifact-envelope-arithmetic` (OPEN failure) | `related-failures.md` | `Fix task:` is one more machine-read line the orchestrator writes by hand | Keep separate. |
 
 ## Security & Privacy
@@ -282,8 +274,8 @@ None — no new routes, DB writes, secrets, or user input. Per `docs/security.md
 - [ ] **Package Management:** no package is added or removed; `package.json` and `pnpm-lock.yaml` stay as they are.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-11) lists only dev tools behind: `vitest` and `@vitest/coverage-v8` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.91.0, `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5 (held on ^6 by decision `bkit-repo-holds-vite-major`). None blocks the build. Toolchain: Node v24.16.0, pnpm 10.34.7. No stack CLI is involved.
 - [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo, dependency and ecosystem searches are recorded in `Reuse Inventory`.
-- [ ] **User Context:** every file the runbook reads or updates exists in this worktree and was opened while planning; the only missing input is the owner's Narrative and Success Criteria (`Acceptance Scenario`, Q4) and the answers to Q1-Q5.
-- [ ] **Project Context:** read `docs/decisions.jsonl` rows `682-summaries-written-by-bkit`, `build-fix-now-pause-writes-no-code-and-has-no-set-aside-path` (latest `SUPERSEDED` by `796-tests-subagent-separate-from-code`), every `891-*` row; `docs/failures.jsonl` row `846-summary-retains-resolved-findings` (the Resolution evidence design); `docs/deferrals.jsonl` rows `891-debug-base-red-label`, `891-ship-base-red-notice`, `891-ci-junit-artifact-settles-red-base-runs`. No `docs/knowledge.jsonl` row covers the summary or the Decision Pause; the ACTIVE rows `kn-7-dist-staleness-pnpm-build-must-run-before-push-for-bk` (rebuild `dist/` with each engine edit), `instructions-store-clause-text-and-local-entries-need-hand-edits` and `renumbering-a-workflow-leaves-instructions-md-local-entries-stale` (`instructions:sync` never rewrites a changed local entry) shape Tasks 1-4.
+- [ ] **User Context:** every file the runbook reads or updates exists in this worktree and was opened while planning; the `Narrative` and `Success Criteria` carry the owner's approved wording, and Open Questions Q1-Q3 stay unanswered with their stated defaults.
+- [ ] **Project Context:** read `docs/decisions.jsonl` rows `682-summaries-written-by-bkit`, `build-fix-now-pause-writes-no-code-and-has-no-set-aside-path` (latest `SUPERSEDED` by `796-tests-subagent-separate-from-code`), every `891-*` row; `docs/failures.jsonl` row `846-summary-retains-resolved-findings` (the Resolution evidence design); `docs/deferrals.jsonl` rows `891-debug-base-red-label`, `891-ship-base-red-notice`, `891-ci-junit-artifact-settles-red-base-runs`. No `docs/knowledge.jsonl` row covers the summary or the Decision Pause; the ACTIVE rows `kn-7-dist-staleness-pnpm-build-must-run-before-push-for-bk` (rebuild `dist/` with each engine edit), `instructions-store-clause-text-and-local-entries-need-hand-edits` and `renumbering-a-workflow-leaves-instructions-md-local-entries-stale` (`instructions:sync` never rewrites a changed local entry) shape Tasks 1-5.
 - [ ] **Testing & Quality:** every behaviour row is Unit, per `docs/testing.md` § Which tier does a behaviour need? and § Tiers: `buildSummary` and `parseDecisionItems` are pure, the workflow text is the deliverable (§ A guard asserts the rule, the exception paragraph), and the `workflows summary` verb test drives the real temp-folder boundary in `workflows.test.ts`. No backing service, network or UI is involved, so no Integration, `@live` or E2E row applies.
 - [ ] **Prerequisite Plans:** `docs/plans/202611/891-build-gate-stuck-plan.md` (#891) fully built, verified and merged to `dev` before Groups 2 and 3; Task 2's `readBaseCheck` check stops a build started earlier. Group 1's code has no prerequisite, but `/bkit-build`'s blocker check holds the whole run while #891 is open (Integration Shape).
 
@@ -329,7 +321,7 @@ None — no database change. The decision file gains one optional line per `Fix 
 | A hard blocker answered `Fix now` with no direction is asked again | `.bkit/core/workflows/bkit-build.md` | `grep -n 'still lacks a decision\|noRecommendation\|hard blocker'` over `bkit-build.md`; `.bkit/core/.bkit/workflows.md` § Decision Pause bullets | Decision Pause step 4 route "**If** any asked item still lacks a decision" → follow-ups — covers unanswered items, missing the direction rule | EXTEND | A hard blocker's `Fix now` without a direction counts as lacking a decision, so the existing follow-up branch asks for it. |
 | The decision file links each `Fix now` item to the task that carries its fix | `.bkit/core/engine/commands/workflow/decisions.ts` | language server: references to `parseDecisionItems` (decisions.ts, summary.ts, summary-findings.ts, challenge.ts); `grep -rln 'Fix task\|fixTask'` over `.bkit/core` and `dist` (only challenge merge's unrelated `fixTasks` output) | `parseDecisionItems` / `DecisionItem` — parse each item's `Decision:` line, missing a task link | EXTEND | Add `fixTask: number \| null` to `DecisionItem`, read from a `Fix task: {N}` line; additive, every caller keeps working. |
 | Read a decision file's header lines (`From:`, `Group:`) | `.bkit/core/engine/commands/workflow/decisions.ts` | `grep -n 'export\|header'` over `decisions.ts` on HEAD and on `feat/891-build-gate-stuck`; read `openDecision` in `workflows.ts` (#891 branch) | private `lineOf` (reads the whole text, so an item line could match); `openDecision`'s inline header-block slice for `Gate:` (not exported) | EXTEND | Export `decisionHeader(text)` from `decisions.ts`, reading only the lines before the first blank line, as `openDecision` does; `openDecision` is left as it is (Suggested Scope Expansion). |
-| Clear a paused group's FAIL rows after its `Fix now` tasks are verified | `.bkit/core/engine/commands/workflow/summary.ts` | language server: references to `taskVerified` (summary.ts `buildSummary`, summary-findings.ts `challengeResolution`); read `buildSummary`, `RESOLVED_BY`, the `answer` lookup and the Decision Pause block | `buildSummary`'s same-group `answer` lookup — covers a re-verified group, missing the moved-fix case; `taskVerified` — exactly the per-task evidence needed | EXTEND | A pre-pass over `build-decision` rows builds a map from paused group to its latest qualifying decision file; the per-group loop resolves that group's `build-plan-tasks`, `build-plan-verify` and `build-plan-gaps-remediate` rows whose last verdict is FAIL and which come before that row; `taskVerified` checks each `Fix now` task. |
+| Clear a paused group's FAIL rows after its `Fix now` tasks are verified, or after an `Accept`-only pause | `.bkit/core/engine/commands/workflow/summary.ts` | language server: references to `taskVerified` (summary.ts `buildSummary`, summary-findings.ts `challengeResolution`); read `buildSummary`, `RESOLVED_BY`, the `answer` lookup and the Decision Pause block | `buildSummary`'s same-group `answer` lookup — covers a re-verified group, missing the moved-fix case; `taskVerified` — exactly the per-task evidence needed | EXTEND | A pre-pass over `build-decision` rows builds a map from paused group to its latest qualifying decision file; the per-group loop resolves that group's `build-plan-tasks`, `build-plan-verify` and `build-plan-gaps-remediate` rows whose last verdict is FAIL and which come before that row; `taskVerified` checks each `Fix now` task, and an `Accept`-only pause qualifies through the same map with no task to check. |
 | Clear a test-fix FAIL after a later passing test run on the same scope | `.bkit/core/engine/commands/workflow/summary.ts` | `grep -rn 'failure-remediate'` over `summary*.ts` (no hit); read `RESOLVED_BY` and the `answer` lookup; read build Step 14 and debug Step 7 `steps finish` (`--attempt-of=*-run-tests:current`) and the `--scope` flags of build Step 12 and debug Step 3 | `RESOLVED_BY` + the `answer` lookup — covers step-to-step resolution, missing these two entries and a scope match | EXTEND | Add `build/build-failure-remediate` → `build-run-tests` and `debug/debug-failure-remediate` → `debug-run-tests`; for these entries the lookup also requires the later run's `scope` to equal the scope of the run the fix step followed. |
 | Document the two new resolution rules and the reshaped `Fix now` | `.bkit/core/.bkit/workflows.md` | `grep -n 'Resolution evidence\|Fix now'` over `.bkit/workflows.md` and `.bkit/core/.bkit/workflows.md` | § Summary / handover step **Resolution evidence** table; § Decision Pause **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** bullets | EXTEND | Add two table rows and reword the four bullets; `.bkit/workflows.md` is re-rendered by `bkit upgrade`. |
 | Test the new behaviour | `.bkit/core/engine/commands/workflow/summary.test.ts` | `grep -n 'it(\|describe('` over `summary.test.ts`, `decisions.test.ts`, `workflow-shape.test.ts`, `workflows.test.ts`; read `planOf` in `workflows.test.ts` (it puts every task in `GROUP 1`) and the `compose` helper in `decisions.test.ts` (`decisions compose` fixtures) | `summary.test.ts` (`buildSummary` cases, the `input` and `row` helpers), `decisions.test.ts` (`parseDecisionItems` describe, `compose` helper), `workflow-shape.test.ts` (Decision Pause cases, `section` helper), `workflows.test.ts` (`bkit workflows summary` describe with a temp tree, `planOf` helper) | EXTEND | New cases go into the existing describes and reuse their helpers; `planOf` gains a per-task group, so the verb case holds the paused group's tasks and the fix task in different groups; no new test file and no second plan helper. |
@@ -338,7 +330,7 @@ None — no database change. The decision file gains one optional line per `Fix 
 
 Every change edits an existing file; no file is created or deleted. Line numbers move once #891 merges, so each entry names its symbol or section.
 
-**Ledger rows:** `903-fix-now-rewrites-challenge-task-in-place`, `903-hard-blocker-fix-now-needs-a-direction`, `903-fix-task-line-links-decision-to-task`, `903-fix-now-group-fail-resolved-by-verified-fix-tasks`, `903-test-fix-fail-resolved-by-same-scope-passing-run`, `903-debug-soak-fail-resolved-by-later-passing-run`, `903-diagnose-fail-resolved-by-later-passing-run`
+**Ledger rows:** `903-fix-now-rewrites-challenge-task-in-place`, `903-hard-blocker-fix-now-needs-a-direction`, `903-fix-task-line-links-decision-to-task`, `903-fix-now-group-fail-resolved-by-verified-fix-tasks`, `903-test-fix-fail-resolved-by-same-scope-passing-run`, `903-debug-soak-fail-resolved-by-later-passing-run`, `903-diagnose-fail-resolved-by-later-passing-run`, `903-accept-only-verify-pause-resolves-group-fail`
 
 ### Database Migrations
 
@@ -352,7 +344,7 @@ The summary learns two resolution rules; the decision parser learns one line and
 
 - **Existence Check:** the file exists; `buildSummary`, `RESOLVED_BY` and the `answer` lookup read on HEAD.
 - **Part 4:** add `"build/build-failure-remediate": ["build-run-tests"]` and `"debug/debug-failure-remediate": ["debug-run-tests"]` to `RESOLVED_BY`. For these two keys the `answer` lookup also requires the later run's `scope` to equal the `scope` of the `*-run-tests` row whose `attempt` equals the fix step's `attempt` (both rows are `type: "step-done"` rows of `input.rows`, never the `test-run` rows that share their `step` and `attempt`; a missing row or a missing `scope` on either leaves the FAIL). A CI-sourced debug round (`scope` = `ci:{runId}`) therefore never matches a later local run, which keeps its FAIL. The existing conditions stay: later index, `PASS`, `failures` absent or 0, same task group (both undefined here).
-- **Part 2:** before the per-group loop, build `pausedGroups: Map<number, {index, rel, tasks}>` from the run's `build-decision` rows. A row qualifies when its artifact's text (`read`) has `decisionHeader` `From` = `verify` and a numeric `Group`; `parseDecisionItems` gives at least one item; every item has a `decision` (a round-limit file's loop item, Q1 `Verify`, counts with its `Decide` answer, and is neither `Accept` nor `Fix now`); at least one is `Fix now`; and every `Fix now` item has a `fixTask` that names a plan task for which `taskVerified(input, task, index)` is true (a `fixTask` naming a task the plan does not have fails the row). When several rows qualify for one group, the map keeps the latest. In the per-group loop, for `workflow === "build"` and `g.step` in `build-plan-tasks`, `build-plan-verify`, `build-plan-gaps-remediate` whose last verdict is `FAIL`, whose `taskGroupOf(row)` is a key of `pausedGroups` and whose last row's index is below that decision's index → `resolved.set(g.key, "the Decision Pause (`{rel}`), Fix now task(s) {N, …} verified")` and continue. A CONCERNS row of a paused group (a remediation warning, or a CONCERNS verify) is never cleared by this rule. Rows of the same group after the decision are left to the existing rules.
+- **Part 2:** before the per-group loop, build `pausedGroups: Map<number, {index, rel, tasks}>` from the run's `build-decision` rows. A row qualifies when its artifact's text (`read`) has `decisionHeader` `From` = `verify` and a numeric `Group`; `parseDecisionItems` gives at least one item; every item has a `decision` (a round-limit file's loop item, Q1 `Verify`, counts with its `Decide` answer, and is neither `Accept` nor `Fix now`); and either at least one gap item is `Fix now`, or there is at least one gap item and every gap item is `Accept` (an `Accept`-only pause). Every `Fix now` item has a `fixTask` that names a plan task for which `taskVerified(input, task, index)` is true (a `fixTask` naming a task the plan does not have fails the row); an `Accept`-only pause has no task to check. When several rows qualify for one group, the map keeps the latest. In the per-group loop, for `workflow === "build"` and `g.step` in `build-plan-tasks`, `build-plan-verify`, `build-plan-gaps-remediate` whose last verdict is `FAIL`, whose `taskGroupOf(row)` is a key of `pausedGroups` and whose last row's index is below that decision's index → `resolved.set(g.key, "the Decision Pause (`{rel}`), Fix now task(s) {N, …} verified")`, or `"the Decision Pause (`{rel}`), every item accepted"` for an `Accept`-only pause, and continue. A CONCERNS row of a paused group (a remediation warning, or a CONCERNS verify) is never cleared by this rule. Rows of the same group after the decision are left to the existing rules.
 - The accepted-items concern, the bare-decision guard and every other rule stay as they are. `build-plan-verify` has no `RESOLVED_BY` entry and gets none: only the pause rule above clears it.
 
 #### [MODIFY] `.bkit/core/engine/commands/workflow/decisions.ts`
@@ -383,21 +375,21 @@ The plan's task block becomes the one carrier of a `Fix now` direction.
 #### [MODIFY] `.bkit/core/.bkit/workflows.md`
 
 - **Existence Check:** the file exists; § Summary / handover step and § Decision Pause bullets read on HEAD.
-- **Resolution evidence** table: add a row "Failed group execution, verification or gap remediation after a verify pause answered `Fix now`" → "The pause's decision file answers every item, and each `Fix now` item's `Fix task` is ticked and covered by its own group's later passing verification. Accepted items remain concerns." Add a row "Failed test-fix step (build Step 14, debug Step 7)" → "A later passing test run with 0 failures on the same scope as the run the fix followed", plus the flake wording Q2 settles. The `Fix now` row clears FAIL rows only; remediation warnings stay concerns.
+- **Resolution evidence** table: add a row "Failed group execution, verification or gap remediation before a verify pause that answered every item `Fix now` or `Accept`" → "The pause's decision file answers every item, and each `Fix now` item's `Fix task` is ticked and covered by its own group's later passing verification; a pause whose gap items are all `Accept` needs no fix task. Accepted items remain concerns." Add a row "Failed test-fix step (build Step 14, debug Step 7)" → "A later passing test run with 0 failures on the same scope as the run the fix followed", plus the flake wording Q2 settles. The `Fix now` row clears FAIL rows only; remediation warnings stay concerns.
 - The existing row "Failed group execution or gap remediation → The latest passing verification of the same group" gains a pointer to the new `Fix now` row, so an agent does not read same-group verification as the only evidence.
 - Decision Pause bullets: **Fix now** (a challenge task is rewritten to the owner's direction in place, keeping its meta line; each item gets a `Fix task:` line), **Hard blockers** (`Fix now` needs the owner's direction), **Record** (the item layout gains `Fix task: {N}`), **Fixer reads the answer** (Step 7's agents read the direction from the task block in their brief; Steps 8-10 keep reading the decision file's `Decision:` lines). The bullet's `STANDARD → PIVOT → FINAL` sentence stays as it is (#907 owns it).
 
 #### [MODIFY] `docs/testing.md`
 
 - **Existence Check:** the file exists; § Counter derivation test coverage row for `commands/workflow/summary.test.ts` read.
-- Extend the `summary.test.ts` row's scope with "a verify pause's `Fix now` group resolved by its verified fix tasks; a test-fix FAIL resolved by a later same-scope passing run".
+- Extend the `summary.test.ts` row's scope with "a verify pause's `Fix now` group resolved by its verified fix tasks, and an `Accept`-only pause's group resolved by the pause; a test-fix FAIL resolved by a later same-scope passing run".
 
 #### [MODIFY] generated copies
 
-- `dist/` is rebuilt with `pnpm build` and staged in the same task as each engine edit (Tasks 1, 2 and 3), because `.husky/pre-commit` runs `pnpm bkit:check:dist` whenever a non-test engine `.ts` file is staged (`.agents/rules.md` § Engine builds).
-- `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt` is re-rendered by Task 4 (`vitest run .bkit/core/engine/render -u`), its one owner; Task 6's `pnpm bkit:generate` re-runs the same render and must leave the file unchanged.
-- `.bkit/instructions.md` is hand-edited by Task 4 (Workflow — Decision Pause above).
-- The host mirrors, `.bkit/workflows.md` and `docs/capabilities.md` are regenerated by `pnpm bkit:generate` (build, `cli:sync`, `instructions:sync`, `bkit upgrade`, render snapshots `-u`, graph refresh) in Task 6, never hand-edited.
+- `dist/` is rebuilt with `pnpm build` and staged in the same task as each engine edit (Tasks 1, 2, 3 and 4), because `.husky/pre-commit` runs `pnpm bkit:check:dist` whenever a non-test engine `.ts` file is staged (`.agents/rules.md` § Engine builds).
+- `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt` is re-rendered by Task 5 (`vitest run .bkit/core/engine/render -u`), its one owner; Task 7's `pnpm bkit:generate` re-runs the same render and must leave the file unchanged.
+- `.bkit/instructions.md` is hand-edited by Task 5 (Workflow — Decision Pause above).
+- The host mirrors, `.bkit/workflows.md` and `docs/capabilities.md` are regenerated by `pnpm bkit:generate` (build, `cli:sync`, `instructions:sync`, `bkit upgrade`, render snapshots `-u`, graph refresh) in Task 7, never hand-edited.
 
 ### Cron Jobs & Scheduled Tasks
 
@@ -412,10 +404,10 @@ None — no artifact is replaced. The step 5 sentence "keep that task open. It r
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `.bkit/core/.bkit/workflows.md` (renders `.bkit/workflows.md`) | Two **Resolution evidence** rows (the `Fix now` group, the failed test-fix step) and the **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** Decision Pause bullets. |
-| `docs/testing.md` | The `commands/workflow/summary.test.ts` row's scope names the two new resolution cases. |
-| `.bkit/instructions.md` | Task 4 hand-edits the `#### bkit-build` local entries for every rewritten or added `bkit-build.md` standing line; `pnpm instructions:sync` only adds lines, so it cannot drop or rewrite a changed entry. |
-| `docs/decisions.jsonl` | Five plan decisions, keys on the `**Ledger rows:**` line. |
+| `.bkit/core/.bkit/workflows.md` (renders `.bkit/workflows.md`) | Two **Resolution evidence** rows (the verify-pause group, `Fix now` or `Accept`-only; the failed test-fix step) and the **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** Decision Pause bullets. |
+| `docs/testing.md` | The `commands/workflow/summary.test.ts` row's scope names the new resolution cases. |
+| `.bkit/instructions.md` | Task 5 hand-edits the `#### bkit-build` local entries for every rewritten or added `bkit-build.md` standing line; `pnpm instructions:sync` only adds lines, so it cannot drop or rewrite a changed entry. |
+| `docs/decisions.jsonl` | Six plan decisions, keys on the `**Ledger rows:**` line. |
 | `docs/deferrals.jsonl` | Two `Out of Scope` deferrals, `903-debug-soak-fail-resolved-by-later-passing-run` and `903-diagnose-fail-resolved-by-later-passing-run`. |
 | `docs/knowledge.jsonl` | None — no new gotcha beyond the decisions. |
 | `docs/architecture.md` | None — no topology or component change. |
@@ -467,7 +459,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:group 2 start -->
 
-### TASK GROUP 2: A verified Fix now task clears its paused group's FAIL (Part 2)
+### TASK GROUP 2: A verified Fix now task or an Accept-only pause clears its paused group's FAIL (Part 2)
 
 <!-- bkit:task 2 start -->
 
@@ -513,15 +505,29 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 3 end -->
 
+<!-- bkit:task 4 start -->
+
+- [ ] **TASK 4:** Resolve a verify pause's group FAIL rows when every item is answered `Accept`
+  - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: a `From: verify` decision file with a numeric `Group` whose every item is decided (the loop item's `Decide` counting) and whose gap items are at least one and all `Accept`, with no `Fix now`, also qualifies for `pausedGroups`; it resolves the same FAIL rows before the decision row as Task 3's rule, with the reason `the Decision Pause ({rel}), every item accepted`. The accepted-items concern stays, and a bare `build-decision` row with no answered decision file still clears nothing.
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/summary.test.ts`: one new case in `describe("buildSummary")`, with a decision-file fixture in the `decisions compose` layout Task 3 uses (Q1 `Verify` `Decide`, Q2 and Q3 `Accept`, no `Fix task:` line).
+  - **UPDATE:** `dist/commands/workflow/summary.js`: rebuilt with `pnpm build` and staged with the source.
+  - **READ:** `.bkit/core/engine/commands/workflow/summary.test.ts`: the existing case `a group's failed execution stays unresolved when verification still has concerns`, whose `build-decision` rows carry no decision file.
+  - **DEPENDS ON:** 3
+  - **DONE WHEN:** with a round-limit `From: verify`, `Group: 9` decision file whose Q1 `Verify` is `Decide` and whose Q2 and Q3 are `Accept`, `s.reasons` holds no group 9 FAIL row from before the pause, `Resolved Findings` names the decision file, the accepted-items concern stays and the verdict is CONCERNS; the same file with Q3 unanswered keeps the group 9 FAIL rows; a group 9 FAIL row after the pause stays in `s.reasons`; the existing cases `a group's failed execution stays unresolved when verification still has concerns` and the bare-decision guard still pass, as do all of Task 3's cases; `pnpm bkit:check:dist` passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/summary.test.ts` `an Accept-only verify pause resolves its group's FAIL rows before the pause` fails on "build-plan-tasks (group 9) FAIL" staying in the reasons after a pause that answered every gap item `Accept`
+
+<!-- bkit:task 4 end -->
+
 <!-- bkit:group 2 end -->
 
 <!-- bkit:group 3 start -->
 
 ### TASK GROUP 3: The Decision Pause carries the owner's Fix now direction (Part 1)
 
-<!-- bkit:task 4 start -->
+<!-- bkit:task 5 start -->
 
-- [ ] **TASK 4:** Rewrite a `Fix now` challenge task in place, ask again for a hard blocker's direction, and record `Fix task: {N}`
+- [ ] **TASK 5:** Rewrite a `Fix now` challenge task in place, ask again for a hard blocker's direction, and record `Fix task: {N}`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Decision Pause step 4 route (a hard blocker answered `Fix now` with no direction still lacks a decision), step 5 **Fix now** challenge branch (rewrite `**DONE WHEN:**`, `**TEST FIRST:**` and the task's `Derived Test Matrix` rows to the owner's direction; keep number, title, group and meta line, `**Fixable:** false` included; no "runs as it is" branch, because every challenge-task item is a hard blocker), step 5 reuse (an item that already has a `Fix task:` line reuses that task and writes no second block), step 6 (`Fix task: {N}` under each `Fix now` item), the Contract **Owner decisions** bullet (reword its "only by reading the decision file" sentence: the decision file for `Accept`, `Try again` and `Stop`, the task block for a `Fix now` direction; the ban on restating answers in `Context` stays), and `### 🔒 Gate — Decision Pause` (`- [ ] Fix now tasks shaped to the owner's direction, each named on a Fix task line`).
   - **UPDATE:** `.bkit/instructions.md`: hand-edit the `#### bkit-build` local entries for every rewritten or added standing line (delete retired lines, add the new wording); `pnpm instructions:sync` cannot drop or rewrite a changed entry.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: four new cases in `describe("build")`, using the `section(build, /Decision Pause/)` helper. Each case asserts the instruction itself (the field names it rewrites, the `Fix task: {N}` line, the reworded contract), not the absence of "runs as it is".
@@ -536,7 +542,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `each Fix now item records its Fix task line before the decision row is finished` fails on step 6 writing no `Fix task:` line, or step 5 not reusing the task an existing `Fix task:` line names
     - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `the owner decisions contract names the task block as the Fix now carrier` fails on the Contract **Owner decisions** bullet naming only the decision file, or the Decision Pause gate having no `Fix task` line item
 
-<!-- bkit:task 4 end -->
+<!-- bkit:task 5 end -->
 
 <!-- bkit:group 3 end -->
 
@@ -544,30 +550,30 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 ### TASK GROUP 4: Docs and generated copies
 
-<!-- bkit:task 5 start -->
-
-- [ ] **TASK 5:** Document the two resolution rules and the reshaped Decision Pause
-  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § Summary / handover step **Resolution evidence** table gains the `Fix now` group row (FAIL rows only; remediation warnings stay concerns) and the failed test-fix row (with the Q2 answer on the flake), and the existing "Failed group execution or gap remediation" row points at the new `Fix now` row; § Decision Pause **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** bullets match Task 4, with **Fixer reads the answer** naming the task block for Step 7 and the decision file for Steps 8-10, and its `STANDARD → PIVOT → FINAL` sentence left as it is.
-  - **UPDATE:** `docs/testing.md`: the `commands/workflow/summary.test.ts` row's scope names the two new resolution cases.
-  - **DEPENDS ON:** 3, 4
-  - **DONE WHEN:** both table rows, the pointer on the existing row and the four bullets are in `.bkit/core/.bkit/workflows.md`; the `docs/testing.md` row names both cases; `pnpm prettier --check .bkit/core/.bkit/workflows.md docs/testing.md` passes; `.bkit/core/engine/tools/instructions-coverage.test.ts` still passes.
-  - **TEST FIRST:** n/a — docs only, no behaviour change.
-
-<!-- bkit:task 5 end -->
-
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Regenerate the built and mirrored copies
-  - **READ:** `.bkit/instructions.md`: run the no-flag check `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` first; it must exit 0, because Task 4 already hand-edited the local entries.
-  - **UPDATE:** `.bkit/workflows.md`: re-rendered by `pnpm bkit:generate` (its `bkit upgrade`).
-  - **READ:** `dist/commands/workflow/summary.js`: with the rest of `dist/`, already rebuilt and staged by Tasks 1, 2 and 3; `pnpm bkit:generate`'s `pnpm build` must leave it unchanged.
-  - **READ:** `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt`: owned by Task 4; `pnpm bkit:generate`'s render must leave it unchanged.
-  - **UPDATE:** `docs/capabilities.md`: refreshed by `pnpm bkit:generate` when graphify is installed.
-  - **DEPENDS ON:** 5
-  - **DONE WHEN:** `pnpm bkit:generate` exits 0; `pnpm bkit check` passes with no drift; `.bkit/workflows.md` holds Task 5's rows; `dist/commands/workflow/summary.js` contains `build/build-failure-remediate`; `git diff --exit-code dist/ .bkit/core/engine/render/__snapshots__/bkit-build.none.txt` shows no change from the generate run; dogfood replay: after `pnpm build`, a scratch folder holding `feat/864-move-project-docs:docs/plans/202611/logs/864-move-project-docs/status.jsonl` (Step 14 FAIL, then a passing `build-run-tests`) and its plan, run with `node dist/cli.js workflows summary --workflow=build --file={scratch status.jsonl}`, lists `build-failure-remediate` under `Resolved Findings`.
-  - **TEST FIRST:** n/a — regenerated copies only, no behaviour change.
+- [ ] **TASK 6:** Document the two resolution rules and the reshaped Decision Pause
+  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § Summary / handover step **Resolution evidence** table gains the verify-pause group row (a `Fix now` pause with verified fix tasks, or an `Accept`-only pause; FAIL rows only; remediation warnings stay concerns) and the failed test-fix row (with the Q2 answer on the flake), and the existing "Failed group execution or gap remediation" row points at the new verify-pause row; § Decision Pause **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** bullets match Task 5, with **Fixer reads the answer** naming the task block for Step 7 and the decision file for Steps 8-10, and its `STANDARD → PIVOT → FINAL` sentence left as it is.
+  - **UPDATE:** `docs/testing.md`: the `commands/workflow/summary.test.ts` row's scope names the new resolution cases (the `Fix now` group, the `Accept`-only pause's group, the test-fix FAIL).
+  - **DEPENDS ON:** 3, 4, 5
+  - **DONE WHEN:** both table rows, the pointer on the existing row and the four bullets are in `.bkit/core/.bkit/workflows.md`, and the verify-pause row names the `Accept`-only case; the `docs/testing.md` row names all three cases; `pnpm prettier --check .bkit/core/.bkit/workflows.md docs/testing.md` passes; `.bkit/core/engine/tools/instructions-coverage.test.ts` still passes.
+  - **TEST FIRST:** n/a — docs only, no behaviour change.
 
 <!-- bkit:task 6 end -->
+
+<!-- bkit:task 7 start -->
+
+- [ ] **TASK 7:** Regenerate the built and mirrored copies
+  - **READ:** `.bkit/instructions.md`: run the no-flag check `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` first; it must exit 0, because Task 5 already hand-edited the local entries.
+  - **UPDATE:** `.bkit/workflows.md`: re-rendered by `pnpm bkit:generate` (its `bkit upgrade`).
+  - **READ:** `dist/commands/workflow/summary.js`: with the rest of `dist/`, already rebuilt and staged by Tasks 1, 2, 3 and 4; `pnpm bkit:generate`'s `pnpm build` must leave it unchanged.
+  - **READ:** `.bkit/core/engine/render/__snapshots__/bkit-build.none.txt`: owned by Task 5; `pnpm bkit:generate`'s render must leave it unchanged.
+  - **UPDATE:** `docs/capabilities.md`: refreshed by `pnpm bkit:generate` when graphify is installed.
+  - **DEPENDS ON:** 6
+  - **DONE WHEN:** `pnpm bkit:generate` exits 0; `pnpm bkit check` passes with no drift; `.bkit/workflows.md` holds Task 6's rows; `dist/commands/workflow/summary.js` contains `build/build-failure-remediate`; `git diff --exit-code dist/ .bkit/core/engine/render/__snapshots__/bkit-build.none.txt` shows no change from the generate run; dogfood replay: after `pnpm build`, a scratch folder holding `feat/864-move-project-docs:docs/plans/202611/logs/864-move-project-docs/status.jsonl` (Step 14 FAIL, then a passing `build-run-tests`) and its plan, run with `node dist/cli.js workflows summary --workflow=build --file={scratch status.jsonl}`, lists `build-failure-remediate` under `Resolved Findings`.
+  - **TEST FIRST:** n/a — regenerated copies only, no behaviour change.
+
+<!-- bkit:task 7 end -->
 
 <!-- bkit:group 4 end -->
 
@@ -602,11 +608,11 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` and `pnpm bkit check` pass.
 - [ ] **Test Synchronization:** no E2E test exists for these surfaces; the existing `summary.test.ts`, `decisions.test.ts`, `workflow-shape.test.ts` and `workflows.test.ts` cases stay green alongside the new ones.
 - [ ] **Build Configuration:** `tsconfig.json` `exclude` keeps `**/*.test.ts` out of `dist/`; no test-only file is added.
-- [ ] **Unit (`.bkit/core/engine/commands/workflow/summary.test.ts`):** the three Part 4 cases and the nine Part 2 cases; pure rows and decision-file text in the `decisions compose` layout, no temp files.
+- [ ] **Unit (`.bkit/core/engine/commands/workflow/summary.test.ts`):** the three Part 4 cases and the ten Part 2 cases (nine `Fix now`, one `Accept`-only); pure rows and decision-file text in the `decisions compose` layout, no temp files.
 - [ ] **Unit (`.bkit/core/engine/commands/workflow/decisions.test.ts`):** the `Fix task:` parse and `decisionHeader` cases.
 - [ ] **Unit (`.bkit/core/engine/commands/workflow/workflows.test.ts`):** the `bkit workflows summary` case on a temp tree with a real `status.jsonl`, decision file and plan; the tree is removed after the case, as the describe's other cases do.
 - [ ] **Unit (`.bkit/core/engine/audits/workflows/workflow-shape.test.ts`):** the four Decision Pause cases.
-- [ ] **Unit (`.bkit/core/engine/tools/instructions-coverage.test.ts`, `.bkit/core/engine/tools/instructions.test.ts`):** pass after Task 4's hand-edit of `.bkit/instructions.md`.
+- [ ] **Unit (`.bkit/core/engine/tools/instructions-coverage.test.ts`, `.bkit/core/engine/tools/instructions.test.ts`):** pass after Task 5's hand-edit of `.bkit/instructions.md`.
 - [ ] **Apply local migrations:** n/a — bkit has no database.
 - [ ] **Run all tests:** `pnpm vitest run .bkit/core/engine/commands/workflow .bkit/core/engine/audits/workflows .bkit/core/engine/render .bkit/core/engine/tools/instructions-coverage.test.ts .bkit/core/engine/tools/instructions.test.ts`, `pnpm bkit:check:dist` and `pnpm test:integration` pass.
 
