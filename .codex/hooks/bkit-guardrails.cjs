@@ -1192,10 +1192,36 @@ function awkFiles(args) {
 const SCRIPT_FILE_RE = /\.(?:ts|tsx|mts|cts|rb|pl|php|lua|py|js|mjs|cjs)$/;
 const RUNNER_PROGRAMS = new Set(["tsx", "ts-node", "bun", "deno", "ruby", "perl"]);
 
+/** A `cp` / `mv` destination that names a directory: trailing slash or an existing directory. */
+function isDirDest(dest, cwd) {
+  if (dest.endsWith("/")) return true;
+  if (cwd === null && !path.isAbsolute(dest)) return false;
+  try {
+    return fs.statSync(path.resolve(cwd === null ? path.sep : cwd, dest)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** `cp` / `mv` destination as a produced file: the lone literal source's body, else unknown. */
 function markCopied(st, cmd, ops, cwd) {
   const dest = ops[ops.length - 1];
   if (cmd.dyn.has(dest)) return;
+  if (isDirDest(dest, cwd)) {
+    for (const src of ops.slice(0, -1)) {
+      if (cmd.dyn.has(src)) continue;
+      const made = dest.replace(/\/+$/, "") + "/" + src.replace(/^.*\//, "");
+      markProduced(
+        st,
+        made,
+        cwd,
+        ops.length === 2 && /\.(?:py|js|mjs|cjs|sh|bash|zsh)$/.test(made)
+          ? readBoundedSource(st, src, cwd)
+          : null,
+      );
+    }
+    return;
+  }
   let body = null;
   if (ops.length === 2 && !cmd.dyn.has(ops[0]) && /\.(?:py|js|mjs|cjs|sh|bash|zsh)$/.test(dest)) {
     body = readBoundedSource(st, ops[0], cwd);
@@ -1309,8 +1335,35 @@ function evalCommand(cmd, st, depth, cwd) {
           out = a.slice(a.indexOf("=") + 1);
         } else if (/^-o./.test(a) && program === "curl") out = a.slice(2);
         else if (/^-O./.test(a) && program === "wget") out = a.slice(2);
+        else if (/^-[A-Za-z]+$/.test(a) && a.length > 2) {
+          // Short-option bundle such as `-fsSLo file` / `-qO file`: the output flag ends it.
+          const outFlag = program === "curl" ? "o" : "O";
+          if (a.endsWith(outFlag) && !a.slice(1, -1).includes(outFlag)) out = args[i + 1];
+        }
         if (out && !cmd.dyn.has(out)) markProduced(st, out, cwd, null);
         else if (out) st.uncertain.add("unresolved-target");
+      }
+      // Remote-name downloads write the URL's last path segment into the working directory.
+      const named = args.some(
+        (a) =>
+          a === "--remote-name" ||
+          a === "--remote-name-all" ||
+          (program === "curl" && /^-[A-Za-z]*O[A-Za-z]*$/.test(a)),
+      );
+      const hasOut = args.some(
+        (a) =>
+          a === "-o" ||
+          a === "--output" ||
+          a.startsWith("--output=") ||
+          a.startsWith("--output-document") ||
+          (program === "wget" && /^-[A-Za-z]*[Oo]/.test(a)) ||
+          (program === "curl" && /^-[A-Za-z]*o/.test(a)),
+      );
+      if ((program === "wget" || named) && !hasOut) {
+        for (const a of args) {
+          const m = /^https?:\/\/[^?#]*\/([^/?#]+)(?:[?#].*)?$/.exec(a);
+          if (m && !cmd.dyn.has(a)) markProduced(st, m[1], cwd, null);
+        }
       }
       return cwd;
     }

@@ -660,7 +660,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 21 start -->
 
-- [ ] **TASK 21:** A consumer adds their own hook (`node scripts/my-check.js`) inside bkit's `PreToolUse` edit group, and this release's matcher change makes the upgrade merge silently delete it
+- [x] **TASK 21:** A consumer adds their own hook (`node scripts/my-check.js`) inside bkit's `PreToolUse` edit group, and this release's matcher change makes the upgrade merge silently delete it
       **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/write.ts:243` · **Round:** 2
   - **DONE WHEN:** `mergeManagedList` no longer drops a whole consumer group because one of its hooks shares a bkit `command` or `bkit-*.cjs` file with a template group. The template group still replaces bkit's own hook entries and matcher, and every hook entry in that consumer group whose command is not a template command or bkit hook file is carried into the matching template group's `hooks` list (order kept, no duplicates, second run a no-op). Probe on the current `dist/install/write.js`: `mergeManagedJson({hooks:{PreToolUse:[{matcher:"Edit|Write|MultiEdit",hooks:[{type:"command",command:"node .claude/hooks/bkit-gateguard.cjs"},{type:"command",command:"node scripts/my-check.js"}]}]}}, <same group with matcher "Edit|Write|MultiEdit|NotebookEdit" and only the bkit hook>)` returns the template group alone; `my-check.js` is gone. The shipped Claude matcher change in this release (`NotebookEdit`) makes every consumer's `settings.json` drift, so this merge runs on every upgrade. The existing upgrade case at `.bkit/core/engine/install/modules/core.integration.test.ts:2568` only adds separate consumer groups, so it passes today.
   - **TEST FIRST:**
@@ -679,7 +679,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 22 end -->
 <!-- bkit:task 23 start -->
 
-- [ ] **TASK 23:** An agent commits with the usual `git commit -m "$(cat <<'EOF' … don't … EOF)"` form and then runs `&& sed -i … docs/x.md` in the same command, and the shell check reports nothing at all
+- [x] **TASK 23:** An agent commits with the usual `git commit -m "$(cat <<'EOF' … don't … EOF)"` form and then runs `&& sed -i … docs/x.md` in the same command, and the shell check reports nothing at all
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:265` · **Round:** 2
   - **DONE WHEN:** `matchParen` skips heredoc bodies the way the lexer does, so an apostrophe inside a heredoc body within `$( … )` no longer opens a quote that runs to the end of the text. Or, when no matching `)` is found, the remainder is reported as `unknown-script-effect` instead of being swallowed. Probe today: `git commit -m "$(cat <<'EOF'\nFix: don't break\nEOF\n)" && sed -i s/a/b/ docs/x.md` returns `{"targets":[],"uncertain":[],"limit":null}`, while the same command with `do not` returns `["docs/x.md"]`. The unclosed quote makes `matchParen` return `text.length`. The rest of the line is then lexed as the substitution body, where `)"` opens a double quote that never closes and absorbs `sed`.
   - **TEST FIRST:**
@@ -697,7 +697,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 24 end -->
 <!-- bkit:task 25 start -->
 
-- [ ] **TASK 25:** An agent runs `npx tsx scripts/gen.ts`, `ruby fix.rb` or `perl fix.pl` that rewrites an agent-read file, and the shell check stays silent instead of warning that the script's targets cannot be determined
+- [x] **TASK 25:** An agent runs `npx tsx scripts/gen.ts`, `ruby fix.rb` or `perl fix.pl` that rewrites an agent-read file, and the shell check stays silent instead of warning that the script's targets cannot be determined
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:846` · **Round:** 2
   - **DONE WHEN:** A directly named script file run by an interpreter the detector does not analyse reports `unknown-script-effect`, as decision `787-design-choice-02` requires ("warn for possible writes with unknown targets"). This covers `ruby` / `perl` with a script operand and no `-e` / `-i`, `tsx` / `ts-node` / `bun` / `deno run`, the same runners behind `npx` / `pnpm` / `pnpm exec` / `yarn`, and `./x.ts`-style programs in the default branch. Probe today: `ruby fix.rb`, `perl fix.pl` and `npx tsx scripts/gen.ts` each return `{"targets":[],"uncertain":[],"limit":null}`. Only `python*` / `node*` and `./*.sh|py|js|mjs|cjs` reach `evalInterpreter` or the shell lexer.
   - **TEST FIRST:**
