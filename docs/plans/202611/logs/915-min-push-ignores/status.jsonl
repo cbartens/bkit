@@ -9,3 +9,9 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:45Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"9e51908a87414690c095e7f605659cc789cf6015dc3d2c3b4dff8e786acb9750","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:03:47Z"}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-11T02:03:47Z","parentSha":"6400d7f9769fbe6beab64c7e4ca3eaac21532cc5","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:16:50Z","noun":"ledgers","verb":"append","flags":["ledger","rows"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:20:09Z","noun":"tests","verb":"plan-check","flags":["plan","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:20:37Z","noun":"tests","verb":"plan-check","flags":["plan","existence","log"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:20:44Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-generate/-/1/comment","hash":"7bcbe0eecb7f89176575e3c1fe0d62de481e2cb9890f9d5b0309c7bf800a76e6","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:20:46Z"}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-11-11T02:20:46Z","parentSha":"1c8c337f2f5ab44ea8da1c6c2a27ddbc321ee16e","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-v1-draft.md","docs/plans/202611/logs/915-min-push-ignores/plan-generate-check.md"],"attempt":1}
