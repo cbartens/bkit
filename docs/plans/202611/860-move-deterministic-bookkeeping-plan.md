@@ -671,7 +671,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 13 end -->
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** A ledger append that crashes between its intent and its receipt can never be reconciled once its invocation goes stale, so the committed pending intent blocks `ledgers union`, compact, migrate and every `--correction-of` on that ledger for good
+- [x] **TASK 14:** A ledger append that crashes between its intent and its receipt can never be reconciled once its invocation goes stale, so the committed pending intent blocks `ledgers union`, compact, migrate and every `--correction-of` on that ledger for good
       **Severity:** HIGH · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1699` · **Round:** 1
   - **DONE WHEN:** A pending intent always has a reachable resolution: reconciliation by operation id alone (checking the prepared bytes at the recorded offset) works without the original invocation, or an engine verb resolves or abandons it with evidence, and teardown union does not fail forever on an intent another checkout wrote. No agent can settle this alone, because the request hash binds the invocation id (`ledgers.ts:1571`), invocations go stale when a newer run starts (`commands/lib.ts` `resolveInvocation`) and `.bkit/ledger-operations.jsonl` rides every bookkeeping commit via `.bkit/*.jsonl`, although the plan's Data Schema Changes row 'Ledger operation' places receipts in the git-common outbox; the owner must decide who may reconcile an intent and whether it is checkout-local or committed state.
   - **TEST FIRST:**
@@ -698,7 +698,7 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
 <!-- bkit:task 16 end -->
 <!-- bkit:task 17 start -->
 
-- [ ] **TASK 17:** After a crash leaves part of a prepared block in the ledger and the lock is cleared as the error message advises, a friction or plain append lands next (neither checks pending intents), and reconciling the operation then takes the 'none of ours landed: prepare afresh' branch and appends rows that already landed a second time
+- [x] **TASK 17:** After a crash leaves part of a prepared block in the ledger and the lock is cleared as the error message advises, a friction or plain append lands next (neither checks pending intents), and reconciling the operation then takes the 'none of ours landed: prepare afresh' branch and appends rows that already landed a second time
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/ledgers.ts:1740` · **Round:** 1
   - **DONE WHEN:** Reconciliation prepares afresh only when no byte of the prepared block landed at the recorded offset; any landed prefix of the block followed by foreign bytes reports `UncertainEffect` and appends nothing, and no fold winner or lineage count is duplicated.
   - **TEST FIRST:**
