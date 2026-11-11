@@ -5,7 +5,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Close the Codex and OpenCode Guard Gaps Implementation Plan
@@ -23,7 +23,7 @@ Issue #803 is planned from the owner-approved scope revision of 2026-11-03. The 
 | Gap | Where | Finding |
 | --- | --- | --- |
 | Install writes `curl *{base}*` / `wget *{base}*` = `allow` into OpenCode's `permission.bash`. OpenCode globs match the whole string with `*` crossing `/` `?` `@`, so `curl https://evil.example/?x=github.com` is allowed. | `injectOpencodeDerivedAllows` in `.bkit/core/engine/install/modules/opencode.ts:348-369` | `deferrals-1` |
-| The same generator writes `*{base}*` = `allow` into `permission.webfetch`, which has the same substring assumption. This is the "related generated URL permission" the revision asks to review. Claude's `WebFetch(domain:…)` grants and the Cursor, Codex and Antigravity hooks match the host, so they do not share the flaw. The `*{base}*` shape is an ACTIVE accepted-risk decision, `551-opencode-unanchored-host-allows-accepted-risk` (`docs/decisions.jsonl:199`): the maintainer kept it for apex + subdomain parity with Claude and rejected `https://{host}/*` because "every subdomain fetch prompts". This plan proposes to reverse that decision (Open Question 4). | `.bkit/core/engine/install/modules/opencode.ts:363-368`; `.bkit/core/.bkit/providers.md:463`; `docs/decisions.jsonl:199` | `deferrals-1` |
+| The same generator writes `*{base}*` = `allow` into `permission.webfetch`, which has the same substring assumption. This is the "related generated URL permission" the revision asks to review. Claude's `WebFetch(domain:…)` grants and the Cursor, Codex and Antigravity hooks match the host, so they do not share the flaw. The `*{base}*` shape is an ACTIVE accepted-risk decision, `551-opencode-unanchored-host-allows-accepted-risk` (`docs/decisions.jsonl:199`): the maintainer kept it for apex + subdomain parity with Claude and rejected `https://{host}/*` because "every subdomain fetch prompts". The owner reviewed this shape at plan review and kept it as an accepted risk (answer to Open Question 4: "Keep *host* (551 stands)"). That review meets the success criterion's review of related generated URL permissions, so this plan leaves the `webfetch` allows as they are. | `.bkit/core/engine/install/modules/opencode.ts:363-368`; `.bkit/core/.bkit/providers.md:463`; `docs/decisions.jsonl:199` | `deferrals-1` |
 | A grant install wrote earlier is never withdrawn: reconcile deep-merges the consumer's existing keys. | `reconcileOpencodeJson` in `opencode.ts:384-459` | `deferrals-11` (`381-opencode-bash-grants-never-revoked`) |
 | Uninstall strips Claude `WebFetch(domain:…)` / `mcp__…` grants by recomputing today's derived set, not by the `claudeAllowDerived` record bkit already keeps. A grant whose domain left `allowed-domains` survives uninstall. | `.bkit/core/engine/commands/install/uninstall.ts:725-745`; `BkitVersion.claudeAllowDerived` in `.bkit/core/engine/install/version-file.ts` | `deferrals-11` (`381-webfetch-grants-survive-uninstall-after-seed-emptied`) |
 | Codex classifies `*.pem`, `*.p12` and `id_rsa` shell reads as the `key` kind, then answers the whole `secret` tier with advisory `additionalContext`. `cat ~/.ssh/id_rsa` runs with a note only, while the docs group it with real gates. | `decideShell` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs:60-90`; `secretFileKind` / `shellSecretRead` in `.bkit/core/hooks/guardrails-tiers.js:193-262` | `deferrals-3` |
@@ -97,7 +97,7 @@ Consumers receive safer host and cloud templates, checks that identify relevant 
 
 ### Process Sketch
 
-- **WHEN** a maintainer runs `bkit upgrade` on a consumer with OpenCode **→ THEN** the regenerated `permission.bash` gains no `curl *{domain}*` / `wget *{domain}*` allow, bkit writes only exact `https://{host}` origins into `permission.webfetch`, and each legacy substring entry stays in the file and is listed in the advisories with its exact removal action.
+- **WHEN** a maintainer runs `bkit upgrade` on a consumer with OpenCode **→ THEN** the regenerated `permission.bash` gains no `curl *{domain}*` / `wget *{domain}*` allow, `permission.webfetch` keeps its `*{domain}*` allows (accepted risk `551-opencode-unanchored-host-allows-accepted-risk`), and each legacy shell substring entry stays in the file and is listed in the advisories with its exact removal action.
 - **WHEN** the maintainer runs `bkit check` with an adopted cloud bootstrap that never reads `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` **→ THEN** an advisory names the stale copy, the missing protection and the template block to copy; a customised copy that reads the variable raises nothing.
 - **WHEN** a Claude cloud session starts **→ THEN** the bootstrap compares the fingerprint in `.bkit/allowlist.json` with `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`, reports a match as an operator assertion with the deployed allowlist unverified, and **IF** either value is missing or they differ **→ THEN** it logs a WARNING with the refresh steps and continues.
 - **WHEN** a Codex agent runs `cat ~/.ssh/id_rsa` **→ THEN** bkit's Codex hook answers deny without echoing the command, `cat .env` stays advisory, and the docs and `codex-setup` advisory call the deny verified only when a dated real-host result shows it.
@@ -105,17 +105,17 @@ Consumers receive safer host and cloud templates, checks that identify relevant 
 
 ### Concrete Example
 
-**Setup:** A consumer maintainer runs bkit with the OpenCode and Claude hosts and Claude Code on the web. An earlier install left `"curl *github.com*": "allow"` and `"*github.com*": "allow"` in `.opencode/opencode.json`. Their adopted `.claude/hooks/bkit-cloud-bootstrap.sh` predates the fingerprint block, and the cloud environment has no `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`.
+**Setup:** A consumer maintainer runs bkit with the OpenCode and Claude hosts and Claude Code on the web. An earlier install left `"curl *github.com*": "allow"` in `permission.bash` and `"*github.com*": "allow"` in `permission.webfetch` of `.opencode/opencode.json`. Their adopted `.claude/hooks/bkit-cloud-bootstrap.sh` predates the fingerprint block, and the cloud environment has no `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`.
 
 **Steps:**
 
-1. Maintainer runs `bkit upgrade` → System writes `.opencode/opencode.json` with `https://github.com` / `https://github.com/*` webfetch allows and no new shell fetch allow. It keeps the two legacy entries, and the upgrade advisories list both under `opencode-substring-fetch-grants`, each with the exact key to delete.
+1. Maintainer runs `bkit upgrade` → System writes `.opencode/opencode.json` with no new shell fetch allow and keeps the `*github.com*` webfetch allow (decision `551-opencode-unanchored-host-allows-accepted-risk`). It keeps the legacy `curl *github.com*` entry, and the upgrade advisories list it under `opencode-substring-fetch-grants` with the exact key to delete.
 2. Maintainer runs `bkit check` → System reports `cloud-bootstrap-fingerprint-missing`: the adopted bootstrap does not compare the allowlist fingerprint, with the template block to copy and the path of the template.
-3. Maintainer deletes the two legacy keys, copies the fingerprint block into their bootstrap, re-pastes the list from `.claude/bkit-cloud.md` § 2 and sets `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` to the stamp printed there → System's next `bkit check` shows neither advisory.
+3. Maintainer deletes the legacy `curl *github.com*` key, copies the fingerprint block into their bootstrap, re-pastes the list from `.claude/bkit-cloud.md` § 2 and sets `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` to the stamp printed there → System's next `bkit check` shows neither advisory.
 4. A cloud session starts → System's bootstrap logs that the fingerprint matches as an operator assertion, and that the deployed dashboard allowlist is unverified.
 5. A Codex agent in the same repo runs `cat ~/.ssh/id_rsa` → System's Codex hook answers deny and names the file, not the command.
 
-**Outcome:** The consumer's OpenCode permissions hold no substring fetch grant, their customised bootstrap warns when the pasted allowlist and the repo diverge, and the docs and advisories state exactly which of these protections are enforced, advisory or unverified on each host.
+**Outcome:** The consumer's OpenCode `permission.bash` holds no substring shell fetch grant, the fetch tool keeps its `*{domain}*` allows as the accepted risk decision 551 records, their customised bootstrap warns when the pasted allowlist and the repo diverge, and the docs and advisories state exactly which of these protections are enforced, advisory or unverified on each host.
 
 ### Edge Cases
 
@@ -124,14 +124,11 @@ The issue has no Key Edge Cases rows. The plan adds these validation, error and 
 <!-- prettier-ignore -->
 | Scenario | Expected Behavior |
 | --- | --- |
-| An OpenCode webfetch request to `https://evil.example/?x=github.com`, `https://github.com.attacker.io/` or `https://github.com@evil.example/` | The generated table answers `ask`: no derived allow matches outside the exact origin. |
 | An OpenCode shell `curl https://github.com/cli/cli` after upgrade | `ask` from the template's `curl *` row (breaking: no shell fetch is pre-allowed any more). |
-| A consumer-authored exact-origin allow such as `"https://api.example.com/*": "allow"`, or any non-`allow` entry | Preserved and not reported. |
+| Any `permission.webfetch` entry (the `*{domain}*` allows bkit writes and a consumer-authored `"https://api.example.com/*": "allow"` included), or any non-`allow` entry | Preserved and not reported: the detector reads `permission.bash` only, since decision 551 keeps the `*{domain}*` fetch-tool allows. |
 | A consumer-authored `"curl *mycorp.com*": "allow"` whose author is unknown | Preserved, and reported for owner review like a bkit-written one, since authorship cannot be told apart. |
 | A reported key holds URL credentials or a query string (`curl *https://user:tok@host/?k=v*`) | The advisory redacts the userinfo and query (`https://***@host/?***`) and still names the entry to remove. |
-| `.opencode/opencode.json` is absent, unparseable, or has no `permission.bash` / `permission.webfetch` object | The substring detector reports nothing and does not throw. |
-| A domain leaves `allowed-domains` after install wrote its `https://{d}` / `https://{d}/*` `webfetch` allows | Residual: upgrade deep-merges, so both allows stay; the substring detector does not report exact-origin keys. The `381-opencode-bash-grants-never-revoked` gap closes for shell keys only (Out of Scope). |
-| A consumer-authored `"https://github.com/*": "allow"` whose key equals a derived exact-origin key | Residual: uninstall's `stripOpencodeJsonScope` removes it by recompute, since no per-key record can tell the two authors apart (Out of Scope). |
+| `.opencode/opencode.json` is absent, unparseable, or has no `permission.bash` object | The substring detector reports nothing and does not throw. |
 | Uninstall with a `claudeAllowDerived` grant whose domain has left `allowed-domains` | The grant is removed. |
 | A full `bkit uninstall` (no module flags), which deletes `.bkit/version` in the same run | The recorded grants are still removed, because uninstall reads `claudeAllowDerived` before the delete loop. |
 | Uninstall with a derived-looking `WebFetch(domain:…)` grant missing from the record, or with no record at all | The grant is kept and listed for owner review with the exact removal action. |
@@ -158,15 +155,14 @@ Bats files are Unit: per `docs/testing.md` § Tiers, a Unit test may drive real 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
-| `deferrals-1`: the rendered OpenCode `permission.bash` holds no `curl *{base}*` / `wget *{base}*` allow for shipped or declared domains | Integration | `.bkit/core/engine/install/modules/opencode.integration.test.ts` | 1 |
-| `deferrals-1`: the rendered `permission.webfetch` holds only exact `https://{host}` and `https://{host}/*` allows, and the force-push and permission-map shape assertions still hold | Integration | `.bkit/core/engine/install/modules/opencode.integration.test.ts` | 1 |
-| `deferrals-1`: against the rendered table (last match wins), `https://evil.example/?x=github.com`, `https://github.com.attacker.io/` and `https://github.com@evil.example/` ask, and `https://github.com/cli/cli` is allowed | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 1 |
-| `deferrals-1`: every derived base reaches the Claude fetch tool, the OpenCode fetch tool (exact origin) and the hook allowlist, and an OpenCode shell `curl` to it asks | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 1 |
-| `deferrals-1` / `deferrals-11`: a legacy substring `curl` / `wget` / `webfetch` allow is reported with its key and exact removal action | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
-| `deferrals-11`: exact-origin, non-`allow` and unrelated consumer permission entries are neither reported nor touched | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
+| `deferrals-1`: the rendered OpenCode `permission.bash` holds no `curl *{base}*` / `wget *{base}*` allow for shipped or declared domains, while `permission.webfetch` keeps its `*{base}*` allows (decision 551) | Integration | `.bkit/core/engine/install/modules/opencode.integration.test.ts` | 1 |
+| `deferrals-1`: the rendered permission map keeps its OpenCode tool-keyed shape and force-push gate, with no shell fetch allow | Integration | `.bkit/core/engine/install/modules/opencode.integration.test.ts` | 1 |
+| `deferrals-1`: every derived base reaches the Claude fetch tool, the OpenCode fetch tool and the hook allowlist, and an OpenCode shell `curl` to it asks | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 1 |
+| `deferrals-1` / `deferrals-11`: a legacy substring `curl` / `wget` allow is reported with its key and exact removal action | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
+| `deferrals-11`: `permission.webfetch` entries (the `*{base}*` allows bkit writes included), non-`allow` entries and unrelated consumer permission entries are neither reported nor touched | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
 | A reported key with URL credentials or a query string is redacted in the advisory | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
 | The detector never writes `.opencode/opencode.json`, and an absent or unparseable file reports nothing | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 2 |
-| `deferrals-11` (`381-opencode-bash-grants-never-revoked`): a real `bkit upgrade` over a legacy file keeps the entries, reports `opencode-substring-fetch-grants`, writes the exact-origin `webfetch` keys through `reconcileOpencodeJson` and adds no new `curl *…*` / `wget *…*` key | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 2 |
+| `deferrals-11` (`381-opencode-bash-grants-never-revoked`): a real `bkit upgrade` over a legacy file keeps the entries, reports `opencode-substring-fetch-grants`, keeps the `*{base}*` `webfetch` keys through `reconcileOpencodeJson` and adds no new `curl *…*` / `wget *…*` key | Integration | `.bkit/core/engine/commands/install/upgrade.integration.test.ts` | 2 |
 | `deferrals-11` (`381-webfetch-grants-survive-uninstall-after-seed-emptied`): uninstall removes a recorded `WebFetch(domain:…)` grant whose domain left `allowed-domains` | Integration | `.bkit/core/engine/commands/install/uninstall.integration.test.ts` | 3 |
 | A full `bkit uninstall` (no module flags) after a real install removes a recorded `WebFetch(domain:…)` grant whose domain left `allowed-domains`, although the same run deletes `.bkit/version` | Integration | `.bkit/core/engine/commands/install/uninstall.integration.test.ts` | 3 |
 | Uninstall keeps a derived-looking grant missing from `claudeAllowDerived` and lists it for owner review | Integration | `.bkit/core/engine/commands/install/uninstall.integration.test.ts` | 3 |
@@ -211,13 +207,12 @@ Bats files are Unit: per `docs/testing.md` § Tiers, a Unit test may drive real 
 <!-- prettier-ignore -->
 | Change | Who notices | How |
 | --- | --- | --- |
-| OpenCode shell `curl` / `wget` to an allowlisted host now asks (no generated `curl *{domain}*` / `wget *{domain}*` allow). | OpenCode users, and the `opencode run` cloud job (see the non-interactive assumption) | A prompt, or a refused call in a non-interactive run, where it ran silently before. The fetch tool stays prompt-free for exact allowlisted origins. |
-| OpenCode fetch-tool calls to a subdomain of a declared apex (e.g. `api.vercel.com` under `vercel.com`) now ask. | OpenCode users with declared apexes | Declare the exact host in `.agents/context.md` `allowed-domains` to pre-allow it. This reverses the ACTIVE accepted-risk decision `551-opencode-unanchored-host-allows-accepted-risk`, which kept subdomains prompt-free; confirming this row approves superseding it (Open Question 4). |
+| OpenCode shell `curl` / `wget` to an allowlisted host now asks (no generated `curl *{domain}*` / `wget *{domain}*` allow). | OpenCode users, and the `opencode run` cloud job (see the non-interactive assumption) | A prompt, or a refused call in a non-interactive run, where it ran silently before. The fetch tool stays prompt-free for allowlisted domains and their subdomains (decision `551-opencode-unanchored-host-allows-accepted-risk`). |
 | `bkit uninstall` no longer removes Claude `WebFetch(domain:…)` / `mcp__…` grants that the `claudeAllowDerived` record does not list. It lists them for review instead. | Consumers whose `.bkit/version` predates the record | Review lines in the uninstall output. |
 | Codex hook answers `deny` on private-key shell reads where it gave a note before. | Codex users and agents | The read is refused, if Codex honours the deny (Task 5). |
 | The Claude paste note's "Derived set fingerprint" becomes "Allowlist fingerprint" of the full list, so its value changes. | Operators who copied the old stamp | The bootstrap warns until `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` is set to the new stamp. |
 | `.bkit/allowlist.json` gains `fingerprint`. | `bkit check` on every consumer | Reports the file stale until install or upgrade rewrites it, as for any core-owned artifact change. |
-| bkit's own `.opencode/opencode.json` loses its legacy substring entries by hand edit. | bkit maintainers only | Confirming this section approves that one hand edit. No consumer file is edited. |
+| bkit's own `.opencode/opencode.json` loses its legacy shell substring entries (`curl *{domain}*` / `wget *{domain}*`) by hand edit. | bkit maintainers only | Confirming this section approves that one hand edit. No consumer file is edited. |
 
 **Names introduced:**
 
@@ -249,20 +244,11 @@ The revision's three open questions are answered by lookup in `Context & Goals`.
   - **Options:** A) Docs only: `cloud.md` and the Cursor and Codex paste notes state that the dashboard list is an operator assertion and unverified, and keep their derived-set stamp. — Meets the success criterion, which names the cloud bootstrap guidance, and adds no new setup-script code. · B) Add the compare to the Cursor and Codex setup-script renders too. — Same warning everywhere, but it changes two more generated scripts that have no bats harness today.
   - **Recommended:** A) The Claude SessionStart bootstrap is the only bkit-shipped cloud hook that runs every session.
   - **Default if unanswered:** A. The deferral row `803-cursor-codex-cloud-fingerprint-compare` records B.
-- **Open Question 3:** If the real Codex session does not show the deny, does the deny code stay? → Decided by the 2026-11-10 owner comment for the docs. This question covers the code only. Read the comment's sentence "If it can be shown, the denial ships. If not, the limitation is documented and advised" before you answer: read literally, it leans towards option B (no deny on `not-shown` or `not-run`), and the plan recommends A.
-  - **Options:** A) Keep the deny in the adapter, and say "configured to deny, not verified on a real Codex host" in the docs and the `codex-setup` advisory. — The deny is harmless where Codex ignores it and real where it honours it, and the docs never claim enforcement. · B) Revert the adapter to advisory. — The docs and the hook agree on "advisory", but a Codex build that honours `deny` loses the protection.
-  - **Recommended:** A) The status text, not the code, carries the honesty requirement.
-  - **Default if unanswered:** A.
-- **Open Question 4:** How narrow are the derived OpenCode `webfetch` allows? → The owner answers at plan review.
-  - **Options:** A) Exact origins: `https://{name}` and `https://{name}/*` for each base and each shipped exact host. Subdomains of a declared apex then ask. — Safe with OpenCode's whole-string glob, where `*` crosses `/` `?` `@`. It reverses the ACTIVE decision `551-opencode-unanchored-host-allows-accepted-risk`, which rejected this shape because "every subdomain fetch prompts". · B) Drop the derived `webfetch` allows too. — Every OpenCode fetch-tool call prompts, including context-fetch hosts. · C) Keep `*{base}*`, the shape decision 551 accepted as a risk. — Keeps apex + subdomain parity with Claude, but fails the success criterion on related URL permissions.
-  - **Recommended:** A) It keeps the allowlisted origins prompt-free with no glob that matches a name inside another URL. On approval, `@bkit-plan-update` appends a `551-opencode-unanchored-host-allows-accepted-risk` row with `status: "SUPERSEDED"` that names `803-opencode-webfetch-exact-origin`, and adds its key to the `**Ledger rows:**` line.
-  - **Default if unanswered:** A.
-- **Assumption:** OpenCode matches `permission.webfetch` keys against the full requested URL with `*` → `.*` and last match wins, as `.bkit/core/.bkit/providers.md:463` and `globToRe` / `opencodeVerdict` in `index.integration.test.ts:702-715` model it. → If OpenCode matched differently, an exact-origin allow could miss (more prompts, still safe) or a prefix could match more than intended. The fallback is Open Question 4 option B. Knowledge row `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` says to probe the installed `opencode --version` before relying on config semantics, so Manual Verification Step 2 records the dated result on `opencode v2.1.4`; no CI test runs the real binary.
-- **Assumption:** In a non-interactive `opencode run` (the `bkit-cloud.yml` `opencode` job), a shell `curl` / `wget` that now hits `curl *: ask` is refused or stalls rather than running. → If it stalls, cloud OpenCode runs that shell out to fetch slow down until the agent switches to the fetch tool. This is listed under Breaking Changes, and the fetch tool keeps exact-origin allows.
+- **Assumption:** OpenCode matches `permission.bash` and `permission.webfetch` keys against the full command or requested URL with `*` → `.*` and last match wins, as `.bkit/core/.bkit/providers.md:463` and `globToRe` / `opencodeVerdict` in `index.integration.test.ts:702-715` model it. → If OpenCode matched differently, the removed `curl *{domain}*` / `wget *{domain}*` allows were less dangerous than the finding says, and removing them only adds prompts. The kept `*{domain}*` `webfetch` allows stay decision 551's accepted risk either way. Knowledge row `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` says to probe the installed `opencode --version` before relying on config semantics, so Manual Verification Step 2 records the dated result on `opencode v2.1.4`; no CI test runs the real binary.
+- **Assumption:** In a non-interactive `opencode run` (the `bkit-cloud.yml` `opencode` job), a shell `curl` / `wget` that now hits `curl *: ask` is refused or stalls rather than running. → If it stalls, cloud OpenCode runs that shell out to fetch slow down until the agent switches to the fetch tool. This is listed under Breaking Changes, and the fetch tool keeps its allowlisted-domain allows.
 - **Assumption:** No trustworthy per-entry ownership evidence exists for `.opencode/opencode.json` permission keys: `canonicalHashes` hashes the whole file after consumer keys merge in. → If evidence existed, legacy entries could be removed instead of reported. Reporting is still safe.
-- **Assumption:** The exact-origin `webfetch` keys keep two lifecycle gaps, accepted as residuals because closing them needs the per-key ownership record the revision declares a non-goal. Upgrade deep-merges, so `https://{d}` / `https://{d}/*` stay after `d` leaves `allowed-domains`. Uninstall removes OpenCode keys by recompute, so a consumer-authored key equal to a derived one is deleted. → If either gap matters to the owner, the deferral `803-opencode-webfetch-exact-origin-never-revoked` carries it; meanwhile `381-opencode-bash-grants-never-revoked` closes for shell keys only, and its close row must say so.
 - **Assumption:** `claudeAllowDerived` is trustworthy evidence. `enrichClaudeSettingsAllows` (`.bkit/core/engine/install/modules/claude.ts:239-280`) records the whole needed set, including a row a consumer had already written identically before bkit added it. → Such a row is removed at uninstall, which is what the recompute does today, so this is no regression.
-- **Assumption:** Codex delivers `permissionDecision: "deny"` from a project `PreToolUse` hook on its shell tool once the `.codex/` layer is trusted. → If it does not, Task 5 records `not-shown`, and Open Question 3 applies. If no real session can be run, Task 5 records `not-run`, and the docs carry the same "not verified" status.
+- **Assumption:** Codex delivers `permissionDecision: "deny"` from a project `PreToolUse` hook on its shell tool once the `.codex/` layer is trusted. → If it does not, Task 5 records `not-shown`: the deny code stays, and the docs and the `codex-setup` advisory say "configured to deny, not verified on a real Codex host" (owner answer to Open Question 3, decision `803-codex-key-shell-read-deny`). If no real session can be run, Task 5 records `not-run`, and the docs carry the same "not verified" status.
 - **Assumption:** `jq` is present in Claude cloud sessions, because the bootstrap's trust check already uses it. → If absent, the fingerprint block warns that the expected fingerprint is unavailable and continues (Edge Cases).
 - **Assumption:** `runPreflight` feeds install, upgrade, `bkit check` and `bkit doctor` (`.bkit/core/engine/commands/install/doctor.ts:13,167`), so both new detectors reach every surface success criterion 2 names with no extra caller; Task 9 asserts the doctor surface once. The cloud tip in `.bkit/core/engine/checks/tips/catalogue.ts:290-306` already covers a missing bootstrap. → If `bkit doctor` filtered `runPreflight` findings, the doctor test in Task 9 would fail and the doctor surface would need its own wiring.
 
@@ -279,6 +265,7 @@ The revision's three open questions are answered by lookup in `Context & Goals`.
 | --- | --- |
 | A curl/wget command parser in an OpenCode `tool.execute.before` plugin (`deferrals-1`'s "blocker lifted" route; the old design's workstream) | A declared non-goal of the 2026-11-03 revision ("No comprehensive curl/wget command parser, new OpenCode enforcement plugin"). Stopping the grant closes the bypass with no parser. |
 | Anchored shell globs such as `curl https://{host}/*` | `*` crosses spaces, so `curl https://github.com/x https://evil.example/` still matches. No shell glob pins the host. |
+| Exact-origin `https://{host}` / `https://{host}/*` `webfetch` allows in place of `*{base}*` | The owner reviewed the `*{base}*` shape and kept it (answer to Open Question 4), so decision `551-opencode-unanchored-host-allows-accepted-risk` stands: exact origins would make every subdomain fetch prompt. Decision `803-opencode-webfetch-exact-origin` is `SUPERSEDED`. |
 | Remove legacy OpenCode grants that match today's derived bases | Blanket removal of ambiguous historic grants is a declared non-goal, and no per-entry record says bkit wrote them. |
 | A per-key ownership record or recovery journal for OpenCode permissions | A declared non-goal ("permission recovery journal, durable transaction/locking subsystem"). |
 | Read the deployed cloud allowlist back from the dashboard | A declared non-goal ("dashboard-readback integration"), and no provider exposes it to the session. |
@@ -296,9 +283,8 @@ The revision's three open questions are answered by lookup in `Context & Goals`.
 <!-- prettier-ignore -->
 | Excluded item | Why `Exempt` | Where it belongs |
 | --- | --- | --- |
-| An OpenCode guardrails plugin for the shell-as-edit-channel gate and URL-host matching (`deferrals-11`, row `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`) | The #803 owner revision of 2026-11-03 (§ Constraints and non-goals) declares "new OpenCode enforcement plugin" out of scope. No success criterion needs it: removing the generated substring allows closes the URL-host bypass, since shell fetches now ask. Deferral row, `reason: scope-declared`. | A future issue, if OpenCode needs the shell-as-edit gate. |
+| An OpenCode guardrails plugin for the shell-as-edit-channel gate and URL-host matching (`deferrals-11`, row `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`) | The #803 owner revision of 2026-11-03 (§ Constraints and non-goals) declares "new OpenCode enforcement plugin" out of scope. No success criterion needs it: removing the generated shell substring allows closes the shell URL-host bypass, since shell fetches now ask, and the owner kept the fetch-tool `*{base}*` allows as the accepted risk of decision `551-opencode-unanchored-host-allows-accepted-risk`. Deferral row, `reason: scope-declared`. | A future issue, if OpenCode needs the shell-as-edit gate. |
 | The fingerprint compare in the Cursor and Codex cloud setup scripts (Open Question 2, option B) | Success criterion 5 names the cloud bootstrap guidance. Docs-only status for Cursor and Codex (option A) meets it. Deferral row `803-cursor-codex-cloud-fingerprint-compare`, `reason: needs-decision`. Under option A the Cursor and Codex paste notes keep a derived-set stamp that ignores consumer `allowed-domains`, so their fingerprint does not describe the full list those dashboards hold; Task 7's `cloud.md` edit says so. | If the owner picks option B at plan review: this plan's runbook, as a new task in Group 4. Otherwise: a follow-up issue for Cursor and Codex cloud setup-script fingerprint parity, which needs its own shell test harness for both generated setup scripts. |
-| Revoking exact-origin `webfetch` keys after a domain leaves `allowed-domains`, and telling a consumer-authored exact-origin key from a derived one at uninstall (the part of `381-opencode-bash-grants-never-revoked` this plan leaves) | Both need a per-key ownership record for OpenCode permission keys. The 2026-11-03 revision (§ Constraints and non-goals) declares a "permission recovery journal, durable transaction/locking subsystem" out of scope, and success criterion 3 asks for cleanup only "where available". No success criterion, Acceptance Scenario line or Derived Test Matrix row needs it; Edge Cases list it as a residual. Deferral row `803-opencode-webfetch-exact-origin-never-revoked`, `reason: scope-declared`. | A future issue for an OpenCode permission-key ownership record, if the residual proves costly. |
 
 ## Suggested Scope Expansion
 
@@ -340,7 +326,7 @@ Checked against `docs/security.md` (§ Untrusted Content & Prompt Injection, § 
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-11) lists dev-only minor or major bumps: `oxlint` 1.89.0 → 1.91.0, `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `vitest` / `@vitest/coverage-v8` 5.0.5 → 5.1.0, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5. None blocks this build. Toolchain: Node v24.16.0, pnpm 10.34.7. Host CLIs: `codex-cli 0.166.0` (the design spike recorded 0.165.0, so Task 5 records the version it runs) and `opencode v2.1.4`. `wget` is not installed locally, so the curl rows carry the shell evidence.
 - [ ] **Existing-Solution Search (reuse over duplicate):** the searches are recorded in `Reuse Inventory`.
 - [ ] **User Context:** every file this plan names was opened in this session. Task 5 needs the owner, or a builder with an authenticated codex-cli session, to run Codex once in a scratch consumer. No other user information is needed.
-- [ ] **Project Context:** `docs/decisions.jsonl` holds the ACTIVE accepted-risk decision `551-opencode-unanchored-host-allows-accepted-risk` (`:199`), which keeps the `*{base}*` OpenCode allows that Task 1 replaces, so this plan proposes to supersede it (Open Question 4); its only fingerprint decision is this plan's `803-cloud-allowlist-fingerprint`. `docs/knowledge.jsonl` holds `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` (probe the installed OpenCode version before relying on config semantics, applied in Manual Verification Step 2) and no Codex deny row that changes this plan. The in-scope `docs/deferrals.jsonl` rows are `381-opencode-curl-glob-substring-bypass`, `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`, `381-cloud-allowlist-staleness-detector`, `381-webfetch-grants-survive-uninstall-after-seed-emptied`, `381-opencode-bash-grants-never-revoked` and `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`.
+- [ ] **Project Context:** `docs/decisions.jsonl` holds the ACTIVE accepted-risk decision `551-opencode-unanchored-host-allows-accepted-risk` (`:199`), which keeps the `*{base}*` OpenCode `webfetch` allows; the owner kept it (answer to Open Question 4), so Task 1 leaves those allows as they are; its only fingerprint decision is this plan's `803-cloud-allowlist-fingerprint`. `docs/knowledge.jsonl` holds `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` (probe the installed OpenCode version before relying on config semantics, applied in Manual Verification Step 2) and no Codex deny row that changes this plan. The in-scope `docs/deferrals.jsonl` rows are `381-opencode-curl-glob-substring-bypass`, `codex-read-tier-gates-not-wired-file-read-tool-name-unverified`, `381-cloud-allowlist-staleness-detector`, `381-webfetch-grants-survive-uninstall-after-seed-emptied`, `381-opencode-bash-grants-never-revoked` and `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`.
 - [ ] **Testing & Quality:** tiers follow `docs/testing.md` § Which tier does a behaviour need? and § Tiers. Hook decisions are tested by spawning the rendered hooks (`codexVerdict`), and install, upgrade, uninstall and check are tested through the real CLI against temp consumer repos, with no mocked boundary.
 - [ ] **Prerequisite Plans:** None.
 
@@ -379,7 +365,7 @@ None — no database tables. File shape change: `.bkit/allowlist.json` `{ domain
 <!-- prettier-ignore -->
 | Capability | File | Search performed | Existing candidates | Decision | Justification |
 | --- | --- | --- | --- | --- | --- |
-| Stop OpenCode shell fetch grants; exact-origin `webfetch` allows | `.bkit/core/engine/install/modules/opencode.ts` | `grep -n -e 'curl' -e 'WebFetch(' -e 'Shell('` over `cloud-env.ts` and `install/modules/*.ts`; read `injectOpencodeDerivedAllows`, `renderOpencodeJson`, `reconcileOpencodeJson`; OpenCode glob semantics in `providers.md:463` | `injectOpencodeDerivedAllows` — the one generator of both grant kinds | EXTEND | Drop the `bash` loop; emit `https://{name}` and `https://{name}/*` in the `webfetch` loop from `networkAllowlistBases(...)` ∪ `BKIT_SHIPPED_NETWORK_HOSTS`. |
+| Stop OpenCode shell fetch grants | `.bkit/core/engine/install/modules/opencode.ts` | `grep -n -e 'curl' -e 'WebFetch(' -e 'Shell('` over `cloud-env.ts` and `install/modules/*.ts`; read `injectOpencodeDerivedAllows`, `renderOpencodeJson`, `reconcileOpencodeJson`; OpenCode glob semantics in `providers.md:463` | `injectOpencodeDerivedAllows` — the one generator of both grant kinds | EXTEND | Drop the `bash` loop; the `webfetch` `*{base}*` loop stays as decision 551 keeps it. |
 | Report legacy substring grants with their exact removal action | `.bkit/core/engine/checks/before/files.ts` | `grep -n 'export function detect' files.ts`; read `runPreflight` wiring in `checks/before/index.ts:90-175`; read `template-copies.ts`; `git grep -n derived-grants-pruned` | `detectPlaywrightReporterHostile`-style `PreflightFinding` detectors in `files.ts`; `runPreflight` already feeds install, upgrade and `bkit check` | EXTEND | Add `detectOpencodeSubstringFetchGrants` beside the other file detectors and wire it in `runPreflight`. |
 | Redact URL credentials and query strings in a reported key | `.bkit/core/engine/checks/before/files.ts` | `git grep -n -i -e 'function redact' -e 'userinfo' -e 'stripCredentials'` over engine and hooks | `redact` in `.bkit/core/engine/commands/workflow/tracker.ts:102` — replaces configured env secret values, not URL parts; `guardrails-shell.js:271` strips userinfo only to parse a host | EXTEND | A `redactUrlParts` helper in `files.ts`, exported beside the key matcher, because it has two callers: the detector and the uninstall review lines (`uninstall.ts`, Task 3). Widening `redact` would change the `TrackerError` text its callers emit (`tracker.ts:96`, `:1601`, `issues.ts:712`). |
 | Strip Claude derived grants by recorded evidence at uninstall | `.bkit/core/engine/commands/install/uninstall.ts` | read `uninstall.ts:715-760`; `readBkitVersion` / `claudeAllowDerived` in `version-file.ts`; `enrichClaudeSettingsAllows` in `claude.ts:239` | the `.claude/settings.json` branch that recomputes `resolveClaudeDerivedAllows`; the `claudeAllowDerived` record | EXTEND | Read `claudeAllowDerived` once before the decision-table loop, beside `canonicalHashes`, and fold the recorded rows instead of the recomputed ones; list unrecorded derived-looking grants and legacy OpenCode substring grants (reusing Task 2's matcher and `redactUrlParts`) for owner review. |
@@ -399,7 +385,7 @@ None — no database tables. File shape change: `.bkit/allowlist.json` `{ domain
 
 Derived from `Reuse Inventory`. Every change extends an existing file. The only new files are the Task 5 experiment result and report.
 
-**Ledger rows:** `803-opencode-stop-shell-fetch-grants`, `803-opencode-webfetch-exact-origin`, `803-legacy-fetch-grants-report-only`, `803-uninstall-strips-by-claude-record`, `803-codex-key-shell-read-deny`, `803-cloud-allowlist-fingerprint`, `803-adoption-detectors-in-preflight`, `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`, `803-cursor-codex-cloud-fingerprint-compare`, `803-opencode-webfetch-exact-origin-never-revoked`
+**Ledger rows:** `803-opencode-stop-shell-fetch-grants`, `803-legacy-fetch-grants-report-only`, `803-uninstall-strips-by-claude-record`, `803-codex-key-shell-read-deny`, `803-cloud-allowlist-fingerprint`, `803-adoption-detectors-in-preflight`, `551-opencode-unanchored-host-allows-accepted-risk`, `opencode-has-no-script-hook-so-two-gates-are-inexpressible-there`, `803-cursor-codex-cloud-fingerprint-compare`
 
 ### Database Migrations
 
@@ -411,15 +397,15 @@ None — no database.
 
 - **Existence Check:** exists; `injectOpencodeDerivedAllows` at `:348-369`, called by `renderOpencodeJson` (`:250`) and reconcile (`:384-459`, called from `upgrade.ts:842`).
 - Remove the `permission.bash` loop that writes `curl *${base}*` / `wget *${base}*` (Supersession Inventory row 1, `DELETE`).
-- Replace `webfetch[`_${base}_`]` (Supersession Inventory row 2, `DELETE`) with `webfetch[`https://${name}`]` and `webfetch[`https://${name}/*`]` = `"allow"` for each `name` in the sorted union of `networkAllowlistBases(resolveNetworkAllowlist(cwd))` and `BKIT_SHIPPED_NETWORK_HOSTS`.
-- Rewrite the doc comments at `:245-246` and `:340-347` to the new key shapes.
+- Keep the `permission.webfetch` loop that writes `*${base}*` = `"allow"` unchanged, as decision `551-opencode-unanchored-host-allows-accepted-risk` keeps it.
+- Rewrite the doc comments at `:245-246` and `:340-347` to say that only the fetch tool gets derived allows.
 - Reconcile still deep-merges existing keys, so legacy entries stay. The detector reports them (`803-legacy-fetch-grants-report-only`).
 
 #### [MODIFY] `.bkit/core/engine/install/cloud-env.ts`
 
 - **Existence Check:** exists; `egressFingerprint` at `:655`, `renderCloudNetworkAllowlist` at `:687`, `renderWidenedNetworkList` at `:915`.
 - `egressFingerprint(entries?: readonly string[])`: with `entries`, it hashes `[...new Set(entries)].sort()`; without, it keeps today's derived set, so `renderWidenedNetworkList` (Cursor, Codex) is unchanged.
-- `renderCloudNetworkAllowlist` replaces ". Derived set fingerprint `…`" (Supersession Inventory row 4, `DELETE`) with ". Allowlist fingerprint `{egressFingerprint(domains)}`", then adds a numbered step: set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT={fp}` in the environment's variables, and re-paste and reset it whenever the stamp changes. It also adds one sentence: the stamp you set is your assertion of what the dashboard holds, and bkit cannot read the dashboard back.
+- `renderCloudNetworkAllowlist` replaces ". Derived set fingerprint `…`" (Supersession Inventory row 3, `DELETE`) with ". Allowlist fingerprint `{egressFingerprint(domains)}`", then adds a numbered step: set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT={fp}` in the environment's variables, and re-paste and reset it whenever the stamp changes. It also adds one sentence: the stamp you set is your assertion of what the dashboard holds, and bkit cannot read the dashboard back.
 
 #### [MODIFY] `.bkit/core/engine/install/network-allowlist.ts`
 
@@ -437,7 +423,7 @@ None — no database.
 
 - **Existence Check:** exists; the `.claude/settings.json` branch at `:725-745`; `stripOpencodeJsonScope` at `:150`; `canonicalHashes` read before the decision-table loop at `:430-431`; `.bkit/version` deleted inside that loop on a full or core uninstall (`:497-511`), and core's `.bkit/version` (`manifest.ts:129`) comes before `.claude/settings.json` (`manifest.ts:165`).
 - Read `const claudeAllowDerived = readBkitVersion(versionFilePath)?.claudeAllowDerived ?? []` once beside `canonicalHashes`, before the loop, so a full `bkit uninstall` that deletes `.bkit/version` mid-loop still strips by the record. Pass it into the `.claude/settings.json` strip.
-- Replace `resolveClaudeDerivedAllows(ctx.cwd)` in that strip with the pre-read `claudeAllowDerived` (Supersession Inventory row 3, `DELETE`).
+- Replace `resolveClaudeDerivedAllows(ctx.cwd)` in that strip with the pre-read `claudeAllowDerived` (Supersession Inventory row 2, `DELETE`).
 - After the strip, log one review line per remaining `WebFetch(domain:…)` / `mcp__…` row that `resolveClaudeDerivedAllows(ctx.cwd)` would produce but the record lacks. Each line names the file, the row and "remove it by hand if bkit added it". Use `ctx.logPrefix`.
 - For `.opencode/opencode.json`, run the Task 2 key matcher on the stripped document and log one review line per legacy substring grant with its removal action, each key passed through the exported `redactUrlParts`.
 
@@ -451,7 +437,7 @@ None — no database.
 #### [MODIFY] `.bkit/core/.codex/hooks/bkit-guardrails.cjs`
 
 - **Existence Check:** exists; `decideShell` at `:60-90`; the managed block splices `guardrails-shell.js` and `guardrails-tiers.js`, so `secretFileKind` is in scope.
-- `case "secret"`: `secretFileKind(v.path) === "key"` → `deny("Blocked by bkit Codex guardrails: reading ${v.path} would expose private-key material. Use ssh-agent or your secret manager instead of reading the key file.")`, with no `Command:` echo (Supersession Inventory row 5, `DELETE`). `env` → the current advisory, with its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file", since key-kind paths no longer reach it.
+- `case "secret"`: `secretFileKind(v.path) === "key"` → `deny("Blocked by bkit Codex guardrails: reading ${v.path} would expose private-key material. Use ssh-agent or your secret manager instead of reading the key file.")`, with no `Command:` echo (Supersession Inventory row 4, `DELETE`). `env` → the current advisory, with its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file", since key-kind paths no longer reach it.
 
 #### [MODIFY] `.bkit/instructions.md`
 
@@ -469,9 +455,9 @@ None — no database.
 #### [MODIFY] `.bkit/core/engine/checks/before/files.ts`
 
 - **Existence Check:** exists; detectors such as `detectPlaywrightReporterHostile` at `:84`.
-- `detectOpencodeSubstringFetchGrants(cwd)`: reads `.opencode/opencode.json` with `readJsonFile`. Returns null when the file is absent or unparseable, or when neither map is an object. Matches `permission.bash` keys `^(curl|wget) \*[^*\s]+\*$` and `permission.webfetch` keys `^\*[^*]+\*$` whose value is `"allow"`. Returns `{ id: "opencode-substring-fetch-grants", severity: "advisory", detect, action }`:
+- `detectOpencodeSubstringFetchGrants(cwd)`: reads `.opencode/opencode.json` with `readJsonFile`. Returns null when the file is absent or unparseable, or when `permission.bash` is not an object. Matches `permission.bash` keys `^(curl|wget) \*[^*\s]+\*$` whose value is `"allow"`. It never reads `permission.webfetch`, because bkit still writes the `*{base}*` fetch-tool allows there under decision 551. Returns `{ id: "opencode-substring-fetch-grants", severity: "advisory", detect, action }`:
   - `detect` names the missing protection (the host is not pinned, so any URL containing the name is allowed) and lists each redacted key.
-  - `action` says to delete each listed key from `permission.bash` / `permission.webfetch` in `.opencode/opencode.json`, that bkit no longer writes them and will not remove them because it cannot tell who added them, and that allowlisted fetch-tool origins are now written as `https://{host}/*`.
+  - `action` says to delete each listed key from `permission.bash` in `.opencode/opencode.json`, that bkit no longer writes them and will not remove them because it cannot tell who added them, and that the fetch tool still pre-allows the allowlisted domains, so fetches can use it instead of `curl` / `wget`.
   - It exports the key matcher for `uninstall.ts`.
 - An exported `redactUrlParts(key)` replaces URL userinfo with `***@` and everything after `?` with `?***`. Its callers are the detector and the uninstall review lines.
 - `detectCloudBootstrapFingerprintMissing(cwd)`: when `.claude/hooks/bkit-cloud-bootstrap.sh` exists and its text never names `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`, it returns `{ id: "cloud-bootstrap-fingerprint-missing", severity: "advisory", ... }`:
@@ -509,7 +495,7 @@ None — no database.
 
 #### [MODIFY] `.opencode/opencode.json`
 
-- Regenerated by the same upgrade with exact-origin `webfetch` keys. The legacy `curl *{domain}*` / `wget *{domain}*` / `*{domain}*` entries in bkit's own copy are deleted by hand per the new advisory. This is the owner's approval for bkit's own file, given in `Breaking Changes`; no consumer file is rewritten.
+- Regenerated by the same upgrade, which writes no new shell fetch allow and keeps the `*{domain}*` `webfetch` allows (decision 551). The legacy `curl *{domain}*` / `wget *{domain}*` entries in bkit's own copy are deleted by hand per the new advisory. This is the owner's approval for bkit's own file, given in `Breaking Changes`; no consumer file is rewritten.
 
 ### Experiment evidence
 
@@ -532,7 +518,7 @@ Listed under `Documentation Updates`. The host mirrors of `.bkit/core/.bkit/*.md
 - **Existence Check:** exists; § Runtime detection + gh-preflight test coverage at `:652`, § OpenCode host test coverage at `:844` and § Manual recipe — OpenCode E2E at `:857` all sit below `<!-- bkit:end -->` at `:553`, so the edits stay outside the managed block.
 - Reuse: `Reuse Inventory` row "Manual recipe for the Codex real-host run", `EXTEND`.
 - Task 5 adds § Manual recipe — Codex key-read deny after § Manual recipe — OpenCode E2E, in the same shape.
-- Task 10 adds § OpenCode host test coverage rows for the exact-origin `webfetch` and the substring-grant detector, and § Runtime detection + gh-preflight test coverage text for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`.
+- Task 10 adds § OpenCode host test coverage rows for the removed shell fetch allows and the substring-grant detector, and § Runtime detection + gh-preflight test coverage text for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`.
 
 ### Cron Jobs & Scheduled Tasks
 
@@ -540,17 +526,16 @@ None.
 
 ## Supersession Inventory
 
-There are no `[DELETE]` files. The replaced artifacts are code paths and generated text inside files that stay, so each `DELETE` row is mirrored by a sentence in its file's `[MODIFY]` entry that names the row (rows 1 and 2 in `opencode.ts`, row 3 in `uninstall.ts`, row 4 in `cloud-env.ts`, row 5 in `bkit-guardrails.cjs`).
+There are no `[DELETE]` files. The replaced artifacts are code paths and generated text inside files that stay, so each `DELETE` row is mirrored by a sentence in its file's `[MODIFY]` entry that names the row (row 1 in `opencode.ts`, row 2 in `uninstall.ts`, row 3 in `cloud-env.ts`, row 4 in `bkit-guardrails.cjs`).
 
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
 | The `permission.bash` `curl *{base}*` / `wget *{base}*` generator loop in `injectOpencodeDerivedAllows` (`opencode.ts:355-361`) | Nothing: the template's `curl *` / `wget *` ask applies | DELETE | The loop is the `deferrals-1` bypass. Removed in Task 1. |
-| `webfetch["*{base}*"]` in `injectOpencodeDerivedAllows` (`opencode.ts:363-368`) | `webfetch["https://{name}"]` / `["https://{name}/*"]` | DELETE | Same substring flaw. Removed in Task 1. |
 | The `resolveClaudeDerivedAllows` recompute in uninstall's `.claude/settings.json` branch (`uninstall.ts:738-744`) | The `claudeAllowDerived` record | DELETE | Recomputation is the `deferrals-11` gap (`381-webfetch-grants-survive-uninstall-after-seed-emptied`). Removed in Task 3. |
 | The "Derived set fingerprint" stamp in `renderCloudNetworkAllowlist` (`cloud-env.ts:706-708`) | "Allowlist fingerprint" of the paste list | DELETE | Two stamps on one list would confuse operators. The derived-set stamp stays in `renderWidenedNetworkList` for Cursor and Codex, which this plan does not supersede. Removed in Task 7. |
 | The advisory `ask(...)` for key-kind paths in Codex `decideShell` (`bkit-guardrails.cjs:76-79`) | `deny(...)` for `key`; `ask` kept for `env` | DELETE | Removed in Task 4. |
-| Legacy substring entries already written to consumer `.opencode/opencode.json` files | The `opencode-substring-fetch-grants` advisory | RETAIN-WITH-REASON | (a) External contract: these lines live in consumer-owned files that bkit cannot attribute, and the revision forbids blanket removal without owner approval. Each consumer removes them on the advisory; bkit's own copy is cleaned in Task 10. |
+| Legacy shell substring entries (`curl *{domain}*` / `wget *{domain}*`) already written to consumer `.opencode/opencode.json` files | The `opencode-substring-fetch-grants` advisory | RETAIN-WITH-REASON | (a) External contract: these lines live in consumer-owned files that bkit cannot attribute, and the revision forbids blanket removal without owner approval. Each consumer removes them on the advisory; bkit's own copy is cleaned in Task 10. |
 
 ## Documentation Updates
 
@@ -558,16 +543,16 @@ There are no `[DELETE]` files. The replaced artifacts are code paths and generat
 | Doc | Change required |
 | --- | --- |
 | `docs/knowledge.jsonl` | No row from planning. A build agent adds one if Task 5 finds a Codex deny behaviour worth keeping (for example, deny ignored on a named codex-cli version). |
-| `docs/decisions.jsonl` | The seven `803-*` decision rows listed on the `Ledger rows` line (written; `803-opencode-webfetch-exact-origin` rewritten at plan review to name decision 551). On approval of Open Question 4, a `551-opencode-unanchored-host-allows-accepted-risk` row with `status: "SUPERSEDED"`. |
+| `docs/decisions.jsonl` | The six `803-*` decision rows and `551-opencode-unanchored-host-allows-accepted-risk` (kept `ACTIVE` by the owner's answer to Open Question 4) listed on the `Ledger rows` line, all written. `803-opencode-webfetch-exact-origin` is `SUPERSEDED`, and `803-legacy-fetch-grants-report-only` is rewritten to report `permission.bash` keys only. |
 | `.bkit/instructions.md` | § Hook Text: a new `guardrails-codex-key-shell-deny` entry and the narrowed `guardrails-codex-secret-shell` entry. Task 4. |
 | `.bkit/core/.bkit/prompts.md` | § Hook-injected text, Guardrails row (`:435`): Codex `.env` shell reads stay advisory, and Codex private-key shell reads are denied with the Task 5 status phrase. Task 6. |
 | `docs/architecture.md` | No change: no new component kind, and the new files sit under `tests/experiments/`, which it already places. |
 | `docs/technology.md` | No change: no new library or convention. |
 | `docs/data-schema.md` | No change: no database. |
 | `docs/design.md` | No change: no UI. |
-| `docs/testing.md` | Add § Manual recipe — Codex key-read deny (Task 5). Add rows to § OpenCode host test coverage for the exact-origin `webfetch` and the substring-grant detector, and to § Runtime detection + gh-preflight test coverage for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats` (Task 10). |
+| `docs/testing.md` | Add § Manual recipe — Codex key-read deny (Task 5). Add rows to § OpenCode host test coverage for the removed shell fetch allows and the substring-grant detector, and to § Runtime detection + gh-preflight test coverage for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats` (Task 10). |
 | `docs/observability.md` | No change: no new log name. The bootstrap uses its existing `[cloud-bootstrap]` stderr prefix. |
-| `.bkit/core/.bkit/providers.md` | § Guardrails "Secret files" row (`:271`): Codex denies private-key shell reads (status per the Task 5 result, written in Task 6), `.env` advisory. § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`): no shell allow, exact-origin `webfetch`, legacy entries reported, the accepted-risk sentence removed. Shared parts table (`:307-308`): `shellSecretRead` key-first. § Network allowlist OpenCode row: legacy entries reported (Task 2). Claude row (`:476`): uninstall strips by `claudeAllowDerived` (Task 3). Tasks 1, 2, 3 and 6. |
+| `.bkit/core/.bkit/providers.md` | § Guardrails "Secret files" row (`:271`): Codex denies private-key shell reads (status per the Task 5 result, written in Task 6), `.env` advisory. § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`): no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay (decision 551). Shared parts table (`:307-308`): `shellSecretRead` key-first. § Network allowlist OpenCode row: legacy shell entries reported (Task 2). Claude row (`:476`): uninstall strips by `claudeAllowDerived` (Task 3). Tasks 1, 2, 3 and 6. |
 | `.bkit/core/.bkit/cloud.md` | § In-repo side (`:103`) and § Network access (`:116-126`): the fingerprint in `.bkit/allowlist.json`, the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` step, the bootstrap's warning, that every cloud's dashboard list (Claude, Cursor, Codex) is an operator assertion, unverified, and that the Cursor and Codex paste-note stamp is the derived set only, so it ignores consumer `allowed-domains`. Task 7. |
 | `.bkit/core/.bkit/templates.md` | Contract row for the cloud SessionStart hook (`:79`): the fingerprint compare and the `cloud-bootstrap-fingerprint-missing` advisory. Task 9. |
 | `.bkit/core/.bkit/workflows.md` | `:1437`: drop the stale `curl https://{host}/*` claim for OpenCode and say shell fetches ask. Task 1. |
@@ -596,46 +581,44 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Stop the OpenCode shell fetch grants and pin fetch-tool allows to exact origins (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
-  - **UPDATE:** `injectOpencodeDerivedAllows` in `.bkit/core/engine/install/modules/opencode.ts`: drop the `permission.bash` `curl *${base}*` / `wget *${base}*` loop; write `https://{name}` and `https://{name}/*` = `allow` into `permission.webfetch` for each name in `networkAllowlistBases(resolveNetworkAllowlist(cwd))` ∪ `BKIT_SHIPPED_NETWORK_HOSTS`; rewrite the doc comments at `:245-246` and `:340-347`
+- [ ] **TASK 1:** Stop the OpenCode shell fetch grants (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
+  - **UPDATE:** `injectOpencodeDerivedAllows` in `.bkit/core/engine/install/modules/opencode.ts`: drop the `permission.bash` `curl *${base}*` / `wget *${base}*` loop; keep the `permission.webfetch` `*${base}*` loop unchanged (decision `551-opencode-unanchored-host-allows-accepted-risk`); rewrite the doc comments at `:245-246` and `:340-347` to say only the fetch tool gets derived allows
   - **READ:** `networkAllowlistBases` in `.bkit/core/engine/install/cloud-env.ts`: the apex bases
   - **READ:** `resolveNetworkAllowlist` in `.bkit/core/engine/install/cloud-env.ts`: shipped ∪ declared domains
-  - **READ:** `BKIT_SHIPPED_NETWORK_HOSTS` in `.bkit/core/engine/install/cloud-env.ts`: the shipped exact hosts
-  - **UPDATE:** `.bkit/core/engine/install/modules/opencode.integration.test.ts`: the curl / webfetch assertions of the tests at `:448` and `:541`
-  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: the parity test at `:1187` and the comments at `:961` and `:974-978`; add the exact-origin test, built on `globToRe` with last-match-wins over the rendered `webfetch` table
-  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`) — no shell allow, exact-origin `webfetch`, accepted-risk sentence removed
+  - **UPDATE:** `.bkit/core/engine/install/modules/opencode.integration.test.ts`: the curl assertions of the tests at `:448` and `:541`; their `*{base}*` webfetch assertions stay
+  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: the parity test at `:1187` and the comments at `:961` and `:974-978`
+  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`) — no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `:1437`, OpenCode shell fetches ask
-  - **UPDATE:** `.bkit/core/engine/install/cloud-env.integration.test.ts`: the comment at `:112-113` ("permission.bash curl globs") names the exact-origin `permission.webfetch` keys instead
+  - **UPDATE:** `.bkit/core/engine/install/cloud-env.integration.test.ts`: the comment at `:112-113` ("permission.bash curl globs") names the `*{base}*` `permission.webfetch` keys instead
   - **UPDATE:** `.opencode/opencode.json`: regenerated by `pnpm tsx .bkit/core/engine/cli.ts upgrade` (legacy keys stay until Task 10)
   - **UPDATE:** `dist/cli.js`: rebuilt with the rest of `dist/` by `pnpm build`, and staged with `git add dist/`
-  - **DONE WHEN:** `renderOpencodeJson` output has no `permission.bash` key matching `^(curl|wget) \*[^*\s]+\*$` and no `permission.webfetch` key matching `^\*[^*]+\*$`; the four tests below pass; `git grep -n 'curl \*{domain}\*' -- .bkit/core/.bkit/` returns nothing; `pnpm bkit:check:dist` exits 0
+  - **DONE WHEN:** `renderOpencodeJson` output has no `permission.bash` key matching `^(curl|wget) \*[^*\s]+\*$`, and its `permission.webfetch` still holds `*{base}*` = `allow` for each derived base; the three tests below pass; `git grep -n 'curl \*{domain}\*' -- .bkit/core/.bkit/` returns nothing; `pnpm bkit:check:dist` exits 0
   - **TEST FIRST:**
-    - `.bkit/core/engine/install/modules/opencode.integration.test.ts` `injects consumer allowed-domains into the fetch tool as exact origins and never into shell allows` fails on `curl *vercel.com*` still being an `allow` in `permission.bash` (rewrites "injects consumer allowed-domains into both fetch surfaces (shell + fetch tool)")
+    - `.bkit/core/engine/install/modules/opencode.integration.test.ts` `injects consumer allowed-domains into the fetch tool and never into shell allows` fails on `curl *vercel.com*` still being an `allow` in `permission.bash` (rewrites "injects consumer allowed-domains into both fetch surfaces (shell + fetch tool)")
     - `.bkit/core/engine/install/modules/opencode.integration.test.ts` `permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated, no shell fetch allows` fails on `curl *github.com*` still being an `allow` (rewrites "permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated": its curl assertion flips to absent)
     - `.bkit/core/engine/install/modules/index.integration.test.ts` `every derived base reaches the fetch tool on every host, and an OpenCode shell fetch asks` fails on an OpenCode shell `curl https://{base}/` answering `allow` (rewrites "every derived base reaches BOTH fetch surfaces on every host (fetch tool + shell)")
-    - `.bkit/core/engine/install/modules/index.integration.test.ts` `an OpenCode webfetch allow matches only its exact https origin` fails on `https://evil.example/?x=github.com` matching the `*github.com*` allow
 
 <!-- bkit:task 1 end -->
 
 <!-- bkit:task 2 start -->
 
 - [ ] **TASK 2:** Report legacy OpenCode substring fetch grants for owner review (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
-  - **UPDATE:** `.bkit/core/engine/checks/before/files.ts`: add `detectOpencodeSubstringFetchGrants(cwd)` (advisory id `opencode-substring-fetch-grants`; reads with `readJsonFile`; never writes), an exported key matcher for `uninstall.ts`, and an exported `redactUrlParts` (its callers are the detector and Task 3's uninstall review lines)
+  - **UPDATE:** `.bkit/core/engine/checks/before/files.ts`: add `detectOpencodeSubstringFetchGrants(cwd)` (advisory id `opencode-substring-fetch-grants`; reads `permission.bash` only, with `readJsonFile`; never writes), an exported key matcher for `uninstall.ts`, and an exported `redactUrlParts` (its callers are the detector and Task 3's uninstall review lines)
   - **UPDATE:** `runPreflight` in `.bkit/core/engine/checks/before/index.ts`: push the finding beside `detectPlaywrightReporterHostile`
   - **UPDATE:** `dist/cli.js`: rebuilt with the rest of `dist/` by `pnpm build`, and staged with `git add dist/`
   - **READ:** `readJsonFile` in `.bkit/core/engine/shared/json.ts`: the parse contract (no `JSON.parse` in a `try`)
   - **READ:** `PreflightFinding` in `.bkit/core/engine/checks/before/index.ts`: the advisory shape
   - **UPDATE:** `.bkit/core/engine/checks/before/files.test.ts`: a `detectOpencodeSubstringFetchGrants` describe
   - **UPDATE:** `.bkit/core/engine/commands/install/upgrade.integration.test.ts`: the legacy-file upgrade test
-  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Network allowlist OpenCode row — legacy entries are reported by `opencode-substring-fetch-grants`, never removed. Describe them in words ("substring `curl` / `wget` / `webfetch` allows"), not with the `curl *{domain}*` key shape, so Task 1's `git grep` check keeps holding
+  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Network allowlist OpenCode row — legacy entries are reported by `opencode-substring-fetch-grants`, never removed. Describe them in words ("substring `curl` / `wget` allows"), not with the `curl *{domain}*` key shape, so Task 1's `git grep` check keeps holding
   - **DEPENDS ON:** 1
-  - **DONE WHEN:** a real `bkit upgrade` over a temp consumer whose `.opencode/opencode.json` holds `"curl *github.com*": "allow"` keeps that key, prints `opencode-substring-fetch-grants` naming it with its removal action, writes `https://github.com` / `https://github.com/*` into `permission.webfetch` and adds no new `curl *…*` / `wget *…*` key; the five tests below pass; `git grep -n 'curl \*{domain}\*' -- .bkit/core/.bkit/` still returns nothing; `pnpm bkit:check:dist` exits 0
+  - **DONE WHEN:** a real `bkit upgrade` over a temp consumer whose `.opencode/opencode.json` holds `"curl *github.com*": "allow"` keeps that key, prints `opencode-substring-fetch-grants` naming it with its removal action, keeps `*github.com*` in `permission.webfetch` without reporting it, and adds no new `curl *…*` / `wget *…*` key; the five tests below pass; `git grep -n 'curl \*{domain}\*' -- .bkit/core/.bkit/` still returns nothing; `pnpm bkit:check:dist` exits 0
   - **TEST FIRST:**
-    - `.bkit/core/engine/checks/before/files.test.ts` `reports each substring curl, wget and webfetch allow with its removal action` fails on no finding for a file holding `curl *github.com*`, `wget *github.com*` and `*github.com*` allows
-    - `.bkit/core/engine/checks/before/files.test.ts` `ignores exact-origin, non-allow and unrelated consumer entries` fails on a finding raised for `https://api.example.com/*`, a `curl *x*: ask` entry or an unrelated bash key
+    - `.bkit/core/engine/checks/before/files.test.ts` `reports each substring curl and wget allow with its removal action` fails on no finding for a file holding `curl *github.com*` and `wget *github.com*` allows
+    - `.bkit/core/engine/checks/before/files.test.ts` `ignores webfetch, non-allow and unrelated consumer entries` fails on a finding raised for a `*github.com*` or `https://api.example.com/*` webfetch allow, a `curl *x*: ask` entry or an unrelated bash key
     - `.bkit/core/engine/checks/before/files.test.ts` `redacts URL credentials and query strings in a reported key` fails on `user:tok` or `k=v` appearing in the finding's text
     - `.bkit/core/engine/checks/before/files.test.ts` `reports nothing and writes nothing for an absent, unparseable or map-less file` fails on a throw, a finding, or a changed file
-    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `upgrade keeps legacy OpenCode substring fetch grants and reports each for owner review` fails on the output lacking "opencode-substring-fetch-grants", on the upgraded `permission.webfetch` lacking `https://github.com/*`, or on a new `curl *…*` key in `permission.bash`
+    - `.bkit/core/engine/commands/install/upgrade.integration.test.ts` `upgrade keeps legacy OpenCode substring fetch grants and reports each for owner review` fails on the output lacking "opencode-substring-fetch-grants", on the upgraded `permission.webfetch` lacking `*github.com*`, or on a new `curl *…*` key in `permission.bash`
 
 <!-- bkit:task 2 end -->
 
@@ -792,7 +775,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 <!-- bkit:task 10 start -->
 
 - [ ] **TASK 10:** Refresh mirrors and `dist/`, clean bkit's own OpenCode copy, and record the new tests in `docs/testing.md` (`deferrals-1`, `deferrals-3`, `deferrals-11`)
-  - **UPDATE:** `.opencode/opencode.json`: delete the legacy `curl *{domain}*` / `wget *{domain}*` / `*{domain}*` allows by hand, as the `opencode-substring-fetch-grants` advisory lists them (approved through `Breaking Changes`)
+  - **UPDATE:** `.opencode/opencode.json`: delete the legacy `curl *{domain}*` / `wget *{domain}*` allows by hand, as the `opencode-substring-fetch-grants` advisory lists them (approved through `Breaking Changes`); the `*{domain}*` `webfetch` allows stay (decision 551)
   - **UPDATE:** `.bkit/providers.md`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`
   - **UPDATE:** `.bkit/cloud.md`: re-rendered by the same upgrade
   - **UPDATE:** `.bkit/templates.md`: re-rendered by the same upgrade
@@ -800,7 +783,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
   - **UPDATE:** `.bkit/prompts.md`: re-rendered by the same upgrade
   - **UPDATE:** `dist/cli.js`: final freshness check only — Tasks 1, 2, 3, 6, 7 and 9 each rebuild and stage `dist/`; rebuild with `pnpm build` here only if the check finds drift
   - **UPDATE:** `docs/capabilities.md`: the graphify register, refreshed by `pnpm bkit:graph:refresh` on the staged tree, because Task 3 adds an import from `uninstall.ts` to `checks/before/files.ts` and Tasks 2 and 9 export new detectors, and the pre-push register gate (`.husky/pre-push:282-348`) blocks a stale register
-  - **UPDATE:** `docs/testing.md`: § OpenCode host test coverage rows for the exact-origin `webfetch` and the substring-grant detector; § Runtime detection + gh-preflight test coverage rows for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`
+  - **UPDATE:** `docs/testing.md`: § OpenCode host test coverage rows for the removed shell fetch allows and the substring-grant detector; § Runtime detection + gh-preflight test coverage rows for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`
   - **DEPENDS ON:** 1, 2, 3, 4, 5, 6, 7, 8, 9
   - **DONE WHEN:** `pnpm bkit check` exits 0 on bkit and prints neither `opencode-substring-fetch-grants` nor `cloud-bootstrap-fingerprint-missing`; `jq -r '.permission.bash | keys[]' .opencode/opencode.json` shows no `curl *…*` / `wget *…*` key other than `curl *` / `wget *`; the T6 mirror parity test passes; `pnpm build` exits 0, `pnpm bkit:check:dist` exits 0 and `git grep -l detectCloudBootstrapFingerprintMissing -- dist/` lists a file; `pnpm bkit:graph:check` exits 0 after the refresh is committed
   - **TEST FIRST:** n/a — no behaviour change: generated mirrors, a `dist/` freshness check, a graph register refresh, a config hand edit and docs
@@ -840,9 +823,9 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` (the deepest declared `bkit:gate:*` script with integration; `bkit:gate:install-static-unit-build` adds `pnpm build`) and `pnpm bkit check` pass.
 - [ ] **Test Synchronization:** the existing tests the plan rewrites stay green: `opencode.integration.test.ts` (`:448`, `:541`), the parity test and `SHELL_SECRET_READS` describe in `index.integration.test.ts`, the T6 mirror parity and the `rg -l "id_rsa" src` search-pattern row (`:117`) in `guardrails-cursor.integration.test.ts`, `dogfood-templates.test.ts`, the gh-preflight cases already in `tests/shell/bkit-cloud-bootstrap-preflight.bats`, `strips allow/deny/ask together, including install's WebFetch enrichment` in `uninstall.test.ts` (`:1170`, reseeded with a `claudeAllowDerived` record in Task 3), `every hook message has an entry and every entry is still emitted` in `instructions-sources.test.ts` (§ Hook Text entries added in Task 4), and `cloud-env.integration.test.ts` (comment at `:112-113` updated in Task 1).
 - [ ] **Build Configuration:** no test-only file is added to a shipped path. The new tests extend existing `*.test.ts`, `*.integration.test.ts` and `.bats` files, which the build already excludes. The Task 5 experiment files sit under `tests/experiments/`, outside the package.
-- [ ] **Integration (`opencode.integration.test.ts`, `index.integration.test.ts`):** rendered OpenCode permissions hold no substring fetch allow; exact-origin `webfetch` rejects a name in another URL's path, query or userinfo; rendered Codex hook denies key-kind shell reads with a sanitized reason (Tasks 1, 4).
+- [ ] **Integration (`opencode.integration.test.ts`, `index.integration.test.ts`):** rendered OpenCode `permission.bash` holds no substring fetch allow, and `permission.webfetch` keeps its `*{base}*` allows; rendered Codex hook denies key-kind shell reads with a sanitized reason (Tasks 1, 4).
 - [ ] **Unit (`checks/before/files.test.ts`):** both detectors, including redaction and the no-write guarantee, against temp directories (Tasks 2, 9).
-- [ ] **Integration (`upgrade`, `uninstall`, `check`, `doctor`, `install` integration tests):** the real CLI over temp consumer repos: legacy grants kept and reported, exact-origin keys written on upgrade; uninstall by record, a full no-flag uninstall included; the stale bootstrap advisory in `bkit check` and `bkit doctor`; the Codex status advisory (Tasks 2, 3, 6, 9).
+- [ ] **Integration (`upgrade`, `uninstall`, `check`, `doctor`, `install` integration tests):** the real CLI over temp consumer repos: legacy grants kept and reported, no new shell fetch key written on upgrade; uninstall by record, a full no-flag uninstall included; the stale bootstrap advisory in `bkit check` and `bkit doctor`; the Codex status advisory (Tasks 2, 3, 6, 9).
 - [ ] **Unit (`network-allowlist.test.ts`, `cloud-env.test.ts`, `bkit-cloud-bootstrap-preflight.bats`):** the fingerprint field, the paste guidance, and every bootstrap warn-and-continue branch through `pnpm bkit:test:file tests/shell/bkit-cloud-bootstrap-preflight.bats` (Tasks 7, 8).
 - [ ] **Apply local migrations:** N/A — no database.
 - [ ] **Run all tests:** `pnpm test`, `pnpm test:integration` and `pnpm bkit:test:bats` pass.
@@ -856,8 +839,8 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 > [!CAUTION]
 > **Owner-run acceptance checks, advisory only.** An unticked box blocks nothing: not the merge, and not plan approval. This is not a Gate 1 human-confirmation section.
 
-- [ ] **Step 1:** In a scratch consumer, run `node dist/cli.js install --opencode=openrouter --claude`, add `"curl *github.com*": "allow"` to `.opencode/opencode.json`, then run `node dist/cli.js upgrade`. Confirm the key is still there, `opencode-substring-fetch-grants` names it, and `permission.webfetch` holds `https://github.com/*`.
-- [ ] **Step 2:** In OpenCode (`opencode v2.1.4`) in that consumer, ask for `curl -sI https://github.com` and confirm the prompt. Then use the fetch tool on `https://github.com/` and confirm there is no prompt, and on `https://evil.example/?x=github.com` and confirm the prompt. Record `opencode --version`, the date and the three outcomes in the Task 5 report, since this is the only check of the `webfetch` matching assumption against the real binary.
+- [ ] **Step 1:** In a scratch consumer, run `node dist/cli.js install --opencode=openrouter --claude`, add `"curl *github.com*": "allow"` to `.opencode/opencode.json`, then run `node dist/cli.js upgrade`. Confirm the key is still there, `opencode-substring-fetch-grants` names it, and `permission.bash` gained no other `curl *…*` / `wget *…*` allow.
+- [ ] **Step 2:** In OpenCode (`opencode v2.1.4`) in that consumer, ask for `curl -sI https://github.com` and confirm the prompt. Then use the fetch tool on `https://github.com/` and confirm there is no prompt. Record `opencode --version`, the date and the two outcomes in the Task 5 report, since this is the only check of the OpenCode matching assumption against the real binary.
 - [ ] **Step 3:** Follow § Manual recipe — Codex key-read deny in `docs/testing.md` on the current codex-cli, if Task 5 recorded `not-run` because no session was available, and add the dated result.
 - [ ] **Step 4:** In a Claude Code on the web session for a consumer with the new bootstrap, start once with `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` unset and once set to the stamp in `.claude/bkit-cloud.md` § 2. Confirm the WARNING in the first, the "operator-asserted ... unverified" line in the second, and that both sessions start.
 - [ ] **Step 5:** Run `node dist/cli.js uninstall` in the Step 1 consumer and confirm the review lines for the legacy OpenCode key and any unrecorded `WebFetch(domain:…)` grant.
