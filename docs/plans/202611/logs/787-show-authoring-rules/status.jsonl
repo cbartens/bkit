@@ -753,3 +753,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T07:41:59Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/5/1/comment","hash":"4f7af56757f5839f4b6a94e48613c1dc7e4bf68af91a0f8f44cab28df5945614","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6789735564","at":"2026-11-11T07:42:01Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-11T07:42:01Z","parentSha":"c19018c366e7b3d9be007db290516c6bcdf061bf","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-5-1.md"],"verdict":"CONCERNS","attempt":1,"group":5,"failures":1}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:42:03Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks","green"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:42:03Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:43:28Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:43:28Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:43:33Z","noun":"repo","verb":"info","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T07:44:07Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","plan","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-tests/5/2/comment","hash":"3bf332c04a5418af8f508e3f018d4a2ea398fefa4c18c65675f51fdca4bcb75b","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6789735564","at":"2026-11-11T07:44:09Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-tests","status":"DONE","at":"2026-11-11T07:44:09Z","parentSha":"f45aebeb3abc1f32e7c8c57c21d135f8e11cebe8","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-tests-5-log.md"],"verdict":"PASS","attempt":2,"group":5}

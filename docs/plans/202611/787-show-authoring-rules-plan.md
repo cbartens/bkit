@@ -637,7 +637,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 19 end -->
 <!-- bkit:task 20 start -->
 
-- [ ] **TASK 20:** A patch file with a long whitespace `rename from` line stalls every shell hook call that names it for about 10 seconds (ReDoS)
+- [x] **TASK 20:** A patch file with a long whitespace `rename from` line stalls every shell hook call that names it for about 10 seconds (ReDoS)
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:862` · **Round:** 1
   - **DONE WHEN:** `patchPaths` parses `rename|copy from|to` lines in linear time (for example a prefix check, `slice` and `trimEnd`, with no lazy group before `\s*$`), so a 64 KiB source line finishes well inside the 200 ms cooperative deadline, which cannot interrupt a single regex. Measured on the current regex `/^(?:rename|copy) (?:from|to) (.+?)\s*$/`: 8,000 spaces 119 ms, 16,000 532 ms, 32,000 2,691 ms, 64,000 10,604 ms (quadratic). A heredoc patch inside the 256 KiB command bound is worse. The deny, ask and secret tiers in `classifyShell` return before the detector runs, so this is a hang, not a bypass, on Codex, Cursor and Antigravity; the Claude guardrails hook registers no `timeout`.
   - **TEST FIRST:**
