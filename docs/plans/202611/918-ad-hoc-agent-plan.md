@@ -45,11 +45,14 @@ Goals:
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+An agent working outside a `/bkit-*` workflow posts its work comments as plain markdown, so the next design, plan or build run on that issue still reads them.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+1. `bkit issues comment` refuses with a usage error that points at plain markdown through the tracker MCP when the call carries no proof that a workflow or audit run is making it.
+2. Every workflow and audit call that posts today still posts.
+3. `.agents/rules.md` § Tracker work comments says work comments go as plain markdown through the tracker MCP, never through `bkit issues comment`, and never start with a `bkit:generated` line.
+4. The `comment` row of `.bkit/cli.md` says workflow steps only, never for ad-hoc comments.
 
 ### Process Sketch
 
@@ -153,10 +156,6 @@ No database, route, page or layout change.
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question:** The Acceptance Scenario has no Narrative or Success Criteria: there is no design, #918 is bug-shaped with no change-shape fields, and the plan may not invent them → the owner writes them.
-  - **Options:** A) Write both into this plan's `Acceptance Scenario` before ticking Gate 1 — fastest, and the plan stays the one source · B) Add `### Narrative` and `### Success Criteria` to #918 and re-run `/bkit-plan #918` — keeps the issue complete, and costs a second plan run
-  - **Recommended:** A) — the rest of the scenario, the edge cases and the test matrix already pin the behaviour.
-  - **Default if unanswered:** Gate 1 stays unticked and the build does not start.
 - **Open Question:** What proves a workflow run is calling? #918 suggests "a held lock or an `IN_PROGRESS` `status.jsonl` for the FID". Tracing every caller shows five legitimate calls that hold neither: `/bkit-auto` Step 1, Step 2 and Failure Path (no lock, no `status.jsonl`), the post-close Owner Answers comments of `/bkit-design` Step 12 and `/bkit-plan` Step 8 and the `/bkit-debug` Step 11 close comment (lock released, run closed), and `bkit-audit-generate` (no lock).
   - **Options:** A) Outbox or run proof: a `--session-dir` path directly under `<git-common-dir>/bkit-outbox/sessions/`, a `--file` `status.jsonl` holding a run of `--workflow`, or an audit `--body-file` under `<git-common-dir>/bkit-outbox/audit-{slug}/` — reuses `postForVerb`'s own lookups, and needs only `bkit-auto` to hold its session · B) Lock or `IN_PROGRESS` run for the issue's FID, as #918 suggests — needs an issue-to-FID lookup the verb does not have today and refuses the five calls above · C) B plus named exemptions for those five — each exemption is a hole an ad-hoc call can copy
   - **Recommended:** A) — every current caller already passes one of these, the lookup is the one the verb already runs, and an ad-hoc agent has none of them.
@@ -252,7 +251,7 @@ No database, route, page or layout change.
 - [ ] **Package Management:** no package is added or removed; `package.json` and `pnpm-lock.yaml` stay as they are.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (run 2026-11-11) lists only dev-dependency bumps (`vitest` 5.0.5 → 5.1.0, `@vitest/coverage-v8` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.91.0, `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5); none blocks this change. Toolchain: Node v24.16.0 (`engines.node` `>=24`), pnpm 10.34.7 (`packageManager` pin), gh 2.102.0; `node_modules/.bin/tsx` and `vitest` present.
 - [ ] **Existing-Solution Search (reuse over duplicate):** the in-repo text and symbol searches are recorded per row in `Reuse Inventory`, and the framework built-in and current-practice searches below its table.
-- [ ] **User Context:** every file the runbook names was opened during planning or review; the owner supplies the Narrative and Success Criteria (Open Questions).
+- [ ] **User Context:** every file the runbook names was opened during planning or review; the Narrative and Success Criteria were written from #918's "What goes wrong" section and "Suggested fix" points 1 to 3, at the owner's direction.
 - [ ] **Project Context:** `docs/decisions.jsonl` (`465-tracker-markers-are-h6-headings-not-html-comments`, `675-engine-owns-tracker-io-mcp-fallback`, `860-existing-artifact-serialization`), `docs/knowledge.jsonl`, `docs/deferrals.jsonl` and `docs/failures.jsonl` were searched for the marker, `issues comment`, work comments and session folders; no decision row conflicts. Four failure rows are open on test files this plan runs, and none is caused by it:
   - `tracker-boundary-fault-matrix-concurrency-timeout` (OPEN): "preserves substantive step results under every comment boundary fault" in `.bkit/core/engine/commands/workflow/tracker.integration.test.ts` (Task 1).
   - `tracker-new-comment-budget-shell-observation-flake` (OPEN): "reserves new comment opportunity within total delivery budget" in `.bkit/core/engine/commands/workflow/tracker.test.ts` (Task 1's `pnpm test`).
