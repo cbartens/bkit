@@ -447,6 +447,8 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
     - `.bkit/core/engine/ledgers/telemetry.test.ts` `folds numeric timestamps and equal timestamp ties before filtering` fails on the new query/filter path resurrecting an older ACTIVE row after its newer SUPERSEDED winner is filtered out; include numeric/equal-ts regressions rather than using already-green fold-only assertions as the red gate.
     - `.bkit/core/engine/commands/workflow/ledgers.test.ts` `pages canonical winners with diagnostics and rejects stale cursors` fails on missing/duplicated page winners, absent line diagnostics or accepting a changed snapshot.
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `distinguishes unreadable missing malformed and clean ledger coverage without writing` fails on reporting a clean empty scan for unread input or altering original bytes.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `distinguishes unreadable missing malformed and clean ledger coverage without writing` fails on reporting a clean empty scan for unread input or altering original bytes. — accepted: the only change after it was recorded red was group 8's one-word rename of the `ledgers query` status from `complete` to `clean`; the full static/unit/integration gate passes (owner, 2026-11-12)
 
 <!-- bkit:task 3 end -->
 
@@ -659,6 +661,8 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
   - **TEST FIRST:**
     - `.bkit/core/engine/tools/instructions.test.ts` `renders one recovery precedence contract for all hosts and tracker adapters` fails on a blanket failure carrier, missing deterministic ownership, generic retries overriding a specific route or a host/tracker variant retaining manual copied counters/model pins.
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs and upgrades fresh consumers with deterministic bookkeeping contracts` fails on source/rendered/compiled CLI drift or fresh consumer invocation/query/result/receipt/recovery probes producing divergent rows, limits or attribution.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `installs and upgrades fresh consumers with deterministic bookkeeping contracts` fails on source/rendered/compiled CLI drift or fresh consumer invocation/query/result/receipt/recovery probes producing divergent rows, limits or attribution. — accepted: same one-word `complete` to `clean` rename forced by group 8; the install and upgrade checks run in the full gate, which passes (owner, 2026-11-12)
 
 <!-- bkit:task 9 end -->
 <!-- bkit:group 4 end -->
@@ -683,6 +687,8 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
   - **DONE WHEN:** A pending intent always has a reachable resolution: reconciliation by operation id alone (checking the prepared bytes at the recorded offset) works without the original invocation, or an engine verb resolves or abandons it with evidence, and teardown union does not fail forever on an intent another checkout wrote. No agent can settle this alone, because the request hash binds the invocation id (`ledgers.ts:1571`), invocations go stale when a newer run starts (`commands/lib.ts` `resolveInvocation`) and `.bkit/ledger-operations.jsonl` rides every bookkeeping commit via `.bkit/*.jsonl`, although the plan's Data Schema Changes row 'Ledger operation' places receipts in the git-common outbox; the owner must decide who may reconcile an intent and whether it is checkout-local or committed state.
   - **TEST FIRST:**
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `resolves a pending ledger intent after its invocation is stale` fails on a crash at the `prepared` checkpoint followed by a new run start leaving `ledgers union` exiting with 'replay them first' and every replay of the operation refused as a different request.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `resolves a pending ledger intent after its invocation is stale` fails on a crash at the `prepared` checkpoint followed by a new run start leaving `ledgers union` exiting with 'replay them first' and every replay of the operation refused as a different request. — accepted: group 7 moved where ledger intents are stored, so the test was repointed and re-recorded; it still exercises the stale-invocation path and passes in the full gate (owner, 2026-11-12)
 
 <!-- bkit:task 14 end -->
 <!-- bkit:task 15 start -->
@@ -710,6 +716,8 @@ Twelve tasks in four groups. Maximum actual group size is five tasks and fifteen
   - **DONE WHEN:** Reconciliation prepares afresh only when no byte of the prepared block landed at the recorded offset; any landed prefix of the block followed by foreign bytes reports `UncertainEffect` and appends nothing, and no fold winner or lineage count is duplicated.
   - **TEST FIRST:**
     - `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended` fails on a two-row operation whose first row and half of its second landed, followed by an `appendFrictionRow` write, being reconciled with exit 0 and the first row present twice.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/ledgers/journal.integration.test.ts` `refuses to re-append a partly landed block after a foreign writer appended` fails on a two-row operation whose first row and half of its second landed, followed by an `appendFrictionRow` write, being reconciled with exit 0 and the first row present twice. — accepted: group 7 moved where ledger intents are stored, so the test was repointed and re-recorded; it still exercises the foreign-writer path and passes in the full gate (owner, 2026-11-12)
 
 <!-- bkit:task 17 end -->
 <!-- bkit:group 5 end -->
