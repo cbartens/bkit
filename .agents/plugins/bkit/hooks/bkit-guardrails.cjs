@@ -1232,6 +1232,129 @@ function markCopied(st, cmd, ops, cwd) {
   markProduced(st, dest, cwd, body);
 }
 
+const FETCH_SHORT_VALUE = {
+  curl: new Set("AbcCdDeEFHKmoPQrTuUwXxyYz"),
+  wget: new Set("oaOPeiBtTwQlARDIXUYC"),
+};
+const FETCH_LONG_VALUE = {
+  curl: new Set([
+    "output",
+    "output-dir",
+    "config",
+    "header",
+    "data",
+    "data-raw",
+    "data-binary",
+    "user-agent",
+    "request",
+    "proxy",
+    "user",
+    "cookie",
+    "cookie-jar",
+    "referer",
+    "max-time",
+    "write-out",
+    "form",
+    "upload-file",
+    "range",
+    "connect-timeout",
+    "retry",
+    "dump-header",
+  ]),
+  wget: new Set([
+    "output-document",
+    "directory-prefix",
+    "input-file",
+    "output-file",
+    "append-output",
+    "header",
+    "user-agent",
+    "post-data",
+    "post-file",
+    "execute",
+    "tries",
+    "timeout",
+    "referer",
+    "user",
+    "password",
+    "wait",
+    "base",
+  ]),
+};
+
+/**
+ * One pass over curl / wget arguments: output files, output directory, remote-name mode, positionals.
+ * Handles bundled short flags, attached or separate values, and `--long=value` / `--long value`.
+ */
+function readFetchOptions(program, args) {
+  const res = { outputs: [], outDir: null, remoteName: false, positionals: [], unresolved: false };
+  const curl = program === "curl";
+  const shortValue = FETCH_SHORT_VALUE[program];
+  const longValue = FETCH_LONG_VALUE[program];
+  const useShort = (flag, value) => {
+    if (curl) {
+      if (flag === "o") {
+        if (!value.startsWith("=")) res.outputs.push(value);
+      } else if (flag === "K") res.unresolved = true;
+    } else if (flag === "O") res.outputs.push(value);
+    else if (flag === "P") res.outDir = value;
+    else if (flag === "i") res.unresolved = true;
+    else if (flag === "e" && /(?:dir_prefix|output_document|dirprefix)/i.test(value)) {
+      res.unresolved = true;
+    }
+  };
+  const useLong = (name, value) => {
+    if (curl) {
+      if (name === "output") res.outputs.push(value);
+      else if (name === "output-dir") res.outDir = value;
+      else if (name === "config") res.unresolved = true;
+    } else if (name === "output-document") res.outputs.push(value);
+    else if (name === "directory-prefix") res.outDir = value;
+    else if (name === "input-file") res.unresolved = true;
+    else if (name === "execute" && /(?:dir_prefix|output_document|dirprefix)/i.test(value)) {
+      res.unresolved = true;
+    }
+  };
+  let rest = false;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (rest || a === "-" || !a.startsWith("-")) {
+      res.positionals.push(a);
+      continue;
+    }
+    if (a === "--") {
+      rest = true;
+      continue;
+    }
+    if (a.startsWith("--")) {
+      const eq = a.indexOf("=");
+      const name = eq < 0 ? a.slice(2) : a.slice(2, eq);
+      if (name === "remote-name" || name === "remote-name-all") res.remoteName = true;
+      if (eq >= 0) useLong(name, a.slice(eq + 1));
+      else if (longValue.has(name)) {
+        if (args[i + 1] === undefined) continue;
+        useLong(name, args[++i]);
+      }
+      continue;
+    }
+    for (let k = 1; k < a.length; k++) {
+      const c = a[k];
+      if (!curl && c === "n") {
+        k++; // wget `-nv`, `-nc`, `-nd`, `-nH`, `-np` are two-letter flags
+        continue;
+      }
+      if (curl && c === "O") res.remoteName = true;
+      if (shortValue.has(c)) {
+        const attached = a.slice(k + 1);
+        if (attached !== "") useShort(c, attached);
+        else if (args[i + 1] !== undefined) useShort(c, args[++i]);
+        break;
+      }
+    }
+  }
+  return res;
+}
+
 function evalCommand(cmd, st, depth, cwd) {
   const { words, viaXargs } = stripCommandPrefix(cmd.words);
   for (const target of cmd.redirects) {
@@ -1325,62 +1448,23 @@ function evalCommand(cmd, st, depth, cwd) {
     }
     case "curl":
     case "wget": {
-      // `wget -P dir` / `--directory-prefix=dir` / `curl --output-dir dir` save into another directory.
-      let outDir = null;
-      for (let i = 0; i < args.length; i++) {
-        const a = args[i];
-        if (program === "wget") {
-          if (a === "-P" || a === "--directory-prefix") outDir = args[i + 1] ?? null;
-          else if (a.startsWith("--directory-prefix=")) outDir = a.slice(a.indexOf("=") + 1);
-          else if (/^-P./.test(a)) outDir = a.slice(2);
-        } else if (a === "--output-dir") outDir = args[i + 1] ?? null;
-        else if (a.startsWith("--output-dir=")) outDir = a.slice(a.indexOf("=") + 1);
-      }
-      const dirDyn = outDir !== null && cmd.dyn.has(outDir);
-      const inDir = (name) => (outDir !== null && program === "curl" ? `${outDir}/${name}` : name);
-      for (let i = 0; i < args.length; i++) {
-        const a = args[i];
-        let out = null;
-        if (
-          a === "-o" ||
-          a === "--output" ||
-          (program === "wget" && (a === "-O" || a === "--output-document"))
-        ) {
-          out = args[i + 1];
-        } else if (a.startsWith("--output=") || a.startsWith("--output-document=")) {
-          out = a.slice(a.indexOf("=") + 1);
-        } else if (/^-o./.test(a) && program === "curl") out = a.slice(2);
-        else if (/^-O./.test(a) && program === "wget") out = a.slice(2);
-        else if (/^-[A-Za-z]+$/.test(a) && a.length > 2) {
-          // Short-option bundle such as `-fsSLo file` / `-qO file`: the output flag ends it.
-          const outFlag = program === "curl" ? "o" : "O";
-          if (a.endsWith(outFlag) && !a.slice(1, -1).includes(outFlag)) out = args[i + 1];
-        }
-        if (out && !cmd.dyn.has(out) && !dirDyn) markProduced(st, inDir(out), cwd, null);
-        else if (out) st.uncertain.add("unresolved-target");
+      const opts = readFetchOptions(program, args);
+      if (opts.unresolved) st.uncertain.add("unresolved-target");
+      const dirDyn = opts.outDir !== null && cmd.dyn.has(opts.outDir);
+      const inDir = (name) =>
+        opts.outDir !== null && program === "curl" ? `${opts.outDir}/${name}` : name;
+      for (const out of opts.outputs) {
+        if (out === "-") continue;
+        if (!cmd.dyn.has(out) && !dirDyn) markProduced(st, inDir(out), cwd, null);
+        else st.uncertain.add("unresolved-target");
       }
       // Remote-name downloads write the URL's last path segment into the working directory.
-      const named = args.some(
-        (a) =>
-          a === "--remote-name" ||
-          a === "--remote-name-all" ||
-          (program === "curl" && /^-[A-Za-z]*O[A-Za-z]*$/.test(a)),
-      );
-      const hasOut = args.some(
-        (a) =>
-          a === "-o" ||
-          a === "--output" ||
-          a.startsWith("--output=") ||
-          a.startsWith("--output-document") ||
-          (program === "wget" && /^-[A-Za-z]*[Oo]/.test(a)) ||
-          (program === "curl" && /^-[A-Za-z]*o/.test(a)),
-      );
-      if ((program === "wget" || named) && !hasOut) {
-        for (const a of args) {
+      if ((program === "wget" || opts.remoteName) && opts.outputs.length === 0) {
+        for (const a of opts.positionals) {
           const m = /^https?:\/\/[^?#]*\/([^/?#]+)(?:[?#].*)?$/.exec(a);
           if (!m || cmd.dyn.has(a)) continue;
           if (dirDyn) st.uncertain.add("unresolved-target");
-          else markProduced(st, outDir !== null ? `${outDir}/${m[1]}` : m[1], cwd, null);
+          else markProduced(st, opts.outDir !== null ? `${opts.outDir}/${m[1]}` : m[1], cwd, null);
         }
       }
       return cwd;
