@@ -1,0 +1,11 @@
+{"type":"workflow-started","workflow":"plan","at":"2026-11-11T02:03:39Z","parentSha":"6400d7f9769fbe6beab64c7e4ca3eaac21532cc5"}
+{"type":"session","workflow":"plan","at":"2026-11-11T02:03:39Z","platform":"claude-code","session":"fp:ffc17dcf208d"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:39Z","noun":"runtime","verb":"row","flags":["workflow","base-sha","file"]}
+{"type":"runtime-resolved","workflow":"plan","at":"2026-11-11T02:03:39Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":"6400d7f9769fbe6beab64c7e4ca3eaac21532cc5"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:39Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:45Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:45Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-11-11T02:03:45Z","parentSha":"6400d7f9769fbe6beab64c7e4ca3eaac21532cc5","artifacts":[]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-11T02:03:45Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"9e51908a87414690c095e7f605659cc789cf6015dc3d2c3b4dff8e786acb9750","ref":"https://github.com/cbartens/bkit/issues/915#issuecomment-6784825435","at":"2026-11-11T02:03:47Z"}
+{"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-11T02:03:47Z","parentSha":"6400d7f9769fbe6beab64c7e4ca3eaac21532cc5","artifacts":["docs/plans/202611/logs/915-min-push-ignores/plan-input-1.md"]}
