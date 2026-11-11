@@ -89,3 +89,13 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-11T02:09:48Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","artifact","field","number","post","title","comment-body","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-decision/-/1/comment","hash":"0f994406c9fcacfefe4286f375f1261f79366f742e0dcb354e641265ba885765","ref":"https://github.com/cbartens/bkit/issues/901#issuecomment-6784925382","at":"2026-11-11T02:09:50Z"}
 {"type":"step-done","workflow":"build","step":"build-decision","status":"DONE","at":"2026-11-11T02:09:50Z","parentSha":"4c0feea6b3b35f75ef57c48a25d8f735681eb37c","artifacts":["docs/plans/202611/logs/901-challenge-merge-breaks/build-decision-1-1.md"],"attempt":1,"route":"holistic"}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:10:00Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:10:01Z","noun":"context","verb":"diff","flags":["reset-log","artifact","fid","step"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:10:01Z","noun":"repo","verb":"info","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:10:07Z","noun":"repo","verb":"info","flags":[]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:11:07Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:28:52Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T02:49:11Z","noun":"tests","verb":"changed","flags":["base","fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-11T03:12:31Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/2/comment","hash":"f41632710c2a0ec7626a84cf554636ed1778e6a13998df0832b95c46aa3f154f","ref":"https://github.com/cbartens/bkit/issues/901#issuecomment-6785869373","at":"2026-11-11T03:12:33Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-11T03:12:33Z","parentSha":"13e476d6df1e8d65c3a8f98e398a7e1e8ce225cc","artifacts":["docs/plans/202611/logs/901-challenge-merge-breaks/build-plan-verify-holistic-2.md"],"verdict":"CONCERNS","attempt":2,"failures":2}
