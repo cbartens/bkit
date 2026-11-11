@@ -531,6 +531,7 @@ describe("detectGateAdvisories — gate advisories point at .bkit/templates.md",
     const finding = detectGateAdvisories(tmpDir).find((f) => f.id === "test-file-script-missing");
     expect(finding?.action).toContain("$BKIT_TEST_REPORT");
     expect(finding?.action).toContain('"bkit:test:file": "vitest run');
+    expect(finding?.action).toContain("--runTestsByPath");
     writeScripts({ ...BKIT_GATE_SCRIPTS, "bkit:test:file": "pytest --junitxml=$BKIT_TEST_REPORT" });
     expect(detectGateAdvisories(tmpDir).map((f) => f.id)).not.toContain("test-file-script-missing");
   });

@@ -15,6 +15,7 @@
 >   - **If** `pnpm bkit:gate:static-unit-integration` is declared → pre-push runs it.
 >   - **Else** → pre-push runs `pnpm bkit:gate:static-unit`.
 > - Gate scripts are consumer-owned. bkit's default is typecheck + lint + format:check + bkit:lint:prose + bkit:slop:delta + `pnpm test` (unit tier only).
+> - A gate runs its tiers one after another, never two at once. A push gate stops at the first red tier. The E2E gate runs every tier after a red one, reports each, and runs the whole E2E suite. Keep parallel work inside a tier. A cached task replay reports the earlier run's result, not a fresh run.
 > - Integration runs at pre-push once its gate is declared. Local services, such as a Docker database, are fine there.
 > - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).
 > - Never bypass the hooks with `--no-verify`.

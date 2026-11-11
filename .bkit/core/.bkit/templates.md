@@ -53,8 +53,8 @@ The adoption order is the `bkit tips` order. The machine lock has no tip, so ado
 | Health check | `.bkit/templates/.github/workflows/bkit-health.yml` | `.github/workflows/bkit-health.yml` | that file |
 | Cloud-agent workflow | `.bkit/templates/.github/workflows/bkit-cloud.yml` | `.github/workflows/bkit-cloud.yml` | that file |
 | Git hooks (Husky) | `.bkit/templates/.husky/pre-commit`, `.bkit/templates/.husky/pre-push` | `.husky/pre-commit`, `.husky/pre-push` | both files |
-| Prettier ignore list | `.bkit/templates/.prettierignore` | `.prettierignore` | that file |
-| lint-staged | `.bkit/templates/.lintstagedrc.json` | `.lintstagedrc.json` | that file |
+| Prettier ignore list | `.bkit/templates/prettierignore.example` | `.prettierignore` | that file |
+| lint-staged | `.bkit/templates/lintstagedrc.example.json` | `.lintstagedrc.json` | that file |
 | Vale | `.bkit/templates/.vale.ini`, `.bkit/templates/.vale/styles/Bkit/` | `.vale.ini`, `.vale/styles/Bkit/` | `.vale.ini` + the four Bkit styles |
 | slop-scan | `.bkit/templates/slop-scan.config.json`, `.bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs` | `slop-scan.config.json`, `scripts/slop/bkit-slop-type-suppression.mjs` | both files |
 | Oxlint | `.bkit/templates/.oxlintrc.json` | `.oxlintrc.json` | that file |
@@ -92,7 +92,7 @@ Placeholders: the copies keep them raw, so replace each one in your copy:
 
 - `bkit install` / `bkit upgrade` refresh `.bkit/templates/` to the package's templates, unsubstituted. `bkit check` fails on a stale copy. `bkit uninstall` removes the folder, never an adopted copy.
 - **What changed on upgrade.** `bkit upgrade` lists the changed, added and removed template paths. For each one you adopted, run `diff .bkit/templates/<path> <path>`, and merge what you want. The placeholder lines differ by design. `git diff .bkit/templates` in the upgrade commit shows the package change.
-- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `.prettierignore`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
+- Repo gates that scan the whole repo (prettier, Vale, slop-scan, eslint, tsc) must ignore `.bkit/templates/`. The `prettierignore.example`, `.vale.ini`, `slop-scan.config.json` and `.oxlintrc.json` templates already do. Check that your adopted copy does too.
 - Templates are written in Node unless the tool they wrap already needs another runtime (graphify and Serena: Python and shell launchers; git hooks: POSIX `sh`; local stack lock: bash and perl, because shell runners source it).
 - `bkit.dependencies.updater` names the adopted updater (`"renovate"` / `"dependabot"`). Install fills it from the config present. `"none"` skips the install-time absence advisory. `bkit check` blocks when the setting and the configs disagree.
 - No template has a manifest key. `docs/templates/bkit-audit-adoption.md` lists every template on each run, as adopted and wired, or as not adopted with the reason.
@@ -196,6 +196,8 @@ pnpm add -D prettier@^3.5.3 slop-scan@^0.3.0 lint-staged@^17.0.0 husky@^9.1.7
 - **If** the stack is not Node → point each gate at your own commands, and keep the gate names.
 - `bkit:test:file` runs one test file and writes a JUnit report to `$BKIT_TEST_REPORT`. bkit appends the file's repo-relative path. `/bkit-build` reads the report for test-first. It is not seeded, and `test-file-script-missing` fires until it is declared.
   - Vitest: `"bkit:test:file": "vitest run --reporter=default --reporter=junit --outputFile.junit=\"$BKIT_TEST_REPORT\""`.
+  - jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`.
+  - **If** jest gets the path without `--runTestsByPath` → it reads the path as a regex, so a folder such as `(tabs)` matches no file and no report is written.
   - Call the runner directly, not through a caching task runner.
 - `bkit:lint:file` lints one test file with the static gate's rules, and exits 0 when clean. bkit appends the path. `bkit tests red` runs it on each planned test file before running the file, and records a `lint` gap for the file's tests while it fails. It is not seeded, and `lint-file-script-missing` fires once `bkit:test:file` is declared without it.
   - ESLint: `"bkit:lint:file": "eslint --max-warnings=0"`.
@@ -337,13 +339,15 @@ chmod +x .husky/pre-commit .husky/pre-push
 pnpm add -D prettier@^3.5.3
 ```
 
-1. Copy `.prettierignore` before the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example` and `docs/roadmap.md` in its own layout, so prettier reformatting them fights the next `bkit install` (`bkit check` drift).
+1. Copy `.bkit/templates/prettierignore.example` to `.prettierignore` before the first `prettier --write`. bkit writes `.claude/`, `.cursor/`, `.opencode/`, `.mcp.json`, `.bkit/.env.example` and `docs/roadmap.md` in its own layout, so prettier reformatting them fights the next `bkit install` (`bkit check` drift).
 2. Add `format:check` (§ Gate tool scripts). Reference: https://prettier.io/docs/install.
 
 - Keep the `.bkit/templates/` line.
 - Keep the three `docs/plans/*/logs/*/` gate-log lines: build and debug commit raw `bkit tests run` output there, and `format:check` fails on it.
 
 ## lint-staged — `.lintstagedrc.json`
+
+Copy `.bkit/templates/lintstagedrc.example.json` to `.lintstagedrc.json`. The samples under `.bkit/templates/` carry non-dotfile names so prettier and lint-staged do not read them as live config; `bkit upgrade` removes the old dotfile-named samples (`.lintstagedrc.json`, `.prettierignore`) from `.bkit/templates/`. bkit writes no lint-staged config into your repo: when `bkit:gate:format` runs `lint-staged` without a `--config` path, lint-staged is a dependency and no config exists, install, check and upgrade print `no root lint-staged config — commits will fail. Fix: cp .bkit/templates/lintstagedrc.example.json .lintstagedrc.json` after their own log prefix (`[bkit-install]`, `[bkit-check]`, `[bkit-upgrade]`).
 
 It runs prettier over staged files. `bkit:gate:format` (the pre-commit hook) calls it. Reference: https://github.com/lint-staged/lint-staged.
 
@@ -395,6 +399,8 @@ cp .bkit/templates/scripts/slop/bkit-slop-type-suppression.mjs scripts/slop/
 ## Oxlint — test-file lint, `.oxlintrc.json`
 
 It fails `lint` on a test that cannot fail. Oxlint (a fast linter) runs five rules on test files only, with all other checks off. It fits JS / TS repos with Vitest or Jest. Reference: https://oxc.rs/docs/guide/usage/linter.html.
+
+- The `.bkit/templates/.oxlintrc.json` sample keeps its dotfile name: oxlint run from a consumer root as `oxlint -c .oxlintrc.json` reports a violating test file at the root and reports nothing for the same file under `.bkit/templates/`, so the sample does not act as live config.
 
 ```bash
 pnpm add -D oxlint@^1.87.0 oxlint-tsgolint@^7.0.2004

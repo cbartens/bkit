@@ -73,8 +73,34 @@ const PROJECT_DOC_NAMES: ReadonlySet<string> = new Set(
 );
 
 /**
+ * Destinations of `.bkit/templates.md` § Contract rows that copy one sample file to a path
+ * with another name (`prettierignore.example` → `.prettierignore`).
+ */
+function renamedDestinations(): string[] {
+  const doc = fs.readFileSync(path.join(getCoreRoot(), ".bkit", "templates.md"), "utf-8");
+  const section = doc.slice(doc.indexOf("## Contract"));
+  const start = section.indexOf("\n| ");
+  const table = section.slice(start, section.indexOf("\n\n", start));
+  const single = (cell: string) => {
+    const paths = [...cell.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
+    return paths.length === 1 ? paths[0]! : null;
+  };
+  return table
+    .split("\n")
+    .slice(3)
+    .map((row) => row.split("|").map((cell) => cell.trim()))
+    .flatMap(([, , copyFrom = "", to = ""]) => {
+      const from = single(copyFrom);
+      const dest = single(to);
+      if (!from?.startsWith(".bkit/templates/") || from.endsWith("/") || !dest) return [];
+      return path.posix.basename(from) === path.posix.basename(dest) ? [] : [dest];
+    });
+}
+
+/**
  * Literal strings that name a template path:
  * - every template's full path (`.github/workflows/bkit-ci.yml`, `docs/capabilities.md`);
+ * - every Contract destination whose name differs from its sample's (`.prettierignore`);
  * - every top-level folder holding only templates, with its slash (`.husky/`, `scripts/`);
  * - every template file name with an extension that no owned file shares (`bkit-ci.yml`);
  *   a bare word like `pre-commit` is ordinary prose, and `settings.json` is also an owned file.
@@ -89,9 +115,14 @@ function forbiddenNames(): string[] {
   const fileNames = templates
     .map((rel) => path.posix.basename(rel))
     .filter((name) => name.slice(1).includes(".") && !ownedNames.has(name));
-  return [...new Set([...templates, ...topFolders.map((top) => `${top}/`), ...fileNames])].filter(
-    (name) => !PROJECT_DOC_NAMES.has(name),
-  );
+  return [
+    ...new Set([
+      ...templates,
+      ...renamedDestinations(),
+      ...topFolders.map((top) => `${top}/`),
+      ...fileNames,
+    ]),
+  ].filter((name) => !PROJECT_DOC_NAMES.has(name));
 }
 
 /**
@@ -149,7 +180,8 @@ describe("no workflow or prompt names a template path", () => {
       expect(names, rel).toContain(rel);
     }
     for (const rel of [
-      ".prettierignore",
+      "prettierignore.example",
+      "lintstagedrc.example.json",
       ".cursor/Dockerfile",
       ".serena/project.yml",
       ".graphifyignore",
@@ -161,6 +193,8 @@ describe("no workflow or prompt names a template path", () => {
     ]) {
       expect(names, rel).toContain(rel);
     }
+    expect(names).toContain(".prettierignore");
+    expect(names).toContain(".lintstagedrc.json");
     expect(names).toContain("bkit-ci.yml");
     expect(names).toContain("bkit-renovate.yml");
     expect(names).toContain(".husky/");

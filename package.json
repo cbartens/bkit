@@ -210,7 +210,7 @@
         },
         "publish": {
           "remote": true,
-          "local": true
+          "local": false
         }
       },
       "debug": {
