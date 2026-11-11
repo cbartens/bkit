@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-11T02:42:15Z)_
+_(refreshed 2026-11-11T23:05:25Z)_
 
 ### Design
 
@@ -46,7 +46,6 @@ _(refreshed 2026-11-11T02:42:15Z)_
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
-| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
@@ -65,6 +64,7 @@ _(refreshed 2026-11-11T02:42:15Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 
 ### Debug
