@@ -424,6 +424,29 @@ export function worktreeFingerprint(top) {
     return createHash("sha256").update(top).digest("hex").slice(0, 16);
 }
 /**
+ * Whether `file` resolves, symlinks included, to a path inside the checkout `top` and not in
+ * a worktree nested under it. A file that does not exist yet resolves through its parent.
+ */
+function resolvesInside(top, file) {
+    try {
+        const realTop = fs.realpathSync(top);
+        let real;
+        if (fs.existsSync(file) || fs.lstatSync(file, { throwIfNoEntry: false }) !== undefined) {
+            real = fs.realpathSync(file);
+        }
+        else {
+            real = path.join(fs.realpathSync(path.dirname(file)), path.basename(file));
+        }
+        if (real !== realTop && !real.startsWith(realTop + path.sep))
+            return false;
+        const owner = git(path.dirname(real), ["rev-parse", "--show-toplevel"]);
+        return owner === null || fs.realpathSync(owner) === realTop;
+    }
+    catch {
+        return false;
+    }
+}
+/**
  * Rebuild the outbox receipt of run-scoped invocation `id` from its `invocation` event in a
  * `status.jsonl` under this checkout. Reads only this checkout's books, so another
  * worktree's run is never found. Returns whether a receipt now exists.
@@ -439,6 +462,9 @@ function rebuildInvocation(cwd, id) {
                 return false;
             const statusPath = path.join(top, statusRelPath(month, fid));
             if (!fs.existsSync(statusPath))
+                continue;
+            // A status file symlinked out of the checkout is not this checkout's book.
+            if (!resolvesInside(top, statusPath))
                 continue;
             for (const line of fs.readFileSync(statusPath, "utf-8").split("\n")) {
                 if (!line.includes(id))
@@ -518,6 +544,8 @@ export function resolveInvocation(cwd, id, flags) {
             return refuse("run receipt lacks its status file");
         if (!fs.existsSync(inv.statusPath))
             return refuse(`stale: ${inv.statusPath} is gone`);
+        if (!resolvesInside(top, inv.statusPath))
+            return refuse(`${inv.statusPath} resolves outside this checkout`);
         const events = [];
         for (const line of fs.readFileSync(inv.statusPath, "utf-8").split("\n")) {
             const row = line.trim() === "" ? null : parseJson(line);

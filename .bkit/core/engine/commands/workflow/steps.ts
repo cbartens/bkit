@@ -27,7 +27,7 @@ import {
 } from "../../ledgers/status.js";
 import { clampLogPath, readRecords } from "../../ledgers/clamp-log.js";
 import { appendFrictionRow, frictionRow, journalEnabled } from "../../ledgers/journal.js";
-import { resolveRepoSlug } from "../../ledgers/telemetry.js";
+import { queryLedger, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { getPromptsRoot } from "../../shared/package-roots.js";
 import { readTextFile } from "../../shared/json.js";
 import {
@@ -1558,8 +1558,19 @@ const withFingerprint = (head: string[], body: string): Rendered["text"] => {
 const fingerprintOf = (text: string): string =>
   artifactFingerprint(text.split("\n"), text.split("\n").indexOf(VERDICT_END));
 
-function renderAudit(result: AuditResult): Rendered {
-  const entries = auditEntries(result);
+/** Every key the failures ledger already holds, so a derived audit key never lands on an old row. */
+function ledgerKeys(cwd: string): Set<string> {
+  const file = path.join(cwd, "docs", "failures.jsonl");
+  if (!fs.existsSync(file)) return new Set();
+  const keys = queryLedger(fs.readFileSync(file, "utf8")).rows.flatMap((r) =>
+    typeof r.key === "string" ? [r.key] : [],
+  );
+  return new Set(keys);
+}
+
+function renderAudit(cwd: string, result: AuditResult): Rendered {
+  const held = ledgerKeys(cwd);
+  const entries = auditEntries(result, held);
   const totals = auditTotals(result.findings);
   const head = [
     `Status: ${result.status}`,
@@ -1610,7 +1621,7 @@ function renderAudit(result: AuditResult): Rendered {
     extra: {
       ids: entries.map((e) => e.id),
       totals,
-      ledgerRows: auditLedgerRows(result),
+      ledgerRows: auditLedgerRows(result, held),
     },
   };
 }
@@ -1625,7 +1636,7 @@ export function renderResult(cwd: string, agent: string, raw: unknown): Rendered
   const bad = (why: string) => new CommandError(EXIT_INVALID, `result: ${why}`);
   if (agent === AUDIT_AGENT) {
     try {
-      return renderAudit(parseAuditResult(raw));
+      return renderAudit(cwd, parseAuditResult(raw));
     } catch (err) {
       throw err instanceof CommandError ? bad(err.message) : err;
     }

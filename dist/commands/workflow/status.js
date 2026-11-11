@@ -586,6 +586,10 @@ export const statusCommand = {
                         return path.join(fs.realpathSync(dir), ...tail);
                     })();
                     const realTop = fs.realpathSync(top);
+                    // A status file that is itself a symlink resolves wherever it points; the parent
+                    // directory alone says nothing about where appends land.
+                    if (fs.lstatSync(statusPath, { throwIfNoEntry: false })?.isSymbolicLink() === true)
+                        throw new CommandError(EXIT.USAGE, `--file ${file} is a symbolic link; issue the invocation for the status file itself`);
                     // The checkout that owns the file: a worktree nested under this one has its own top
                     // folder, so a plain path-prefix test would accept it.
                     let ownerDir = path.dirname(realFile);

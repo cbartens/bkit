@@ -563,7 +563,7 @@ const kebab = (text) => text
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
 /** The findings in their one deterministic order, each with its ID and ledger key. */
-export function auditEntries(result) {
+export function auditEntries(result, held = new Set()) {
     const rank = (s) => AUDIT_SEVERITIES.indexOf(s);
     const ordered = [...result.findings].sort((a, b) => rank(a.severity) - rank(b.severity) ||
         a.location.localeCompare(b.location) ||
@@ -575,7 +575,7 @@ export function auditEntries(result) {
         if (key === undefined) {
             const base = `audit-${result.slug}-${kebab(f.title) || "finding"}`;
             key = base;
-            for (let n = 2; used.has(key); n += 1)
+            for (let n = 2; used.has(key) || held.has(key); n += 1)
                 key = `${base}-${n}`;
             used.add(key);
         }
@@ -583,8 +583,8 @@ export function auditEntries(result) {
     });
 }
 /** One `failure` ledger payload per finding, ready for `bkit ledgers append`. */
-export function auditLedgerRows(result) {
-    return auditEntries(result).map((e) => ({
+export function auditLedgerRows(result, held = new Set()) {
+    return auditEntries(result, held).map((e) => ({
         kind: "failure",
         key: e.key,
         summary: e.title,

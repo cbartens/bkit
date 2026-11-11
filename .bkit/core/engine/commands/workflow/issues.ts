@@ -718,12 +718,15 @@ const kebab = (text: string) =>
 export interface AuditEntry extends AuditFinding {
   /** Report-local, stable under reordering: `<slug>-<n>` over the severity/location/title order. */
   id: string;
-  /** The ledger key: the judged prior key, else derived from the slug and title. */
+  /** The ledger key: the judged prior key, else derived from the slug and title and unique in the ledger. */
   key: string;
 }
 
 /** The findings in their one deterministic order, each with its ID and ledger key. */
-export function auditEntries(result: AuditResult): AuditEntry[] {
+export function auditEntries(
+  result: AuditResult,
+  held: ReadonlySet<string> = new Set(),
+): AuditEntry[] {
   const rank = (s: AuditSeverity) => AUDIT_SEVERITIES.indexOf(s);
   const ordered = [...result.findings].sort(
     (a, b) =>
@@ -738,7 +741,7 @@ export function auditEntries(result: AuditResult): AuditEntry[] {
     if (key === undefined) {
       const base = `audit-${result.slug}-${kebab(f.title) || "finding"}`;
       key = base;
-      for (let n = 2; used.has(key); n += 1) key = `${base}-${n}`;
+      for (let n = 2; used.has(key) || held.has(key); n += 1) key = `${base}-${n}`;
       used.add(key);
     }
     return { ...f, id: `${result.slug}-${i + 1}`, key };
@@ -746,8 +749,11 @@ export function auditEntries(result: AuditResult): AuditEntry[] {
 }
 
 /** One `failure` ledger payload per finding, ready for `bkit ledgers append`. */
-export function auditLedgerRows(result: AuditResult): Array<Record<string, unknown>> {
-  return auditEntries(result).map((e) => ({
+export function auditLedgerRows(
+  result: AuditResult,
+  held: ReadonlySet<string> = new Set(),
+): Array<Record<string, unknown>> {
+  return auditEntries(result, held).map((e) => ({
     kind: "failure",
     key: e.key,
     summary: e.title,
