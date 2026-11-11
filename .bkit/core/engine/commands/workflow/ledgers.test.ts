@@ -2066,6 +2066,32 @@ describe("bkit ledgers append --invocation", () => {
     });
     expect(fs.readFileSync(path.join(r, "docs/knowledge.jsonl"), "utf-8")).toContain('"x"');
   });
+
+  it("issues the same operation for rows whose keys are reordered", async () => {
+    const r = buildRepo();
+    const id = await issue(r, ["--agent=bkit-build-plan-tests"]);
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+    const flags = [`--invocation=${id}`, "--issue-operation"];
+    const lines = () =>
+      fs
+        .readFileSync(ledgerFile, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "");
+
+    const first = await appendWith(r, "knowledge", [knowledge()], flags);
+    expect(first.code).toBe(0);
+    expect(first.json.receipt.replayed).toBe(false);
+    expect(lines()).toHaveLength(1);
+
+    // Same row, keys in another order: the retry of a lost response, not a new request.
+    const reordered = [{ summary: "a gotcha worth keeping", key: "gotcha", kind: "knowledge" }];
+    const second = await appendWith(r, "knowledge", reordered, flags);
+    expect(second.code).toBe(0);
+    expect(second.json.receipt.operation).toBe(first.json.receipt.operation);
+    expect(second.json.receipt.replayed).toBe(true);
+    expect(second.json.appended).toBe(0);
+    expect(lines()).toHaveLength(1);
+  });
 });
 
 describe("bkit ledgers query", () => {

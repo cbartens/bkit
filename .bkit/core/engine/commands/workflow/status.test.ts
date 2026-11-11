@@ -1266,6 +1266,56 @@ describe("bkit status invocation", () => {
     expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
   });
 
+  it("writes no absolute checkout path into the run's committed invocation event", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    const after = fs.readFileSync(statusFile, "utf-8");
+    const added = after.slice(before.length);
+    const events = added
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "invocation", id });
+
+    // The committed row names the checkout nowhere: no absolute path in any field.
+    expect(added).not.toContain(root);
+    expect(added).not.toContain(os.homedir());
+    const absolute = Object.entries(events[0]!)
+      .filter(([, value]) => path.isAbsolute(String(value)))
+      .map(([key]) => key);
+    expect(absolute).toEqual([]);
+
+    // The private receipt and the printed result keep the absolute paths.
+    expect(issued.json.statusPath).toBe(statusFile);
+    expect(issued.json.bookRoot).toBe(root);
+
+    // A lookup still resolves the absolute paths from the relative event and the current top.
+    fs.rmSync(String(issued.json.receipt));
+    expect(resolveInvocation(root, id, {})).toMatchObject({
+      id,
+      statusPath: statusFile,
+      bookRoot: root,
+    });
+  });
+
   it("records the issued invocation in the run status log and rebuilds a deleted receipt", async () => {
     const root = runRepo();
     const statusFile = path.join(root, REL);

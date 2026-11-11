@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
+  auditEntries,
   cutEarlier,
   headingAnchor,
   isGenerated,
@@ -1450,5 +1451,38 @@ describe("bkit issues labels --write", () => {
     ]);
     expect(r.json).toMatchObject({ board: null, boardSkipped: "cloud", boardWrite: null });
     expect(fs.readFileSync(path.join(cwd, "gh-calls"), "utf-8")).not.toContain("graphql");
+  });
+});
+
+describe("bkit issues audit ledger keys", () => {
+  it("derives audit ledger keys under the audit-slug prefix", () => {
+    const entries = auditEntries({
+      slug: "security",
+      status: "COMPLETE",
+      report: null,
+      findings: [
+        { severity: "HIGH", title: "Missing CSRF token", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Verbose error", location: "src/c.ts:7" },
+        {
+          severity: "LOW",
+          title: "Judged",
+          location: "src/d.ts:1",
+          priorKey: "audit-security-old",
+        },
+      ],
+      notChecked: [],
+    });
+    const byLocation = (loc: string) => entries.find((e) => e.location === loc)!;
+    // New keys follow the prompt's `audit-<slug>-<content-slug>` shape; a judged prior key stays.
+    expect(byLocation("src/a.ts:10").key).toBe("audit-security-missing-csrf-token");
+    expect(byLocation("src/d.ts:1").key).toBe("audit-security-old");
+    // Duplicate titles still get distinct keys under the same prefix.
+    const verbose = entries.filter((e) => e.title === "Verbose error").map((e) => e.key);
+    expect(new Set(verbose).size).toBe(2);
+    for (const k of verbose) expect(k.startsWith("audit-security-verbose-error")).toBe(true);
+    // A derived key never equals a report-local finding ID such as `security-1`.
+    const ids = new Set(entries.map((e) => e.id));
+    for (const e of entries) expect(ids.has(e.key)).toBe(false);
   });
 });

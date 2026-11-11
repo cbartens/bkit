@@ -1340,3 +1340,42 @@ describe("the recovery precedence contract", () => {
     },
   );
 });
+
+describe("ledgers query readers", () => {
+  const PROMPTS = path.join(REPO_ROOT, ".bkit/core/prompts");
+  const READERS = [
+    "bkit-audit-generate",
+    "bkit-ship-deferred-sweep",
+    "bkit-debug-failure-diagnose",
+    "bkit-utility-update-deferrals",
+    "bkit-utility-update-decisions",
+    "bkit-utility-update-failures",
+    "bkit-utility-update-roadmap",
+    "bkit-utility-update-knowledge",
+  ];
+
+  it("routes every ledgers query reader on coverage status", () => {
+    const read = (name: string) => fs.readFileSync(path.join(PROMPTS, `${name}.md`), "utf-8");
+    const paging = fs
+      .readdirSync(PROMPTS)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => f.slice(0, -3))
+      .filter((n) =>
+        /bkit ledgers query[\s\S]*nextCursor|nextCursor[\s\S]*bkit ledgers query/.test(read(n)),
+      );
+    // The eight readers the plan names all page, and no other prompt does without routing.
+    for (const name of READERS) expect(paging, name).toContain(name);
+
+    for (const name of paging) {
+      const text = read(name);
+      // Paging ends on a null cursor, not on a flag that `missing` and `partial` never raise.
+      expect(text, name).toMatch(/nextCursor[^\n]*\bnull\b/);
+      expect(text, name).not.toMatch(/until[^\n.]*coverage\.clean/);
+      // Each non-clean state has a named route.
+      expect(text, name).toContain("coverage.status");
+      expect(text, name).toMatch(/`missing`[^\n]*no rows/i);
+      expect(text, name).toMatch(/`partial`[^\n]*(report|diagnos)/i);
+      expect(text, name).toMatch(/`unreadable`[^\n]*stop/i);
+    }
+  });
+});

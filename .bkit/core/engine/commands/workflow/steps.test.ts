@@ -18,6 +18,7 @@ import {
   promptHeader,
   promptVerdicts,
   readHeader,
+  renderResult,
   stepsCommand,
 } from "./steps";
 import { getPromptsRoot } from "../../shared/package-roots.js";
@@ -2357,6 +2358,36 @@ describe("bkit steps stub --result-file", () => {
       expect(cleanFields["Verdict"], agent).toBe("PASS");
       expectDerived(declared, cleanFields, agent, "0", "false");
     }
+  });
+
+  it("renders no PASS from a result that omits its evidence", async () => {
+    const cwd = repo();
+    const agent = "bkit-build-challenge-1";
+    const refused = (raw: unknown) => {
+      try {
+        const out = renderResult(cwd, agent, raw);
+        return `rendered: ${out.text}`;
+      } catch (err) {
+        return (err as { code?: number }).code;
+      }
+    };
+
+    // An empty result, a missing flag and a PASS with no body are all refused with exit 6.
+    expect(refused({})).toBe(6);
+    expect(refused({ body: "# Report\n\nChecked.\n" })).toBe(6);
+    expect(refused({ evidenceComplete: true })).toBe(6);
+    expect(refused({ evidenceComplete: true, body: "  \n" })).toBe(6);
+    expect(refused({ evidenceComplete: "yes", body: "# Report\n" })).toBe(6);
+
+    // Through the command, nothing is written.
+    write(cwd, "empty.json", "{}");
+    const stub = await run(cwd, stubArgs(agent, "empty.json", "logs/none.md"));
+    expect(stub.code).toBe(6);
+    expect(fs.existsSync(path.join(cwd, "logs/none.md"))).toBe(false);
+
+    // Control: an explicit true with a body still renders PASS.
+    const ok = renderResult(cwd, agent, { evidenceComplete: true, body: "# Report\n\nChecked.\n" });
+    expect(ok.text).toContain("Verdict: PASS");
   });
 
   it("retains special verdict judgments and legacy stub behavior", async () => {
