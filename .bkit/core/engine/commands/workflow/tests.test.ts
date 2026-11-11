@@ -1677,6 +1677,23 @@ describe("bkit tests plan-check", () => {
     expect(report().match(/`matrix`/g)).toHaveLength(1);
   });
 
+  it("plan-check refuses a matrix header with no closing pipe", async () => {
+    const lines = matrix(
+      MATRIX,
+      ["case a", "Unit", "`t0.test.ts`", "1"],
+      ["case b", "Unit", "`t1.test.ts`", "2"],
+    ).split("\n");
+    const head = lines.findIndex((l) => l.startsWith("| Test description"));
+    lines[head] = lines[head].replace(/ \|$/, "");
+    write("plan.md", lines.join("\n"), groupBlock(1, okTask(1), okTask(2)));
+    const r = await check();
+    expect(r.code).toBe(1);
+    expect(r.json.problems).toEqual([
+      expect.objectContaining({ kind: "matrix", line: lineOf("plan.md", "| Test description") }),
+    ]);
+    expect(r.json.problems[0].message).toContain(EXPECTED_MATRIX_HEADER);
+  });
+
   it("plan-check accepts the template matrix header in any letter case", async () => {
     write(
       "plan.md",
