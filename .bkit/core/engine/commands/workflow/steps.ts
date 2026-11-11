@@ -1649,6 +1649,8 @@ export function renderResult(cwd: string, agent: string, raw: unknown): Rendered
   for (const [k, v] of Object.entries(judgments)) {
     if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean")
       throw bad(`judgment ${k} must be text, a number or a boolean`);
+    // A judgment renders into one header line: a line break would forge header lines.
+    if (/[\r\n]/.test(String(v))) throw bad(`judgment ${k} must be a single line`);
     judged.set(k, String(v));
   }
   const declared = promptHeader(agent);

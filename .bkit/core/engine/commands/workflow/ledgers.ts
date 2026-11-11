@@ -35,14 +35,14 @@ import { COMPACT_LEDGERS, compactLedgers, type CompactLedger } from "../../ledge
 import {
   CORRECTION_REJECTED_ROW,
   CORRECTION_SUCCEEDED_ROW,
-  LEDGER_OPERATIONS_FILE,
   actionHash,
   appendHeld,
   appendLine,
   correctionScope,
   ledgerIntent,
   ledgerOperation,
-  pendingLedgerIntents,
+  ledgerOperationsFile,
+  pendingLedgerIntentsFor,
   recordLedgerIntent,
   recordLedgerOperation,
   statusTimestamp,
@@ -1316,7 +1316,7 @@ export function unionLedgers(src: string, dst: string): string[] {
     if (fs.existsSync(to) && fs.statSync(to).isFile()) {
       // Under the destination's target lock, so a pending ledger operation's bytes are never reordered.
       withTargetLock(to, () => {
-        const pending = pendingLedgerIntents(path.join(dst, LEDGER_OPERATIONS_FILE), rel);
+        const pending = pendingLedgerIntentsFor(dst, rel);
         if (pending.length > 0)
           throw new CommandError(
             EXIT_STAGE,
@@ -1581,7 +1581,12 @@ export function appendLedgerRows(
   const abs = path.join(root, file);
   const made = mkdirp(path.dirname(abs));
   if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
-  const ops = path.join(root, LEDGER_OPERATIONS_FILE);
+  // The operation store is private to this git repository, never a committed path; a repo-less
+  // root has no place to keep a durable receipt, so an operation there is refused.
+  const ops = ledgerOperationsFile(
+    root,
+    options.operation !== undefined || options.issueOperation === true,
+  );
   // The request is the ledger and rows alone: an operation stays reconcilable after its
   // invocation goes stale, and replay writes the recorded bytes, never a re-derived `by`.
   const hash = actionHash(canonicalJson({ ledger, rows }));
@@ -1692,8 +1697,13 @@ export function appendLedgerRows(
         const landed = appendHeld(abs, build, { checkpoint: options.checkpoint });
         return result(landed, landed.block, false);
       }
+      if (ops === null)
+        throw new CommandError(
+          EXIT.USAGE,
+          `${root} is not inside a git repository: a ledger operation keeps its receipt in the git common dir`,
+        );
       // The operation store is serialized by its own lock, taken after the target's, so two
-      // ledgers' operations (and `union` of the store) never interleave check and record.
+      // ledgers' operations never interleave check and record.
       return withTargetLock(ops, () => {
         const known = ledgerOperation(ops, operation, hash);
         if (known.state === "conflict")
@@ -1845,10 +1855,7 @@ function append(ctx: RunContext): number {
     const target = Object.hasOwn(APPEND_LEDGERS, ledger)
       ? APPEND_LEDGERS[ledger as AppendLedger].file
       : undefined;
-    if (
-      target !== undefined &&
-      pendingLedgerIntents(path.join(root, LEDGER_OPERATIONS_FILE), target).length > 0
-    )
+    if (target !== undefined && pendingLedgerIntentsFor(root, target).length > 0)
       throw new UncertainEffect(
         EXIT_STAGE,
         `${target} holds an operation whose effect is unconfirmed; reconcile it before any corrected candidate — nothing was written`,
@@ -2096,9 +2103,8 @@ function compactOrError(
     const targets = ledgers.map((l) => COMPACT_LEDGERS[l]).sort();
     const locked = (i: number): ReturnType<typeof compactLedgers> => {
       if (i === targets.length) {
-        const ops = path.join(root, LEDGER_OPERATIONS_FILE);
         for (const t of targets) {
-          const pending = pendingLedgerIntents(ops, t);
+          const pending = pendingLedgerIntentsFor(root, t);
           if (pending.length > 0)
             throw new Error(
               `${t} has ${pending.length} ledger operation(s) with bytes but no receipt (${pending.map((p) => p.operation).join(", ")}); replay them before compacting`,

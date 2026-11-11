@@ -20,6 +20,7 @@ import {
   type CommandSpec,
   type GhResult,
 } from "../commands/lib";
+import { ledgerOperationsFile } from "./status";
 import { COMMANDS } from "../commands/registry";
 import { branchesCommand } from "../commands/workflow/branches";
 import {
@@ -880,7 +881,7 @@ describe("replay-safe ledger appends on real files", () => {
         checkpoint: failAt("prepared"),
       }),
     ).toThrow();
-    const intents = rows(path.join(worktree, ".bkit", "ledger-operations.jsonl")).filter(
+    const intents = rows(ledgerOperationsFile(worktree)!).filter(
       (r) => r["type"] === "ledger-intent",
     );
     expect(intents).toHaveLength(1);
@@ -982,9 +983,7 @@ describe("replay-safe ledger appends on real files", () => {
         checkpoint: failAt("prepared"),
       }),
     ).toThrow();
-    const intent = rows(path.join(root, ".bkit", "ledger-operations.jsonl")).find(
-      (r) => r["type"] === "ledger-intent",
-    )!;
+    const intent = rows(ledgerOperationsFile(root)!).find((r) => r["type"] === "ledger-intent")!;
     const lines = String(intent["block"])
       .split("\n")
       .filter((l) => l !== "");

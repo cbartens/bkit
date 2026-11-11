@@ -14,6 +14,7 @@
 // `parentSha` is captured at step START via `git rev-parse HEAD`, BEFORE the
 // step's own commit (if any). Forensic only — points to the commit that preceded
 // this step's work, not the commit that resulted from it.
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -484,8 +485,37 @@ export function recordAction(file, a) {
 // same ledger key is a deliberate later update. This is stricter than the generic
 // action policy above, where the same key with a changed hash acts again.
 // ---------------------------------------------------------------------------
-/** The operations store, relative to a book root; `.bkit/*.jsonl` is allow-listed and unioned. */
-export const LEDGER_OPERATIONS_FILE = path.join(".bkit", "ledger-operations.jsonl");
+/**
+ * The operations store of one book root: `<git common dir>/bkit-outbox/ledger-operations/<root hash>.jsonl`.
+ * It holds prepared row bytes, so it stays private (0700 dirs, 0600 file) and outside every committed
+ * or unioned path. One file per book root keeps a linked worktree's offsets apart from the main
+ * checkout's. Null outside a git repository.
+ */
+export function ledgerOperationsFile(root, prepare = false) {
+    // Not `commands/lib.ts`: that module imports this one.
+    const res = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+        cwd: root,
+        encoding: "utf-8",
+    });
+    const common = res.status === 0 ? res.stdout.trim() : "";
+    if (common === "")
+        return null;
+    const outbox = path.join(common, "bkit-outbox");
+    const id = createHash("sha256").update(fs.realpathSync(root)).digest("hex").slice(0, 16);
+    const file = path.join(outbox, "ledger-operations", `${id}.jsonl`);
+    if (prepare)
+        privateDir(file);
+    return file;
+}
+/** Create the private directory chain of `file`'s parent (0700). */
+function privateDir(file) {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+}
+/** Intents on `target` of this root with no receipt; none when there is no store. */
+export function pendingLedgerIntentsFor(root, target) {
+    const ops = ledgerOperationsFile(root);
+    return ops === null ? [] : pendingLedgerIntents(ops, target);
+}
 const ledgerOpKey = (operation) => actionKey("ledger-op", operation);
 /** The status rows of one bounded correction: a guaranteed no-write rejection, a corrected retry, its success. */
 export const CORRECTION_REJECTED_ROW = "correction-rejected";
@@ -537,8 +567,8 @@ export function recordLedgerOperation(file, a) {
         }),
         ...(a.detail === undefined ? {} : { detail: a.detail }),
     };
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, appendLine(row));
+    privateDir(file);
+    fs.appendFileSync(file, appendLine(row), { mode: 0o600 });
     return row;
 }
 const recordRow = (a) => ({ type: ENGINE_ACTION, ...a, at: statusTimestamp() });
@@ -560,9 +590,9 @@ function intentRows(file) {
 }
 /** Record the prepared bytes of an operation before writing them. */
 export function recordLedgerIntent(file, intent) {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
+    privateDir(file);
     const row = { type: "ledger-intent", ...intent, at: statusTimestamp() };
-    fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
+    fs.appendFileSync(file, `${JSON.stringify(row)}\n`, { mode: 0o600 });
 }
 /** The latest prepared intent of `operation`, or undefined. */
 export function ledgerIntent(file, operation) {

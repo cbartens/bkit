@@ -492,6 +492,11 @@ export function parseAuditResult(raw) {
     const report = r["report"] ?? null;
     if (report !== null && (typeof report !== "string" || report === ""))
         throw bad("report must be a path or null");
+    // Header-bound values (`Report:`, `Issue:`, `Parent:`) are one line: a line break would forge
+    // header lines or an early verdict cut-off.
+    for (const name of ["report", "issue", "parent"])
+        if (typeof r[name] === "string" && /[\r\n]/.test(r[name]))
+            throw bad(`${name} must be a single line`);
     if (!Array.isArray(r["findings"]))
         throw bad("findings must be an array");
     const priors = new Set();
