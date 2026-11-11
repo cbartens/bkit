@@ -64,11 +64,15 @@ A CI evidence round's count is in a different unit from a local round's: failed 
 
 ### Narrative
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+The owner runs `/bkit-debug` from a red CI run, and when the fix loop reaches the Loop Question, the question states what the test rounds' failure counts show. When a round recorded no count, or the rounds ran different tests, the owner is not told the last fix attempt "left no fewer failures" and is not advised to Stop on that missing evidence.
 
 ### Success Criteria
 
-⚠️ MISSING: no design doc, no issue Narrative and no audit report — human must provide before plan proceeds
+- Each test round records a failure count whenever one can be worked out. For a CI round that is at least the number of failed jobs. For a local gate that is the failed-test count from its output.
+  - "The failed-test count from its output" is the count from the gate's JUnit report (Open Question Q3, default A).
+- When a count is unknown, the trend is not `stuck`. It is a separate state, for example `unknown`, that never recommends Stop by itself.
+- The question wording matches what is known. It never says "left no fewer failures" when the counts are `?`.
+- Rounds with different scopes (CI vs local gate, or two different gates) are not compared as if they were the same test.
 
 ### Process Sketch
 
@@ -192,10 +196,6 @@ No database structure or layout changes. The contract changes and new names, all
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question Q1 — Narrative and Success Criteria:** #912 is a bug-shape issue, which has no `Narrative` or `Success Criteria` fields, and there is no design or audit, so both read `⚠️ MISSING`. → The owner resolves it at plan review.
-  - **Options:** A) Adopt the issue's four "What should happen" bullets word for word as the Success Criteria, and write a Narrative from "What happened" — fastest, and the criteria are the owner's own words · B) The owner writes both — most precise, costs a review round · C) Re-file #912 in the change shape — the issue becomes the spec, but it duplicates this plan's work
-  - **Recommended:** A) Adopt the "What should happen" bullets — they already state four measurable outcomes, and each one maps to a `Derived Test Matrix` row.
-  - **Default if unanswered:** the plan stays blocked at Gate 1 with both fields `⚠️ MISSING`.
 - **Open Question Q2 — What the debug loop does when the trend is `unknown` and attempts are left:** → The owner resolves it at plan review.
   - **Options:** A) Take the attempt without asking, and narrate the count and `trendLine` — matches `first-round` and `closing`, and the attempt limit still bounds the loop, but the owner sees no question · B) Ask with `No recommendation — {trendLine}` — the owner always decides, at the cost of a pause per attempt on every consumer whose gate writes no JUnit report · C) Ask and recommend `Try again` — a pause that "yes" always answers the same way
   - **Recommended:** A) Take the attempt without asking — the Loop Question exists to stop a loop with evidence of no progress, and an unknown count is no such evidence.
@@ -282,7 +282,7 @@ None — no new routes, DB writes, secrets, or user input. The GitHub job list `
 - [ ] **Package Management:** no package is added; `package.json` and `pnpm-lock.yaml` stay unchanged.
 - [ ] **Dependency Versions:** `pnpm bkit:deps:outdated` (2026-11-10): `oxlint-tsgolint` 7.0.2004 → 7.0.2005, `@vitest/coverage-v8` 5.0.5 → 5.1.0, `oxlint` 1.89.0 → 1.90.0, `vitest` 5.0.5 → 5.1.0, `@types/node` 24.19.2 → 26.6.6, `vite` 6.4.5 → 8.3.5, all dev dependencies; none blocks this change. Toolchain: Node v24.16.0 (`engines.node` `>=24`), pnpm 10.34.7 (`packageManager` `pnpm@10.34.7`). The `gh` CLI is used only by `runs locate`, whose unit tests run against the in-file `locateFixture` in `runs.test.ts`, and whose integration path runs against the fake `gh` in `debug-ci-evidence.integration.test.ts`.
 - [ ] **Existing-Solution Search (reuse over duplicate):** recorded in `Reuse Inventory`.
-- [ ] **User Context:** every file the runbook names was opened in this session; no user information is missing beyond Open Questions Q1-Q5.
+- [ ] **User Context:** every file the runbook names was opened in this session; no user information is missing beyond Open Questions Q2-Q5.
 - [ ] **Project Context:** read `docs/decisions.jsonl` `891-verify-loop-progress-counts-group-gate-tests` (unknown gate count reads as stuck), `554-red-green-judged-by-junit-named-test`; `docs/deferrals.jsonl` `891-debug-base-red-label`, `891-ci-junit-artifact-settles-red-base-runs` (open), `891-debug-loop-question-offers-accept` (closed); `docs/knowledge.jsonl` `instructions-store-clause-text-and-local-entries-need-hand-edits` and `renumbering-a-workflow-leaves-instructions-md-local-entries-stale` (each edited standing workflow line needs its `.bkit/instructions.md` local entry edited by hand); `docs/knowledge.jsonl` `kn-7-dist-staleness-pnpm-build-must-run-before-push-for-bk` (`dist/` must be rebuilt with the engine edit). The #830 plan that added the CI evidence round says the round "does not invent a numeric failure count"; this plan keeps that rule (no guessed number) and gives the round a counted number of failed jobs, which `.bkit/core/.bkit/workflows.md` § Failure count from JUnit reports and `docs/testing.md` § JUnit reports for bkit then state (Task 9).
 - [ ] **Testing & Quality:** tiers follow `docs/testing.md` § Tiers: the engine logic is Unit (`*.test.ts`, CLI driven in-process against `os.tmpdir()` files), and the debug Step 3 sequence is Integration (`debug-ci-evidence.integration.test.ts` runs the real built CLI, `dist/cli.js`, with commands taken from the workflow against a fresh temporary consumer, so each engine task rebuilds `dist/` before it is done). No E2E or @live tier applies: bkit has no deploy. The GitHub jobs API boundary in `runs locate` is checked by Manual Verification Step 3, reported as available or unavailable.
 - [ ] **Prerequisite Plans:** `docs/plans/202611/891-build-gate-stuck-plan.md` (#891) fully built, verified and merged into `dev` (Assumption A1). Check before Task 1: `grep -n "gateCounts\|gateFailuresOf" .bkit/core/engine/commands/workflow/counters.ts` finds both names. **If** it finds neither → stop and rebase onto #891 before Task 1.
