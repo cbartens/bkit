@@ -1020,3 +1020,21 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:07Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify-holistic/-/8/comment","hash":"0cf2db9727427adb1b5c98e22b566baa1206334a9c3b837ffc7ec8a75ddb1971","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6822710964","at":"2026-11-12T21:42:10Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify-holistic","status":"DONE","at":"2026-11-12T21:42:10Z","parentSha":"0ee2b2cc1d7a85f1488192f80da25002c417228d","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-holistic-8.md"],"verdict":"PASS","attempt":8,"failures":0}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:44Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:44Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:44Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:45Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:45Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:45Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:45Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:46Z","noun":"tasks","verb":"tick","flags":["plan","group","tasks"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:53Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:42:53Z","noun":"counters","verb":"max","flags":["point","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:43:05Z","noun":"counters","verb":"derive","flags":["file","workflow","step","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:43:13Z","noun":"tests","verb":"run","flags":["gate","log","artifact","fid","file","workflow","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:48:54Z","noun":"ci","verb":"prose","flags":["glob"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:48:56Z","noun":"ci","verb":"slop","flags":[]}
+{"type":"test-run","workflow":"build","at":"2026-11-12T21:55:53Z","step":"build-run-tests","attempt":1,"run":1,"verdict":"PASS","exitCode":0,"failures":0,"scope":"pnpm bkit:gate:static-unit-integration","log":"/Users/christian/Documents/GitHub/bkit/.git/bkit-outbox/787-show-authoring-rules/run-tests-1.log","artifact":"docs/plans/202611/logs/787-show-authoring-rules/run-tests-1.md","source":"local"}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T21:56:03Z","noun":"steps","verb":"finish","flags":["workflow","step","file","verdict","failures","scope","attempt","artifact","clamp-log","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-run-tests/-/1/comment","hash":"63583c3f788049e78e338989e2090bebde76e07f14a0be8c075349c4e3e4a7e0","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6822710964","at":"2026-11-12T21:56:05Z"}
+{"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE","at":"2026-11-12T21:56:05Z","parentSha":"ca3ead2829779248188b01982d9cb329b12a1bc4","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/run-tests-1.md"],"verdict":"PASS","attempt":1,"failures":0,"scope":"pnpm bkit:gate:static-unit-integration","clamped":[{"artifact":"docs/plans/202611/logs/787-show-authoring-rules/run-tests-1.md","clamped":true,"origLines":20890,"keptLines":3224,"origBytes":1490651,"keptBytes":231544,"lineCapped":0,"ceilingHit":false,"raw":".git/bkit-outbox/787-show-authoring-rules/run-tests-1.log","source":"pnpm bkit:gate:static-unit-integration","fetchedAt":"2026-11-12T21:43:13Z"}]}

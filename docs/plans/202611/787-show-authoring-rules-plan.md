@@ -693,7 +693,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 <!-- bkit:task 23 end -->
 <!-- bkit:task 24 start -->
 
-- [ ] **TASK 24:** An agent copies or downloads a script and runs it in the same command (`cp template.py /tmp/run.py && python3 /tmp/run.py`, `curl -o /tmp/s.py URL && python3 /tmp/s.py`), and the script's `docs/x.md` write gets no advice and no uncertainty
+- [x] **TASK 24:** An agent copies or downloads a script and runs it in the same command (`cp template.py /tmp/run.py && python3 /tmp/run.py`, `curl -o /tmp/s.py URL && python3 /tmp/s.py`), and the script's `docs/x.md` write gets no advice and no uncertainty
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js:924` · **Round:** 2
   - **DONE WHEN:** A script file that an earlier command of the same line creates through `cp` / `mv` destinations, `curl -o` / `--output`, `wget -O` or another non-redirect writer is recorded in `st.produced`. A `cp` / `mv` from a readable literal source carries that source's body, and anything else carries `null`, which gives `unknown-script-effect`. The `ENOENT && st.commands > 0` quiet branch then covers only files no earlier command named. Probe today: `cp template.py /tmp/run.py && python3 /tmp/run.py` (where `template.py` writes `docs/x.md`) and `curl -o /tmp/s.py https://x.example/s.py && python3 /tmp/s.py` both return empty evidence. `cp template.py run.py && python3 run.py` names only `run.py`, with no uncertainty for what the script writes. Plan task 14 covers redirect, `tee` and heredoc producers only.
   - **TEST FIRST:**
