@@ -2923,7 +2923,7 @@ function decideShell(cmd, dirs, ctx, session) {
       return ask(
         "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
         v.edits
-          ? shellEditContext(
+          ? `${fetchLine}\n\n${shellEditContext(
               shellEditAdvisory(v.edits),
               v.edits,
               ctx,
@@ -2931,7 +2931,7 @@ function decideShell(cmd, dirs, ctx, session) {
               undefined,
               ADVICE_BUDGETS.cursor,
               fetchLine,
-            )
+            )}`
           : fetchLine,
       );
     }
