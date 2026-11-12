@@ -744,7 +744,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:task 26 start -->
 
-- [ ] **TASK 26:** On Cursor, `curl https://off-list.example/x -o /dev/null && sed -i s/a/b/ docs/x.md` asks the user about the fetch, and the edit of `docs/x.md` gets no shell notice and no per-file checklist
+- [x] **TASK 26:** On Cursor, `curl https://off-list.example/x -o /dev/null && sed -i s/a/b/ docs/x.md` asks the user about the fetch, and the edit of `docs/x.md` gets no shell notice and no per-file checklist
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.cursor/hooks/bkit-guardrails.cjs:84` · **Round:** 2
   - **DONE WHEN:** Cursor's `decideShell` `fetch` case composes `v.edits` the way the Claude, Codex and Antigravity bridges do. The `ask` keeps its `user_message`, and its `agent_message` carries the fetch line plus `shellEditContext(shellEditAdvisory(v.edits), v.edits, ctx, session, undefined, ADVICE_BUDGETS.cursor, <fetch line>)` when `v.edits` is present. Today `classifyShell` returns `{ tier: "fetch", edits }` ("an allowed fetch never hides an edit", `.bkit/core/hooks/guardrails-tiers.js:273`), but the Cursor `fetch` case returns only `Command requires confirmation: …` and drops the evidence. No Cursor test runs a fetch together with an edit.
   - **TEST FIRST:**
