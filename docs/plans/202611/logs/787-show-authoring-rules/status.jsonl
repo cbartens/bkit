@@ -987,3 +987,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:00Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-tasks/8/1/comment","hash":"898d582b7363bcc56ffcb82ff960378ba889680de880a616a20d190bb17a3ee9","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6822710964","at":"2026-11-12T12:14:02Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-tasks","status":"DONE","at":"2026-11-12T12:14:02Z","parentSha":"c5a1a409394b636ae78ecc2a87eb4ad46007a588","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-tasks-8-log.md"],"verdict":"PASS","attempt":1,"group":8}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:04Z","noun":"tasks","verb":"open","flags":["plan","group","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:10Z","noun":"counters","verb":"derive","flags":["file","workflow","step","group","position"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:10Z","noun":"status","verb":"route","flags":["step","group","file","workflow"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:10Z","noun":"tests","verb":"green","flags":["file","workflow","group","plan","log"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:14:19Z","noun":"context","verb":"diff","flags":["reset-log","base","artifact","fid","step","attempt"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T12:16:19Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/8/1/comment","hash":"b01e2196431861a0ab4c9f0376bb4fc3797f12755434e2f36bf3f7b9255165bc","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6822710964","at":"2026-11-12T12:16:21Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-12T12:16:21Z","parentSha":"b6de0aaa6864c087e58c57df5021f4c3ad57972f","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-8-1.md"],"verdict":"CONCERNS","attempt":1,"group":8,"failures":1}
