@@ -668,6 +668,24 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     }
   });
 
+  it("flags a script copied into a new directory or by a glob", () => {
+    const dir = workDir("copynewdir");
+    fs.writeFileSync(path.join(dir, "tpl.py"), "open('src/copied.py','w').write('x')\n");
+    fs.mkdirSync(path.join(dir, "sub"), { recursive: true });
+    const commands = [
+      "mkdir bkp-nd && cp tpl.py bkp-nd && python3 bkp-nd/tpl.py",
+      "mkdir -p bkp-nd2 && cp tpl.py bkp-nd2 && python3 bkp-nd2/tpl.py",
+      "cp t*.py sub/ && python3 sub/tpl.py",
+    ];
+    for (const command of commands) {
+      const r = advise(command, dir);
+      expect({ command, text: r.text }).toEqual({
+        command,
+        text: expect.stringMatching(/src\/copied\.py|cannot be determined/i),
+      });
+    }
+  });
+
   it("marks scripts run by unanalysed interpreters as uncertain", () => {
     const dir = workDir("otherinterp");
     for (const command of ["ruby fix.rb", "perl fix.pl", "npx tsx gen.ts"]) {
@@ -791,6 +809,11 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
     ["cursor", ".bkit/core/.cursor/hooks/bkit-guardrails.cjs", ".cursor/hooks/bkit-guardrails.cjs"],
     ["claude", ".bkit/core/.claude/hooks/bkit-guardrails.cjs", ".claude/hooks/bkit-guardrails.cjs"],
     ["codex", ".bkit/core/.codex/hooks/bkit-guardrails.cjs", ".codex/hooks/bkit-guardrails.cjs"],
+    [
+      "agents",
+      ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+      ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    ],
   ];
 
   for (const [host, template, mirror] of PAIRS) {
