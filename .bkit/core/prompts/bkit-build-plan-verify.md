@@ -74,6 +74,7 @@ autoCompactWindow: 300000
    - **If** a brief has a `Deviations` section → judge the tasks it names as the owner's instructions there direct.
    - Check that every task field and gate maps to real changes in the codebase.
    - Find missing components, skipped steps and unimplemented edge cases.
+   - A failing test that the group gate (`bkit:gate:static-unit`) runs is not a gap, unless a task's `DONE WHEN` or `TEST FIRST` names that test: the workflow routes the gate's result itself. After the last group there is no group gate, so Step 12's final run and the holistic verify cover a failing test.
 7. **If** `Mode` = `Holistic`:
    - Run the same task and gate check across every group of the plan.
    - Check the integration between groups:

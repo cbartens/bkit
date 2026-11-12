@@ -265,6 +265,30 @@ describe("resume facts", () => {
       expect(text).toContain(`\`${field}\` as`);
     }
   });
+
+  it("build re-runs a red gate pause instead of asking it", () => {
+    const text = workflow("build");
+    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
+    expect(resume).toBeDefined();
+    expect(resume).toContain("`gate` as");
+    expect(resume).toContain("decisions apply --by=rerun");
+    expect(resume).toContain("`GATE_RERUN` = true");
+    expect(resume).toContain("steps finish");
+    expect(resume.indexOf("steps finish")).toBeLessThan(
+      resume.indexOf("decisions apply --by=rerun"),
+    );
+    expect(resume).toContain("counters grant");
+  });
+
+  it("build re-runs a red gate pause only when the loop question is its only undecided question", () => {
+    const text = workflow("build");
+    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
+    expect(resume).toBeDefined();
+    const route = resume.slice(resume.indexOf("**If** `OPEN_GATE` = `FAIL`"));
+    expect(route).toContain("loop question");
+    expect(route).toMatch(/only undecided question/);
+    expect(route).toContain("Decision Pause** step 3");
+  });
 });
 
 describe("pre-worktree commit", () => {
@@ -757,6 +781,38 @@ describe("build", () => {
     expect(step7).not.toContain("--task=");
   });
 
+  it("a re-run gate that is still red goes straight to the Decision Pause", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const step12 = section(build, /Step 12 — Run Tests/);
+    for (const [name, text] of [
+      ["Step 8", step8],
+      ["Step 12", step12],
+    ] as const) {
+      expect(text, name).toMatch(/`GATE_RERUN` = true[^\n]*\*\*Decision Pause\*\*/);
+    }
+    // The re-run route sits after the `counters route` block, so the pause limits are set.
+    expect(step8.indexOf("`GATE_RERUN` = true")).toBeGreaterThan(step8.indexOf("counters route"));
+    expect(step12.indexOf("`GATE_RERUN` = true")).toBeGreaterThan(step12.indexOf("counters route"));
+  });
+
+  it("a green re-run gate continues without asking and clears GATE_RERUN", () => {
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const step12 = section(build, /Step 12 — Run Tests/);
+    for (const [name, text] of [
+      ["Step 8", step8],
+      ["Step 12", step12],
+    ] as const) {
+      expect(text, name).toMatch(/clear[^\n]*`GATE_RERUN`|`GATE_RERUN` (is )?cleared/i);
+      expect(text, name).toMatch(/without asking/);
+    }
+    // Every route line of Step 8 sub-step 11 clears the flag.
+    const routeLines = step8
+      .split("\n")
+      .filter((l) => /^\s*- \*\*If\*\* exit.*(Decision Pause|Step 9|Failure Path)/.test(l));
+    expect(routeLines.length).toBeGreaterThan(0);
+    for (const l of routeLines) expect(l, l).toContain("GATE_RERUN");
+  });
+
   it("Step 8 verifies a diff cut from the group's start commit", () => {
     const step8 = stepBody(build, /Step 8 — Plan Verify/);
     const diff = commandLines(step8, "context diff");
@@ -769,6 +825,69 @@ describe("build", () => {
     const green = commandLines(step8, "tests green");
     expect(green).toHaveLength(1);
     expect(green[0]).toContain("--group={GROUP}");
+  });
+
+  it("the Decision Pause checks a red gate against the base commit before composing", () => {
+    const pause = section(build, /Decision Pause/);
+    const base = commandLines(pause, "tests base");
+    expect(base).toHaveLength(1);
+    expect(base[0]).toContain("tests base --log=");
+    const compose = commandLines(pause, "decisions compose");
+    expect(compose).toHaveLength(1);
+    expect(compose[0]).toContain("{BASE_FLAGS}");
+    expect(pause.indexOf("tests base --log=")).toBeLessThan(pause.indexOf("decisions compose"));
+    expect(pause).toContain("GATE_LOG");
+    expect(pause).toContain("--base-check");
+    expect(pause).toContain("Gate=FAIL");
+    // The check runs only for a red-gate or TESTS_LOOP pause, and a failed check is a Failure Path.
+    expect(pause).toMatch(
+      /`GATE_VERDICT` = FAIL[^\n]*`TESTS_LOOP`|`TESTS_LOOP`[^\n]*`GATE_VERDICT` = FAIL/,
+    );
+    expect(pause).toMatch(/tests base[\s\S]{0,900}non-zero → \*\*Failure Path\*\*/);
+    // The Decision Pause gate checklist names the base check.
+    const gate = stepBody(build, /Gate — Decision Pause/);
+    expect(gate).toMatch(/base/i);
+  });
+
+  it("a no-progress round after a red gate pauses with the loop question", () => {
+    const step9 = stepBody(build, /Step 9 — Plan Gaps Remediate/);
+    const route = step9.slice(step9.indexOf("5. Check that the attempt changed source files"));
+    expect(route).toContain("`GATE_VERDICT` = FAIL");
+    expect(route).toContain("`PAUSE_LOOP` = `verify`");
+    expect(route.indexOf("`PAUSE_LOOP` = `verify`")).toBeLessThan(
+      route.indexOf("**Decision Pause**"),
+    );
+  });
+
+  it("a failing gate or suite test is never a pause item", () => {
+    const pause = section(build, /Decision Pause/);
+    expect(pause).not.toContain("because it is always fixed");
+    expect(pause).not.toContain("because failing suites are always fixed");
+    expect(pause).toMatch(/group.gate[^\n]*never an item/i);
+    expect(pause).toMatch(/TESTS_LOOP[^\n]*(no items|never an item)/);
+    const step4 = pause.slice(
+      pause.indexOf("4. Ask the owner in this session"),
+      pause.indexOf("5. Apply each decision"),
+    );
+    expect(step4).toMatch(/only (the )?(file's|decision file's) options/i);
+  });
+
+  it("group-mode verify logs no gap for a test the group gate runs", () => {
+    const prompt = fs.readFileSync(
+      path.join(REPO_ROOT, ".bkit", "core", "prompts", "bkit-build-plan-verify.md"),
+      "utf-8",
+    );
+    const start = prompt.indexOf("6. **If** `Mode` = `Group`");
+    const end = prompt.indexOf("7. **If** `Mode` = `Holistic`");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const groupStep = prompt.slice(start, end);
+    expect(groupStep).toMatch(/not a gap/);
+    expect(groupStep).toMatch(/group gate/i);
+    expect(groupStep).toMatch(/Step 12|final run|holistic/i);
+    // Holistic mode keeps logging each failing test as a gap.
+    const holistic = prompt.slice(end, end + 1500);
+    expect(holistic).not.toMatch(/not a gap/);
   });
 
   it("the execute prompt logs `DONE — TASK {N}`, the line the brief and the commit check read", () => {

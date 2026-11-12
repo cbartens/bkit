@@ -543,7 +543,7 @@ function carryLeftovers(
 // ---------------------------------------------------------------------------
 
 /** Copy each `worktreeCopy` entry from the main checkout; a missing one is narrated, never fatal. */
-function copyListed(root: string, wt: string, entries: string[], log: (m: string) => void) {
+export function copyListed(root: string, wt: string, entries: string[], log: (m: string) => void) {
   const copied: string[] = [];
   const copyMissing: string[] = [];
   for (const entry of entries) {
@@ -664,8 +664,12 @@ function allowDirenv(root: string, wt: string, log: (m: string) => void): boolea
 }
 
 /** Run the frozen install in `wt`; the exit status, with a spawn failure read as "could not run". */
-function install(wt: string, log: (m: string) => void): number {
-  const [cmd, ...args] = installCommand({ frozen: true });
+export function install(
+  wt: string,
+  log: (m: string) => void,
+  opts: { preferOffline?: boolean } = {},
+): number {
+  const [cmd, ...args] = installCommand({ frozen: true, preferOffline: opts.preferOffline });
   const res = spawnSync(cmd!, args, { cwd: wt, encoding: "utf-8", maxBuffer: 1 << 26 });
   const status = res.error ? 127 : (res.status ?? 1);
   if (status !== 0) {

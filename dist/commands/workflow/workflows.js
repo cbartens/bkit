@@ -126,6 +126,9 @@ export function openDecision(logDir, tree, workflow, run) {
         const field = (key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
         if (field("Status") !== "OPEN")
             continue;
+        // `Gate:` counts only in the header block (the lines before the first blank line).
+        const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
+        const gate = /^Gate:[ \t]*(.+?)[ \t]*$/m.exec(header)?.[1] ?? null;
         const num = (key) => {
             const v = field(key);
             return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
@@ -140,6 +143,7 @@ export function openDecision(logDir, tree, workflow, run) {
             verifyAttempt: num("Verify attempt"),
             testAttempt: num("Test attempt"),
             plan: field("Plan"),
+            gate,
         };
     }
     return null;
@@ -1690,7 +1694,7 @@ export const workflowsCommand = {
                 row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
-                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
+                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
             },
             textOmit: ["row"],
             exitCodes: {

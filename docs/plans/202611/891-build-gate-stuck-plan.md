@@ -142,6 +142,7 @@ When `/bkit-build` pauses because a group gate or the final test run is red, the
 | a red gate row (verdict `FAIL`) with 0 counted failures makes the round `?` and the trend `stuck` | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 3 |
 | a verify round whose gate did not run adds no gate failures, so the round counts only its verify problems and the trend compares those totals | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 3 |
 | `decisions compose --loop=verify` prints the group gate's failing tests per round | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 3 |
+| adds the group gate's failing tests to each verify round | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 14 |
 | verdict `all` when every failing case also fails at base | Unit | `.bkit/core/engine/commands/workflow/tests-base.test.ts` | 4 |
 | verdict `some` with base-red and branch counts | Unit | `.bkit/core/engine/commands/workflow/tests-base.test.ts` | 4 |
 | verdict `none` when each case passes, is absent, or its file is absent at base | Unit | `.bkit/core/engine/commands/workflow/tests-base.test.ts` | 4 |
@@ -185,6 +186,18 @@ When `/bkit-build` pauses because a group gate or the final test run is red, the
 | a re-run gate that is green continues without asking, and every Step 8 sub-step 11 and Step 12 sub-step 4 route clears `GATE_RERUN` | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 11 |
 | the resume re-run sequence (a second `build-group-gate` row under the same verify attempt) reports no completeness hole | Unit | `.bkit/core/engine/checks/status-holes.test.ts` | 11 |
 | group-mode verify logs no gap for a test the group gate runs; holistic mode keeps the #889 rule | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 12 |
+| bkit tests base > a pull_request-event CI run at the base sha does not settle none | Integration | `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` | 15 |
+| bkit decisions compose > base check all says a gate still red after resume comes from this branch | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 16 |
+| bkit tests base > a base file run that exits non-zero without the failing case reads unknown | Integration | `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` | 17 |
+| bkit tests base > the base test run does not inherit the hooks-off git config | Integration | `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` | 18 |
+| bkit decisions apply --by=rerun > refuses a file whose only Gate: FAIL line is in an item body | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 19 |
+| bkit workflows start — resume facts > openDecision gate ignores a Gate line below the header | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 19 |
+| bkit decisions apply --by=rerun > refuses a Gate: FAIL file whose Q1 is an item, not the loop question | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 20 |
+| bkit decisions apply --by=rerun > refuses a loop file with an undecided item question | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 20 |
+| resume facts > build re-runs a red gate pause only when the loop question is its only undecided question | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 20 |
+| bkit tests base > a case skipped at the base commit reads unknown, not the branch's | Integration | `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` | 21 |
+| baseVerdict > some with an undetermined case names it in the reason | Unit | `.bkit/core/engine/commands/workflow/tests-base.test.ts` | 22 |
+| bkit decisions compose > base check some with undetermined cases counts only the branch's as fixable | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 22 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -566,7 +579,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Move the JUnit reader and the one-file runner into the leaf module `junit.ts`, keep each case's `classname` and `file`, and split out `reportFailures`
+- [x] **TASK 1:** Move the JUnit reader and the one-file runner into the leaf module `junit.ts`, keep each case's `classname` and `file`, and split out `reportFailures`
   - **CREATE:** `.bkit/core/engine/commands/workflow/junit.ts`: a leaf module that imports none of `tests.ts`, `steps.ts` or `runs.ts`, holding the definitions moved from `tests.ts` and the new `reportFailures`
   - **DELETE:** `CaseState` in `.bkit/core/engine/commands/workflow/tests.ts`: moved to `junit.ts`
   - **DELETE:** `JunitCase` in `.bkit/core/engine/commands/workflow/tests.ts`: moved to `junit.ts`
@@ -591,7 +604,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Base-run helpers: an offline-first install and the exports the base run reuses
+- [x] **TASK 2:** Base-run helpers: an offline-first install and the exports the base run reuses
   - **UPDATE:** `installCommand` in `.bkit/core/engine/shared/package-manager.ts`: optional `preferOffline` appends `--prefer-offline`
   - **UPDATE:** `install` in `.bkit/core/engine/commands/workflow/worktrees.ts`: export it with an optional `{ preferOffline }` passed to `installCommand`
   - **UPDATE:** `copyListed` in `.bkit/core/engine/commands/workflow/worktrees.ts`: export it unchanged
@@ -605,7 +618,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Count the group gate's failing tests in the verify loop's progress
+- [x] **TASK 3:** Count the group gate's failing tests in the verify loop's progress
   - **UPDATE:** `loopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: optional `gate` step prefix; per round add the latest same-attempt `test-run` row's `failures` for step `{gate}-{group}`, 0 with no row, null when the row's count is null or the row is red (verdict `FAIL`) with 0 counted failures
   - **UPDATE:** `LoopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: `rounds[].gateFailures` and `gateCounts`
   - **UPDATE:** `countersCommand` in `.bkit/core/engine/commands/workflow/counters.ts`: the `counters progress` output help names `gateCounts` and `rounds[].gateFailures`
@@ -621,8 +634,20 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
     - `.bkit/core/engine/commands/workflow/counters.test.ts` `loopProgress with a gate > a red gate row with 0 counted failures makes the round unknown` fails on the round counting 0, so a red gate reads "0 → 0" instead of `?` with trend `stuck`
     - `.bkit/core/engine/commands/workflow/counters.test.ts` `loopProgress with a gate > a verify round whose gate did not run adds no gate failures` fails on `gateCounts` being absent instead of "0 → 3"
     - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions compose > prints the group gate's failing tests per round for the verify loop` fails on the file lacking a "Group gate failures after each round" line
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/commands/workflow/counters.test.ts` `loopProgress with a gate > adds the group gate's failing tests to each verify round` fails on the counts reading 0 → 0 instead of "3 → 3" — accepted as recommended: the first red check, before any Task 3 code, failed it with "expected '0 → 0' to be '3 → 3'" (build-tests-red-1-1.md:19); the later vacuous record came after the code had landed (owner, 2026-11-11)
 
 <!-- bkit:task 3 end -->
+
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** Widen the planned TASK 3 test's `gateFailures` type label so `pnpm typecheck` passes
+  - **UPDATE:** `.bkit/core/engine/commands/workflow/counters.test.ts`: in `loopProgress with a gate > adds the group gate's failing tests to each verify round`, the `rounds.map` callback's parameter type `{ gateFailures: number }` becomes `{ gateFailures?: number | null }`, matching `LoopProgress.rounds[].gateFailures`; no expectation changes
+  - **DONE WHEN:** `pnpm typecheck` exits 0 with no TS2345 at `counters.test.ts`, every assertion in the test is unchanged, and `counters.test.ts` passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/counters.test.ts` `loopProgress with a gate > adds the group gate's failing tests to each verify round` fails on `tsc -p tsconfig.test.json` reporting TS2345 for the `{ gateFailures: number }` callback type
+
+<!-- bkit:task 14 end -->
 
 <!-- bkit:group 1 end -->
 
@@ -632,7 +657,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Classify failing cases against the base run
+- [x] **TASK 4:** Classify failing cases against the base run
   - **CREATE:** `.bkit/core/engine/commands/workflow/tests-base.ts`: pure `caseFile(c, tracked)` (a `file` attribute that is a tracked repo-relative path, then a tracked `classname` path, then exactly one matching tracked basename, else null; an untracked, absolute or `..` path is never returned) and `baseVerdict(cases)` (`all | some | none | unknown`, counts, and a reason for `unknown`; an empty failing set is `unknown` with reason `gate red with no failing test case`)
   - **CREATE:** `.bkit/core/engine/commands/workflow/tests-base.test.ts`: unit tests of both helpers
   - **READ:** `JunitCase` in `.bkit/core/engine/commands/workflow/junit.ts`: the case shape from Task 1, imported with `import type`, so `tests-base.ts` adds no runtime import edge
@@ -652,7 +677,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** The `bkit tests base` verb and its local run at the base commit
+- [x] **TASK 5:** The `bkit tests base` verb and its local run at the base commit
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-base.ts`: `testsBaseVerb` — flags `--log`, `--file`, `--workflow`, `--out`, validated in the handler (a missing required flag is a usage error); failing cases from `reportFailures({log}.reports)`; base sha `git merge-base HEAD {devBase}` (none → `unknown` "no base commit"); the local run as `withoutHooks(() => withCleanup(baseRun, () => dropLandTree(top, tmp)))` with a synchronous `baseRun` (detached `os.tmpdir()` worktree `bkit-base-*`, `copyListed`, `install(…, { preferOffline: true })`, `runTestFile(tmp, file, {log}.base/{n}.log)` per resolved file present at base), because `withCleanup` runs its body without `await`; output written to `--out`; exit 0 for every verdict
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: register `base: testsBaseVerb`
   - **UPDATE:** `tests/fixtures/gates/pnpm.cjs`: pass the arguments after the script name to the script, as `pnpm` does
@@ -684,7 +709,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** CI evidence at the base sha, the run's mode and its install setting
+- [x] **TASK 6:** CI evidence at the base sha, the run's mode and its install setting
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-base.ts`: in `testsBaseVerb`, before the local run, repo = `resolveOwnerRepo(top)`; with a repo, `shipGate({ root, head: base, repo }, gh, log)` reached through `await import("./runs.js")` inside the handler (passed with no skipped lane → `none`, source `ci`, no worktree; any refusal, red, in-progress or skipped-lane result → the local run); `worktreeInstall` off → `unknown` "no install at the base commit (worktreeInstall off)" before any checkout; `adopt` from `latestRuntimeRow`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts`: the fixture repo gets an `origin` remote URL `https://github.com/{o}/{r}.git` (no fetch), so `resolveOwnerRepo` resolves the repo from the remote when the stub's `gh repo view` exits 1; the `tests/fixtures/gh/bin/gh` stub with `BKIT_FAKE_GH_FIXTURE_ROOT` pointing at per-test `runs/{sha}.json` and `jobs/{id}.json`
   - **READ:** `shipGate` in `.bkit/core/engine/commands/workflow/runs.ts`: the CI verdict at a sha; with no `repo` it runs `gh repo view` and refuses when that fails
@@ -708,7 +733,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** `decisions compose --base-check` words the loop question from the verdict
+- [x] **TASK 7:** `decisions compose --base-check` words the loop question from the verdict
   - **UPDATE:** `decisionsCommand` in `.bkit/core/engine/commands/workflow/decisions.ts`: `compose --base-check=<json>` — shape validated in the handler in `decisions.ts`, which imports nothing from `tests-base.ts` (a missing file or a missing or invalid field is a usage error whose message names it); progress line `Also red on base {base}: {baseRed} of {failing} ({source} run)`, or `Also red on base {base}: can't tell ({reason})` for `unknown` (`{base}` = `unknown` when null); `all` → `Stop` (`Decide` with items) with the `dev` reason and the adopt sentence when `adopt`; `some` / `none` / `unknown` → the trend recommendation with their reason leads; options unchanged
   - **UPDATE:** `.bkit/core/.bkit/cli.md`: the generated region, by `pnpm cli:sync`
   - **DEPENDS ON:** 3, 5, 6
@@ -728,7 +753,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** `decisions apply --by=rerun`
+- [x] **TASK 8:** `decisions apply --by=rerun`
   - **UPDATE:** `decisionsCommand` in `.bkit/core/engine/commands/workflow/decisions.ts`: `apply --by=rerun` refuses a file without `Gate: FAIL` or not `Status: OPEN` (usage error whose message names the missing `Gate: FAIL` header or the file's status, nothing written); else writes `Decision: Re-run gate — the owner resumed the run, so the gate runs again first ({date})` under Q1 and sets `Status: DECIDED`; the `--by` help names `rerun`
   - **DEPENDS ON:** 7
   - **DONE WHEN:** `apply --by=rerun` on a `Gate: FAIL` file prints `status: DECIDED` and the file holds the `Decision: Re-run gate` line, `apply --by=rerun` on a file without the header leaves it byte for byte unchanged, `decisions.test.ts` and `cli-doc.test.ts` pass, and `pnpm build` has run, so `pnpm bkit:check:dist` exits 0.
@@ -740,7 +765,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** `openDecision.gate`
+- [x] **TASK 9:** `openDecision.gate`
   - **UPDATE:** `OpenDecision` in `.bkit/core/engine/commands/workflow/workflows.ts`: add `gate: string | null`
   - **UPDATE:** `openDecision` in `.bkit/core/engine/commands/workflow/workflows.ts`: read it from the `Gate:` header; the `workflows start` output help for `openDecision` names `gate`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the existing `bkit workflows start — resume facts` `toEqual` expectation gains `gate: null`
@@ -759,7 +784,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** The Decision Pause runs the base check, and Step 9's no-progress route asks the loop question
+- [x] **TASK 10:** The Decision Pause runs the base check, and Step 9's no-progress route asks the loop question
   - **READ:** `.bkit/instructions.md`: the `bkit-build.md` entries, by `pnpm instructions:show --file bkit-build.md`, before editing the workflow's sentences
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Decision Pause step 2 — the two item rules reworded (a failing group-gate or suite test is never an item), `GATE_LOG`, the `tests base` block (non-zero → **Failure Path**) and `{BASE_FLAGS}` on the compose call for a red-gate or `TESTS_LOOP` pause; step 4 — offer only the file's options; Step 9 sub-step 5 — `PAUSE_LOOP` = `verify` when `GATE_VERDICT` = FAIL; the Decision Pause gate checklist names the base check
   - **UPDATE:** `.bkit/instructions.md`: § Local Instructions entries for the changed and added standing lines under `#### bkit-build` (the item lines at 9788 and 9795 among them), by the no-flag check `pnpm tsx .bkit/core/engine/tools/instructions.ts` first, then `pnpm instructions:sync`
@@ -776,7 +801,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** A resume into a red-gate pause re-runs the gate
+- [x] **TASK 11:** A resume into a red-gate pause re-runs the gate
   - **READ:** `.bkit/instructions.md`: the `bkit-build.md` entries, by `pnpm instructions:show --file bkit-build.md`, before editing the workflow's sentences
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Contract **Resume** — `openDecision.gate` = `FAIL` → `DECISION_ROUTE` from `from`, Decision Pause step 6's `steps finish --step=build-decision` block first, then `decisions apply --by=rerun` (so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again), `GATE_RERUN` = true, then Step 8 sub-step 8 (`VERIFY_VERDICT` = PASS, same `VERIFY_ATTEMPT`) or Step 12, with no `counters grant`; Step 8 sub-step 11 and Step 12 sub-step 4 — a route placed after the `counters route` block (so `{PAUSE_MAX}`, `PAUSE_STEP` and `PAUSE_POINT` are set on a fresh-session resume) sends a still-red re-run straight to the **Decision Pause**, a green re-run takes the existing green route without asking, and every route clears `GATE_RERUN`
   - **UPDATE:** `.bkit/instructions.md`: § Local Instructions entries for the changed and added standing lines under `#### bkit-build`, by the no-flag check `pnpm tsx .bkit/core/engine/tools/instructions.ts` first, then `pnpm instructions:sync`
@@ -794,7 +819,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Group-mode verify logs no gap for a test the group gate runs
+- [x] **TASK 12:** Group-mode verify logs no gap for a test the group gate runs
   - **READ:** `.bkit/instructions.md`: the prompt's entries, by `pnpm instructions:show --file bkit-build-plan-verify.md`, before editing the prompt's sentences
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: Process step 6 (Group mode) gains the rule; step 7 (Holistic) unchanged; the rule notes that after the last group, with no group gate, Step 12's final run and holistic verify cover a failing test
   - **UPDATE:** `.bkit/instructions.md`: the § Local Instructions entry for the new standing line under `#### bkit-build-plan-verify`, by the no-flag check `pnpm tsx .bkit/core/engine/tools/instructions.ts` first, then `pnpm instructions:sync`
@@ -814,7 +839,7 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Update the catalog and test docs, and regenerate `dist/`, the capability register and the host mirrors
+- [x] **TASK 13:** Update the catalog and test docs, and regenerate `dist/`, the capability register and the host mirrors
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: build step table rows 8 and 9, § Decision Pause (base check, `Gate: FAIL`, resume re-run, gate failures in the round counts), § Group gate **Strict, no exceptions** (a red gate that also fails on the base commit is fixed on `dev`; the "Add an exception mechanism" sentence removed)
   - **UPDATE:** `docs/testing.md`: the key-test-files table gains `commands/workflow/tests-base.test.ts` and `commands/workflow/tests-base.integration.test.ts`
   - **UPDATE:** `docs/capabilities.md`: regenerated by `pnpm bkit:graph:refresh`, for `tests-base.ts` and `junit.ts`
@@ -827,6 +852,94 @@ Engine tasks come before the workflow edits that call them, so `workflow-shape.t
 <!-- bkit:task 13 end -->
 
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** A green affected-only `pull_request` CI run at the base sha settles verdict `none` (source `ci`) while the failing tests are red on `dev`
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:204` · **Round:** 1
+  - **DONE WHEN:** `tests base` calls `shipGate` with `event: "push"`, so only a push-event run at the exact base sha (a full run per `docs/testing.md` `pr-affected-only` row: "A PR runs ... unit ... for affected packages. A push runs everything.") can settle `none`; a `pull_request` or `workflow_dispatch` run at that sha falls back to the local run.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` `bkit tests base > a pull_request-event CI run at the base sha does not settle none` fails on `source` reading `ci` and verdict `none` for a green `event: "pull_request"` run at the base sha whose failing case is red in the local base run (expected `source` `local`, verdict `all`, one install run)
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** The `all` loop reason reads as if the base-red tests explain the whole red gate, but a gate can also be red on a non-test stage (coverage threshold, a static check after the unit run) that `tests base` cannot see
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:181` · **Round:** 1
+  - **DONE WHEN:** The owner chose to narrow the claim with no change to the gate script contract (`build-decision-1-3.md`, refined 2026-11-10). With verdict `all`, `decisions compose --base-check` (`.bkit/core/engine/commands/workflow/decisions.ts:473`) still recommends `Stop` (Success Criterion 2), and its reason claims only the failing tests: they all fail on the base commit too, so no round here can fix them. The reason adds one sentence: if the gate is still red after `dev` is fixed and the run resumed, the rest comes from this branch, and the resume's gate re-run shows it. The reason never says or implies that those tests are the gate's only failure. `tests base` is unchanged.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions compose > base check all says a gate still red after resume comes from this branch` fails on the `all` reason lacking the sentence that a gate still red after `dev` is fixed and the run resumed comes from this branch, while the recommendation stays `Stop`
+
+<!-- bkit:task 16 end -->
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** A base file run that crashes (non-zero exit, report written without the failing case, e.g. a load error in the fresh checkout) counts the case `absent`, so the verdict reads `none` and the pause says "the failures come from this branch"
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:265` · **Round:** 1
+  - **DONE WHEN:** `baseRun` keeps each file's `runTestFile` `exitCode`, and a case missing from a file run that exited non-zero reads `atBase: "unknown"` (verdict `unknown` with a reason naming the base run's exit), while a case missing from a file run that exited 0 still reads `absent`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` `bkit tests base > a base file run that exits non-zero without the failing case reads unknown` fails on verdict `none` with `atBase: "absent"` when the base runner writes an empty `<testsuite>` report and exits 1
+
+<!-- bkit:task 17 end -->
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** `withoutHooks` wraps the whole base run, so `GIT_CONFIG_COUNT` / `core.hooksPath=/dev/null` leaks into the install and every base test process; a test that drives git hooks fails at base only and reads `red`, turning a branch-caused failure into `all`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:247` · **Round:** 1
+  - **DONE WHEN:** Hooks are off only for the git calls that manage the base checkout (for example `-c core.hooksPath=/dev/null` on `worktree add`), the install and the `runTestFile` children see the same environment the gate saw, and `withCleanup` still wraps the synchronous body.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` `bkit tests base > the base test run does not inherit the hooks-off git config` fails on verdict `all` for a base case that passes only when `GIT_CONFIG_COUNT` is unset (expected `none`)
+
+<!-- bkit:task 18 end -->
+<!-- bkit:task 19 start -->
+
+- [x] **TASK 19:** A `Gate: FAIL` line smuggled into a pause item's text makes a resume close a non-gate pause (a challenge or verify-gap pause with hard blockers) as "Re-run gate" and continue without the owner's answer
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/decisions.ts:583` · **Round:** 1
+  - **DONE WHEN:** `decisions apply --by=rerun` (`decisions.ts:583`) and `openDecision` (`workflows.ts:296`, `field("Gate")`) read `Gate:` only from the decision file's header block (the lines before the first blank line that `compose` writes), so a `Gate: FAIL` line in an item's title, question or reason never marks a pause as a red-gate pause; and `composeItems` collapses CR/LF in item `title`, `question`, `reason` and `noRecommendation` to spaces, so no item text can start a new line that mimics a header. Today both readers use a multiline `^Gate:` regex over the whole file, and `composeItems` keeps embedded newlines, so an item question such as `"…\nGate: FAIL"` (item text the orchestrator builds from verify and challenge findings, which come from diff and tracker text) yields `openDecision.gate` = `FAIL`; the Contract **Resume** route then runs `apply --by=rerun`, which writes `Status: DECIDED` with only a Q1 `Re-run gate` line, and Step 12 or Step 8 continues without asking — the owner's pending items (including CRITICAL challenge hard blockers) are never answered.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions apply --by=rerun > refuses a file whose only Gate: FAIL line is in an item body` fails on a file composed without `--header=Gate=FAIL`, whose item question holds `"Fix it?\nGate: FAIL"`, being rewritten to `Status: DECIDED` with exit 0 instead of a usage error naming the missing `Gate: FAIL` header and the file left byte for byte unchanged
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `bkit workflows start — resume facts > openDecision gate ignores a Gate line below the header` fails on `openDecision.gate` reading `"FAIL"` instead of null for an OPEN pause file with no `Gate:` header and a body line `Gate: FAIL`
+
+<!-- bkit:task 19 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 2 findings
+
+<!-- bkit:task 20 start -->
+
+- [x] **TASK 20:** The owner stops at a red-gate verify pause that also holds hard-blocker gaps (`test-loosened`, `exception-refused`, `no-test-first`), fixes `dev` and resumes; the resume writes `Decision: Re-run gate` under Q1 (with no loop question, that is the first hard blocker itself), sets `Status: DECIDED`, forces `VERIFY_VERDICT` = PASS, and a green re-run builds the next group with every gap unanswered
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/decisions.ts:582` · **Round:** 2
+  - **DONE WHEN:** `decisions apply --by=rerun` refuses, with a usage error naming each undecided question number and the file left byte for byte unchanged, any `Gate: FAIL` file whose Q1 is not a loop question (no `## Progress` block) or that holds a question other than the loop question without a `Decision:` line; and the Contract **Resume** route in `.bkit/core/workflows/bkit-build.md:43` takes the `OPEN_GATE` = `FAIL` re-run only for a pause whose only undecided question is the loop question, else resumes at **Decision Pause** step 3 as for any open pause. Today the Decision Pause writes `--header=Gate=FAIL` whenever the base check ran (`GATE_VERDICT` = FAIL), including a `VERIFY_GAPS` pause routed without `PAUSE_LOOP` (Step 8 sub-step 11, `VERIFY_FIXABLE` = false), whose items start at Q1 (`decisions.ts:513`); `--by=rerun` writes the re-run line under Q1 and `Status: DECIDED` without `statusOf`, and the Resume route sets `VERIFY_VERDICT` = PASS, so the hard blockers the workflow says only the owner may settle are closed by a fabricated decision. The existing test `bkit decisions apply --by=rerun > records the re-run under Q1 and closes the file` composes an item-only `Gate: FAIL` file (`[ITEMS[1]]`, no `--loop`) and expects success, so it encodes this bypass and must be reshaped to a loop-only file.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions apply --by=rerun > refuses a Gate: FAIL file whose Q1 is an item, not the loop question` fails on a file composed with `--header=Gate=FAIL` and `[BLOCKER]` and no `--loop` being rewritten to `Status: DECIDED` with `Decision: Re-run gate` under the blocker and exit 0, instead of exit 2 naming Q1 and the file unchanged
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions apply --by=rerun > refuses a loop file with an undecided item question` fails on a file composed with `--header=Gate=FAIL`, `--loop=verify` and `[BLOCKER]` being rewritten to `Status: DECIDED` with Q2 undecided and exit 0, instead of exit 2 naming Q2 and the file unchanged
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `resume facts > build re-runs a red gate pause only when the loop question is its only undecided question` fails on the Resume bullet's `OPEN_GATE` = `FAIL` route holding no condition on the pause's undecided item questions
+
+<!-- bkit:task 20 end -->
+<!-- bkit:task 21 start -->
+
+- [x] **TASK 21:** A failing case that is skipped at the base commit (an `it.skipIf` on an env var or a gitignored artefact the fresh checkout lacks) reads `pass`, so the verdict is `none` and the pause says "the failures come from this branch" with no evidence either way
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:287` · **Round:** 2
+  - **DONE WHEN:** A base case whose JUnit state is `skipped` reads `atBase: "unknown"`, never `pass`, as decision `891-base-commit-check-at-the-decision-pause` states ("a case passing or absent at base ... is the branch's; anything else is undetermined"); only state `passed` reads `pass`; with no base-red case the verdict is `unknown` with a reason naming the skipped case count.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-base.integration.test.ts` `bkit tests base > a case skipped at the base commit reads unknown, not the branch's` fails on verdict `none` with `atBase: "pass"` when the base commit's runner writes `<testcase name="x"><skipped/></testcase>` for the gate's failing case `x` (expected verdict `unknown`, `atBase: "unknown"`, `branch` 0)
+
+<!-- bkit:task 21 end -->
+<!-- bkit:task 22 start -->
+
+- [x] **TASK 22:** With one case red at base and the rest undetermined (their base file run crashed, or no file resolved), the verdict is `some` with reason null, so the pause says "a round can fix 4 of 5" for 4 cases nothing is known about, and the crash reason that Task 17 added is dropped
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/tests-base.ts:92` · **Round:** 2
+  - **DONE WHEN:** `baseVerdict` returns `some` with a reason naming the undetermined count whenever `undetermined` > 0, the verb keeps its crash / no-report / unresolved reason for `some` as it does for `unknown`, and `decisions compose --base-check` (`readBaseCheck` and the `some` branch in `.bkit/core/engine/commands/workflow/decisions.ts`) reads `branch` and words the split as "a round can fix {branch} of {failing}; the build will still stop on the {baseRed} from `dev`", adding "{undetermined} could not be checked: {reason}" when undetermined > 0.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests-base.test.ts` `baseVerdict > some with an undetermined case names it in the reason` fails on `reason` being null for cases `[red, pass, unknown]` (expected verdict `some` and a reason naming 1 undetermined case)
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions compose > base check some with undetermined cases counts only the branch's as fixable` fails on the reason reading "a round can fix 2 of 3" for `{verdict: "some", failing: 3, baseRed: 1, branch: 1, undetermined: 1}` (expected "a round can fix 1 of 3" and a sentence naming the 1 case that could not be checked)
+
+<!-- bkit:task 22 end -->
+<!-- bkit:group 7 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

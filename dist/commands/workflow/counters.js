@@ -185,15 +185,55 @@ export function loopTrend(rounds, codeChanged) {
     return "stuck";
 }
 /**
- * A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. With
- * `sinceClean`, only the rounds after `check`'s last clean round: a loop that reopens.
+ * The failing tests of the latest `test-run` row for `step` and `attempt` in `workflow`'s
+ * active run: 0 with no row, null when unknown (no count, or red with 0 counted failures).
  */
-export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean = false) {
+function gateFailuresOf(file, workflow, step, attempt) {
+    const rows = readStatusRows(file);
+    let start = -1;
+    rows.forEach((r, i) => {
+        if (r.type === "workflow-started" && r.workflow === workflow)
+            start = i;
+    });
+    const row = rows
+        .slice(start + 1)
+        .filter((r) => r.type === "test-run" &&
+        (r.workflow === undefined || r.workflow === workflow) &&
+        r.step === step &&
+        r.attempt === attempt)
+        .at(-1);
+    if (row === undefined)
+        return 0;
+    const failures = row.failures;
+    if (typeof failures !== "number")
+        return null;
+    if (row.verdict === "FAIL" && failures === 0)
+        return null;
+    return failures;
+}
+/**
+ * A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. With
+ * `sinceClean`, only the rounds after `check`'s last clean round: a loop that reopens. With
+ * `gate` (a step prefix, e.g. `build-group-gate`) and a group, each round also counts the
+ * failing tests of the latest same-attempt `{gate}-{group}` test-run row: 0 with no row, and
+ * unknown (null) when that row's count is null or the row is red with 0 counted failures.
+ */
+export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean = false, gate) {
     const runs = readRuns(file);
     const done = (step) => sinceClean
         ? activeDoneStepsSinceClean(runs, workflow, { step, group }, check)
         : activeDoneSteps(runs, workflow, { step, group });
-    const rounds = done(check);
+    const checked = done(check);
+    const gateFailures = checked.map((r) => gate === undefined || group === undefined
+        ? undefined
+        : gateFailuresOf(file, workflow, `${gate}-${group}`, r.attempt));
+    const rounds = checked.map((r, i) => {
+        const g = gateFailures[i];
+        if (g === undefined)
+            return r;
+        const failures = g === null || r.failures === undefined ? undefined : r.failures + g;
+        return { ...r, failures };
+    });
     const fixes = done(fix);
     const first = rounds[0];
     const last = rounds.at(-1);
@@ -219,12 +259,20 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
         ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
         : null;
     return {
-        rounds: rounds.map((r) => ({
+        rounds: rounds.map((r, i) => ({
             attempt: r.attempt ?? null,
             failures: r.failures ?? null,
+            ...(gateFailures[i] === undefined ? {} : { gateFailures: gateFailures[i] }),
             at: r.at,
         })),
         counts: rounds.map((r) => (r.failures === undefined ? "?" : String(r.failures))).join(" → "),
+        ...(gate === undefined || group === undefined
+            ? {}
+            : {
+                gateCounts: gateFailures
+                    .map((g) => (g === null || g === undefined ? "?" : String(g)))
+                    .join(" → "),
+            }),
         codeChanged,
         lastStrategy: fixes.at(-1)?.strategy ?? null,
         nextStrategy: nextStrategy(ladder),
@@ -520,8 +568,9 @@ export const countersCommand = {
                 },
             ],
             output: {
-                rounds: "the check rounds counted: attempt, failures, at",
-                counts: "problem count after each round, e.g. 5 → 2",
+                rounds: "the check rounds counted: attempt, failures, gateFailures, at",
+                counts: "problem count after each round, e.g. 5 → 2 (with a gate, the gate's failing tests are added)",
+                gateCounts: "the group gate's failing tests after each round, e.g. 3 → 3 (absent without a gate)",
                 codeChanged: "source changed between the first and last check round (null when git cannot tell)",
                 lastStrategy: "strategy of the last fix round (null when none ran)",
                 nextStrategy: "strategy the next fix round would use",

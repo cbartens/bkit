@@ -40,7 +40,7 @@ description: "Build Feature — Autonomous implementation"
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 7; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `PAUSE_POINT` = `build.{from}`; `from` = `holistic` → `PAUSE_POINT` = `build.verify`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6.
+- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 7; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `gate` as `OPEN_GATE`, `PAUSE_POINT` = `build.{from}`; `from` = `holistic` → `PAUSE_POINT` = `build.verify`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6. **If** `OPEN_GATE` = `FAIL` **and** the loop question is the pause's only undecided question (the decision file has a `## Progress` block and no other question without a `Decision:` line) → the pause asks about a red gate, so skip step 3 and re-run the gate instead: `DECISION_ROUTE` = `verify` for `from` = `verify`, else `tests`; run **Decision Pause** step 6's `steps finish --step=build-decision` block first, then `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`, so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again; `GATE_RERUN` = true; `from` = `verify` → `VERIFY_VERDICT` = PASS, the held `{VERIFY_ATTEMPT}` unchanged, Step 8 sub-step 8; `from` = `tests` → Step 12; no `counters grant`. **If** `OPEN_GATE` = `FAIL` but another question is undecided (a hard-blocker or verify-gap pause) → resume at **Decision Pause** step 3 as for any open pause.
 - **Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 - **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `group`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
@@ -137,15 +137,23 @@ description: "Build Feature — Autonomous implementation"
    - For either `VERIFY_GAPS` list:
      - A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
      - Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
-     - A group-gate failure is never an item, because it is always fixed.
+     - A group-gate failure is never an item: no item option can settle it, and the loop question carries it.
    - **If** `PAUSE_QUESTION` = `CHALLENGE`:
      - **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
      - **Else** → write one item per task of `CHALLENGE_TASKS` whose block in the plan says `**Fixable:** false`, at any severity.
      - Title each item with its task number, when it has one, followed by its `Location` in brackets.
      - **If** the item is `**Fixable:** false` → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
      - **Else** → options `["Accept", "Fix now"]`, with a recommendation per finding.
-   - **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items, because failing suites are always fixed.
+   - **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items: a failing suite test is never an item, and the loop question carries it.
    - **If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+
+   Check a red gate against the base commit, the commit the branch started from. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`, else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
+
+   ```bash
+   "{BKIT}" tests base --log="{GATE_LOG}" --file="{STATUS}" --workflow=build --out="{OUTBOX}/base-check.json"
+   ```
+
+   **If** `tests base` exits non-zero → **Failure Path**. Every verdict, `unknown` included, exits 0 and goes into the pause.
 
    Compose the file with these flags:
    - `{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; `--loop=holistic --attempt={HOLISTIC_ROUNDS} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `holistic`; empty otherwise.
@@ -153,9 +161,10 @@ description: "Build Feature — Autonomous implementation"
    - **If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}"` to `{HEADER_FLAGS}`.
    - **If** the pause comes from holistic → add `--header="Holistic attempt={HOLISTIC_ATTEMPT}"` to `{HEADER_FLAGS}`.
    - **If** the pause comes from tests → add `--header="Test attempt={TEST_ATTEMPT}"` to `{HEADER_FLAGS}`.
+   - `{BASE_FLAGS}` = `--header=Gate=FAIL` when the base check ran, plus `--base-check="{OUTBOX}/base-check.json"` when `{LOOP_FLAGS}` is not empty; empty otherwise.
 
    ```bash
-   "{BKIT}" decisions compose --out="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md" {HEADER_FLAGS} --items="{OUTBOX}/decision-items.json" --file="{STATUS}" {LOOP_FLAGS}
+   "{BKIT}" decisions compose --out="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md" {HEADER_FLAGS} --items="{OUTBOX}/decision-items.json" --file="{STATUS}" {LOOP_FLAGS} {BASE_FLAGS}
    ```
 
    **If** `decisions compose` exits non-zero → **Failure Path**.
@@ -176,6 +185,7 @@ description: "Build Feature — Autonomous implementation"
    - **Else** → **Failure Path**.
 4. Ask the owner in this session; NEVER hand questions or acceptances to subagents:
    - One message = the attempt line and `## Progress` block (loop questions only), then each `Q{n}` question still without a `Decision:` line, each with its lettered `Options:` and `Recommended:` / `No recommendation` lines, then the file's last line; plain text, not through a host question tool.
+   - Offer only the file's options for each question; NEVER add an `Accept` or any other option the file does not list.
    - Look up facts in the repo, docs and tools, and never ask the owner for them.
    - Decide nothing on the owner's behalf. "yes" takes every recommendation; it never answers a `No recommendation` question. Narrate `Decision pause {DECISION}: {count} question(s)` → record the wait → end turn → wait for answers:
      ```bash
@@ -299,6 +309,7 @@ description: "Build Feature — Autonomous implementation"
 
 ### 🔒 Gate — Decision Pause
 
+- [ ] Red gate checked against the base commit (`tests base`), its verdict in the decision file
 - [ ] Decision file written (`decisions compose`)
 - [ ] Questions asked in the session, or recommendations taken (`decisions apply --by=headless`)
 - [ ] Hard blockers asked in a session, or sent to the Failure Path when headless
@@ -708,7 +719,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
      ```
      Route — first match wins:
      - **If** `CONVERT_RETRY` is not held **and** exit 1 with a `matrix` or `supersession` problem → `CONVERT_RETRY` = the printed `problems` → Step 4 sub-step 2.
-     - **If** exit non-zero → **Failure Path**.
+     - **If** exit non-zero → **Failure Path**, with `GATE_RERUN` cleared.
      - **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
      - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
    - **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
@@ -724,23 +735,24 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-group-gate --file="{STATUS}" --verdict={GATE_VERDICT} --scope="{TEST_SCOPE}" --attempt-of=build-plan-verify:current --group={GROUP} --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-<attempt>.md" --clamp-log="build-group-gate-{GROUP}:<attempt>" --number=8 --post --title="Group Gate" --message="chore({FID}): group-gate group {GROUP} attempt <attempt>"
    ```
-10. **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → Step 7, which briefs the next group or goes to Step 10 when none is open.
+10. **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → clear `GATE_RERUN`, then Step 7 without asking, which briefs the next group or goes to Step 10 when none is open.
 11. **If** `VERIFY_VERDICT` = CONCERNS **or** `VERIFY_VERDICT` = FAIL **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
     ```bash
     "{BKIT}" counters route --name=VERIFY_ATTEMPT --of=build-plan-verify:current --file="{STATUS}" --workflow=build --group={GROUP} --point=build.verify --continue=within-limit --exceeded=failure-path
     ```
     Hold `value` as `VERIFY_ROUNDS`, `max` as `PAUSE_MAX` and `ask` as `LIMIT_ASK`.
     Set `PAUSE_STEP` = 8 and `PAUSE_POINT` = `build.verify`.
+    **If** `GATE_RERUN` = true **and** `GATE_VERDICT` = FAIL → clear `GATE_RERUN`, `PAUSE_QUESTION` = `VERIFY_GAPS`, `PAUSE_LOOP` = `verify` → **Decision Pause** — the re-run gate is still red, so the pause is asked again with fresh numbers.
     **If** `LIMIT_ASK` = true **and** either exit 1 **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_LOOP` = `verify`, so the pause also asks whether to try another round.
     Route — first match wins:
-    - **If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides.
-    - **If** exit 1 → **Failure Path** — `build.verify.maxAttempts` is used up.
-    - **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** either `VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
-    - **If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 9, for a round that fixes only the fixable gaps.
-    - **If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9. Fixable gaps and group-gate failures are always fixed, never asked.
-    - **If** exit 0 **and** `VERIFY_VERDICT` = PASS **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — no round is left to fix the group gate, so the owner decides whether to try another round.
-    - **If** exit 0 **and** `VERIFY_VERDICT` = PASS → **Failure Path** — no round is left to fix the group gate.
-    - **If** exit 0 → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — no round is left, so the owner decides the open gaps.
+    - **If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides. `GATE_RERUN` cleared.
+    - **If** exit 1 → **Failure Path** — `build.verify.maxAttempts` is used up. `GATE_RERUN` cleared.
+    - **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** either `VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**. `GATE_RERUN` cleared.
+    - **If** exit 0 **and** `VERIFY_VERDICT` = FAIL → Step 9, for a round that fixes only the fixable gaps. `GATE_RERUN` cleared.
+    - **If** exit 0 **and** `VERIFY_ROUNDS` < `PAUSE_MAX` → Step 9. Fixable gaps and group-gate failures are always fixed, never asked. `GATE_RERUN` cleared.
+    - **If** exit 0 **and** `VERIFY_VERDICT` = PASS **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — no round is left to fix the group gate, so the owner decides whether to try another round. `GATE_RERUN` cleared.
+    - **If** exit 0 **and** `VERIFY_VERDICT` = PASS → **Failure Path** — no round is left to fix the group gate. `GATE_RERUN` cleared.
+    - **If** exit 0 → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — no round is left, so the owner decides the open gaps. `GATE_RERUN` cleared.
     - **Else** → **Failure Path**.
 12. **Else** → **Failure Path**.
 
@@ -818,7 +830,7 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    ```
    Exit 1 means the attempt changed no source file.
    Route — first match wins:
-   - **If** exit 1 **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+   - **If** exit 1 **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS`. **If** `GATE_VERDICT` = FAIL → also `PAUSE_LOOP` = `verify`, so the pause asks the loop question about the red gate → **Decision Pause**.
    - **If** exit 0 → re-run Step 8.
    - **Else** → **Failure Path**.
 
@@ -1016,6 +1028,7 @@ This step checks the whole feature against the plan after the last group, and ag
    "{BKIT}" steps finish --workflow=build --step=build-run-tests --file="{STATUS}" --verdict={TEST_VERDICT} {FAILURES_FLAG} --scope="{TEST_SCOPE}" --attempt=next --artifact="docs/plans/{YYYYMM}/logs/{FID}/run-tests-<attempt>.md" --clamp-log="build-run-tests:<attempt>" --number=12 --post --title="Run Tests" --message="chore({FID}): run-tests attempt <attempt>"
    ```
 4. Route:
+   - **If** `TEST_VERDICT` = PASS **and** `GATE_RERUN` is set → clear `GATE_RERUN`, then Step 15 without asking.
    - **If** `TEST_VERDICT` = PASS → Step 15.
    - **If** `TEST_VERDICT` = FAIL → route on the test rounds:
      ```bash
@@ -1023,6 +1036,7 @@ This step checks the whole feature against the plan after the last group, and ag
      ```
      Hold `value` as `TEST_ROUNDS`, `max` as `PAUSE_MAX` and `ask` as `LIMIT_ASK`.
      Route:
+     - **If** `GATE_RERUN` = true → clear `GATE_RERUN`, `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause** — the re-run is still red, so the pause is asked again with fresh numbers.
      - **If** `LIMIT_ASK` = true **and** either exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause** — `build.tests.maxAttempts` is used up, so the owner decides whether to try another round.
      - **If** exit 1 **or** `TEST_ROUNDS` = `PAUSE_MAX` → **Failure Path** — `build.tests.maxAttempts` is used up, so no round is left.
      - **If** exit 0 → read the loop's progress.

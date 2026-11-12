@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import type { Step } from "../../ledgers/status";
-import { loopTrend } from "./counters";
+import { loopProgress, loopTrend } from "./counters";
 import { ASK_POINTS } from "../../shared/settings";
 
 const dirs: string[] = [];
@@ -921,6 +921,102 @@ describe("bkit counters progress", () => {
 
   it("exits 3 on a missing file", async () => {
     expect((await progress("/nonexistent/status.jsonl")).code).toBe(3);
+  });
+});
+
+describe("loopProgress with a gate", () => {
+  const verify = (at: string, attempt: number, failures: number) =>
+    done("build", "build-plan-verify", at, {
+      failures,
+      attempt,
+      group: 1,
+      parentSha: `sha${attempt}`,
+    });
+  const gate = (
+    at: string,
+    attempt: number,
+    verdict: string,
+    failures: number | null,
+    step = "build-group-gate-1",
+  ) => ({
+    type: "test-run",
+    workflow: "build",
+    at,
+    step,
+    attempt,
+    run: 1,
+    verdict,
+    exitCode: verdict === "FAIL" ? 1 : 0,
+    failures,
+    scope: "gate",
+    log: "x.log",
+  });
+  const progress = (file: string) => ({
+    code: 0,
+    json: loopProgress(
+      file,
+      path.dirname(file),
+      "build",
+      "build-plan-verify",
+      "build-plan-gaps-remediate",
+      1,
+      false,
+      "build-group-gate",
+    ),
+  });
+
+  it("adds the group gate's failing tests to each verify round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      gate("2026-10-01T00:09:00Z", 1, "FAIL", 3),
+      verify("2026-10-01T00:10:00Z", 1, 0),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 3),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.code).toBe(0);
+    expect(r.json.counts).toBe("3 → 3");
+    expect(r.json.gateCounts).toBe("3 → 3");
+    expect(r.json.rounds.map((x: { gateFailures?: number | null }) => x.gateFailures)).toEqual([
+      3, 3,
+    ]);
+  });
+
+  it("a red gate row with no failure count makes the round unknown", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 2),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", null),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.counts).toBe("2 → ?");
+    expect(r.json.rounds[1].failures).toBeNull();
+    expect(r.json.trend).toBe("stuck");
+  });
+
+  it("a red gate row with 0 counted failures makes the round unknown", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 2),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 0),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.counts).toBe("2 → ?");
+    expect(r.json.trend).toBe("stuck");
+  });
+
+  it("a verify round whose gate did not run adds no gate failures", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 1, 0),
+      gate("2026-10-01T00:29:00Z", 2, "FAIL", 3),
+      verify("2026-10-01T00:30:00Z", 2, 0),
+    ]);
+    const r = progress(file);
+    expect(r.json.gateCounts).toBe("0 → 3");
+    expect(r.json.counts).toBe("0 → 3");
   });
 });
 

@@ -30,6 +30,8 @@ if (process.argv[2] === "install") {
 } else {
   const script = pkg.scripts?.[process.argv[2]];
   if (typeof script !== "string" || !script.trim()) process.exit(2);
-  const result = spawnSync("/bin/sh", ["-c", script], { stdio: "inherit" });
+  const result = spawnSync("/bin/sh", ["-c", script, "sh", ...process.argv.slice(3)], {
+    stdio: "inherit",
+  });
   process.exit(result.status ?? 1);
 }

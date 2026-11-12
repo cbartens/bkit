@@ -247,7 +247,7 @@ const tail = (text: string) => text.trim().split("\n").slice(-20).join("\n");
  * the signal would. Without the listeners Node dies on the signal and leaves the base
  * worktree registered in the repo.
  */
-async function withCleanup<T>(body: () => T, cleanup: () => void): Promise<T> {
+export async function withCleanup<T>(body: () => T, cleanup: () => void): Promise<T> {
   const received: NodeJS.Signals[] = [];
   const onSignal = (sig: NodeJS.Signals) => received.push(sig);
   for (const sig of CLEANUP_SIGNALS) process.on(sig, onSignal);

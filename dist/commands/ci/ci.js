@@ -198,7 +198,7 @@ const tail = (text) => text.trim().split("\n").slice(-20).join("\n");
  * the signal would. Without the listeners Node dies on the signal and leaves the base
  * worktree registered in the repo.
  */
-async function withCleanup(body, cleanup) {
+export async function withCleanup(body, cleanup) {
     const received = [];
     const onSignal = (sig) => received.push(sig);
     for (const sig of CLEANUP_SIGNALS)

@@ -27,6 +27,7 @@ _(refreshed 2026-11-11T00:05:39Z)_
 _(refreshed 2026-11-11T02:02:24Z)_
 _(refreshed 2026-11-11T02:42:15Z)_
 _(refreshed 2026-11-11T07:02:56Z)_
+_(refreshed 2026-11-11T07:16:20Z)_
 
 ### Design
 
@@ -62,6 +63,7 @@ _(refreshed 2026-11-11T07:02:56Z)_
 | 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794294436861 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794356955782 |
+| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 
 ### Build
 
@@ -72,6 +74,8 @@ _(refreshed 2026-11-11T07:02:56Z)_
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 | 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
+| 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
 
 ### Debug
 

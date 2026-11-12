@@ -814,6 +814,32 @@ describe("step conditionality", () => {
   });
 });
 
+describe("resume re-run of a red group gate", () => {
+  it("reports no hole for a build-decision row followed by a second build-group-gate row under the same verify attempt", () => {
+    const md = [
+      "## 🧠 Step 1 — Start",
+      '"{BKIT}" steps done --step=build-start-workflow',
+      "## 🧠 Step 8 — Verify",
+      '"{BKIT}" steps finish --step=build-plan-verify',
+      '"{BKIT}" steps finish --step=build-group-gate',
+      '"{BKIT}" steps finish --step=build-decision',
+      "## 🧠 Step 17 — Close",
+      '"{BKIT}" steps done --step=build-close-workflow',
+    ].join("\n");
+    const rows = [
+      { step: "build-start-workflow" },
+      { step: "build-plan-verify", attempt: 1, group: 1 },
+      { step: "build-group-gate", attempt: 1, group: 1, verdict: "FAIL" },
+      { step: "build-decision", attempt: 1 },
+      { step: "build-group-gate", attempt: 1, group: 1, verdict: "PASS" },
+      { step: "build-close-workflow" },
+    ].map((r) => ({ type: "step-done", workflow: "build", ...r }));
+    const report = auditRun(rows, "build", md);
+    expect(report.missing).toEqual([]);
+    expect(report.unexpected).toEqual([]);
+  });
+});
+
 describe("CLI sweep summary", () => {
   const capture = (args: string[]): string => {
     const originalWrite = process.stdout.write.bind(process.stdout);

@@ -10,13 +10,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  isNamedCase,
-  judgeGreen,
-  judgeRed,
-  parseJunit,
-  REPORT_ENV,
-} from "../../commands/workflow/tests.js";
+import { isNamedCase, judgeGreen, judgeRed } from "../../commands/workflow/tests.js";
+import { parseJunit, REPORT_ENV } from "../../commands/workflow/junit.js";
 
 const ROOT = process.cwd();
 

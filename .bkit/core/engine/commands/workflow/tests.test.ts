@@ -25,7 +25,6 @@ import {
   gateScope,
   judgeGreen,
   judgeRed,
-  parseJunit,
   readTestFirst,
   redEntries,
   resolveGate,
@@ -34,8 +33,8 @@ import {
   testBlock,
   testSpan,
   testsCommand,
-  type JunitCase,
 } from "./tests";
+import { countReportFailures, parseJunit, reportFailures, type JunitCase } from "./junit";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -715,15 +714,31 @@ describe("parseJunit", () => {
       ),
     );
     expect(cases).toEqual<JunitCase[]>([
-      { name: "clamp > passes", state: "passed", message: "", detail: "" },
+      {
+        name: "clamp > passes",
+        state: "passed",
+        message: "",
+        detail: "",
+        classname: "f",
+        file: null,
+      },
       {
         name: `clamp > ${NAME}`,
         state: "failure",
         message: "expected +0 to be 5 // Object.is & co",
         detail: "trace",
+        classname: "f",
+        file: null,
       },
-      { name: "boom", state: "error", message: "TypeError", detail: "" },
-      { name: "later", state: "skipped", message: "", detail: "" },
+      {
+        name: "boom",
+        state: "error",
+        message: "TypeError",
+        detail: "",
+        classname: null,
+        file: null,
+      },
+      { name: "later", state: "skipped", message: "", detail: "", classname: null, file: null },
     ]);
   });
 
@@ -735,12 +750,21 @@ describe("parseJunit", () => {
       ),
     );
     expect(cases).toEqual<JunitCase[]>([
-      { name: "t", state: "failure", message: "m", detail: "expected 12 <total> to be 0" },
+      {
+        name: "t",
+        state: "failure",
+        message: "m",
+        detail: "expected 12 <total> to be 0",
+        classname: null,
+        file: null,
+      },
       {
         name: "u",
         state: "failure",
         message: "",
         detail: "AssertionError: expected 1\n  at u.test.ts:4",
+        classname: null,
+        file: null,
       },
     ]);
   });
@@ -758,9 +782,44 @@ describe("parseJunit", () => {
     ]);
   });
 
+  it("keeps each case's classname and file attribute", () => {
+    const cases = parseJunit(
+      junit(
+        `<testcase classname="a.test.ts" file="src/a.test.ts" name="one"/>`,
+        `<testcase name="two"><failure message="m"/></testcase>`,
+      ),
+    );
+    expect(cases.map((c) => [c.name, c.classname, c.file])).toEqual([
+      ["one", "a.test.ts", "src/a.test.ts"],
+      ["two", null, null],
+    ]);
+  });
+
   it("no testcase elements -> empty", () => {
     expect(parseJunit("<testsuites/>")).toEqual([]);
     expect(parseJunit("not xml")).toEqual([]);
+  });
+});
+
+describe("reportFailures", () => {
+  it("returns the failing and erroring cases of every report, or null with none", () => {
+    const dir = tmp("bkit-report-failures-");
+    expect(reportFailures(dir)).toBeNull();
+    fs.mkdirSync(path.join(dir, "sub"));
+    fs.writeFileSync(path.join(dir, "a.xml"), junit(passed("ok"), failed("bad one")));
+    fs.writeFileSync(
+      path.join(dir, "sub", "b.xml"),
+      junit(`<testcase name="boom"><error message="TypeError"/></testcase>`, skipped("later")),
+    );
+    const found = reportFailures(dir);
+    expect(found?.map((c) => [c.name, c.state]).sort()).toEqual([
+      ["bad one", "failure"],
+      ["boom", "error"],
+    ]);
+    expect(countReportFailures(dir)).toBe(2);
+    const clean = tmp("bkit-report-clean-");
+    fs.writeFileSync(path.join(clean, "c.xml"), junit(passed("ok")));
+    expect(reportFailures(clean)).toBeNull();
   });
 });
 

@@ -172,6 +172,10 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "test-blocks.ts"),
   // The `tests changed` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-changed.ts"),
+  // The `tests base` verb, registered on `bkit tests` in tests.ts.
+  path.join("commands", "workflow", "tests-base.ts"),
+  // The JUnit reader and one-file test runner, read by `tests` and the base-commit check.
+  path.join("commands", "workflow", "junit.ts"),
   // The pinned-checksum check behind `ci pins`.
   path.join("commands", "ci", "pins.ts"),
   // Committed-tree gate receipts used by `ci push-gate`.

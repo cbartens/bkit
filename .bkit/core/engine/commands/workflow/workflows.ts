@@ -252,6 +252,7 @@ export interface OpenDecision {
   verifyAttempt: number | null;
   testAttempt: number | null;
   plan: string | null;
+  gate: string | null;
 }
 
 /**
@@ -278,6 +279,9 @@ export function openDecision(
     const field = (key: string) =>
       new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
     if (field("Status") !== "OPEN") continue;
+    // `Gate:` counts only in the header block (the lines before the first blank line).
+    const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
+    const gate = /^Gate:[ \t]*(.+?)[ \t]*$/m.exec(header)?.[1] ?? null;
     const num = (key: string) => {
       const v = field(key);
       return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
@@ -292,6 +296,7 @@ export function openDecision(
       verifyAttempt: num("Verify attempt"),
       testAttempt: num("Test attempt"),
       plan: field("Plan"),
+      gate,
     };
   }
   return null;
@@ -2082,7 +2087,7 @@ export const workflowsCommand: CommandSpec = {
         run: "which run of the workflow this is (1-based)",
         lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
         openDecision:
-          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
+          "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
       },
       textOmit: ["row"],
       exitCodes: {

@@ -172,13 +172,14 @@ interface ComposeItem {
 
 const LOOPS: Record<
   string,
-  { title: string; check: string; fix: string; point: string; sinceClean?: true }
+  { title: string; check: string; fix: string; point: string; sinceClean?: true; gate?: string }
 > = {
   verify: {
     title: "Verify",
     check: "build-plan-verify",
     fix: "build-plan-gaps-remediate",
     point: "verify",
+    gate: "build-group-gate",
   },
   // The whole-feature check reopens after each clean round, so its loop starts there.
   holistic: {
@@ -196,11 +197,67 @@ const LOOPS: Record<
   },
 };
 
+interface BaseCheck {
+  verdict: "all" | "some" | "none" | "unknown";
+  reason: string | null;
+  base: string | null;
+  source: string | null;
+  failing: number;
+  baseRed: number;
+  branch: number;
+  undetermined: number;
+  adopt: boolean;
+}
+
+/** The `bkit tests base` output, checked field by field; a bad file is a usage error naming it. */
+function readBaseCheck(file: string): BaseCheck {
+  const read = readJsonFile(file);
+  if (!read.ok) throw new CommandError(EXIT.USAGE, `--base-check ${file} is missing or not JSON`);
+  const o = read.value as Record<string, unknown> | null;
+  const bad = (field: string, want: string) =>
+    new CommandError(EXIT.USAGE, `--base-check ${file}: field "${field}" ${want}`);
+  if (typeof o !== "object" || o === null || Array.isArray(o))
+    throw new CommandError(EXIT.USAGE, `--base-check ${file} must hold a JSON object`);
+  const verdict = o.verdict;
+  if (verdict !== "all" && verdict !== "some" && verdict !== "none" && verdict !== "unknown")
+    throw bad("verdict", "must be all, some, none or unknown");
+  const { failing, baseRed, adopt } = o;
+  const count = (k: string, fallback: number): number => {
+    const v = o[k];
+    if (v === undefined) return fallback;
+    if (typeof v !== "number" || !Number.isFinite(v)) throw bad(k, "must be a number");
+    return v;
+  };
+  if (typeof failing !== "number" || !Number.isFinite(failing))
+    throw bad("failing", "must be a number");
+  if (typeof baseRed !== "number" || !Number.isFinite(baseRed))
+    throw bad("baseRed", "must be a number");
+  if (typeof adopt !== "boolean") throw bad("adopt", "must be true or false");
+  const text = (k: string): string | null => {
+    const v = o[k];
+    if (v === null) return null;
+    if (typeof v !== "string") throw bad(k, "must be a string or null");
+    return v;
+  };
+  return {
+    verdict,
+    reason: text("reason"),
+    base: text("base"),
+    source: text("source"),
+    failing,
+    baseRed,
+    branch: count("branch", failing - baseRed),
+    undetermined: count("undetermined", 0),
+    adopt,
+  };
+}
+
 function composeItems(raw: unknown): ComposeItem[] {
   if (!Array.isArray(raw)) throw new CommandError(EXIT.USAGE, "--items must hold a JSON array");
   return raw.map((r, i) => {
     const o = (r ?? {}) as Record<string, unknown>;
-    const s = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : "");
+    const s = (k: string) =>
+      typeof o[k] === "string" ? (o[k] as string).replace(/[\r\n]+/g, " ").trim() : "";
     const options = Array.isArray(o.options) ? o.options.filter((x) => typeof x === "string") : [];
     if (s("title") === "" || s("question") === "" || options.length === 0)
       throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
@@ -352,6 +409,11 @@ export const decisionsCommand: CommandSpec = {
         { name: "group", type: "string", help: "with --loop=verify: the task group" },
         { name: "attempt", type: "string", help: "with --loop: the attempt just failed" },
         { name: "max", type: "string", help: "with --loop: the point's maxAttempts" },
+        {
+          name: "base-check",
+          type: "string",
+          help: "with --loop: the `bkit tests base` output JSON; adds the base-commit line and steers the recommendation",
+        },
       ],
       output: {
         file: "the decision file written",
@@ -371,6 +433,9 @@ export const decisionsCommand: CommandSpec = {
           if (!read.ok) throw new CommandError(EXIT.USAGE, "--items is missing or not JSON");
           items = composeItems(read.value);
         }
+        const baseFlag = str(ctx.flags.baseCheck);
+        const baseCheck =
+          baseFlag === undefined ? undefined : readBaseCheck(path.resolve(ctx.cwd, baseFlag));
         const lines = ["Status: OPEN", ...headers.filter((h) => !h.startsWith("Status:")), ""];
         let loopRecommended: string | null = null;
         const loopName = str(ctx.flags.loop);
@@ -388,6 +453,7 @@ export const decisionsCommand: CommandSpec = {
             loop.fix,
             positiveInt(ctx.flags.group, "group"),
             loop.sinceClean === true,
+            loop.gate,
           );
           const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
           const max = str(ctx.flags.max) ?? "?";
@@ -399,16 +465,49 @@ export const decisionsCommand: CommandSpec = {
             worse: "More problems than the first round.",
           }[p.trend];
           loopRecommended = p.recommend === "stop" ? "Decide" : "Try again";
+          const trendReason =
+            loopRecommended === "Try again"
+              ? "the last round made progress"
+              : "another round is unlikely to close the remaining items";
+          let reason = trendReason;
+          let baseLine: string[] = [];
+          if (baseCheck !== undefined) {
+            const b = baseCheck;
+            const at = b.base ?? "unknown";
+            baseLine = [
+              b.verdict === "unknown"
+                ? `Also red on base ${at}: can't tell (${b.reason ?? "no reason given"})`
+                : `Also red on base ${at}: ${b.baseRed} of ${b.failing} (${b.source ?? "unknown"} run)`,
+            ];
+            if (b.verdict === "all") {
+              loopRecommended = items.length > 0 ? "Decide" : "Stop";
+              reason = `all ${b.failing} failing tests fail on \`dev\` too, so no round here can fix them. Fix \`dev\`, then resume. If the gate is still red after \`dev\` is fixed and the run resumed, the rest comes from this branch, and the gate re-run on resume shows it.${b.adopt ? " This run has no worktrees: merge \`dev\` into the branch before resuming." : ""}`;
+            } else if (b.verdict === "some") {
+              const unchecked =
+                b.undetermined > 0
+                  ? ` ${b.undetermined} could not be checked: ${b.reason ?? "no reason given"}.`
+                  : "";
+              reason = `a round can fix ${b.branch} of ${b.failing}; the build will still stop on the ${b.baseRed} from \`dev\`.${unchecked} ${trendReason}`;
+            } else if (b.verdict === "none") {
+              reason = `the failures come from this branch, so a round can fix them. ${trendReason}`;
+            } else {
+              reason = `cause unknown: ${b.reason ?? "no reason given"}. ${trendReason}`;
+            }
+          }
           lines.push(
             `build ${loop.point}: attempt ${attempt} of ${max}`,
             "",
             "## Progress",
             "",
             `Problems after each round: ${p.counts || "none recorded"}`,
+            ...(p.gateCounts === undefined
+              ? []
+              : [`Group gate failures after each round: ${p.gateCounts}`]),
             `Code changed: ${changed}`,
             `Strategy: ${p.lastStrategy ?? "none"} → next ${p.nextStrategy}${p.finalSpent ? " (FINAL already used)" : ""}`,
             `Minutes per round: ${p.minutesPerRound ?? "unknown"}`,
             `Trend: ${p.trend}`,
+            ...baseLine,
             "",
             ...itemLines(1, {
               title: loop.title,
@@ -419,10 +518,7 @@ export const decisionsCommand: CommandSpec = {
               options: items.length > 0 ? ["Try again", "Decide"] : ["Try again", "Stop"],
               recommended:
                 items.length > 0 || loopRecommended === "Try again" ? loopRecommended : "Stop",
-              reason:
-                loopRecommended === "Try again"
-                  ? "the last round made progress"
-                  : "another round is unlikely to close the remaining items",
+              reason,
             }),
             "",
           );
@@ -450,7 +546,7 @@ export const decisionsCommand: CommandSpec = {
       use: "workflow",
       flags: [
         { name: "file", type: "string", required: true, help: "the decision file" },
-        { name: "by", type: "string", required: true, help: "headless | owner" },
+        { name: "by", type: "string", required: true, help: "headless | owner | rerun" },
         { name: "q", type: "string", help: "--by=owner: the question number" },
         { name: "confirm", type: "boolean", help: "--by=owner: confirm the assumed Accept" },
         { name: "reject", type: "boolean", help: "--by=owner: reject the assumed Accept" },
@@ -497,7 +593,43 @@ export const decisionsCommand: CommandSpec = {
             ctx.log(`hard blockers need the owner: Q${r.hardBlockers.join(", Q")}`);
           return r.hardBlockers.length > 0 ? EXIT_HARD_BLOCKERS : EXIT.OK;
         }
-        if (by !== "owner") throw new CommandError(EXIT.USAGE, "--by must be headless or owner");
+        if (by === "rerun") {
+          const name = path.basename(file);
+          if (!/^Gate:[ \t]*FAIL\b/m.test(text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? ""))
+            throw new CommandError(EXIT.USAGE, `${name} has no Gate: FAIL header`);
+          const status = /^Status:[ \t]*(\S+)/m.exec(text)?.[1] ?? "OPEN";
+          if (status !== "OPEN")
+            throw new CommandError(EXIT.USAGE, `${name} is Status: ${status}, not OPEN`);
+          const head = text.split(ITEM_SPLIT, 1)[0] ?? "";
+          const hasLoop = /^## Progress$/m.test(head);
+          const undecided = parseDecisionItems(text)
+            .filter(
+              (i) =>
+                (hasLoop ? i.n !== 1 : true) && i.decision === null && !i.rejected && !i.deferred,
+            )
+            .map((i) => `Q${i.n}`);
+          if (!hasLoop)
+            throw new CommandError(
+              EXIT.USAGE,
+              `${name}: Q1 is not the loop question (no ## Progress block), so a re-run cannot answer it; undecided: ${undecided.join(", ") || "none"}`,
+            );
+          if (undecided.length > 0)
+            throw new CommandError(
+              EXIT.USAGE,
+              `${name} has undecided questions besides the loop question: ${undecided.join(", ")}`,
+            );
+          const out = withStatus(
+            addUnder(text, 1, [
+              `Decision: Re-run gate — the owner resumed the run, so the gate runs again first (${today()})`,
+            ]),
+            "DECIDED",
+          );
+          fs.writeFileSync(file, out, "utf-8");
+          ctx.emit({ status: "DECIDED" });
+          return EXIT.OK;
+        }
+        if (by !== "owner")
+          throw new CommandError(EXIT.USAGE, "--by must be headless, owner or rerun");
         const n = positiveInt(ctx.flags.q, "q");
         const reason = str(ctx.flags.reason);
         if (

@@ -563,8 +563,65 @@ describe("bkit workflows start — resume facts", () => {
       group: 2,
       verifyAttempt: 3,
       testAttempt: null,
+      gate: null,
       plan: `docs/plans/${M}/${FID}-plan.md`,
     });
+  });
+
+  it("openDecision carries the Gate header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({ decision: 1, gate: "FAIL" });
+  });
+
+  it("openDecision gate is null without the header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).not.toBeNull();
+    expect(r.json.openDecision.gate).toBeNull();
+  });
+
+  it("openDecision gate ignores a Gate line below the header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    write(
+      cwd,
+      `${REL}/build-decision-1-1.md`,
+      [
+        "Status: OPEN",
+        "Question: CHALLENGE",
+        "From: challenge",
+        "",
+        "**Q1 — Task 3:** Fix it?",
+        "Gate: FAIL",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).not.toBeNull();
+    expect(r.json.openDecision.gate).toBeNull();
   });
 
   it("reads Test attempt from a tests pause", async () => {

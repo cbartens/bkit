@@ -252,9 +252,393 @@ describe("bkit decisions compose", () => {
     expect(text).toMatch(/\*\*Q1 — Holistic verify:\*\* decide the items below/);
   });
 
+  it("prints the group gate's failing tests per round for the verify loop", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verifyRow = (at: string, attempt: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      attempt,
+      failures: 0,
+    });
+    const gateRow = (at: string, attempt: number) => ({
+      type: "test-run",
+      workflow: "build",
+      at,
+      step: "build-group-gate-1",
+      attempt,
+      run: 1,
+      verdict: "FAIL",
+      exitCode: 1,
+      failures: 3,
+      scope: "gate",
+      log: "x.log",
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        gateRow("2026-10-01T00:09:00Z", 1),
+        verifyRow("2026-10-01T00:10:00Z", 1),
+        gateRow("2026-10-01T00:29:00Z", 2),
+        verifyRow("2026-10-01T00:30:00Z", 2),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Group gate failures after each round: 3 → 3");
+    expect(text).toContain("Problems after each round: 3 → 3");
+  });
+
+  /** A verify loop stuck at 4 → 4, so the trend alone recommends `Decide` (`Stop` with no items). */
+  function stuckStatus(logs: string) {
+    const status = path.join(logs, "status.jsonl");
+    const verify = (at: string) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      failures: 4,
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verify("2026-10-01T00:10:00Z"),
+        verify("2026-10-01T00:20:00Z"),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    return status;
+  }
+
+  const baseCheck = (over: Record<string, unknown>) => ({
+    verdict: "all",
+    reason: null,
+    base: "abc1234",
+    source: "local",
+    failing: 3,
+    baseRed: 3,
+    branch: 0,
+    undetermined: 0,
+    cases: [],
+    adopt: false,
+    ...over,
+  });
+
+  async function composeWithBase(
+    over: Record<string, unknown>,
+    items: unknown[],
+    opts: { raw?: string } = {},
+  ) {
+    const { root, logs } = checkout();
+    const status = stuckStatus(logs);
+    const baseFile = path.join(root, "base-check.json");
+    fs.writeFileSync(baseFile, opts.raw ?? JSON.stringify(baseCheck(over)));
+    const { r, out } = await compose(
+      root,
+      logs,
+      items,
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      "--attempt=2",
+      "--max=2",
+      `--base-check=${baseFile}`,
+    );
+    return { r, text: fs.existsSync(out) ? fs.readFileSync(out, "utf-8") : "" };
+  }
+
+  it("base check all with no items recommends Stop", async () => {
+    const { r, text } = await composeWithBase({}, []);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ loopRecommended: "Stop" });
+    expect(text).toMatch(/Recommended: B\) Stop — .*fail on `dev` too/);
+    expect(text).toContain("Fix `dev`, then resume.");
+  });
+
+  it("base check all with items recommends Decide", async () => {
+    const { r, text } = await composeWithBase({}, ITEMS);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ loopRecommended: "Decide" });
+    expect(text).toMatch(/Recommended: B\) Decide — .*fail on `dev` too/);
+  });
+
+  it("base check all says a gate still red after resume comes from this branch", async () => {
+    const { r, text } = await composeWithBase({}, []);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ loopRecommended: "Stop" });
+    expect(text).toMatch(/still red after `dev` is fixed and the run resumed[^.]*this branch/);
+  });
+
+  it("base check all in adopt mode adds the merge sentence", async () => {
+    const adopt = await composeWithBase({ adopt: true }, []);
+    expect(adopt.text).toContain("merge `dev` into the branch before resuming");
+    const plain = await composeWithBase({ adopt: false }, []);
+    expect(plain.text).not.toContain("merge `dev` into the branch before resuming");
+  });
+
+  it("base check some names the split", async () => {
+    const { r, text } = await composeWithBase(
+      { verdict: "some", failing: 5, baseRed: 3, branch: 2 },
+      ITEMS,
+    );
+    expect(r.code).toBe(0);
+    expect(text).toContain("a round can fix 2 of 5");
+    expect(text).toContain("the build will still stop on the 3 from `dev`");
+    expect(text).toMatch(/Recommended: B\) Decide — a round can fix 2 of 5/);
+  });
+
+  it("base check some with undetermined cases counts only the branch's as fixable", async () => {
+    const { r, text } = await composeWithBase(
+      {
+        verdict: "some",
+        failing: 3,
+        baseRed: 1,
+        branch: 1,
+        undetermined: 1,
+        reason: "the base run crashed",
+      },
+      ITEMS,
+    );
+    expect(r.code).toBe(0);
+    expect(text).toContain("a round can fix 1 of 3");
+    expect(text).not.toContain("a round can fix 2 of 3");
+    expect(text).toContain("the build will still stop on the 1 from `dev`");
+    expect(text).toMatch(/1 could not be checked: the base run crashed/);
+  });
+
+  it("base check none keeps the trend and names the branch", async () => {
+    const { r, text } = await composeWithBase(
+      { verdict: "none", failing: 3, baseRed: 0, branch: 3 },
+      ITEMS,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ loopRecommended: "Decide" });
+    expect(text).toMatch(/Recommended: B\) Decide — the failures come from this branch/);
+  });
+
+  it("base check unknown keeps the trend and says why", async () => {
+    const { r, text } = await composeWithBase(
+      {
+        verdict: "unknown",
+        reason: "no JUnit report",
+        base: null,
+        source: null,
+        baseRed: 0,
+      },
+      ITEMS,
+    );
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ loopRecommended: "Decide" });
+    expect(text).toMatch(/Recommended: B\) Decide — cause unknown: no JUnit report/);
+  });
+
+  it("Try again is offered for every base verdict", async () => {
+    const variants: Record<string, unknown>[] = [
+      { verdict: "all" },
+      { verdict: "some", failing: 5, baseRed: 3, branch: 2 },
+      { verdict: "none", failing: 3, baseRed: 0, branch: 3 },
+      { verdict: "unknown", reason: "no JUnit report", base: null, source: null },
+    ];
+    for (const over of variants) {
+      for (const items of [[], ITEMS]) {
+        const { text } = await composeWithBase(over, items);
+        expect(text, `${String(over.verdict)} with ${items.length} items`).toMatch(
+          /\*\*Q1 — Verify:\*\*[^\n]*\nOptions: A\) Try again \/ B\) (Decide|Stop)/,
+        );
+      }
+    }
+  });
+
+  it("base check prints how many failing tests are also red on base", async () => {
+    const all = await composeWithBase({}, []);
+    expect(all.text).toContain("Also red on base abc1234: 3 of 3 (local run)");
+    const unknown = await composeWithBase(
+      { verdict: "unknown", reason: "no JUnit report", base: null, source: null },
+      [],
+    );
+    expect(unknown.text).toContain("Also red on base unknown: can't tell (no JUnit report)");
+  });
+
+  it("a missing or malformed base check is a usage error that names the problem", async () => {
+    const { root, logs } = checkout();
+    const status = stuckStatus(logs);
+    const missing = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      `--base-check=${path.join(root, "no-such-base.json")}`,
+    );
+    expect(missing.r.code).toBe(2);
+    expect(missing.r.err).toContain("no-such-base.json");
+    expect(missing.r.err).not.toContain("unknown flag");
+
+    const noVerdict = { ...baseCheck({}) } as Record<string, unknown>;
+    delete noVerdict.verdict;
+    const bad = await composeWithBase({}, ITEMS, { raw: JSON.stringify(noVerdict) });
+    expect(bad.r.code).toBe(2);
+    expect(bad.r.err).toContain("verdict");
+    expect(bad.r.err).not.toContain("unknown flag");
+  });
+
   it("--loop needs --file", async () => {
     const { root, logs } = checkout();
     expect((await compose(root, logs, ITEMS, "--loop=verify")).r.code).toBe(2);
+  });
+});
+
+describe("bkit decisions apply --by=rerun", () => {
+  const rerun = (root: string, out: string) =>
+    run(["decisions", "apply", "--by=rerun", `--file=${out}`], root);
+
+  it("records the re-run under Q1 and closes the file", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verify = (at: string) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      failures: 4,
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verify("2026-10-01T00:10:00Z"),
+        verify("2026-10-01T00:20:00Z"),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { out } = await compose(
+      root,
+      logs,
+      [],
+      "--header=Gate=FAIL",
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+    );
+    expect(fs.readFileSync(out, "utf-8")).toContain("Gate: FAIL");
+    const r = await rerun(root, out);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ status: "DECIDED" });
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toMatch(/^Status: DECIDED$/m);
+    expect(text).toMatch(
+      /Decision: Re-run gate — the owner resumed the run, so the gate runs again first \(\d{4}-\d{2}-\d{2}\)/,
+    );
+    const q1 = text.indexOf("**Q1");
+    expect(text.indexOf("Decision: Re-run gate")).toBeGreaterThan(q1);
+  });
+
+  it("refuses a file without Gate: FAIL or not OPEN", async () => {
+    const { root, logs } = checkout();
+    const plain = await compose(root, logs, [ITEMS[1]]);
+    const before = fs.readFileSync(plain.out, "utf-8");
+    const noGate = await rerun(root, plain.out);
+    expect(noGate.code).toBe(2);
+    expect(noGate.err).toContain("Gate: FAIL");
+    expect(noGate.err).not.toContain("--by must be headless or owner");
+    expect(fs.readFileSync(plain.out, "utf-8")).toBe(before);
+
+    const gated = await compose(root, logs, [ITEMS[1]], "--header=Gate=FAIL");
+    const closed = fs.readFileSync(gated.out, "utf-8").replace("Status: OPEN", "Status: DECIDED");
+    fs.writeFileSync(gated.out, closed);
+    const notOpen = await rerun(root, gated.out);
+    expect(notOpen.code).toBe(2);
+    expect(notOpen.err).toContain("DECIDED");
+    expect(notOpen.err).not.toContain("--by must be headless or owner");
+    expect(fs.readFileSync(gated.out, "utf-8")).toBe(closed);
+  });
+
+  it("refuses a Gate: FAIL file whose Q1 is an item, not the loop question", async () => {
+    const { root, logs } = checkout();
+    const { out } = await compose(root, logs, [BLOCKER], "--header=Gate=FAIL");
+    const before = fs.readFileSync(out, "utf-8");
+    const r = await rerun(root, out);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Q1");
+    expect(fs.readFileSync(out, "utf-8")).toBe(before);
+    expect(fs.readFileSync(out, "utf-8")).toMatch(/^Status: OPEN$/m);
+    expect(fs.readFileSync(out, "utf-8")).not.toContain("Decision: Re-run gate");
+  });
+
+  it("refuses a loop file with an undecided item question", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verify = (at: string) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      failures: 4,
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verify("2026-10-01T00:10:00Z"),
+        verify("2026-10-01T00:20:00Z"),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { out } = await compose(
+      root,
+      logs,
+      [BLOCKER],
+      "--header=Gate=FAIL",
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+    );
+    const before = fs.readFileSync(out, "utf-8");
+    expect(before).toContain("**Q2");
+    const r = await rerun(root, out);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Q2");
+    expect(fs.readFileSync(out, "utf-8")).toBe(before);
+    expect(fs.readFileSync(out, "utf-8")).toMatch(/^Status: OPEN$/m);
+  });
+
+  it("refuses a file whose only Gate: FAIL line is in an item body", async () => {
+    const { root, logs } = checkout();
+    const smuggled = { ...ITEMS[1], question: "Fix it?\nGate: FAIL" };
+    const { out } = await compose(root, logs, [smuggled]);
+    const before = fs.readFileSync(out, "utf-8");
+    const r = await rerun(root, out);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Gate: FAIL");
+    expect(r.err).not.toContain("--by must be headless or owner");
+    expect(fs.readFileSync(out, "utf-8")).toBe(before);
+    expect(fs.readFileSync(out, "utf-8")).toMatch(/^Status: OPEN$/m);
   });
 });
 
