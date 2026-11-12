@@ -134,6 +134,8 @@ The quoted names are planned test cases, parameterized over the variants in each
 | marks scripts run by unanalysed interpreters as uncertain | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 25 |
 | keeps edit advice beside an off-list fetch | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 26 |
 | analyses dense script sources in linear time | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 27 |
+| flags a script copied into a new directory or by a glob | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 28 |
+| T6 — guardrails.cjs installed mirror is its rendered template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -708,7 +710,31 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
 
 <!-- bkit:group 7 start -->
 
-### TASK GROUP 7: Challenge round 2 findings
+### TASK GROUP 7: Group 6 verify findings
+
+<!-- bkit:task 28 start -->
+
+- [ ] **TASK 28:** An agent makes a directory and copies a script into it in the same command (`mkdir -p /tmp/d && cp tpl.sh /tmp/d && bash /tmp/d/tpl.sh`), or copies a glob into a directory (`cp t*.py sub/ && python3 sub/tpl.py`), and the script's `docs/x.md` write gets no advice and no uncertainty
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js` `markCopied` / `isDirDest` · **Round:** 2
+  - **DONE WHEN:** A `cp` / `mv` destination that an earlier command of the same line creates with `mkdir` (with or without `-p`) is read as a directory, so the copied script is recorded in `st.produced` under `dest/basename` and its run reports what the source writes; when the destination's kind cannot be known, the copy reports `unresolved-target`. A glob or other dynamic source copied into a directory reports `unresolved-target` instead of being skipped with `continue`. Probe today (from `build-plan-verify-6-5.md`): `mkdir -p /tmp/bkp-nd2 && cp tpl.sh /tmp/bkp-nd2 && bash /tmp/bkp-nd2/tpl.sh`, `mkdir bkp-nd && cp tpl.py bkp-nd && python3 bkp-nd/tpl.py`, `cp t*.sh /tmp/ && bash /tmp/tpl.sh` and `cp t*.py /tmp/ && python3 /tmp/tpl.py` are silent, and `mkdir bkp-nd && mv tpl.py bkp-nd && python3 bkp-nd/tpl.py` names only `tpl.py`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `flags a script copied into a new directory or by a glob` fails on `mkdir bkp-nd && cp tpl.py bkp-nd && python3 bkp-nd/tpl.py` and `cp t*.py sub/ && python3 sub/tpl.py` (fixture `tpl.py` holds `open('src/copied.py','w').write('x')`, `sub/` exists) returning text that neither names `src/copied.py` nor matches `UNCERTAIN`.
+
+<!-- bkit:task 28 end -->
+<!-- bkit:task 29 start -->
+
+- [ ] **TASK 29:** The four installed copies of the shell hook (`.claude/hooks/`, `.cursor/hooks/`, `.codex/hooks/`, `.agents/plugins/bkit/hooks/` `bkit-guardrails.cjs`) are one formatting change behind `.bkit/core/hooks/guardrails-shell.js`, so the mirror tests fail and the hooks suite is red
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js` remote-name `else` branch · **Round:** 2
+  - **DONE WHEN:** Every installed `bkit-guardrails.cjs` copy and `.bkit/version` are regenerated from the current source (`pnpm bkit:generate` or `bkit upgrade`), after task 28's source change, so each copy is byte-identical to its rendered template and `bkit check` exits 0. Today the round 4 commit `3976fa040` wraps the remote-name `else` branch onto two lines in the source while all four copies hold it on one line; behaviour is the same, but 3 of 1671 hooks and install tests fail (`build-plan-verify-6-5.md`).
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `T6 — guardrails.cjs installed mirror is its rendered template` fails on the `cursor`, `claude` and `codex` installed copies differing from their rendered template (`… is stale — run pnpm bkit install`).
+
+<!-- bkit:task 29 end -->
+<!-- bkit:group 7 end -->
+
+<!-- bkit:group 8 start -->
+
+### TASK GROUP 8: Challenge round 2 findings
 
 <!-- bkit:task 26 start -->
 
@@ -728,7 +754,7 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
     - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `analyses dense script sources in linear time` fails on `advise("node -e '" + "a;".repeat(125 * 1024) + "'", dir)` taking longer than 1,000 ms to return its advise() result (8.9 s measured), with `permission` `allow`.
 
 <!-- bkit:task 27 end -->
-<!-- bkit:group 7 end -->
+<!-- bkit:group 8 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
