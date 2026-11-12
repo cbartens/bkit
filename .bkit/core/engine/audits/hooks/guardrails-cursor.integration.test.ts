@@ -816,22 +816,40 @@ describe("T6 — guardrails.cjs installed mirror is its rendered template", () =
     ],
   ];
 
-  for (const [host, template, mirror] of PAIRS) {
-    it(`${host}: mirror matches its template`, () => {
-      // bkit's own repo installs every host in PAIRS and tracks the mirrors.
-      expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
-      expect(
-        fs.readFileSync(mirror, "utf-8"),
-        `${mirror} is stale — run \`pnpm bkit install\``,
-      ).toBe(
-        applyTokens(readTemplate(template), {
-          DEFAULT_BRANCH: "",
-          PROJECT_NAME: "",
-          REPO_SLUG: "",
-        }),
-      );
-    });
-  }
+  const mirrorOf = (i: number): { actual: string; rendered: string; path: string } => {
+    const [, template, mirror] = PAIRS[i];
+    // bkit's own repo installs every host in PAIRS and tracks the mirrors.
+    expect(fs.existsSync(mirror), `${mirror} is missing — run \`pnpm bkit install\``).toBe(true);
+    return {
+      actual: fs.readFileSync(mirror, "utf-8"),
+      rendered: applyTokens(readTemplate(template), {
+        DEFAULT_BRANCH: "",
+        PROJECT_NAME: "",
+        REPO_SLUG: "",
+      }),
+      path: mirror,
+    };
+  };
+
+  it("cursor: mirror matches its template", () => {
+    const m = mirrorOf(0);
+    expect(m.actual, `${m.path} is stale — run \`pnpm bkit install\``).toBe(m.rendered);
+  });
+
+  it("claude: mirror matches its template", () => {
+    const m = mirrorOf(1);
+    expect(m.actual, `${m.path} is stale — run \`pnpm bkit install\``).toBe(m.rendered);
+  });
+
+  it("codex: mirror matches its template", () => {
+    const m = mirrorOf(2);
+    expect(m.actual, `${m.path} is stale — run \`pnpm bkit install\``).toBe(m.rendered);
+  });
+
+  it("agents: mirror matches its template", () => {
+    const m = mirrorOf(3);
+    expect(m.actual, `${m.path} is stale — run \`pnpm bkit install\``).toBe(m.rendered);
+  });
 
   it("no host embeds its own copy of the shipped host list", () => {
     // The allowlist artifact is the only source; no hook carries a literal list.

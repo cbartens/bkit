@@ -18,7 +18,7 @@ Plan: `docs/plans/202611/787-show-authoring-rules-plan.md`. Caps: 5 tasks and 25
 | 4 | Challenge round 1 findings | 5 | 5 | 6.7 |
 | 5 | Challenge round 1 findings | 2 | 2 | 3.2 |
 | 6 | Challenge round 2 findings | 5 | 6 | 8.8 |
-| 7 | Group 6 verify findings | 2 | 2 | 3.2 |
+| 7 | Group 6 verify findings | 2 | 5 | 3.7 |
 | 8 | Challenge round 2 findings | 2 | 2 | 3.3 |
 
 ## Tasks
@@ -52,7 +52,7 @@ Plan: `docs/plans/202611/787-show-authoring-rules-plan.md`. Caps: 5 tasks and 25
 | 24 | 6 | 1 | 1 |
 | 25 | 6 | 1 | 1 |
 | 28 | 7 | 1 | 1 |
-| 29 | 7 | 1 | 1 |
+| 29 | 7 | 4 | 1 |
 | 26 | 8 | 1 | 1 |
 | 27 | 8 | 1 | 1 |
 
@@ -66,5 +66,5 @@ None.
 
 ## Planned test names already in use (reported only)
 
-- `docs/plans/202611/787-show-authoring-rules-plan.md:696` TASK 24: `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` already holds a test named "flags a script an earlier copy or move produced" — name the update to it in TEST FIRST, or give the new test a new name
-- `docs/plans/202611/787-show-authoring-rules-plan.md:729` TASK 29: `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` already holds a test named "T6 — guardrails.cjs installed mirror is its rendered template" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/787-show-authoring-rules-plan.md:699` TASK 24: `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` already holds a test named "flags a script an earlier copy or move produced" — name the update to it in TEST FIRST, or give the new test a new name
+- `docs/plans/202611/787-show-authoring-rules-plan.md:723` TASK 28: `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` already holds a test named "flags a script copied into a new directory or by a glob" — name the update to it in TEST FIRST, or give the new test a new name

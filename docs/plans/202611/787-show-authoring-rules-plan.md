@@ -135,7 +135,10 @@ The quoted names are planned test cases, parameterized over the variants in each
 | keeps edit advice beside an off-list fetch | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 26 |
 | analyses dense script sources in linear time | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 27 |
 | flags a script copied into a new directory or by a glob | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 28 |
-| T6 — guardrails.cjs installed mirror is its rendered template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
+| cursor: mirror matches its template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
+| claude: mirror matches its template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
+| codex: mirror matches its template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
+| agents: mirror matches its template | Integration | `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` | 29 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -727,7 +730,10 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
       **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-shell.js` remote-name `else` branch · **Round:** 2
   - **DONE WHEN:** Every installed `bkit-guardrails.cjs` copy and `.bkit/version` are regenerated from the current source (`pnpm bkit:generate` or `bkit upgrade`), after task 28's source change, so each copy is byte-identical to its rendered template and `bkit check` exits 0. Today the round 4 commit `3976fa040` wraps the remote-name `else` branch onto two lines in the source while all four copies hold it on one line; behaviour is the same, but 3 of 1671 hooks and install tests fail (`build-plan-verify-6-5.md`).
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `T6 — guardrails.cjs installed mirror is its rendered template` fails on the `cursor`, `claude` and `codex` installed copies differing from their rendered template (`… is stale — run pnpm bkit install`).
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `cursor: mirror matches its template` fails on `.cursor/hooks/bkit-guardrails.cjs` differing from its rendered template (`… is stale — run pnpm bkit install`).
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `claude: mirror matches its template` fails on `.claude/hooks/bkit-guardrails.cjs` differing from its rendered template.
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `codex: mirror matches its template` fails on `.codex/hooks/bkit-guardrails.cjs` differing from its rendered template.
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `agents: mirror matches its template` fails on `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` differing from its rendered template.
 
 <!-- bkit:task 29 end -->
 <!-- bkit:group 7 end -->
