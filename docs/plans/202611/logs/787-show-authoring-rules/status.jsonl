@@ -869,3 +869,11 @@
 {"type":"engine-call","workflow":"build","at":"2026-11-12T00:05:20Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
 {"type":"engine-action","action":"comment","key":"build/1/build-plan-verify/6/4/comment","hash":"a5b1eb7954e3676204d52be7b657911c5368037d7637c4ebd718f781c6a33959","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6808937962","at":"2026-11-12T00:05:22Z"}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","status":"DONE","at":"2026-11-12T00:05:22Z","parentSha":"29081ec91f5af8ee8a2072489ecf3c1262fa1aa7","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-verify-6-4.md"],"verdict":"CONCERNS","attempt":4,"group":6,"failures":4}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:05:23Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","group","point","continue","exceeded"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:05:24Z","noun":"status","verb":"route","flags":["file","workflow","step","group","require"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:13:38Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:15:33Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:35:41Z","noun":"tests","verb":"changed","flags":["fallback"]}
+{"type":"engine-call","workflow":"build","at":"2026-11-12T00:58:01Z","noun":"steps","verb":"finish","flags":["workflow","step","file","attempt-of","group","agent","artifact","number","post","title","message"]}
+{"type":"engine-action","action":"comment","key":"build/1/build-plan-gaps-remediate/6/4/comment","hash":"1fbe16d64f79f77fe8f7d751d9059f7007fc206b6e03480dd64ae83c5f0b7081","ref":"https://github.com/cbartens/bkit/issues/787#issuecomment-6808937962","at":"2026-11-12T00:58:03Z"}
+{"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","at":"2026-11-12T00:58:03Z","parentSha":"a21c3b8a862df117902720c5ad207938a799c500","artifacts":["docs/plans/202611/logs/787-show-authoring-rules/build-plan-gaps-remediate-6-4-log.md"],"verdict":"CONCERNS","attempt":4,"group":6,"strategy":"FINAL"}

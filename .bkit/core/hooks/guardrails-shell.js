@@ -836,7 +836,17 @@ const FETCH_LONG_VALUE = {
  * Handles bundled short flags, attached or separate values, and `--long=value` / `--long value`.
  */
 function readFetchOptions(program, args) {
-  const res = { outputs: [], outDir: null, remoteName: false, positionals: [], unresolved: false };
+  const res = {
+    outputs: [],
+    outDir: null,
+    remoteName: false,
+    remoteNameAll: false,
+    serverName: false,
+    layout: false,
+    noWrite: false,
+    positionals: [],
+    unresolved: false,
+  };
   const curl = program === "curl";
   const shortValue = FETCH_SHORT_VALUE[program];
   const longValue = FETCH_LONG_VALUE[program];
@@ -879,6 +889,11 @@ function readFetchOptions(program, args) {
       const eq = a.indexOf("=");
       const name = eq < 0 ? a.slice(2) : a.slice(2, eq);
       if (name === "remote-name" || name === "remote-name-all") res.remoteName = true;
+      if (name === "remote-name-all") res.remoteNameAll = true;
+      if (name === "remote-header-name" || name === "content-disposition") res.serverName = true;
+      if (name === "trust-server-names") res.serverName = true;
+      if (!curl && ["recursive", "mirror", "force-directories"].includes(name)) res.layout = true;
+      if (name === "spider" || (curl && name === "head")) res.noWrite = true;
       if (eq >= 0) useLong(name, a.slice(eq + 1));
       else if (longValue.has(name)) {
         if (args[i + 1] === undefined) continue;
@@ -893,6 +908,9 @@ function readFetchOptions(program, args) {
         continue;
       }
       if (curl && c === "O") res.remoteName = true;
+      if (curl && c === "J") res.serverName = true;
+      if (curl && c === "I") res.noWrite = true;
+      if (!curl && (c === "r" || c === "m" || c === "x")) res.layout = true;
       if (shortValue.has(c)) {
         const attached = a.slice(k + 1);
         if (attached !== "") useShort(c, attached);
@@ -1007,13 +1025,23 @@ function evalCommand(cmd, st, depth, cwd) {
         if (!cmd.dyn.has(out) && !dirDyn) markProduced(st, inDir(out), cwd, null);
         else st.uncertain.add("unresolved-target");
       }
-      // Remote-name downloads write the URL's last path segment into the working directory.
-      if ((program === "wget" || opts.remoteName) && opts.outputs.length === 0) {
-        for (const a of opts.positionals) {
-          const m = /^https?:\/\/[^?#]*\/([^/?#]+)(?:[?#].*)?$/.exec(a);
-          if (!m || cmd.dyn.has(a)) continue;
-          if (dirDyn) st.uncertain.add("unresolved-target");
-          else markProduced(st, opts.outDir !== null ? `${opts.outDir}/${m[1]}` : m[1], cwd, null);
+      // Remote-name downloads: record a local name only when it is exactly the URL's last path
+      // segment of a plain http(s) URL; every other file-writing shape is an unresolved target.
+      const remote = program === "wget" || opts.remoteName;
+      if (remote && !opts.noWrite && opts.positionals.length > 0) {
+        const mixed =
+          program === "curl" && opts.outputs.length > 0 && (opts.remoteName || opts.remoteNameAll);
+        const wgetNamed = program === "wget" && opts.outputs.length > 0;
+        if (!wgetNamed) {
+          if (mixed || opts.serverName || opts.layout) st.uncertain.add("unresolved-target");
+          else if (opts.outputs.length === 0) {
+            for (const a of opts.positionals) {
+              const m = /^https?:\/\/[^?#]*\/([^/?#]+)$/.exec(a);
+              if (!m || cmd.dyn.has(a) || dirDyn) st.uncertain.add("unresolved-target");
+              else
+                markProduced(st, opts.outDir !== null ? `${opts.outDir}/${m[1]}` : m[1], cwd, null);
+            }
+          }
         }
       }
       return cwd;
