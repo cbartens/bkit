@@ -81,11 +81,23 @@ function decideShell(cmd, dirs, ctx, session) {
         "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
         `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
-    case "fetch":
+    case "fetch": {
+      const fetchLine = `Command requires confirmation: ${c}`;
       return ask(
         "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
-        `Command requires confirmation: ${c}`,
+        v.edits
+          ? shellEditContext(
+              shellEditAdvisory(v.edits),
+              v.edits,
+              ctx,
+              session,
+              undefined,
+              ADVICE_BUDGETS.cursor,
+              fetchLine,
+            )
+          : fetchLine,
       );
+    }
     default:
       // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
       // naming the edited paths.

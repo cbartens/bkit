@@ -1812,7 +1812,7 @@ function evalInterpreter(cmd, st, lang, args, cwd) {
     source = knownStdin(cmd, st, cwd);
   }
   if (source === null) return;
-  const result = lang === "python" ? analyzePython(source) : analyzeJs(source);
+  const result = lang === "python" ? analyzePython(source, st) : analyzeJs(source, st);
   for (const t of result.writes) addEvidenceTarget(st, t, cwd, true);
   if (result.unknown) st.uncertain.add("unknown-script-effect");
 }
@@ -1821,11 +1821,12 @@ function evalInterpreter(cmd, st, lang, args, cwd) {
  * Tokens of a Python or JS source: `{ k: "id"|"str"|"dstr"|"num"|"p"|"nl", v }`, or null
  * when the text cannot be tokenized. `dstr` is a string that is not a plain literal.
  */
-function tokenizeSource(src, lang) {
+function tokenizeSource(src, lang, st) {
   const out = [];
   let depth = 0;
   const n = src.length;
   for (let i = 0; i < n; i++) {
+    if (st && i % 512 === 0 && evidenceExpired(st)) return null;
     const ch = src[i];
     if (ch === "\n") {
       if (depth === 0) out.push({ k: "nl", v: "\n" });
@@ -1905,6 +1906,7 @@ function tokenizeSource(src, lang) {
     }
     return null;
   }
+  for (let k = 0; k < out.length; k++) out[k].i = k;
   return out;
 }
 
@@ -2070,13 +2072,14 @@ const PY_OS_OK = new Set([
 ]);
 
 /** Python source effects: literal write targets plus whether anything is unrecognized. */
-function analyzePython(src) {
-  const tokens = tokenizeSource(src, "python");
+function analyzePython(src, st) {
+  const tokens = tokenizeSource(src, "python", st);
   if (!tokens) return { writes: [], unknown: true };
   const writes = [];
   const recognized = new Set();
   let unknown = false;
   for (let i = 0; i < tokens.length; i++) {
+    if (i % 512 === 0 && st && evidenceExpired(st)) return { writes, unknown: true };
     const t = tokens[i];
     if (t.k === "id" && t.v === "open" && tokens[i - 1]?.v !== ".") {
       const ok =
@@ -2104,7 +2107,9 @@ function analyzePython(src) {
     }
   }
   const bound = new Set();
+  let stmtCount = 0;
   for (const stmt of splitStatements(tokens)) {
+    if (++stmtCount % 256 === 0 && st && evidenceExpired(st)) return { writes, unknown: true };
     const first = stmt[0];
     if (first.k === "id" && (first.v === "import" || first.v === "from")) {
       const names = [];
@@ -2159,12 +2164,11 @@ function analyzePython(src) {
         const viaPath = recv?.v === "path" && stmt[j - 3]?.v === ".";
         if (recv?.v === "os" && bound.has("os")) {
           if (!PY_OS_OK.has(t.v)) unknown = true;
-        } else if (!viaPath && !PY_ATTR_OK.has(t.v) && !recognized.has(tokens.indexOf(t)))
-          unknown = true;
+        } else if (!viaPath && !PY_ATTR_OK.has(t.v) && !recognized.has(t.i)) unknown = true;
         continue;
       }
       if (t.v === "open") {
-        if (!recognized.has(tokens.indexOf(t))) unknown = true;
+        if (!recognized.has(t.i)) unknown = true;
         continue;
       }
       if (PY_EXPR_WORDS.has(t.v) || PY_BUILTINS.has(t.v) || bound.has(t.v)) continue;
@@ -2303,13 +2307,14 @@ const JS_WRITE_DEST = new Set(["copyFileSync", "copyFile"]);
 const JS_WRITE_TWO = new Set(["renameSync", "rename"]);
 
 /** JavaScript source effects, on the same terms as `analyzePython`. */
-function analyzeJs(src) {
-  const tokens = tokenizeSource(src, "js");
+function analyzeJs(src, st) {
+  const tokens = tokenizeSource(src, "js", st);
   if (!tokens) return { writes: [], unknown: true };
   const writes = [];
   const recognized = new Set();
   let unknown = false;
   for (let i = 0; i < tokens.length; i++) {
+    if (i % 512 === 0 && st && evidenceExpired(st)) return { writes, unknown: true };
     const t = tokens[i];
     if (t.k !== "id" || tokens[i + 1]?.v !== "(") continue;
     const arg1 = tokens[i + 2];
@@ -2336,7 +2341,9 @@ function analyzeJs(src) {
     }
   }
   const bound = new Set();
+  let stmtCount = 0;
   for (const stmt of splitStatements(tokens)) {
+    if (++stmtCount % 256 === 0 && st && evidenceExpired(st)) return { writes, unknown: true };
     const first = stmt[0];
     let start = 0;
     if (first.k === "id" && ["const", "let", "var"].includes(first.v)) {
@@ -2357,7 +2364,7 @@ function analyzeJs(src) {
         continue;
       }
       if (t.k !== "id") continue;
-      const idx = tokens.indexOf(t);
+      const idx = t.i;
       if (stmt[j - 1]?.v === ".") {
         if (!JS_ATTR_OK.has(t.v) && !recognized.has(idx)) unknown = true;
         continue;
@@ -2911,11 +2918,23 @@ function decideShell(cmd, dirs, ctx, session) {
         "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
         `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
       );
-    case "fetch":
+    case "fetch": {
+      const fetchLine = `Command requires confirmation: ${c}`;
       return ask(
         "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
-        `Command requires confirmation: ${c}`,
+        v.edits
+          ? shellEditContext(
+              shellEditAdvisory(v.edits),
+              v.edits,
+              ctx,
+              session,
+              undefined,
+              ADVICE_BUDGETS.cursor,
+              fetchLine,
+            )
+          : fetchLine,
       );
+    }
     default:
       // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
       // naming the edited paths.
