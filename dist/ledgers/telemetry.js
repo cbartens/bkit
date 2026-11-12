@@ -109,6 +109,7 @@ export function resolveRepoSlug(cwd) {
 export const SCHEMA = 3;
 /** The schema {@link normalize} stamps on a row written without one: the shape it builds. */
 const NORMALIZED_SCHEMA = 2;
+export const MODEL_SOURCES = new Set(["observed", "unavailable"]);
 export const VALID_KINDS = new Set([
     "compliance",
     "outcome",
@@ -274,7 +275,8 @@ export function writerProblem(row) {
         if (typeof subagent !== "string" || subagent === "") {
             return "by.subagent must be a non-empty string";
         }
-        if (typeof by["model"] !== "string" || by["model"] === "") {
+        const unavailable = by["modelSource"] === "unavailable" && by["model"] === undefined;
+        if (!unavailable && (typeof by["model"] !== "string" || by["model"] === "")) {
             return `subagent ${subagent} row missing by.model (its prompt's frontmatter model:)`;
         }
         if (writers.subagents === ANY_WRITER || writers.subagents.has(subagent))
@@ -928,13 +930,33 @@ export function validate(event) {
     if (typeof by["step"] !== "string" || by["step"] === "") {
         return { ok: false, reason: "by.step must be a non-empty string" };
     }
-    for (const f of ["workflow", "subagent", "model"]) {
+    for (const f of ["workflow", "subagent", "model", "configuredModel", "host"]) {
         if (by[f] !== undefined && (typeof by[f] !== "string" || by[f] === "")) {
             return { ok: false, reason: `by.${f} must be a non-empty string when present` };
         }
     }
     if (by["model"] !== undefined && by["subagent"] === undefined) {
         return { ok: false, reason: "by.model is set only on subagent rows" };
+    }
+    if (by["modelSource"] !== undefined) {
+        if (typeof by["modelSource"] !== "string" || !MODEL_SOURCES.has(by["modelSource"])) {
+            return { ok: false, reason: "by.modelSource must be observed|unavailable when present" };
+        }
+        if (by["subagent"] === undefined) {
+            return { ok: false, reason: "by.modelSource is set only on subagent rows" };
+        }
+        if (by["modelSource"] === "unavailable" && by["model"] !== undefined) {
+            return {
+                ok: false,
+                reason: "by.model must be absent when by.modelSource is unavailable",
+            };
+        }
+        if (by["modelSource"] === "observed" && by["model"] === undefined) {
+            return { ok: false, reason: "by.modelSource observed needs by.model" };
+        }
+    }
+    if (by["configuredModel"] !== undefined && by["subagent"] === undefined) {
+        return { ok: false, reason: "by.configuredModel is set only on subagent rows" };
     }
     if (e["references"] !== undefined && !Array.isArray(e["references"])) {
         return { ok: false, reason: "references must be an array when present" };
@@ -1263,6 +1285,51 @@ export function fold(events) {
         state.set(key, event);
     }
     return state;
+}
+/** Statuses of the keyed lifecycle kinds: a row with no `status` is ACTIVE. */
+const DEFAULT_ACTIVE_KINDS = new Set(["decision", "knowledge"]);
+/**
+ * The canonical ledger read: parse every line (reporting each unreadable one with its line
+ * number), fold with {@link fold}, and only then apply `filter` to the winners, so an older
+ * row a newer winner superseded is never resurrected. Pure and read-only.
+ */
+export function queryLedger(raw, filter = {}) {
+    const diagnostics = [];
+    const events = [];
+    let lines = 0;
+    raw.split("\n").forEach((text, i) => {
+        const trimmed = text.trim();
+        if (trimmed === "")
+            return;
+        lines++;
+        const obj = parseJson(trimmed);
+        if (!obj.ok)
+            diagnostics.push({ line: i + 1, reason: "malformed-json" });
+        else if (obj.value === null || typeof obj.value !== "object" || Array.isArray(obj.value))
+            diagnostics.push({ line: i + 1, reason: "not-an-object" });
+        else {
+            const row = obj.value;
+            const ts = row["ts"];
+            if (typeof ts !== "number" || !Number.isFinite(ts))
+                diagnostics.push({ line: i + 1, reason: "invalid-timestamp" });
+            else if (typeof row["kind"] !== "string" ||
+                (AGED_KINDS.has(row["kind"]) && (typeof row["key"] !== "string" || row["key"] === "")))
+                diagnostics.push({ line: i + 1, reason: "invalid-identity" });
+            events.push(obj.value);
+        }
+    });
+    const winners = [...fold(events).entries()].sort(([ia, a], [ib, b]) => compareTs(a, b) || (ia < ib ? -1 : ia > ib ? 1 : 0));
+    const rows = winners
+        .map(([, e]) => e)
+        .filter((e) => {
+        if (filter.key !== undefined && e.key !== filter.key)
+            return false;
+        if (filter.status === undefined)
+            return true;
+        const status = e.status ?? (DEFAULT_ACTIVE_KINDS.has(String(e.kind)) ? "ACTIVE" : undefined);
+        return status === filter.status;
+    });
+    return { rows, diagnostics, lines, readRows: events.length };
 }
 const positiveInt = (v) => Number.isInteger(v) && v > 0 ? v : undefined;
 /**

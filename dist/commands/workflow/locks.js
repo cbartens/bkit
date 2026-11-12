@@ -12,7 +12,7 @@ import { createHash, randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fold, lastRun, statusTimestamp, } from "../../ledgers/status.js";
+import { createExclusive, fold, lastRun, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, repoRoot, runTool, statusRelPath, utcMonth, } from "../lib.js";
 import { removeRecord } from "./ledgers.js";
 import { str } from "./status.js";
@@ -68,23 +68,7 @@ export function readHolder(file) {
 /** Create `file` only if absent (`set -C`); false when someone else holds it. */
 export function tryCreate(file, line) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    const fd = openExclusive(file);
-    if (fd === undefined)
-        return false;
-    fs.writeSync(fd, `${line}\n`);
-    fs.closeSync(fd);
-    return true;
-}
-function openExclusive(file) {
-    try {
-        return fs.openSync(file, "wx");
-    }
-    catch (err) {
-        // EEXIST is the expected "someone holds it" answer; anything else is a real error.
-        if (err.code === "EEXIST")
-            return undefined;
-        throw err;
-    }
+    return createExclusive(file, `${line}\n`);
 }
 const newToken = () => randomBytes(4).toString("hex");
 /** The OS start identity distinguishes a live reused PID from a recorded owner. */

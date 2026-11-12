@@ -99,7 +99,10 @@ describe("frictionRow", () => {
     const row = own(root, { parentSha: "" });
     expect(row).not.toHaveProperty("run");
     expect(validate(row)).toEqual({ ok: true });
-    expect(appendFrictionRow(root, row)).toEqual({ ok: true });
+    expect(appendFrictionRow(root, row)).toMatchObject({
+      ok: true,
+      receipt: { offset: expect.any(Number), bytes: expect.any(Number) },
+    });
     const line = fs.readFileSync(path.join(root, ".bkit", "friction.jsonl"), "utf-8");
     expect(JSON.parse(line)).not.toHaveProperty("run");
     expect(own(root)["run"]).toEqual({ parentSha: "a".repeat(40) });
@@ -128,7 +131,7 @@ describe("pauseFrictionRow", () => {
     });
     expect(validate(row)).toEqual({ ok: true });
     expect(writerProblem(row)).toBeUndefined();
-    expect(appendFrictionRow(root, row)).toEqual({ ok: true });
+    expect(appendFrictionRow(root, row)).toMatchObject({ ok: true });
     const line = fs.readFileSync(path.join(root, ".bkit", "friction.jsonl"), "utf-8");
     expect(JSON.parse(line)).toMatchObject({
       key: "owner-pause/build.decision",
@@ -157,11 +160,11 @@ describe("appendFrictionRow", () => {
   it("records a recurrence as an appended same-key row, and folds to the raised count", () => {
     const root = tmp();
     const first = own(root);
-    expect(appendFrictionRow(root, first)).toEqual({ ok: true });
+    expect(appendFrictionRow(root, first)).toMatchObject({ ok: true });
     const written = lines(root)[0];
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
-    expect(appendFrictionRow(root, own(root, { step: "build-other" }))).toEqual({ ok: true });
+    expect(appendFrictionRow(root, own(root))).toMatchObject({ ok: true });
+    expect(appendFrictionRow(root, own(root))).toMatchObject({ ok: true });
+    expect(appendFrictionRow(root, own(root, { step: "build-other" }))).toMatchObject({ ok: true });
 
     const raw = lines(root);
     expect(raw).toHaveLength(4);
@@ -186,11 +189,11 @@ describe("appendFrictionRow", () => {
     ] as const) {
       const root = tmp();
       const first = own(root);
-      expect(appendFrictionRow(root, first)).toEqual({ ok: true });
+      expect(appendFrictionRow(root, first)).toMatchObject({ ok: true });
       const winner = JSON.parse(lines(root)[0]!) as Record<string, unknown>;
       const ts = (winner["ts"] as number) + 1;
       fs.appendFileSync(ledger(root), `${JSON.stringify({ ...winner, ts, status: triaged })}\n`);
-      expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+      expect(appendFrictionRow(root, own(root))).toMatchObject({ ok: true });
       const last = JSON.parse(lines(root).at(-1)!) as Record<string, unknown>;
       expect(last).toMatchObject({ key: first["key"], status: reopened, recurrenceCount: 2 });
     }
@@ -204,22 +207,23 @@ describe("appendFrictionRow", () => {
       ledger(root),
       `${JSON.stringify({ ...first, recurrenceCount: 4 }, null, 1).replace(/\n\s*/g, " ")}\n`,
     );
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    expect(appendFrictionRow(root, own(root))).toMatchObject({ ok: true });
     expect(JSON.parse(lines(root).at(-1)!)).toMatchObject({ recurrenceCount: 5 });
   });
 
-  it("keeps a row another writer appends while a recurrence is recorded", () => {
+  it("keeps a row another writer appends while a recurrence is recorded, and reports the refusal", () => {
     const root = tmp();
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    expect(appendFrictionRow(root, own(root))).toMatchObject({ ok: true });
     const foreign = JSON.stringify(own(root, { step: "build-foreign" }));
     readHook.file = ledger(root);
     readHook.after = () => fs.appendFileSync(ledger(root), `${foreign}\n`);
-    expect(appendFrictionRow(root, own(root))).toEqual({ ok: true });
+    const result = appendFrictionRow(root, own(root));
+    expect(result).toMatchObject({ ok: false });
+    expect(JSON.stringify(result)).toContain("changed since the append was prepared");
     expect(readHook.after).toBeUndefined();
     const raw = lines(root);
     expect(raw).toContain(foreign);
-    expect(raw).toHaveLength(3);
-    expect(JSON.parse(raw[2]!)).toMatchObject({ recurrenceCount: 2 });
+    expect(raw).toHaveLength(2);
   });
 
   it("returns a failed result instead of throwing when the row is refused", () => {

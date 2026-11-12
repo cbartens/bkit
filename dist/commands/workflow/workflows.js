@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { appendLine, fold, lastRun, runNumber, runOrStepField, statusTimestamp, withTargetLock, } from "../../ledgers/status.js";
 import { compareTs, foldFrom, normalize, resolveRepoSlug, workflowTelemetry, } from "../../ledgers/telemetry.js";
 import { check as checkCompleteness, deriveContract, parseRows, readCompleteness, } from "../../checks/status-holes.js";
 import { getWorkflowsRoot } from "../../shared/package-roots.js";
@@ -442,14 +442,19 @@ function carryOwnBook(src, dst, o, log) {
     const uncommitted = (file) => runRows(src, file, rec);
     const add = (file, lines) => {
         const to = path.join(dst, file);
-        const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
-        const have = new Set(textLines(existing).map((l) => l.trim()));
-        const fresh = lines.filter((l) => !have.has(l.trim()));
+        fs.mkdirSync(path.dirname(to), { recursive: true });
+        const fresh = withTargetLock(to, () => {
+            const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
+            const have = new Set(textLines(existing).map((l) => l.trim()));
+            const missing = lines.filter((l) => !have.has(l.trim()));
+            if (missing.length === 0)
+                return missing;
+            const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+            fs.appendFileSync(to, `${sep}${missing.join("\n")}\n`);
+            return missing;
+        });
         if (fresh.length === 0)
             return;
-        fs.mkdirSync(path.dirname(to), { recursive: true });
-        const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
-        fs.appendFileSync(to, `${sep}${fresh.join("\n")}\n`);
         carried.lines.set(file, fresh);
     };
     const listed = (specs) => (git(src, ["ls-files", "--cached", "--others", "--exclude-standard", "--", ...specs]) ?? "")

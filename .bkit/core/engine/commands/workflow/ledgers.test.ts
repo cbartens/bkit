@@ -9,13 +9,16 @@ import { runCommand } from "../lib";
 import {
   EXIT_ROWS_MISSING,
   EXIT_ROW_REFUSED,
+  appendLedgerRows,
   bookPathspecs,
   commitOwnSet,
   ledgersCommand,
   newRecord,
   readRecord,
+  unionLedgers,
   writeRecord,
 } from "./ledgers";
+import { COMMANDS } from "../registry";
 import { NO_MARKERS_REASON } from "./plan-blocks";
 
 const dirs: string[] = [];
@@ -1785,5 +1788,540 @@ describe("bkit ledgers triage", () => {
       "701-declared",
       "701-own-declaration",
     ]);
+  });
+});
+
+describe("bkit ledgers append --invocation", () => {
+  const STATUS = "docs/plans/202611/logs/860-x/status.jsonl";
+  const knowledge = (o: Record<string, unknown> = {}) => ({
+    kind: "knowledge",
+    key: "gotcha",
+    summary: "a gotcha worth keeping",
+    ...o,
+  });
+
+  async function issue(r: string, extra: string[] = []) {
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-plan-tests",
+        `--file=${STATUS}`,
+        "--host=claude",
+        "--configured-model=sonnet",
+        ...extra,
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    return (JSON.parse(out.join("")) as { invocation: string }).invocation;
+  }
+
+  function buildRepo() {
+    const r = repo();
+    put(
+      r,
+      STATUS,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-09T10:00:00Z" })}\n`,
+    );
+    return r;
+  }
+
+  async function appendWith(r: string, ledger: string, rows: unknown, flags: string[]) {
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify(rows));
+    return run(r, ["append", `--root=${r}`, `--ledger=${ledger}`, `--rows=${file}`, ...flags]);
+  }
+
+  it("rejects conflicting attribution and retains legacy writer restrictions", async () => {
+    const r = buildRepo();
+    const id = await issue(r, ["--agent=bkit-build-plan-tests", "--observed-model=opus-observed"]);
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+
+    // Control: a row with no `by` is completed from the invocation and written.
+    const filled = await appendWith(r, "knowledge", [knowledge()], [`--invocation=${id}`]);
+    expect(filled.code).toBe(0);
+    const written = fs.readFileSync(ledgerFile, "utf-8");
+
+    // An asserted actor, step or run that disagrees with the invocation is refused, not overwritten.
+    for (const by of [
+      { workflow: "debug", step: "build-plan-tests" },
+      { workflow: "build", step: "build-plan-tests", subagent: "bkit-build-plan-gaps-remediate" },
+      {
+        workflow: "build",
+        step: "build-plan-tests",
+        subagent: "bkit-build-plan-tests",
+        model: "other",
+      },
+      { workflow: "build", step: "build-close-workflow", subagent: "bkit-build-plan-tests" },
+    ]) {
+      const res = await appendWith(
+        r,
+        "knowledge",
+        [knowledge({ key: "second", by })],
+        [`--invocation=${id}`],
+      );
+      expect(res.code).toBe(EXIT_ROW_REFUSED);
+      expect(res.err).toMatch(/conflict/i);
+      expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+    }
+
+    // Legacy callers keep their restrictions: no invocation, an unlisted orchestrator is refused.
+    const legacy = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "third", by: { workflow: "build", step: "build-close-workflow" } })],
+      [],
+    );
+    expect(legacy.code).toBe(EXIT_ROW_REFUSED);
+    expect(legacy.err).toContain("does not write knowledge rows");
+
+    // An invocation whose agent may not write the kind cannot launder the row.
+    const other = await issue(r, ["--agent=bkit-build-challenge", "--observed-model=m"]);
+    const unauthorized = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "fourth" })],
+      [`--invocation=${other}`],
+    );
+    expect(unauthorized.code).toBe(EXIT_ROW_REFUSED);
+    expect(unauthorized.err).toContain("does not write knowledge rows");
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+  });
+
+  it("scopes a runless invocation to its declared step, agent and issuing checkout", async () => {
+    const r = repo();
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+
+    // The declared step fills by.step; a different step is refused.
+    const ok = await appendWith(r, "knowledge", [knowledge()], [`--invocation=${id}`]);
+    expect(ok.code).toBe(0);
+    const row = JSON.parse(fs.readFileSync(ledgerFile, "utf-8").trim().split("\n")[0]!);
+    expect(row.by).toMatchObject({
+      workflow: "audit",
+      step: "audit:bkit-audit-example",
+      subagent: "bkit-build-plan-tests",
+    });
+    const written = fs.readFileSync(ledgerFile, "utf-8");
+    const wrongStep = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", by: { step: "audit:other" } })],
+      [`--invocation=${id}`],
+    );
+    expect(wrongStep.code).toBe(EXIT_ROW_REFUSED);
+    expect(wrongStep.err).toMatch(/conflict/i);
+
+    // A root outside the issuing checkout is refused, with no ledger effect there.
+    const elsewhere = repo();
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify([knowledge({ key: "y" })]));
+    const outside = await run(r, [
+      "append",
+      `--root=${elsewhere}`,
+      "--ledger=knowledge",
+      `--rows=${file}`,
+      `--invocation=${id}`,
+    ]);
+    expect(outside.code).toBe(2);
+    expect(outside.err).toMatch(/outside the checkout/);
+    expect(fs.existsSync(path.join(elsewhere, "docs/knowledge.jsonl"))).toBe(false);
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
+  });
+
+  it("gives a runless invocation a correction scope and a bounded two-retry budget", async () => {
+    const r = repo();
+    const out: string[] = [];
+    const code = await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    expect(code).toBe(0);
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+    const bad = [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })];
+    const scope = "ledgers-append:knowledge:append:audit:run0:audit:bkit-audit-example";
+    const invoke = [`--invocation=${id}`];
+
+    // A no-write rejection names the scope the corrected retries share.
+    const first = await appendWith(r, "knowledge", bad, [...invoke, "--operation=op-1"]);
+    expect(first.code).toBe(EXIT_ROW_REFUSED);
+    expect(first.json.error).toMatchObject({ scope, correctable: true });
+    expect(fs.existsSync(ledgerFile)).toBe(false);
+
+    // A correction naming a never-rejected operation is refused.
+    const unknown = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-9",
+      "--correction-of=op-0",
+    ]);
+    expect(unknown.code).toBe(2);
+    expect(unknown.err).toContain("names no rejected knowledge append");
+
+    // Two corrected retries spend the budget; the second is final and the third is refused.
+    const second = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-2",
+      "--correction-of=op-1",
+    ]);
+    expect(second.code).toBe(EXIT_ROW_REFUSED);
+    const third = await appendWith(r, "knowledge", bad, [
+      ...invoke,
+      "--operation=op-3",
+      "--correction-of=op-2",
+    ]);
+    expect(third.code).toBe(EXIT_ROW_REFUSED);
+    expect(third.err).not.toContain('"correctable":true');
+    const fourth = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "fixed" })],
+      [...invoke, "--operation=op-4", "--correction-of=op-3"],
+    );
+    expect(fourth.err).toContain("budget");
+    expect(fs.existsSync(ledgerFile)).toBe(false);
+  });
+
+  it("lands a standalone corrected candidate and reports the spend", async () => {
+    const r = repo();
+    const out: string[] = [];
+    await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const invoke = [`--invocation=${id}`];
+    const rejected = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })],
+      [...invoke, "--operation=op-1"],
+    );
+    expect(rejected.code).toBe(EXIT_ROW_REFUSED);
+    const fixed = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x" })],
+      [...invoke, "--operation=op-2", "--correction-of=op-1"],
+    );
+    expect(fixed.code).toBe(0);
+    expect(fixed.json.correction).toMatchObject({
+      operation: "op-2",
+      of: "op-1",
+      used: 1,
+      limit: 2,
+      verified: true,
+    });
+    expect(fs.readFileSync(path.join(r, "docs/knowledge.jsonl"), "utf-8")).toContain('"x"');
+  });
+
+  it("issues the same operation for rows whose keys are reordered", async () => {
+    const r = buildRepo();
+    const id = await issue(r, ["--agent=bkit-build-plan-tests"]);
+    const ledgerFile = path.join(r, "docs/knowledge.jsonl");
+    const flags = [`--invocation=${id}`, "--issue-operation"];
+    const lines = () =>
+      fs
+        .readFileSync(ledgerFile, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "");
+
+    const first = await appendWith(r, "knowledge", [knowledge()], flags);
+    expect(first.code).toBe(0);
+    expect(first.json.receipt.replayed).toBe(false);
+    expect(lines()).toHaveLength(1);
+
+    // Same row, keys in another order: the retry of a lost response, not a new request.
+    const reordered = [{ summary: "a gotcha worth keeping", key: "gotcha", kind: "knowledge" }];
+    const second = await appendWith(r, "knowledge", reordered, flags);
+    expect(second.code).toBe(0);
+    expect(second.json.receipt.operation).toBe(first.json.receipt.operation);
+    expect(second.json.receipt.replayed).toBe(true);
+    expect(second.json.appended).toBe(0);
+    expect(lines()).toHaveLength(1);
+  });
+});
+
+describe("bkit ledgers query", () => {
+  const dec = (key: string, ts: number, status: string) =>
+    JSON.stringify({
+      schema: 3,
+      ts,
+      kind: "decision",
+      key,
+      repo: "o/r",
+      bkit: { version: "6.0.0" },
+      by: { workflow: "build", step: "manual" },
+      summary: `${key} at ${ts}`,
+      status,
+    });
+  const FILE = "docs/decisions.jsonl";
+
+  const fixture = () => {
+    const r = repo();
+    put(
+      r,
+      FILE,
+      [
+        dec("k1", 1001, "ACTIVE"),
+        dec("k2", 1002, "ACTIVE"),
+        "{not json",
+        dec("k2", 1003, "SUPERSEDED"),
+        dec("k3", 1004, "ACTIVE"),
+        dec("k4", 1005, "ACTIVE"),
+        dec("k5", 1006, "ACTIVE"),
+      ].join("\n") + "\n",
+    );
+    return r;
+  };
+  const q = (r: string, ...flags: string[]) =>
+    run(r, ["query", `--root=${r}`, "--ledger=decisions", ...flags]);
+
+  it("pages canonical winners with diagnostics and rejects stale cursors", async () => {
+    const r = fixture();
+    const bytes = fs.readFileSync(path.join(r, FILE), "utf-8");
+
+    const whole = await q(r, "--status=ACTIVE");
+    expect(whole.code).toBe(0);
+    const expected = whole.json.rows.map((x: { key: string }) => x.key);
+    // The superseded k2 winner is filtered out, and its older ACTIVE row is not resurrected.
+    expect([...expected].sort()).toEqual(["k1", "k3", "k4", "k5"]);
+
+    const page1 = await q(r, "--status=ACTIVE", "--limit=2");
+    expect(page1.code).toBe(0);
+    const page2 = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${page1.json.nextCursor}`);
+    expect(page2.code).toBe(0);
+    for (const page of [page1, page2]) {
+      expect(page.json.rows).toHaveLength(2);
+      // The malformed line is reported with its line number on every page, never as a clean scan.
+      expect(page.json.diagnostics).toEqual([expect.objectContaining({ line: 3 })]);
+      expect(page.json.coverage).toMatchObject({ clean: false, malformedLines: 1 });
+    }
+    expect(page2.json.nextCursor).toBeNull();
+    const seen = [...page1.json.rows, ...page2.json.rows].map((x: { key: string }) => x.key);
+    expect(seen).toEqual(expected);
+
+    // A cursor from before the ledger changed is refused.
+    const first = await q(r, "--status=ACTIVE", "--limit=2");
+    fs.appendFileSync(path.join(r, FILE), `${dec("k6", 1007, "ACTIVE")}\n`);
+    const stale = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${first.json.nextCursor}`);
+    expect(stale.code).toBe(2);
+    expect(stale.err).toMatch(/cursor|stale|snapshot/i);
+    expect(stale.json).toBeUndefined();
+
+    // Reading never writes.
+    fs.writeFileSync(path.join(r, FILE), bytes);
+    await q(r, "--key=k1");
+    expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
+  });
+
+  it("marks a page with a next cursor as not clean", async () => {
+    const r = repo();
+    put(r, FILE, `${dec("k1", 1001, "ACTIVE")}\n${dec("k2", 1002, "ACTIVE")}\n`);
+
+    // A page that stops before the last winner is an unfinished scan, whatever the ledger holds.
+    const partial = await q(r, "--limit=1");
+    expect(partial.code).toBe(0);
+    expect(partial.json.rows).toHaveLength(1);
+    expect(partial.json.nextCursor).not.toBeNull();
+    expect(partial.json.coverage.clean).toBe(false);
+    expect(partial.json.coverage.status).not.toBe("clean");
+
+    // The last page of the same clean ledger finishes the scan.
+    const last = await q(r, "--limit=1", `--cursor=${partial.json.nextCursor}`);
+    expect(last.json.nextCursor).toBeNull();
+    expect(last.json.coverage).toMatchObject({ clean: true });
+
+    // One page that holds every winner is clean.
+    const whole = await q(r, "--limit=5");
+    expect(whole.json.nextCursor).toBeNull();
+    expect(whole.json.coverage).toMatchObject({ clean: true, status: "clean" });
+  });
+});
+
+describe("bkit ledgers append --operation", () => {
+  const failure = (o: Record<string, unknown> = {}) => ({
+    kind: "failure",
+    by: { workflow: "build", step: "build-challenge" },
+    key: "parser-drops-last-line",
+    summary: "parser drops the last line",
+    severity: "HIGH",
+    status: "OPEN",
+    ...o,
+  });
+
+  async function appendOp(r: string, rows: unknown, operation: string) {
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify(rows));
+    return run(r, [
+      "append",
+      `--root=${r}`,
+      "--ledger=failures",
+      `--rows=${file}`,
+      `--operation=${operation}`,
+    ]);
+  }
+
+  it("returns durable append receipt and permits a deliberate same-key update", async () => {
+    const r = repo();
+    const ledgerFile = path.join(r, "docs/failures.jsonl");
+    const lines = () =>
+      fs
+        .readFileSync(ledgerFile, "utf-8")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+    const first = await appendOp(r, [failure()], "op-1");
+    expect(first.code).toBe(0);
+    expect(first.json.receipt).toMatchObject({
+      operation: "op-1",
+      ledger: "failures",
+      file: "docs/failures.jsonl",
+      offset: 0,
+      replayed: false,
+      rows: [{ key: "parser-drops-last-line", ts: expect.any(Number) }],
+    });
+    const bytes = fs.readFileSync(ledgerFile, "utf-8");
+    expect(first.json.receipt.bytes).toBe(Buffer.byteLength(bytes));
+    expect(first.json.receipt.rows[0].ts).toBe(lines()[0]!["ts"]);
+
+    // Replay: the original receipt comes back, nothing is minted or written.
+    const replay = await appendOp(r, [failure()], "op-1");
+    expect(replay.code).toBe(0);
+    expect(replay.json.receipt).toEqual({ ...first.json.receipt, replayed: true });
+    expect(replay.json.appended).toBe(0);
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(bytes);
+
+    // The same operation id with a different request is a collision: refused, nothing written.
+    const conflict = await appendOp(r, [failure({ summary: "something else" })], "op-1");
+    expect(conflict.code).toBe(EXIT_ROW_REFUSED);
+    expect(conflict.err).toContain("op-1");
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(bytes);
+
+    // A new operation on the same key is a deliberate update: it appends and carries lineage.
+    const update = await appendOp(r, [failure({ summary: "parser drops two lines" })], "op-2");
+    expect(update.code).toBe(0);
+    expect(update.json.receipt).toMatchObject({
+      operation: "op-2",
+      offset: Buffer.byteLength(bytes),
+      replayed: false,
+    });
+    const [a, b] = lines();
+    expect(lines()).toHaveLength(2);
+    expect(b).toMatchObject({ firstTs: a!["ts"], updates: 2, summary: "parser drops two lines" });
+    expect(b!["ts"]).toBeGreaterThan(a!["ts"] as number);
+    expect(update.json.receipt.rows[0].ts).toBe(b!["ts"]);
+  });
+
+  it("keeps ledger operation intents and receipts out of committed book paths", () => {
+    const r = repo();
+    appendLedgerRows(r, "failures", [failure()], undefined, { operation: "op-1" });
+
+    // Nothing lands in the committed, union-carried store.
+    expect(fs.existsSync(path.join(r, ".bkit/ledger-operations.jsonl"))).toBe(false);
+    // The intent and receipt live under the git common dir's private outbox.
+    const outbox = path.join(r, ".git", "bkit-outbox");
+    expect(fs.existsSync(outbox)).toBe(true);
+    const files = (fs.readdirSync(outbox, { recursive: true }) as string[])
+      .map((f) => path.join(outbox, f))
+      .filter((f) => fs.statSync(f).isFile());
+    const holding = files.filter((f) => fs.readFileSync(f, "utf-8").includes("op-1"));
+    expect(holding.length).toBeGreaterThan(0);
+    for (const f of holding) expect(fs.statSync(f).mode & 0o077).toBe(0);
+    // No allow-list entry stages the operations store.
+    const staged = bookPathspecs("202610", "1-x", "pr").join("\n");
+    expect(staged).not.toContain("ledger-operations");
+
+    // A receipt-less intent row arriving in tracked content no longer blocks union.
+    const dst = repo();
+    put(dst, "docs/failures.jsonl", '{"a":1}\n');
+    put(
+      dst,
+      ".bkit/ledger-operations.jsonl",
+      `${JSON.stringify({
+        type: "ledger-intent",
+        operation: "op-x",
+        hash: "h",
+        file: "docs/failures.jsonl",
+        offset: 0,
+        bytes: 8,
+        block: '{"a":1}\n',
+        at: "2026-11-01T00:00:00Z",
+      })}\n`,
+    );
+    commitAll(dst);
+    const src = repo();
+    put(src, "docs/failures.jsonl", '{"a":1}\n{"a":2}\n');
+    commitAll(src);
+    expect(() => unionLedgers(src, dst)).not.toThrow();
+    expect(fs.readFileSync(path.join(dst, "docs/failures.jsonl"), "utf-8")).toContain('{"a":2}');
+  });
+
+  it("refuses --issue-operation without an invocation or beside --operation, writing nothing", async () => {
+    const r = repo();
+    const file = path.join(tmp(), "rows.json");
+    fs.writeFileSync(file, JSON.stringify([failure()]));
+    const base = ["append", `--root=${r}`, "--ledger=failures", `--rows=${file}`];
+    const alone = await run(r, [...base, "--issue-operation"]);
+    expect(alone.code).toBe(2);
+    expect(alone.err).toContain("--invocation");
+    const both = await run(r, [...base, "--issue-operation", "--operation=op-1"]);
+    expect(both.code).toBe(2);
+    expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
   });
 });

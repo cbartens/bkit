@@ -13,7 +13,7 @@ Design Feature — Autonomous design phase
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery**, **Read-only helper recovery** and **Bounded correction**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -34,6 +34,12 @@ Design Feature — Autonomous design phase
 - **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
+- **Deterministic bookkeeping:** Use the engine's validated execution context and artifact data for metadata, counts, paths and serialization. Agents supply substantive findings and judgments. Do not invent missing attribution or replace conflicting evidence with a guess.
+- **Recoverable execution errors:** Apply the command's explicit recovery route first. If validation guarantees that no changes were made, correct the input from verified evidence and retry at most twice. Keep this correction budget across helper rewrites, tool switches and resume. Verify the required outputs and continue from the interrupted sub-step after success.
+- **Uncertain effects:** Inspect and reconcile the operation's durable state before retrying a write. Retry only when the engine can establish that it will not duplicate or corrupt an effect. Preserve work and report a blocker when the outcome cannot be established.
+- **Failure boundary:** Enter Failure Path when the applicable recovery budget is exhausted, a required check still fails, required information or authorization is unavailable, or recovery cannot proceed safely. Recovery does not permit weakening tests, bypassing gates or granting approval. A recovered command error alone does not fail the workflow.
+- **Recovery precedence:** A specific recovery route supplies its own limit and eligibility before the generic two-correction route. Optional model telemetry unavailability is diagnostic, while missing author or run authority or required substantive evidence blocks the affected action. A permission escalation follows its existing authorization policy, never the generic correction allowance.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -351,10 +357,17 @@ Design Feature — Autonomous design phase
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
+     Result: `{OUTBOX}/design-review-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `/bkit-design-review-2` using `Task` tool:
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input-{RUN}.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
+     Result: `{OUTBOX}/design-review-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+     Once both subagents return, render the two design reviews from their results:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-design-review-1 --result-file="{OUTBOX}/design-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md"
+   "{BKIT}" steps stub --agent=bkit-design-review-2 --result-file="{OUTBOX}/design-review-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md"
+   ```
 2. Wait for all subagents to complete, then finish — `verdict` = worst of the two (`FAIL > CONCERNS > PASS`):
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-review --attempt=1 --agent=bkit-design-review-1 --agent=bkit-design-review-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md --message="chore({FID}): design-review" --number=6 --post --title="Design Review"
@@ -381,6 +394,11 @@ Design Feature — Autonomous design phase
    Context: You are a subagent in the Design phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Write throwaway probe code only under `docs/plans/{YYYYMM}/logs/{FID}/spike/`. Never modify tracked source outside that directory.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-spike.md`.
+   Result: `{OUTBOX}/design-spike-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+   Once the subagent returns, render the spike report from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-design-spike --result-file="{OUTBOX}/design-spike-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/design-spike.md"
+   ```
 2. Finish — refuses (exit 9) probe files outside the artifact tree:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-spike --attempt=1 --agent=bkit-design-spike --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-spike.md --docs-only --message="chore({FID}): spike" --number=7 --post --title=Spike --link-ref=dev
@@ -538,7 +556,11 @@ Design Feature — Autonomous design phase
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
-   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `design-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+   - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
+     ```bash
+     "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{STATUS}"
+     ```
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
    - Write `{OUTBOX}/design-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`.
      - **If** that file is absent → create it with the heading.

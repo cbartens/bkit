@@ -85,6 +85,7 @@ autoCompactWindow: 300000
    - When stuck → `BLOCKED — {what} — {reason}`.
    - Refuted attempts must remain. Do not delete them.
 8. Set `Verdict` in **Create** with `Edit`:
+   - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the artifact.
    - `PASS` = this iteration applied a fix, its log entry is `DONE`, and `pnpm bkit:gate:static-unit` passes.
    - `CONCERNS` = this iteration applied instrumentation only, and its log entry is `DONE`.
    - `FAIL` = this iteration has no `DONE` log entry (none at all, or `BLOCKED` with no later `DONE`), **or** it applied a fix and `pnpm bkit:gate:static-unit` fails, **or** it applied a fix and `git grep -F '[DEBUG-OBSERVE]'` still finds a line.

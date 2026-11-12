@@ -15,6 +15,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import {
+  createExclusive,
   fold,
   lastRun,
   statusTimestamp,
@@ -115,21 +116,7 @@ export function readHolder(file: string): Holder | undefined {
 /** Create `file` only if absent (`set -C`); false when someone else holds it. */
 export function tryCreate(file: string, line: string): boolean {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const fd = openExclusive(file);
-  if (fd === undefined) return false;
-  fs.writeSync(fd, `${line}\n`);
-  fs.closeSync(fd);
-  return true;
-}
-
-function openExclusive(file: string): number | undefined {
-  try {
-    return fs.openSync(file, "wx");
-  } catch (err) {
-    // EEXIST is the expected "someone holds it" answer; anything else is a real error.
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") return undefined;
-    throw err;
-  }
+  return createExclusive(file, `${line}\n`);
 }
 
 const newToken = () => randomBytes(4).toString("hex");

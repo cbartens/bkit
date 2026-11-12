@@ -168,10 +168,14 @@ autoCompactWindow: 300000
       - The approach is settled, not broken into tasks → `/bkit-plan`.
       - The change is clear → `/bkit-build`.
     - `Reason` = the deciding fact, in one clause.
-11. Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with `by: {workflow: "audit", step: "audit-{slug}"}`.
+11. Write ledger entries to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom).
+    - Issue one runless invocation first with `bkit status invocation --standalone=audit --name={slug}` and hold its `invocation`.
+    - Pass it as `--invocation` with a fresh `--operation` on each `bkit ledgers append`, and retry a lost response with the same `--operation`; `receipt.replayed: true` means the rows are already on disk.
+    - The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
     - **If** the template audits `docs/failures.jsonl` or `docs/deferrals.jsonl` → skip this step.
     - Complete the report first.
-    - Open rows = fold by `key`, highest `ts` wins, `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
+    - Serialize the findings once: write the audit result JSON `{slug, status, report, findings: [{severity, title, location, priorKey}], notChecked}` (plus `stopped`, `overview`, `issue`, `parent` when they apply) to a scratch file, then render the summary with `bkit steps stub --agent=bkit-audit-generate --result-file=<json> --to=<Create>`. A report that already exists at `<Create>` is never overwritten: the summary goes to `<json>`'s sibling `.summary.md` (printed as `file`). The engine assigns the finding IDs, the totals and the header, and prints `ledgerRows` for the append below. Leave `priorKey` out for a new problem; the engine derives its `key`.
+    - Open rows = the winners of `bkit ledgers query --ledger=failures` (follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report), `status` != `CLOSED`, covering every `key`, whichever workflow wrote it.
     - Same problem = the same defect at the same `file:line`, test title, or error signature. A finding that only cites an open row's `file:line` is a different problem.
     - For each `MEDIUM`+ finding:
       - **If** an open row names the same problem → reuse its `key`, with the higher of the finding's and the row's `severity`.

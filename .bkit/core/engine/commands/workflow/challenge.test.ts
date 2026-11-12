@@ -6,7 +6,16 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { acceptedLocations, CHALLENGE_SMALL, challengeCommand, challengeGate } from "./challenge";
+import {
+  acceptedLocations,
+  CHALLENGE_SMALL,
+  challengeCommand,
+  challengeGate,
+  mergeFindings,
+  parseFindings,
+  renderFindingsLog,
+  structuredFindings,
+} from "./challenge";
 import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks";
 import { checkPlanText, readTestFirst } from "./tests";
 
@@ -725,6 +734,67 @@ describe("bkit challenge merge", () => {
     expect(JSON.parse(out.join(""))).toMatchObject({ deferred: 1 });
     expect(deferrals()).toHaveLength(1);
     expect(fs.existsSync(path.join(cwd, "sub", "docs"))).toBe(false);
+  });
+});
+
+describe("structured challenge findings", () => {
+  const input = [
+    {
+      severity: "HIGH",
+      cls: "architectural",
+      fixable: false,
+      location: "src/a.ts:10",
+      title: "Parser drops the last line",
+      doneWhen: "the parser keeps the last line",
+      tests: ["`src/a.test.ts` `keeps the last line` fails on a dropped final line."],
+    },
+    {
+      severity: "MEDIUM",
+      fixable: true,
+      location: `${"/"}src/b.ts:3`,
+      title: "Retry never backs off",
+      doneWhen: "retries back off",
+      tests: [],
+    },
+  ];
+
+  it("reuses structured challenge findings without losing semantic inputs", () => {
+    const found = structuredFindings(
+      input.map((f) => ({ ...f, location: f.location.replace(/^\//, `${cwd}/`) })),
+      cwd,
+    );
+    // Severity, class, fixable, evidence entries and location normalisation all survive.
+    expect(found).toEqual([
+      { ...input[0], location: "src/a.ts:10" },
+      {
+        severity: "MEDIUM",
+        fixable: true,
+        location: "src/b.ts:3",
+        title: input[1]!.title,
+        doneWhen: "retries back off",
+        tests: [],
+      },
+    ]);
+
+    // The structured path and the report parser agree on the same findings.
+    const text = `Verdict: FAIL\nFailures: 2\n\n<!-- verdict:end -->\n\n# Build Challenge\n\n${renderFindingsLog(found)}\n`;
+    expect(parseFindings(text, "r.md", cwd)).toEqual(found);
+
+    // The existing merge keeps the worse severity and ANDs fixability over structured findings.
+    const merged = mergeFindings(
+      [found, [{ ...found[1]!, severity: "HIGH", fixable: false }]],
+      new Set(),
+    );
+    expect(merged.findings.find((f) => f.location === "src/b.ts:3")).toMatchObject({
+      severity: "HIGH",
+      fixable: false,
+    });
+
+    // A missing judgment is refused rather than defaulted.
+    for (const drop of ["severity", "fixable", "location", "doneWhen"]) {
+      const broken = { ...input[0]!, [drop]: undefined };
+      expect(() => structuredFindings([broken], cwd)).toThrow(new RegExp(drop, "i"));
+    }
   });
 });
 

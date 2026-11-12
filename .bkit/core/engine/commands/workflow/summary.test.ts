@@ -114,6 +114,85 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("plan-review FAIL, resolved by plan-apply-review");
   });
 
+  it("a group check whose fix moved to a new group is resolved by the later whole-run checks", () => {
+    const verify = {
+      type: "step-done",
+      step: "build-plan-verify",
+      group: 1,
+      verdict: "FAIL",
+      failures: 1,
+      attempt: 8,
+    };
+    const gate = {
+      type: "step-done",
+      step: "build-group-gate",
+      group: 1,
+      verdict: "FAIL",
+      attempt: 7,
+    };
+    const holistic = {
+      type: "step-done",
+      step: "build-plan-verify-holistic",
+      verdict: "PASS",
+      failures: 0,
+      attempt: 7,
+    };
+    const tests = {
+      type: "step-done",
+      step: "build-run-tests",
+      verdict: "PASS",
+      failures: 0,
+      attempt: 1,
+    };
+    const s = buildSummary(input({ rows: [gate, verify, holistic, tests] }));
+    expect(s.verdict).toBe("PASS");
+    expect(s.markdown).toContain(
+      "build-plan-verify (group 1) FAIL, resolved by build-plan-verify-holistic",
+    );
+    expect(s.markdown).toContain("build-group-gate (group 1) FAIL, resolved by build-run-tests");
+
+    const earlier = buildSummary(input({ rows: [holistic, tests, gate, verify] }));
+    expect(earlier.reasons).toEqual(
+      expect.arrayContaining([
+        "build-plan-verify (group 1) FAIL",
+        "build-group-gate (group 1) FAIL",
+      ]),
+    );
+    const failingRun = buildSummary(
+      input({ rows: [gate, verify, { ...holistic, verdict: "FAIL", failures: 1 }] }),
+    );
+    expect(failingRun.reasons).toEqual(
+      expect.arrayContaining([
+        "build-plan-verify (group 1) FAIL",
+        "build-group-gate (group 1) FAIL",
+      ]),
+    );
+  });
+
+  it("a group check's CONCERNS is not cleared by the whole-run checks", () => {
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "build-plan-verify",
+            group: 1,
+            verdict: "CONCERNS",
+            attempt: 1,
+          },
+          {
+            type: "step-done",
+            step: "build-plan-verify-holistic",
+            verdict: "PASS",
+            failures: 0,
+            attempt: 1,
+          },
+        ],
+      }),
+    );
+    expect(s.reasons).toContain("build-plan-verify (group 1) CONCERNS");
+  });
+
   it("a build challenge cannot be cleared by unrelated fix tasks or a decision", () => {
     const challenge = {
       type: "step-done",

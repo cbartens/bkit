@@ -347,15 +347,15 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>257 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1754 symbols · 53 files"]
+    n_bkit_core_engine_commands["commands<br/>1816 symbols · 53 files"]
     n_bkit_core_engine_install["install<br/>351 symbols · 21 files"]
-    n_bkit_core_engine_ledgers["ledgers<br/>187 symbols · 6 files"]
+    n_bkit_core_engine_ledgers["ledgers<br/>237 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>150 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|400| n_bkit_core_engine_shared
-  n_bkit_core_engine_commands -->|387| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|459| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|406| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|216| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|180| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|145| n_bkit_core_engine_shared
@@ -364,9 +364,9 @@ flowchart LR
   n_bkit_core_engine_install -->|64| n_bkit_core_engine_render
   n_bkit_core_engine_commands -->|42| n_bkit_core_engine_render
   n_bkit_core_engine_cli -->|34| n_bkit_core_engine_commands
+  n_bkit_core_engine_ledgers -->|19| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|18| n_bkit_core_engine_commands
   n_bkit_core_engine_install -->|17| n_bkit_core_engine_checks
-  n_bkit_core_engine_ledgers -->|17| n_bkit_core_engine_shared
   n_bkit_core_engine_shared -->|15| n_bkit_core_engine_install
   n_bkit_core_engine_commands -->|15| n_bkit_core_engine_cli
   nscripts_harvest -->|14| n_bkit_core_engine_ledgers

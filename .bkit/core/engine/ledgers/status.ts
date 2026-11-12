@@ -15,6 +15,7 @@
 // step's own commit (if any). Forensic only — points to the commit that preceded
 // this step's work, not the commit that resulted from it.
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -96,6 +97,172 @@ export function ciSelectionIdentity(selection: CiSelection): string {
           selection.headSha,
         ],
   );
+}
+
+export const CI_HANDOFF_RESULTS = [
+  "none",
+  "pending",
+  "success",
+  "failure",
+  "provider-error",
+] as const;
+export type CiHandoffResult = (typeof CI_HANDOFF_RESULTS)[number];
+export const CI_RETRIGGER_STATES = [
+  "intended",
+  "commit-created",
+  "push-completed",
+  "receipt-completed",
+] as const;
+export type CiRetriggerState = (typeof CI_RETRIGGER_STATES)[number];
+export type CiHandoffTarget = {
+  provider: "github";
+  repo: string;
+  pr: string | null;
+  head: string;
+  branch: string;
+};
+export type CiHandoffRetrigger = {
+  state: CiRetriggerState;
+  original: string;
+  commit?: string;
+  /** Shared branch: the copy of `commit` made for the remote tip, persisted before it is pushed. */
+  copy?: string;
+  ref?: string;
+  remote?: string;
+  receipt?: string;
+};
+/** One persisted CI wait observation (cumulative counts) with its target identity and retrigger checkpoint. */
+export type CiHandoffEvent = {
+  type: "ci-handoff";
+  workflow: string;
+  at: string;
+  phase: "poll" | "repoll";
+  target: CiHandoffTarget;
+  observation: { result: CiHandoffResult; attempts: number; errors: number };
+  retrigger?: CiHandoffRetrigger;
+};
+export type CiHandoffState = {
+  phase: "poll" | "repoll";
+  attempts: number;
+  errors: number;
+  last: { result: CiHandoffResult; at: string } | null;
+  retrigger: CiHandoffRetrigger | null;
+  /** The cumulative counts when the retrigger first appeared: the re-poll counts from here. */
+  retriggerBase: { attempts: number; errors: number } | null;
+  /** Events for another target (repo, PR, head or branch). */
+  stale: number;
+  /** Events refused because a cumulative count went backwards. */
+  invalid: number;
+};
+
+const SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const REPO_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*\/[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
+const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && Number(v) >= 0;
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+
+function validHandoffTarget(value: unknown): value is CiHandoffTarget {
+  if (!isRecord(value)) return false;
+  return (
+    value.provider === "github" &&
+    typeof value.repo === "string" &&
+    REPO_RE.test(value.repo) &&
+    (value.pr === null || (typeof value.pr === "string" && /^[1-9][0-9]*$/.test(value.pr))) &&
+    typeof value.head === "string" &&
+    SHA_RE.test(value.head) &&
+    nonEmpty(value.branch)
+  );
+}
+
+function validRetrigger(value: unknown): value is CiHandoffRetrigger {
+  if (!isRecord(value)) return false;
+  const state = CI_RETRIGGER_STATES.find((s) => s === value.state);
+  if (state === undefined) return false;
+  if (typeof value.original !== "string" || !SHA_RE.test(value.original)) return false;
+  const sha = (k: string) => typeof value[k] === "string" && SHA_RE.test(value[k]);
+  if (value.copy !== undefined && !sha("copy")) return false;
+  if (state === "intended") return true;
+  if (!sha("commit")) return false;
+  if (state === "commit-created") return true;
+  if (!nonEmpty(value.ref) || !sha("remote")) return false;
+  if (state === "push-completed") return true;
+  return nonEmpty(value.receipt);
+}
+
+/** Validate one `ci-handoff` row before any reader treats it as evidence. */
+export function validateCiHandoffEvent(value: unknown): value is CiHandoffEvent {
+  if (!isRecord(value) || value.type !== "ci-handoff") return false;
+  if (!nonEmpty(value.workflow) || !nonEmpty(value.at)) return false;
+  if (value.phase !== "poll" && value.phase !== "repoll") return false;
+  if (!validHandoffTarget(value.target)) return false;
+  const o = value.observation;
+  if (!isRecord(o)) return false;
+  if (!CI_HANDOFF_RESULTS.some((r) => r === o.result)) return false;
+  if (!isCount(o.attempts) || !isCount(o.errors) || o.errors > o.attempts) return false;
+  if (value.retrigger !== undefined && !validRetrigger(value.retrigger)) return false;
+  return value.phase !== "repoll" || value.retrigger !== undefined;
+}
+
+/** Wording and transport do not change which target a handoff row is about. */
+export function ciHandoffIdentity(target: CiHandoffTarget): string {
+  return JSON.stringify([
+    target.provider,
+    target.repo.toLowerCase(),
+    target.pr,
+    target.head,
+    target.branch,
+  ]);
+}
+
+/**
+ * The cumulative handoff state of one target: de-dupes, orders by `at`, counts rows for other
+ * targets as `stale` and rows whose cumulative counts go backwards as `invalid`.
+ */
+export function foldCiHandoff(rows: readonly object[], target: CiHandoffTarget): CiHandoffState {
+  const seen = new Set<string>();
+  const events: CiHandoffEvent[] = [];
+  for (const row of rows) {
+    if (!validateCiHandoffEvent(row)) continue;
+    const key = JSON.stringify(row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    events.push(row);
+  }
+  const ordered = events
+    .map((e, i) => ({ e, i }))
+    .sort((a, b) => (a.e.at < b.e.at ? -1 : a.e.at > b.e.at ? 1 : a.i - b.i))
+    .map((x) => x.e);
+  const want = ciHandoffIdentity(target);
+  const state: CiHandoffState = {
+    phase: "poll",
+    attempts: 0,
+    errors: 0,
+    last: null,
+    retrigger: null,
+    retriggerBase: null,
+    stale: 0,
+    invalid: 0,
+  };
+  for (const e of ordered) {
+    if (ciHandoffIdentity(e.target) !== want) {
+      state.stale += 1;
+      continue;
+    }
+    if (e.observation.attempts < state.attempts || e.observation.errors < state.errors) {
+      state.invalid += 1;
+      continue;
+    }
+    state.attempts = e.observation.attempts;
+    state.errors = e.observation.errors;
+    state.phase = e.phase;
+    state.last = { result: e.observation.result, at: e.at };
+    if (e.retrigger !== undefined) {
+      state.retriggerBase ??= { attempts: e.observation.attempts, errors: e.observation.errors };
+      state.retrigger = e.retrigger;
+    }
+  }
+  return state;
 }
 
 export type Step = {
@@ -279,8 +446,50 @@ export function fold(events: StatusEvent[]): WorkflowRun[] {
 // rows it skips (runtime-resolved, transport-fallback, close-transport, ...).
 export type StatusRow = { type: string } & Record<string, unknown>;
 
+/**
+ * The `invocation` row a run's `status.jsonl` carries for one engine-issued workflow-mode
+ * invocation: the durable authority the outbox receipt is rebuilt from. The fold skips it.
+ */
+export type InvocationEvent = {
+  type: "invocation";
+  workflow: string;
+  at: string;
+  id: string;
+  step: string;
+  number: number;
+  title: string;
+  run: number;
+  statusPath: string;
+  bookRoot: string;
+  group: string | null;
+  attempt: string | null;
+  agent: string | null;
+  host: string | null;
+  configuredModel: string | null;
+  observedModel: string | null;
+  worktree: string;
+};
+
+/** True for a parsed `status.jsonl` row that is a complete `invocation` event. */
+export function isInvocationEvent(value: unknown): value is InvocationEvent {
+  if (value === null || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    v["type"] === "invocation" &&
+    typeof v["id"] === "string" &&
+    typeof v["workflow"] === "string" &&
+    typeof v["step"] === "string" &&
+    typeof v["number"] === "number" &&
+    typeof v["title"] === "string" &&
+    typeof v["run"] === "number" &&
+    typeof v["statusPath"] === "string" &&
+    typeof v["bookRoot"] === "string" &&
+    typeof v["worktree"] === "string"
+  );
+}
+
 // Serialize one event to the NDJSON line appended to `status.jsonl`, newline included.
-export function appendLine(event: StatusEvent | StatusRow): string {
+export function appendLine(event: StatusEvent | StatusRow | InvocationEvent): string {
   return `${JSON.stringify(event)}\n`;
 }
 
@@ -456,6 +665,299 @@ export function recordAction(
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, appendLine(row));
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// Ledger operations — a bookkeeping write that must survive a lost response. One
+// operation id names one request (its hash): the same id and hash replays the
+// original receipt, the same id with another hash is refused, and a new id on the
+// same ledger key is a deliberate later update. This is stricter than the generic
+// action policy above, where the same key with a changed hash acts again.
+// ---------------------------------------------------------------------------
+
+/**
+ * The operations store of one book root: `<git common dir>/bkit-outbox/ledger-operations/<root hash>.jsonl`.
+ * It holds prepared row bytes, so it stays private (0700 dirs, 0600 file) and outside every committed
+ * or unioned path. One file per book root keeps a linked worktree's offsets apart from the main
+ * checkout's. Null outside a git repository.
+ */
+export function ledgerOperationsFile(root: string, prepare = false): string | null {
+  // Not `commands/lib.ts`: that module imports this one.
+  const res = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    cwd: root,
+    encoding: "utf-8",
+  });
+  const common = res.status === 0 ? res.stdout.trim() : "";
+  if (common === "") return null;
+  const outbox = path.join(common, "bkit-outbox");
+  const id = createHash("sha256").update(fs.realpathSync(root)).digest("hex").slice(0, 16);
+  const file = path.join(outbox, "ledger-operations", `${id}.jsonl`);
+  if (prepare) privateDir(file);
+  return file;
+}
+
+/** Create the private directory chain of `file`'s parent (0700). */
+function privateDir(file: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+}
+
+/** Intents on `target` of this root with no receipt; none when there is no store. */
+export function pendingLedgerIntentsFor(root: string, target: string): LedgerIntent[] {
+  const ops = ledgerOperationsFile(root);
+  return ops === null ? [] : pendingLedgerIntents(ops, target);
+}
+
+const ledgerOpKey = (operation: string) => actionKey("ledger-op", operation);
+
+export type LedgerOperationState =
+  { state: "new" } | { state: "replay" | "conflict"; row: EngineActionRow };
+
+/** The status rows of one bounded correction: a guaranteed no-write rejection, a corrected retry, its success. */
+export const CORRECTION_REJECTED_ROW = "correction-rejected";
+export const CORRECTION_CANDIDATE_ROW = "correction-candidate";
+export const CORRECTION_SUCCEEDED_ROW = "correction-succeeded";
+
+/**
+ * The stable scope one rejected sub-step's corrected retries share: derived from the run, step,
+ * task group and attempt, the ledger and the sub-step, never from an invocation or operation id,
+ * so a new tool call, helper or resume spends from the same budget.
+ */
+export function correctionScope(o: {
+  workflow: string;
+  run: number | null;
+  step: string;
+  group: string | null;
+  attempt: string | null;
+  ledger: string;
+  substep: string;
+}): string {
+  return [
+    "ledgers-append",
+    o.ledger,
+    o.substep,
+    o.workflow,
+    `run${o.run ?? 0}`,
+    o.step,
+    ...(o.group === null ? [] : [`group${o.group}`]),
+    ...(o.attempt === null ? [] : [`attempt${o.attempt}`]),
+  ].join(":");
+}
+
+/** Where `operation` stands in `file`: unseen, done with this request, or used for another. */
+export function ledgerOperation(
+  file: string,
+  operation: string,
+  hash: string,
+): LedgerOperationState {
+  const known = engineActions(file)
+    .filter((r) => r.key === ledgerOpKey(operation))
+    .at(0);
+  if (known === undefined) return { state: "new" };
+  return { state: known.hash === hash ? "replay" : "conflict", row: known };
+}
+
+/**
+ * Record the receipt of a finished ledger operation. A known operation with the same
+ * hash returns its original row unchanged; one with another hash throws and writes nothing.
+ * `detail` rides on the row so a replay can return the original effect.
+ */
+export function recordLedgerOperation(
+  file: string,
+  a: { operation: string; hash: string; ref: string | null; detail?: Record<string, unknown> },
+): EngineActionRow {
+  const known = ledgerOperation(file, a.operation, a.hash);
+  if (known.state === "conflict")
+    throw new Error(`ledger operation ${a.operation} was already used for a different request`);
+  if (known.state === "replay") return known.row;
+  const row = {
+    ...recordRow({
+      action: "ledger-append",
+      key: ledgerOpKey(a.operation),
+      hash: a.hash,
+      ref: a.ref,
+    }),
+    ...(a.detail === undefined ? {} : { detail: a.detail }),
+  };
+  privateDir(file);
+  fs.appendFileSync(file, appendLine(row), { mode: 0o600 });
+  return row;
+}
+
+const recordRow = (a: {
+  action: string;
+  key: string;
+  hash: string;
+  ref: string | null;
+}): EngineActionRow => ({ type: ENGINE_ACTION, ...a, at: statusTimestamp() });
+
+/** The exact bytes an operation prepared, written before the target is touched. */
+export type LedgerIntent = {
+  type: "ledger-intent";
+  operation: string;
+  hash: string;
+  /** Target path relative to the book root. */
+  file: string;
+  offset: number;
+  bytes: number;
+  block: string;
+  at: string;
+};
+
+function intentRows(file: string): LedgerIntent[] {
+  if (!fs.existsSync(file)) return [];
+  const out: LedgerIntent[] = [];
+  for (const line of fs.readFileSync(file, "utf-8").split("\n")) {
+    if (line.trim() === "") continue;
+    const parsed = parseJson(line);
+    if (!parsed.ok) continue;
+    const r = parsed.value as Partial<LedgerIntent> | null;
+    if (r?.type === "ledger-intent" && typeof r.operation === "string") out.push(r as LedgerIntent);
+  }
+  return out;
+}
+
+/** Record the prepared bytes of an operation before writing them. */
+export function recordLedgerIntent(file: string, intent: Omit<LedgerIntent, "type" | "at">): void {
+  privateDir(file);
+  const row: LedgerIntent = { type: "ledger-intent", ...intent, at: statusTimestamp() };
+  fs.appendFileSync(file, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+}
+
+/** The latest prepared intent of `operation`, or undefined. */
+export function ledgerIntent(file: string, operation: string): LedgerIntent | undefined {
+  return intentRows(file)
+    .filter((i) => i.operation === operation)
+    .at(-1);
+}
+
+/** Intents on `target` (relative path) whose operation has no receipt: effects not yet confirmed. */
+export function pendingLedgerIntents(file: string, target: string): LedgerIntent[] {
+  const receipted = new Set(engineActions(file).map((r) => r.key));
+  const latest = new Map<string, LedgerIntent>();
+  for (const i of intentRows(file)) latest.set(i.operation, i);
+  return [...latest.values()].filter(
+    (i) => i.file === target && !receipted.has(ledgerOpKey(i.operation)),
+  );
+}
+
+/** Create `file` holding `content` only if absent; false when it exists. Other errors throw. */
+export function createExclusive(file: string, content: string): boolean {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "wx");
+  } catch (err) {
+    // EEXIST is the expected "someone holds it" answer; anything else is a real error.
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw err;
+  }
+  try {
+    fs.writeSync(fd, content);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return true;
+}
+
+const sleepSync = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** How long a writer waits for another writer's lock on a ledger before refusing. */
+export const TARGET_LOCK_WAIT_MS = 10_000;
+
+/**
+ * Run `fn` holding the exclusive lock on `target` (`<target>.bkit-lock`). A holder that
+ * does not release in time is never reclaimed: the call throws, naming the lock file.
+ */
+export function withTargetLock<T>(target: string, fn: () => T, waitMs = TARGET_LOCK_WAIT_MS): T {
+  const lock = `${target}.bkit-lock`;
+  const token = `${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  const body = JSON.stringify({ pid: process.pid, at: statusTimestamp(), token });
+  const deadline = Date.now() + waitMs;
+  while (!createExclusive(lock, body)) {
+    if (Date.now() >= deadline) {
+      const holder = fs.existsSync(lock) ? fs.readFileSync(lock, "utf-8").trim() : "unknown";
+      throw new Error(
+        `ledger target ${target} is locked by another writer (${holder}); if that process is gone, remove ${lock}`,
+      );
+    }
+    sleepSync(20);
+  }
+  try {
+    return fn();
+  } finally {
+    const held = fs.existsSync(lock) ? fs.readFileSync(lock, "utf-8") : "";
+    if (held === body) fs.rmSync(lock, { force: true });
+  }
+}
+
+/** Append `block` to `target` at exactly `offset`, flush it and read it back; throws on any mismatch. */
+export function writePrepared(target: string, block: string, offset: number): void {
+  const size = fs.existsSync(target) ? fs.statSync(target).size : 0;
+  if (size !== offset)
+    throw new Error(
+      `ledger ${target} changed since the append was prepared (${size} != ${offset})`,
+    );
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const fd = fs.openSync(target, "a");
+  try {
+    fs.writeSync(fd, block);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  const bytes = Buffer.byteLength(block);
+  const back = Buffer.alloc(bytes);
+  const rd = fs.openSync(target, "r");
+  try {
+    fs.readSync(rd, back, 0, bytes, offset);
+  } finally {
+    fs.closeSync(rd);
+  }
+  if (back.toString("utf-8") !== block)
+    throw new Error(`ledger ${target} read-back disagrees with the bytes just written`);
+}
+
+export type AppendCheckpoint = (name: "prepared" | "written" | "receipted") => void;
+
+export type AppendHooks = {
+  prepared?: (p: { offset: number; block: string }) => void;
+  written?: (p: { offset: number; bytes: number; block: string }) => void;
+  checkpoint?: AppendCheckpoint;
+};
+
+/**
+ * The one lock-and-confirm append: under the target lock, read the current text, let
+ * `prepare` build the rows to add, write them (a missing final newline is closed first)
+ * and flush and read them back. Returns where the bytes landed.
+ */
+export function appendLocked(
+  target: string,
+  prepare: (current: string) => string,
+  hooks: AppendHooks = {},
+): { offset: number; bytes: number; block: string } {
+  return withTargetLock(target, () => appendHeld(target, prepare, hooks));
+}
+
+/** {@link appendLocked} for a caller that already holds the target lock. */
+export function appendHeld(
+  target: string,
+  prepare: (current: string) => string,
+  hooks: AppendHooks = {},
+): { offset: number; bytes: number; block: string } {
+  {
+    const current = fs.existsSync(target) ? fs.readFileSync(target, "utf-8") : "";
+    const body = prepare(current);
+    const block = `${current !== "" && !current.endsWith("\n") ? "\n" : ""}${body}`;
+    const offset = Buffer.byteLength(current);
+    hooks.prepared?.({ offset, block });
+    hooks.checkpoint?.("prepared");
+    writePrepared(target, block, offset);
+    const bytes = Buffer.byteLength(block);
+    hooks.checkpoint?.("written");
+    hooks.written?.({ offset, bytes, block });
+    hooks.checkpoint?.("receipted");
+    return { offset, bytes, block };
+  }
 }
 
 export type Strategy = NonNullable<Step["strategy"]>;

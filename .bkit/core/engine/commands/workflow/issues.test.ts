@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import {
+  auditEntries,
   cutEarlier,
   headingAnchor,
   isGenerated,
@@ -844,6 +845,82 @@ describe("bkit issues comment --post", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("renders audit comments from validated result and preserves tracker adapters", async () => {
+    const AUDIT = ["issues", "comment", "--kind=audit", "--audit-slug=security"];
+    const result = {
+      slug: "security",
+      status: "COMPLETE",
+      report: "docs/audits/202610/security.md",
+      findings: [
+        { severity: "HIGH", title: "Token logged", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Old cipher", location: "src/c.ts:7" },
+      ],
+      notChecked: [],
+    };
+    const cwd = dir({ tracker: { default: "none" } });
+    write(cwd, "a.md", "## Overview\n\nAll clear.\n");
+    write(cwd, "r.json", JSON.stringify(result));
+
+    // The result renders the very comment the hand-written flags render: same counts, same link.
+    const manual = await run(cwd, [
+      ...AUDIT,
+      "--field=Status=COMPLETE",
+      "--field=Findings=CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+      "--line=Report: docs/audits/202610/security.md",
+      "--body-file=a.md",
+    ]);
+    const derived = await run(cwd, [...AUDIT, "--result-file=r.json", "--body-file=a.md"]);
+    expect(derived.code).toBe(0);
+    expect(derived.json.comment).toBe(manual.json.comment);
+
+    // A hand-written count beside the result could disagree with it, so it is refused.
+    const conflicting = await run(cwd, [
+      ...AUDIT,
+      "--result-file=r.json",
+      "--field=Findings=CRITICAL 9 · HIGH 9 · MEDIUM 9 · LOW 9",
+    ]);
+    expect(conflicting.code).not.toBe(0);
+    expect(conflicting.json?.comment).toBeUndefined();
+
+    // An invalid result produces no comment at all, with or without --post, and calls no tracker.
+    process.env.BKIT_LINEAR_API_KEY = "k";
+    const sent = linearCommentServer();
+    const badDir = dir({ tracker: { default: "linear" } });
+    write(
+      badDir,
+      "bad.json",
+      JSON.stringify({
+        ...result,
+        findings: [{ severity: "SEVERE", title: "x", location: "a:1" }],
+      }),
+    );
+    const invalid = await run(badDir, [
+      ...AUDIT,
+      "--result-file=bad.json",
+      "--post",
+      "--fid=eng-4-x",
+    ]);
+    expect([undefined, null]).toContain(invalid.json?.comment);
+    expect(sent).toEqual([]);
+
+    // Tracker none still skips, and Linear still posts the printed body once, deduplicated on a re-run.
+    expect(
+      (await run(cwd, [...AUDIT, "--result-file=r.json", "--post", "--fid=x"])).json.tracker,
+    ).toEqual({ skipped: "tracker-none" });
+    const linear = dir({ tracker: { default: "linear" } });
+    write(linear, "r.json", JSON.stringify(result));
+    const first = await run(linear, [...AUDIT, "--result-file=r.json", "--post", "--fid=eng-4-x"]);
+    expect(first.json.tracker).toMatchObject({ done: true, action: "comment" });
+    expect(sent).toEqual([first.json.comment]);
+    expect(first.json.comment).toContain(
+      "Audit Summary: security - Status: COMPLETE - Findings: CRITICAL 0 · HIGH 1 · MEDIUM 0 · LOW 2",
+    );
+    const again = await run(linear, [...AUDIT, "--result-file=r.json", "--post", "--fid=eng-4-x"]);
+    expect(again.json.tracker).toMatchObject({ done: true, deduped: true });
+    expect(sent).toHaveLength(1);
+  });
+
   it("a failed post exits 0 with done false and the reason", async () => {
     const r = await run(dir({ tracker: { default: "linear" } }), [
       ...STEP,
@@ -1374,5 +1451,38 @@ describe("bkit issues labels --write", () => {
     ]);
     expect(r.json).toMatchObject({ board: null, boardSkipped: "cloud", boardWrite: null });
     expect(fs.readFileSync(path.join(cwd, "gh-calls"), "utf-8")).not.toContain("graphql");
+  });
+});
+
+describe("bkit issues audit ledger keys", () => {
+  it("derives audit ledger keys under the audit-slug prefix", () => {
+    const entries = auditEntries({
+      slug: "security",
+      status: "COMPLETE",
+      report: null,
+      findings: [
+        { severity: "HIGH", title: "Missing CSRF token", location: "src/a.ts:10" },
+        { severity: "LOW", title: "Verbose error", location: "src/b.ts:2" },
+        { severity: "LOW", title: "Verbose error", location: "src/c.ts:7" },
+        {
+          severity: "LOW",
+          title: "Judged",
+          location: "src/d.ts:1",
+          priorKey: "audit-security-old",
+        },
+      ],
+      notChecked: [],
+    });
+    const byLocation = (loc: string) => entries.find((e) => e.location === loc)!;
+    // New keys follow the prompt's `audit-<slug>-<content-slug>` shape; a judged prior key stays.
+    expect(byLocation("src/a.ts:10").key).toBe("audit-security-missing-csrf-token");
+    expect(byLocation("src/d.ts:1").key).toBe("audit-security-old");
+    // Duplicate titles still get distinct keys under the same prefix.
+    const verbose = entries.filter((e) => e.title === "Verbose error").map((e) => e.key);
+    expect(new Set(verbose).size).toBe(2);
+    for (const k of verbose) expect(k.startsWith("audit-security-verbose-error")).toBe(true);
+    // A derived key never equals a report-local finding ID such as `security-1`.
+    const ids = new Set(entries.map((e) => e.id));
+    for (const e of entries) expect(ids.has(e.key)).toBe(false);
   });
 });

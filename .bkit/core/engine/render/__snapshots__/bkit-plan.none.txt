@@ -13,7 +13,7 @@ description: "Plan Feature — Autonomous plan generation"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery**, **Read-only helper recovery** and **Bounded correction**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -34,6 +34,12 @@ description: "Plan Feature — Autonomous plan generation"
 - **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{PARENT_FID}`, `{PARENT_YYYYMM}`, etc non-empty if required before making tool calls. **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
+- **Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
+- **Deterministic bookkeeping:** Use the engine's validated execution context and artifact data for metadata, counts, paths and serialization. Agents supply substantive findings and judgments. Do not invent missing attribution or replace conflicting evidence with a guess.
+- **Recoverable execution errors:** Apply the command's explicit recovery route first. If validation guarantees that no changes were made, correct the input from verified evidence and retry at most twice. Keep this correction budget across helper rewrites, tool switches and resume. Verify the required outputs and continue from the interrupted sub-step after success.
+- **Uncertain effects:** Inspect and reconcile the operation's durable state before retrying a write. Retry only when the engine can establish that it will not duplicate or corrupt an effect. Preserve work and report a blocker when the outcome cannot be established.
+- **Failure boundary:** Enter Failure Path when the applicable recovery budget is exhausted, a required check still fails, required information or authorization is unavailable, or recovery cannot proceed safely. Recovery does not permit weakening tests, bypassing gates or granting approval. A recovered command error alone does not fail the workflow.
+- **Recovery precedence:** A specific recovery route supplies its own limit and eligibility before the generic two-correction route. Optional model telemetry unavailability is diagnostic, while missing author or run authority or required substantive evidence blocks the affected action. A permission escalation follows its existing authorization policy, never the generic correction allowance.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -180,8 +186,14 @@ _No tracker connected, skip step._
 
 ## 🧠 Step 3 — Generate Plan
 
+Before generating, ask the engine for this step's invocation id and keep the printed `invocation` as `INVOCATION`:
+
+```bash
+"{BKIT}" status invocation --workflow=plan --step=plan-generate --file="{STATUS}"
+```
+
 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}.
+   Context: You are a subagent in the Plan phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. Workstreams this plan covers: {WORKSTREAMS}. Invocation id: `{INVOCATION}`.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md` (if present — superseded plan, context only, not a constraint).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
    Project documents: `@bkit-plan-generate` fills `Documentation Consultation` and `Documentation Warnings` in the plan. The review and apply-review steps keep those sources; a gap is a warning that continues the run, never a stop.
@@ -245,19 +257,33 @@ _No tracker connected, skip step._
    - **Else**:
      - `REVIEW_PLAN` = `plan-v2-reviewed.md`, the plan Step 6 applied the first review to.
      - `REVIEW_CHECK` = `plan-update-check.md`.
+   - Save the active knowledge rows for the reviewers, who have no shell:
+     ```bash
+     "{BKIT}" ledgers query --ledger=knowledge --status=ACTIVE --limit=500 > "docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md"
+     ```
+   - **If** the saved output's `nextCursor` is not null → run the same command again with `--limit` set to the saved output's `total`, so `related-knowledge.md` holds every row and never a truncated page.
 2. Launch these subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-review-1` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`.
+     Result: `{OUTBOX}/plan-review-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-plan-review-2` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
+     Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-knowledge.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`.
+     Result: `{OUTBOX}/plan-review-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-plan-scope-check` using `Agent` tool:
      Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_PLAN}`, `docs/plans/{YYYYMM}/logs/{FID}/{REVIEW_CHECK}`, `docs/plans/{YYYYMM}/logs/{FID}/plan-input-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/related-deferrals.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-failures.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
+     Result: `{OUTBOX}/plan-scope-check-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+     Once all three subagents return, render the plan reviews and the scope check from their results:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-plan-review-1 --result-file="{OUTBOX}/plan-review-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md"
+   "{BKIT}" steps stub --agent=bkit-plan-review-2 --result-file="{OUTBOX}/plan-review-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md"
+   "{BKIT}" steps stub --agent=bkit-plan-scope-check --result-file="{OUTBOX}/plan-scope-check-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md"
+   ```
 3. Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-review --attempt=next --agent=bkit-plan-review-1 --agent=bkit-plan-review-2 --agent=bkit-plan-scope-check --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md --message="chore({FID}): review-plan" --number=5 --post --title="Review Plan"
@@ -395,7 +421,11 @@ _No tracker connected, skip step._
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
-   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Set `by.step` = `plan-close-workflow`, and `rationale` = `answered by owner: {human's answer}`.
+   - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
+     ```bash
+     "{BKIT}" status invocation --workflow=plan --step=plan-close-workflow --file="{STATUS}"
+     ```
+   - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
    - Write `{OUTBOX}/plan-answers.md`: the `## Owner answers` heading, then per answer the question verbatim, the owner's answer verbatim, and `Decision: {key}`, or `Decision: none` when no row was written. Append its entries to `docs/plans/{YYYYMM}/logs/{FID}/plan-answers-{RUN}.md`.
      - **If** that file is absent → create it with the heading.

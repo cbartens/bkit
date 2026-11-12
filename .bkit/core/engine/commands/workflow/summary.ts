@@ -77,6 +77,16 @@ const RESOLVED_BY: Readonly<Record<string, readonly string[]>> = {
 /** Steps that check the whole run, so they answer a failure in any task group. */
 const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 
+/**
+ * Whole-run checks that cover a failed check of any one group. A Decision Pause `Fix now`
+ * can put a group's fix in a new group, so that group is never verified again: the
+ * holistic verification judges every task, and the full test gate runs every group gate's suites.
+ */
+const RESOLVED_BY_RUN: Readonly<Record<string, readonly string[]>> = {
+  "build/build-plan-verify": ["build-plan-verify-holistic"],
+  "build/build-group-gate": ["build-run-tests"],
+};
+
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
 const SEVERITY = /\*\*Severity:\*\*\s*(CRITICAL|HIGH|MEDIUM|LOW)\b/;
 const TEST_EXCEPTION = "**TEST EXCEPTION:**";
@@ -380,13 +390,15 @@ export function buildSummary(input: SummaryInput): Summary {
       : review || row.verdict === "FAIL"
         ? (RESOLVED_BY[`${workflow}/${g.step}`] ?? [])
         : [];
+    const runAnswers =
+      row.verdict === "FAIL" ? (RESOLVED_BY_RUN[`${workflow}/${g.step}`] ?? []) : [];
     const sub = taskGroupOf(row);
     const answer = groups
       .map(lastOf)
       .find(
         ({ row: r, index: i }) =>
           i > index &&
-          answers.includes(String(r.step)) &&
+          (answers.includes(String(r.step)) || runAnswers.includes(String(r.step))) &&
           (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
           (r.failures === undefined || r.failures === 0) &&
           (WHOLE_RUN.has(String(r.step)) || taskGroupOf(r) === sub) &&

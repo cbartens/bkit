@@ -33,6 +33,7 @@ import {
   statusTimestamp,
   type StatusEvent,
   type StatusRow,
+  withTargetLock,
 } from "../../ledgers/status.js";
 import {
   compareTs,
@@ -639,13 +640,17 @@ function carryOwnBook(
   const uncommitted = (file: string) => runRows(src, file, rec);
   const add = (file: string, lines: string[]) => {
     const to = path.join(dst, file);
-    const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
-    const have = new Set(textLines(existing).map((l) => l.trim()));
-    const fresh = lines.filter((l) => !have.has(l.trim()));
-    if (fresh.length === 0) return;
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
-    fs.appendFileSync(to, `${sep}${fresh.join("\n")}\n`);
+    const fresh = withTargetLock(to, () => {
+      const existing = fs.existsSync(to) ? fs.readFileSync(to, "utf-8") : "";
+      const have = new Set(textLines(existing).map((l) => l.trim()));
+      const missing = lines.filter((l) => !have.has(l.trim()));
+      if (missing.length === 0) return missing;
+      const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+      fs.appendFileSync(to, `${sep}${missing.join("\n")}\n`);
+      return missing;
+    });
+    if (fresh.length === 0) return;
     carried.lines.set(file, fresh);
   };
   const listed = (specs: string[]) =>

@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandError, runCommand } from "../lib";
+import { CommandError, resolveInvocation, runCommand } from "../lib";
 import { COMMANDS } from "../registry";
 import { runStatusRows, stepsBlock } from "./run-facts";
 import { readRuns, readStatusEvents, readStatusRows } from "./status";
@@ -1153,5 +1153,321 @@ describe("bkit status row owner-pause friction", () => {
     expect(r.code).toBe(4);
     expect(r.err).toContain("friction");
     expect(readStatusRows(file).filter((r) => r.type === "owner-pause")).toHaveLength(1);
+  });
+});
+
+describe("bkit status invocation", () => {
+  const REL = "docs/plans/202611/logs/860-x/status.jsonl";
+  const runRepo = (rows: object[] = [started("build", "2026-11-09T10:00:00Z")]) => {
+    const root = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: root });
+    fs.mkdirSync(path.dirname(path.join(root, REL)), { recursive: true });
+    fs.writeFileSync(path.join(root, REL), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return root;
+  };
+
+  it("issues invocation metadata from an explicit run and registered step", async () => {
+    const root = runRepo();
+    const statusBefore = fs.readFileSync(path.join(root, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(r.code).toBe(0);
+    // Number, title and paths come from the step table and the explicit run, not the caller.
+    expect(r.json).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      number: 3,
+      title: "Branch Sync",
+      run: 1,
+      scope: "run",
+      statusPath: path.join(root, REL),
+      bookRoot: root,
+      agent: "bkit-build-plan-tests",
+      host: "claude",
+      configuredModel: "sonnet",
+    });
+    expect(typeof r.json.invocation).toBe("string");
+    expect(r.json.invocation).not.toBe("");
+    // Issuing appends only the invocation event to the issuing run's own status log; the receipt is an outbox index.
+    const statusAfter = fs.readFileSync(path.join(root, REL), "utf-8");
+    expect(statusAfter.startsWith(statusBefore)).toBe(true);
+    expect(statusAfter.length).toBeGreaterThan(statusBefore.length);
+    expect(statusAfter.slice(statusBefore.length)).toContain(String(r.json.invocation));
+    expect(fs.existsSync(String(r.json.receipt))).toBe(true);
+    expect(String(r.json.receipt)).toContain("bkit-outbox");
+
+    // An unregistered step, and a step of another workflow, are refused.
+    const bad = await run(
+      ["status", "invocation", "--workflow=build", "--step=not-a-step", `--file=${REL}`],
+      root,
+    );
+    expect(bad.code).toBe(2);
+    const cross = await run(
+      ["status", "invocation", "--workflow=build", "--step=plan-generate", `--file=${REL}`],
+      root,
+    );
+    expect(cross.code).toBe(2);
+
+    // A runless audit gets scoped outbox authority without a fabricated run or status file.
+    const bare = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: bare });
+    const audit = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-example"],
+      bare,
+    );
+    expect(audit.code).toBe(0);
+    expect(audit.json).toMatchObject({ scope: "outbox", run: null, statusPath: null });
+    expect(fs.existsSync(String(audit.json.receipt))).toBe(true);
+    expect(fs.existsSync(path.join(bare, "docs"))).toBe(false);
+  });
+
+  it("refuses to issue an invocation into a status file outside the issuing checkout", async () => {
+    const mine = runRepo();
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    const mineBefore = fs.readFileSync(path.join(mine, REL), "utf-8");
+    const r = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${otherFile}`,
+      ],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(path.join(mine, REL), "utf-8")).toBe(mineBefore);
+    const relative = path.relative(mine, otherFile);
+    const viaRelative = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${relative}`,
+      ],
+      mine,
+    );
+    expect(viaRelative.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+  });
+
+  it("refuses to issue an invocation through a status file symlinked out of the checkout", async () => {
+    const mine = tmp();
+    spawnSync("git", ["init", "-q", "-b", "dev"], { cwd: mine });
+    const other = runRepo();
+    const otherFile = path.join(other, REL);
+    const before = fs.readFileSync(otherFile, "utf-8");
+    fs.mkdirSync(path.dirname(path.join(mine, REL)), { recursive: true });
+    fs.symlinkSync(otherFile, path.join(mine, REL));
+    const r = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-branch-sync", `--file=${REL}`],
+      mine,
+    );
+    expect(r.code).not.toBe(0);
+    expect(fs.readFileSync(otherFile, "utf-8")).toBe(before);
+    expect(fs.readFileSync(otherFile, "utf-8")).not.toContain('"invocation"');
+  });
+
+  it("writes no absolute checkout path into the run's committed invocation event", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    const after = fs.readFileSync(statusFile, "utf-8");
+    const added = after.slice(before.length);
+    const events = added
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "invocation", id });
+
+    // The committed row names the checkout nowhere: no absolute path in any field.
+    expect(added).not.toContain(root);
+    expect(added).not.toContain(os.homedir());
+    const absolute = Object.entries(events[0]!)
+      .filter(([, value]) => path.isAbsolute(String(value)))
+      .map(([key]) => key);
+    expect(absolute).toEqual([]);
+
+    // The private receipt and the printed result keep the absolute paths.
+    expect(issued.json.statusPath).toBe(statusFile);
+    expect(issued.json.bookRoot).toBe(root);
+
+    // A lookup still resolves the absolute paths from the relative event and the current top.
+    fs.rmSync(String(issued.json.receipt));
+    expect(resolveInvocation(root, id, {})).toMatchObject({
+      id,
+      statusPath: statusFile,
+      bookRoot: root,
+    });
+  });
+
+  it("records the issued invocation in the run status log and rebuilds a deleted receipt", async () => {
+    const root = runRepo();
+    const statusFile = path.join(root, REL);
+    const before = fs.readFileSync(statusFile, "utf-8");
+    const issued = await run(
+      [
+        "status",
+        "invocation",
+        "--workflow=build",
+        "--step=build-branch-sync",
+        `--file=${REL}`,
+        "--agent=bkit-build-plan-tests",
+        "--host=claude",
+        "--configured-model=sonnet",
+      ],
+      root,
+    );
+    expect(issued.code).toBe(0);
+    const id = String(issued.json.invocation);
+
+    // The run's own status log gains exactly one additive row, and it names the invocation.
+    const after = fs.readFileSync(statusFile, "utf-8");
+    expect(after.startsWith(before)).toBe(true);
+    const added = after
+      .slice(before.length)
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(added).toHaveLength(1);
+    expect(JSON.stringify(added[0])).toContain(id);
+    expect(added[0]).toMatchObject({
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+    });
+
+    // Losing the receipt does not lose the live run's id: the lookup rebuilds it from the event.
+    fs.rmSync(String(issued.json.receipt));
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(false);
+    const resolved = resolveInvocation(root, id, {});
+    expect(resolved).toMatchObject({
+      id,
+      workflow: "build",
+      step: "build-branch-sync",
+      agent: "bkit-build-plan-tests",
+      statusPath: statusFile,
+      run: 1,
+    });
+    expect(fs.existsSync(String(issued.json.receipt))).toBe(true);
+
+    // A forged id with no event stays refused, and the lookup adds nothing to the log.
+    expect(() => resolveInvocation(root, `inv-${"0".repeat(32)}`, {})).toThrow(/invocation/);
+    expect(fs.readFileSync(statusFile, "utf-8")).toBe(after);
+  });
+
+  it("binds group and attempt and registers setup, remediation and ship steps", async () => {
+    const root = runRepo([
+      started("build", "2026-11-09T10:00:00Z"),
+      started("ship", "2026-11-09T10:30:00Z"),
+    ]);
+    const issue = (workflow: string, step: string, extra: string[] = []) =>
+      run(
+        [
+          "status",
+          "invocation",
+          `--workflow=${workflow}`,
+          `--step=${step}`,
+          `--file=${REL}`,
+          ...extra,
+        ],
+        root,
+      );
+
+    const remediate = await issue("build", "build-plan-gaps-remediate", [
+      "--group=2",
+      "--attempt=3",
+      "--agent=bkit-build-plan-gaps-remediate",
+    ]);
+    expect(remediate.code).toBe(0);
+    expect(remediate.json).toMatchObject({
+      scope: "run",
+      group: "2",
+      attempt: "3",
+      agent: "bkit-build-plan-gaps-remediate",
+      bookRoot: root,
+    });
+    // An agent with no reported model is recorded unavailable.
+    expect(remediate.json.observedModel).toBe("unavailable");
+
+    const setup = await issue("build", "build-worktree-setup");
+    expect(setup.json).toMatchObject({
+      number: 2,
+      group: null,
+      attempt: null,
+      observedModel: null,
+    });
+
+    const ship = await issue("ship", "ship-summary");
+    expect(ship.code).toBe(0);
+    expect(ship.json).toMatchObject({ workflow: "ship", number: 6, bookRoot: root });
+
+    const debug = await issue("debug", "debug-run-tests");
+    expect(debug.code).toBe(0);
+    expect(debug.json).toMatchObject({ workflow: "debug", number: 3 });
+
+    // Malformed ids and standalone calls with a group are refused.
+    expect((await issue("build", "build-branch-sync", ["--group=a/b"])).code).toBe(2);
+    expect((await issue("build", "build-branch-sync", ["--agent=Bad Name"])).code).toBe(2);
+    const bare = await run(
+      ["status", "invocation", "--standalone=utility", "--name=u", "--group=1"],
+      root,
+    );
+    expect(bare.code).toBe(2);
+    const runless = await run(
+      ["status", "invocation", "--standalone=audit", "--name=bkit-audit-x", "--agent=bkit-audit-x"],
+      root,
+    );
+    expect(runless.json).toMatchObject({
+      declaredStep: "audit:bkit-audit-x",
+      allowedAgent: "bkit-audit-x",
+      observedModel: "unavailable",
+    });
+  });
+  it("registers the no-plan conversion step", async () => {
+    const root = runRepo([started("build", "2026-11-09T10:00:00Z")]);
+    const convert = await run(
+      ["status", "invocation", "--workflow=build", "--step=build-plan-convert", `--file=${REL}`],
+      root,
+    );
+    expect(convert.code).toBe(0);
+    expect(convert.json).toMatchObject({
+      workflow: "build",
+      step: "build-plan-convert",
+      number: 4,
+      bookRoot: root,
+    });
   });
 });

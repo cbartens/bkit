@@ -57,7 +57,7 @@ autoCompactWindow: 300000
 
 1. Read every supplied input once at the start, and work from what it says, not from session memory.
 2. Read `.agents/docs.md`, and load the docs it lists for this task, always including `.bkit/jsonl.md`. If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
-3. Fold `docs/deferrals.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is not `CLOSED`.
+3. Fold `docs/deferrals.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is not `CLOSED`; the engine does the fold, so run `bkit ledgers query --ledger=deferrals`, follow `nextCursor` until it is null, skip the `CLOSED` rows, and route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
 4. For each remaining entry, check in the codebase whether its work is done, never trusting the entry's own claims:
    - **If** it is done in code → set `status` to `CLOSED`, with `references` naming the evidence.
    - **Else** → leave it open (not done **or** cannot be judged from code).
@@ -69,9 +69,12 @@ autoCompactWindow: 300000
    - Search for matching tracker issues.
    - **If** a matching issue is found → set `status` to `TRIAGED`, and add the issue id to `references`.
 7. For each `key` changed above, append one row to `docs/deferrals.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), with the same `key` and the updated values.
+   - Issue one runless invocation first with `bkit status invocation --standalone=utility --name=bkit-utility-update-deferrals` and hold its `invocation`.
+   - Pass it as `--invocation` with a fresh `--operation` on each `bkit ledgers append`, and retry a lost response with the same `--operation`; `receipt.replayed: true` means the rows are already on disk.
+   - The engine fills `by` and the model fields from the invocation; never write `by` or a model name into a row.
    - Copy unchanged field values verbatim.
 8. For each `key` appended above, search the other three of `docs/decisions.jsonl`, `docs/deferrals.jsonl`, `docs/failures.jsonl`, `docs/knowledge.jsonl` for rows pointing at it: `references` holding the `key`, a `hard-blocked` deferral whose `description` names that row as its blocker, or any field carrying a locator the append replaced.
-   - Fold each ledger by `key`, highest `ts` wins.
+   - Query each ledger with `bkit ledgers query --ledger=<name>`, which folds by `key` with the highest `ts` winning.
    - Skip rows whose winning `status` is `CLOSED|SUPERSEDED`.
 9. Classify each row found against the append:
    - `blocker-cleared` = the row waits on the appended row and the append closed, corrected or superseded it → record under `Cross-Ledger Impact`.

@@ -111,6 +111,7 @@ autoCompactWindow: 300000
    - Append a log entry with its exit code.
    - **If** it exits non-zero → set `Verdict` = `FAIL` with `Edit` immediately, without waiting for the final pass.
 10. Set `Verdict` in **Create** with `Edit`:
+    - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header.
     - `PASS` = a merge of the recorded target was in progress, every conflicted file was resolved by the auto-resolver or classified `Allowed resolutions` and resolved, the merge is committed, and `pnpm bkit:gate:install-static-unit-build` exited 0.
     - `FAIL` = no merge was in progress, **or** any conflicted file was classified `Refused resolutions`, **or** the auto-resolver aborted the merge, **or** any verify command exited non-zero.
 11. **If** `Verdict` = `FAIL`:

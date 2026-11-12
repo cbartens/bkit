@@ -15,7 +15,7 @@ description: "Build Feature — Autonomous implementation"
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). After each completed numbered step, show its printed `progressLine` word for word as plain text outside code blocks. Show each completed row's line once; delayed bookkeeping and repeated validation gates add no second line. `/bkit-auto` shows its delegated workflow's lines. Headless runs show the same lines without waiting for acknowledgement. Silence between actions = compliance regression; Auto-apply does not mean silent.
-- **Failures:** Apply explicit recovery routes, including **Sandbox recovery** and **Read-only helper recovery**, before **Failure Path**.
+- **Failures:** Apply explicit recovery routes, including **Sandbox recovery**, **Read-only helper recovery** and **Bounded correction**, before **Failure Path**.
   - **If** a step, tool or command still fails, or a gate cannot pass → **Failure Path**.
 - **Sandbox recovery:** **If** the host reports a sandbox or permission denial:
   - Retry the same operation once through the host's approval mechanism only when permitted.
@@ -36,7 +36,13 @@ description: "Build Feature — Autonomous implementation"
 - **Recovery scope:** Repository code, bkit commands, test and gate failures keep their explicit recovery or failure routes.
 - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, etc non-empty if required before making tool calls (`{ISSUE_ID}` may be empty). **Else** → **Failure Path**.
 - **Commands:** Blocks run `"{BKIT}" <noun> <verb> --flag=value`; `{BKIT}` = `bkit` printed by Step 1 `repo info`, until then `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/node_modules/.bin/bkit"`. Stdout is `key: value` lines, nested keys indented under their parent (`a.b` = `b` under `a:`), lists of rows as tables: hold named keys under bare `UPPER_SNAKE` names, a `"quoted"` value without its quotes, and write a held name as `{VAR}` where it goes into a command or a `Context:` / `Read:` / `Create:` line. Exit non-zero with no `Route:` or recovery under **Failures** → **Failure Path**; exit 80 → mapped MCP tool (**gh MCP fallback**); exit 81 → end turn, re-run block. A flag still holding a literal `{PLACEHOLDER}` exits 2.
-- **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop: each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead) — check present → `found`; 6th unresolved turn → `none`, or `err` when every turn errored; **Else** → end turn and repeat. Re-run the block with `{CI_REENTRY}` = `--poll-result=<found|none|err> --attempts=<total>`, plus `--all-errored` when every turn errored and `--retriggered` when the printed `phase` = repoll. `{CI_REENTRY}` is empty on a block's first run.
+- **CI wait turn-loop:** **If** a `bkit runs dispatch` block exits 81 (runtime cannot wait) or 80 (`gh` unavailable) → resolve the poll in the agent turn loop. Pass `--invocation="{INVOCATION}"` on every run of the block. Each orchestrator turn run once `bkit runs wait --pr={PR_NUMBER} --once` (on exit 80 read the PR's checks via `pull_request_read` instead), then record what it saw with `bkit runs handoff --invocation="{INVOCATION}" --repo={OWNER_REPO} --pr={PR_NUMBER} --head=<printed head> --branch={BRANCH} --result=<none|pending|success|failure|provider-error> --polls=1`. Follow the printed `nextAction`: `poll-again` → end turn and repeat; `retrigger`, `reconcile-retrigger` or `verdict` → re-run the block. The engine derives the attempts, errors and re-trigger state from the persisted rows; never supply a counter.
+- **Bounded correction:** **If** a bkit command fails with a structured error that declares effects = none and correctable = true (a guaranteed no-write rejection, checked by the engine fill before any write) → correct only what the error names, and retry with `--correction-of=<the rejected --operation>` and a fresh `--operation`. Allow two corrected retries per printed `scope`; a replay of a counted operation spends nothing. After a verified retry (`correction.verified`) resume the same sub-step. **If** the error reports uncertain effects → reconcile first by re-running the original `--operation`, and make no corrected candidate until that settles. A stricter command-specific route or limit wins over this allowance. Authorization failures, gate and check failures, exhausted budgets and unverified retries keep **Failure Path**.
+- **Deterministic bookkeeping:** Use the engine's validated execution context and artifact data for metadata, counts, paths and serialization. Agents supply substantive findings and judgments. Do not invent missing attribution or replace conflicting evidence with a guess.
+- **Recoverable execution errors:** Apply the command's explicit recovery route first. If validation guarantees that no changes were made, correct the input from verified evidence and retry at most twice. Keep this correction budget across helper rewrites, tool switches and resume. Verify the required outputs and continue from the interrupted sub-step after success.
+- **Uncertain effects:** Inspect and reconcile the operation's durable state before retrying a write. Retry only when the engine can establish that it will not duplicate or corrupt an effect. Preserve work and report a blocker when the outcome cannot be established.
+- **Failure boundary:** Enter Failure Path when the applicable recovery budget is exhausted, a required check still fails, required information or authorization is unavailable, or recovery cannot proceed safely. Recovery does not permit weakening tests, bypassing gates or granting approval. A recovered command error alone does not fail the workflow.
+- **Recovery precedence:** A specific recovery route supplies its own limit and eligibility before the generic two-correction route. Optional model telemetry unavailability is diagnostic, while missing author or run authority or required substantive evidence blocks the affected action. A permission escalation follows its existing authorization policy, never the generic correction allowance.
 
 **Contract:** The terms between this agent and whoever runs it.
 
@@ -662,6 +668,11 @@ Each task group gets its own pass of Steps 7-9, in group order. Step 7 briefs th
    Context: You are a subagent in the Build phase. Group verification. Group `{GROUP}`, attempt `{VERIFY_ATTEMPT}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
    Read: glob `docs/plans/{YYYYMM}/logs/{FID}/build-brief-{GROUP}-*.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-diff-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md` (if present), `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-{GROUP}-log.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-current.md` (if present), glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{GROUP}-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`.
+   Result: `{OUTBOX}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+   When the verifier is done, produce the group's verify report from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-build-plan-verify --result-file="{OUTBOX}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md"
+   ```
 5. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify --file="{STATUS}" --attempt-of=build-plan-verify:next --group={GROUP} --agent=bkit-build-plan-verify --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-<attempt>.md" --number=8 --post --title="Plan Verify" --message="chore({FID}): plan-verify group {GROUP} attempt <attempt>"
@@ -820,6 +831,11 @@ This step checks the whole feature against the plan after the last group, and ag
    Context: You are a subagent in the Build phase. Holistic plan verification (every group), attempt `{HOLISTIC_ATTEMPT}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
    Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tasks-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-*.md`, `tmp/bkit-diff-{FID}.md` (the run's diff; review full feature diff for cross-group integration).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md`.
+   Result: `{OUTBOX}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+   When the holistic verifier is done, produce the holistic report from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-build-plan-verify --result-file="{OUTBOX}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md"
+   ```
 3. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-plan-verify-holistic --file="{STATUS}" --attempt-of=build-plan-verify-holistic:next --agent=bkit-build-plan-verify --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-<attempt>.md" --number=10 --post --title="Plan Verify Holistic" --message="chore({FID}): plan-verify-holistic attempt <attempt>"
@@ -924,10 +940,17 @@ This step checks the whole feature against the plan after the last group, and ag
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
+     Result: `{OUTBOX}/build-challenge-1-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
    - **Subagent:** Invoke `@bkit-build-challenge-2` using `Agent` tool:
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `tmp/bkit-diff-{FID}.md` (the run's diff).
      Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
+     Result: `{OUTBOX}/build-challenge-2-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+     Once the subagents return, render each challenge report from its result. **If** `CHALLENGE_SIZE` = small → render only `bkit-build-challenge-2`:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-build-challenge-1 --result-file="{OUTBOX}/build-challenge-1-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md"
+   "{BKIT}" steps stub --agent=bkit-build-challenge-2 --result-file="{OUTBOX}/build-challenge-2-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md"
+   ```
 4. Wait for all subagents to complete, then finish — `verdict` = worst of the reports (`FAIL > CONCERNS > PASS`), `failures` = their sum. **If** `CHALLENGE_SIZE` = small → drop the `--agent=bkit-build-challenge-1` / `--artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md` pair:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-challenge --file="{STATUS}" --attempt=next --agent=bkit-build-challenge-1 --agent=bkit-build-challenge-2 --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md --field=round={CHALLENGE_ROUND} --number=11 --post --title="Build Challenge" --message="chore({FID}): build-challenge attempt <attempt>"
@@ -1034,6 +1057,11 @@ This step checks the whole feature against the plan after the last group, and ag
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. `Strategy`: `{STRATEGY}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/run-tests-{TEST_ATTEMPT}.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` (highest number, if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
+   Result: `{OUTBOX}/build-failure-diagnose-{TEST_ATTEMPT}-result.json`. Before the launch, delete any older file at the Result path, so a subagent that dies leaves no result to render.
+   When the diagnosing agent is done, produce the test-failure diagnosis from its result:
+   ```bash
+   "{BKIT}" steps stub --agent=bkit-debug-failure-diagnose --result-file="{OUTBOX}/build-failure-diagnose-{TEST_ATTEMPT}-result.json" --to="docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md"
+   ```
 3. Finish:
    ```bash
    "{BKIT}" steps finish --workflow=build --step=build-failure-diagnose --file="{STATUS}" --attempt-of=build-run-tests:current --strategy={STRATEGY} --agent=bkit-debug-failure-diagnose --artifact="docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-<attempt>.md" --number=13 --post --title="Failure Diagnose" --message="chore({FID}): failure-diagnose attempt <attempt>"
@@ -1257,9 +1285,12 @@ This block appends the roadmap row in the worktree only, closes and commits the 
    "{BKIT}" steps done --workflow=build --step=build-create-pr --file="{STATUS}" --artifact={PR_URL} --commit=none
    ```
 6. Run the CI-Dispatch Gate. It records `build-close-workflow` with its `ciDispatch` verdict, cross-checks the transport and records the close transport.
-   **If** re-entering from the **CI wait turn-loop** → fill `{CI_REENTRY}`:
+   Issue the invocation once and hold its `invocation` as `INVOCATION`:
    ```bash
-   "{BKIT}" runs dispatch --pr={PR_NUMBER} --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=build --step=build-close-workflow {CI_REENTRY}
+   "{BKIT}" status invocation --workflow=build --step=build-close-workflow --file="{STATUS}"
+   ```
+   ```bash
+   "{BKIT}" runs dispatch --pr={PR_NUMBER} --fid={FID} {LABEL_FLAGS} --file="{STATUS}" --workflow=build --step=build-close-workflow --invocation="{INVOCATION}"
    ```
    Route:
    - **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.

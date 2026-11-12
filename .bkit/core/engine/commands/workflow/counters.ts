@@ -17,6 +17,7 @@ import {
   activeDoneStepsSinceClean,
   allRunsDoneSteps,
   appendLine,
+  CORRECTION_CANDIDATE_ROW,
   lastCleanRound,
   lastDoneStepAllRuns,
   nextStrategy,
@@ -39,6 +40,7 @@ import {
   type CommandSpec,
   type FlagValue,
   type RunContext,
+  wholeNumber,
 } from "../lib.js";
 import {
   EXIT_NO_STATUS,
@@ -177,6 +179,78 @@ function typedRowCount(file: string, workflow: string, type: string): number {
   return rows
     .slice(start + 1)
     .filter((r) => r.type === type && (r.workflow === undefined || r.workflow === workflow)).length;
+}
+
+/** Corrected retries a rejected sub-step gets unless its route names a stricter limit. */
+export const CORRECTION_LIMIT = 2;
+
+export interface CorrectionSpend {
+  allowed: boolean;
+  used: number;
+  limit: number;
+  remaining: number;
+  /** The operation was already counted: nothing was spent. */
+  replayed: boolean;
+  /** The operation was counted for another request: refused, nothing written. */
+  conflict?: boolean;
+}
+
+/**
+ * Spend one corrected retry of `scope` for `operation` in `workflow`'s active run. The budget is
+ * per scope and survives tools, helpers, resumes and any other counter call; a new operation id
+ * gains nothing, and asking again for a counted one spends nothing. `extra` joins the row.
+ */
+export function spendCorrection(
+  file: string,
+  workflow: string,
+  scope: string,
+  operation: string,
+  limit: number,
+  extra: Record<string, unknown> = {},
+): CorrectionSpend {
+  const rows = readStatusRows(file);
+  let start = -1;
+  rows.forEach((r, i) => {
+    if (r.type === "workflow-started" && r.workflow === workflow) start = i;
+  });
+  const counted = rows
+    .slice(start + 1)
+    .filter(
+      (r) => r.type === CORRECTION_CANDIDATE_ROW && r.workflow === workflow && r.scope === scope,
+    );
+  const spent = new Set<string>(counted.map((r) => String(r.operation)));
+  const asked = typeof extra.requestHash === "string" ? extra.requestHash : undefined;
+  const verdict = (allowed: boolean, replayed: boolean): CorrectionSpend => ({
+    allowed,
+    used: spent.size,
+    limit,
+    remaining: Math.max(0, limit - spent.size),
+    replayed,
+  });
+  if (spent.has(operation)) {
+    // A known id is a free replay only for the request it was counted for.
+    const hashes = counted
+      .filter((r) => String(r.operation) === operation)
+      .map((r) => r.requestHash)
+      .filter((h): h is string => typeof h === "string");
+    if (asked !== undefined && hashes.length > 0 && !hashes.includes(asked))
+      return { ...verdict(false, false), conflict: true };
+    return verdict(true, true);
+  }
+  if (spent.size >= limit) return verdict(false, false);
+  fs.appendFileSync(
+    file,
+    appendLine({
+      type: CORRECTION_CANDIDATE_ROW,
+      workflow,
+      at: statusTimestamp(),
+      scope,
+      operation,
+      ...extra,
+    }),
+  );
+  spent.add(operation);
+  return verdict(true, false);
 }
 
 /** The row `counters grant` writes: the owner gave one loop one more full allowance. */
@@ -646,6 +720,61 @@ export const countersCommand: CommandSpec = {
         );
         ctx.emit({ granted: true, reason: null, value, max, grants: grants + 1 });
         return EXIT.OK;
+      },
+    },
+    correction: {
+      summary:
+        "Spend one corrected retry of a rejected sub-step: exit 0 allowed (or a replay of a counted operation), exit 1 the scope's budget is used up. The budget is two per scope in the active run unless a stricter --limit names one.",
+      use: "workflow",
+      flags: [
+        FILE_FLAG,
+        WORKFLOW_FLAG,
+        {
+          name: "scope",
+          type: "string",
+          required: true,
+          help: "the engine-derived correction scope",
+        },
+        {
+          name: "operation",
+          type: "string",
+          required: true,
+          help: "the corrected candidate's fresh operation id",
+        },
+        {
+          name: "request-hash",
+          type: "string",
+          help: "the candidate's canonical request hash: a known operation replays free only for the same hash, and a different one is refused",
+        },
+        {
+          name: "limit",
+          type: "string",
+          help: `corrected retries this route allows (default ${CORRECTION_LIMIT}); a smaller one wins`,
+        },
+      ],
+      output: {
+        allowed: "true when the correction may run",
+        used: "operations counted in this scope",
+        limit: "retries this route allows",
+        remaining: "retries left",
+        replayed: "true when the operation was already counted: nothing was spent",
+      },
+      exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
+      run: (ctx) => {
+        const file = statusFile(ctx);
+        if (!fs.existsSync(file)) throw new CommandError(EXIT_NO_STATUS, `${file} does not exist`);
+        const spend = spendCorrection(
+          file,
+          String(ctx.flags.workflow),
+          String(ctx.flags.scope),
+          String(ctx.flags.operation),
+          wholeNumber(ctx.flags.limit, "limit", CORRECTION_LIMIT),
+          str(ctx.flags.requestHash) === undefined
+            ? {}
+            : { requestHash: str(ctx.flags.requestHash) },
+        );
+        ctx.emit({ ...spend });
+        return spend.allowed ? EXIT.OK : EXIT.NO;
       },
     },
     max: {

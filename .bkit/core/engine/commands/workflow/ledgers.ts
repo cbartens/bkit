@@ -10,6 +10,7 @@
 // everything already in the index, not nothing.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -22,6 +23,7 @@ import {
   UNJUSTIFIED_REASON,
   gitEnv,
   parse,
+  queryLedger,
   mintTs,
   resolveRepoSlug,
   validate,
@@ -31,16 +33,42 @@ import {
 } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers, type CompactLedger } from "../../ledgers/compact.js";
 import {
+  CORRECTION_REJECTED_ROW,
+  CORRECTION_SUCCEEDED_ROW,
+  actionHash,
+  appendHeld,
+  appendLine,
+  correctionScope,
+  ledgerIntent,
+  ledgerOperation,
+  ledgerOperationsFile,
+  pendingLedgerIntentsFor,
+  recordLedgerIntent,
+  recordLedgerOperation,
+  statusTimestamp,
+  withTargetLock,
+  writePrepared,
+  type AppendCheckpoint,
+} from "../../ledgers/status.js";
+import {
   CommandError,
+  CorrectionExhausted,
   EXIT,
+  INVOCATION_FLAG,
+  invocationDir,
   isIgnoredPath,
   isSharedBranch,
+  NoWriteRejection,
   parseJson,
+  UncertainEffect,
+  wholeNumber,
   type CommandSpec,
   type FlagSpec,
+  type Invocation,
   type RunContext,
 } from "../lib.js";
-import { str } from "./status.js";
+import { CORRECTION_LIMIT, spendCorrection, type CorrectionSpend } from "./counters.js";
+import { readStatusRows, str } from "./status.js";
 import {
   NO_MARKERS_REASON,
   outOfScope,
@@ -61,6 +89,9 @@ export const EXIT_EMPTY = 6;
 export const EXIT_NOT_BOOKKEEPING = 7;
 /** append: a row was refused (supplied `ts`, wrong kind, invalid, unlisted writer). */
 export const EXIT_ROW_REFUSED = 8;
+
+/** Rows per `ledgers query` page unless --limit says otherwise. */
+const QUERY_PAGE = 200;
 
 const SCOPES = ["core", "full", "pr"] as const;
 export type Scope = (typeof SCOPES)[number];
@@ -806,19 +837,81 @@ export const ledgersCommand: CommandSpec = {
           required: true,
           help: "file holding a JSON array of rows without schema, ts or bkit, or - for stdin",
         },
+        {
+          ...INVOCATION_FLAG,
+          help: `${INVOCATION_FLAG.help}; fills each row's by block (workflow, step, subagent, model, provenance) and refuses a row whose own by disagrees`,
+        },
+        {
+          name: "operation",
+          type: "string",
+          help: "operation id naming this request: the same id and rows replay the original receipt without writing; the same id with other rows is refused; a new id is a deliberate later update",
+        },
+        {
+          name: "issue-operation",
+          type: "boolean",
+          help: "let the engine issue the operation id from --invocation and the request, so a retried call after a lost response replays instead of appending again; exclusive with --operation",
+        },
+        {
+          name: "correction-of",
+          type: "string",
+          help: "the operation of an earlier guaranteed no-write rejection of this ledger append in this step: this call is its corrected retry (two per scope), under its own fresh --operation or --issue-operation",
+        },
       ],
       output: {
         ledger: "the ledger appended to",
         file: "its path, relative to --root",
         appended: "rows written",
         keys: "each row's key, in order (null when a row has none)",
+        receipt:
+          "with --operation: {operation, ledger, file, offset, bytes, rows[{key, ts}], replayed}; replayed is true when the original effect is returned",
+        correction:
+          "with --correction-of: {scope, operation, of, used, limit, substep, verified}; verified is true when the rows landed (or the original receipt was returned)",
       },
       exitCodes: {
-        [EXIT_STAGE]: "mkdir or append failed",
+        [EXIT_STAGE]:
+          "mkdir or append failed, the ledger is locked by another writer, or a prior attempt left an uncertain partial write",
         [EXIT_ROW_REFUSED]:
           "a row carries ts, has the wrong kind, fails validation, or names a writer not listed for its kind — nothing written",
       },
       run: (ctx) => append(ctx),
+    },
+    query: {
+      summary:
+        "Read one ledger's canonical winners (filtered after the fold), paged, with line diagnostics and coverage. Writes nothing.",
+      use: "by-hand",
+      flags: [
+        { name: "root", type: "string", help: "checkout whose ledger to read (default: cwd)" },
+        {
+          name: "ledger",
+          type: "string",
+          required: true,
+          help: Object.keys(APPEND_LEDGERS).join(" | "),
+        },
+        { name: "key", type: "string", help: "only the winner with this key" },
+        { name: "status", type: "string", help: "only winners whose status is this (e.g. ACTIVE)" },
+        {
+          name: "limit",
+          type: "string",
+          help: `rows per page (default ${QUERY_PAGE}, at least 1)`,
+        },
+        {
+          name: "cursor",
+          type: "string",
+          help: "nextCursor of the previous page; refused when the ledger or the filter changed",
+        },
+      ],
+      output: {
+        ledger: "the ledger read",
+        file: "its path, relative to --root",
+        rows: "this page of fold winners, oldest ts first (equal ts by identity)",
+        nextCursor: "pass as --cursor for the next page, or null on the last page",
+        snapshot: "digest of the bytes read; every page of one scan shares it",
+        total: "winners that pass the filter, across all pages",
+        diagnostics: "each unreadable line: {line, reason}; on every page",
+        coverage:
+          "{status: clean|incomplete|partial|missing|unreadable, clean, malformedLines, lines}; clean is true only for a finished scan (nextCursor null) with no unreadable line, so a page with a nextCursor is incomplete",
+      },
+      run: (ctx) => query(ctx),
     },
     triage: {
       summary:
@@ -1221,14 +1314,23 @@ export function unionLedgers(src: string, dst: string): string[] {
     const made = mkdirp(path.dirname(to));
     if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(to)}: ${made}`);
     if (fs.existsSync(to) && fs.statSync(to).isFile()) {
-      const existing = fs.readFileSync(to, "utf-8");
-      const have = new Set(fileLines(existing));
-      const fresh = fileLines(fs.readFileSync(from, "utf-8")).filter((l) => !have.has(l));
-      const block = fresh.join("\n").replace(/\n+$/, "");
-      // A destination missing its final newline would glue the first new row
-      // onto its last one, leaving a line that is not JSON.
-      const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
-      if (block !== "") fs.appendFileSync(to, `${sep}${block}\n`);
+      // Under the destination's target lock, so a pending ledger operation's bytes are never reordered.
+      withTargetLock(to, () => {
+        const pending = pendingLedgerIntentsFor(dst, rel);
+        if (pending.length > 0)
+          throw new CommandError(
+            EXIT_STAGE,
+            `${rel} has ledger operation(s) with bytes but no receipt (${pending.map((p) => p.operation).join(", ")}); replay them first`,
+          );
+        const existing = fs.readFileSync(to, "utf-8");
+        const have = new Set(fileLines(existing));
+        const fresh = fileLines(fs.readFileSync(from, "utf-8")).filter((l) => !have.has(l));
+        const block = fresh.join("\n").replace(/\n+$/, "");
+        // A destination missing its final newline would glue the first new row
+        // onto its last one, leaving a line that is not JSON.
+        const sep = existing !== "" && !existing.endsWith("\n") ? "\n" : "";
+        if (block !== "") fs.appendFileSync(to, `${sep}${block}\n`);
+      });
     } else {
       const copied = copy(from, to);
       if (copied) throw new CommandError(EXIT_STAGE, `copy failed for ${rel}: ${copied}`);
@@ -1252,6 +1354,8 @@ export interface AppendResult {
   file: string;
   appended: number;
   keys: Array<string | null>;
+  /** Present when the call named an `operation`. */
+  receipt?: LedgerReceipt;
 }
 
 /** The top section in its written order, then the row's own fields. */
@@ -1268,16 +1372,201 @@ const TOP_ORDER = [
   "references",
 ];
 
+/** A row's `by` block when it is an object, else an empty one. */
+const byOfRow = (row: Record<string, unknown>): Record<string, unknown> =>
+  row["by"] !== null && typeof row["by"] === "object" && !Array.isArray(row["by"])
+    ? (row["by"] as Record<string, unknown>)
+    : {};
+
+/** The `by` fields an invocation owns; a row may repeat them but never disagree. */
+const INVOCATION_BY_KEYS = [
+  "workflow",
+  "step",
+  "subagent",
+  "model",
+  "modelSource",
+  "configuredModel",
+  "host",
+] as const;
+
+/**
+ * `row` with its `by` block completed from the verified invocation. A field the row
+ * asserts that differs from the invocation's, or that the invocation cannot vouch for,
+ * is refused rather than overwritten. A configured pin is recorded as `configuredModel`
+ * only, never as the model that ran.
+ */
+function withInvocationBy(
+  row: Record<string, unknown>,
+  inv: Invocation,
+  refuse: (why: string) => CommandError,
+): Record<string, unknown> {
+  const unavailable = inv.observedModel === "unavailable";
+  const expected: Record<string, string | undefined> = {
+    workflow: inv.workflow ?? inv.standalone ?? undefined,
+    step: inv.step ?? inv.declaredStep ?? undefined,
+    subagent: inv.agent ?? undefined,
+    model:
+      inv.agent !== null && inv.observedModel !== null && !unavailable
+        ? inv.observedModel
+        : undefined,
+    modelSource:
+      inv.agent === null || inv.observedModel === null
+        ? undefined
+        : unavailable
+          ? "unavailable"
+          : "observed",
+    configuredModel: inv.agent !== null ? (inv.configuredModel ?? undefined) : undefined,
+    host: inv.agent !== null ? (inv.host ?? undefined) : undefined,
+  };
+  const asserted = row["by"];
+  if (
+    asserted !== undefined &&
+    (asserted === null || typeof asserted !== "object" || Array.isArray(asserted))
+  )
+    throw refuse("by must be an object");
+  const by: Record<string, unknown> = { ...(asserted as Record<string, unknown> | undefined) };
+  for (const key of INVOCATION_BY_KEYS) {
+    if (by[key] !== undefined && by[key] !== expected[key]) {
+      throw refuse(
+        `conflict: by.${key}=${JSON.stringify(by[key])} disagrees with invocation ${inv.id} (${expected[key] === undefined ? "none" : JSON.stringify(expected[key])})`,
+      );
+    }
+    if (by[key] === undefined && expected[key] !== undefined) by[key] = expected[key];
+  }
+  return { ...row, by };
+}
+
+export interface LedgerReceipt {
+  operation: string;
+  ledger: string;
+  file: string;
+  offset: number;
+  bytes: number;
+  rows: Array<{ key: string | null; ts: number }>;
+  replayed: boolean;
+}
+
+export interface AppendOptions {
+  /** Names the request: the same id and rows replay the original effect, never a second write. */
+  operation?: string;
+  /** The engine issues the operation id from the invocation and the request; exclusive with `operation`. */
+  issueOperation?: boolean;
+  /** Test seam: called at each durable checkpoint; a throw there simulates a lost response. */
+  checkpoint?: AppendCheckpoint;
+}
+
+/** `JSON.stringify` with object keys sorted at every depth: equal requests serialize equally. */
+export function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map((v) => canonicalJson(v)).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * The operation id of an append request: the caller's `--operation`, else (with
+ * `--issue-operation`) one issued from the invocation and the request, so retrying a lost
+ * response gets the same id.
+ */
+export function appendOperationId(
+  ledger: string,
+  rows: unknown,
+  invocation: Invocation | undefined,
+  options: { operation?: string; issueOperation?: boolean },
+): string | undefined {
+  if (options.operation !== undefined) return options.operation;
+  if (options.issueOperation !== true || invocation === undefined) return undefined;
+  const hash = actionHash(canonicalJson({ ledger, rows, invocation: invocation.id }));
+  return `op-${invocation.id.slice(4, 16)}-${hash.slice(0, 12)}`;
+}
+
+/**
+ * The correction scope of an append by a workflow-run or a standalone (audit or utility)
+ * invocation; null for any other caller.
+ */
+export function appendCorrectionScope(invocation: Invocation, ledger: string): string | null {
+  const book = correctionBookKey(invocation);
+  if (book === null) return null;
+  return correctionScope({
+    workflow: book.workflow,
+    run: invocation.run,
+    step: book.step,
+    group: invocation.group,
+    attempt: invocation.attempt,
+    ledger,
+    substep: "append",
+  });
+}
+
+/** The workflow and step a correction scope is cut from; the declared step for a standalone call. */
+function correctionBookKey(invocation: Invocation): { workflow: string; step: string } | null {
+  if (invocation.scope === "run")
+    return invocation.statusPath === null ||
+      invocation.workflow === null ||
+      invocation.step === null
+      ? null
+      : { workflow: invocation.workflow, step: invocation.step };
+  return invocation.standalone === null || invocation.declaredStep === null
+    ? null
+    : { workflow: invocation.standalone, step: invocation.declaredStep };
+}
+
+/**
+ * Where the correction events of `invocation` live: the run's `status.jsonl`, or for a standalone
+ * call the event file beside its outbox receipt. Null when the caller has no correction scope.
+ */
+function correctionBook(
+  cwd: string,
+  invocation: Invocation,
+): { file: string; workflow: string; step: string } | null {
+  const key = correctionBookKey(invocation);
+  if (key === null) return null;
+  if (invocation.scope === "run")
+    return invocation.statusPath === null ? null : { file: invocation.statusPath, ...key };
+  const dir = invocationDir(cwd);
+  if (dir === null) return null;
+  const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
+  fs.appendFileSync(file, "");
+  return { file, ...key };
+}
+
+/** The `{key, ts}` of each row in prepared `block` bytes. */
+function receiptRows(block: string): LedgerReceipt["rows"] {
+  const out: LedgerReceipt["rows"] = [];
+  for (const line of block.split("\n")) {
+    if (line.trim() === "") continue;
+    const parsed = parseJson(line);
+    if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") continue;
+    const r = parsed.value as Record<string, unknown>;
+    out.push({ key: typeof r["key"] === "string" ? r["key"] : null, ts: Number(r["ts"]) });
+  }
+  return out;
+}
+
 /**
  * Append `rows` to one ledger. Every row is checked before any is written, so a
  * refused row leaves the file byte-identical. Each row gets `schema` and a `ts`
  * minted now (never supplied), `repo` when it lacks one and `bkit.version` from
  * `.bkit/version`; an `AGED_KINDS` row also gets `firstTs` + `updates` carried
  * forward from its entry's rows already in the ledger (supplied values replaced).
- * Never rewrites existing rows. Throws a CommandError (USAGE / EXIT_ROW_REFUSED /
- * EXIT_STAGE).
+ * Never rewrites existing rows. The write runs under the ledger's target lock; with
+ * `options.operation` it also records the prepared bytes and a durable receipt, so a
+ * lost response is reconciled by inspecting the ledger, never by appending again.
+ * Throws a CommandError (USAGE / EXIT_ROW_REFUSED / EXIT_STAGE).
  */
-export function appendLedgerRows(root: string, ledger: string, rows: unknown): AppendResult {
+export function appendLedgerRows(
+  root: string,
+  ledger: string,
+  rows: unknown,
+  invocation?: Invocation,
+  options: AppendOptions = {},
+): AppendResult {
   if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
     throw new CommandError(
       EXIT.USAGE,
@@ -1289,75 +1578,241 @@ export function appendLedgerRows(root: string, ledger: string, rows: unknown): A
   if (!Array.isArray(rows)) throw new CommandError(EXIT.USAGE, "--rows must hold a JSON array");
   if (rows.length === 0) throw new CommandError(EXIT.USAGE, "--rows holds no rows");
 
-  let repo: string | undefined;
-  let version: string | undefined;
-  let last: number | undefined;
   const abs = path.join(root, file);
-  const prior: unknown[] = fs.existsSync(abs) ? parse(fs.readFileSync(abs, "utf-8")).events : [];
-  const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
-    const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-      throw refuse("not a JSON object");
-    }
-    const r = raw as Record<string, unknown>;
-    if (Object.hasOwn(r, "ts")) throw refuse("carries ts; ts is minted at append time");
-    if (Object.hasOwn(r, "schema")) throw refuse("carries schema; it is set at append time");
-    if (!takes.includes(String(r["kind"]))) {
-      throw refuse(
-        `kind must be ${takes.join(" | ")} in --ledger=${ledger} (got ${String(r["kind"])})`,
-      );
-    }
-    if (Object.hasOwn(r, "bkit")) throw refuse("carries bkit; bkit.version is set at append time");
-    repo ??= resolveRepoSlug(root) || "unknown/repo";
-    version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
-    last = mintTs(last);
-    const filled = withLineage(prior, {
-      repo,
-      ...r,
-      schema: SCHEMA,
-      ts: last,
-      bkit: { version },
-    });
-    const row: Record<string, unknown> = {};
-    for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
-    for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
-    const v = validate(row);
-    if (!v.ok) throw refuse(v.reason ?? "invalid");
-    const who = writerProblem(row);
-    if (who !== undefined) throw refuse(who);
-    prior.push(row);
-    return row;
-  });
-
   const made = mkdirp(path.dirname(abs));
   if (made) throw new CommandError(EXIT_STAGE, `mkdir failed for ${path.dirname(file)}: ${made}`);
-  const block = out.map((r) => `${JSON.stringify(r)}\n`).join("");
-  // A file missing its final newline would glue the first row onto its last one.
-  const appendErr = appendText(abs, endsMidLine(abs) ? `\n${block}` : block);
-  if (appendErr) throw new CommandError(EXIT_STAGE, `append failed: ${file} — ${appendErr}`);
-  return {
-    ledger: ledger as AppendLedger,
-    file,
-    appended: out.length,
-    keys: out.map((r) => (typeof r["key"] === "string" ? r["key"] : null)),
+  // The operation store is private to this git repository, never a committed path; a repo-less
+  // root has no place to keep a durable receipt, so an operation there is refused.
+  const ops = ledgerOperationsFile(
+    root,
+    options.operation !== undefined || options.issueOperation === true,
+  );
+  // The request is the ledger and rows alone: an operation stays reconcilable after its
+  // invocation goes stale, and replay writes the recorded bytes, never a re-derived `by`.
+  const hash = actionHash(canonicalJson({ ledger, rows }));
+  if (options.operation !== undefined && options.issueOperation === true)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--issue-operation and --operation are exclusive: the engine issues the id, or the caller names it",
+    );
+  if (options.issueOperation === true && invocation === undefined)
+    throw new CommandError(
+      EXIT.USAGE,
+      "--issue-operation needs --invocation: the id is issued from that invocation's context",
+    );
+  const operation = appendOperationId(ledger, rows, invocation, options);
+  // A rejection before any write is correctable only inside a workflow run (it has a scope to
+  // spend from) and only when the operation can be named by the corrected retry.
+  const scope = invocation === undefined ? null : appendCorrectionScope(invocation, ledger);
+  const reject = (why: string, row: number) => {
+    const message = `row ${row}: ${why}`;
+    return scope !== null && operation !== undefined
+      ? new NoWriteRejection(EXIT_ROW_REFUSED, message, { scope, substep: "append" })
+      : new CommandError(EXIT_ROW_REFUSED, message);
   };
-}
 
-/** True when `abs` exists, is non-empty and its last byte is not a newline. */
-function endsMidLine(abs: string): boolean {
-  let fd: number | undefined;
+  const result = (landed: { offset: number; bytes: number }, block: string, replayed: boolean) => {
+    const parsedRows = receiptRows(block);
+    return {
+      ledger: ledger as AppendLedger,
+      file,
+      appended: replayed ? 0 : parsedRows.length,
+      keys: parsedRows.map((r) => r.key),
+      ...(operation === undefined
+        ? {}
+        : {
+            receipt: {
+              operation,
+              ledger,
+              file,
+              offset: landed.offset,
+              bytes: landed.bytes,
+              rows: parsedRows,
+              replayed,
+            },
+          }),
+    };
+  };
+
+  const build = (text: string): string => {
+    let repo: string | undefined;
+    let version: string | undefined;
+    let last: number | undefined;
+    const prior: unknown[] = parse(text).events;
+    const out: Array<Record<string, unknown>> = rows.map((raw, i) => {
+      const refuse = (why: string) => new CommandError(EXIT_ROW_REFUSED, `row ${i + 1}: ${why}`);
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        throw reject("not a JSON object", i + 1);
+      }
+      const r =
+        invocation === undefined
+          ? (raw as Record<string, unknown>)
+          : withInvocationBy(raw as Record<string, unknown>, invocation, refuse);
+      if (invocation === undefined && byOfRow(r)["modelSource"] === "unavailable")
+        throw refuse(
+          "by.modelSource unavailable needs a validated --invocation; the engine records it, a caller cannot assert it",
+        );
+      if (Object.hasOwn(r, "ts")) throw reject("carries ts; ts is minted at append time", i + 1);
+      if (Object.hasOwn(r, "schema"))
+        throw reject("carries schema; it is set at append time", i + 1);
+      if (!takes.includes(String(r["kind"]))) {
+        throw reject(
+          `kind must be ${takes.join(" | ")} in --ledger=${ledger} (got ${String(r["kind"])})`,
+          i + 1,
+        );
+      }
+      if (Object.hasOwn(r, "bkit"))
+        throw reject("carries bkit; bkit.version is set at append time", i + 1);
+      repo ??= resolveRepoSlug(root) || "unknown/repo";
+      version ??= readBkitVersion(path.join(root, ".bkit", "version"))?.pinnedVersion || "unknown";
+      last = mintTs(last);
+      const filled = withLineage(prior, {
+        repo,
+        ...r,
+        schema: SCHEMA,
+        ts: last,
+        bkit: { version },
+      });
+      const row: Record<string, unknown> = {};
+      for (const k of TOP_ORDER) if (filled[k] !== undefined) row[k] = filled[k];
+      for (const [k, v] of Object.entries(filled)) if (!(k in row)) row[k] = v;
+      const v = validate(row);
+      if (!v.ok) throw reject(v.reason ?? "invalid", i + 1);
+      const who = writerProblem(row);
+      if (who !== undefined) throw refuse(who);
+      prior.push(row);
+      return row;
+    });
+    return out.map((r) => `${JSON.stringify(r)}\n`).join("");
+  };
+
+  const stage = (err: unknown) =>
+    err instanceof CommandError
+      ? err
+      : new CommandError(EXIT_STAGE, `append failed: ${file} \u2014 ${(err as Error).message}`);
+
   try {
-    fd = fs.openSync(abs, "r");
-    const size = fs.fstatSync(fd).size;
-    if (size === 0) return false;
-    const last = Buffer.alloc(1);
-    fs.readSync(fd, last, 0, 1, size - 1);
-    return last[0] !== 0x0a;
-  } catch {
-    // No file yet: the append creates it.
-    return false;
-  } finally {
-    if (fd !== undefined) fs.closeSync(fd);
+    return withTargetLock(abs, () => {
+      if (operation === undefined) {
+        const landed = appendHeld(abs, build, { checkpoint: options.checkpoint });
+        return result(landed, landed.block, false);
+      }
+      if (ops === null)
+        throw new CommandError(
+          EXIT.USAGE,
+          `${root} is not inside a git repository: a ledger operation keeps its receipt in the git common dir`,
+        );
+      // The operation store is serialized by its own lock, taken after the target's, so two
+      // ledgers' operations never interleave check and record.
+      return withTargetLock(ops, () => {
+        const known = ledgerOperation(ops, operation, hash);
+        if (known.state === "conflict")
+          throw new CommandError(
+            EXIT_ROW_REFUSED,
+            `operation ${operation} was already used for a different request; nothing written`,
+          );
+        if (known.state === "replay") {
+          const d = (known.row as { detail?: { offset: number; bytes: number; block: string } })
+            .detail;
+          if (d === undefined)
+            throw new CommandError(
+              EXIT_STAGE,
+              `operation ${operation} has a receipt without its effect`,
+            );
+          return result(d, d.block, true);
+        }
+        const intent = ledgerIntent(ops, operation);
+        if (intent !== undefined && intent.hash !== hash)
+          throw new CommandError(
+            EXIT_ROW_REFUSED,
+            `operation ${operation} was already used for a different request; nothing written`,
+          );
+        const receipt = (landed: { offset: number; bytes: number; block: string }) =>
+          recordLedgerOperation(ops, {
+            operation,
+            hash,
+            ref: `${file}@${landed.offset}+${landed.bytes}`,
+            detail: { offset: landed.offset, bytes: landed.bytes, block: landed.block },
+          });
+        if (intent !== undefined) {
+          const have = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
+          const want = Buffer.from(intent.block);
+          const seg = have.subarray(intent.offset, intent.offset + want.length);
+          if (seg.equals(want)) {
+            // The bytes landed whole; confirm them durable and receipt them.
+            const fd = fs.openSync(abs, "r");
+            try {
+              fs.fsyncSync(fd);
+            } finally {
+              fs.closeSync(fd);
+            }
+            receipt(intent);
+            options.checkpoint?.("receipted");
+            return result(intent, intent.block, true);
+          }
+          // Whole lines decide "landed": rows share a byte prefix (`{"schema":3,"ts":...`), so a
+          // foreign row is told apart by being a complete line that differs from ours.
+          // Compare by content, without the newline and without one leading separator newline:
+          // a torn prefix of our line that a later writer completed with its own newline is a
+          // proper prefix of our first line, so it stays uncertain rather than foreign.
+          const stripSeparator = (b: Buffer): Buffer => (b[0] === 0x0a ? b.subarray(1) : b);
+          const firstLine = (b: Buffer): { line: Buffer; complete: boolean } => {
+            const nl = b.indexOf(0x0a);
+            return nl < 0
+              ? { line: b, complete: false }
+              : { line: b.subarray(0, nl), complete: true };
+          };
+          const wantLine = firstLine(stripSeparator(want)).line;
+          const haveLine = firstLine(stripSeparator(have.subarray(intent.offset)));
+          const foreignWholeLine =
+            haveLine.complete &&
+            !(
+              haveLine.line.length <= wantLine.length &&
+              wantLine.subarray(0, haveLine.line.length).equals(haveLine.line)
+            );
+          let landedBytes = 0;
+          while (
+            landedBytes < seg.length &&
+            landedBytes < want.length &&
+            seg[landedBytes] === want[landedBytes]
+          )
+            landedBytes++;
+          if (
+            !foreignWholeLine &&
+            (landedBytes > 0 || (seg.length > 0 && have.length === intent.offset + seg.length))
+          )
+            throw new UncertainEffect(
+              EXIT_STAGE,
+              `operation ${operation}: ${file} holds ${landedBytes} of ${want.length} prepared bytes at the recorded offset; the effect is uncertain, nothing was truncated or retried`,
+            );
+          if (have.length === intent.offset) {
+            // Nothing landed: write the exact prepared bytes again.
+            writePrepared(abs, intent.block, intent.offset);
+            options.checkpoint?.("written");
+            receipt(intent);
+            options.checkpoint?.("receipted");
+            return result(intent, intent.block, false);
+          }
+          // Another writer appended after the failed attempt and none of ours landed: prepare afresh.
+        }
+        const landed = appendHeld(abs, build, {
+          checkpoint: options.checkpoint,
+          prepared: (p) =>
+            recordLedgerIntent(ops, {
+              operation,
+              hash,
+              file,
+              offset: p.offset,
+              bytes: Buffer.byteLength(p.block),
+              block: p.block,
+            }),
+          written: (p) => receipt(p),
+        });
+        return result(landed, landed.block, false);
+      });
+    });
+  } catch (err) {
+    throw stage(err);
   }
 }
 
@@ -1370,9 +1825,216 @@ function append(ctx: RunContext): number {
   if (text.trim() === "") throw new CommandError(EXIT.USAGE, "--rows holds no rows");
   const parsed = parseJson(text);
   if (!parsed.ok) throw new CommandError(EXIT.USAGE, "--rows is not JSON");
-  const r = appendLedgerRows(root, String(ctx.flags.ledger), parsed.value);
-  ctx.log(`appended ${r.appended} row(s) to ${r.file}`);
-  ctx.emit({ ...r });
+  const bound = ctx.invocation?.bookRoot;
+  if (bound !== undefined && bound !== null && bound !== root)
+    throw new CommandError(
+      EXIT.USAGE,
+      `conflict: --root ${root} is not the invocation's book root ${bound}`,
+    );
+  // A runless call has no book root of its own: its output scope is the checkout that issued it.
+  if (ctx.invocation?.scope === "outbox") {
+    const rel = path.relative(ctx.invocation.worktree, root);
+    if (rel.startsWith("..") || path.isAbsolute(rel))
+      throw new CommandError(
+        EXIT.USAGE,
+        `conflict: --root ${root} is outside the checkout ${ctx.invocation.worktree} that issued invocation ${ctx.invocation.id}`,
+      );
+  }
+  const ledger = String(ctx.flags.ledger);
+  const request = {
+    operation: str(ctx.flags.operation),
+    issueOperation: ctx.flags.issueOperation === true,
+  };
+  const run = ctx.invocation;
+  const scope = run === undefined ? null : appendCorrectionScope(run, ledger);
+  const operation = appendOperationId(ledger, parsed.value, run, request);
+  const correctionOf = str(ctx.flags.correctionOf);
+  let spend: CorrectionSpend | undefined;
+  const book = run === undefined || scope === null ? null : correctionBook(ctx.cwd, run);
+  if (correctionOf !== undefined) {
+    if (run === undefined || scope === null || book === null)
+      throw new CommandError(
+        EXIT.USAGE,
+        "--correction-of needs an --invocation with a correction scope: a workflow-run call, or a standalone audit or utility call",
+      );
+    if (operation === undefined || operation === correctionOf)
+      throw new CommandError(
+        EXIT.USAGE,
+        "--correction-of needs a fresh --operation or --issue-operation: a corrected candidate has its own operation id",
+      );
+    const rejected = readStatusRows(book.file).some(
+      (row) =>
+        row.type === CORRECTION_REJECTED_ROW &&
+        row.operation === correctionOf &&
+        row.scope === scope &&
+        row.workflow === book.workflow,
+    );
+    if (!rejected)
+      throw new CommandError(
+        EXIT.USAGE,
+        `--correction-of=${correctionOf} names no rejected ${ledger} append in this step; only a guaranteed no-write rejection of this sub-step can be corrected`,
+      );
+    // An earlier operation on this ledger whose effect is unconfirmed is reconciled first.
+    const target = Object.hasOwn(APPEND_LEDGERS, ledger)
+      ? APPEND_LEDGERS[ledger as AppendLedger].file
+      : undefined;
+    if (target !== undefined && pendingLedgerIntentsFor(root, target).length > 0)
+      throw new UncertainEffect(
+        EXIT_STAGE,
+        `${target} holds an operation whose effect is unconfirmed; reconcile it before any corrected candidate — nothing was written`,
+      );
+    spend = spendCorrection(book.file, book.workflow, scope, operation, CORRECTION_LIMIT, {
+      of: correctionOf,
+      step: book.step,
+      substep: "append",
+      requestHash: actionHash(canonicalJson({ ledger, rows: parsed.value })),
+    });
+    if (!spend.allowed)
+      throw new CorrectionExhausted(
+        EXIT.NO,
+        spend.conflict === true
+          ? `operation ${operation} was already counted as a correction of ${scope} for different rows; a changed candidate needs a fresh operation id and spends the budget (${spend.used} of ${spend.limit}); nothing was written`
+          : `the correction budget of ${scope} is spent (${spend.used} of ${spend.limit}); nothing was written`,
+        scope,
+      );
+  }
+  let r: AppendResult;
+  try {
+    r = appendLedgerRows(root, ledger, parsed.value, ctx.invocation, request);
+  } catch (err) {
+    if (err instanceof NoWriteRejection && book !== null && operation !== undefined) {
+      fs.appendFileSync(
+        book.file,
+        appendLine({
+          type: CORRECTION_REJECTED_ROW,
+          workflow: book.workflow,
+          at: statusTimestamp(),
+          scope: err.detail.scope,
+          substep: err.detail.substep,
+          operation,
+          step: book.step,
+        }),
+      );
+      // The last allowed retry was just used: the rejection is final, not correctable.
+      if (spend !== undefined && spend.remaining === 0)
+        throw new CommandError(err.code, err.message);
+    }
+    throw err;
+  }
+  ctx.log(
+    r.receipt?.replayed === true
+      ? `operation ${r.receipt.operation} already appended to ${r.file}; nothing written`
+      : `appended ${r.appended} row(s) to ${r.file}`,
+  );
+  if (spend === undefined || book === null || scope === null) {
+    ctx.emit({ ...r });
+    return EXIT.OK;
+  }
+  const verified =
+    r.receipt?.replayed === true || r.appended === (parsed.value as unknown[]).length;
+  const succeeded = readStatusRows(book.file).some(
+    (row) => row.type === CORRECTION_SUCCEEDED_ROW && row.operation === operation,
+  );
+  if (verified && !succeeded)
+    fs.appendFileSync(
+      book.file,
+      appendLine({
+        type: CORRECTION_SUCCEEDED_ROW,
+        workflow: book.workflow,
+        at: statusTimestamp(),
+        scope,
+        substep: "append",
+        operation,
+        of: correctionOf,
+        step: book.step,
+      }),
+    );
+  ctx.emit({
+    ...r,
+    correction: {
+      scope,
+      operation,
+      of: correctionOf,
+      used: spend.used,
+      limit: spend.limit,
+      substep: "append",
+      verified,
+    },
+  });
+  return EXIT.OK;
+}
+
+/** Page cursor: the snapshot and filter it was cut from, and the offset of the next row. */
+function encodeCursor(c: { s: string; f: string; o: number }): string {
+  return Buffer.from(JSON.stringify(c)).toString("base64url");
+}
+
+function decodeCursor(text: string): { s: string; f: string; o: number } | null {
+  const parsed = parseJson(Buffer.from(text, "base64url").toString("utf-8"));
+  if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") return null;
+  const v = parsed.value as Record<string, unknown>;
+  return typeof v["s"] === "string" && typeof v["f"] === "string" && Number.isInteger(v["o"])
+    ? { s: v["s"], f: v["f"], o: v["o"] as number }
+    : null;
+}
+
+function query(ctx: RunContext): number {
+  const root = rootOf(ctx);
+  const ledger = String(ctx.flags.ledger);
+  if (!Object.hasOwn(APPEND_LEDGERS, ledger)) {
+    throw new CommandError(
+      EXIT.USAGE,
+      `--ledger must be one of ${Object.keys(APPEND_LEDGERS).join(", ")} (got '${ledger}')`,
+    );
+  }
+  const { file } = APPEND_LEDGERS[ledger as AppendLedger];
+  const filter = { key: str(ctx.flags.key), status: str(ctx.flags.status) };
+  const limit = wholeNumber(ctx.flags.limit, "limit", QUERY_PAGE, 1);
+  const filterId = JSON.stringify([filter.key ?? null, filter.status ?? null]);
+  const cursorText = str(ctx.flags.cursor);
+  const cursor = cursorText === undefined ? null : decodeCursor(cursorText);
+  if (cursorText !== undefined && cursor === null)
+    throw new CommandError(EXIT.USAGE, "--cursor is not a cursor from this command");
+
+  const abs = path.join(root, file);
+  const read = readText(abs);
+  const missing = !read.ok && !fs.existsSync(abs);
+  const raw = read.ok ? read.text : "";
+  const snapshot = createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  if (cursor !== null && (cursor.s !== snapshot || cursor.f !== filterId))
+    throw new CommandError(
+      EXIT.USAGE,
+      "stale cursor: the ledger or the filter changed since this scan began; start again without --cursor",
+    );
+  const result = queryLedger(raw, filter);
+  const offset = cursor?.o ?? 0;
+  const page = result.rows.slice(offset, offset + limit);
+  const next = offset + limit < result.rows.length ? offset + limit : null;
+  const status = missing
+    ? "missing"
+    : !read.ok
+      ? "unreadable"
+      : result.diagnostics.length > 0
+        ? "partial"
+        : next !== null
+          ? "incomplete"
+          : "clean";
+  ctx.emit({
+    ledger,
+    file,
+    rows: page,
+    nextCursor: next === null ? null : encodeCursor({ s: snapshot, f: filterId, o: next }),
+    snapshot,
+    total: result.rows.length,
+    diagnostics: result.diagnostics,
+    coverage: {
+      status,
+      clean: status === "clean",
+      malformedLines: result.diagnostics.length,
+      lines: result.lines,
+      ...(!read.ok && !missing ? { error: read.error } : {}),
+    },
+  });
   return EXIT.OK;
 }
 
@@ -1466,18 +2128,21 @@ function compactOrError(
   dryRun: boolean,
 ): ReturnType<typeof compactLedgers> | string {
   try {
-    return compactLedgers(root, ledgers, dryRun);
-  } catch (err) {
-    // Reported as the command's staging exit code, with the reason.
-    return (err as Error).message;
-  }
-}
-
-/** Append `text` to `file`; the error text, or undefined on success. */
-function appendText(file: string, text: string): string | undefined {
-  try {
-    fs.appendFileSync(file, text);
-    return undefined;
+    const targets = ledgers.map((l) => COMPACT_LEDGERS[l]).sort();
+    const locked = (i: number): ReturnType<typeof compactLedgers> => {
+      if (i === targets.length) {
+        for (const t of targets) {
+          const pending = pendingLedgerIntentsFor(root, t);
+          if (pending.length > 0)
+            throw new Error(
+              `${t} has ${pending.length} ledger operation(s) with bytes but no receipt (${pending.map((p) => p.operation).join(", ")}); replay them before compacting`,
+            );
+        }
+        return compactLedgers(root, ledgers, dryRun);
+      }
+      return withTargetLock(path.join(root, targets[i]!), () => locked(i + 1));
+    };
+    return locked(0);
   } catch (err) {
     // Reported as the command's staging exit code, with the reason.
     return (err as Error).message;

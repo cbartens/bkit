@@ -9,6 +9,7 @@
 // that spec, so the help text cannot drift from what the command accepts.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,7 +24,7 @@ import {
   rebasePaused,
   shouldRecordFriction,
 } from "../ledgers/journal.js";
-import { fold, type StatusEvent } from "../ledgers/status.js";
+import { fold, isInvocationEvent, type StatusEvent } from "../ledgers/status.js";
 import { gitEnv, resolveGitSha } from "../ledgers/telemetry.js";
 import { parseJson } from "../shared/json.js";
 import { renderText } from "../shared/text.js";
@@ -70,6 +71,63 @@ export class CommandError extends Error {
   }
 }
 
+/**
+ * A refusal the receiving handler declares as pre-effect validation: nothing was written,
+ * so a corrected retry of the same sub-step is permitted within its correction budget.
+ * Only this class (never a generic `CommandError`) carries that permission.
+ */
+export class NoWriteRejection extends CommandError {
+  constructor(
+    code: number,
+    message: string,
+    readonly detail: { scope: string; substep: string },
+  ) {
+    super(code, message);
+  }
+}
+
+/** A failure after an effect may have begun: the state must be reconciled, never auto-retried. */
+export class UncertainEffect extends CommandError {}
+
+/** The correction budget of `scope` is spent: nothing was written and no further retry is allowed. */
+export class CorrectionExhausted extends CommandError {
+  constructor(
+    code: number,
+    message: string,
+    readonly scope: string,
+  ) {
+    super(code, message);
+  }
+}
+
+/** The structured `--json` error for the declared classes; every other error prints none. */
+function structuredError(err: CommandError): Record<string, unknown> | null {
+  if (err instanceof CorrectionExhausted) {
+    return {
+      code: err.code,
+      message: err.message,
+      effects: "none",
+      correctable: false,
+      exhausted: true,
+      scope: err.scope,
+    };
+  }
+  if (err instanceof NoWriteRejection) {
+    return {
+      code: err.code,
+      message: err.message,
+      effects: "none",
+      correctable: true,
+      scope: err.detail.scope,
+      substep: err.detail.substep,
+    };
+  }
+  if (err instanceof UncertainEffect) {
+    return { code: err.code, message: err.message, effects: "uncertain", correctable: false };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Specs
 // ---------------------------------------------------------------------------
@@ -87,6 +145,11 @@ export interface FlagSpec {
    * cannot rewrite.
    */
   positional?: boolean;
+  /**
+   * For `--invocation` only: the verb compares the id itself, so the dispatcher does not
+   * resolve it as an issued invocation (it may name one this checkout never issued).
+   */
+  unresolved?: boolean;
   help: string;
 }
 
@@ -143,6 +206,8 @@ export interface RunContext {
   cwd: string;
   /** Explicit publishing ownership; never inferred from another active run. */
   publication?: { invocation: string; workflow: string };
+  /** The engine-issued invocation `--invocation` resolved and validated; absent without the flag. */
+  invocation?: Invocation;
   /** The global `--json` flag was given. Taken by every verb, never declared in a verb's spec. */
   json: boolean;
   /** Human-readable line on stderr, tagged `[bkit-<noun>]`. */
@@ -503,6 +568,220 @@ export function resolveActiveRun(opts: {
   return found.length === 1 ? found[0] : undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Invocation context
+// ---------------------------------------------------------------------------
+
+/**
+ * The engine-issued identity of one workflow step or agent call. `bkit status invocation`
+ * issues it into the repository's private outbox; a verb that declares `INVOCATION_FLAG`
+ * receives it validated as `ctx.invocation`. Never inferred from the most recent run.
+ */
+export interface Invocation {
+  id: string;
+  version: 1;
+  /** `run`: bound to one workflow run and its `status.jsonl`; `outbox`: a runless audit or utility call. */
+  scope: "run" | "outbox";
+  workflow: string | null;
+  step: string | null;
+  number: number | null;
+  title: string | null;
+  /** The workflow's run number at issuance; null for `outbox` scope. */
+  run: number | null;
+  statusPath: string | null;
+  bookRoot: string | null;
+  /** The task group a group-scoped step runs for (build); null otherwise. */
+  group: string | null;
+  /** The attempt of that group or of a remediation round; null otherwise. */
+  attempt: string | null;
+  agent: string | null;
+  host: string | null;
+  /** The pin the agent was launched with; never the model it ran on. */
+  configuredModel: string | null;
+  /** The model the host reported, or `unavailable`; null when none was asserted. */
+  observedModel: string | null;
+  /** `audit` or `utility` for an `outbox` scope call. */
+  standalone: string | null;
+  name: string | null;
+  /** `<standalone>:<name>` for an `outbox` call: the one step it declared; null for a run. */
+  declaredStep: string | null;
+  /** The only agent an `outbox` call may write as; null when it declared none. */
+  allowedAgent: string | null;
+  /** Git toplevel of the checkout that issued it; resolution is refused anywhere else. */
+  worktree: string;
+  issuedAt: string;
+}
+
+export const INVOCATION_FLAG: FlagSpec = {
+  name: "invocation",
+  type: "string",
+  help: "invocation id from `bkit status invocation`; must be issued by this checkout, and any --workflow, --step, --agent or --file given must agree with it",
+};
+
+const INVOCATION_ID = /^inv-[0-9a-f]{32}$/;
+
+/** `<git common dir>/bkit-outbox/invocation-context`: one receipt per issued invocation. */
+export function invocationDir(cwd: string): string | null {
+  const root = outboxRoot(cwd);
+  return root === null ? null : path.join(root, "invocation-context");
+}
+
+/** Persist an issued invocation; returns its receipt path. */
+export function writeInvocation(cwd: string, inv: Invocation): string {
+  const dir = invocationDir(cwd);
+  if (dir === null) throw new CommandError(EXIT.USAGE, `not inside a git repository: ${cwd}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${inv.id}.json`);
+  fs.writeFileSync(file, `${JSON.stringify(inv)}\n`, { mode: 0o600, flag: "wx" });
+  return file;
+}
+
+/** A one-way fingerprint of a checkout's top: the committed `invocation` event never holds its path. */
+export function worktreeFingerprint(top: string): string {
+  return createHash("sha256").update(top).digest("hex").slice(0, 16);
+}
+
+/**
+ * Whether `file` resolves, symlinks included, to a path inside the checkout `top` and not in
+ * a worktree nested under it. A file that does not exist yet resolves through its parent.
+ */
+function resolvesInside(top: string, file: string): boolean {
+  try {
+    const realTop = fs.realpathSync(top);
+    let real: string;
+    if (fs.existsSync(file) || fs.lstatSync(file, { throwIfNoEntry: false }) !== undefined) {
+      real = fs.realpathSync(file);
+    } else {
+      real = path.join(fs.realpathSync(path.dirname(file)), path.basename(file));
+    }
+    if (real !== realTop && !real.startsWith(realTop + path.sep)) return false;
+    const owner = git(path.dirname(real), ["rev-parse", "--show-toplevel"]);
+    return owner === null || fs.realpathSync(owner) === realTop;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rebuild the outbox receipt of run-scoped invocation `id` from its `invocation` event in a
+ * `status.jsonl` under this checkout. Reads only this checkout's books, so another
+ * worktree's run is never found. Returns whether a receipt now exists.
+ */
+function rebuildInvocation(cwd: string, id: string): boolean {
+  const top = git(cwd, ["rev-parse", "--show-toplevel"]);
+  if (top === null) return false;
+  let read = 0;
+  for (const month of subdirs(path.join(top, "docs", "plans"))) {
+    for (const fid of subdirs(path.join(top, "docs", "plans", month, "logs"))) {
+      if (++read > ACTIVE_RUN_SCAN_CAP) return false;
+      const statusPath = path.join(top, statusRelPath(month, fid));
+      if (!fs.existsSync(statusPath)) continue;
+      // A status file symlinked out of the checkout is not this checkout's book.
+      if (!resolvesInside(top, statusPath)) continue;
+      for (const line of fs.readFileSync(statusPath, "utf-8").split("\n")) {
+        if (!line.includes(id)) continue;
+        const row = parseJson(line);
+        if (!row.ok || !isInvocationEvent(row.value) || row.value.id !== id) continue;
+        const e = row.value;
+        // The event holds checkout-relative paths; they resolve against this top only.
+        if (e.worktree !== worktreeFingerprint(top) || path.join(top, e.statusPath) !== statusPath)
+          return false;
+        try {
+          writeInvocation(cwd, {
+            id,
+            version: 1,
+            scope: "run",
+            workflow: e.workflow,
+            step: e.step,
+            number: e.number,
+            title: e.title,
+            run: e.run,
+            statusPath,
+            bookRoot: path.join(top, e.bookRoot),
+            group: e.group,
+            attempt: e.attempt,
+            agent: e.agent,
+            host: e.host,
+            configuredModel: e.configuredModel,
+            observedModel: e.observedModel,
+            standalone: null,
+            name: null,
+            declaredStep: null,
+            allowedAgent: null,
+            worktree: top,
+            issuedAt: e.at,
+          });
+        } catch {
+          // A concurrent rebuild may already have written the receipt; report whether one exists.
+          const dir = invocationDir(cwd);
+          return dir !== null && fs.existsSync(path.join(dir, `${id}.json`));
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Resolve `--invocation` against the outbox and refuse (exit 2) a forged, unissued,
+ * other-checkout or stale id, and any asserted `--workflow`, `--step`, `--agent` or
+ * `--file` that disagrees with it. A run-scoped id is stale once a newer run of its
+ * workflow has started.
+ */
+export function resolveInvocation(
+  cwd: string,
+  id: string,
+  flags: Record<string, FlagValue>,
+): Invocation {
+  const refuse = (why: string): never => {
+    throw new CommandError(EXIT.USAGE, `invocation ${id}: ${why}`);
+  };
+  if (!INVOCATION_ID.test(id)) return refuse("not an id issued by `bkit status invocation`");
+  const dir = invocationDir(cwd);
+  const file = dir === null ? null : path.join(dir, `${id}.json`);
+  if (file === null) return refuse("not issued in this repository");
+  // The run's status log is the authority; a missing receipt is rebuilt from its event.
+  if (!fs.existsSync(file) && !rebuildInvocation(cwd, id))
+    return refuse("not issued in this repository");
+  const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+  const inv = parsed.ok ? (parsed.value as Invocation | null) : null;
+  if (inv === null || typeof inv !== "object" || inv.id !== id || inv.version !== 1)
+    return refuse("receipt is unreadable");
+  const top = git(cwd, ["rev-parse", "--show-toplevel"]);
+  if (top === null || top !== inv.worktree)
+    return refuse(`issued in another checkout (${inv.worktree})`);
+  if (inv.scope === "run") {
+    if (inv.statusPath === null || inv.workflow === null || inv.run === null)
+      return refuse("run receipt lacks its status file");
+    if (!fs.existsSync(inv.statusPath)) return refuse(`stale: ${inv.statusPath} is gone`);
+    if (!resolvesInside(top, inv.statusPath))
+      return refuse(`${inv.statusPath} resolves outside this checkout`);
+    const events: StatusEvent[] = [];
+    for (const line of fs.readFileSync(inv.statusPath, "utf-8").split("\n")) {
+      const row = line.trim() === "" ? null : parseJson(line);
+      if (row?.ok && row.value !== null && typeof row.value === "object") {
+        const type = (row.value as { type?: unknown }).type;
+        if (typeof type === "string" && FOLD_TYPES.has(type)) events.push(row.value as StatusEvent);
+      }
+    }
+    const started = fold(events).filter((r) => r.workflow === inv.workflow).length;
+    if (started > inv.run) return refuse(`stale: a newer ${inv.workflow} run has started`);
+    if (started < inv.run - 1) return refuse("stale: its run is gone");
+  }
+  const text = (v: FlagValue) => (typeof v === "string" ? v : undefined);
+  const conflict = (flag: string, given: string, bound: string | null) =>
+    refuse(`conflict: --${flag}=${given} disagrees with the invocation (${bound ?? "none"})`);
+  for (const flag of ["workflow", "step", "agent"] as const) {
+    const given = text(flags[flag]);
+    if (given !== undefined && given !== inv[flag]) conflict(flag, given, inv[flag]);
+  }
+  const file2 = text(flags["file"]);
+  if (file2 !== undefined && path.resolve(cwd, file2) !== inv.statusPath)
+    conflict("file", file2, inv.statusPath);
+  return inv;
+}
+
 /** The journal `runCommand` uses unless a caller injects one: writes into the active run's own books. */
 function engineJournal(): Journal {
   let resolved = false;
@@ -585,6 +864,24 @@ export async function runCommand(
   }
   const rest = argv.slice(2);
   if (rest.some(isHelp)) {
+    if (rest.includes("--json")) {
+      const s = cmd.verbs[verb]!;
+      io.stdout(
+        `${JSON.stringify({
+          noun: cmd.noun,
+          verb,
+          summary: s.summary,
+          flags: s.flags.map((f) => ({
+            name: f.name,
+            type: f.type,
+            required: f.required === true,
+          })),
+          output: s.output,
+          exitCodes: s.exitCodes ?? {},
+        })}\n`,
+      );
+      return EXIT.OK;
+    }
     io.stdout(verbHelp(cmd, verb));
     return EXIT.OK;
   }
@@ -628,9 +925,25 @@ export async function runCommand(
     }
     ctx.json = own.length !== rest.length;
     ctx.flags = parseFlags(own, spec.flags);
+    const invocationId = ctx.flags["invocation"];
+    if (
+      typeof invocationId === "string" &&
+      spec.flags.some((f) => f.name === INVOCATION_FLAG.name && f.unresolved !== true)
+    ) {
+      ctx.invocation = resolveInvocation(ctx.cwd, invocationId, ctx.flags);
+    }
     input = { noun: cmd.noun, verb, argv: rest, flags: ctx.flags, cwd: ctx.cwd };
     const entered = input;
-    guarded(() => journal.call(entered));
+    // An invocation-bound call writes its engine-call row into the issuing run's own status
+    // log (never another worktree's); a runless call has no run to write to.
+    // `status invocation` records itself as the run's `invocation` event, so it adds no second row.
+    const bound = ctx.invocation;
+    const selfRecorded = cmd.noun === "status" && verb === "invocation";
+    if (bound === undefined && !selfRecorded) guarded(() => journal.call(entered));
+    else if (bound?.scope === "run" && bound.statusPath !== null) {
+      const own = { ...entered, flags: { ...entered.flags, file: bound.statusPath } };
+      guarded(() => journal.call(own));
+    }
     outcome = null;
     const code = await spec.run(ctx);
     outcome = code;
@@ -638,6 +951,8 @@ export async function runCommand(
   } catch (err) {
     if (!(err instanceof CommandError)) throw err;
     io.stderr(`${tag} ${err.message}\n`);
+    const structured = ctx.json ? structuredError(err) : null;
+    if (structured !== null) io.stdout(`${JSON.stringify({ error: structured })}\n`);
     outcome = err.code;
     return err.code;
   } finally {
