@@ -641,17 +641,32 @@ export function checkPlanText(text, caps = CONFIG_DEFAULTS.tasks) {
     // matrix section yields no problem: the refusal is on a row, and issue-form plans carry none.
     const matrix = derivedTestMatrix(text);
     if (matrix !== null) {
-        if (matrix.taskColumn === null)
+        const expected = "Test description | Type | Target file | Task";
+        const header = (matrix.head[0] ?? "")
+            .split("|")
+            .slice(1, -1)
+            .map((c) => c.trim().toLowerCase())
+            .join(" | ");
+        if (header !== expected.toLowerCase())
             problems.push({
                 line: matrix.line,
                 kind: "matrix",
-                message: "the Derived Test Matrix header has no `Task` column; add one naming the task each row's test belongs to",
+                message: `the Derived Test Matrix header must be exactly \`${expected}\`, in that order with no other columns`,
             });
-        else {
+        if (matrix.taskColumn !== null) {
             const mapped = new Set();
             for (const row of matrix.rows) {
                 const named = row.tasks.map((n) => `TASK ${n}`);
-                if (row.tasks.length === 0)
+                const taskCell = (row.cells[matrix.taskColumn] ?? "").trim();
+                if (row.cells.length !== 4 ||
+                    (taskCell !== "" &&
+                        !/^(?:task\s*)?\d+(?:\s*(?:,|and)\s*(?:task\s*)?\d+)*$/i.test(taskCell)))
+                    problems.push({
+                        line: row.number,
+                        kind: "matrix",
+                        message: `Derived Test Matrix row must have 4 cells in the template's order, with only task numbers (\`N\` or \`TASK N\`) in its \`Task\` cell`,
+                    });
+                else if (row.tasks.length === 0)
                     problems.push({
                         line: row.number,
                         kind: "matrix",

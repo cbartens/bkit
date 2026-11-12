@@ -26,6 +26,7 @@ _(above the bkit list — yours, never overwritten)_
 _(refreshed 2026-11-11T00:05:39Z)_
 _(refreshed 2026-11-11T02:02:24Z)_
 _(refreshed 2026-11-11T02:42:15Z)_
+_(refreshed 2026-11-11T07:02:56Z)_
 
 ### Design
 
@@ -70,6 +71,7 @@ _(refreshed 2026-11-11T02:42:15Z)_
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
 | 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
+| 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 
 ### Debug
 
