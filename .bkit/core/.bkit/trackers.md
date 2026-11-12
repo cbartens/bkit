@@ -139,7 +139,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 
 - Success Criteria: <=5 bullets, each an observable outcome.
 - Edge Cases: `| Scenario | Expected Behavior |`.
-- Derived Test Matrix: `| Test description | Type | Target file |`. Type = the lowest tier that exercises the test, named as in `docs/testing.md`. Exactly one task covers each row.
+- Derived Test Matrix: `| Test description | Type | Target file |` in the issue; the plan form is the four columns `Test description | Type | Target file | Task`, with `Task` last. Type = the lowest tier that exercises the test, named as in `docs/testing.md`. Exactly one task covers each row.
 - Tasks, in build order, as task group and task blocks (`docs/templates/bkit-plan.md` § Agent Execution Runbook), sized by `package.json` `bkit.workflows.tasks`:
   - Each group holds <= `bkit.workflows.tasks.maxPerGroup` tasks (default 5) and <= `bkit.workflows.tasks.maxTestsPerGroup` `TEST FIRST` tests (default 25).
   - Each task has 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), or `n/a — {reason}` for docs, config, a pure refactor, or E2E / @live only.
