@@ -1201,11 +1201,10 @@ function isDirDest(dest, cwd, st) {
   if (dest.endsWith("/")) return true;
   if (cwd === null && !path.isAbsolute(dest)) return false;
   if (st.madeDirs.has(path.resolve(cwd === null ? path.sep : cwd, dest))) return true;
-  try {
-    return fs.statSync(path.resolve(cwd === null ? path.sep : cwd, dest)).isDirectory();
-  } catch {
-    return false;
-  }
+  const stat = fs.statSync(path.resolve(cwd === null ? path.sep : cwd, dest), {
+    throwIfNoEntry: false,
+  });
+  return stat !== undefined && stat.isDirectory();
 }
 
 /** `cp` / `mv` destination as a produced file: the lone literal source's body, else unknown. */
