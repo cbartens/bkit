@@ -24,6 +24,7 @@ _(above the bkit list — yours, never overwritten)_
 ## bkit
 
 _(refreshed 2026-11-12T09:41:53Z)_
+_(refreshed 2026-11-11T23:05:25Z)_
 
 ### Design
 
@@ -46,6 +47,7 @@ _(refreshed 2026-11-12T09:41:53Z)_
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
+| 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
