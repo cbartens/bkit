@@ -20,7 +20,7 @@ import {
   readHeader,
   stepsCommand,
 } from "./steps";
-import { blockHash } from "./tests";
+import { blockHash, runPlanPath } from "./tests";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 
@@ -1882,6 +1882,51 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     write(cwd, TEST.file, body("1", "2"));
     expect((await run(cwd, EXECUTE)).code).toBe(0);
     expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(TEST.file);
+  });
+
+  it("skips a red record for a test name the plan no longer holds, and still locks the planned test", async () => {
+    const cwd = planned();
+    const body = (planned: string, other: string) =>
+      [
+        "describe('mirror suite', () => {",
+        "  it('adds a row', () => {",
+        `    expect(addRow()).toBe(${planned});`,
+        "  });",
+        "  it('counts rows', () => {",
+        `    expect(count()).toBe(${other});`,
+        "  });",
+        "});",
+        "",
+      ].join("\n");
+    write(cwd, TEST.file, body("1", "0"));
+    git(cwd, "commit", "-qam", "tests");
+    const text = fs.readFileSync(path.join(cwd, TEST.file), "utf-8");
+    const entry = (testName: string, state: string) => ({
+      task: 1,
+      test: TEST.file,
+      testName,
+      state,
+      blob: blobOf(cwd, TEST.file),
+      block: blockHash(text, testName),
+    });
+    // An earlier plan named the suite; the plan now names only the test inside it.
+    redRow(cwd, { tests: [entry("mirror suite", "missing"), entry(TEST.name, "red")] });
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    write(cwd, TEST.file, body("1", "2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(11);
+    const withPlan = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(withPlan.code).toBe(0);
+
+    write(cwd, TEST.file, body("2", "2"));
+    const r = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("finds the run's plan beside its status file", () => {
+    expect(runPlanPath("docs/plans/202611/logs/787-x/status.jsonl")).toBe(
+      path.join("docs/plans/202611", "787-x-plan.md"),
+    );
   });
 
   it("refuses an edit to the planned test case, exit 11, naming the test, and appends an agent-rework friction row", async () => {

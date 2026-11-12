@@ -335,6 +335,15 @@ export function redEntries(file: string, workflow: string, group?: number): Map<
   return out;
 }
 
+/**
+ * The plan beside a run's status file: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` →
+ * `docs/plans/{YYYYMM}/{FID}-plan.md`.
+ */
+export function runPlanPath(statusFile: string): string {
+  const logs = path.dirname(statusFile);
+  return path.join(path.dirname(path.dirname(logs)), `${path.basename(logs)}-plan.md`);
+}
+
 /** A planned test that differs from how the group's tests step left it. */
 export interface TouchedTest {
   test: string;
@@ -346,14 +355,24 @@ export interface TouchedTest {
  * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
  * per-test locking, or when no line carried the name) derives the block from the recorded
  * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
- * test file are free.
+ * test file are free. With `plan` (the plan's text), only records of tests a `TEST FIRST`
+ * line still names are checked: a name the plan dropped locks nothing.
  */
 export function touchedTests(
   top: string,
   file: string,
   workflow: string,
   group: number | undefined,
+  plan?: string,
 ): TouchedTest[] {
+  const planned =
+    plan === undefined
+      ? null
+      : new Set(
+          readTestFirst(plan).flatMap((s) =>
+            s.kind === "test" ? s.tests.map((t) => redKey(s.task, t.test, t.name)) : [],
+          ),
+        );
   const touched: TouchedTest[] = [];
   const texts = new Map<string, string | null>();
   const textOf = (test: string) => {
@@ -364,6 +383,7 @@ export function touchedTests(
     return texts.get(test)!;
   };
   for (const t of redEntries(file, workflow, group).values()) {
+    if (planned !== null && !planned.has(redKey(t.task, t.test, t.testName))) continue;
     let block = t.block ?? null;
     if (block === null) block = blockHash(blobText(top, t.blob), t.testName);
     if (block === null) {
