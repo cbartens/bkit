@@ -686,6 +686,24 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
     }
   });
 
+  it("keeps edit advice beside an off-list fetch", () => {
+    const dir = workDir("fetchedit");
+    const r = advise(
+      "curl https://off-list.example/x -o /dev/null && sed -i s/a/b/ src/fetch-edit.ts",
+      dir,
+    );
+    expect(r.permission).toBe("ask");
+    expect(r.text).toContain("edits files through the shell");
+    expect(r.text).toContain("src/fetch-edit.ts");
+  });
+
+  it("analyses dense script sources in linear time", () => {
+    const dir = workDir("dense");
+    const r = advise("node -e '" + "a;".repeat(125 * 1024) + "'", dir);
+    expect(r.permission).toBe("allow");
+    expect(r.ms).toBeLessThan(1000);
+  });
+
   it("marks scripts run by unanalysed interpreters as uncertain", () => {
     const dir = workDir("otherinterp");
     for (const command of ["ruby fix.rb", "perl fix.pl", "npx tsx gen.ts"]) {
