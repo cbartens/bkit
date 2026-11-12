@@ -624,6 +624,7 @@ function newEvidence(ctx) {
     halted: false,
     commands: 0,
     produced: new Map(),
+    madeDirs: new Set(),
     startWall: Date.now(),
     startCpu: cpuMs(),
   };
@@ -1193,9 +1194,10 @@ const SCRIPT_FILE_RE = /\.(?:ts|tsx|mts|cts|rb|pl|php|lua|py|js|mjs|cjs)$/;
 const RUNNER_PROGRAMS = new Set(["tsx", "ts-node", "bun", "deno", "ruby", "perl"]);
 
 /** A `cp` / `mv` destination that names a directory: trailing slash or an existing directory. */
-function isDirDest(dest, cwd) {
+function isDirDest(dest, cwd, st) {
   if (dest.endsWith("/")) return true;
   if (cwd === null && !path.isAbsolute(dest)) return false;
+  if (st.madeDirs.has(path.resolve(cwd === null ? path.sep : cwd, dest))) return true;
   try {
     return fs.statSync(path.resolve(cwd === null ? path.sep : cwd, dest)).isDirectory();
   } catch {
@@ -1207,9 +1209,12 @@ function isDirDest(dest, cwd) {
 function markCopied(st, cmd, ops, cwd) {
   const dest = ops[ops.length - 1];
   if (cmd.dyn.has(dest)) return;
-  if (isDirDest(dest, cwd)) {
+  if (isDirDest(dest, cwd, st)) {
     for (const src of ops.slice(0, -1)) {
-      if (cmd.dyn.has(src)) continue;
+      if (cmd.dyn.has(src)) {
+        st.uncertain.add("unresolved-target");
+        continue;
+      }
       const made = dest.replace(/\/+$/, "") + "/" + src.replace(/^.*\//, "");
       markProduced(
         st,
@@ -1410,6 +1415,14 @@ function evalCommand(cmd, st, depth, cwd) {
     case "pushd":
     case "popd":
       return null;
+    case "mkdir":
+      for (const f of operands(args)) {
+        if (cmd.dyn.has(f)) st.uncertain.add("unresolved-target");
+        else if (cwd !== null || path.isAbsolute(f)) {
+          st.madeDirs.add(path.resolve(cwd === null ? path.sep : cwd, f));
+        }
+      }
+      return cwd;
     case "tee":
       for (const f of operands(args)) {
         addWordTarget(st, cmd, f, cwd, false);
@@ -1486,7 +1499,8 @@ function evalCommand(cmd, st, depth, cwd) {
             for (const a of opts.positionals) {
               const m = /^https?:\/\/[^?#]*\/([^/?#]+)$/.exec(a);
               if (!m || cmd.dyn.has(a) || dirDyn) st.uncertain.add("unresolved-target");
-              else markProduced(st, opts.outDir !== null ? `${opts.outDir}/${m[1]}` : m[1], cwd, null);
+              else
+                markProduced(st, opts.outDir !== null ? `${opts.outDir}/${m[1]}` : m[1], cwd, null);
             }
           }
         }
