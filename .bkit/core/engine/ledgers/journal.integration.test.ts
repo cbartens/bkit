@@ -833,13 +833,22 @@ describe("replay-safe ledger appends on real files", () => {
     const persisted = rows(path.join(repo, "docs", "failures.jsonl"));
     expect(persisted).toHaveLength(3);
 
-    // 3. The tracker draft is rendered from the same result.
+    // 3. The tracker draft is rendered from the same result; the audit body file in its
+    // own audit outbox folder is the run proof.
+    const auditDir = path.join(
+      git(repo, ["rev-parse", "--path-format=absolute", "--git-common-dir"]),
+      "bkit-outbox",
+      "audit-security",
+    );
+    fs.mkdirSync(auditDir, { recursive: true });
+    fs.writeFileSync(path.join(auditDir, "body.md"), "Audit body\n");
     const draft = await call(repo, COMMANDS, [
       "issues",
       "comment",
       "--kind=audit",
       "--audit-slug=security",
       "--result-file=result.json",
+      `--body-file=${path.join(auditDir, "body.md")}`,
     ]);
     expect(draft.code).toBe(0);
     expect(draft.json!["comment"]).toContain(`Findings: ${totals}`);

@@ -12,7 +12,7 @@ import { CommandError, EXIT, parseJson, repoRoot, } from "../lib.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { str } from "./status.js";
 import { isCloudOrCi } from "../../checks/before/env.js";
-import { COMMENT_FILE_OUTPUT, GENERATED_MARKER, POST_FLAG, TRACKER_OUTPUT, attempt, classifyFailure, commentDiagnostic, commentFileOf, endedRunActionKey, fetchIssue, moveOnBoard, postForVerb, readBlockers, readLabels, redact, runActionKey, skipOf, stampMarker, trackerTarget, writeLabels, } from "./tracker.js";
+import { COMMENT_FILE_OUTPUT, GENERATED_MARKER, POST_FLAG, TRACKER_OUTPUT, attempt, classifyFailure, commentDiagnostic, commentFileOf, commentRunProof, endedRunActionKey, fetchIssue, moveOnBoard, postForVerb, readBlockers, readLabels, redact, runActionKey, skipOf, stampMarker, trackerTarget, writeLabels, } from "./tracker.js";
 /** Exit code: an input file is missing or not in the expected shape. */
 export const EXIT_BAD_INPUT = 3;
 function readInput(cwd, file, flag) {
@@ -982,7 +982,7 @@ export const issuesCommand = {
             run: labelsVerb,
         },
         comment: {
-            summary: "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
+            summary: "The exact body of a ###### bkit:generated step, failure, handover, or audit comment; workflow steps only, never for ad-hoc comments.",
             use: "workflow",
             flags: [
                 { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
@@ -1081,6 +1081,8 @@ export const issuesCommand = {
                     (["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
                         ? "attention"
                         : "routine");
+                if (commentRunProof(ctx) === null)
+                    throw new CommandError(EXIT.USAGE, "bkit issues comment is for workflow steps only; post ordinary comments as plain markdown through the tracker MCP");
                 let comment;
                 try {
                     comment = commentBody(ctx);

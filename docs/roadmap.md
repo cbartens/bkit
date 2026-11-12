@@ -23,12 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-11T00:05:39Z)_
-_(refreshed 2026-11-11T02:02:24Z)_
-_(refreshed 2026-11-11T02:42:15Z)_
-_(refreshed 2026-11-11T07:02:56Z)_
-_(refreshed 2026-11-11T07:16:20Z)_
-_(refreshed 2026-11-11T23:05:25Z)_
+_(refreshed 2026-11-12T09:41:53Z)_
 
 ### Design
 
@@ -50,12 +45,7 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
-| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
-| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
-| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1793865592349 |
-| 891-build-gate-stuck | 891-build-gate-stuck | 1794143247057 |
-| 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
@@ -65,8 +55,6 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794294436861 |
-| 918-ad-hoc-agent | 918-ad-hoc-agent | 1794356955782 |
-| 864-move-project-docs | 864-move-project-docs | 1794046674228 |
 
 ### Build
 
@@ -74,13 +62,11 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
-| 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
-| 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
-| 892-template-copies-bkit | 892-template-copies-bkit | 1794218270715 |
+| 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
+| 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
 
 ### Debug
 

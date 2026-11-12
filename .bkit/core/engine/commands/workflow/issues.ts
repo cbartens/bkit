@@ -30,6 +30,7 @@ import {
   classifyFailure,
   commentDiagnostic,
   commentFileOf,
+  commentRunProof,
   endedRunActionKey,
   fetchIssue,
   moveOnBoard,
@@ -1199,7 +1200,7 @@ export const issuesCommand: CommandSpec = {
     },
     comment: {
       summary:
-        "The exact body of a ###### bkit:generated step, failure, handover, or audit comment.",
+        "The exact body of a ###### bkit:generated step, failure, handover, or audit comment; workflow steps only, never for ad-hoc comments.",
       use: "workflow",
       flags: [
         { name: "kind", type: "string", help: "step (default) | failure | handover | audit" },
@@ -1302,6 +1303,11 @@ export const issuesCommand: CommandSpec = {
           (["failure", "handover", "audit"].includes(str(ctx.flags.kind) ?? "step")
             ? "attention"
             : "routine");
+        if (commentRunProof(ctx) === null)
+          throw new CommandError(
+            EXIT.USAGE,
+            "bkit issues comment is for workflow steps only; post ordinary comments as plain markdown through the tracker MCP",
+          );
         let comment: string;
         try {
           comment = commentBody(ctx);

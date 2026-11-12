@@ -195,4 +195,42 @@ describe("rendered workflow comment contracts", () => {
       }
     }
   });
+
+  it("every rendered issues comment call carries a workflow-run proof its workflow holds", () => {
+    const holdsSession = /`sessionDir` as `SESSION_DIR`/;
+    for (const { body, label } of renderedReportingWorkflows().filter(isWired)) {
+      const calls = body
+        .split("\n")
+        .filter((line) => /"\{BKIT\}" issues comment|bin\/bkit" issues comment/.test(line));
+      expect(calls.length, label).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call, label).toMatch(/--session-dir="\{SESSION_DIR\}"|--file=/);
+      }
+      const passesSession = calls.filter((call) => call.includes('--session-dir="{SESSION_DIR}"'));
+      for (const call of passesSession) {
+        expect(body, `${label}: ${call}`).toMatch(holdsSession);
+      }
+    }
+    const auto = renderedReportingWorkflows().filter(isAuto);
+    expect(auto.length).toBeGreaterThan(0);
+    for (const { body, label } of auto) expect(body, label).toMatch(holdsSession);
+  });
+
+  it("the audit prompt's issues comment call carries its outbox body file", () => {
+    const prompt = fs.readFileSync(path.join(getPromptsRoot(), "bkit-audit-generate.md"), "utf8");
+    const calls = prompt.split("\n").filter((line) => /issues comment --post/.test(line));
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call).toMatch(/--body-file="\{OUTBOX_ROOT\}\/audit-\{slug\}\//);
+    }
+  });
+
+  it("no rendered Comments clause tells an agent to omit its run proof", () => {
+    for (const { body, label } of renderedReportingWorkflows().filter(isWired)) {
+      const clause = commentsClause(body);
+      expect(clause.length, label).toBeGreaterThan(0);
+      expect(clause, label).not.toMatch(/Omit `--session-dir`/);
+      expect(clause, label).toMatch(/NEVER drop `--session-dir`/);
+    }
+  });
 });

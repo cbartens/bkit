@@ -1970,6 +1970,69 @@ export function commentFileOf(
   }
 }
 
+/** This repository's private outbox `sessions/` folder; null outside a Git repository. */
+export function sessionsRoot(cwd: string): string | null {
+  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  return common ? path.join(common, "bkit-outbox", "sessions") : null;
+}
+
+/** The real path of `p`, resolving its nearest existing ancestor when `p` itself is gone. */
+function canonicalPath(p: string): string {
+  const abs = path.resolve(p);
+  const tail: string[] = [];
+  let head = abs;
+  while (!fs.existsSync(head)) {
+    const parent = path.dirname(head);
+    if (parent === head) return abs;
+    tail.unshift(path.basename(head));
+    head = parent;
+  }
+  return path.join(fs.realpathSync(head), ...tail);
+}
+
+/**
+ * Proof that a workflow or audit run is making a `bkit issues comment` call: a session
+ * folder directly under the outbox `sessions/` folder (it may be deleted by now), a
+ * status file holding a run, or an audit body file in its own audit outbox folder.
+ * Null with no proof or on any lookup error.
+ */
+export function commentRunProof(ctx: RunContext): "session" | "status" | "audit" | null {
+  try {
+    const session = str(ctx.flags.sessionDir);
+    if (session !== undefined) {
+      const root = sessionsRoot(ctx.cwd);
+      if (
+        root &&
+        path.dirname(canonicalPath(path.resolve(ctx.cwd, session))) === canonicalPath(root)
+      )
+        return "session";
+    }
+    const file = str(ctx.flags.file);
+    if (file !== undefined) {
+      const abs = path.resolve(ctx.cwd, file);
+      if (
+        fs.statSync(abs).isFile() &&
+        endedRunActionKey(abs, str(ctx.flags.workflow) || undefined, "proof") !== undefined
+      )
+        return "status";
+    }
+    const slug = str(ctx.flags.auditSlug);
+    const body = str(ctx.flags.bodyFile);
+    if (str(ctx.flags.kind) === "audit" && slug !== undefined && body !== undefined) {
+      const root = sessionsRoot(ctx.cwd);
+      if (
+        root &&
+        path.dirname(canonicalPath(path.resolve(ctx.cwd, body))) ===
+          path.join(canonicalPath(path.dirname(root)), `audit-${slug}`)
+      )
+        return "audit";
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Optional session ownership, validated against this repository's private outbox. */
 export function sessionPublication(
   cwd: string,
@@ -1977,9 +2040,8 @@ export function sessionPublication(
   workflow: string | undefined,
 ): RunContext["publication"] {
   if (!session || !workflow) return undefined;
-  const common = git(cwd, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  if (!common) throw new Error("session association repository unavailable");
-  const sessions = path.join(common, "bkit-outbox", "sessions");
+  const sessions = sessionsRoot(cwd);
+  if (!sessions) throw new Error("session association repository unavailable");
   const dir = fs.realpathSync(path.resolve(cwd, session));
   if (path.dirname(dir) !== fs.realpathSync(sessions) || !fs.statSync(dir).isDirectory())
     throw new Error("session association directory unavailable");
@@ -2041,7 +2103,7 @@ export function runActionKey(
  */
 export function endedRunActionKey(
   file: string | undefined,
-  workflow: string,
+  workflow: string | undefined,
   ...parts: Array<string | number | undefined | null>
 ): string | undefined {
   const latest = (runs: WorkflowRun[], name: string) =>

@@ -118,3 +118,19 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     ).toEqual([]);
   });
 });
+
+describe("Tracker work comments rule", () => {
+  it("the Tracker work comments rule posts through the tracker MCP, never bkit issues comment", () => {
+    const templateRulesPath = path.join(getPkgRoot(), ".bkit", "core", ".agents", "rules.md");
+    const bullet = fs
+      .readFileSync(templateRulesPath, "utf-8")
+      .split("\n")
+      .filter((line) => line.startsWith("- **Tracker work comments:**"))
+      .join("\n");
+    expect(bullet.length).toBeGreaterThan(0);
+    expect(bullet).toContain("plain markdown with the tracker MCP's comment tool");
+    expect(bullet).toContain("never through `bkit issues comment`");
+    expect(bullet).toContain("workflow steps only");
+    expect(bullet).toContain("###### bkit:generated");
+  });
+});

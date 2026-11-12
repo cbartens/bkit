@@ -727,6 +727,7 @@ describe("workflow comment lifecycle across real CLI processes", () => {
       "--workflow=build",
       "--step-number=3",
       "--step-title=Legacy",
+      `--session-dir=${dir}`,
     ]);
     fs.appendFileSync(
       path.join(cwd, REL),
@@ -736,7 +737,7 @@ describe("workflow comment lifecycle across real CLI processes", () => {
     const legacy = report(cwd, "Legacy", { file: REL });
     expect(legacy.tracker).toMatchObject({ done: true, deduped: true });
     expect(remote().calls).toHaveLength(before);
-    const skipped = report(cwd, "Issue less", { issue: "", number: 4 });
+    const skipped = report(cwd, "Issue less", { issue: "", number: 4, sessionDir: dir });
     expect(skipped.tracker).toMatchObject({ skipped: "no-issue" });
     expect(remote().calls).toHaveLength(before);
     fault("all");
@@ -749,5 +750,42 @@ describe("workflow comment lifecycle across real CLI processes", () => {
     const resumed = report(cwd, "Exact fallback 😀", { file: REL, number: 5 });
     expect(fs.readFileSync(String(resumed.commentFile), "utf8")).toBe(bytes);
     expect(remote().comments.at(-1)?.body).toContain("Exact fallback 😀");
+  });
+
+  it("an ad-hoc comment with no run proof exits 2 and reaches no tracker", () => {
+    const before = remote().calls.length;
+    const result = cli(cwd, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--step-number=3",
+      "--step-title=Ad hoc research",
+    ]);
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain("workflow steps only");
+    expect(result.out.comment).toBeUndefined();
+    expect(remote().comments).toHaveLength(0);
+    expect(remote().calls).toHaveLength(before);
+  });
+
+  it("accepts a session minted in the main checkout from a linked worktree", () => {
+    const dir = session();
+    const linked = path.join(root, "linked-worktree");
+    git(cwd, "worktree", "add", "-q", "-b", "feat/linked", linked);
+    const result = cli(linked, [
+      "issues",
+      "comment",
+      "--post",
+      "--issue=12",
+      "--workflow=build",
+      "--step-number=3",
+      "--step-title=From worktree",
+      `--session-dir=${dir}`,
+    ]);
+    expect(result.stderr).not.toContain("workflow steps only");
+    expect(result.code, result.stderr).toBe(0);
+    expect(remote().comments).toHaveLength(1);
+    expect(lastBody()).toContain("From worktree");
   });
 });
