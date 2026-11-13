@@ -440,7 +440,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Add `managedHead` to the managed-block parser
+- [x] **TASK 1:** Add `managedHead` to the managed-block parser
   - **UPDATE:** `.bkit/core/engine/install/managed-block.ts`: add `export function managedHead(content: string, markerStyle: MarkerStyle = "html-comment"): string | null` — the text from the first byte through the end of the single line-anchored end-marker line; null unless there is exactly one start marker and one end marker, start first.
   - **READ:** `findLineAnchoredMarkers` in `.bkit/core/engine/install/managed-block.ts`: the line-anchored marker finder to reuse.
   - **READ:** `replaceManagedBlock` in `.bkit/core/engine/install/managed-block.ts`: the refusals (`absent`, `multiple`, `inverted`) `managedHead` mirrors.
@@ -457,7 +457,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Count `docs/audits/**` as written by bkit
+- [x] **TASK 2:** Count `docs/audits/**` as written by bkit
   - **UPDATE:** `minPushPathspecs` in `.bkit/core/engine/commands/ci/ci.ts`: glob list `["docs/plans/**", "docs/audits/**", ...cfg.minPushPaths]`; its JSDoc and the file header name the audit reports.
   - **UPDATE:** `.bkit/core/engine/commands/ci/ci.ts`: the `min-push` spec's `output.paths` help names `docs/audits/**`; `summary` unchanged.
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: the seed comment above `minPushPaths` and the `pruneMinPushPaths` comment name `docs/audits/**` in the floor; `MIN_PUSH_FLOOR_ENTRIES` unchanged.
@@ -477,7 +477,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Accept an audit template's project section on the `--ref` path
+- [x] **TASK 3:** Accept an audit template's project section on the `--ref` path
   - **UPDATE:** `gitRaw` in `.bkit/core/engine/commands/workflow/ledgers.ts`: export it; no other change.
   - **UPDATE:** `.bkit/core/engine/commands/ci/ci.ts`: add `export function minPushOutside(root, from, to, paths)` — `changedOutside` plus `sections`; moves each top-level `docs/templates/bkit-audit-*.md` from `outside` to `sections` when its blob (`gitRaw` `cat-file blob`) exists at both commits and `managedHead` is non-null and equal at both; anything else stays outside.
   - **UPDATE:** `minPush` in `.bkit/core/engine/commands/ci/ci.ts`: call `minPushOutside`; log `{path}: only its project section below <!-- bkit:end --> changed` once per accepted template.
@@ -502,7 +502,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Accept an audit template's project section on the `--update` path and through the real hook
+- [x] **TASK 4:** Accept an audit template's project section on the `--update` path and through the real hook
   - **UPDATE:** `minPushUpdates` in `.bkit/core/engine/commands/ci/ci.ts`: `increment` and `whole` call `minPushOutside`; each accepted template is logged once per update, even when both `increment` and `whole` accept it; the `hasVerifiedIncrement` call is unchanged in this task.
   - **UPDATE:** `.bkit/core/engine/commands/ci/ci.test.ts`: the two `--update` tests below in `describe("bkit ci min-push")`, reusing Task 3's base-commit helper; both pass a real old SHA with no full-gate receipt, so the `whole` and `increment` branch (`ci.ts:710-718`) decides.
   - **UPDATE:** `.bkit/core/engine/audits/templates/husky-pre-push.integration.test.ts`: a project-section case in the per-hook loop; the test moves `refs/remotes/origin/dev` to a commit holding the template before the `[skip ci]` edit.
@@ -518,7 +518,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Use the same classifier on the receipt path and in the landing routine
+- [x] **TASK 5:** Use the same classifier on the receipt path and in the landing routine
   - **UPDATE:** `hasVerifiedIncrement` in `.bkit/core/engine/commands/ci/push-gate.ts`: the fourth parameter becomes `outsideOf: (from: string, to: string) => { ok: true; outside: string[] } | { ok: false }`, called in the receipt loop in place of `changedOutside`; drop the `changedOutside` import.
   - **UPDATE:** `minPushUpdates` in `.bkit/core/engine/commands/ci/ci.ts`: pass `(a, b) => minPushOutside(cwd, a, b, paths)` to `hasVerifiedIncrement`.
   - **UPDATE:** `checkLanding` in `.bkit/core/engine/commands/land.ts`: call `minPushOutside(dir, base, head!, minPushPathspecs(readBkitConfig(dir)))`; drop the `changedOutside` import.
@@ -541,7 +541,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Run the below-marker test readers in bkit's own `bkit:gate:min`
+- [x] **TASK 6:** Run the below-marker test readers in bkit's own `bkit:gate:min`
   - **UPDATE:** `package.json`: the `bkit:gate:min` script's `vitest run` adds `.bkit/core/engine/audits/templates/templates.test.ts` and `.bkit/core/engine/audits/templates/template-no-userpath.test.ts` beside `.bkit/core/engine/audits/repo/ledger-integrity.test.ts`. Applies the owner's choice of option A.
   - **READ:** `.bkit/core/engine/audits/templates/templates.test.ts`: `%s dogfood managed block differs only by the managed-version stamp` (`:211-228`), which asserts the text after `<!-- bkit:end -->`.
   - **READ:** `.bkit/core/engine/audits/templates/template-no-userpath.test.ts`: `shipped audit templates have no leaked host path` (`:27-36`, `:63-68`), which scans each installed audit template whole.
@@ -553,7 +553,7 @@ Build order: the parser helper, then the floor, then the audit-template classifi
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Document the floor and the audit-template rule in § Git hooks — Husky
+- [x] **TASK 7:** Document the floor and the audit-template rule in § Git hooks — Husky
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Git hooks — Husky — "What bkit writes" adds `docs/audits/**`; a new "Min push" bullet states the audit-template project-section rule, what keeps the full gate (including CRLF line endings), and that "what bkit writes" in the `bkit ci min-push` summary covers the audit reports and the audit templates' project sections; "Min-push paths" says the floor already covers `docs/plans/**` and `docs/audits/**`.
   - **UPDATE:** `.bkit/templates.md`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`, never edited by hand.
   - **DEPENDS ON:** 5

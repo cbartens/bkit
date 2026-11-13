@@ -55,7 +55,7 @@
   "license": "MIT",
   "scripts": {
     "bkit:gate:format": "node scripts/ci/bkit-test-awake.mjs pnpm lint-staged",
-    "bkit:gate:min": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts\"",
+    "bkit:gate:min": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta && vitest run .bkit/core/engine/audits/repo/ledger-integrity.test.ts .bkit/core/engine/audits/templates/templates.test.ts .bkit/core/engine/audits/templates/template-no-userpath.test.ts\"",
     "bkit:gate:static": "node scripts/ci/bkit-test-awake.mjs --shell \"pnpm typecheck && pnpm lint && pnpm format:check && pnpm format:tables:check && pnpm bkit:lint:prose && pnpm bkit:slop:delta\"",
     "bkit:gate:static-unit": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static && pnpm test:coverage:unit && pnpm bkit:test:bats && pnpm bkit:test:awake'",
     "bkit:gate:static-unit-integration": "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- sh -c 'pnpm bkit:gate:static-unit && pnpm test:integration'",

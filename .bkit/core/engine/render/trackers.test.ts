@@ -45,6 +45,21 @@ describe("substituteWorkflow — tracker groups", () => {
     expect(substituteWorkflow(source, "github").output).toBe("First.  \nSecond.\n");
   });
 
+  it("preserves a hard break after text on a CR-only line", () => {
+    const source =
+      "Intro.\rFirst.  <!-- bkit:tracker true start --><!-- bkit:tracker true end -->\nSecond.\n";
+    expect(substituteWorkflow(source, "github").output).toBe("Intro.\rFirst.  \nSecond.\n");
+  });
+
+  it("does not rescan the whole document for each hard-break check", () => {
+    const filler = "Some filler text line.\n".repeat(9000);
+    const marker = "x.  <!-- bkit:tracker true start --><!-- bkit:tracker true end -->\n";
+    const source = filler + marker.repeat(400);
+    const started = Date.now();
+    substituteWorkflow(source, "github");
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
   it("keeps the chosen tracker's block; none collapses to the generic skip message", () => {
     const wf = `Step.\n${pair("GH BODY", "LN BODY")}\nTail.\n`;
 

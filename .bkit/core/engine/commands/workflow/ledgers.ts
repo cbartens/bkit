@@ -166,7 +166,7 @@ interface GitResult {
 }
 
 /** `git <args>` in `cwd`, never throwing and never trimming (NUL-delimited output). */
-function gitRaw(
+export function gitRaw(
   cwd: string,
   args: string[],
   env: NodeJS.ProcessEnv = {},

@@ -17,9 +17,8 @@ import { gitEnv } from "../ledgers/telemetry.js";
 import { readBkitConfig } from "../shared/settings.js";
 import { readPackageJson } from "../shared/package-json.js";
 import { installCommand } from "../shared/package-manager.js";
-import { minPushPathspecs } from "./ci/ci.js";
+import { minPushOutside, minPushPathspecs } from "./ci/ci.js";
 import { requiredPushGate, runPushGate } from "./ci/push-gate.js";
-import { changedOutside } from "./workflow/ledgers.js";
 
 const REMOTE = "origin";
 const UPSTREAM = `${REMOTE}/${DEV}`;
@@ -195,7 +194,7 @@ function checkLanding(root: string, dir: string, base: string, log: (line: strin
     throw new CommandError(EXIT.NO, "landing checkout is not clean — nothing pushed");
   if (!readPackageJson(dir).ok)
     throw new CommandError(EXIT.NO, "landing package.json is unreadable — nothing pushed");
-  const diff = changedOutside(dir, base, head!, minPushPathspecs(readBkitConfig(dir)));
+  const diff = minPushOutside(dir, base, head!, minPushPathspecs(readBkitConfig(dir)));
   if (!diff.ok) throw new CommandError(EXIT.NO, `cannot classify landing: ${diff.stderr}`);
   const gate = diff.outside.length === 0 ? "bkit:gate:min" : requiredPushGate(dir);
   if (!gate) throw new CommandError(EXIT.NO, "landing has no declared full gate — nothing pushed");

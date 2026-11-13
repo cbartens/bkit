@@ -10,6 +10,7 @@ import {
   extractManagedBlock,
   findLineAnchoredMarkers,
   findUnmarkedCopy,
+  managedHead,
   stripManagedWrapper,
 } from "./managed-block";
 
@@ -355,5 +356,36 @@ describe("stripManagedWrapper historical notices", () => {
       expect(r.content).not.toContain("do NOT edit");
       expect(r.content).toBe("# Doc\n\nBody.\n");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// managedHead
+// ---------------------------------------------------------------------------
+
+describe("managedHead", () => {
+  const head =
+    "# Title\n<!-- bkit:start -->\n<!-- managed-version: 1 -->\nBody\n<!-- bkit:end -->\n";
+  const tail = "\n## Project Instructions\nMine\n";
+
+  it("returns the text through the bkit:end line", () => {
+    expect(managedHead(head + tail)).toBe(head);
+    expect(managedHead(head + "\n## Other\n")).toBe(head);
+  });
+
+  it("returns null when the file has no markers", () => {
+    expect(managedHead("# Title\n\n## Project Instructions\n")).toBeNull();
+  });
+
+  it("returns null when the file has two bkit:end lines", () => {
+    expect(managedHead(head + "<!-- bkit:end -->\n" + tail)).toBeNull();
+  });
+
+  it("returns null when the file has a second bkit:start line below bkit:end", () => {
+    expect(managedHead(head + "<!-- bkit:start -->\n" + tail)).toBeNull();
+  });
+
+  it("returns null when bkit:end comes before bkit:start", () => {
+    expect(managedHead("<!-- bkit:end -->\nx\n<!-- bkit:start -->\ny\n" + tail)).toBeNull();
   });
 });

@@ -9,7 +9,6 @@ import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { scriptCommand, testCommand } from "../../shared/package-manager.js";
 import { EXIT, git, outboxRoot, runGit } from "../lib.js";
-import { changedOutside } from "../workflow/ledgers.js";
 
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
@@ -189,7 +188,7 @@ export function hasVerifiedIncrement(
   cwd: string,
   oldSha: string,
   newSha: string,
-  paths: string[],
+  outsideOf: (from: string, to: string) => { ok: true; outside: string[] } | { ok: false },
 ): boolean {
   if (
     !SHA.test(oldSha) ||
@@ -215,7 +214,7 @@ export function hasVerifiedIncrement(
   for (const sha of ancestors.split("\n")) {
     const file = path.join(dir, `${sha}.json`);
     if (!validReceipt(cwd, file, sha, definition)) continue;
-    const diff = changedOutside(cwd, sha, newSha, paths);
+    const diff = outsideOf(sha, newSha);
     if (diff.ok && diff.outside.length === 0 && noLaterFailure(cwd, dir, sha, newSha, definition))
       return true;
   }

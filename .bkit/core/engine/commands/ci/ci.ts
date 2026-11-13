@@ -17,7 +17,7 @@
 // (`SKIP_CI_TOKEN`), for the `.husky/pre-push` CI-suppressor guard.
 //
 // `min-push` — whether every file a push changes is one bkit's workflows write (ship's bookkeeping
-// allow-list, the plans tree) or one `bkit.testing.minPushPaths` / `ciSkipPaths` adds, so
+// allow-list, the plans tree, the audit reports) or one `bkit.testing.minPushPaths` / `ciSkipPaths` adds, so
 // `.husky/pre-push` runs `bkit:gate:min`. Files decide, never `[skip ci]` (a typed label
 // GitHub reads off the last commit only).
 //
@@ -53,8 +53,10 @@ import {
   bookPathspecs,
   changedOutside,
   checkOnlyBookkeeping,
+  gitRaw,
   globPathspecs,
 } from "../workflow/ledgers.js";
+import { managedHead } from "../../install/managed-block.js";
 import { pins } from "./pins.js";
 import { hasVerifiedIncrement, runPushGate } from "./push-gate.js";
 
@@ -602,14 +604,14 @@ function skipToken(ctx: RunContext): number {
 /**
  * The min-push pathspecs: ship's `pr` bookkeeping allow-list for every month and feature
  * (the same list `bkit ci bookkeeping-push` and the ship gate accept untested, including
- * `bkit.testing.ciSkipPaths`), the plans tree bkit's workflows write, and whatever the repo
+ * `bkit.testing.ciSkipPaths`), the plans tree and audit reports bkit's workflows write, and whatever the repo
  * adds in `bkit.testing.minPushPaths` (`:(glob)` unless an entry carries its own magic).
  * The engine hardcodes no consumer file: the floor is what bkit itself writes.
  */
 export function minPushPathspecs(cfg: Pick<BkitConfig, "minPushPaths" | "ciSkipPaths">): string[] {
   return [
     ...bookPathspecs("*", "*", "pr", cfg.ciSkipPaths),
-    ...globPathspecs(["docs/plans/**", ...cfg.minPushPaths]),
+    ...globPathspecs(["docs/plans/**", "docs/audits/**", ...cfg.minPushPaths]),
   ];
 }
 
@@ -622,6 +624,48 @@ export function pushBase(cwd: string, sha: string): string | null {
   }
   return null;
 }
+
+/** An audit template the project owns below its managed block; no other template qualifies. */
+const AUDIT_TEMPLATE_RE = /^docs\/templates\/bkit-audit-[^/]+\.md$/;
+
+export type MinPushOutside =
+  | { ok: true; changed: string[]; outside: string[]; sections: string[] }
+  | { ok: false; stderr: string };
+
+/**
+ * `changedOutside` plus the audit-template exception: a top-level `docs/templates/bkit-audit-*.md`
+ * present at both commits whose text through the `bkit:end` line is identical at both (so only
+ * the project section below it changed) is moved from `outside` to `sections`.
+ */
+export function minPushOutside(
+  root: string,
+  from: string,
+  to: string,
+  paths: readonly string[],
+): MinPushOutside {
+  const diff = changedOutside(root, from, to, paths);
+  if (!diff.ok) return diff;
+  const sections: string[] = [];
+  const outside: string[] = [];
+  const head = (sha: string, file: string): string | null => {
+    const res = gitRaw(root, ["cat-file", "blob", `${sha}:${file}`]);
+    return res.status === 0 ? managedHead(res.stdout) : null;
+  };
+  for (const file of diff.outside) {
+    if (AUDIT_TEMPLATE_RE.test(file)) {
+      const before = head(from, file);
+      if (before !== null && before === head(to, file)) {
+        sections.push(file);
+        continue;
+      }
+    }
+    outside.push(file);
+  }
+  return { ok: true, changed: diff.changed, outside, sections };
+}
+
+const sectionNote = (file: string) =>
+  `${file}: only its project section below <!-- bkit:end --> changed`;
 
 function minPush(ctx: RunContext): number {
   const top = runGit(ctx.cwd, ["rev-parse", "--show-toplevel"]);
@@ -640,10 +684,11 @@ function minPush(ctx: RunContext): number {
 
   const changed = new Set<string>();
   const outside = new Set<string>();
+  const sections = new Set<string>();
   for (const ref of refs) {
     const sha = git(ctx.cwd, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
     const base = sha ? (baseFlag ?? pushBase(ctx.cwd, sha)) : null;
-    const diff = sha && base ? changedOutside(top.stdout, base, sha, paths) : null;
+    const diff = sha && base ? minPushOutside(top.stdout, base, sha, paths) : null;
     if (!diff?.ok) {
       const why = !sha
         ? `cannot read commit '${ref}'`
@@ -656,7 +701,9 @@ function minPush(ctx: RunContext): number {
     }
     for (const p of diff.changed) changed.add(p);
     for (const p of diff.outside) outside.add(p);
+    for (const p of diff.sections) sections.add(p);
   }
+  for (const p of [...sections].sort()) ctx.log(sectionNote(p));
 
   const result = (reason: string | null, code: number, message: string) => {
     ctx.log(message);
@@ -686,6 +733,7 @@ function minPush(ctx: RunContext): number {
 function minPushUpdates(ctx: RunContext, cwd: string, updates: string[], paths: string[]): number {
   const changed = new Set<string>();
   const outside = new Set<string>();
+  const sections = new Set<string>();
   let unknown = false;
   let failed = false;
   for (const update of updates) {
@@ -699,17 +747,19 @@ function minPushUpdates(ctx: RunContext, cwd: string, updates: string[], paths: 
       unknown = true;
       continue;
     }
-    const increment = isNew ? null : changedOutside(cwd, oldSha, newSha, paths);
+    const increment = isNew ? null : minPushOutside(cwd, oldSha, newSha, paths);
     const base = pushBase(cwd, newSha);
-    const whole = base ? changedOutside(cwd, base, newSha, paths) : null;
-    if (hasVerifiedIncrement(cwd, oldSha, newSha, paths)) {
+    const whole = base ? minPushOutside(cwd, base, newSha, paths) : null;
+    if (hasVerifiedIncrement(cwd, oldSha, newSha, (a, b) => minPushOutside(cwd, a, b, paths))) {
       if (increment?.ok) for (const file of increment.changed) changed.add(file);
+      if (increment?.ok) for (const file of increment.sections) sections.add(file);
       ctx.log(`${oldSha}..${newSha}: covered by a successful full push gate`);
       continue;
     }
     if (whole?.ok) {
       for (const file of whole.changed) changed.add(file);
       for (const file of whole.outside) outside.add(file);
+      for (const file of whole.sections) sections.add(file);
       if (
         whole.changed.length > 0 &&
         whole.outside.length === 0 &&
@@ -719,6 +769,7 @@ function minPushUpdates(ctx: RunContext, cwd: string, updates: string[], paths: 
     } else unknown = true;
     failed = true;
   }
+  for (const file of [...sections].sort()) ctx.log(sectionNote(file));
   const reason = !failed ? null : unknown ? "unknown" : outside.size ? "outside" : "no-changes";
   ctx.emit({
     minPush: !failed,
@@ -890,12 +941,14 @@ export const ciCommand: CommandSpec = {
         },
       ],
       output: {
-        minPush: "true when every changed file matches a min-push path",
+        minPush:
+          "true when every changed file matches a min-push path, or is a docs/templates/bkit-audit-*.md changed only below its <!-- bkit:end -->",
         reason: "null when a min push; else no-changes | outside | unknown",
         changed: "files the push changes, across every ref",
-        outside: "the changed files no min-push path matches",
+        outside:
+          "the changed files no min-push path matches (an audit template changed only below its <!-- bkit:end --> is not listed)",
         paths:
-          "the min-push pathspecs in force: ship's pr bookkeeping allow-list (with bkit.testing.ciSkipPaths), docs/plans/**, bkit.testing.minPushPaths",
+          "the min-push pathspecs in force: ship's pr bookkeeping allow-list (with bkit.testing.ciSkipPaths), docs/plans/**, docs/audits/**, bkit.testing.minPushPaths",
       },
       exitCodes: {
         [EXIT_RANGE_UNKNOWN]: "a pushed commit, its base, or its git diff could not be read",

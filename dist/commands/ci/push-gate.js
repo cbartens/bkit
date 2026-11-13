@@ -9,7 +9,6 @@ import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { scriptCommand, testCommand } from "../../shared/package-manager.js";
 import { EXIT, git, outboxRoot, runGit } from "../lib.js";
-import { changedOutside } from "../workflow/ledgers.js";
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -163,7 +162,7 @@ function noLaterFailure(cwd, dir, sha, newSha, definition) {
     return true;
 }
 /** A bounded ancestor search; absent, malformed or stale proof always requires the full gate. */
-export function hasVerifiedIncrement(cwd, oldSha, newSha, paths) {
+export function hasVerifiedIncrement(cwd, oldSha, newSha, outsideOf) {
     if (!SHA.test(oldSha) ||
         !SHA.test(newSha) ||
         /^0+$/.test(oldSha) ||
@@ -186,7 +185,7 @@ export function hasVerifiedIncrement(cwd, oldSha, newSha, paths) {
         const file = path.join(dir, `${sha}.json`);
         if (!validReceipt(cwd, file, sha, definition))
             continue;
-        const diff = changedOutside(cwd, sha, newSha, paths);
+        const diff = outsideOf(sha, newSha);
         if (diff.ok && diff.outside.length === 0 && noLaterFailure(cwd, dir, sha, newSha, definition))
             return true;
     }

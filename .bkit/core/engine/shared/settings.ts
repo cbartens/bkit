@@ -131,7 +131,7 @@ export interface BkitConfig {
   ciRequired: string[];
   /**
    * Globs (`:(glob)` git pathspecs) for paths a push may carry, on top of what bkit's
-   * workflows write (ship's bookkeeping allow-list, `docs/plans/**`, `ciSkipPaths`), and
+   * workflows write (ship's bookkeeping allow-list, `docs/plans/**`, `docs/audits/**`, `ciSkipPaths`), and
    * still run only `bkit:gate:min` in `.husky/pre-push`; empty = that floor alone.
    */
   minPushPaths: string[];

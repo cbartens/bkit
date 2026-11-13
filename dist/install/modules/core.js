@@ -505,7 +505,7 @@ export const SEEDED_BKIT_DEFAULTS = {
     cloud: { agent: "" },
     providers: { opencode: { default: "", installed: [] } },
     testing: {
-        // What bkit writes (ship's bookkeeping allow-list, the plans tree) is always a min push;
+        // What bkit writes (ship's bookkeeping allow-list, the plans tree, docs/audits/**) is always a min push;
         // the seed adds nothing, because a project doc can be a test's input.
         minPushPaths: [...CONFIG_DEFAULTS.minPushPaths],
         ciWorkflow: CONFIG_DEFAULTS.ciWorkflow,
@@ -1359,7 +1359,7 @@ export const BKIT_LAYOUT_MOVES = [
 ];
 // Migration (up to 6.0.x installs, `docs/migrations.md`): `bkit.testing.minPushPaths` was the
 // whole min-push list, so installs seeded and repos restated what bkit itself writes. The
-// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`) and
+// engine now always allows that floor (ship's bookkeeping allow-list, `docs/plans/**`, `docs/audits/**`) and
 // `bkit.testing.ciSkipPaths`; the setting only adds. Entries the floor already covers are
 // dropped from the list. Returns true when package.json changed.
 export const MIN_PUSH_FLOOR_ENTRIES = [

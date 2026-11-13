@@ -1216,6 +1216,35 @@ describe(".husky/pre-push min push", () => {
       expect(r.calls).toContain("bkit:gate:min");
     });
 
+    it(`${hook}: audit report to dev under a [skip ci] head → allowed, light gate`, () => {
+      const head = commitFiles(
+        { "docs/audits/202611/security.md": "# Report\n" },
+        "docs(1): audit report bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/dev");
+      expect(r.status).toBe(0);
+      expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
+    it(`${hook}: audit-template project section to dev under a [skip ci] head → allowed, light gate`, () => {
+      const template = (project: string) =>
+        `<!-- bkit:start -->\n<!-- managed-version: 1 -->\nblock\n<!-- bkit:end -->\n\n## Project Instructions\n${project}\n`;
+      const file = "docs/templates/bkit-audit-x.md";
+      const remote = commitFiles({ [file]: template("old") }, "docs(1): add template");
+      gitIn("update-ref", "refs/remotes/origin/dev", remote);
+      const head = commitFiles(
+        { [file]: template("new project text") },
+        "docs(1): audit project section bkit [skip ci]",
+      );
+      const r = push(hook, head, "refs/heads/dev", remote);
+      expect(r.status).toBe(0);
+      expect(r.stderr).not.toContain("CI-suppressing token");
+      expect(r.calls).toContain("bkit:gate:min");
+      expect(r.calls).not.toContain("bkit:gate:static-unit");
+    });
+
     it(`${hook}: code to dev with a clean head → not blocked, full gate`, () => {
       const r = push(hook, commitFiles({ "src/a.ts": "b\n" }, "feat(1): a"), "refs/heads/dev");
       expect(r.status).toBe(0);

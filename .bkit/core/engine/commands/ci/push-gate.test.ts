@@ -200,6 +200,21 @@ describe("verified incremental push gates", () => {
     expect((await min(cwd, bookkeeping, empty)).status).toBe(0);
     expect((await run(cwd, "min-push", `--ref=${empty}`)).status).toBe(1);
   });
+  it("a full-gate receipt carries an audit template's project-section increment to the minimum gate", async () => {
+    const file = "docs/templates/bkit-audit-x.md";
+    const template = (project: string) =>
+      `<!-- bkit:start -->\n<!-- managed-version: 1 -->\nblock\n<!-- bkit:end -->\n\n## Project Instructions\n${project}\n`;
+    const { cwd } = fixture();
+    write(cwd, file, template("old"));
+    const checked = commit(cwd, "add audit template");
+    expect((await gate(cwd)).status).toBe(0);
+    write(cwd, file, template("new project text"));
+    const edited = commit(cwd, "edit project section");
+    expect((await min(cwd, checked, edited)).status).toBe(0);
+    write(cwd, file, template("new project text").replace("block", "changed block"));
+    const above = commit(cwd, "edit managed block");
+    expect((await min(cwd, edited, above)).status).toBe(1);
+  });
   it("requires proof even when the pushed increment changes no files", async () => {
     const { cwd, code } = fixture();
     expect((await min(cwd, code, commit(cwd, "trigger"))).status).toBe(1);

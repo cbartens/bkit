@@ -82,7 +82,7 @@ const UNION_PATHSPECS = [
     ":(exclude).bkit/issues.jsonl",
 ];
 /** `git <args>` in `cwd`, never throwing and never trimming (NUL-delimited output). */
-function gitRaw(cwd, args, env = {}, input) {
+export function gitRaw(cwd, args, env = {}, input) {
     const res = spawnSync("git", args, {
         cwd,
         encoding: "utf-8",

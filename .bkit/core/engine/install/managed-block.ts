@@ -107,6 +107,22 @@ export function extractManagedBlock(
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
+// The text from the first byte through the end-marker line (newline included). Null unless
+// the file has exactly one start marker and one end marker, start first. Used to tell a
+// change below the block from a change to the block or the text above it.
+export function managedHead(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string | null {
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findLineAnchoredMarkers(content, startMarker);
+  const ends = findLineAnchoredMarkers(content, endMarker);
+  if (starts.length !== 1 || ends.length !== 1) return null;
+  if (starts[0]! >= ends[0]!) return null;
+  const endLineEnd = content.indexOf("\n", ends[0]! + endMarker.length);
+  return endLineEnd === -1 ? content : content.slice(0, endLineEnd + 1);
+}
+
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
 // markerStyle defaults to "html-comment".
 // Used to append a fresh block to a destination that has none. Markers may be

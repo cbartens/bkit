@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T22:26:36Z)_
+_(refreshed 2026-11-13T22:49:58Z)_
 
 ### Design
 
@@ -50,7 +50,6 @@ _(refreshed 2026-11-13T22:26:36Z)_
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
-| 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
 
 ### Build
 
@@ -73,6 +72,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 915-min-push-ignores | 915-min-push-ignores | 1794610198037 |
 | 929-hung-test-never | 929-hung-test-never | 1794608796745 |
 | 930-build-tick-green | 930-build-tick-green | 1794607449835 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794576192090 |
@@ -82,7 +82,6 @@ _(none)_
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794550421654 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
 | 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
-| 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

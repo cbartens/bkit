@@ -307,11 +307,13 @@ chmod +x .husky/pre-commit .husky/pre-push
   - **If** every file changed since each pushed commit left `origin/dev` (else `origin/main`) is one bkit writes or one `bkit.testing.minPushPaths` adds → `bkit:gate:min` replaces the full gate, and `MIN_PUSH=1`.
   - The hook passes each remote-old and pushed-new commit as `bkit ci min-push --update=<old>:<new>`. A fast-forward bookkeeping increment also qualifies when a successful local full-gate receipt covers an ancestor of the old commit and every change since that checked commit is allowed.
   - `bkit ci push-gate --gate=<script>` runs the selected consumer script. A successful deepest full push gate records its clean, unchanged commit and script definitions in the repository's Git metadata. A failed or interrupted full check prevents reuse of earlier evidence until a later full check succeeds. Minimum and revert gates create no full-gate evidence. Receipts are local; a new clone starts without them.
-  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 12 steps) plus `docs/plans/**`.
+  - What bkit writes = ship's `--scope=pr` allow-list (`.bkit/workflows.md` § `/bkit-ship` — 12 steps) plus `docs/plans/**` and `docs/audits/**`.
+  - A change to a top-level `docs/templates/bkit-audit-*.md` also counts as written by bkit when the file's text through its single `<!-- bkit:end -->` line is the same at both ends of the range, so only the `Project Instructions` section below it changed. A new, deleted or renamed template, a second marker line, or any change at or above the marker keeps the full gate. A template with CRLF line endings never qualifies, because a marker followed by `\r` is not line-anchored. Other templates, such as `docs/templates/bkit-plan.md`, keep the full gate. "What bkit writes" in the `bkit ci min-push` summary covers the audit reports and the audit templates' project sections.
   - The setting takes `package.json` globs: `*` matches one folder and `**` any depth. The default is `[]`, which leaves what bkit writes alone, because the setting only adds to it.
   - `bkit ci min-push` decides from files, never from `[skip ci]`, because that is a typed label and GitHub reads the last commit only.
   - Empty trigger commits need checked-ancestor evidence. Missing evidence, unreadable ranges, rewritten history, or any outgoing ref carrying new code keeps the full gate. A new branch can still qualify from its complete bookkeeping-only branch diff.
 - Min-push paths: list only files that no code, build or test reads.
+  - The floor already covers `docs/plans/**` and `docs/audits/**`, so the setting lists neither.
   - Never list `docs/**`, because a doc can be test input.
   - **If** a test reads a ledger → put that test into `bkit:gate:min`.
 - `[skip ci]` guards:
