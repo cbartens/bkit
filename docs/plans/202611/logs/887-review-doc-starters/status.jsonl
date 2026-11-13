@@ -27,3 +27,13 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-13T23:41:51Z","noun":"steps","verb":"gate","flags":["workflow","step","progress-number","fid","month","token","issue","placeholder"]}
 {"type":"engine-call","workflow":"plan","at":"2026-11-13T23:41:59Z","noun":"ledgers","verb":"commit","flags":["root","only-if-dirty-tracked","scope","mode","month","fid","message"]}
 {"type":"engine-call","workflow":"plan","at":"2026-11-13T23:41:59Z","noun":"worktrees","verb":"setup","flags":["workflow","fid","month","detect"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:13Z","noun":"workflows","verb":"start","flags":["workflow","fid","month","lock-held","token","session-dir"]}
+{"type":"session","workflow":"plan","at":"2026-11-13T23:42:13Z","platform":"claude-code","session":"fp:ee6555857e1b"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:13Z","noun":"runtime","verb":"row","flags":["workflow","base-sha","file"]}
+{"type":"runtime-resolved","workflow":"plan","at":"2026-11-13T23:42:13Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":"2d510c666901ca890d9166face8b676187a08496"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:14Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:20Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:20Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-11-13T23:42:20Z","parentSha":"5cb5f885f4aa2d20fe0a0be61c27e91864f65e50","artifacts":[]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:20Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
+{"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-13T23:42:20Z","parentSha":"5cb5f885f4aa2d20fe0a0be61c27e91864f65e50","artifacts":["docs/plans/202611/logs/887-review-doc-starters/plan-input-1.md"]}

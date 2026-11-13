@@ -1,6 +1,6 @@
 ## Session Prompt — this run's, newer than everything below
 
-/bkit-plan bkit repo #887
+/bkit-plan #887
 
 ## Issue description — oldest
 
