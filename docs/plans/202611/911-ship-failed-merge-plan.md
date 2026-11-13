@@ -75,7 +75,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 - **WHEN** the post-merge squash capstone is red at Close Workflow **→ THEN** the Failure Path names `/bkit-debug {FID}` the same way.
 - **WHEN** GitHub refuses the merge for a reason no code fix can address **→ THEN** the run stops at the Failure Path naming the reason, and no diagnose or fix step runs.
 - **IF** a run started before the change is resumed after a `ship-failure-diagnose` or `ship-failure-remediate` row **→ THEN** `bkit status resume` ignores those rows and resumes after the run's last `ship-merge-pr` row, which ship turns into a return to Step 3.
-- **IF** `bkit workflows fail` gets a `--next-step` value that is not one line starting `/bkit-` **→ THEN** it exits 2 and writes nothing.
+- **IF** `bkit workflows fail` gets a `--next-step` value that is not one `/bkit-*` command line **→ THEN** it exits 6 and writes nothing.
 
 ### Concrete Example
 
@@ -106,9 +106,9 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 | The merge attempts run out on a refusal that is not a red run (exit 11, 14 or 10), with `ship.merge.ask` on | The Merge Question asks Stop or Try again; no `NEXT_STEP` is held, so `Stop` names no next step |
 | Ship opened the PR itself and the Step 2 CI wait ends with `prs checks` exit 1 and `failed` > 0, or the MCP fallback reads a failed check | The run takes the Failure Path with `NEXT_STEP` = `/bkit-debug {FID}` |
 | The Step 2 CI wait fails for a reason other than a failed check (no check, a pending check, `runs wait` timeout, unreadable rollup) | The Failure Path names the reason and no next-step line, as today |
-| The Failure Path's `workflows fail --next-step` call exits 2 (the held value was refused) | The Failure Path re-runs the same `workflows fail` call without `--next-step`, so the run still records the failure, releases the lock and posts the comment |
+| The Failure Path's `workflows fail --next-step` call exits 6 (the held value was refused) | The Failure Path re-runs the same `workflows fail` call without `--next-step`, so the run still records the failure, releases the lock and posts the comment |
 | The merge gate refuses for a reason other than a red run (13, 15, 16, 18, 20) | The Failure Path names the gate's reason and no next-step line |
-| `--next-step` holds a line break, or does not start with `/bkit-` | `bkit workflows fail` exits 2 (usage) before any write: no row, no lock release, no comment |
+| `--next-step` holds a line break, does not start with `/bkit-`, or carries anything beyond a command name and plain arguments (a backtick, markdown, HTML, an `@` mention) | `bkit workflows fail` exits 6 (the `--next-step` refusal) before any write: no row, no lock release, no comment |
 | `bkit workflows fail` runs without `--next-step`, or with an empty one (a value not held yet, as for `--fid` and `--token`) | `nextStep` prints null and the failure comment has no `Next step:` line, as today |
 | The post-merge squash capstone is red at Step 12 (Close Workflow after the renumber) | The run takes the Failure Path with `NEXT_STEP` = `/bkit-debug {FID}` (owner answer A, decision `911-ship-red-ci-next-step-flag`) |
 | The post-merge capstone check exits non-zero for any other reason | The Failure Path names the reason and no next-step line, as today |
@@ -133,11 +133,10 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 | Every route that takes a red CI run to the Failure Path (Step 2 CI wait on a PR ship opened, Step 10 merge gate, Step 12 squash capstone) or to the Merge Question (a used-up regenerable red run) holds `/bkit-debug {FID}` as `NEXT_STEP`, and no other route does | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 4 |
 | The Merge Question's `Stop` arm writes `Next step: {NEXT_STEP}` into the handover and the final message when `NEXT_STEP` is held, and `Try again` clears `NEXT_STEP` | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 4 |
 | The Failure Path passes `--next-step` to `workflows fail` only when `NEXT_STEP` is held, and ends the final message with it after any verbatim `ship-summary.md` content | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 4 |
-| The Failure Path re-runs `workflows fail` without `--next-step` when the call exits 2 | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 4 |
 | The rendered `none`-tracker ship workflow matches its baseline | Unit | `.bkit/core/engine/render/trackers.test.ts` (`bkit-ship.none.txt`) | 4 |
-| --step-number "x" is not a step number | Unit | `bkit workflows fail refuses a bad --next-step with an exit code no other usage error shares` | 7 |
-| exit 2 | Unit | `the Failure Path re-runs workflows fail without --next-step only on the --next-step refusal` | 7 |
-| bkit workflows fail refuses an unsubstituted --next-step placeholder with the --next-step refusal exit | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 8 |
+| A refused `--next-step` exits 6, a code no other `workflows fail` usage error returns (`--step-number "x" is not a step number` exits 2) | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 7 |
+| The Failure Path re-runs `workflows fail` without `--next-step` only on exit 6, never on a bare exit 2 | Unit | `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` | 7 |
+| `workflows fail` refuses an unsubstituted `--next-step` placeholder with exit 6 | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 8 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -199,7 +198,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 | A generic `--line` flag on `workflows fail` (as on `issues comment`) | It would work, but leaves the `Next step:` wording to each workflow; `--next-step` gives one format, a validated value and a printed `nextStep` the final message can reuse |
 | Teach the hole detector the retired step names | The owner rejected it (decision `911-status-holes-retired-ship-rows-unexpected`): the build workflow's retired `build-challenge-*` rows already show as `unexpected`, `unexpected` never changes a verdict, and the CLI exits 0 |
 | Have `bkit workflows fail` derive the next step from the step key (red-CI steps map to `/bkit-debug`) instead of a `--next-step` flag | Fewer call sites to keep in step, but the engine cannot tell a red-CI stop from another failure of the same step (Step 10 fails for many reasons), so the workflow would still have to pass which arm it took; the explicit flag matches the existing held-value pattern. Noted for the owner |
-| Drop an invalid `--next-step` with a warning instead of exiting 2 | It keeps the run from stranding, but a silent drop hides a malformed workflow line; the Failure Path re-runs the call without the flag on exit 2 instead (Edge Cases) |
+| Drop an invalid `--next-step` with a warning instead of exiting 6 | It keeps the run from stranding, but a silent drop hides a malformed workflow line; the Failure Path re-runs the call without the flag on exit 6 instead (Edge Cases) |
 
 **Recommendations for a future phase:**
 
@@ -231,7 +230,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 
 ## Security & Privacy
 
-- [ ] **User Input** — `bkit workflows fail --next-step` is validated in `failVerb`, the handler that receives it, before any write: one line starting `/bkit-`, else exit 2. The value goes into a tracker comment inside backticks.
+- [ ] **User Input** — `bkit workflows fail --next-step` is validated in `failVerb`, the handler that receives it, before any write: one `/bkit-*` command line (a `/bkit-` name, then optional single-space-separated arguments of letters, digits, `#`, `.`, `_` and `-`), else exit 6. The value goes into a tracker comment inside backticks.
 
 None of the other rows apply — no new API route, DB table, role-gated mutation, PII, redirect URL, webhook, or secret.
 
@@ -314,7 +313,7 @@ The ship workflow loses Steps 11-12, renumbers 13-14 to 11-12, and holds `NEXT_S
   - **Locks** and **Worktrees:** "Step 14" → "Step 12".
 - **Failure Path:**
   - Step 1: add `--next-step="{NEXT_STEP}"` to the `workflows fail` fence, with "drop `--next-step` when `NEXT_STEP` is not held" in the flag list.
-  - Step 1 `Route:`: "**If** exit 2 **and** `--next-step` was passed → re-run the same block without `--next-step`, then route on that exit." This keeps a refused value from leaving the run `IN_PROGRESS` with the lock held.
+  - Step 1 `Route:`: "**If** exit 6 **and** `--next-step` was passed → re-run the same block without `--next-step`, then route on that exit." This keeps a refused value from leaving the run `IN_PROGRESS` with the lock held.
   - **[DELETE]** Step 4: the two `ship-failure-*` globs in the abort-handover `Read:` line.
   - Step 6: "**If** `NEXT_STEP` is held → end the final message with the line `Next step: {NEXT_STEP}`, after the verbatim `ship-summary.md` content and as the message's last line."
 - **Step 2:**
@@ -537,18 +536,17 @@ Code-only — `git revert` sufficient.
 
 - [x] **TASK 4:** Hold `NEXT_STEP` = `/bkit-debug {FID}` on every red-CI stop in ship, and pass it through the Failure Path and the Merge Question
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: the Step 2 sub-step 5 failed-check arms (CLI and exit-80 MCP); the Step 10 sub-step 1 exit-12 arms (new non-regenerable arm; the regenerate `Else` arm on `unchanged` / `undeclared`; the used-up regenerable arm, with `MERGE_ASK` false and true); the Merge Question's `Try again` (clears `NEXT_STEP`) and `Stop` (names it) arms; the Step 12 (Close Workflow) sub-step 1 `Route:`; and Failure Path step 1 (flag and exit-2 retry) and step 6 (last line, after any verbatim summary), per `Architecture & Component Changes` § Workflow
-  - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-invariants.test.ts`: tests step — six tests in a new `bkit-ship.md — red CI names /bkit-debug` describe
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/ship-invariants.test.ts`: tests step — five tests in a new `bkit-ship.md — red CI names /bkit-debug` describe
   - **UPDATE:** `.bkit/instructions.md`: the `bkit-ship.md` `- source:` block, through `REGEN`
   - **UPDATE:** `.bkit/core/engine/render/__snapshots__/bkit-ship.none.txt`: regenerated through `REGEN`
   - **DEPENDS ON:** 2, 3
-  - **DONE WHEN:** `REGEN` ran; `pnpm vitest run` on `ship-invariants.test.ts`, `workflow-shape.test.ts`, `trackers.test.ts` and `instructions-coverage.test.ts` passes, including the six `bkit-ship.md — red CI names /bkit-debug` tests
+  - **DONE WHEN:** `REGEN` ran; `pnpm vitest run` on `ship-invariants.test.ts`, `workflow-shape.test.ts`, `trackers.test.ts` and `instructions-coverage.test.ts` passes, including the five `bkit-ship.md — red CI names /bkit-debug` tests
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `Step 10 holds /bkit-debug {FID} as NEXT_STEP on every red-run route to the Failure Path or the Merge Question, and on no other` fails on the exit-12 arm reaching the Failure Path with "no NEXT_STEP held"
     - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `Step 2 holds NEXT_STEP on a failed check in the CI wait of a PR ship opened` fails on the `prs checks` failed-check arm reaching the Failure Path with "Step 2 failed check holds no NEXT_STEP"
     - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `the Merge Question's Stop arm names NEXT_STEP when held and Try again clears it` fails on the Stop handover lacking "Next step: {NEXT_STEP}"
     - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `Close Workflow routes a red squash capstone to the Failure Path holding NEXT_STEP` fails on sub-step 1 having "no Route: after runs gate --capstone-only"
     - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `the Failure Path passes --next-step only when NEXT_STEP is held and ends the final message with it` fails on the `workflows fail` fence lacking "--next-step=", or on the `Next step:` line sitting before the verbatim `ship-summary.md` content
-    - `.bkit/core/engine/audits/workflows/ship-invariants.test.ts` `the Failure Path re-runs workflows fail without --next-step on exit 2` fails on Failure Path step 1 having "no exit 2 retry without --next-step"
 
 <!-- bkit:task 4 end -->
 
@@ -673,6 +671,6 @@ Code-only — `git revert` sufficient.
 
 - [ ] **Step 1:** After `pnpm build`, copy `docs/plans/202610/logs/719-cloud-variants-add/status.jsonl` to a scratch path, cut the copy after its last `ship-failure-*` row (its runs ended, so the cut leaves one `IN_PROGRESS` run), and run `node dist/cli.js status resume --workflow=ship --file={copy}`: it exits 0 and names `ship-merge-pr` / Step 10, not a failure step.
 - [ ] **Step 2:** Run `node dist/cli.js workflows summary` on the same copy: it exits 0 and lists the old `ship-failure-*` rows.
-- [ ] **Step 3:** Run `node dist/cli.js workflows fail --workflow=ship --step-number=10 --step-title="Merge Gate + Merge PR" --error="CI red" --next-step="/bkit-debug 911-ship-failed-merge"` in a scratch repo: the printed comment ends with ``Next step: `/bkit-debug 911-ship-failed-merge` `` and `nextStep` holds the value; `--next-step="git push"` exits 2. The run omits `--post` on purpose: `--post` sends the same body `buildComment` prints, so the printed `comment` proves the line, and a scratch repo has no tracker to post to. An owner who wants the live post can repeat the call with `--post --issue={scratch issue}` on a scratch GitHub issue.
+- [ ] **Step 3:** Run `node dist/cli.js workflows fail --workflow=ship --step-number=10 --step-title="Merge Gate + Merge PR" --error="CI red" --next-step="/bkit-debug 911-ship-failed-merge"` in a scratch repo: the printed comment ends with ``Next step: `/bkit-debug 911-ship-failed-merge` `` and `nextStep` holds the value; `--next-step="git push"` exits 6. The run omits `--post` on purpose: `--post` sends the same body `buildComment` prints, so the printed `comment` proves the line, and a scratch repo has no tracker to post to. An owner who wants the live post can repeat the call with `--post --issue={scratch issue}` on a scratch GitHub issue.
 - [ ] **Step 4:** Pack the package (`pnpm pack`), install it into a clean scratch consumer with `bkit install`, and read the rendered `.claude/commands/bkit-ship.md`: no Failure Diagnose or Failure Remediate step, Steps 1-12, and `NEXT_STEP` on the Step 2 failed-check arms, the Step 10 exit-12 arms (including the one before the Merge Question) and the Step 12 capstone route.
 - [ ] **Step 5:** Run `bkit upgrade` in an existing scratch consumer on the previous release: the upgraded `bkit-ship.md` matches Step 4's render.

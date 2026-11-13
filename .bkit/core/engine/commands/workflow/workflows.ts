@@ -407,6 +407,13 @@ function failState(ctx: RunContext, workflow: string, fid: string) {
 /** Exit code: `workflows fail` refused `--next-step` before any write; no other usage error of that verb uses it. */
 const EXIT_NEXT_STEP_REFUSED = 6;
 
+/**
+ * The only `--next-step` shape `workflows fail` posts: a `/bkit-` command name, then optional
+ * space-separated arguments such as an FID or `#682`. The value goes into a code span in the
+ * failure comment, so nothing that could end the span or start markdown or HTML gets through.
+ */
+const NEXT_STEP_SHAPE = /^\/bkit-[a-z0-9-]+(?: [#A-Za-z0-9._-]+)*$/;
+
 async function failVerb(ctx: RunContext): Promise<number> {
   const workflow = workflowName(String(ctx.flags.workflow));
   // An empty value is a placeholder not held yet (the failure came before it was set).
@@ -416,7 +423,7 @@ async function failVerb(ctx: RunContext): Promise<number> {
     throw new CommandError(EXIT.USAGE, "--token needs --fid");
   // Empty is absent; anything else is one /bkit-* command line, checked before any write.
   const nextStep = str(ctx.flags.nextStep) || undefined;
-  if (nextStep !== undefined && (/[\r\n]/.test(nextStep) || !nextStep.startsWith("/bkit-")))
+  if (nextStep !== undefined && !NEXT_STEP_SHAPE.test(nextStep))
     throw new CommandError(EXIT_NEXT_STEP_REFUSED, "--next-step must be one /bkit-* command line");
 
   // State only for a run that took the lock: without the token the failure came

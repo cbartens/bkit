@@ -1017,13 +1017,23 @@ describe("bkit-ship.md — red CI names /bkit-debug", () => {
     expect(sub5).not.toBe("");
     const route = sub5.slice(sub5.indexOf("Route:"));
     const failedArms = bullets(route).filter((b) =>
-      /any check failed|^\s*- \*\*Else\*\* → \*\*Failure Path\*\*/.test(b),
+      /check concluded (?:red|failure)|^\s*- \*\*Else\*\* → \*\*Failure Path\*\*/.test(b),
     );
     expect(failedArms.length).toBeGreaterThanOrEqual(2);
     for (const b of failedArms) {
       expect(b, "Step 2 failed check holds no NEXT_STEP").toMatch(/NEXT_STEP/);
       expect(sub5).toMatch(HOLDS_DEBUG);
     }
+  });
+
+  it("Step 2 passes every CI wait exit above 1 through and ends the turn on exit 81", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — /, /^## /);
+    const sub5 = section(step2, /^5\. \*\*If\*\* `SHIP_OPENED_PR` = true/, /^6\. /);
+    expect(sub5).toContain("--until=present --budget-s=120 || exit $?");
+    expect(sub5).toContain("--until=completed || WAIT_EXIT=$?");
+    expect(sub5).toContain('[ "$WAIT_EXIT" -le 1 ] || exit "$WAIT_EXIT"');
+    const route = sub5.slice(sub5.indexOf("Route:"));
+    expect(bullets(route)[1]).toMatch(/\*\*If\*\* exit 81 → end turn, re-run this block\./);
   });
 
   it("the Merge Question's Stop arm names NEXT_STEP when held and Try again clears it", () => {

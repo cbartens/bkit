@@ -1374,7 +1374,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:660`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:663`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1687,7 +1687,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:660`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:663`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -9853,7 +9853,7 @@ Every command has a `🤖 Failure Path` section before Step 1. Any step, tool or
 
 **Standard failure (always):**
 
-1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=] [--next-step=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase or merge in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 6 = a refused `--next-step`: not one `/bkit-*` command line, or still holding an unsubstituted `{UPPER}` placeholder (refused before any write, no other usage error uses it). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
+1. Write the error text to `{OUTBOX_ROOT}/error.md`, then one call: `bkit workflows fail --workflow= --fid= --month= --token={LOCK_TOKEN} [--max-exceeded] {LABEL_FLAGS} --step-number= --step-title= --sub-step= --error-file="{OUTBOX_ROOT}/error.md" [--stderr-file=] [--next-step=]` (ship adds `--pr=`). State is changed only with a `--token`. An empty one counts as absent, because the failure came before Step 1 took the lock. With a token, the call appends `workflow-failed` (nothing when `status.jsonl` does not exist yet), aborts a rebase or merge in progress in the run's worktree, releases the caller's own lock (another owner's stays, reported as `lock.heldBy`), clears the sentinels (`.rebase-failed`; ship `.deferred-blocked`). Exit 6 = a refused `--next-step`: not one `/bkit-*` command line (a `/bkit-` command name, then optional single-space-separated arguments of letters, digits, `#`, `.`, `_` and `-`), or still holding an unsubstituted `{UPPER}` placeholder (refused before any write, no other usage error uses it). Exit 5 = the lock file survived; the printed comment already says `Lock removal failed`. It always prints `labels` (the current labels plus `bkit:failed`; a ship whose `--pr` already MERGED also moves to `bkit:merged`), `trackerState`, `handoverNeeded` (`--max-exceeded`, a sentinel existed, or a debug run in `SOAK`), and the `### Workflow Failure` `comment`. No dev push.
 2. `--post` posts `comment` and writes the labels and state (`tracker`, `labelsWrite`). If either prints `done` = false, the tracker MCP does that write.
 
 **Conditional handover** — only when `handoverNeeded` **and** a worktree exists. The handover agent `cd`s to `{WORKTREE_PATH}`. `/bkit-debug` decides `DEBUG_MODE` at Step 1, before the worktree exists, so a failure before the worktree goes straight to STOP:
@@ -10620,9 +10620,9 @@ Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails →
 **Else** → next sub-step.
 Read the PR's head SHA:
 [honest-reporting] **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
-**If** exit 1 **and** `CHECKS_FAILED` > 0 (any check failed: the CI run is red) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
+**If** exit 1 **and** `CHECKS_FAILED` > 0 (a check concluded red: the CI run is red) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
 **If** exit 80 → read the checks with `pull_request_read` (`get_status`):
-**If** any check failed → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
+**If** any check concluded failure (not cancelled, action required or stale) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
 **If** there is no check, **or** any check is pending → **Failure Path**.
 Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
 Run **Confirm Assumed Items** → Step 3.

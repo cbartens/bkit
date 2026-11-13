@@ -1132,8 +1132,28 @@ describe("bkit prs checks", () => {
       total: 2,
       passing: 2,
       failed: 0,
+      cancelled: 0,
       pending: 0,
       green: true,
+      failing: [],
+    });
+  });
+
+  it("counts a cancelled, action-required or stale check apart from failed, and not green", async () => {
+    rollup(
+      { name: "a", status: "COMPLETED", conclusion: "CANCELLED" },
+      { name: "b", status: "COMPLETED", conclusion: "ACTION_REQUIRED" },
+      { name: "c", status: "COMPLETED", conclusion: "STALE" },
+      { name: "d", status: "COMPLETED", conclusion: "SUCCESS" },
+    );
+    const r = await checks();
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({
+      total: 4,
+      passing: 1,
+      failed: 0,
+      cancelled: 3,
+      green: false,
       failing: [],
     });
   });

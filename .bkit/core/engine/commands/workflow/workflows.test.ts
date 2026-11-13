@@ -962,12 +962,27 @@ describe("bkit workflows fail", () => {
     expect(r.json.comment).toContain("Error: CI is red");
   });
 
-  it("bkit workflows fail refuses a multi-line or non-/bkit- --next-step before any write", async () => {
+  it("bkit workflows fail refuses a multi-line, non-/bkit- or markdown-carrying --next-step before any write", async () => {
     const cwd = repo();
     const started = await run(cwd, wf("start", "build"));
     const token = `--token=${started.json.lock.token}`;
     const before = fs.readFileSync(statusOf(cwd), "utf-8");
-    for (const bad of ["/bkit-debug a\n/bkit-debug b", "rm -rf /", "bkit-debug x"]) {
+    const bads = [
+      "/bkit-debug a\n/bkit-debug b",
+      "rm -rf /",
+      "bkit-debug x",
+      // Each of these could end the comment's code span or start live markdown or HTML.
+      "/bkit-debug x` [link](https://example.com) `",
+      "/bkit-debug <img src=x>",
+      "/bkit-debug ![x](y)",
+      "/bkit-debug @someone",
+      "/bkit-debug a /bkit-debug b",
+      "/bkit-debug a b",
+      "/bkit-debug a\u0085b",
+      "/bkit-debug  x",
+      "/bkit-debug x ",
+    ];
+    for (const bad of bads) {
       const r = await run(cwd, wf("fail", "build", `--month=${M}`, token, `--next-step=${bad}`));
       expect(r.code).toBe(6);
       expect(r.err).toContain("--next-step must be one /bkit-* command line");

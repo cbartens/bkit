@@ -256,15 +256,18 @@ _No tracker connected, skip step._
    Assert `ENTRY_HEAD` non-empty.
 5. **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
    ```bash
-   "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=present --budget-s=120 || exit 1
-   "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=completed
+   "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=present --budget-s=120 || exit $?
+   WAIT_EXIT=0
+   "{BKIT}" runs wait --pr="{PR_NUMBER}" --until=completed || WAIT_EXIT=$?
+   [ "$WAIT_EXIT" -le 1 ] || exit "$WAIT_EXIT"
    "{BKIT}" prs checks --number="{PR_NUMBER}"
    ```
-   Hold `failed` as `CHECKS_FAILED`. Route:
+   Hold `failed` as `CHECKS_FAILED`. `failed` counts only checks that concluded red; `cancelled` counts checks that finished without a verdict. Route:
+   - **If** exit 81 → end turn, re-run this block.
    - **If** exit 0 → next sub-step.
-   - **If** exit 1 **and** `CHECKS_FAILED` > 0 (any check failed: the CI run is red) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
+   - **If** exit 1 **and** `CHECKS_FAILED` > 0 (a check concluded red: the CI run is red) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
    - **If** exit 80 → read the checks with `pull_request_read` (`get_status`):
-     - **If** any check failed → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
+     - **If** any check concluded failure (not cancelled, action required or stale) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
      - **If** there is no check, **or** any check is pending → **Failure Path**.
      - **Else** → next sub-step.
    - **Else** (the rollup is unreadable) → **Failure Path**.

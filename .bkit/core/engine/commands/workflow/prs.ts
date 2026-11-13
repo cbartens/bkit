@@ -826,7 +826,10 @@ export interface ChecksOut {
   number: string;
   total: number;
   passing: number;
+  /** Checks that finished red: the CI run itself failed. */
   failed: number;
+  /** Checks that finished without a verdict (cancelled, action required, stale): not green, not red. */
+  cancelled: number;
   pending: number;
   green: boolean;
   failing: string[];
@@ -835,9 +838,12 @@ export interface ChecksOut {
 /** Conclusions / states a finished check may carry and still count as passing. */
 const PASS_STATES = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
 
+/** Conclusions of a check that finished without running to a verdict: it neither passed nor went red. */
+const NO_VERDICT_STATES = new Set(["CANCELLED", "ACTION_REQUIRED", "STALE"]);
+
 /**
  * The PR's check rollup, classified (ship Step 2's post-open assert). `green` only
- * when at least one check exists and none is failed or pending. A check run is
+ * when at least one check exists and none is failed, cancelled or pending. A check run is
  * open until `status` = `COMPLETED`; a commit status is open while its `state` is
  * `PENDING` / `EXPECTED`. gh missing → EXIT.USE_MCP (read the rollup through
  * `pull_request_read` `get_status`).
@@ -869,6 +875,7 @@ export function checksFor(
   const checks = (Array.isArray(rawRollup) ? rawRollup : []) as Array<Record<string, unknown>>;
   let passing = 0;
   let failed = 0;
+  let cancelled = 0;
   let pending = 0;
   const failing: string[] = [];
   for (const c of checks) {
@@ -883,24 +890,27 @@ export function checksFor(
       pending++;
     } else if (PASS_STATES.has(conclusion || state)) {
       passing++;
+    } else if (NO_VERDICT_STATES.has(conclusion || state)) {
+      cancelled++;
     } else {
       failed++;
       if (name) failing.push(name);
     }
   }
-  const green = checks.length > 0 && failed === 0 && pending === 0;
+  const green = checks.length > 0 && failed === 0 && cancelled === 0 && pending === 0;
   const out: ChecksOut = {
     number,
     total: checks.length,
     passing,
     failed,
+    cancelled,
     pending,
     green,
     failing,
   };
   if (!green)
     log(
-      `PR ${number} is not green: ${String(failed)} failed, ${String(pending)} pending, ${String(checks.length)} total`,
+      `PR ${number} is not green: ${String(failed)} failed, ${String(cancelled)} cancelled, ${String(pending)} pending, ${String(checks.length)} total`,
     );
   return { code: green ? EXIT.OK : EXIT.NO, out };
 }
@@ -1390,7 +1400,7 @@ export const prsCommand: CommandSpec = {
     },
     checks: {
       summary:
-        "A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP).",
+        "A PR's check rollup, classified: green when present and none failed, cancelled or pending (exit 80: use MCP).",
       use: "by-hand",
       flags: [{ name: "number", type: "string", required: true, help: "the PR number" }],
       output: {

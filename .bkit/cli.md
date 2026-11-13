@@ -260,7 +260,7 @@ Open and probe pull requests, and audit the close transport.
 | `probe` | by hand | `--head` `--base` `--state` `--number` `--ship-entry` `--owner-repo` `--facts-file` | The open (or open-then-merged) PR for a branch, or one PR by number. |
 | `merge` | workflow | `--ship-retry` `--facts-file` `--owner-repo` **`--number`** `--subject` `--match-head` `--delete-branch` `--label` `--expect-merged` | Squash-merge a PR with an empty body (skipped when already MERGED) and read its state back. |
 | `update-branch` | workflow | **`--number`** `--only-if-required` | Refresh a PR's head from its base server-side (exit 80: use update_pull_request_branch). |
-| `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed or pending (exit 80: use MCP). |
+| `checks` | by hand | **`--number`** | A PR's check rollup, classified: green when present and none failed, cancelled or pending (exit 80: use MCP). |
 | `verbose-ci` | workflow | **`--number`** **`--state`** | Add ` bkit [verbose ci]` to a PR title, or strip it (with an optional `bkit ` prefix); a no-op when already so. |
 | `scan-body` | by hand | **`--sha`** `--remote-ref` | Check a landed commit's body (not its subject) for a CI-suppressing token. |
 | `cross-check` | workflow | **`--file`** **`--transport`** | An mcp close with gh recorded unavailable must have a transport-fallback row. |
