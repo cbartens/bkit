@@ -149,6 +149,12 @@ The owner approved this wording at plan approval; it is drawn from the issue's `
 | Each `Fix now` item records the task that carries its fix as `Fix task: {N}` before the decision row is finished, and a resumed step 5 reuses the task that line names | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
 | The Contract **Owner decisions** bullet names the task block as the carrier of a `Fix now` direction, and `### 🔒 Gate — Decision Pause` checks the `Fix task` lines | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 5 |
 | `bkit workflows summary` on a temp tree reads the paused group's decision file and the plan from disk, and prints `CONCERNS` for a run whose only FAIL rows are the `Fix now` group's and a test-fix step's | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 3 |
+| workflows start reports openDecision for a DECIDED decision file that no build-decision row names | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 8 |
+| workflows start does not report openDecision for a DECIDED decision file that a build-decision row names | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 8 |
+| Decision Pause step 5 records each Fix now item's Fix task line before tests plan-check | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 9 |
+| workflows start reports the status of a reopened DECIDED decision file in openDecision | Unit | `.bkit/core/engine/commands/workflow/workflows.test.ts` | 10 |
+| Resume re-runs a red gate only when openDecision status is OPEN | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 10 |
+| Decision Pause step 5 writes no second acceptance for a reopened DECIDED or ASSUMED pause | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 11 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -440,7 +446,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Resolve a failed test-fix step by a later passing test run on the same scope
+- [x] **TASK 1:** Resolve a failed test-fix step by a later passing test run on the same scope
   - **UPDATE:** `RESOLVED_BY` in `.bkit/core/engine/commands/workflow/summary.ts`: add `build/build-failure-remediate` → `build-run-tests` and `debug/debug-failure-remediate` → `debug-run-tests`.
   - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: for these two entries the `answer` lookup also requires the later run's `scope` to equal the `scope` of the `*-run-tests` `step-done` row (never a `test-run` row) whose `attempt` equals the fix step's `attempt`; a missing row or `scope` leaves the FAIL.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/summary.test.ts`: three new cases in `describe("buildSummary")`, built with the existing `input` helper.
@@ -463,7 +469,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Parse the `Fix task:` line and the decision file's header block
+- [x] **TASK 2:** Parse the `Fix task:` line and the decision file's header block
   - **UPDATE:** `DecisionItem` in `.bkit/core/engine/commands/workflow/decisions.ts`: add `fixTask: number | null`.
   - **UPDATE:** `parseDecisionItems` in `.bkit/core/engine/commands/workflow/decisions.ts`: read the positive integer on an item's `Fix task:` line, else null.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.ts`: export `decisionHeader(text)`, the `Key: value` lines before the first blank line; the file-header comment names the `Fix task:` line.
@@ -480,7 +486,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Resolve a verify pause's group FAIL rows once each `Fix now` task is verified
+- [x] **TASK 3:** Resolve a verify pause's group FAIL rows once each `Fix now` task is verified
   - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: build `pausedGroups` from the run's `build-decision` rows (header `From: verify` and a numeric `Group`, every item decided, the loop item's `Decide` counting as a decision, at least one `Fix now`, every `Fix now` item's `fixTask` naming a plan task that passes `taskVerified` after the decision row), keeping the latest qualifying row per group; resolve that group's `build-plan-tasks`, `build-plan-verify` and `build-plan-gaps-remediate` rows whose last verdict is `FAIL` and which come before the decision row, naming the decision file and the task numbers. CONCERNS rows of the group are left as they are.
   - **READ:** `taskVerified` in `.bkit/core/engine/commands/workflow/summary-findings.ts`: the per-task evidence.
   - **READ:** `.bkit/core/engine/commands/workflow/decisions.ts`: the `decisions compose` verb, the exact decision-file layout the fixtures copy (header block, `## Progress` block, loop item, gap items).
@@ -507,7 +513,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Resolve a verify pause's group FAIL rows when every item is answered `Accept`
+- [x] **TASK 4:** Resolve a verify pause's group FAIL rows when every item is answered `Accept`
   - **UPDATE:** `buildSummary` in `.bkit/core/engine/commands/workflow/summary.ts`: a `From: verify` decision file with a numeric `Group` whose every item is decided (the loop item's `Decide` counting) and whose gap items are at least one and all `Accept`, with no `Fix now`, also qualifies for `pausedGroups`; it resolves the same FAIL rows before the decision row as Task 3's rule, with the reason `the Decision Pause ({rel}), every item accepted`. The accepted-items concern stays, and a bare `build-decision` row with no answered decision file still clears nothing.
   - **UPDATE:** `.bkit/core/engine/commands/workflow/summary.test.ts`: one new case in `describe("buildSummary")`, with a decision-file fixture in the `decisions compose` layout Task 3 uses (Q1 `Verify` `Decide`, Q2 and Q3 `Accept`, no `Fix task:` line).
   - **UPDATE:** `dist/commands/workflow/summary.js`: rebuilt with `pnpm build` and staged with the source.
@@ -527,7 +533,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Rewrite a `Fix now` challenge task in place, ask again for a hard blocker's direction, and record `Fix task: {N}`
+- [x] **TASK 5:** Rewrite a `Fix now` challenge task in place, ask again for a hard blocker's direction, and record `Fix task: {N}`
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Decision Pause step 4 route (a hard blocker answered `Fix now` with no direction still lacks a decision), step 5 **Fix now** challenge branch (rewrite `**DONE WHEN:**`, `**TEST FIRST:**` and the task's `Derived Test Matrix` rows to the owner's direction; keep number, title, group and meta line, `**Fixable:** false` included; no "runs as it is" branch, because every challenge-task item is a hard blocker), step 5 reuse (an item that already has a `Fix task:` line reuses that task and writes no second block), step 6 (`Fix task: {N}` under each `Fix now` item), the Contract **Owner decisions** bullet (reword its "only by reading the decision file" sentence: the decision file for `Accept`, `Try again` and `Stop`, the task block for a `Fix now` direction; the ban on restating answers in `Context` stays), and `### 🔒 Gate — Decision Pause` (`- [ ] Fix now tasks shaped to the owner's direction, each named on a Fix task line`).
   - **UPDATE:** `.bkit/instructions.md`: hand-edit the `#### bkit-build` local entries for every rewritten or added standing line (delete retired lines, add the new wording); `pnpm instructions:sync` cannot drop or rewrite a changed entry.
   - **UPDATE:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: four new cases in `describe("build")`, using the `section(build, /Decision Pause/)` helper. Each case asserts the instruction itself (the field names it rewrites, the `Fix task: {N}` line, the reworded contract), not the absence of "runs as it is".
@@ -552,7 +558,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Document the two resolution rules and the reshaped Decision Pause
+- [x] **TASK 6:** Document the two resolution rules and the reshaped Decision Pause
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § Summary / handover step **Resolution evidence** table gains the verify-pause group row (a `Fix now` pause with verified fix tasks, or an `Accept`-only pause; FAIL rows only; remediation warnings stay concerns) and the failed test-fix row (with the Q2 answer on the flake), and the existing "Failed group execution or gap remediation" row points at the new verify-pause row; § Decision Pause **Fix now**, **Hard blockers**, **Record** and **Fixer reads the answer** bullets match Task 5, with **Fixer reads the answer** naming the task block for Step 7 and the decision file for Steps 8-10, and its `STANDARD → PIVOT → FINAL` sentence left as it is.
   - **UPDATE:** `docs/testing.md`: the `commands/workflow/summary.test.ts` row's scope names the new resolution cases (the `Fix now` group, the `Accept`-only pause's group, the test-fix FAIL).
   - **DEPENDS ON:** 3, 4, 5
@@ -563,7 +569,7 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Regenerate the built and mirrored copies
+- [x] **TASK 7:** Regenerate the built and mirrored copies
   - **READ:** `.bkit/instructions.md`: run the no-flag check `pnpm exec tsx .bkit/core/engine/tools/instructions.ts` first; it must exit 0, because Task 5 already hand-edited the local entries.
   - **UPDATE:** `.bkit/workflows.md`: re-rendered by `pnpm bkit:generate` (its `bkit upgrade`).
   - **READ:** `dist/commands/workflow/summary.js`: with the rest of `dist/`, already rebuilt and staged by Tasks 1, 2, 3 and 4; `pnpm bkit:generate`'s `pnpm build` must leave it unchanged.
@@ -576,6 +582,56 @@ Build order: the summary rule that does not wait on #891 (Group 1), then the dec
 <!-- bkit:task 7 end -->
 
 <!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 1 findings
+
+<!-- bkit:task 8 start -->
+
+- [x] **TASK 8:** A run interrupted after Decision Pause step 6 set Status: DECIDED but before steps finish --step=build-decision never reaches the new Fix task reuse rule: openDecision skips any file not OPEN, status resume goes back to Step 8, the next pause derives the same {K} and decisions compose overwrites the decided file, so step 5 writes a second fix task block for the same item
+      **Severity:** MEDIUM · **Class:** architectural · **Fixable:** false · **Location:** `.bkit/core/workflows/bkit-build.md:226` · **Round:** 1
+  - **DONE WHEN:** `openDecision` (`.bkit/core/engine/commands/workflow/workflows.ts`) also returns a decision file whose `Status` is `DECIDED` or `ASSUMED` when no `build-decision` row of the run names that file, so a run stopped after Decision Pause step 6 wrote the answers but before `steps finish --step=build-decision` resumes at Decision Pause step 3, and step 5 reuses the task each `Fix task:` line names. A decided file that a `build-decision` row names is not reopened. `.bkit/core/.bkit/workflows.md` § Decision Pause and `.bkit/instructions.md` say the same, and the owner chose this direction (reopen the decided file); `decisions compose` is left unchanged.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `workflows start reports openDecision for a DECIDED decision file that no build-decision row names` fails on openDecision returning null because Status is not OPEN
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `workflows start does not report openDecision for a DECIDED decision file that a build-decision row names` fails on openDecision reopening a pause that already finished
+
+<!-- bkit:task 8 end -->
+<!-- bkit:task 9 start -->
+
+- [x] **TASK 9:** A run interrupted after Decision Pause step 5 wrote a Fix now task block (or while tests plan-check ran) but before step 6 resumes at step 3 with the file still OPEN and no Fix task: line, so the reuse check finds nothing and step 5 writes a second block numbered one higher, leaving the first fix task open and orphaned
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:248` · **Round:** 1
+  - **DONE WHEN:** Decision Pause step 5 writes each Fix now item Fix task: {N} line into the decision file right after it writes or rewrites that task block and before tests plan-check, step 6 only adds lines still missing, and the matching .bkit/core/.bkit/workflows.md § Decision Pause Fix now bullet and .bkit/instructions.md #### bkit-build entries say the same.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Decision Pause step 5 records each Fix now item's Fix task line before tests plan-check` fails on step 5 holding only the reuse check while the Fix task: {N} write sits in step 6, after the block and the plan check
+
+<!-- bkit:task 9 end -->
+<!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 2 findings
+
+<!-- bkit:task 10 start -->
+
+- [x] **TASK 10:** A red-gate pause (`Gate: FAIL`) whose answers step 6 wrote (`Status: DECIDED`, loop question answered `Try again` or items answered `Fix now`) and then stopped before `steps finish` is reopened by `openDecision`; the decided file has a `## Progress` block and no other question without a `Decision:` line, so the Resume bullet's red-gate test passes, the resume writes a `build-decision` row with route `verify`/`tests` (not the owner's `retry`/`fix`) and posts it, then `decisions apply --by=rerun` exits with `is Status: DECIDED, not OPEN`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:49` · **Round:** 2
+  - **DONE WHEN:** `openDecision` (`.bkit/core/engine/commands/workflow/workflows.ts:282`) returns the file's `status` (`OPEN`, `DECIDED` or `ASSUMED`), the `workflows start` output help names it, and the Resume bullet in `.bkit/core/workflows/bkit-build.md` and the `Resume into a red-gate pause` bullet in `.bkit/core/.bkit/workflows.md` § Decision Pause skip step 3 and re-run the gate only when that `status` = `OPEN`; a `DECIDED` / `ASSUMED` red-gate file resumes at Decision Pause step 3 like any reopened pause, so the owner's route is kept.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/workflows.test.ts` `workflows start reports the status of a reopened DECIDED decision file in openDecision` fails on `openDecision` having no `status` key, so the workflow cannot tell a decided red-gate file from an open one
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Resume re-runs a red gate only when openDecision status is OPEN` fails on the Resume bullet's red-gate branch testing only `OPEN_GATE` = `FAIL` and the undecided questions
+
+<!-- bkit:task 10 end -->
+<!-- bkit:task 11 start -->
+
+- [x] **TASK 11:** A reopened `DECIDED` / `ASSUMED` pause always replays Decision Pause step 5 in full, because step 6 only runs after step 5 finished; only `Fix now` has a reuse rule, so every owner `Accept` appends a second `docs/decisions.jsonl` row (append-only, committed), every accepted challenge task gets ` — accepted by owner` (or ` — accepted (assumed)`) appended to its title a second time, and step 6 adds a second `Decision:` line under each answered item
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/workflows/bkit-build.md:220` · **Round:** 2
+  - **DONE WHEN:** Decision Pause step 5 says that an `Accept` or `Accept (assumed)` item of a reopened `DECIDED` / `ASSUMED` file writes nothing already written (no second `docs/decisions.jsonl` row for that item, no second title suffix, no second `TEST EXCEPTION`), and step 6 adds a `Decision:` line only under an item that has none; `.bkit/core/.bkit/workflows.md` § Decision Pause `Resume after the answers` and the `.bkit/instructions.md` `#### bkit-build` entries say the same.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `Decision Pause step 5 writes no second acceptance for a reopened DECIDED or ASSUMED pause` fails on step 5's `Accept` branch appending a `docs/decisions.jsonl` row and a title suffix with no check for an earlier pass, while only `Fix now` carries a reuse rule
+
+<!-- bkit:task 11 end -->
+<!-- bkit:group 6 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

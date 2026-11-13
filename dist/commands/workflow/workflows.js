@@ -108,10 +108,12 @@ export function recordChat(file, workflow, env) {
 }
 /**
  * The highest-numbered `{workflow}-decision-{run}-{N}.md` in `logDir` whose header holds
- * `Status: OPEN`, or null. Only the given run's files count, so an earlier run's pause
- * never resurfaces. `file` is relative to `tree`.
+ * `Status: OPEN`, or a `DECIDED` / `ASSUMED` file that none of the run's `{workflow}-decision`
+ * rows names (a pause stopped after its answers were written, before the step finished), or
+ * null. Only the given run's files count, so an earlier run's pause never resurfaces.
+ * `file` is relative to `tree`; `finished` lists the paths the run's decision rows name.
  */
-export function openDecision(logDir, tree, workflow, run) {
+export function openDecision(logDir, tree, workflow, run, finished = []) {
     if (!fs.existsSync(logDir))
         return null;
     const name = new RegExp(`^${workflow}-decision-${run}-([0-9]+)\\.md$`);
@@ -124,7 +126,10 @@ export function openDecision(logDir, tree, workflow, run) {
     for (const { f, n } of found) {
         const text = fs.readFileSync(path.join(logDir, f), "utf-8");
         const field = (key) => new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
-        if (field("Status") !== "OPEN")
+        const status = field("Status");
+        const rel = path.relative(tree, path.join(logDir, f));
+        const unfinished = (status === "DECIDED" || status === "ASSUMED") && !finished.includes(rel);
+        if (status !== "OPEN" && !unfinished)
             continue;
         // `Gate:` counts only in the header block (the lines before the first blank line).
         const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
@@ -134,7 +139,7 @@ export function openDecision(logDir, tree, workflow, run) {
             return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
         };
         return {
-            file: path.relative(tree, path.join(logDir, f)),
+            file: rel,
             decision: n,
             question: field("Question"),
             from: field("From"),
@@ -144,6 +149,7 @@ export function openDecision(logDir, tree, workflow, run) {
             testAttempt: num("Test attempt"),
             plan: field("Plan"),
             gate,
+            status: status ?? "OPEN",
         };
     }
     return null;
@@ -1699,7 +1705,7 @@ export const workflowsCommand = {
                 row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
-                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, else null",
+                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, status} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null",
             },
             textOmit: ["row"],
             exitCodes: {
@@ -1790,7 +1796,9 @@ export const workflowsCommand = {
                     run,
                     lastDoneStep: current?.steps.filter((s) => s.status === "DONE").at(-1)?.step ?? null,
                     openDecision: resumed
-                        ? openDecision(path.dirname(file), where.tree, workflow, run)
+                        ? openDecision(path.dirname(file), where.tree, workflow, run, (current?.steps ?? [])
+                            .filter((s) => s.step === `${workflow}-decision`)
+                            .flatMap((s) => s.artifacts))
                         : null,
                 });
                 return EXIT.OK;

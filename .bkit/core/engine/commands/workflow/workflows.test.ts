@@ -502,13 +502,17 @@ describe("bkit workflows start — resume facts", () => {
         done("build-start-workflow", "2026-07-01T00:01:00Z"),
         done("build-worktree-setup", "2026-07-01T00:02:00Z"),
         { ...done("build-plan-tasks", "2026-07-01T00:03:00Z"), status: "FAILED" },
+        done("build-decision", "2026-07-01T00:04:00Z", {
+          route: "verify",
+          artifacts: [`${REL}/build-decision-1-1.md`],
+        }),
       ]),
     );
     writeDecision(cwd, 1, 1, ["Status: DECIDED", "Question: CHALLENGE", "From: challenge"]);
     const r = await run(cwd, wf("start", "build"));
     expect(r.json).toMatchObject({
       resumed: true,
-      lastDoneStep: "build-worktree-setup",
+      lastDoneStep: "build-decision",
       openDecision: null,
     });
   });
@@ -564,6 +568,7 @@ describe("bkit workflows start — resume facts", () => {
       verifyAttempt: 3,
       testAttempt: null,
       gate: null,
+      status: "OPEN",
       plan: `docs/plans/${M}/${FID}-plan.md`,
     });
   });
@@ -583,6 +588,92 @@ describe("bkit workflows start — resume facts", () => {
     const r = await run(cwd, wf("start", "build"));
     expect(r.code).toBe(0);
     expect(r.json.openDecision).toMatchObject({ decision: 1, gate: "FAIL" });
+  });
+
+  it("workflows start reports openDecision for a DECIDED decision file that no build-decision row names", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([started("2026-07-01T00:00:00Z"), done("build-challenge", "2026-07-01T00:05:00Z")]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: CHALLENGE",
+      "From: challenge",
+      "Pause step: 11",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({
+      file: `${REL}/build-decision-1-1.md`,
+      decision: 1,
+      question: "CHALLENGE",
+      from: "challenge",
+      pauseStep: 11,
+    });
+  });
+
+  it("workflows start reports the status of a reopened DECIDED decision file in openDecision", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([started("2026-07-01T00:00:00Z"), done("build-challenge", "2026-07-01T00:05:00Z")]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const decided = await run(cwd, wf("start", "build"));
+    expect(decided.code).toBe(0);
+    expect(decided.json.openDecision).toMatchObject({ decision: 1, status: "DECIDED" });
+
+    const open = repo();
+    write(open, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(open, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: verify",
+      "Pause step: 7",
+      "Group: 1",
+      "Gate: FAIL",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(open, wf("start", "build"));
+    expect(r.json.openDecision).toMatchObject({ decision: 1, status: "OPEN" });
+  });
+
+  it("workflows start does not report openDecision for a DECIDED decision file that a build-decision row names", async () => {
+    const cwd = repo();
+    write(
+      cwd,
+      `${REL}/status.jsonl`,
+      jsonl([
+        started("2026-07-01T00:00:00Z"),
+        done("build-challenge", "2026-07-01T00:05:00Z"),
+        done("build-decision", "2026-07-01T00:06:00Z", {
+          route: "verify",
+          artifacts: [`${REL}/build-decision-1-1.md`],
+        }),
+      ]),
+    );
+    writeDecision(cwd, 1, 1, [
+      "Status: DECIDED",
+      "Question: CHALLENGE",
+      "From: challenge",
+      "Pause step: 11",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toBeNull();
   });
 
   it("openDecision gate is null without the header", async () => {
@@ -3241,6 +3332,85 @@ describe("bkit workflows summary", () => {
     const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
     expect(md).toContain("build-plan-tasks (group 1) FAIL, resolved by build-plan-verify");
     expect(md).toContain("build-summary | FAIL");
+  });
+
+  it("prints CONCERNS when a Fix now group's fix task and a test-fix FAIL are both resolved", async () => {
+    const decisionRel = `${SREL}/build-decision-1-1.md`;
+    const verifyRel = `${SREL}/build-verify-10-1.md`;
+    const block = (n: number) => task(n, true);
+    const plan = [
+      "# Plan",
+      "",
+      `<!-- bkit:group 9 start -->\n### GROUP 9: Work\n${block(41)}\n<!-- bkit:group 9 end -->`,
+      `<!-- bkit:group 10 start -->\n### GROUP 10: Fix\n${block(42)}\n<!-- bkit:group 10 end -->`,
+      "",
+    ].join("\n");
+    const scope = "src/a.test.ts";
+    const cwd = tree(
+      [
+        done("build-plan-tasks", "2020-01-01T00:01:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-plan-verify", "2020-01-01T00:02:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-plan-gaps-remediate", "2020-01-01T00:03:00Z", { verdict: "FAIL", group: 9 }),
+        done("build-decision", "2020-01-01T00:04:00Z", {
+          route: "verify",
+          artifacts: [decisionRel],
+        }),
+        done("build-plan-tasks", "2020-01-01T00:05:00Z", { verdict: "PASS", group: 10 }),
+        done("build-plan-verify", "2020-01-01T00:06:00Z", {
+          verdict: "PASS",
+          failures: 0,
+          group: 10,
+          artifacts: [verifyRel],
+        }),
+        done("build-run-tests", "2020-01-01T00:07:00Z", {
+          verdict: "FAIL",
+          failures: 1,
+          scope,
+        }),
+        done("build-failure-remediate", "2020-01-01T00:08:00Z", { verdict: "FAIL" }),
+        done("build-run-tests", "2020-01-01T00:09:00Z", {
+          verdict: "PASS",
+          failures: 0,
+          attempt: 2,
+          scope,
+        }),
+      ],
+      plan,
+    );
+    write(
+      cwd,
+      decisionRel,
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: verify",
+        "Pause step: 8",
+        "Plan: docs/plans/p-plan.md",
+        "Group: 9",
+        "Verify attempt: 2",
+        "",
+        "**Q1 — Gap one:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+        "**Q2 — Gap two:** fix it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real",
+        "Decision: Fix now",
+        "Fix task: 42",
+        "",
+      ].join("\n"),
+    );
+    write(cwd, verifyRel, "Verdict: PASS\nTasks: 42\n<!-- verdict:end -->\n");
+    const r = await summarize(cwd);
+    expect(r.code).toBe(0);
+    expect(r.json.verdict).toBe("CONCERNS");
+    expect(r.json.failures).toBe(0);
+    const md = fs.readFileSync(path.join(cwd, SREL, "build-summary.md"), "utf-8");
+    expect(md.split("## Resolved Findings")[1]!.split("## ")[0]!).toContain(
+      "build-decision-1-1.md",
+    );
   });
 
   it("summary recommends /bkit-debug on FAIL", async () => {

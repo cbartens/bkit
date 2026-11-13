@@ -7,7 +7,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { applyRecommendations, EXIT_HARD_BLOCKERS, parseDecisionItems } from "./decisions";
+import {
+  applyRecommendations,
+  decisionHeader,
+  EXIT_HARD_BLOCKERS,
+  parseDecisionItems,
+} from "./decisions";
 
 const dirs: string[] = [];
 const runtimeBefore = process.env.BKIT_RUNTIME;
@@ -973,6 +978,44 @@ describe("parseDecisionItems", () => {
     expect(decided("Accept — fine by me")).toBe("Accept — fine by me");
     expect(decided("A fine call")).toBe("A fine call");
     expect(decided("C — no such option")).toBe("C — no such option");
+  });
+
+  it("reads the task a Fix now item names on its Fix task line", () => {
+    const item = (decision: string, fixLines: string[]) =>
+      [
+        "Status: DECIDED",
+        "",
+        "**Q1 — Gap:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: B) Fix now — real",
+        `Decision: ${decision}`,
+        ...fixLines,
+        "",
+      ].join("\n");
+    expect(parseDecisionItems(item("Fix now", ["Fix task: 42"]))[0]!.fixTask).toBe(42);
+    expect(parseDecisionItems(item("Fix now", []))[0]!.fixTask).toBeNull();
+    expect(parseDecisionItems(item("Fix now", ["Fix task: soon"]))[0]!.fixTask).toBeNull();
+    expect(parseDecisionItems(item("Fix now", ["Fix task: 0"]))[0]!.fixTask).toBeNull();
+  });
+
+  it("decisionHeader reads the header block only", () => {
+    const text = [
+      "Status: DECIDED",
+      "Question: VERIFY_GAPS",
+      "From: verify",
+      "Group: 9",
+      "",
+      "**Q1 — Gap:** accept it?",
+      "Group: 3",
+      "From: holistic",
+      "Decision: Accept",
+      "",
+    ].join("\n");
+    const header = decisionHeader(text);
+    expect(header.From).toBe("verify");
+    expect(header.Group).toBe("9");
+    expect(header.Status).toBe("DECIDED");
+    expect(decisionHeader("**Q1 — Gap:** x\nGroup: 3\n").Group).toBeUndefined();
   });
 
   it("a lettered assumed Accept decision still reads as assumed", () => {

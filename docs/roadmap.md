@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T06:38:57Z)_
+_(refreshed 2026-11-13T06:49:24Z)_
 
 ### Design
 
@@ -48,7 +48,6 @@ _(refreshed 2026-11-13T06:38:57Z)_
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
-| 903-build-owner-s | 903-build-owner-s | 1794354907249 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794296871309 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
@@ -74,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 903-build-owner-s | 903-build-owner-s | 1794552564939 |
 | 912-debug-loop-question | 912-debug-loop-question | 1794551937547 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794550421654 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
@@ -83,7 +83,6 @@ _(none)_
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
-| 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

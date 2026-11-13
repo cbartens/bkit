@@ -7,6 +7,7 @@
 //   Options: A) {A} / B) {B}
 //   Recommended: A) {A} — {reason}       (a hard blocker: `No recommendation — {why}`)
 //   Decision: {answer} — {words}         (once decided)
+//   Fix task: {N}                        (a `Fix now` item: the plan task that carries its fix)
 //
 // `apply --by=headless` takes each recommendation when nobody can or should be asked: an
 // `Accept` is written `Accept (assumed)` and the file says `Status: ASSUMED`. It never writes a
@@ -58,6 +59,20 @@ export function optionAnswer(answer, options) {
 const letteredOptions = (options) => options.map((o, i) => `${letterAt(i)}) ${o}`).join(" / ");
 /** The letter `name` holds in `options`, or null when it is not one of them. */
 const letterOf = (options, name) => options.includes(name) ? letterAt(options.indexOf(name)) : null;
+/** A `Fix task:` value as a positive integer, else null. */
+const fixTaskOf = (v) => v !== null && /^[1-9][0-9]*$/.test(v) ? Number(v) : null;
+/** The `Key: value` lines before the file's first blank line. */
+export function decisionHeader(text) {
+    const out = {};
+    for (const line of text.split("\n")) {
+        if (line.trim() === "" || line.startsWith("**Q"))
+            break;
+        const m = /^([A-Za-z][\w ]*):[ \t]*(.*?)[ \t]*$/.exec(line);
+        if (m !== null && !(m[1] in out))
+            out[m[1]] = m[2];
+    }
+    return out;
+}
 /** The items of a decision file's text, in file order. */
 export function parseDecisionItems(text) {
     return text
@@ -82,6 +97,7 @@ export function parseDecisionItems(text) {
             recommended: none || rec === null ? null : bareName((option ?? "").trim()),
             reason: why.join(" — ").trim(),
             decision,
+            fixTask: fixTaskOf(lineOf(part, "Fix task")),
             assumed: decision !== null && /^Accept \(assumed\)/.test(decision),
             rejected: lineOf(part, "Rejected") !== null,
             deferred: lineOf(part, "Deferred") !== null,

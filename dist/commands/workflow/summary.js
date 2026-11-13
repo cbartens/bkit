@@ -4,7 +4,7 @@
 // disk and passes `read` for the log files.
 import { coversList } from "./plans.js";
 import { issueIdOf } from "./fids.js";
-import { parseDecisionItems } from "./decisions.js";
+import { decisionHeader, parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
@@ -59,7 +59,10 @@ const RESOLVED_BY = {
     "build/build-plan-gaps-remediate": ["build-plan-verify", "build-plan-verify-holistic"],
     "build/build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
     "build/build-failure-remediate": ["build-run-tests"],
+    "debug/debug-failure-remediate": ["debug-run-tests"],
 };
+/** Test-fix steps whose resolving run must have run the scope of the run the fix followed. */
+const SAME_SCOPE = new Set(["build/build-failure-remediate", "debug/debug-failure-remediate"]);
 /** Steps that check the whole run, so they answer a failure in any task group. */
 const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 /**
@@ -223,6 +226,8 @@ function stepGroups(rows) {
     return [...groups.values()];
 }
 const lastOf = (g) => g.rows.at(-1);
+/** Steps of a task group that a verify pause's answer settles when they ended FAIL. */
+const PAUSE_SETTLES = ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"];
 /** A level-2 section whose heading matches `title`, minus the template's non-content subsections. */
 function planSection(text, title) {
     const lines = text.split("\n");
@@ -285,9 +290,69 @@ export function buildSummary(input) {
             const sev = SEVERITY.exec(t.text)?.[1];
             fails.push(`Task ${t.task} not done (${t.path})${sev === undefined ? "" : ` — ${sev} challenge finding`}`);
         }
+    // A verify pause answered in full settles its group's failed rows from before the pause:
+    // each `Fix now` item names a task verified after the pause, or every item is `Accept`.
+    const pauseSettled = new Set();
+    if (workflow === "build") {
+        const latest = new Map();
+        input.rows.forEach((row, index) => {
+            if (row.type !== "step-done" || row.step !== "build-decision")
+                return;
+            for (const rel of artifactsOf(row)) {
+                const text = read(rel);
+                if (text === null)
+                    continue;
+                const header = decisionHeader(text);
+                const group = /^[0-9]+$/.test(header.Group ?? "") ? Number(header.Group) : undefined;
+                if (header.From !== "verify" || group === undefined)
+                    continue;
+                const gaps = parseDecisionItems(text);
+                if (gaps.length === 0 || gaps.some((i) => i.decision === null))
+                    continue;
+                const asks = gaps.filter((i) => i.title !== "Verify");
+                const fixes = asks.filter((i) => /^Fix now\b/.test(i.decision ?? ""));
+                if (asks.length === 0)
+                    continue;
+                if (fixes.length === 0) {
+                    if (!asks.every((i) => /^Accept\b/.test(i.decision ?? "")))
+                        continue;
+                    latest.set(group, { index, rel, how: "every item accepted" });
+                    continue;
+                }
+                if (!asks.every((i) => fixes.includes(i) || /^Accept\b/.test(i.decision ?? "")))
+                    continue;
+                const fixTasks = fixes.map((i) => tasks.find((t) => t.task === i.fixTask));
+                if (fixTasks.some((t) => t === undefined || !taskVerified(input, t, index)))
+                    continue;
+                latest.set(group, {
+                    index,
+                    rel,
+                    how: `task ${fixes.map((i) => i.fixTask).join(", ")} verified`,
+                });
+            }
+        });
+        for (const [group, pause] of latest)
+            for (const step of PAUSE_SETTLES) {
+                const rows = input.rows
+                    .map((row, index) => ({ row, index }))
+                    .filter(({ row, index }) => row.type === "step-done" &&
+                    row.step === step &&
+                    taskGroupOf(row) === group &&
+                    index < pause.index);
+                if (rows.at(-1)?.row.verdict !== "FAIL")
+                    continue;
+                resolvedFindings.push(`${step} (group ${group}) FAIL, resolved by the Decision Pause (\`${pause.rel}\`), ${pause.how}`);
+                const key = `${step}#${group}`;
+                const g = groups.find((x) => x.key === key);
+                if (g !== undefined && lastOf(g).index < pause.index)
+                    pauseSettled.add(key);
+            }
+    }
     for (const g of groups) {
         const { row, index } = lastOf(g);
         if (g.step === `${workflow}-summary`)
+            continue;
+        if (pauseSettled.has(g.key) && row.verdict === "FAIL")
             continue;
         if (RUN_TESTS.has(g.step)) {
             if (row.verdict === "FAIL")
@@ -323,6 +388,13 @@ export function buildSummary(input) {
                 : [];
         const runAnswers = row.verdict === "FAIL" ? (RESOLVED_BY_RUN[`${workflow}/${g.step}`] ?? []) : [];
         const sub = taskGroupOf(row);
+        const needsScope = SAME_SCOPE.has(`${workflow}/${g.step}`);
+        const fixScope = needsScope
+            ? input.rows.find((r) => r.type === "step-done" &&
+                RUN_TESTS.has(String(r.step)) &&
+                r.attempt === row.attempt &&
+                typeof r.scope === "string")?.scope
+            : undefined;
         const answer = groups
             .map(lastOf)
             .find(({ row: r, index: i }) => i > index &&
@@ -330,7 +402,8 @@ export function buildSummary(input) {
             (r.verdict === "PASS" || (review && r.verdict === "CONCERNS")) &&
             (r.failures === undefined || r.failures === 0) &&
             (WHOLE_RUN.has(String(r.step)) || taskGroupOf(r) === sub) &&
-            (!review || r.attempt === row.attempt));
+            (!review || r.attempt === row.attempt) &&
+            (!needsScope || (fixScope !== undefined && r.scope === fixScope)));
         if (answer !== undefined && spike) {
             const reports = artifactsOf(row).map((p) => read(p));
             const unsettled = reports.map((report) => report === null ? undefined : planSection(report, /^## Unsettled\s*$/));

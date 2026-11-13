@@ -1143,7 +1143,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:436`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:445`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1240,7 +1240,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:436`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:445`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -9728,7 +9728,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **CI wait turn-loop** | Protocol | build, debug | CI-wait block exits 81 (or 80) → resolve the poll in the agent turn loop, then re-run the block with the result. |
 | **Friction** | Contract | all 6 | Manual installs, rework, repeated tool failures, destructive backouts → append `.bkit/friction.jsonl` rows → continue or escalate; never replaces **Failure Path**. Owner pauses are not the agent's to log: `status row --type=owner-pause` writes their `human-confirm` row. |
 | **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Across agents: the worst verdict, `Failures` summed, a `true \| false` field true when any agent sets it true, any other field from the first agent that sets it. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run the block; the attempt is unchanged. Exit 82 → the commit failed and the row stays in `status.jsonl` (another writer appended after it) → **Failure Path**. |
-| **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision as `openDecision`. |
+| **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision, or a `DECIDED` / `ASSUMED` one no `build-decision` row names, as `openDecision`. |
 | **Plan** | Contract | build | The plan path, in task-block form, with the `bkit.workflows.tasks` group caps held at Step 1; one group per pass of the execute-verify loop; tasks tick `[x]` only in verify. |
 | **Status** | Contract | design, plan, build, debug, ship | `status.jsonl` = append-only NDJSON event log, folded to the run array; `step-done` carries `parentSha` captured at step start plus optional `verdict`, `failures`, `attempt`, `strategy`; build adds `group`, debug a `workflow-meta` `debugAttempt`. |
 | **Locks** | Contract | design, plan, build, debug, ship | Step 1 takes the per-feature `.lock` (`bkit locks acquire`); released at close and in Failure Path. Existing lock: holder `IN_PROGRESS` with a step <30min ago → **Failure Path**; any other holder's lock reclaimed. |
@@ -10035,7 +10035,7 @@ Orchestrator exits and the dispatched skill owns the session
 
 ```text
 **Scope:** Build the feature and open a PR to the default integration branch.
-**Owner decisions:** A subagent learns the owner's answers only by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
+**Owner decisions:** A subagent learns the owner's `Accept`, `Try again` and `Stop` answers by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`, and a `Fix now` direction from the task block that carries it. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 [secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
 **If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
@@ -10082,11 +10082,12 @@ Clear `PAUSE_LOOP`. **If** `From: verify`, `From: holistic` **or** `From: tests`
 Route — first match wins:
 **If** the owner says stop, **or** answers `Stop` → step 8.
 **If** the loop question is answered `Try again` → step 6. The items then need no decision.
-**If** any asked item still lacks a decision:
-Discuss the follow-ups with the owner.
+**If** any asked item still lacks a decision, which includes a hard blocker answered `Fix now` with no direction:
+Discuss the follow-ups with the owner. For a hard blocker answered `Fix now` with no direction, ask what the fix should do.
 Record the wait with the `owner-pause` block above.
 End the turn and wait for the answers.
 Apply each decision:
+**If** the file is a reopened `DECIDED` / `ASSUMED` one → an item that already carries a `Decision:` line was applied in an earlier pass: write nothing already written — no second `docs/decisions.jsonl` row, no second title suffix, no second `TEST EXCEPTION`; a plan tick already made stays.
 [recommend-do-not-decide; major-changes] **Accept** by the owner → write the acceptance ONLY on that item's explicit approval from the owner. A "yes" to an `Accept` recommendation counts as approval.
 **If** the item is an `exception-refused` gap **or** an `UNPROVEN` item → write a `- **TEST EXCEPTION:**` field as the last field of the task's block in `docs/plans/{YYYYMM}/{FID}-plan.md`:
 Give the field one sub-bullet per test, in `TEST FIRST` form, each ending `— {human's reason} (owner, {YYYY-MM-DD})`.
@@ -10099,7 +10100,13 @@ Append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.m
 **If** the item is a challenge task → tick it `[x]` and end its title with ` — accepted (assumed)`.
 **Fix now**:
 Write no test and no fix code at this pause. Step 7 writes the new task's `TEST FIRST` tests with `@bkit-build-plan-tests`, records them failing with `tests red`, and only then writes the fix with `@bkit-build-plan-tasks`. NEVER undo code to force a red.
-**If** the item is a challenge task → keep that task open. It runs as it is.
+**If** the item already has a `Fix task:` line in the decision file → reuse the task it names and write no second block. A resumed pause can reach this step twice.
+Write the item's `Fix task: {N}` line under it in the decision file right after the task block is written or rewritten, before `tests plan-check`, where `{N}` is the number of the task that carries its fix: the rewritten challenge task, the new task block, or the task an existing `Fix task:` line names.
+**If** the item is a challenge task → rewrite that task in place to the owner's direction:
+Rewrite its `**DONE WHEN:**` and its `**TEST FIRST:**`, with one sub-bullet per test: `` `{test file}` `{test name}` fails on {what goes wrong} ``.
+Rewrite its rows in the `Derived Test Matrix` to match the new `TEST FIRST`.
+Keep the task's number, title, group and meta line, `**Fixable:** false` included.
+Keep the task open. Step 7 builds the rewritten block.
 **Else** → write a new task block:
 Use the task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook), numbered one above the plan's highest task.
 Give it `**DONE WHEN:**` and `**TEST FIRST:**`, with one sub-bullet per test: `` `{test file}` `{test name}` fails on {what goes wrong} ``.
@@ -10111,7 +10118,8 @@ Place the task block:
 Then check the plan:
 **If** exit non-zero → **Failure Path** naming each problem in the report.
 Write the decisions into the decision file:
-Under each item the owner answered, add `Decision: {Accept|Fix now} — {owner's words}`.
+Under each item the owner answered, add `Decision: {Accept|Fix now} — {owner's words}` only under an item that has none; a reopened file keeps the line it has.
+Under each `Fix now` item, add the `Fix task: {N}` line only if it is still missing after step 5.
 Under the loop question, add `Decision: {Try again|Decide} — {owner's words}`.
 Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `Status: DECIDED` otherwise.
 [commits] **If** a `TEST EXCEPTION` was written → commit the plan alone first:
@@ -10157,6 +10165,7 @@ Questions asked in the session, or recommendations taken (`decisions apply --by=
 Hard blockers asked in a session, or sent to the Failure Path when headless
 Acceptances written only on the owner's approval
 Assumed acceptances left without a ledger row or `TEST EXCEPTION`
+Fix now tasks shaped to the owner's direction, each named on a `Fix task` line in the decision file
 Fix now tasks checked (`tests plan-check`)
 Resolve the repo, the branch and how far the branch is behind `dev`:
 **If** `open` > 0 → **Failure Path** naming the open `blockers`.

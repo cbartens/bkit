@@ -280,6 +280,15 @@ describe("resume facts", () => {
     expect(resume).toContain("counters grant");
   });
 
+  it("Resume re-runs a red gate only when openDecision status is OPEN", () => {
+    const text = workflow("build");
+    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
+    expect(resume).toBeDefined();
+    const route = resume.slice(resume.indexOf("**If** `OPEN_GATE` = `FAIL`"));
+    expect(route).toMatch(/`status`\s*=\s*`OPEN`/);
+    expect(route).toContain("Decision Pause** step 3");
+  });
+
   it("build re-runs a red gate pause only when the loop question is its only undecided question", () => {
     const text = workflow("build");
     const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
@@ -906,6 +915,93 @@ describe("build", () => {
     expect(fix).toContain('"{BKIT}" tests plan-check');
     expect(fix).toContain("**TEST FIRST:**");
     expect(pause).toContain("**TEST EXCEPTION:**");
+  });
+
+  it("a Fix now challenge task is rewritten to the owner's direction in place", () => {
+    const pause = section(build, /Decision Pause/);
+    const fixNow = pause.slice(pause.indexOf("- **Fix now**:"));
+    const start = fixNow.indexOf("**If** the item is a challenge task");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const branch = fixNow.slice(start, fixNow.indexOf("**Else** → write a new task block"));
+    expect(branch).toContain("**DONE WHEN:**");
+    expect(branch).toContain("**TEST FIRST:**");
+    expect(branch).toContain("`Derived Test Matrix`");
+    expect(branch).toContain("meta line");
+    expect(branch).toContain("**Fixable:** false");
+    expect(branch).not.toContain("runs as it is");
+  });
+
+  it("a hard blocker answered Fix now with no direction is asked again", () => {
+    const pause = section(build, /Decision Pause/);
+    const from = pause.indexOf("Route — first match wins");
+    const route = pause.slice(from, pause.indexOf("5. Apply each decision"));
+    const missing = route.slice(route.indexOf("still lacks a decision"));
+    expect(missing).toMatch(/hard blocker/);
+    expect(missing).toContain("`Fix now`");
+    expect(missing).toMatch(/no direction/);
+    expect(missing).toContain("End the turn and wait");
+  });
+
+  it("each Fix now item records its Fix task line before the decision row is finished", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toContain("`Fix task:`");
+    expect(step5).toMatch(/already has a `Fix task:` line/);
+    expect(step5).toMatch(/reuse/i);
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("Set the route"),
+    );
+    expect(step6).toContain("Fix task: {N}");
+    expect(pause.indexOf("Fix task: {N}", pause.indexOf("6. Write the decisions"))).toBeLessThan(
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+  });
+
+  it("Decision Pause step 5 records each Fix now item's Fix task line before tests plan-check", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toContain("Fix task: {N}");
+    expect(step5).toContain("tests plan-check");
+    expect(step5.indexOf("Fix task: {N}")).toBeLessThan(step5.indexOf("tests plan-check"));
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+    expect(step6).toMatch(/still missing/);
+  });
+
+  it("the owner decisions contract names the task block as the Fix now carrier", () => {
+    const bullet = build.split("\n").find((l) => l.startsWith("- **Owner decisions:**"));
+    expect(bullet).toBeDefined();
+    expect(bullet).toContain("task block");
+    expect(bullet).toContain("`Fix now`");
+    expect(bullet).not.toContain("only by reading the decision file");
+    expect(bullet).toContain("NEVER restate, summarise or paraphrase an owner's answer");
+    const gate = build.slice(build.indexOf("### 🔒 Gate — Decision Pause"));
+    expect(gate.slice(0, gate.indexOf("---"))).toContain("Fix task");
+  });
+
+  it("Decision Pause step 5 writes no second acceptance for a reopened DECIDED or ASSUMED pause", () => {
+    const pause = section(build, /Decision Pause/);
+    const step5 = pause.slice(
+      pause.indexOf("5. Apply each decision"),
+      pause.indexOf("6. Write the decisions"),
+    );
+    expect(step5).toMatch(/reopened `DECIDED` \/ `ASSUMED`/);
+    expect(step5).toMatch(/no second `docs\/decisions\.jsonl` row/);
+    expect(step5).toMatch(/no second title suffix/);
+    const step6 = pause.slice(
+      pause.indexOf("6. Write the decisions"),
+      pause.indexOf("--step=build-decision", pause.indexOf("6. Write the decisions")),
+    );
+    expect(step6).toMatch(/only under an item that has none/);
   });
 
   it("an Accept replaces the task's TEST EXCEPTION field with the owner's reason and date", () => {
