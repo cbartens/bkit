@@ -9119,6 +9119,17 @@ Ask the user to supply what you need without putting the key in this conversatio
 Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}
 ```
 
+### guardrails-codex-tests-jump
+
+- hook: Guardrails
+- fires: `bkit tests jump` on Codex, as the fix text of a deny
+- hosts: Codex
+- source: `.bkit/core/hooks/guardrails-tiers.js` `classifyShell`
+
+```text
+Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.
+```
+
 ### guardrails-codex-ask
 
 - hook: Guardrails
@@ -9368,6 +9379,17 @@ Bash(npm publish:*)
 Bash(bun publish:*)
 ```
 
+### ask-tests-jump
+
+- tier: ask
+- count: 3
+
+```text
+Bash(*bkit*tests jump*)
+Bash(*cli.js tests jump*)
+Bash(*cli.ts tests jump*)
+```
+
 ### ask-gh-destructive
 
 - tier: ask
@@ -9537,7 +9559,10 @@ WebSearch
     "git push* -4f*": "deny",
     "git -* push* -4f*": "deny",
     "git push* -6f*": "deny",
-    "git -* push* -6f*": "deny"
+    "git -* push* -6f*": "deny",
+    "*bkit*tests jump*": "ask",
+    "*cli.js tests jump*": "ask",
+    "*cli.ts tests jump*": "ask"
   }
 }
 ```

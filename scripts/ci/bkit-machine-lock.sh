@@ -6,7 +6,7 @@
 #
 #   . scripts/ci/bkit-machine-lock.sh
 #   take_local_stack_lock "<who>" [name]    # waits, returns 1 on refusal
-#   try_local_stack_lock "<who>" [name]     # returns 1 immediately while busy
+#   try_local_stack_lock "<who>" [name]     # returns 1 immediately while busy or runs wait in line
 #   release_local_stack_lock [name]        # optional; caller exit also frees the lock
 #   local_stack_lock_holder [name]
 #   local_stack_lock_file [name]
@@ -31,7 +31,14 @@
 # exports BKIT_TEST_WORKERS=max(1, floor(cores / slots) - 1) for the runner to use.
 # LOCAL_STACK_LOCK_WAIT_S caps the wait; otherwise it is 60s without a TTY, 3600s
 # with a TTY. Named releases save each checkout's held seconds in <name>.last.
-# Waiting notes name every holder and that checkout's last run. CI=true / CI=1 is a no-op.
+# Waiting notes name every holder, that checkout's last run and the run's place in line.
+# CI=true / CI=1 is a no-op.
+# Waiters are served in the order they started waiting: each keeps a ticket in a <name>.queue/
+# folder beside its lock file, flock-held while it waits, and only the first live ticket tries
+# the lock. A ticket of a dead waiter is skipped and removed. A waiter that gives up leaves its
+# ticket as <ticket>.held for 120s, so the same run asking again keeps its place in line.
+# A <ms>.jump marker in the queue (written by bkit tests jump) moves the waiter whose line it names to
+# the front, newest marker first; the holder keeps the lock. The waiter's own markers go when it takes the lock.
 # A Perl flock holder exits within a second of its caller; killed callers leave no stale lock.
 # Requires Bash 3.2+ and /usr/bin/perl.
 
@@ -193,6 +200,7 @@ _local_stack_lock() {
     use Fcntl qw(:flock);
     use File::Glob qw(bsd_glob);
     use POSIX qw(strftime);
+    use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC);
     my ($file, $owner, $who, $checkout, $fifo, $wait_s, $mode, $label, $slots, $name) = @ARGV;
     # The caller is the parent of this process. When it exits, this process goes to init (or a
     # subreaper) at once, while `kill 0` would still find it until whoever started it reaps it.
@@ -228,27 +236,149 @@ _local_stack_lock() {
       }
       return @holders ? join("; ", @holders) : "another run";
     };
+    my $queue = "$stem.queue";
+    my ($ticket, $ticket_fh);
+    END { unlink $ticket if defined $ticket }
+    $SIG{TERM} = sub { exit 0 };
+    for my $sig (qw(INT HUP)) { $SIG{$sig} = sub { exit 0 } unless defined $SIG{$sig} && $SIG{$sig} eq "IGNORE" }
+    my $ordinal = sub {
+      my $n = shift;
+      my $suffix = ($n % 100 >= 11 && $n % 100 <= 13) ? "th" : (qw(th st nd rd th th th th th th))[$n % 10];
+      return "$n$suffix";
+    };
+    # Live tickets sorted by arrival, except that a ticket whose line a <ms>.jump marker names goes
+    # first (newest marker first); dead tickets (flock can be taken), held places older than 120s and
+    # markers naming no live ticket or held place are removed; every other name is left alone.
+    # Returns (our place, live tickets).
+    my $first_line = sub {
+      my $path = shift;
+      open(my $fh, "<", $path) or return undef;
+      my $first = <$fh>; close $fh;
+      return undef unless defined $first;
+      chomp $first;
+      return $first;
+    };
+    my $scan = sub {
+      my (@live, @markers, %known);
+      opendir(my $dir, $queue) or return (0, 0);
+      for my $entry (readdir $dir) {
+        if ($entry =~ /^(\d+)\.(\d{6})-(\d+)$/) {
+          if (defined $ticket && $entry eq (split m{/}, $ticket)[-1]) { push @live, [$1, $2, $3, 1, $first_line->("$queue/$entry")]; next }
+          if (open(my $t, "<", "$queue/$entry")) {
+            if (flock($t, LOCK_EX | LOCK_NB)) { unlink "$queue/$entry" } else {
+              my $first = <$t>;
+              if (defined $first) { chomp $first }
+              push @live, [$1, $2, $3, 0, $first];
+            }
+            close $t;
+          }
+        } elsif ($entry =~ /^\d+\.\d{6}-\d+\.held$/) {
+          my $mtime = (stat "$queue/$entry")[9];
+          if (defined $mtime && time - $mtime > 120) { unlink "$queue/$entry" }
+          else { my $first = $first_line->("$queue/$entry"); $known{$first} = 1 if defined $first }
+        } elsif ($entry =~ /^(\d+)\.jump$/) {
+          push @markers, [$1, $entry, $first_line->("$queue/$entry")];
+        }
+      }
+      closedir $dir;
+      $known{$_->[4]} = 1 for grep { defined $_->[4] } @live;
+      my %front;
+      for my $m (@markers) {
+        if (!defined $m->[2] || !$known{$m->[2]}) { unlink "$queue/$m->[1]"; next }
+        $front{$m->[2]} = $m->[0] if !defined $front{$m->[2]} || $m->[0] > $front{$m->[2]};
+      }
+      my $rank = sub { my $f = defined $_[0][4] ? $front{$_[0][4]} : undef; return $f };
+      @live = sort {
+        my ($fa, $fb) = ($rank->($a), $rank->($b));
+        (defined $fa ? 0 : 1) <=> (defined $fb ? 0 : 1)
+          || (defined $fa ? $fb <=> $fa : 0)
+          || $a->[0] <=> $b->[0] || $a->[1] <=> $b->[1] || $a->[2] <=> $b->[2]
+      } @live;
+      my $place = 0;
+      for my $i (0 .. $#live) { $place = $i + 1 if $live[$i][3] }
+      return ($place, scalar @live);
+    };
+    if ($mode ne "try") {
+      unless (mkdir($queue) || -d $queue) { print $out "error cannot create $queue: $!\n"; exit 1 }
+      my $line = "$who — $checkout";
+      # A held place of this run, left by an earlier give-up under 120s ago, keeps its time.
+      my ($time, $held_name);
+      if (opendir(my $dir, $queue)) {
+        for my $entry (sort readdir $dir) {
+          next unless $entry =~ /^(\d+\.\d{6})-\d+\.held$/;
+          my $mtime = (stat "$queue/$entry")[9];
+          next unless defined $mtime && time - $mtime <= 120;
+          open(my $h, "<", "$queue/$entry") or next;
+          my $first = <$h>; close $h;
+          next unless defined $first;
+          chomp $first;
+          next unless $first eq $line;
+          ($time, $held_name) = ($1, $entry);
+          last;
+        }
+        closedir $dir;
+      }
+      $time = sprintf("%.6f", clock_gettime(CLOCK_MONOTONIC)) unless defined $time;
+      my $temp = "$queue/.$$.tmp";
+      open($ticket_fh, ">", $temp) or do { print $out "error cannot write a ticket in $queue: $!\n"; exit 1 };
+      flock($ticket_fh, LOCK_EX);
+      $ticket_fh->autoflush(1);
+      print $ticket_fh "$line\n";
+      my $name_of_ticket = "$time-$$";
+      unless (rename($temp, "$queue/$name_of_ticket")) {
+        my $why = $!;
+        unlink $temp;
+        print $out "error cannot write a ticket in $queue: $why\n";
+        exit 1;
+      }
+      $ticket = "$queue/$name_of_ticket";
+      unlink "$queue/$held_name" if defined $held_name;
+    }
     my ($lock, $held_file);
     my $start = time;
     my $next_note = 0;
     while (1) {
-      for my $slot (1 .. $slots) {
-        my $candidate = $slot == 1 ? $file : "$stem.$slot.lock";
-        open(my $next, ">>", $candidate) or do { print $out "error cannot open $candidate: $!\n"; exit 1 };
-        if (flock($next, LOCK_EX | LOCK_NB)) { $lock = $next; $held_file = $candidate; last }
-        close $next;
+      my ($place, $waiting) = $scan->();
+      if ($mode eq "try") {
+        if ($waiting) { print $out "busy " . $holder->() . "; $waiting waiting in line\n"; exit 0 }
+      }
+      if ($mode eq "try" || $place <= 1) {
+        for my $slot (1 .. $slots) {
+          my $candidate = $slot == 1 ? $file : "$stem.$slot.lock";
+          open(my $next, ">>", $candidate) or do { print $out "error cannot open $candidate: $!\n"; exit 1 };
+          if (flock($next, LOCK_EX | LOCK_NB)) { $lock = $next; $held_file = $candidate; last }
+          close $next;
+        }
       }
       last if defined $lock;
       exit 0 unless $caller_alive->();
       if ($mode eq "try") { print $out "busy " . $holder->() . "\n"; exit 0 }
-      if (time - $start >= $wait_s) { print $out "timeout " . $holder->() . "\n"; exit 0 }
+      if (time - $start >= $wait_s) {
+        # Keep the place for 120s: the same run asking again takes it back.
+        my $kept = "$ticket.held";
+        utime(time, time, $ticket);
+        if (rename($ticket, $kept)) { $ticket = undef }
+        print $out "timeout " . $holder->() . "\n";
+        exit 0;
+      }
       if (time >= $next_note) {
         my $m = int((time - $start) / 60);
         my $so_far = $m ? " (still, $m min so far)" : "";
-        print STDERR "[machine-lock] ⏳ $who is waiting for $label$so_far (up to ${wait_s}s): in use by " . $holder->() . "\n";
+        my $in_line = $place ? ", " . $ordinal->($place) . " in line" : "";
+        print STDERR "[machine-lock] ⏳ $who is waiting for $label$so_far (up to ${wait_s}s)$in_line: in use by " . $holder->() . "\n";
         $next_note = time + 60;
       }
       select(undef, undef, undef, 0.1);
+    }
+    if (defined $ticket) { unlink $ticket; $ticket = undef }
+    if ($mode ne "try" && opendir(my $mdir, $queue)) {
+      my $mine = "$who — $checkout";
+      for my $entry (readdir $mdir) {
+        next unless $entry =~ /^\d+\.jump$/;
+        my $first = $first_line->("$queue/$entry");
+        unlink "$queue/$entry" if defined $first && $first eq $mine;
+      }
+      closedir $mdir;
     }
     my $stopping = 0;
     $SIG{TERM} = $SIG{INT} = $SIG{HUP} = sub { $stopping = 1 };

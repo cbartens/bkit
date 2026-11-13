@@ -68,6 +68,7 @@ import { REPORT_ENV, countReportFailures, runTestFile, runToLog, type JunitCase 
 import { appendRecord, clampFile, type ClampRecord } from "./context.js";
 import { testsBaseVerb } from "./tests-base.js";
 import { testsChangedVerb } from "./tests-changed.js";
+import { testsJumpVerb } from "./tests-jump.js";
 
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
@@ -1545,6 +1546,7 @@ export const testsCommand: CommandSpec = {
   verbs: {
     base: testsBaseVerb,
     changed: testsChangedVerb,
+    jump: testsJumpVerb,
     run: {
       summary:
         "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run, 81 tests lock held.",

@@ -2744,6 +2744,9 @@ function denyRule(c) {
 }
 
 /** Ask tier, non-git — destructive or privileged shell. */
+/** A `bkit tests jump` command, wherever it sits in a chained command. */
+const TESTS_JUMP_RE = /\b(?:bkit|cli\.[jt]s)["']?\s+tests\s+jump\b/;
+
 const ASK_PATTERNS = [
   { re: /\bsudo\b/, what: "sudo" },
   { re: /\bbrew\s+install\b/, what: "brew install" },
@@ -2751,7 +2754,19 @@ const ASK_PATTERNS = [
   { re: /\bgh\s+repo\s+delete\b/, what: "gh repo delete" },
   { re: /\bgh\s+pr\s+close\b/, what: "gh pr close" },
   { re: /\bgh\s+release\s+delete\b/, what: "gh release delete" },
+  { re: TESTS_JUMP_RE, what: "bkit tests jump" },
 ];
+
+/** Whether this hook is the Codex one, which cannot prompt: its `.codex/hooks/` copy. */
+const CODEX_HOOK_RE = /[\\/]\.codex[\\/]hooks[\\/]|[\\/]codex\.cjs$/;
+const HOOK_FILE = typeof __filename === "string" ? __filename : "";
+// `__filename` is the real path; `process.argv[1]` is the path the hook was invoked by, which
+// keeps a symlinked `.codex` folder visible.
+const HOOK_INVOKED =
+  typeof process !== "undefined" && process.argv && typeof process.argv[1] === "string"
+    ? process.argv[1]
+    : "";
+const IS_CODEX_HOOK = CODEX_HOOK_RE.test(HOOK_FILE) || CODEX_HOOK_RE.test(HOOK_INVOKED);
 
 /** What makes a command ask-tier, else null. */
 function askRule(c) {
@@ -2857,6 +2872,13 @@ function classifyShell(c, dirs, ctx) {
   const denied = denyRule(c);
   if (denied) return { tier: "deny", ...denied };
   const what = askRule(c);
+  if (IS_CODEX_HOOK && (what === "bkit tests jump" || TESTS_JUMP_RE.test(c))) {
+    return {
+      tier: "deny",
+      what: "bkit tests jump",
+      fix: "Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.",
+    };
+  }
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(c);
   if (secret) return { tier: "secret", path: secret };

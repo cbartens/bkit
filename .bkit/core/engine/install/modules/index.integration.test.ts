@@ -806,6 +806,86 @@ describe("permissions-parity", () => {
     }
   });
 
+  describe("bkit tests jump needs the human's approval", () => {
+    /** Every host's verdict for one command: ask where the host can ask, deny on Codex. */
+    function jumpVerdicts(cmd: string): Record<string, Verdict> {
+      return {
+        claude: claudeShellVerdict(cmd),
+        opencode: opencodeVerdict("bash", cmd),
+        cursor: cursorVerdict({ command: cmd }),
+        antigravity: antigravityShellVerdict(cmd),
+        codex: codexVerdict(cmd),
+      };
+    }
+    const EXPECTED: Record<string, Verdict> = {
+      claude: "ask",
+      opencode: "ask",
+      cursor: "ask",
+      antigravity: "ask",
+      codex: "deny",
+    };
+
+    it("bkit tests jump asks the human on claude, opencode, cursor and antigravity and is denied on codex", () => {
+      expect(jumpVerdicts("bkit tests jump build-1")).toEqual(EXPECTED);
+    });
+
+    it("path-prefixed bkit tests jump forms get the same verdicts on every host", () => {
+      for (const cmd of [
+        '"/repo/node_modules/.bin/bkit" tests jump build-1',
+        "pnpm bkit tests jump build-1",
+        "node dist/cli.js tests jump build-1",
+        "pnpm tsx .bkit/core/engine/cli.ts tests jump build-1",
+      ]) {
+        expect({ cmd, verdicts: jumpVerdicts(cmd) }).toEqual({ cmd, verdicts: EXPECTED });
+      }
+    });
+
+    it("the codex hook denies bkit tests jump chained after another ask-tier command", () => {
+      for (const cmd of [
+        "gh pr close 999999; bkit tests jump build-1",
+        "sudo -n true; bkit tests jump build-1",
+      ]) {
+        expect({ cmd, codex: codexVerdict(cmd) }).toEqual({ cmd, codex: "deny" });
+        // Hosts that can ask keep asking for the compound command.
+        expect({ cmd, cursor: cursorVerdict({ command: cmd }) }).toEqual({ cmd, cursor: "ask" });
+        expect({ cmd, antigravity: antigravityShellVerdict(cmd) }).toEqual({
+          cmd,
+          antigravity: "ask",
+        });
+      }
+    });
+  });
+
+  describe("bkit tests jump through a symlinked .codex folder", () => {
+    it("the codex hook denies bkit tests jump when .codex is a symlinked folder", () => {
+      const base = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-codex-symlink-"));
+      try {
+        const repo = path.join(base, "repo");
+        const realHooks = path.join(base, "dotfiles", "codex-config", "hooks");
+        fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
+        fs.mkdirSync(realHooks, { recursive: true });
+        fs.cpSync(path.join(GENERATED, ".bkit"), path.join(repo, ".bkit"), { recursive: true });
+        fs.copyFileSync(CODEX_GUARDRAILS, path.join(realHooks, "bkit-guardrails.cjs"));
+        fs.symlinkSync(path.join(base, "dotfiles", "codex-config"), path.join(repo, ".codex"));
+        const res = spawnSync("node", [".codex/hooks/bkit-guardrails.cjs"], {
+          cwd: repo,
+          input: JSON.stringify({
+            tool_name: "Bash",
+            tool_input: { command: "bkit tests jump build-1" },
+          }),
+          encoding: "utf-8",
+        });
+        const out = res.stdout.trim();
+        expect(out, res.stderr).not.toBe("");
+        const hso = (JSON.parse(out) as { hookSpecificOutput: Record<string, string> })
+          .hookSpecificOutput;
+        expect(hso.permissionDecision).toBe("deny");
+      } finally {
+        fs.rmSync(base, { recursive: true, force: true });
+      }
+    });
+  });
+
   describe("shell reads of secret files — script hosts gate, permission tables do not", () => {
     for (const g of SHELL_SECRET_READS) {
       it(`${g.expect.toUpperCase()} on \`${g.cmd}\` (${g.why}) — cursor/codex/antigravity; claude/opencode Bash rows allow`, () => {

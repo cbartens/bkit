@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 
 const OLD_SCRIPT = path.resolve("tests/fixtures/machine-lock/stack-lock-6.0.0.sh");
+const OLD_LOCK_SCRIPT = path.resolve("tests/fixtures/machine-lock/machine-lock-6.1.1.sh");
 const BUDGET = tierTimeouts(true);
 
 const SCRIPT = path.resolve(".bkit/templates/scripts/ci/bkit-machine-lock.sh");
@@ -645,6 +646,13 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     );
     expect(r.stdout, r.stderr).toContain("nested-ok");
     expect(r.stderr).not.toContain("waiting");
+    // The parent's wait-mode take made the queue folder; the child reused the parent's lock and
+    // left no ticket in it.
+    const queue = run("local_stack_lock_file", envFor())
+      .stdout.trim()
+      .replace(/\.lock$/, ".queue");
+    expect(fs.existsSync(queue), "the stack lock's queue folder " + queue).toBe(true);
+    expect(fs.readdirSync(queue)).toEqual([]);
   });
 
   it("a stack named by BKIT_LOCAL_STACK never waits on the shared one", async () => {
@@ -1021,5 +1029,595 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(fromPackage.status, fromPackage.stderr).toBe(0);
     expect(fromPackage.stdout).toContain("test:integration");
     expect(fromPackage.stdout).not.toContain("--lock");
+  });
+});
+
+// ---- waiters are served in the order they started waiting ----
+
+const TICKET_NAME = /^\d+\.\d{6}-(\d+)$/;
+const STACK = "qstack";
+
+/** The queue folder beside a lock: a named lock, or the unnamed stack lock of STACK. */
+function queueOf(name?: string): string {
+  return name
+    ? path.join(cache, "bkit", "machine-lock", name + ".queue")
+    : path.join(cache, "bkit", "local-stack-lock", STACK + ".queue");
+}
+
+function ticketsIn(queue: string): string[] {
+  if (!fs.existsSync(queue)) return [];
+  return fs
+    .readdirSync(queue)
+    .filter((entry) => TICKET_NAME.test(entry))
+    .sort();
+}
+
+/** The pid in the name of the live ticket whose first line starts with `who — `. */
+function ticketPid(queue: string, who: string): number {
+  for (const name of ticketsIn(queue)) {
+    let line = "";
+    try {
+      line = fs.readFileSync(path.join(queue, name), "utf-8");
+    } catch {
+      continue;
+    }
+    if (line.startsWith(who + " — ")) return Number(TICKET_NAME.exec(name)![1]);
+  }
+  throw new Error("no ticket for " + who + " in " + queue);
+}
+
+async function waitForTicket(queue: string, who: string): Promise<number> {
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (Date.now() < until) {
+    try {
+      return ticketPid(queue, who);
+    } catch {
+      await delay(20);
+    }
+  }
+  return ticketPid(queue, who);
+}
+
+/** The held place (`<ticket name>.held`) a waiter that gave up left behind. */
+function heldPlaceFor(queue: string, who: string): string {
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(queue).filter((entry) => entry.endsWith(".held"));
+  } catch {
+    names = [];
+  }
+  for (const name of names) {
+    const file = path.join(queue, name);
+    try {
+      if (fs.readFileSync(file, "utf-8").startsWith(who + " — ")) return file;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error("no held place for " + who + " in " + queue);
+}
+
+async function waitForHeldPlace(queue: string, who: string): Promise<string> {
+  const until = Date.now() + BUDGET.hookTimeout;
+  while (Date.now() < until) {
+    try {
+      return heldPlaceFor(queue, who);
+    } catch {
+      await delay(20);
+    }
+  }
+  return heldPlaceFor(queue, who);
+}
+
+function readLines(file: string): string[] {
+  return fs.existsSync(file)
+    ? fs
+        .readFileSync(file, "utf-8")
+        .split("\n")
+        .filter((line) => line !== "")
+    : [];
+}
+
+/** Plants `<ms>.jump` in the queue, carrying the first line of the live ticket (or held place) of `who`. */
+function plantJump(queue: string, who: string, at = Date.now()): string {
+  let source: string | undefined;
+  for (const name of ticketsIn(queue)) {
+    const file = path.join(queue, name);
+    try {
+      if (fs.readFileSync(file, "utf-8").startsWith(who + " — ")) source = file;
+    } catch {
+      continue;
+    }
+  }
+  source ??= heldPlaceFor(queue, who);
+  const line = fs.readFileSync(source, "utf-8").split("\n")[0]!;
+  const marker = path.join(queue, at + ".jump");
+  fs.writeFileSync(marker, line + "\n");
+  return marker;
+}
+
+/** A run wrapper: `bash <script> run <who> [--lock name] -- <command>`, output captured. */
+function wrapped(
+  who: string,
+  env: NodeJS.ProcessEnv,
+  command: string,
+  opts: { lock?: string; script?: string } = {},
+) {
+  const started = Date.now();
+  const args = [opts.script ?? SCRIPT, "run", who, ...(opts.lock ? ["--lock", opts.lock] : [])];
+  const child = spawn("bash", [...args, "--", "bash", "-c", command], {
+    env,
+    cwd: process.cwd(),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  children.push(child);
+  const output = { stdout: "", stderr: "" };
+  child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
+  child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
+  const done = new Promise<Result>((resolve) => {
+    child.on("close", (status) => resolve({ status, ...output, ms: Date.now() - started }));
+  });
+  return { child, output, done };
+}
+
+/** Holds a lock (named, or the unnamed stack lock) until `release()` is called. */
+async function queueHolder(env: NodeJS.ProcessEnv, name?: string, who = "holder") {
+  const releaseFile = path.join(tmp, "release-" + who);
+  const arg = name ? " " + name : "";
+  const proc = running(
+    `take_local_stack_lock ${who}${arg} || exit 1; echo acquired; while [ ! -f "${releaseFile}" ]; do sleep 0.05; done; release_local_stack_lock${arg}`,
+    env,
+  );
+  await waitForOutput(proc, "acquired");
+  return { proc, release: () => fs.writeFileSync(releaseFile, "release") };
+}
+
+/** Starts a waiter that appends its name to `order`, and returns once its ticket is in the queue. */
+async function queuedWaiter(
+  who: string,
+  env: NodeJS.ProcessEnv,
+  order: string,
+  name?: string,
+  command = `echo ${who} >> "${order}"`,
+) {
+  const waiter = wrapped(who, env, command, { lock: name });
+  await waitForTicket(queueOf(name), who);
+  return waiter;
+}
+
+async function expectAllExit(waiters: { done: Promise<Result> }[]): Promise<void> {
+  for (const result of await Promise.all(waiters.map((w) => w.done))) {
+    expect(result.status, result.stderr).toBe(0);
+  }
+}
+
+async function fiveInArrivalOrder(name: string | undefined, env: NodeJS.ProcessEnv) {
+  const order = path.join(tmp, "order");
+  const holder = await queueHolder(env, name);
+  const waiters = [];
+  for (const who of ["w1", "w2", "w3", "w4", "w5"]) {
+    waiters.push(await queuedWaiter(who, env, order, name));
+  }
+  holder.release();
+  await expectAllExit(waiters);
+  return readLines(order);
+}
+
+describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
+  const waitEnv = (extra: Record<string, string> = {}) =>
+    envFor({ LOCAL_STACK_LOCK_WAIT_S: "60", BKIT_LOCAL_STACK: STACK, ...extra });
+
+  it("tests-lock waiters run their commands in arrival order", async () => {
+    expect(await fiveInArrivalOrder("tests", waitEnv())).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it("stack-lock waiters run their commands in arrival order", async () => {
+    expect(await fiveInArrivalOrder(undefined, waitEnv())).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+  });
+
+  it("a run that releases the lock and asks again queues behind runs already waiting", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const releaseFile = path.join(tmp, "release-again");
+    const again = running(
+      `take_local_stack_lock again tests || exit 1; echo acquired; echo again-1 >> "${order}"; while [ ! -f "${releaseFile}" ]; do sleep 0.05; done; release_local_stack_lock tests; take_local_stack_lock again tests || exit 1; echo again-2 >> "${order}"; release_local_stack_lock tests`,
+      env,
+    );
+    await waitForOutput(again, "acquired");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4", "w5"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    fs.writeFileSync(releaseFile, "release");
+    await expectAllExit(waiters);
+    expect((await again.done).status).toBe(0);
+    expect(readLines(order)).toEqual(["again-1", "w1", "w2", "w3", "w4", "w5", "again-2"]);
+  });
+
+  it("with two slots, waiters take freed slots in arrival order", async () => {
+    const env = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const slotA = await queueHolder(env, "tests", "slot-a");
+    const slotB = await queueHolder(env, "tests", "slot-b");
+    const gate = (who: string) =>
+      `echo ${who} >> "${order}"; while [ ! -f "${tmp}/done-${who}" ]; do sleep 0.05; done`;
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests", gate(who)));
+    }
+    slotA.release();
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["w1"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1"]);
+    slotB.release();
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "w2"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+    fs.writeFileSync(path.join(tmp, "done-w1"), "");
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "w2", "w3"]);
+    fs.writeFileSync(path.join(tmp, "done-w2"), "");
+    fs.writeFileSync(path.join(tmp, "done-w3"), "");
+    fs.writeFileSync(path.join(tmp, "done-w4"), "");
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w1", "w2", "w3", "w4"]);
+  });
+
+  it("queued waiters keep their order while a copy without the queue also waits, and no two commands overlap", async () => {
+    const env = waitEnv();
+    const events = path.join(tmp, "events");
+    const span = (who: string) =>
+      `echo "start ${who}" >> "${events}"; sleep 0.2; echo "end ${who}" >> "${events}"`;
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2"]) {
+      waiters.push(await queuedWaiter(who, env, events, "tests", span(who)));
+    }
+    const old = wrapped("old-copy", env, span("old-copy"), {
+      lock: "tests",
+      script: OLD_LOCK_SCRIPT,
+    });
+    await waitForOutput(old, "waiting");
+    for (const who of ["w3", "w4", "w5"]) {
+      waiters.push(await queuedWaiter(who, env, events, "tests", span(who)));
+    }
+    holder.release();
+    await expectAllExit([...waiters, old]);
+    const lines = readLines(events);
+    expect(lines).toHaveLength(12);
+    for (let i = 0; i < lines.length; i += 2) {
+      const who = lines[i]!.replace("start ", "");
+      expect(lines[i]).toBe("start " + who);
+      expect(lines[i + 1]).toBe("end " + who);
+    }
+    expect(lines.filter((line) => /^start w\d$/.test(line))).toEqual(
+      ["w1", "w2", "w3", "w4", "w5"].map((who) => "start " + who),
+    );
+    expect(lines).toContain("start old-copy");
+  });
+
+  it("a waiter that gives up leaves the line and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    const w4 = await queuedWaiter("w4", env, order, "tests");
+    const gaveUp = await w2.done;
+    expect(gaveUp.status).toBe(75);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3, w4]);
+    expect(readLines(order)).toEqual(["w1", "w3", "w4"]);
+  });
+
+  it("a waiter whose caller is killed leaves the line and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    w2.child.kill("SIGKILL");
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")).length, { timeout: BUDGET.hookTimeout })
+      .toBe(2);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3]);
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+  });
+
+  it("a waiter whose helper gets SIGTERM leaves the line at once and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    process.kill(ticketPid(queueOf("tests"), "w2"), "SIGTERM");
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")).length, { timeout: 1000, interval: 10 })
+      .toBe(2);
+    expect(() => ticketPid(queueOf("tests"), "w2")).toThrow(/no ticket for/);
+    holder.release();
+    await expectAllExit([w1, w3]);
+    await w2.done;
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+  });
+
+  it("a killed waiter's leftover ticket is skipped and removed, and the runs behind it keep their order", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const w3 = await queuedWaiter("w3", env, order, "tests");
+    process.kill(ticketPid(queueOf("tests"), "w2"), "SIGKILL");
+    holder.release();
+    await expectAllExit([w1, w3]);
+    await w2.done;
+    expect(readLines(order)).toEqual(["w1", "w3"]);
+    await expect
+      .poll(() => ticketsIn(queueOf("tests")), { timeout: BUDGET.hookTimeout })
+      .toEqual([]);
+  });
+
+  it("run exits 73 naming the queue folder when it cannot be created", () => {
+    const queue = queueOf("tests");
+    fs.mkdirSync(path.dirname(queue), { recursive: true });
+    fs.writeFileSync(queue, "a file cannot hold a queue folder");
+    const result = commandRun(
+      ["queue blocked", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      envFor(),
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(queue);
+  });
+
+  it("run exits 73 naming the queue folder when no ticket can be written", () => {
+    const queue = queueOf("tests");
+    fs.mkdirSync(queue, { recursive: true });
+    fs.chmodSync(queue, 0o555);
+    try {
+      const result = commandRun(
+        ["queue read-only", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+        envFor(),
+      );
+      expect(result.status, result.stderr).toBe(73);
+      expect(result.stdout).not.toContain("should-not-run");
+      expect(result.stderr).toContain(queue);
+    } finally {
+      fs.chmodSync(queue, 0o755);
+    }
+  });
+
+  it("a try while a run waits first in line reports busy even when the lock is free", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const helper = ticketPid(queueOf("tests"), "w1");
+    process.kill(helper, "SIGSTOP");
+    try {
+      holder.release();
+      await holder.proc.done;
+      const holderFile = path.join(cache, "bkit", "machine-lock", "tests.lock.holder");
+      await expect
+        .poll(() => fs.existsSync(holderFile), { timeout: BUDGET.hookTimeout })
+        .toBe(false);
+      const tried = run("try_local_stack_lock prober tests", env);
+      expect(tried.status).toBe(1);
+      expect(tried.stderr).toContain("1 waiting in line");
+      expect(fs.existsSync(holderFile)).toBe(false);
+    } finally {
+      process.kill(helper, "SIGCONT");
+    }
+    await expectAllExit([w1]);
+    expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("the waiting note says where the run is in line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    await waitForOutput(w1, "1st in line");
+    await waitForOutput(w2, "2nd in line");
+    holder.release();
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+  });
+
+  it("a stray file in the queue folder neither blocks the line nor gets deleted", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    fs.mkdirSync(queue, { recursive: true });
+    fs.writeFileSync(path.join(queue, ".5.tmp"), "half-written ticket");
+    fs.writeFileSync(path.join(queue, "notes.txt"), "not a ticket");
+    expect(await fiveInArrivalOrder("tests", env)).toEqual(["w1", "w2", "w3", "w4", "w5"]);
+    expect(fs.existsSync(path.join(queue, ".5.tmp"))).toBe(true);
+    expect(fs.existsSync(path.join(queue, "notes.txt"))).toBe(true);
+  });
+
+  it("a stopped first-in-line waiter holds the line while the lock is free", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    const helper = ticketPid(queueOf("tests"), "w1");
+    process.kill(helper, "SIGSTOP");
+    try {
+      holder.release();
+      await holder.proc.done;
+      await delay(800);
+      expect(readLines(order)).toEqual([]);
+    } finally {
+      process.kill(helper, "SIGCONT");
+    }
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w1", "w2"]);
+  });
+
+  it("a waiter that gives up and asks again within 120 s keeps its place in line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    expect((await first.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([y, again]);
+    expect(readLines(order)).toEqual(["x", "y"]);
+  });
+
+  it("a held place older than 120 s is deleted and the re-ask joins the end of the line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    expect((await first.done).status).toBe(75);
+    const held = await waitForHeldPlace(queue, "x");
+    const old = new Date(Date.now() - 300_000);
+    fs.utimesSync(held, old, old);
+    await expect.poll(() => fs.existsSync(held), { timeout: BUDGET.hookTimeout }).toBe(false);
+    expect(() => heldPlaceFor(queue, "x")).toThrow(/no held place for/);
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([y, again]);
+    expect(readLines(order)).toEqual(["y", "x"]);
+  });
+
+  it("a jump marker moves its waiting run to the front of the line", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3", "w4"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    plantJump(queueOf("tests"), "w4");
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w4", "w1", "w2", "w3"]);
+  });
+
+  it("the newest jump marker goes first", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    plantJump(queueOf("tests"), "w2", Date.now() - 5000);
+    plantJump(queueOf("tests"), "w3", Date.now());
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w3", "w2", "w1"]);
+  });
+
+  it("a jump marker that matches no waiting run is deleted", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const marker = path.join(queue, Date.now() + ".jump");
+    fs.writeFileSync(marker, "ghost — /nowhere/ghost\n");
+    await expect.poll(() => fs.existsSync(marker), { timeout: BUDGET.hookTimeout }).toBe(false);
+    holder.release();
+    await expectAllExit([w1]);
+    expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("a jumped run that gives up and asks again within 120 s keeps the front", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(env, "tests");
+    const z = await queuedWaiter("z", env, order, "tests");
+    const first = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const y = await queuedWaiter("y", env, order, "tests");
+    plantJump(queue, "x");
+    expect((await first.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    const again = await queuedWaiter("x", env, order, "tests");
+    holder.release();
+    await expectAllExit([z, y, again]);
+    expect(readLines(order)).toEqual(["x", "z", "y"]);
+  });
+
+  it("concurrent first takes on a fresh cache exit 0 with no cannot-create refusal", async () => {
+    const rounds = 50;
+    const takes = 16;
+    const results: { round: number; i: number; status: string; err: string }[] = [];
+    for (let round = 0; round < rounds; round++) {
+      const env = envFor({
+        LOCAL_STACK_LOCK_WAIT_S: "60",
+        XDG_CACHE_HOME: path.join(tmp, "race-cache-" + round),
+      });
+      // One shell forks every taker back to back, so they reach the queue folder together.
+      const burst = spawnSync(
+        "bash",
+        [
+          "-c",
+          `for i in $(seq ${takes}); do ( bash "${SCRIPT}" run race$i --lock tests -- true 2>"$XDG_CACHE_HOME.err$i"; echo $? >"$XDG_CACHE_HOME.st$i" ) & done; wait`,
+        ],
+        { env, cwd: process.cwd(), encoding: "utf8" },
+      );
+      expect(burst.error).toBeUndefined();
+      for (let i = 1; i <= takes; i++) {
+        const base = path.join(tmp, "race-cache-" + round);
+        const status = fs.readFileSync(`${base}.st${i}`, "utf8").trim();
+        const err = fs.readFileSync(`${base}.err${i}`, "utf8").trim();
+        // The "in line" waiting note is normal; only a non-zero exit or a queue-folder refusal counts.
+        results.push({ round, i, status, err });
+      }
+    }
+    const refused = results
+      .filter((r) => /^exit=(?!0\n)|cannot create|File exists/.test(`exit=${r.status}\n${r.err}`))
+      .map((r) => `round ${r.round} take ${r.i} exit ${r.status}: ${r.err}`);
+    expect(refused).toEqual([]);
+  }, 600_000);
+
+  it("a waiter whose caller ignores SIGHUP keeps its place when its helper gets SIGHUP", async () => {
+    const env = waitEnv();
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const child = spawn(
+      "bash",
+      [
+        "-c",
+        `trap '' HUP; exec bash "${SCRIPT}" run w1 --lock tests -- bash -c 'echo w1 >> "${order}"'`,
+      ],
+      { env, cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
+    );
+    children.push(child);
+    let stderr = "";
+    child.stderr.on("data", (data: Buffer) => (stderr += data.toString()));
+    const done = new Promise<number | null>((resolve) =>
+      child.on("close", (status) => resolve(status)),
+    );
+    await waitForTicket(queueOf("tests"), "w1");
+    process.kill(ticketPid(queueOf("tests"), "w1"), "SIGHUP");
+    await delay(500);
+    expect(ticketsIn(queueOf("tests")).length).toBe(1);
+    holder.release();
+    expect(await done, stderr).toBe(0);
+    expect(stderr).not.toContain("stopped before it answered");
+    expect(readLines(order)).toEqual(["w1"]);
   });
 });

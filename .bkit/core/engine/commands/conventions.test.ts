@@ -172,6 +172,8 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "test-blocks.ts"),
   // The `tests changed` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-changed.ts"),
+  // The `tests jump` verb, registered on `bkit tests` in tests.ts.
+  path.join("commands", "workflow", "tests-jump.ts"),
   // The `tests base` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-base.ts"),
   // The JUnit reader and one-file test runner, read by `tests` and the base-commit check.

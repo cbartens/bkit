@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T05:44:24Z)_
+_(refreshed 2026-11-13T06:13:41Z)_
 
 ### Design
 
@@ -53,7 +53,6 @@ _(refreshed 2026-11-13T05:44:24Z)_
 | 912-debug-loop-question | 912-debug-loop-question | 1794362544059 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
-| 916-tests-lock-waiting | 916-tests-lock-waiting | 1794294436861 |
 
 ### Build
 
@@ -76,6 +75,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 916-tests-lock-waiting | 916-tests-lock-waiting | 1794550421654 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
 | 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
@@ -85,7 +85,6 @@ _(none)_
 | 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
 | 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
-| 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

@@ -321,8 +321,9 @@ Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bki
 - A tests-lock give-up of this run becomes exit 81 with `lockHolder`, and a tests-lock refusal becomes exit 4. A lock wait writes no `test-run` status row. A gate's own failure or a nested lock's give-up remains a test failure. A raw gate caller sees exit 75 and the holder line.
 - Light runs (`bkit tests red`, `green` and `bkit:test:file`) take no tests lock. Nested wraps reuse the live parent's tests lock. `CI=true` / `CI=1` bypasses locking.
 - `BKIT_TEST_SLOTS` sets the number of tests slots (default 1). The lock exports `BKIT_TEST_WORKERS` for the consumer to pass to its runner.
-- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands).
-- The script defaults to 60 seconds without a TTY when no wait is set. Waiting notes name the holders and their checkouts' earlier run times.
+- The CLI wait defaults to `BKIT_LOCK_WAIT_S`, else 60 seconds; `--lock-wait-s=0` tries once. Claude Code ships `BKIT_LOCK_WAIT_S=1200`; other hosts use the shorter wait and re-run on exit 81 (`.bkit/providers.md` § Long-running shell commands); a re-run within 120 seconds keeps its place in line.
+- The human can move a waiting gate to the front of the line with `bkit tests jump <run>`; every use needs their approval.
+- The script defaults to 60 seconds without a TTY when no wait is set. Waiting runs take the lock in arrival order, and waiting notes name the holders, their checkouts' earlier run times and the run's place in line.
 
 ## JUnit reports for bkit
 
@@ -721,7 +722,7 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 
 Workflow progress has focused Unit coverage for position math and command output, Integration coverage for real saved status/plan files and completion producers, and renderer coverage for each supported host. The external Claude app's 375px layout is an owner-run check: `docs/plans/202611/logs/825-show-progress-bar/phone-verification.md` records its procedure, screenshots and explicit outcome. A character-count assertion does not verify app typography.
 
-The machine-lock integration tests in `audits/templates/machine-lock.integration.test.ts` run real Bash and Perl holders against isolated cache folders. `tests/fixtures/machine-lock/stack-lock-6.0.0.sh` freezes the older stack-lock script for compatibility checks.
+The machine-lock integration tests in `audits/templates/machine-lock.integration.test.ts` run real Bash and Perl holders against isolated cache folders. `tests/fixtures/machine-lock/stack-lock-6.0.0.sh` freezes the older stack-lock script for compatibility checks, and `tests/fixtures/machine-lock/machine-lock-6.1.1.sh` freezes the 6.1.1 script, which has no waiting queue, for the mixed-version order test.
 
 <!-- prettier-ignore -->
 | File | Tier | Scope |
@@ -729,7 +730,8 @@ The machine-lock integration tests in `audits/templates/machine-lock.integration
 | `.bkit/core/engine/commands/workflow/step-table.test.ts` | Unit | Exact progress strings across all five workflow tables, build groups and sparse markers, changing group totals, loop backtracking, retry suffixes, ten-cell width and final-only 100%. |
 | `.bkit/core/engine/commands/workflow/progress.integration.test.ts` | Integration | Fresh plan reads, saved-run isolation and frozen allowances, cross-run soak attempts/grants, specialized completion producers, numeric gates preserving validation and command journaling, invalid inputs and refused commits without false completion. |
 | `.bkit/core/engine/render/hosts.test.ts` | Unit | Progress narration and explicit gate numbers survive Claude, Codex, Antigravity, Cursor and OpenCode rendering; sole completion output remains observable. |
-| `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | Integration | Real consumer gate wrapping, wait budgets and exit mapping, lock lifetime, CI and light-run bypass, inherited workers and nested wrappers. |
+| `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts` | Integration | Real consumer gate wrapping, wait budgets and exit mapping, lock lifetime, CI and light-run bypass, inherited workers and nested wrappers; a file blocking the queue folder (exit 4 naming it); `bkit tests jump` moving a real waiting run to the front, and refusing a name no waiting run carries or two waiting runs share. |
+| `.bkit/core/engine/commands/workflow/tests-jump.test.ts` | Unit | `bkit tests jump`: no queue folder refuses and creates none; one marker holding the run's line, from a ticket or a held place; two checkouts sharing the name ask for `--checkout`, which then picks one. |
 | `.bkit/core/engine/audits/repo/vitest-test-lock.test.ts` | Unit | Raw Vitest heavy/light decisions, live nested owners, CI, watch and positive worker budgets. |
 | `.bkit/core/engine/audits/repo/vitest-test-lock.integration.test.ts` | Integration | Real holder contention, readiness diagnostics, lock lifetime, teardown and nested setup. |
 | `.bkit/core/engine/commands/install/doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 and Phase 1 and Phase 3 advisory replay. |

@@ -188,6 +188,71 @@ describe("slop plugin migration", () => {
   });
 });
 
+describe("machine-lock copy migration", () => {
+  const lock = "scripts/ci/bkit-machine-lock.sh";
+  const template = ".bkit/templates/scripts/ci/bkit-machine-lock.sh";
+  const shipped = fs.readFileSync(
+    path.join(getPkgRoot(), "tests/fixtures/machine-lock/machine-lock-6.1.1.sh"),
+  );
+  const currentLock = fs.readFileSync(
+    path.join(getTemplatesRoot(), "scripts/ci/bkit-machine-lock.sh"),
+  );
+
+  function seed(content: string | Buffer = shipped): void {
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, content);
+  }
+
+  function migrate(dryRun = false): WriteSet {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return { writes: ctx.ws.writes.filter((w) => w.path === lock) };
+  }
+
+  it("replaces a shipped 6.1.1 machine-lock copy and records the same unhashed write in dry run", () => {
+    seed();
+    const dry = migrate(true);
+    expect(fs.readFileSync(lock)).toEqual(shipped);
+    expect(dry.writes).toEqual([{ path: lock, action: "update", unhashed: true }]);
+    expect(migrate()).toEqual(dry);
+    expect(fs.readFileSync(lock)).toEqual(currentLock);
+    expect(migrate().writes).toEqual([]);
+  });
+
+  it("preserves an edited machine-lock copy without the queue and reports the template to merge by hand", () => {
+    const custom = Buffer.concat([shipped, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(template));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("out of arrival order"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("leaves a symlinked machine-lock copy unchanged and reports the template to merge by hand", () => {
+    fs.mkdirSync("owned", { recursive: true });
+    const target = path.resolve("owned/bkit-machine-lock.sh");
+    fs.writeFileSync(target, shipped);
+    fs.mkdirSync("scripts/ci", { recursive: true });
+    fs.symlinkSync(target, lock);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(target)).toEqual(shipped);
+      expect(fs.lstatSync(lock).isSymbolicLink()).toBe(true);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(template));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("by hand"));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
   // The package's canonical docs source (getBkitDocsRoot) — what runBkitDocs copies from.
   const PKG_DOCS_ROOT = getBkitDocsRoot();

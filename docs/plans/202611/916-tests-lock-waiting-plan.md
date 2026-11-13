@@ -156,6 +156,10 @@ Every lock row runs real Bash, real Perl helpers and real `flock` against the te
 | `bkit tests jump` asks the human on Claude Code, OpenCode, Cursor and Antigravity, and is denied on Codex | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 9 |
 | The same verdicts hold for the path-prefixed forms (`"<root>/node_modules/.bin/bkit" tests jump`, `pnpm bkit tests jump`, `node dist/cli.js tests jump`, `pnpm tsx .bkit/core/engine/cli.ts tests jump`) | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 9 |
 | `.bkit/cli.md` lists `bkit tests jump` (existing check-mode test, kept green after `pnpm cli:sync`) | Unit | `.bkit/core/engine/tools/cli-doc.test.ts` | 8 |
+| concurrent first takes on a fresh cache exit 0 with no cannot-create refusal | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 11 |
+| a waiter whose caller ignores SIGHUP keeps its place when its helper gets SIGHUP | Integration | `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` | 12 |
+| the codex hook denies bkit tests jump when .codex is a symlinked folder | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 13 |
+| the codex hook denies bkit tests jump chained after another ask-tier command | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 15 |
 
 Untested edge cases: the same-microsecond tie-break and the wall-clock jump. No real-lock test can force two tickets into one microsecond or move the monotonic clock, and a planted live ticket would block the line instead of revealing the sort. Both rest on the `CLOCK_MONOTONIC` and `flock` Assumptions below.
 
@@ -563,7 +567,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Add the ticket queue and first-in-line acquire to the Perl helper, and prove it beside a 6.1.1 copy without it
+- [x] **TASK 1:** Add the ticket queue and first-in-line acquire to the Perl helper, and prove it beside a 6.1.1 copy without it
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: the Perl helper creates `<stem>.queue/` on every wait-mode take, writes a `flock`-held ticket named `<CLOCK_MONOTONIC seconds, 6 decimals>-<pid>` (temp file, lock, rename), scans live tickets every pass while ignoring names that are not tickets, tries the slots only when first in line, and unlinks its ticket on acquire
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: the scan, the slot tries and the caller check stay inside the one existing 0.1 s pass, with no second sleep and no blocking call per pass, so the handoff fix of failure `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts a killed tests-lock holder frees its slot within a second and the waiter starts` (CLOSED) holds
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: header comment (lines 22-36) names the queue folder and arrival order
@@ -587,7 +591,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Clean up dead tickets and refuse with the queue path when the queue cannot be used
+- [x] **TASK 2:** Clean up dead tickets and refuse with the queue path when the queue cannot be used
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: the Perl helper unlinks its ticket on give-up, caller death and errors; installs wait-time `TERM` / `INT` / `HUP` handlers before the acquire loop that unlink the ticket and exit, replaced by the existing post-acquire handler after acquire; unlinks as dead any ticket whose `flock` can be taken; and replies `error cannot create $queue: …` or `error cannot write a ticket in $queue: …` when the queue folder cannot be created or a ticket cannot be written
   - **UPDATE:** `scripts/ci/bkit-machine-lock.sh`: copied from the template byte for byte
   - **UPDATE:** `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts`: the six machine-lock tests below in the `machine lock waiting order` block
@@ -608,7 +612,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Keep `try` behind the line, ignore stray files, and name the place in line in the waiting note
+- [x] **TASK 3:** Keep `try` behind the line, ignore stray files, and name the place in line in the waiting note
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: `try` mode never creates the queue folder, counts a missing or unreadable queue folder as an empty line, scans the queue before the slots and replies `busy <holders>; <N> waiting in line` while any live ticket exists; the scan leaves every name that is neither a ticket nor a held place in place; the `⏳` note gains `, <ordinal> in line` (`1st`, `2nd`, `3rd`, `Nth`, with `11th`-`13th`)
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: header comment line 9 says a `try` is busy while runs wait in line, and line 34 says waiting notes name the place in line
   - **UPDATE:** `scripts/ci/bkit-machine-lock.sh`: copied from the template byte for byte
@@ -626,7 +630,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Keep a run's place in line across a give-up and re-ask
+- [x] **TASK 4:** Keep a run's place in line across a give-up and re-ask
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: on give-up the Perl helper renames its ticket to `<ticket name>.held`, keeping its time; a wait-mode take whose `<who> — <checkout>` line matches a held place under 120 s old unlinks it and takes its time with its own pid; the scan skips held places and deletes those older than 120 s (decision `916-queue-keeps-place-across-give-up`)
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: header comment (lines 22-36) names the held place
   - **UPDATE:** `scripts/ci/bkit-machine-lock.sh`: copied from the template byte for byte
@@ -644,7 +648,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Document the queue in the lock docs and re-render the mirrors
+- [x] **TASK 5:** Document the queue in the lock docs and re-render the mirrors
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Machine lock names the `<name>.queue/` folder, arrival order, dead-ticket skipping, the held place across a give-up, the place-in-line note, the `try` rule, and that a waiter stopped while first in line holds the line (`ls` the queue folder to see who is first)
   - **UPDATE:** `.bkit/shared/docs/testing.md`: § Tests lock's last bullet says waiting runs take the lock in arrival order and waiting notes name the place in line; its re-run bullet says a re-run on exit 81 within 120 s keeps its place in line
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Long-running shell commands' rule sentence (line 858) says a short-call host's re-run within 120 s keeps its place in line
@@ -663,7 +667,7 @@ Test-writing notes for every ordering test in Group 1:
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Replace consumers' unedited 6.1.x copies of `scripts/ci/bkit-machine-lock.sh` with the queued template on upgrade
+- [x] **TASK 6:** Replace consumers' unedited 6.1.x copies of `scripts/ci/bkit-machine-lock.sh` with the queued template on upgrade
   - **UPDATE:** `runBkitDocs` in `.bkit/core/engine/install/modules/core.ts`: call a new `migrateMachineLockCopy(dryRun, ws, logPrefix)` beside `migrateSlopTypeSuppression`
   - **UPDATE:** `.bkit/core/engine/install/modules/core.ts`: add `SHIPPED_MACHINE_LOCK_HASHES` (the full sha256 of `tests/fixtures/machine-lock/machine-lock-6.1.1.sh`, plus the hash of any later release without the queue that `git tag --list 'v6.*'` shows) and `migrateMachineLockCopy`: absent or equal to the template → silent; not a regular file or under a symlink → warn; a shipped hash → replace with the template as an unhashed `update` write and log one `core:` line; otherwise, with no `.queue` in its text → warn naming `.bkit/templates/scripts/ci/bkit-machine-lock.sh` to merge by hand and that waiting runs take the lock out of arrival order until then
   - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: a `machine-lock copy migration` describe block with `seed` and `migrate` helpers after the `slop plugin migration` block, and the three tests below
@@ -693,7 +697,7 @@ Test-writing notes for Group 3:
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Sort a jumped run first in the Perl helper's scan
+- [x] **TASK 7:** Sort a jumped run first in the Perl helper's scan
   - **UPDATE:** `_local_stack_lock` in `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: the scan lists `^\d+\.jump$` markers and reads their lines; a live ticket whose line equals a marker's line sorts before every unmarked ticket, newest marker first; the scan deletes a marker whose line matches no live ticket and no held place; the helper deletes the markers matching its own line when it takes the lock
   - **UPDATE:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh`: header comment (lines 22-36) names jump markers
   - **UPDATE:** `scripts/ci/bkit-machine-lock.sh`: copied from the template byte for byte
@@ -710,7 +714,7 @@ Test-writing notes for Group 3:
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Add `bkit tests jump <run>`, which writes the jump marker for one waiting run
+- [x] **TASK 8:** Add `bkit tests jump <run>`, which writes the jump marker for one waiting run
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: a `jump` verb (`use: "by-hand"`, positional `run`, optional `--checkout`) that reads the `tests` queue folder without creating it, finds the distinct `<who> — <checkout>` lines of tickets and held places carrying the run name, and on exactly one match writes `<Date.now()>.jump` with that line through a temp file plus rename and exits 0; on no match or no folder it prints "no run named <run> waits for tests" and exits 1; on several matches it lists them, prints "pass --checkout <path> to pick one" and exits 1; it never touches the lock, `.holder` or slot files
   - **UPDATE:** `.bkit/core/engine/commands/workflow/tests-lock.integration.test.ts`: the three tests below
   - **UPDATE:** `.bkit/cli.md`: regenerated by `pnpm cli:sync`
@@ -729,7 +733,7 @@ Test-writing notes for Group 3:
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Make every `bkit tests jump` wait for the human's approval on all five hosts
+- [x] **TASK 9:** Make every `bkit tests jump` wait for the human's approval on all five hosts
   - **UPDATE:** `.bkit/shared/.claude/settings.json`: `permissions.ask` gains `Bash(*bkit tests jump*)`, `Bash(*cli.js tests jump*)` and `Bash(*cli.ts tests jump*)`
   - **UPDATE:** `.bkit/shared/.opencode/opencode.json`: `permission.bash` gains the same three globs as `ask`, after every broader `allow` glob
   - **UPDATE:** `ASK_PATTERNS` in `.bkit/core/hooks/guardrails-tiers.js`: `{ re: /\b(?:bkit|cli\.[jt]s)\s+tests\s+jump\b/, what: "bkit tests jump" }`, so Cursor and Antigravity ask
@@ -747,7 +751,7 @@ Test-writing notes for Group 3:
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Document the jump and its approval, and re-render the mirrors
+- [x] **TASK 10:** Document the jump and its approval, and re-render the mirrors
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: § Machine lock names `bkit tests jump <run>`, that the holder keeps the lock, that the newest jump goes first, that each use needs the human's approval (denied on Codex), and that the upgrade migration replaces an unedited 6.1.x copy
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § Permissions' `ask` row lists the three `tests jump` patterns
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Codex CLI's "Codex cannot prompt" note says `bkit tests jump` is denied on Codex instead of advised
@@ -759,6 +763,64 @@ Test-writing notes for Group 3:
 <!-- bkit:task 10 end -->
 
 <!-- bkit:group 3 end -->
+
+<!-- bkit:group 4 start -->
+
+### TASK GROUP 4: Challenge round 1 findings
+
+<!-- bkit:task 11 start -->
+
+- [x] **TASK 11:** Two runs that take a lock at once on a fresh cache race to create `<name>.queue/`, and the loser exits 73 with "cannot create …: File exists"
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:301` · **Round:** 1
+  - **DONE WHEN:** the helper treats the queue folder as usable when `mkdir` fails because another helper created it first (for example `mkdir($queue) || -d $queue`, checked after the `mkdir`, not before it), so concurrent first takes never reply `error cannot create`; a regular file at the path still replies `error cannot create $queue` and `run` still exits 73; `scripts/ci/bkit-machine-lock.sh` is copied from the template byte for byte. Reproduced on this diff: 8 concurrent `run --lock tests -- true` per fresh `XDG_CACHE_HOME`, 20 rounds, 1 round had an exit 73 with `could not take the lock for tests: cannot create …/tests.queue: File exists`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `concurrent first takes on a fresh cache exit 0 with no cannot-create refusal` fails on at least one of 16 concurrent `run --lock tests` takes, repeated over 50 fresh `XDG_CACHE_HOME` folders, exiting 73 with "cannot create" and "File exists" in its stderr (a stress test: the race fired in 1 of 20 rounds at 8 concurrent takes, so the round and take counts must stay high enough that the current code fails it)
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `concurrent first takes on a fresh cache exit 0 with no cannot-create refusal` fails on a concurrent first take exiting 73 with "cannot create" and "File exists" — the race is timing-dependent, so against the unfixed script the test fails only about 1 run in 3; the fix is a one-line `mkdir || -d`, the test passes on all 50 fresh caches with it, and an intermittent guard is accepted over none (reason worded by Claude at the owner's request) (owner, 2026-11-12)
+
+<!-- bkit:task 11 end -->
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** A waiter started under `nohup` (or as a background job, which ignores SIGINT) now dies on SIGHUP / SIGINT while it waits, so its run exits 73 instead of waiting its turn
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/scripts/ci/bkit-machine-lock.sh:242` · **Round:** 1
+  - **DONE WHEN:** the wait-time handler is installed only for a signal whose inherited disposition is not `IGNORE` (Perl shows an inherited ignore as `$SIG{HUP} eq "IGNORE"`), so a helper whose caller ignores SIGHUP or SIGINT keeps waiting as the 6.1.1 copy does; TERM, and HUP / INT when not ignored, still unlink the ticket and exit; `scripts/ci/bkit-machine-lock.sh` is copied from the template byte for byte. Reproduced on this diff: holder on `tests`, `nohup bash bkit-machine-lock.sh run W --lock tests -- echo W-ran`, `kill -HUP <helper pid>` → `could not take the lock for tests: the perl process holding it stopped before it answered`, exit 73; the same steps against `tests/fixtures/machine-lock/machine-lock-6.1.1.sh` print `W-ran` and exit 0. The plan's Out of Scope row names the same flaw in the post-acquire handler (`scripts/ci/bkit-machine-lock.sh:254` before this diff); this diff copies it into the wait.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` `a waiter whose caller ignores SIGHUP keeps its place when its helper gets SIGHUP` fails on the waiter, started as `bash -c "trap '' HUP; exec bash <script> run w1 --lock tests -- …"` behind a holder, exiting 73 with "stopped before it answered" after `process.kill(ticketPid(queueOf("tests"), "w1"), "SIGHUP")`, instead of running its command once the holder releases
+
+<!-- bkit:task 12 end -->
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** A Codex user whose `.codex` folder is a symlink gets `bkit tests jump` as an advisory, so a Codex agent jumps the line with no human approval
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-tiers.js:181` · **Round:** 1
+  - **DONE WHEN:** the Codex check also tests the path the hook was invoked by (`process.argv[1]`, which Node makes absolute but does not resolve through symlinks), not only `__filename`, which Node resolves to the real path; a Codex hook reached through a symlinked `.codex` folder denies `bkit tests jump`, and the Cursor and Antigravity hooks still ask; the rendered `.codex/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` are re-rendered. Reproduced on this diff: the rendered Codex hook copied to `dotfiles/codex-config/hooks/` with `repo/.codex -> dotfiles/codex-config`, run as `node .codex/hooks/bkit-guardrails.cjs` from `repo/` with a `bkit tests jump build-1` payload, returns `additionalContext` ("ran without confirmation") instead of `permissionDecision: "deny"`; the same file under a real `.codex/hooks/` denies.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `the codex hook denies bkit tests jump when .codex is a symlinked folder` fails on the rendered Codex hook, run through a `.codex` symlink to a folder whose real path has no `.codex/hooks/`, returning an advisory (`codexVerdict` "ask") instead of "deny"
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** TASK 11's race test counts the normal "in line" waiting note as a refusal, so it fails with the fix in place and proves nothing
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/audits/templates/machine-lock.integration.test.ts` · **Round:** 1
+  - **DONE WHEN:** the test `runs that take a lock at once on a fresh cache never refuse over the queue folder` is replaced by `concurrent first takes on a fresh cache exit 0 with no cannot-create refusal`, which counts a take as refused only when it exits non-zero or its stderr has "cannot create" or "File exists", and never counts the "⏳ … in line" waiting note; it starts 16 concurrent `run --lock tests -- true` takes per fresh `XDG_CACHE_HOME`, forked from one shell so they start together, over 50 fresh folders; it passes with TASK 11's `mkdir($queue) || -d $queue` fix and fails on the group's start commit `e929f8d63`, which has no such fix.
+  - **TEST FIRST:** n/a — test-only repair of the test TASK 11 plans (its Derived Test Matrix row maps to TASK 11); no product behaviour changes
+
+<!-- bkit:task 14 end -->
+<!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Challenge round 2 findings
+
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** A Codex agent chains another ask-tier command before `bkit tests jump` (`gh pr close 999999; bkit tests jump build-1`), so the hook sees only the first ask match, turns it into an advisory, and the jump runs with no human approval
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/hooks/guardrails-tiers.js:291` · **Round:** 2
+  - **DONE WHEN:** under the Codex hook, `classifyShell` denies any command whose text matches the jump pattern, whatever other ask-tier pattern (git ask rules, `sudo`, `brew install`, `gh pr close`, package publish) matches first, for example by testing the jump pattern on its own before `askRule`'s first-hit result is used; Cursor and Antigravity still ask for those compound commands; the rendered `.codex/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs` and `.agents/plugins/bkit/hooks/bkit-guardrails.cjs` are re-rendered. Reproduced on this diff: piping `{"tool_name":"Bash","tool_input":{"command":"gh pr close 999999; bkit tests jump build-1"}}` into `node .codex/hooks/bkit-guardrails.cjs` returns `additionalContext` "(gh pr close) ran without confirmation" instead of `permissionDecision: "deny"`; the same holds for `sudo -n true; bkit tests jump build-1`. The cause is `askRule` (`guardrails-tiers.js:191-199`), which returns the first ASK_PATTERNS hit, and the jump pattern sits last in the array.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `the codex hook denies bkit tests jump chained after another ask-tier command` fails on `codexVerdict("gh pr close 999999; bkit tests jump build-1")` and `codexVerdict("sudo -n true; bkit tests jump build-1")` returning "ask" instead of "deny"
+
+<!-- bkit:task 15 end -->
+<!-- bkit:group 5 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

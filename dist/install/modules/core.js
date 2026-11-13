@@ -251,6 +251,7 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     migrateTemplateNotes(dryRun, ws, logPrefix);
     migrateContextCiWorkflow(dryRun, ws, logPrefix);
     migrateSlopTypeSuppression(dryRun, ws, logPrefix);
+    migrateMachineLockCopy(dryRun, ws, logPrefix);
     const renames = migrateBrandedTemplateFiles(dryRun, ws, logPrefix);
     migrateBrandedFileTokens(dryRun, ws, logPrefix, renames);
     migrateBrandedCheckNames(dryRun, ws, logPrefix, tokens.DEFAULT_BRANCH);
@@ -683,6 +684,40 @@ function migrateSlopTypeSuppression(dryRun, ws, logPrefix) {
         fs.writeFileSync(file, template);
     ws.writes.push({ path: file, action: "update", unhashed: true });
     console.log(`${logPrefix} ${tag}core: ${file} — slop plugin updated`);
+}
+// sha256 of every released scripts/ci/bkit-machine-lock.sh text without the arrival-order queue (6.1.0, 6.1.1).
+const SHIPPED_MACHINE_LOCK_HASHES = [
+    "63ee5873795fd06b60e1f13c238c9e3c44d9f6dc76a50fe271793de6ad284e87",
+];
+// Migration (6.1.0-6.1.x installs, docs/migrations.md): replace an unedited adopted machine-lock
+// copy with the queued template; warn about an edited copy that still lacks the queue.
+function migrateMachineLockCopy(dryRun, ws, logPrefix) {
+    const file = path.join("scripts", "ci", "bkit-machine-lock.sh");
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat)
+        return;
+    const tag = dryRun ? "[dry-run] " : "";
+    const templatePath = ".bkit/templates/scripts/ci/bkit-machine-lock.sh";
+    const manual = (reason) => {
+        console.warn(`${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge ${templatePath} by hand, until then waiting runs take the lock out of arrival order`);
+    };
+    if (linkedPath(file) || !stat.isFile()) {
+        manual("the path is not a regular file or sits under a symlink");
+        return;
+    }
+    const current = fs.readFileSync(file);
+    const template = fs.readFileSync(path.join(getTemplatesRoot(), "scripts", "ci", "bkit-machine-lock.sh"));
+    if (current.equals(template))
+        return;
+    if (SHIPPED_MACHINE_LOCK_HASHES.includes(sha256(current))) {
+        if (!dryRun)
+            fs.writeFileSync(file, template);
+        ws.writes.push({ path: file, action: "update", unhashed: true });
+        console.log(`${logPrefix} ${tag}core: ${file} — machine lock now serves waiting runs in arrival order`);
+        return;
+    }
+    if (!current.toString("utf8").includes(".queue"))
+        manual("the copy differs from the shipped version");
 }
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
 function otherWorkflows(skip) {
