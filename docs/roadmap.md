@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T07:01:25Z)_
+_(refreshed 2026-11-13T07:27:06Z)_
 
 ### Design
 
@@ -33,6 +33,7 @@ _(refreshed 2026-11-13T07:01:25Z)_
 | 254-add-pi-dev | 254-add-pi-dev | 1794046179322 |
 | 764-map-each-five | 764-map-each-five | 1793669052601 |
 | 80-audit-workflow | 80-audit-workflow | 1785311294164 |
+| 924-every-workflow-land | 924-every-workflow-land | 1794553962276 |
 
 ### Plan
 
