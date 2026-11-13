@@ -2,7 +2,14 @@
 // copy-and-own template, run for real: real bash, real perl holder, real flock. Each test points
 // XDG_CACHE_HOME at its own folder, so a real run on this machine is never touched or waited on.
 
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessByStdio as ProcessByStdio,
+  type SpawnOptions,
+  spawn,
+  spawnSync,
+} from "node:child_process";
+import type { Readable } from "node:stream";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -31,16 +38,45 @@ interface Result {
 let tmp: string;
 let cache: string;
 let children: ChildProcess[];
+/** A child whose stdout and stderr are pipes. */
+type Piped = ProcessByStdio<null, Readable, Readable>;
 
 beforeEach(() => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-stack-lock-")));
   cache = path.join(tmp, "cache");
   children = [];
 });
-afterEach(() => {
-  for (const child of children) child.kill("SIGKILL");
-  fs.rmSync(tmp, { recursive: true, force: true });
+afterEach(async () => {
+  await Promise.all(children.map(stopGroup));
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 });
+
+/**
+ * Starts a child in its own process group and records it for `afterEach`. A lock holder runs a
+ * perl process in the background that writes into the test's cache folder after its caller dies,
+ * so killing only the child leaves it writing while the folder is removed.
+ */
+function track(command: string, args: string[], opts: SpawnOptions): Piped {
+  const child = spawn(command, args, { ...opts, detached: true }) as Piped;
+  children.push(child);
+  return child;
+}
+
+/** SIGKILLs the child's whole process group, the perl holder included, and waits for the child to exit. */
+async function stopGroup(child: ChildProcess): Promise<void> {
+  const exited =
+    child.exitCode !== null || child.signalCode !== null
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  try {
+    process.kill(-child.pid!, "SIGKILL");
+  } catch (err) {
+    // Everything in the group has already exited: ESRCH, or EPERM on macOS when only zombies are left.
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== "ESRCH" && code !== "EPERM") throw err;
+  }
+  await exited;
+}
 
 /** The test's own lock folder; CI, an inherited owner and a stack name are cleared so the lock really runs. */
 function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
@@ -81,12 +117,11 @@ function hold(
   script = SCRIPT,
   cwd = process.cwd(),
 ) {
-  const child = spawn(
+  const child = track(
     "bash",
     ["-c", `. "${script}"; take_local_stack_lock "${who}" || exit 1; echo locked; sleep ${holdS}`],
     { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
-  children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const lockFile = run("local_stack_lock_file", env, script, cwd);
   const locked = waitForHolder(lockFile.stdout.trim() + ".holder", who, child);
@@ -123,7 +158,7 @@ function holdNamed(
   holdS = 30,
   cwd = process.cwd(),
 ) {
-  const child = spawn(
+  const child = track(
     "bash",
     [
       "-c",
@@ -138,7 +173,6 @@ function holdNamed(
     ],
     { env, cwd, stdio: ["ignore", "pipe", "pipe"] },
   );
-  children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
   const locked = waitForHolder(
     path.join(cache, "bkit", "machine-lock", name + ".lock.holder"),
@@ -160,12 +194,11 @@ function checkout(name: string): { root: string; script: string } {
 /** Observable subprocess output also works when a holder uses a numbered slot. */
 function running(snippet: string, env: NodeJS.ProcessEnv, script = SCRIPT, cwd = process.cwd()) {
   const started = Date.now();
-  const child = spawn("bash", ["-c", `. "${script}"; ${snippet}`], {
+  const child = track("bash", ["-c", `. "${script}"; ${snippet}`], {
     env,
     cwd,
     stdio: ["ignore", "pipe", "pipe"],
   });
-  children.push(child);
   const output = { stdout: "", stderr: "" };
   child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
   child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
@@ -467,7 +500,7 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
   it("terminating a run wrapper stops its gate before another run acquires the tests lock", async () => {
     const env = envFor({ BKIT_TEST_SLOTS: "1", LOCAL_STACK_LOCK_WAIT_S: "0" });
     const pidFile = path.join(tmp, "gate.pid");
-    const wrapper = spawn(
+    const wrapper = track(
       "bash",
       [
         SCRIPT,
@@ -484,7 +517,6 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
       ],
       { env, stdio: "ignore" },
     );
-    children.push(wrapper);
     await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
     const gatePid = Number(fs.readFileSync(pidFile, "utf-8").trim());
     expect(gatePid).toBeGreaterThan(0);
@@ -1145,12 +1177,11 @@ function wrapped(
 ) {
   const started = Date.now();
   const args = [opts.script ?? SCRIPT, "run", who, ...(opts.lock ? ["--lock", opts.lock] : [])];
-  const child = spawn("bash", [...args, "--", "bash", "-c", command], {
+  const child = track("bash", [...args, "--", "bash", "-c", command], {
     env,
     cwd: process.cwd(),
     stdio: ["ignore", "pipe", "pipe"],
   });
-  children.push(child);
   const output = { stdout: "", stderr: "" };
   child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
   child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
@@ -1597,7 +1628,7 @@ describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
     const env = waitEnv();
     const order = path.join(tmp, "order");
     const holder = await queueHolder(env, "tests");
-    const child = spawn(
+    const child = track(
       "bash",
       [
         "-c",
@@ -1605,7 +1636,6 @@ describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
       ],
       { env, cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"] },
     );
-    children.push(child);
     let stderr = "";
     child.stderr.on("data", (data: Buffer) => (stderr += data.toString()));
     const done = new Promise<number | null>((resolve) =>
