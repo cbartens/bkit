@@ -14,8 +14,16 @@
 BKIT_GUARDED_KEYS="user.name user.email core.bare core.worktree"
 BKIT_GUARDED_PATTERN='^(user\.(name|email)|core\.(bare|worktree))$'
 
+# Every bats test gets a time limit, so a hung test fails with `timeout after` and the run ends
+# (docs/testing.md § Time limits). node's runners pass BATS_TEST_TIMEOUT already; `pnpm bkit:test:bats`
+# runs no node code first. 30s under CI, else 180s (30s x MAX_LOAD_FACTOR 6 in vitest.timeout-budget.ts).
 setup_suite() {
   local var common
+  if [ -n "${CI:-}" ]; then
+    export BATS_TEST_TIMEOUT="${BATS_TEST_TIMEOUT:-30}"
+  else
+    export BATS_TEST_TIMEOUT="${BATS_TEST_TIMEOUT:-180}"
+  fi
   for var in $(compgen -e); do
     case "$var" in GIT_*) unset "$var" ;; esac
   done

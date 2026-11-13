@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T22:04:09Z)_
+_(refreshed 2026-11-13T22:26:36Z)_
 
 ### Design
 
@@ -73,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 929-hung-test-never | 929-hung-test-never | 1794608796745 |
 | 930-build-tick-green | 930-build-tick-green | 1794607449835 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794576192090 |
 | 922-pre-push-load | 922-pre-push-load | 1794553285735 |
@@ -82,7 +83,6 @@ _(none)_
 | 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
 | 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
-| 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

@@ -77,8 +77,20 @@ try {
   // Node older than 22.5: the SQLite hosts' tests are skipped
 }
 
+// One root test stays open for the whole file, and the tests below are its subtests. Without it,
+// `node --test --test-force-exit` ends the run between two awaited top-level tests.
+let endRoot;
+const root = await new Promise((resolve) => {
+  nodeTest("bkit-harvest", (t) => {
+    resolve(t);
+    return new Promise((end) => {
+      endRoot = end;
+    });
+  });
+});
+
 const test = (name, fn, { needsSqlite = false } = {}) =>
-  nodeTest(name, { skip: needsSqlite && !sqlite ? "no node:sqlite" : false }, fn);
+  root.test(name, { skip: needsSqlite && !sqlite ? "no node:sqlite" : false }, fn);
 
 const SHA = "d3187b9daa21f7652a4d85f3c89aae040280b72b";
 const SHA2 = "0123456789abcdef0123456789abcdef01234567";
@@ -3073,3 +3085,4 @@ function fingerprintNone(n) {
 }
 
 fs.rmSync(tmp, { recursive: true, force: true });
+endRoot();

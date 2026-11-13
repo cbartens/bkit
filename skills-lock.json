@@ -7,6 +7,12 @@
       "skillPath": "skills/bash-scripting/SKILL.md",
       "computedHash": "65eb8decc0f08c2761e9219ce9c266fb771c1850e881290866b5d524fc3474c9"
     },
+    "bats-testing-patterns": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "skillPath": "plugins/shell-scripting/skills/bats-testing-patterns/SKILL.md",
+      "computedHash": "352fe7871adc33210cbb48836c6ac5378560a9f6925be61957d21303170a0434"
+    },
     "brainstorming": {
       "source": "obra/superpowers",
       "ref": "v5.0.7",
@@ -92,7 +98,7 @@
       "source": "wshobson/agents",
       "sourceType": "github",
       "skillPath": "plugins/javascript-typescript/skills/typescript-advanced-types/SKILL.md",
-      "computedHash": "8cbf2bf600f392d7260e476e3202932a876e2281cda3b15a8b6a5a43f383252d"
+      "computedHash": "34c5b3863fde1fc85981ac583ecaf0140471b374d0b7002ac5bc0bea2cf38b24"
     },
     "using-git-worktrees": {
       "source": "obra/superpowers",
@@ -120,12 +126,6 @@
       "sourceType": "github",
       "skillPath": "skills/vitest/SKILL.md",
       "computedHash": "bd95e41d66d76da9008893c9bc48c30f0a68f352cd2b00017767f5e4c129501d"
-    },
-    "vitest": {
-      "source": "antfu/skills",
-      "sourceType": "github",
-      "skillPath": "skills/vitest/SKILL.md",
-      "computedHash": "90f1cee9326269c91b46a601b3a575491505d8e771009dacff01329381d45291"
     },
     "writing-plans": {
       "source": "obra/superpowers",

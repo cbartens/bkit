@@ -106,3 +106,29 @@ describe("tests/shell/setup_suite.bash", () => {
     expect(configValue(run.config, "core.bare")).toBe("false");
   });
 });
+
+describe("a bats test's time limit", () => {
+  it("a hanging bats test fails with timeout after", { timeout: 100_000 }, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-bats-suite-"));
+    temps.push(dir);
+    fs.copyFileSync(SETUP_SUITE, path.join(dir, "setup_suite.bash"));
+    fs.writeFileSync(
+      path.join(dir, "hang.bats"),
+      "#!/usr/bin/env bats\n\n" + '@test "hang probe sleeps" {\n  sleep 120\n}\n',
+    );
+    const env: NodeJS.ProcessEnv = { ...process.env, CI: "true" };
+    delete env.BATS_TEST_TIMEOUT;
+    const started = Date.now();
+    const res = spawnSync(BATS, [dir], {
+      cwd: ROOT,
+      encoding: "utf-8",
+      timeout: 85_000,
+      env,
+    });
+    const out = `${res.stdout}\n${res.stderr}`;
+    expect(res.error, out).toBeUndefined();
+    expect(res.status, out).not.toBe(0);
+    expect(out).toContain("timeout after");
+    expect(Date.now() - started).toBeLessThan(80_000);
+  });
+});

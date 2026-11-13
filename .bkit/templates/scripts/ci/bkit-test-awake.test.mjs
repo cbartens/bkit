@@ -32,7 +32,10 @@ function cancellationFixture(t, command) {
     const path = require("node:path");
     const file = (name) => path.join(__dirname, name);
     for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"])
-      process.on(signal, () => fs.writeFileSync(file("cancelled"), signal));
+      process.on(signal, () => {
+        fs.writeFileSync(file("cancelled.tmp"), signal);
+        fs.renameSync(file("cancelled.tmp"), file("cancelled"));
+      });
     fs.writeFileSync(file("ready.tmp"), JSON.stringify({
       pid: process.pid,
       owner: Number(process.env.LOCAL_STACK_LOCK_OWNER_awake || 0),

@@ -1,16 +1,21 @@
 // vitest.setup.ts — runs in every test worker before its test files load.
 //
-// Four jobs: strip inherited git environment variables (below), fail any test that
+// Five jobs: strip inherited git environment variables (below), fail any test that
 // changes the git identity or core.bare of the repo the suite runs from, point the bkit
 // config and cache folders at an empty temp folder, and re-read the load-scaled test
-// budget as each test file starts (bottom, via vitest.timeout-budget.ts).
+// budget as each test file starts (bottom, via vitest.timeout-budget.ts), and give every
+// synchronous child call that sets no `timeout` the running test's remaining time, so a hung
+// child fails the test instead of blocking the worker (vitest.child-deadline.ts).
 //
 // `globals` is not enabled in vitest.config.ts, so these are imported, not free.
+import childProcess from "node:child_process";
 import * as fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterAll, afterEach, expect, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, expect, type Task, vi } from "vitest";
 
+import { withChildDeadline } from "./vitest.child-deadline.ts";
 import { guardRepoConfig, repoConfigFile } from "./vitest.repo-config-guard.ts";
 import { tierTimeouts } from "./vitest.timeout-budget.ts";
 
@@ -113,6 +118,63 @@ if (testPath.includes(`${path.sep}audits${path.sep}hooks${path.sep}`)) {
 // the same budget once at load; this overrides it per file. CI pins the factor to 1
 // (in `loadFactor`), so the gate stays strict there.
 vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));
+const { hookTimeout } = tierTimeouts(testPath.endsWith(".integration.test.ts"));
+
+// Child limit: a synchronous child call blocks the worker, so Vitest's test timeout cannot fire
+// during it. Each call without its own `timeout` gets a limit from where it runs, read from the
+// hook state Vitest records on the running test (`task.result.hooks`, set to "run" while a
+// `beforeEach` / `afterEach` hook runs, and kept across an `await`):
+//   - in an each-hook (the file's own `beforeEach` / `afterEach`): the test's remaining time, never
+//     less than the file's hook timeout, because an `afterEach` runs after the body has used its time;
+//   - in the test body: the test's timeout counted from when the body starts (the moment Vitest marks
+//     the `beforeEach` hooks "pass"), so time spent in `beforeEach` hooks is not taken off the body and
+//     time spent in the body before the call is (Vitest's own test timeout starts at the body);
+//   - outside a test (file-level code): the hook timeout.
+// Clock taken when the setup file loads, before a test can mock `Date`: the child limit counts real time.
+const realNow = Date.now.bind(Date);
+let currentTask: Task | undefined;
+let testDeadline: number | undefined;
+let bodyStart: number | undefined;
+beforeEach((ctx) => {
+  currentTask = ctx.task;
+  const limit = ctx.task.timeout;
+  testDeadline = realNow() + (limit > 0 ? limit : hookTimeout);
+  bodyStart = undefined;
+  // Vitest sets `hooks.beforeEach = "pass"` right before it runs the test body. Observe that write
+  // with an accessor on the hook-state object, so the body's start is known without a child call.
+  const result = ctx.task.result;
+  if (result === undefined) return;
+  let state = result.hooks?.beforeEach;
+  const hooks = { ...result.hooks };
+  Object.defineProperty(hooks, "beforeEach", {
+    enumerable: true,
+    configurable: true,
+    get: () => state,
+    set: (next: typeof state) => {
+      state = next;
+      if (next === "pass") bodyStart = realNow();
+    },
+  });
+  result.hooks = hooks;
+});
+afterEach(() => {
+  currentTask = undefined;
+  testDeadline = undefined;
+  bodyStart = undefined;
+});
+
+function inEachHook(): boolean {
+  const hooks = currentTask?.result?.hooks;
+  return hooks?.beforeEach === "run" || hooks?.afterEach === "run";
+}
+withChildDeadline(childProcess, () => {
+  if (currentTask === undefined || testDeadline === undefined) return hookTimeout;
+  if (inEachHook()) return Math.max(hookTimeout, testDeadline - realNow());
+  const limit = currentTask.timeout > 0 ? currentTask.timeout : hookTimeout;
+  bodyStart ??= realNow();
+  return bodyStart + limit - realNow();
+});
+syncBuiltinESMExports();
 
 // Every test runs as on a laptop: GitHub Actions sets `GITHUB_ACTIONS` and `CI`, and the
 // engine reads those (and the cloud markers) as "headless, nobody to ask"

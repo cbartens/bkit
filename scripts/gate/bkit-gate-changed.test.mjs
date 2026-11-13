@@ -38,3 +38,16 @@ test("format still fails a changed regular file prettier would rewrite", (t) => 
   assert.equal(res.status, 1, res.stdout + res.stderr);
   assert.match(res.stderr, /failed: format/);
 });
+
+test("passes the limit args to the node --test stage", (t) => {
+  const dir = scratch(t);
+  const probe = join(dir, "gate-limit-probe.test.mjs");
+  writeFileSync(
+    probe,
+    'import { test } from "node:test";\n\ntest("limit probe passes", () => {});\n',
+  );
+  const res = gate(relative(root, probe));
+  const out = res.stdout + res.stderr;
+  assert.match(out, /named: node --test .*--test-timeout=\d+/, out);
+  assert.match(out, /named: node --test .*--test-force-exit/, out);
+});

@@ -159,3 +159,41 @@ describe("bkit:lint:file passes a test file its linter does not cover", () => {
     expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0);
   });
 });
+
+describe("bkit:test:file ends a node --test file whose test awaits a child that never exits", () => {
+  it(
+    "node — a test awaiting a child that never exits fails within the limit",
+    { timeout: 100_000 },
+    () => {
+      const dir = tempDir();
+      const file = path.join(dir, "hang.test.mjs");
+      // The child quits by itself after 90s so a failed limit never leaves it behind.
+      fs.writeFileSync(
+        file,
+        'import { spawn } from "node:child_process";\n' +
+          'import { once } from "node:events";\n' +
+          'import { test } from "node:test";\n\n' +
+          'test("hang probe awaits a child", async () => {\n' +
+          '  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 90000)"], { stdio: "ignore" });\n' +
+          '  await once(child, "exit");\n' +
+          "});\n",
+      );
+      const report = path.join(dir, "junit.xml");
+      const started = Date.now();
+      const res = spawnSync("pnpm", ["-s", "bkit:test:file", file], {
+        cwd: ROOT,
+        encoding: "utf-8",
+        timeout: 85_000,
+        env: { ...process.env, CI: "true", [REPORT_ENV]: report },
+      });
+      const elapsed = Date.now() - started;
+      expect(res.error, `${res.stdout}\n${res.stderr}`).toBeUndefined();
+      expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(1);
+      expect(elapsed).toBeLessThan(80_000);
+      const cases = parseJunit(fs.readFileSync(report, "utf-8"));
+      expect(
+        cases.filter((c) => isNamedCase(c.name, "hang probe awaits a child")).map((c) => c.state),
+      ).toEqual(["failure"]);
+    },
+  );
+});

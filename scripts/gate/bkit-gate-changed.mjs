@@ -15,6 +15,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
+import { batsTestTimeoutSeconds, nodeTestLimitArgs } from "../ci/bkit-test-limits.mjs";
+
 const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const bin = (name) => path.join(ROOT, "node_modules", ".bin", name);
 
@@ -27,9 +29,9 @@ const GENERIC_NAMES = new Set(["index.ts", "index.mjs", "package.json", "README.
 const kindOf = (file) =>
   file.endsWith(".bats") ? "bats" : file.endsWith(".mjs") ? "node" : "vitest";
 
-function run(stage, cmd, args) {
+function run(stage, cmd, args, env = process.env) {
   console.log(`\n[bkit:gate:changed] ${stage}: ${[path.basename(cmd), ...args].join(" ")}`);
-  const res = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit" });
+  const res = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", env });
   if (res.error) {
     console.error(`[bkit:gate:changed] ${stage}: ${cmd} could not run — ${res.error.message}`);
     return 1;
@@ -74,8 +76,18 @@ else {
   if (byKind("vitest").length > 0)
     stage("named", run("named", bin("vitest"), ["run", "--passWithNoTests", ...byKind("vitest")]));
   if (byKind("node").length > 0)
-    stage("named", run("named", process.execPath, ["--test", ...byKind("node")]));
-  if (byKind("bats").length > 0) stage("named", run("named", bin("bats"), byKind("bats")));
+    stage(
+      "named",
+      run("named", process.execPath, ["--test", ...nodeTestLimitArgs(), ...byKind("node")]),
+    );
+  if (byKind("bats").length > 0)
+    stage(
+      "named",
+      run("named", bin("bats"), byKind("bats"), {
+        ...process.env,
+        BATS_TEST_TIMEOUT: process.env.BATS_TEST_TIMEOUT || String(batsTestTimeoutSeconds()),
+      }),
+    );
 }
 
 const engineTs = files.filter((f) => f.startsWith(".bkit/core/engine/") && f.endsWith(".ts"));

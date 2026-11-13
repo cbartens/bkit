@@ -8,6 +8,11 @@ overrides:
   vite: 6.4.5
   esbuild: ^0.28.0
 
+patchedDependencies:
+  bats@1.13.0:
+    hash: 9f80abc1acebf95b25e18ef2d14667d1ef4c3792095b72d8257009a1c92b5155
+    path: patches/bats@1.13.0.patch
+
 importers:
 
   .:
@@ -24,7 +29,7 @@ importers:
         version: 5.0.5(vitest@5.0.5)
       bats:
         specifier: 1.13.0
-        version: 1.13.0
+        version: 1.13.0(patch_hash=9f80abc1acebf95b25e18ef2d14667d1ef4c3792095b72d8257009a1c92b5155)
       bkit:
         specifier: link:.
         version: 'link:'
@@ -1460,7 +1465,7 @@ snapshots:
       estree-walker: 3.0.3
       js-tokens: 10.0.0
 
-  bats@1.13.0: {}
+  bats@1.13.0(patch_hash=9f80abc1acebf95b25e18ef2d14667d1ef4c3792095b72d8257009a1c92b5155): {}
 
   braces@3.0.3:
     dependencies:

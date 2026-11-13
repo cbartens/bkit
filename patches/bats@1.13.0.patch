@@ -1,0 +1,23 @@
+diff --git a/bin/bats b/bin/bats
+index 25ad051b514c1f9529d9caa52c9926e4694a51f6..940eccf88845d787abd75826a87ad2023d1ea9f3 100755
+--- a/bin/bats
++++ b/bin/bats
+@@ -72,4 +72,4 @@ BATS_BASE_LIBDIR=lib # this will be patched with the true value in install.sh
+ 
+ export BATS_ROOT=${BATS_PATH%/*/*}
+ export -f bats_readlinkf
+-exec env BATS_ROOT="$BATS_ROOT" BATS_LIBDIR="${BATS_BASE_LIBDIR:-lib}" "$BATS_ROOT/libexec/bats-core/bats" "$@"
++exec env BATS_ROOT="$BATS_ROOT" BATS_LIBDIR="${BATS_BASE_LIBDIR:-lib}" bash "$BATS_ROOT/libexec/bats-core/bats" "$@"
+diff --git a/libexec/bats-core/bats-exec-test b/libexec/bats-core/bats-exec-test
+index 2b956aab46a6a5d50749da8e8b15125e0ba14acb..121f4e99eade2a1a1f41630dc621dd321881c63d 100755
+--- a/libexec/bats-core/bats-exec-test
++++ b/libexec/bats-core/bats-exec-test
+@@ -335,7 +335,7 @@ bats_perform_test() {
+ 
+   if [[ -n "${BATS_TEST_TIMEOUT:-}" ]]; then
+     bats_start_timeout_countdown "$BATS_TEST_TIMEOUT"
+-    declare -r BATS_killer_pid=$!
++    BATS_killer_pid=$!
+   fi
+   BATS_TEST_COMPLETED=
+   BATS_TEST_SKIPPED=${BATS_TEST_SKIPPED-}

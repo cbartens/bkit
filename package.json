@@ -101,7 +101,7 @@
     "instructions:sync": "tsx .bkit/core/engine/tools/instructions.ts --write",
     "cli:sync": "tsx .bkit/core/engine/tools/cli-doc.ts --write",
     "prepare": "husky",
-    "bkit:test:awake": "node scripts/ci/bkit-test-awake.mjs node --test scripts/ci/bkit-test-awake.test.mjs"
+    "bkit:test:awake": "node scripts/ci/bkit-test-awake.mjs node scripts/ci/bkit-test-file.mjs scripts/ci/bkit-test-awake.test.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.2",
@@ -124,6 +124,9 @@
     "overrides": {
       "vite": "$vite",
       "esbuild": "^0.28.0"
+    },
+    "patchedDependencies": {
+      "bats@1.13.0": "patches/bats@1.13.0.patch"
     }
   },
   "bkit": {
