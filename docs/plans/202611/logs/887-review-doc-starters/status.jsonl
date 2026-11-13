@@ -37,3 +37,12 @@
 {"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-11-13T23:42:20Z","parentSha":"5cb5f885f4aa2d20fe0a0be61c27e91864f65e50","artifacts":[]}
 {"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:20Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-13T23:42:20Z","parentSha":"5cb5f885f4aa2d20fe0a0be61c27e91864f65e50","artifacts":["docs/plans/202611/logs/887-review-doc-starters/plan-input-1.md"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:27Z","noun":"status","verb":"resume","flags":["workflow","file"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:33Z","noun":"counters","verb":"route","flags":["name","of","file","workflow","max","continue","exceeded"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:42:33Z","noun":"ledgers","verb":"query","flags":["ledger","status","limit"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:54:29Z","noun":"steps","verb":"stub","flags":["agent","result-file","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:54:29Z","noun":"steps","verb":"stub","flags":["agent","result-file","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:54:29Z","noun":"steps","verb":"stub","flags":["agent","result-file","to"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-13T23:54:30Z","noun":"steps","verb":"finish","flags":["file","workflow","step","attempt","agent","artifact","message","number","post","title"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-review/-/1/comment","hash":"34d4f6206378044dbf7e6095bae36399712c178b19be54a488ff9efbd90afdbc","ref":"https://github.com/cbartens/bkit/issues/887#issuecomment-6867955495","at":"2026-11-13T23:54:31Z"}
+{"type":"step-done","workflow":"plan","step":"plan-review","status":"DONE","at":"2026-11-13T23:54:31Z","parentSha":"7f76715a121cd133b7106ba097e470664b7bd171","artifacts":["docs/plans/202611/logs/887-review-doc-starters/plan-review-1.md","docs/plans/202611/logs/887-review-doc-starters/plan-review-2.md","docs/plans/202611/logs/887-review-doc-starters/plan-scope-check.md"],"verdict":"CONCERNS","attempt":1,"failures":25}
