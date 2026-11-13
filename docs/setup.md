@@ -108,5 +108,5 @@ pnpm exec bkit doctor        # token + advisory sweep (rewrites .bkit/advisories
 
 - **`bkit check` reports `.bkit/version` drift** — `pnpm add -D @cbartens/bkit@<new>` without `pnpm exec bkit install`. Re-run install; commit resync.
 - **Linear preflight blocks session** — issue missing `bkit:auto` or in `Done` / `Cancelled`. Add `bkit:auto`, set non-terminal state. (All labels use `bkit:` prefix.)
-- **Lockfile merge conflict in a workflow** — `bkit branches sync --merge` takes the integration branch's lockfile and regenerates it with the project's package manager. Other unresolved files stay conflicted for the ship conflict resolver; see `.bkit/workflows.md` § `/bkit-ship` — 14 steps.
+- **Lockfile merge conflict in a workflow** — `bkit branches sync --merge` takes the integration branch's lockfile and regenerates it with the project's package manager. Other unresolved files stay conflicted for the ship conflict resolver; see `.bkit/workflows.md` § `/bkit-ship` — 12 steps.
 - **Cloud snapshot stuck on stale vale (Claude)** — run `pnpm bkit install`, which re-stamps the `# cache-bust` line, then paste the new setup script to force a rebuild.

@@ -58,10 +58,10 @@ const setUp = (workflow: ResumableWorkflow) => [
 ];
 
 describe("workflow progress", () => {
-  it("runProgress flat workflow", () => {
+  it("workflow progress runProgress flat workflow", () => {
     expect(runProgress({ workflow: "ship", step: "ship-merge-pr" })).toMatchObject({
-      percent: 71,
-      progressLine: "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR",
+      percent: 83,
+      progressLine: "Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR",
     });
   });
 
@@ -116,8 +116,8 @@ describe("workflow progress", () => {
     }
   });
 
-  it("runProgress all workflow numbers", () => {
-    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 14 };
+  it("workflow progress runProgress all workflow numbers", () => {
+    const totals = { design: 12, plan: 8, build: 16, debug: 11, ship: 12 };
     for (const workflow of Object.keys(totals) as ResumableWorkflow[]) {
       for (const position of WORKFLOW_STEPS[workflow]) {
         const result = runProgress({ workflow, number: position.number });
@@ -128,10 +128,10 @@ describe("workflow progress", () => {
       }
     }
     expect(runProgress({ workflow: "ship", number: 3 }).progressLine).toBe(
-      "Progress: ██░░░░░░░░ 21% · Step 3/14 Base Check",
+      "Progress: ███░░░░░░░ 25% · Step 3/12 Base Check",
     );
     expect(runProgress({ workflow: "ship", number: 9 }).progressLine).toBe(
-      "Progress: ██████░░░░ 64% · Step 9/14 Re-validate",
+      "Progress: ████████░░ 75% · Step 9/12 Re-validate",
     );
     expect(runProgress({ workflow: "build", step: "build-plan-tests" }).percent).toBe(
       runProgress({ workflow: "build", step: "build-plan-tasks" }).percent,
@@ -152,15 +152,15 @@ describe("workflow progress", () => {
     expect(empty).toEqual(missing);
   });
 
-  it("runProgress attempt suffix", () => {
+  it("workflow progress runProgress attempt suffix", () => {
     expect(
       runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 1, max: 3 }).progressLine,
-    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR");
+    ).toBe("Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR");
     expect(
       runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2, max: 3 }).progressLine,
-    ).toBe("Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2 of 3");
+    ).toBe("Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR · Attempt 2 of 3");
     expect(runProgress({ workflow: "ship", step: "ship-merge-pr", attempt: 2 }).progressLine).toBe(
-      "Progress: ███████░░░ 71% · Step 10/14 Merge Gate + Merge PR · Attempt 2",
+      "Progress: ████████░░ 83% · Step 10/12 Merge Gate + Merge PR · Attempt 2",
     );
   });
 
@@ -294,17 +294,18 @@ describe("bkit status resume", () => {
     });
   });
 
-  it.each([
-    ["PASS", { step: "ship-failure-remediate", number: 12, after: "ship-failure-remediate" }],
-    ["FAIL", { step: "ship-merge-pr", number: 10, after: "ship-failure-remediate" }],
-  ])("a ship failure-remediate %s row resumes at %o", async (verdict, expected) => {
+  it("bkit status resume ignores ship rows for the removed failure steps", async () => {
     const file = log([
       ...setUp("ship"),
       done("ship", "ship-merge-pr"),
       done("ship", "ship-failure-diagnose"),
-      done("ship", "ship-failure-remediate", { verdict }),
+      done("ship", "ship-failure-remediate", { verdict: "PASS" }),
     ]);
-    expect((await resume("ship", file)).json).toMatchObject(expected);
+    expect((await resume("ship", file)).json).toMatchObject({
+      step: "ship-merge-pr",
+      number: 10,
+      after: "ship-merge-pr",
+    });
   });
 
   it("a retry decision with no loop row before it places no resume point", async () => {

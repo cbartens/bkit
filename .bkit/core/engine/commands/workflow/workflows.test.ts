@@ -942,6 +942,96 @@ describe("bkit workflows fail", () => {
     expect((await run(cwd, wf("fail", "build"))).json.comment).toBeNull();
   });
 
+  it("bkit workflows fail --next-step adds a Next step line to the failure comment and prints nextStep", async () => {
+    const cwd = repo();
+    write(cwd, "tmp/error.md", "CI is red\n\n");
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "ship",
+        "--step-number=10",
+        "--step-title=Merge Gate + Merge PR",
+        "--error-file=tmp/error.md",
+        "--next-step=/bkit-debug 911-ship-failed-merge",
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.nextStep).toBe("/bkit-debug 911-ship-failed-merge");
+    expect(r.json.comment).toContain("Next step: `/bkit-debug 911-ship-failed-merge`");
+    expect(r.json.comment).toContain("Error: CI is red");
+  });
+
+  it("bkit workflows fail refuses a multi-line or non-/bkit- --next-step before any write", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    const before = fs.readFileSync(statusOf(cwd), "utf-8");
+    for (const bad of ["/bkit-debug a\n/bkit-debug b", "rm -rf /", "bkit-debug x"]) {
+      const r = await run(cwd, wf("fail", "build", `--month=${M}`, token, `--next-step=${bad}`));
+      expect(r.code).toBe(6);
+      expect(r.err).toContain("--next-step must be one /bkit-* command line");
+    }
+    expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(before);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-failed")).toBe(false);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(true);
+  });
+
+  it("bkit workflows fail refuses a bad --next-step with an exit code no other usage error shares", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    // A usage error raised after the state write: a step number that is not a number.
+    const other = await run(
+      cwd,
+      wf("fail", "build", `--month=${M}`, token, "--step-number=x", "--step-title=Some step"),
+    );
+    expect(other.code).toBe(2);
+    expect(other.err).toContain('--step-number "x" is not a step number');
+    const refused = await run(
+      cwd,
+      wf("fail", "build", `--month=${M}`, token, "--next-step=rm -rf /"),
+    );
+    expect(refused.err).toContain("--next-step must be one /bkit-* command line");
+    expect(refused.code).not.toBe(0);
+    expect(refused.code).not.toBe(other.code);
+    expect(refused.code).not.toBe(2);
+  });
+
+  it("bkit workflows fail refuses an unsubstituted --next-step placeholder with the --next-step refusal exit", async () => {
+    const cwd = repo();
+    const started = await run(cwd, wf("start", "build"));
+    const token = `--token=${started.json.lock.token}`;
+    const before = fs.readFileSync(statusOf(cwd), "utf-8");
+    for (const bad of ["/bkit-debug {FID}", "{NEXT_STEP}"]) {
+      const r = await run(cwd, wf("fail", "build", `--month=${M}`, token, `--next-step=${bad}`));
+      expect(r.err).toContain("--next-step carries the unsubstituted placeholder");
+      expect(r.code).toBe(6);
+    }
+    expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(before);
+    expect(rows(statusOf(cwd)).some((x) => x.type === "workflow-failed")).toBe(false);
+    expect(fs.existsSync(path.join(cwd, REL, ".lock"))).toBe(true);
+  });
+
+  it("bkit workflows fail treats an empty --next-step as absent", async () => {
+    const cwd = repo();
+    write(cwd, "tmp/error.md", "CI is red\n\n");
+    const r = await run(
+      cwd,
+      wf(
+        "fail",
+        "ship",
+        "--step-number=10",
+        "--step-title=Merge Gate + Merge PR",
+        "--error-file=tmp/error.md",
+        "--next-step=",
+      ),
+    );
+    expect(r.code).toBe(0);
+    expect(r.json.nextStep).toBeNull();
+    expect(r.json.comment).not.toContain("Next step:");
+  });
+
   it("a debug run in SOAK mode always needs a handover", async () => {
     const cwd = repo();
     write(
@@ -3216,14 +3306,14 @@ describe("bkit workflows summary", () => {
     `# Plan\n\n<!-- bkit:group 1 start -->\n### GROUP 1: Work\n${tasks.join("\n")}\n<!-- bkit:group 1 end -->\n`;
 
   /** A github-tracked tree with one build run's status rows. */
-  function tree(steps: object[], plan?: string) {
+  function tree(steps: object[], plan?: string, workflow = "build") {
     const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-summary-")));
     dirs.push(cwd);
     write(cwd, "package.json", JSON.stringify({ bkit: { tracker: { default: "github" } } }));
     write(
       cwd,
       `${SREL}/status.jsonl`,
-      jsonl([{ type: "workflow-started", workflow: "build", at: START }, ...steps]),
+      jsonl([{ type: "workflow-started", workflow, at: START }, ...steps]),
     );
     if (plan !== undefined) write(cwd, `docs/plans/${M}/${SFID}-plan.md`, plan);
     return cwd;
@@ -3256,6 +3346,27 @@ describe("bkit workflows summary", () => {
     expect((await run(cwd, base)).code).toBe(0);
     expect(md()).toContain("Publish: pr");
     expect((await run(cwd, [...base, "--publish=maybe"])).code).toBe(2);
+  });
+
+  it("lists ship-failure rows from a run started before their removal", async () => {
+    const cwd = tree(
+      [
+        done("ship-merge-pr", "2020-01-01T00:10:00Z", { workflow: "ship" }),
+        done("ship-failure-diagnose", "2020-01-01T00:11:00Z", { workflow: "ship" }),
+        done("ship-failure-remediate", "2020-01-01T00:12:00Z", {
+          workflow: "ship",
+          verdict: "PASS",
+          strategy: "STANDARD",
+        }),
+      ],
+      undefined,
+      "ship",
+    );
+    const r = await summarize(cwd, "ship");
+    expect(r.code).toBe(0);
+    const md = fs.readFileSync(path.join(cwd, SREL, "ship-summary.md"), "utf-8");
+    expect(md).toContain("ship-failure-diagnose");
+    expect(md).toContain("ship-failure-remediate");
   });
 
   it("summary is FAIL when a plan task is not done", async () => {

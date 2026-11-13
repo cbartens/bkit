@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T07:27:06Z)_
+_(refreshed 2026-11-13T13:23:12Z)_
 
 ### Design
 
@@ -49,7 +49,6 @@ _(refreshed 2026-11-13T07:27:06Z)_
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
-| 911-ship-failed-merge | 911-ship-failed-merge | 1794296871309 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794364935242 |
 
@@ -74,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 911-ship-failed-merge | 911-ship-failed-merge | 1794576192090 |
 | 922-pre-push-load | 922-pre-push-load | 1794553285735 |
 | 903-build-owner-s | 903-build-owner-s | 1794552564939 |
 | 912-debug-loop-question | 912-debug-loop-question | 1794551937547 |
@@ -83,7 +83,6 @@ _(none)_
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
-| 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

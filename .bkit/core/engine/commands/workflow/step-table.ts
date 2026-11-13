@@ -176,25 +176,15 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
     { step: "ship-prune-skills", number: 7, title: "Prune Skills" },
     { step: "ship-bookkeeping-push", number: 8, title: "Commit + Push Bookkeeping" },
     { number: 9, title: "Re-validate" },
-    // The merge gate reads the PR state again: a merged PR goes on to Step 13.
+    // The merge gate reads the PR state again: a merged PR goes on to Step 11.
     {
       step: "ship-merge-pr",
       number: 10,
       title: "Merge Gate + Merge PR",
       resumeAt: "ship-merge-pr",
     },
-    { step: "ship-failure-diagnose", number: 11, title: "Failure Diagnose" },
-    // A PASS fix is committed and pushed at Step 12 sub-step 4 (a re-run commits nothing
-    // new), then re-validated at Step 9; any other verdict re-reads the PR at Step 10.
-    {
-      step: "ship-failure-remediate",
-      number: 12,
-      title: "Failure Remediate",
-      resumeAt: "ship-merge-pr",
-      resumeOnVerdict: { PASS: "ship-failure-remediate" },
-    },
-    { step: "ship-switch-to-dev", number: 13, title: "Update Local Dev" },
-    { step: "ship-close-workflow", number: 14, title: "Close Workflow" },
+    { step: "ship-switch-to-dev", number: 11, title: "Update Local Dev" },
+    { step: "ship-close-workflow", number: 12, title: "Close Workflow" },
   ],
 };
 

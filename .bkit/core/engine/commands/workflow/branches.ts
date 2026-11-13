@@ -2707,7 +2707,7 @@ function syncVerb(ctx: RunContext): number {
 }
 
 /**
- * Ship Step 13: after the merge, bring local dev up to origin/dev by a pure
+ * Ship Step 11: after the merge, bring local dev up to origin/dev by a pure
  * fast-forward without checking anything out, then a frozen install when the
  * main checkout is on dev and moved. Never pushes.
  */

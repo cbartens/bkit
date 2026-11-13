@@ -622,8 +622,6 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "plan-review": ["plan-review"],
   "plan-apply-review": ["plan-apply-review"],
   "ship-merge-pr": ["ship-merge-pr"],
-  "ship-failure-diagnose": ["ship-merge-pr"],
-  "ship-failure-remediate": ["ship-merge-pr"],
 };
 
 interface MappingViolation {

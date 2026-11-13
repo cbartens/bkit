@@ -339,7 +339,7 @@ Cursor Cloud automation uses `composer-2.5` for metadata / API plumbing, and the
 | `bkit-build-challenge-1` | Adversarial review of `git diff origin/dev...HEAD` — bug-hunting lens; effort slot 1 (`high`). Parallel with `-2`. Writes each finding as one task block — `Severity`, `Class` (`mechanical\|architectural`), `Fixable`, `Location`, `DONE WHEN`, `TEST FIRST` within the per-task `bkit.workflows.tasks` caps the workflow passes in Context — that `bkit challenge merge` appends to the plan as a new last group. Reads each `TEST FIRST` test's logic against the code the diff leaves: it must fail there, or `tests red` refuses it as `passed` and the fix task blocks; a finding an existing plan task or test already covers gets no block. Never references sibling output (circular reasoning guard). |
 | `bkit-build-challenge-2` | Same as `-1` — security lens; effort slot 2 (`high` on Claude / opus — depth-sensitive; Grok on Cursor — first-party depth, same native pool as `-1`). |
 
-> **Cross-phase reuse:** Build Steps 12-13 and Ship Steps 11-12 invoke `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` (in-build test failures, in-ship merge failures). See the Debug Phase entries.
+> **Cross-phase reuse:** Build Steps 12-13 invoke `bkit-debug-failure-diagnose` / `bkit-debug-failure-remediate` (in-build test failures). See the Debug Phase entries.
 
 ## Debug Phase
 

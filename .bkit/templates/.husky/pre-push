@@ -140,7 +140,7 @@ esac
 # gh absent -> allow. `bkit ci skip-token` exits 0 when HEAD's message carries one of
 # the tokens GitHub honours; bkit owns that list.
 # Exception, the same one ship's merge gate makes: a push that adds only files on ship's
-# `--scope=pr` allow-list (.bkit/workflows.md § `/bkit-ship` — 14 steps) on top of the
+# `--scope=pr` allow-list (.bkit/workflows.md § `/bkit-ship` — 12 steps) on top of the
 # head the remote already holds leaves nothing new for CI to test, so the PR's checks at
 # that head still cover the code. `bkit ci bookkeeping-push` exits 0 for exactly that
 # shape. A rewritten head (force-push) or any code file still blocks. The merge gate

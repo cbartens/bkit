@@ -97,7 +97,7 @@ developer_instructions = """
     - **If** a finding is an unreachable escalation or contradictory guards → `CRITICAL`.
     - **Else** → `HIGH`.
     - Minimum checks:
-      - status.jsonl step-name match: every `--step=` / `--attempt-of=` a workflow reads back (`status route`, `counters derive`, `status row`) equals the `step` that phase records (e.g. ship remediate must read `ship-failure-remediate`, not bare `failure-remediate`).
+      - status.jsonl step-name match: every `--step=` / `--attempt-of=` a workflow reads back (`status route`, `counters derive`, `status row`) equals the `step` that phase records (e.g. debug remediate must read `debug-failure-remediate`, not bare `failure-remediate`).
       - Run-only-if vs Route: a step header `**Run only if**` matches the preceding step's Route / counter-bus targets (e.g. when CONCERNS and FAIL both route → remediator, the guard must allow both).
       - status append + commit: phase-aligned durability. **If** a sibling phase commits immediately after its `status.jsonl` append (build Run Tests) → peers that append must commit the same way (debug Run Tests).
       - authoring rules: no internal labels (tracker issue numbers, ledger keys, review-finding ids) in workflow files, gate items that remind in general words and never restate a detail, labelled `Decide` / `Route` blocks ending in `**Else**` for 2+ branches, bash decides → prose routes on exit code, tracker `github` / `linear` / `true` / `false` blocks balanced, and each workflow self-contained, with its instructions written in the file rather than pointed to.

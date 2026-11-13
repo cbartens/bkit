@@ -112,36 +112,15 @@ function pathBStatus(): string {
   ].join("\n");
 }
 
-/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 13). */
+/** Build a MERGED-on-entry status.jsonl (Step 2 detects MERGED → Step 11). */
 function mergedOnEntryStatus(): string {
   return [
     row("ship-start-workflow"),
-    // Step 2 routes to Step 13 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
+    // Step 2 routes to Step 11 at sub-step 5 (`state` = MERGED) — BEFORE sub-step
     // 8 writes ship-worktree-setup + ship-regression-guard, so neither appears.
     // The explicit marker identifies this path.
     JSON.stringify({ type: "ship-merged-on-entry", workflow: "ship", at: "2026-07-29T00:00:00Z" }),
-    // Steps 3–12 skipped entirely — PR was already merged
-    row("ship-switch-to-dev"),
-    row("ship-close-workflow"),
-  ].join("\n");
-}
-
-/** Build a retry-loop Path B status (merge failed, diagnosed, remediated, retried). */
-function retryLoopPathBStatus(): string {
-  return [
-    row("ship-start-workflow"),
-    row("ship-worktree-setup"),
-    row("ship-regression-guard"),
-    row("ship-conflict-resolve", { verdict: "PASS" }),
-    row("ship-deferred-sweep"),
-    row("ship-update-docs"),
-    row("ship-summary"),
-    row("ship-prune-skills"),
-    row("ship-bookkeeping-push"),
-    row("ship-merge-pr", { verdict: "FAIL", attempt: 1, failures: 1 }),
-    row("ship-failure-diagnose", { verdict: "PASS", attempt: 1 }),
-    row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
-    row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
+    // Steps 3–10 skipped entirely — PR was already merged
     row("ship-switch-to-dev"),
     row("ship-close-workflow"),
   ].join("\n");
@@ -310,7 +289,7 @@ describe("classifyRun", () => {
     expect(classifyRun(observed, false)).toBe("PATH_B");
   });
 
-  it("classifies a MERGED-on-entry run (Step 2 routed to Step 13 before its writes)", () => {
+  it("classifies a MERGED-on-entry run (Step 2 routed to Step 11 before its writes)", () => {
     // bkit-ship.md Step 2 routes on `state` = MERGED at sub-step 5, BEFORE
     // sub-step 8 writes ship-worktree-setup + ship-regression-guard — so a real
     // MERGED-on-entry resume carries neither.
@@ -362,20 +341,16 @@ describe("classifyRun", () => {
 describe("computeMandatoryForPath", () => {
   const universe = [...SHIP_STEP_ORDER];
 
-  it("Path A excludes conflict-resolve + retry-loop steps", () => {
+  it("Path A excludes conflict-resolve", () => {
     const mandatory = computeMandatoryForPath("PATH_A", universe);
     expect(mandatory.has("ship-conflict-resolve")).toBe(false);
-    expect(mandatory.has("ship-failure-diagnose")).toBe(false);
-    expect(mandatory.has("ship-failure-remediate")).toBe(false);
     expect(mandatory.has("ship-merge-pr")).toBe(true);
     expect(mandatory.has("ship-close-workflow")).toBe(true);
   });
 
-  it("Path B includes conflict-resolve, excludes retry-loop steps", () => {
+  it("Path B includes conflict-resolve", () => {
     const mandatory = computeMandatoryForPath("PATH_B", universe);
     expect(mandatory.has("ship-conflict-resolve")).toBe(true);
-    expect(mandatory.has("ship-failure-diagnose")).toBe(false);
-    expect(mandatory.has("ship-failure-remediate")).toBe(false);
   });
 
   it("MERGED-on-entry excludes the entire middle", () => {
@@ -484,23 +459,15 @@ describe("detectHoles", () => {
     expect(unexpected).toContain("ship-resume-human-override");
   });
 
-  it("does NOT flag absence of failure-diagnose/remediate (retry-loop steps)", () => {
+  it("detectHoles reports a pre-change run's ship-failure rows as unexpected and no step as missing", () => {
     const observed = new Set([
-      "ship-start-workflow",
-      "ship-worktree-setup",
-      "ship-regression-guard",
-      "ship-deferred-sweep",
-      "ship-update-docs",
-      "ship-summary",
-      "ship-prune-skills",
-      "ship-bookkeeping-push",
-      "ship-merge-pr",
-      "ship-switch-to-dev",
-      "ship-close-workflow",
+      ...universe.filter((step) => step !== "ship-conflict-resolve"),
+      "ship-failure-diagnose",
+      "ship-failure-remediate",
     ]);
-    const { missing } = detectHoles(observed, universe, "PATH_A");
-    expect(missing).not.toContain("ship-failure-diagnose");
-    expect(missing).not.toContain("ship-failure-remediate");
+    const { missing, unexpected } = detectHoles(observed, universe, "PATH_A");
+    expect(missing).toEqual([]);
+    expect(unexpected).toEqual(["ship-failure-diagnose", "ship-failure-remediate"]);
   });
 
   it("aborted run: flags pre-abort holes but not post-abort absences", () => {
@@ -569,11 +536,29 @@ describe("auditStatusJsonl (end-to-end)", () => {
     expect(report.unexpected).toEqual([]);
   });
 
-  it("retry-loop Path B: no holes (failure steps optional)", () => {
-    const report = auditStatusJsonl(retryLoopPathBStatus(), shipMd);
+  it("a pre-change run's ship-failure rows are unexpected against the current ship workflow", () => {
+    const status = [
+      row("ship-start-workflow"),
+      row("ship-worktree-setup"),
+      row("ship-regression-guard"),
+      row("ship-conflict-resolve", { verdict: "PASS" }),
+      row("ship-deferred-sweep"),
+      row("ship-update-docs"),
+      row("ship-summary"),
+      row("ship-prune-skills"),
+      row("ship-bookkeeping-push"),
+      row("ship-merge-pr", { verdict: "FAIL", attempt: 1, failures: 1 }),
+      row("ship-failure-diagnose", { verdict: "PASS", attempt: 1 }),
+      row("ship-failure-remediate", { verdict: "PASS", attempt: 1, strategy: "STANDARD" }),
+      row("ship-merge-pr", { verdict: "PASS", attempt: 2, failures: 0 }),
+      row("ship-switch-to-dev"),
+      row("ship-close-workflow"),
+    ].join("\n");
+    const report = auditStatusJsonl(status, shipMd);
     expect(report.path).toBe("PATH_B");
     expect(report.missing).toEqual([]);
-    expect(report.unexpected).toEqual([]);
+    expect(report.unexpected).toEqual(["ship-failure-diagnose", "ship-failure-remediate"]);
+    expect([...report.sourceUniverse].sort()).toEqual([...SHIP_STEP_ORDER].sort());
   });
 
   it("holey fixture: ship-regression-guard missing surfaces in advisory report", () => {
@@ -755,7 +740,7 @@ describe("step conditionality", () => {
     plan: [8],
     build: [6, 9, 13, 14, 15, 16],
     debug: [4, 5, 6, 7, 8, 9, 10, 11],
-    ship: [4, 11, 12, 13],
+    ship: [4, 11],
   } as const;
 
   it("classifies a step conditional only under the column-0 marker rule", () => {

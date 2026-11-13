@@ -232,7 +232,7 @@ describe("ship reconciliation and retry contracts", () => {
       expect(block).toContain("--exceeded=failure-path");
       expect(block).toContain("Step 3");
       expect(block).not.toContain("--continue=step-9");
-      expect(block).not.toContain("Step 11");
+      expect(block).not.toContain("Failure Diagnose");
     }
     expect(revalidate.indexOf("exit 21")).toBeLessThan(revalidate.indexOf("Hold `validatedHead`"));
     expect(step(ship, 3)).toContain("branches sync --reconcile-feature");
@@ -246,7 +246,7 @@ describe("ship reconciliation and retry contracts", () => {
     }
   });
 
-  it("passes the actual merge target and defers branch deletion to guarded close", () => {
+  it("ship reconciliation and retry contracts passes the actual merge target and defers branch deletion to guarded close", () => {
     const ship = readShip();
     const resolver = fs.readFileSync(
       path.join(REPO_ROOT, ".bkit/core/prompts/bkit-ship-conflict-resolve.md"),
@@ -261,7 +261,7 @@ describe("ship reconciliation and retry contracts", () => {
     const mergeCommands = fencedLinesByStep(ship).filter(({ line }) => /prs merge\b/.test(line));
     expect(mergeCommands.length).toBeGreaterThan(0);
     for (const { line } of mergeCommands) expect(line).not.toContain("--delete-branch");
-    expect(step(ship, 14)).toMatch(/workflows close[^\n]*--flush[^\n]*--branch=/);
+    expect(step(ship, 12)).toMatch(/workflows close[^\n]*--flush[^\n]*--branch=/);
   });
 
   it("routes MCP safety facts through engine decisions with transport accounting", () => {
@@ -326,12 +326,12 @@ describe("ship reconciliation and retry contracts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FROZEN — canonical 14 ship-* step-key set
+// FROZEN — canonical 12 ship-* step-key set
 // ---------------------------------------------------------------------------
 //
 // Step NUMBERS may move; KEYS may not.
 //
-// 14 keys total (the canonical ship step set), in run order. Keys are added,
+// 12 keys total (the canonical ship step set), in run order. Keys are added,
 // never renamed.
 
 export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
@@ -345,8 +345,6 @@ export const CANONICAL_SHIP_STEP_KEYS: readonly string[] = [
   "ship-prune-skills",
   "ship-bookkeeping-push",
   "ship-merge-pr",
-  "ship-failure-diagnose",
-  "ship-failure-remediate",
   "ship-switch-to-dev",
   "ship-close-workflow",
 ] as const;
@@ -379,8 +377,7 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
   // after merging origin/dev locally),
   // the one pre-merge bookkeeping commit (Commit + Push Bookkeeping) that carries
   // docs, summaries, ledgers and skill removals onto the PR so the merge lands
-  // them on `dev`, the regenerate round after a red CI run (Step 10), and a
-  // Failure Remediate fix.
+  // them on `dev`, and the regenerate round after a red CI run (Step 10).
   // Every one of them is plain: the merge adds commits on top of the pushed
   // head, so nothing in ship ever needs `--force-with-lease`
   // (`bkit branches push --mode=feature`).
@@ -410,7 +407,6 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
       [
         "Base Check",
         "Commit + Push Bookkeeping",
-        "Failure Remediate",
         "Integrate (Path B only)",
         "Merge Gate + Merge PR",
         "Verify PR (Worktree Setup + Regression Guard)",
@@ -631,11 +627,11 @@ describe("bkit-ship.md — Step 6 SHIPPED row comes from bkit roadmap feature --
 });
 
 // ---------------------------------------------------------------------------
-// POSITIVE — canonical 14 ship-* step-key set
+// POSITIVE — canonical 12 ship-* step-key set
 // ---------------------------------------------------------------------------
 
-describe("bkit-ship.md — canonical 14 ship-* step-key set", () => {
-  it("publishes the canonical 14 ship-* step-key set (no invented names)", () => {
+describe("bkit-ship.md — canonical 12 ship-* step-key set", () => {
+  it("bkit-ship.md — canonical 12 ship-* step-key set publishes the canonical 12 ship-* step-key set (no invented names)", () => {
     // Finding 7: agents invent step names. Every canonical key is written, and
     // nothing else is. `ship-close-workflow` is written by `workflows close --flush`
     // (commands/workflow/workflows.test.ts); every other key by a
@@ -835,6 +831,14 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     expect(countLines(block, /2>\/dev\/null \|\| true/)).toBe(0);
   });
 
+  it("the Failure Path re-runs workflows fail without --next-step only on the --next-step refusal", () => {
+    const block = failurePathBlock(readShip());
+    const reruns = block.split("\n").filter((l) => /\*\*If\*\*.*without `--next-step`/.test(l));
+    expect(reruns, "no re-run line without --next-step").toHaveLength(1);
+    const rerun = reruns.join("\n");
+    expect(rerun).not.toMatch(/exit 2\b/);
+  });
+
   it("does not route any step back into the Failure Path", () => {
     expect(countLines(failurePathBlock(readShip()), /→ \*\*Failure Path\*\*/)).toBe(0);
   });
@@ -855,11 +859,10 @@ describe("bkit-ship.md — Failure Path single-write contract", () => {
     }
   });
 
-  it("wires bkit ledgers into exactly 2 bash regions", () => {
-    // Commit + Push Bookkeeping and the Failure Remediate fix commit. The Integrate
-    // merge commit, the Failure Path flush, the re-validate bookkeeping check and the
-    // close flush run inside commands.
-    expect(ledgersBlocks(readShip())).toHaveLength(2);
+  it("wires bkit ledgers into exactly 1 bash region", () => {
+    // Commit + Push Bookkeeping. The Integrate merge commit, the Failure Path flush,
+    // the re-validate bookkeeping check and the close flush run inside commands.
+    expect(ledgersBlocks(readShip())).toHaveLength(1);
   });
 
   it("every bkit ledgers stage / commit stops the step on a non-zero exit", () => {
@@ -924,8 +927,8 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     expect(between).toContain("**Failure Path**");
   });
 
-  it("Step 14.3 labels skip when ISSUE_ID is empty", () => {
-    const lines = section(readShip(), /^## .*Step 14 — Close Workflow/, /^### .*Gate/).split("\n");
+  it("Step 12.3 labels skip when ISSUE_ID is empty", () => {
+    const lines = section(readShip(), /^## .*Step 12 — Close Workflow/, /^### .*Gate/).split("\n");
     const start = lines.findIndex((l) => /^3\. /.test(l));
     const end = nextAfter(lines, start, /^4\. /);
     expect(start).toBeGreaterThanOrEqual(0);
@@ -944,5 +947,126 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     expect(route).toContain("**If** exit 7");
     expect(route).toContain("**STOP**");
     expect(route).toContain('"{BKIT}" locks release --kind=workflow --workflow=ship');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Red CI names /bkit-debug (#911)
+// ---------------------------------------------------------------------------
+
+/** A list bullet with the continuation lines that follow it, up to the next bullet. */
+function bullets(block: string): string[] {
+  const out: string[] = [];
+  for (const line of block.split("\n")) {
+    if (/^\s*- /.test(line) || out.length === 0) out.push(line);
+    else out[out.length - 1] += `\n${line}`;
+  }
+  return out;
+}
+
+/** Top-level route arms (three-space `- **If**` / `- **Else**` bullets) of one block. */
+function routeArms(block: string): string[] {
+  const out: string[] = [];
+  for (const line of block.split("\n")) {
+    if (/^ {3}- \*\*(If|Else)\*\*/.test(line)) out.push(line);
+    else if (out.length > 0) out[out.length - 1] += `\n${line}`;
+  }
+  return out;
+}
+
+/** Bullets that end in the Failure Path or the Merge Question, bar a bare `Else` fall-through. */
+function redRouteBullets(arm: string): string[] {
+  return bullets(arm).filter(
+    (x) =>
+      /Failure Path|Merge Question/.test(x) &&
+      !/^\s*- \*\*Else\*\* → \*\*Failure Path\*\*\.?\s*$/m.test(x),
+  );
+}
+
+const HOLDS_DEBUG = /\/bkit-debug \{FID\}/;
+
+describe("bkit-ship.md — red CI names /bkit-debug", () => {
+  it("Step 10 holds /bkit-debug {FID} as NEXT_STEP on every red-run route to the Failure Path or the Merge Question, and on no other", () => {
+    const step10 = section(readShip(), /^## .*Step 10 — /, /^## /);
+    const sub1 = section(step10, /^1\. Assert the gate/, /^2\. /);
+    const arms = routeArms(sub1);
+    const red = arms.filter((a) => /^ {3}- \*\*If\*\* exit 12\b/.test(a));
+    expect(
+      red.length,
+      "need a regenerable and a non-regenerable exit 12 arm",
+    ).toBeGreaterThanOrEqual(2);
+    for (const arm of red) {
+      expect(arm, "exit 12 arm holds no NEXT_STEP").toMatch(/NEXT_STEP/);
+      expect(arm).toMatch(HOLDS_DEBUG);
+      const redRoutes = redRouteBullets(arm);
+      for (const b of redRoutes) {
+        expect(b, `no NEXT_STEP held on: ${b.split("\n")[0]}`).toMatch(/NEXT_STEP/);
+      }
+    }
+    const regenerable = red.find((a) => /regenerable.*= true/.test(a))!;
+    expect(regenerable).toMatch(/unchanged[^\n]*NEXT_STEP|NEXT_STEP[^\n]*unchanged/);
+    expect(regenerable).toMatch(/MERGE_ASK[^\n]*NEXT_STEP|NEXT_STEP[^\n]*MERGE_ASK/);
+    for (const arm of arms.filter((a) => !red.includes(a))) {
+      expect(arm, "a non-red arm holds NEXT_STEP").not.toMatch(/NEXT_STEP/);
+    }
+  });
+
+  it("Step 2 holds NEXT_STEP on a failed check in the CI wait of a PR ship opened", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — /, /^## /);
+    const sub5 = section(step2, /^5\. \*\*If\*\* `SHIP_OPENED_PR` = true/, /^6\. /);
+    expect(sub5).not.toBe("");
+    const route = sub5.slice(sub5.indexOf("Route:"));
+    const failedArms = bullets(route).filter((b) =>
+      /any check failed|^\s*- \*\*Else\*\* → \*\*Failure Path\*\*/.test(b),
+    );
+    expect(failedArms.length).toBeGreaterThanOrEqual(2);
+    for (const b of failedArms) {
+      expect(b, "Step 2 failed check holds no NEXT_STEP").toMatch(/NEXT_STEP/);
+      expect(sub5).toMatch(HOLDS_DEBUG);
+    }
+  });
+
+  it("the Merge Question's Stop arm names NEXT_STEP when held and Try again clears it", () => {
+    const mq = section(readShip(), /^## .*Merge Question$/, /^### /);
+    const tryAgain = section(
+      mq,
+      /^ {3}- \*\*If\*\* the answer is `Try again`/,
+      /^ {3}- \*\*If\*\* the answer is `Stop`/,
+    );
+    expect(tryAgain).toMatch(/clear[^.\n]*NEXT_STEP/);
+    const stop = section(mq, /^ {3}- \*\*If\*\* the answer is `Stop`/, /^ {3}- \*\*Else\*\*/);
+    expect(stop, "Stop handover lacks Next step line").toMatch(/Next step: \{NEXT_STEP\}/);
+    expect(stop).toMatch(/final message/);
+    expect(stop).toMatch(/NEXT_STEP[^\n]*held|held[^\n]*NEXT_STEP/);
+  });
+
+  it("Close Workflow routes a red squash capstone to the Failure Path holding NEXT_STEP", () => {
+    const step12 = section(readShip(), /^## .*Step 12 — /, /^## /);
+    const sub1 = section(step12, /^1\. Assert that the capstone/, /^2\. /);
+    expect(sub1, "no Route: after runs gate --capstone-only").toMatch(/Route:/);
+    const route = sub1.slice(sub1.indexOf("Route:"));
+    expect(route).toMatch(/Failure Path/);
+    expect(route).toMatch(/NEXT_STEP/);
+    expect(route).toMatch(HOLDS_DEBUG);
+  });
+
+  it("the Failure Path passes --next-step only when NEXT_STEP is held and ends the final message with it", () => {
+    const block = failurePathBlock(readShip());
+    const fence = fences(block).find((f) => /workflows fail --post/.test(f));
+    expect(fence, "workflows fail fence lacks --next-step=").toMatch(/--next-step=/);
+    const step1 = section(block, /^1\. /, /^2\. /);
+    expect(step1.replace(/```bash[\s\S]*?```/g, "")).toMatch(
+      /--next-step[^\n]*NEXT_STEP|NEXT_STEP[^\n]*--next-step/,
+    );
+    const step6 = block.slice(block.search(/^6\. /m));
+    expect(step6).toMatch(/Next step:/);
+    expect(step6.indexOf("Next step:")).toBeGreaterThan(step6.indexOf("ship-summary.md"));
+  });
+
+  it("the Failure Path re-runs workflows fail without --next-step on the --next-step refusal exit", () => {
+    const block = failurePathBlock(readShip());
+    const step1 = section(block, /^1\. /, /^2\. /);
+    expect(step1, "no exit 6 retry without --next-step").toMatch(/exit 6/);
+    expect(step1).toMatch(/without `?--next-step/);
   });
 });

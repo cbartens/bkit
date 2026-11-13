@@ -155,7 +155,7 @@ bkit-tests-check    (capstone: needs both lanes; sole required check)
 
 Add the lanes the repo has (integration, E2E, migration, live) as further `needs:` of the capstone. The full tier rules are in `docs/testing.md`.
 
-The pipeline stops hard after Design, Plan and Ship. A production merge needs explicit human approval. Some subagents are shared across phases: `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` run inside the Build and Ship failure paths as well as in the Debug phase.
+The pipeline stops hard after Design, Plan and Ship. A production merge needs explicit human approval. Some subagents are shared across phases: `bkit-debug-failure-diagnose` and `bkit-debug-failure-remediate` run inside the Build failure path as well as in the Debug phase.
 
 With `bkit-auto` enabled, the loop runs unattended. Build opens a PR, and CI runs. On green, `bkit-auto` dispatches `/bkit-ship`. On red, it dispatches `/bkit-debug`, debug re-pushes, CI re-runs, and `bkit-auto` routes again. No local session is needed until a human gate fires.
 
@@ -263,8 +263,6 @@ Output: a squash-merged PR, updated docs, pruned skills and a torn-down worktree
 | `bkit-ship-conflict-resolve` | Conflict resolver | Resolves the remaining integration-branch merge conflicts and re-runs the merge block to commit them. |
 | `bkit-ship-deferred-sweep` | Pre-merge completeness gate | Builds the intended-delivery set from the plan's `Acceptance Scenario` sections and `DONE WHEN` fields. FAILs the merge if it finds any unplanned gap (a silent `TODO`, a skipped test). Declared deferrals are resurfaced, never blocking. Gates only what the repo can prove: plan gate checkboxes, `Verification Plan` boxes and `Manual Verification` steps are build-phase process and never gated, and no plan precondition or merge condition blocks, however a log or summary restates it. |
 | `bkit-ship-update-docs` | Docs | Syncs the cataloged docs before the merge, excluding the knowledge and decision ledgers. |
-| `bkit-debug-failure-diagnose` | Diagnostician | Diagnoses a refused merge before a bounded fix attempt. Shared with debug. |
-| `bkit-debug-failure-remediate` | Fixer | Applies the diagnosed fix before merge re-validation. |
 
 Orchestrator-only ship steps: regression guard, merge, skill pruning, update local dev (`bkit branches sync-dev`, which never checks out `dev`) and close (which removes the worktree). The orchestrator performs the guarded git and tracker operations itself, not through subagents.
 

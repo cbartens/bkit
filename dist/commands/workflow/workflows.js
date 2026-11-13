@@ -244,6 +244,8 @@ function failState(ctx, workflow, fid) {
     }
     return { row, rebaseAborted, lock, sentinels, removeFailed, soak, status };
 }
+/** Exit code: `workflows fail` refused `--next-step` before any write; no other usage error of that verb uses it. */
+const EXIT_NEXT_STEP_REFUSED = 6;
 async function failVerb(ctx) {
     const workflow = workflowName(String(ctx.flags.workflow));
     // An empty value is a placeholder not held yet (the failure came before it was set).
@@ -251,6 +253,10 @@ async function failVerb(ctx) {
     const token = str(ctx.flags.token) || undefined;
     if (token !== undefined && fid === undefined)
         throw new CommandError(EXIT.USAGE, "--token needs --fid");
+    // Empty is absent; anything else is one /bkit-* command line, checked before any write.
+    const nextStep = str(ctx.flags.nextStep) || undefined;
+    if (nextStep !== undefined && (/[\r\n]/.test(nextStep) || !nextStep.startsWith("/bkit-")))
+        throw new CommandError(EXIT_NEXT_STEP_REFUSED, "--next-step must be one /bkit-* command line");
     // State only for a run that took the lock: without the token the failure came
     // before Step 1 locked, and nothing here is this run's to change.
     const state = token === undefined || fid === undefined
@@ -296,6 +302,7 @@ async function failVerb(ctx) {
             subStep: str(ctx.flags.subStep),
             error: state.removeFailed ? `${error}; Lock removal failed` : error,
             stderrFile: str(ctx.flags.stderrFile) || undefined,
+            ...(nextStep === undefined ? {} : { lines: [`Next step: \`${nextStep}\``] }),
         });
     }
     if (ctx.flags.post === true && comment === null)
@@ -323,6 +330,7 @@ async function failVerb(ctx) {
         trackerState: failedState,
         prState,
         comment,
+        nextStep: nextStep ?? null,
         commentFile: commentFileOf(ctx.cwd, comment, ctx),
         ...(tracker === undefined ? {} : { tracker }),
         ...(labelsWrite === undefined ? {} : { labelsWrite }),
@@ -1851,6 +1859,12 @@ export const workflowsCommand = {
                     help: "the failed shell command's stderr (last 20 lines kept)",
                 },
                 {
+                    name: "next-step",
+                    type: "string",
+                    placeholderExit: EXIT_NEXT_STEP_REFUSED,
+                    help: "one /bkit-* command line to name as the next step: adds a `Next step:` line to the failure comment (empty = none)",
+                },
+                {
                     ...POST_FLAG,
                     help: "post the failure comment (needs --step-number) to the --fid / --issue issue and write its failed labels; prints `tracker` and `labelsWrite`",
                 },
@@ -1872,6 +1886,7 @@ export const workflowsCommand = {
                 trackerState: "the Linear or Jira state for the failed issue (null under github, none)",
                 prState: "the --pr PR's state, or null",
                 comment: "the failure comment body (with --step-number), else null",
+                nextStep: "the --next-step command line, or null",
                 commentFile: COMMENT_FILE_OUTPUT,
                 tracker: TRACKER_OUTPUT,
                 labelsWrite: "with --post: the label and state write, read fresh from the issue: {done: true, action: labels} | {done: false, action, reason} (write `labels` / `trackerState` via the tracker MCP) | {skipped}",
@@ -1879,6 +1894,7 @@ export const workflowsCommand = {
             },
             textOmit: ["row"],
             exitCodes: {
+                [EXIT_NEXT_STEP_REFUSED]: "a refused --next-step (not one /bkit-* command line, or an unsubstituted placeholder): refused before any write, so the call can run again without it",
                 [EXIT_SPLIT_BUCKET]: "no --month and the feature has logs in more than one month bucket",
                 [EXIT_REMOVE_FAILED]: "the lock file is still there after removing it (everything else was done; the comment says so)",
             },

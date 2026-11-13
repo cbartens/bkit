@@ -1150,7 +1150,7 @@ describe("verdict headers re-ask on PENDING (exit 5) as well as invalid (exit 6)
 });
 
 describe("status route --require=strategy", () => {
-  it("is used at exactly the five strategy-routing sites", () => {
+  it("status route --require=strategy is used at exactly the four strategy-routing sites", () => {
     const sites = ["build", "debug", "ship"].flatMap((name) =>
       commandLines(workflow(name), "status route")
         .filter((l) => l.includes("--require=strategy"))
@@ -1161,7 +1161,6 @@ describe("status route --require=strategy", () => {
       "build-plan-gaps-remediate",
       "build-plan-gaps-remediate-holistic",
       "debug-failure-diagnose",
-      "ship-failure-remediate",
     ]);
   });
 });
@@ -1253,15 +1252,28 @@ describe("diff per reader", () => {
 describe("ship", () => {
   const ship = workflow("ship");
 
+  it("ship has no Failure Diagnose or Failure Remediate step and runs Steps 1-12", () => {
+    expect(ship).not.toContain("Failure Diagnose");
+    expect(ship).not.toContain("Failure Remediate");
+    expect(ship).not.toContain("ship-failure");
+    const numbers = ship
+      .split("\n")
+      .filter((l) => /^## \S+ Step \d+ — /.test(l))
+      .map((l) => Number(/Step (\d+) —/.exec(l)![1]));
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(section(ship, /Step 12 — /)).toContain("Close Workflow");
+    expect(section(ship, /Step 11 — /)).toContain("Update Local Dev");
+  });
+
   it("post-merge check reads the capstone job alone, at the squash commit", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain(
       '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"',
     );
   });
 
   it("the close removes the worktree and deletes the branch through the command, then leaves it", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain('--branch="{SHIP_BRANCH}"');
     expect(close).toContain('cd "{REPO_ROOT}"; exit $rc');
     expect(ship).not.toContain('"{BKIT}" worktrees remove');
@@ -1271,9 +1283,9 @@ describe("ship", () => {
   });
 
   it("brings local dev level through `branches sync-dev`, never a checkout", () => {
-    const step13 = section(ship, /Step 13 — Update Local Dev/);
-    expect(step13).toContain('"{BKIT}" branches sync-dev || exit 1');
-    expect(step13).not.toContain('cd "{REPO_ROOT}"');
+    const step11 = section(ship, /Step 11 — Update Local Dev/);
+    expect(step11).toContain('"{BKIT}" branches sync-dev || exit 1');
+    expect(step11).not.toContain('cd "{REPO_ROOT}"');
   });
 
   it("skill prune warns and carries on rather than stopping the ship", () => {
@@ -1295,7 +1307,7 @@ describe("ship", () => {
   });
 
   it("closes through `workflows close --flush`", () => {
-    const close = section(ship, /Step 14 — Close Workflow/);
+    const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain('"{BKIT}" workflows close --workflow=ship');
     expect(close).toContain('--flush --token="{LOCK_TOKEN}"');
     expect(close).not.toContain("gh pr create");
@@ -2148,10 +2160,14 @@ describe("fix loops ask only when the last round made no progress", () => {
     expect(loop).toContain("`Recommended: A) Stop`");
   });
 
-  it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
-    const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
-    expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");
-    expect(step11).toContain("**If** `MERGE_ASK` = false **or** `DIAGNOSE_VERDICT` = PASS →");
+  it("ship asks the Merge Question only when the merge attempts are used up", () => {
+    const question = section(workflow("ship"), /Merge Question/);
+    expect(question).toContain("when `ship.merge.maxAttempts` is used up");
+    expect(question).not.toContain("diagnosis");
+    expect(question).not.toContain("Step 11");
+    expect(question).not.toContain("return to the calling step");
+    expect(question).not.toMatch(/`Try again`\s+\*\*and\*\*\s+`LIMIT_NEXT`/);
+    expect(question).toContain("counters grant");
   });
 });
 

@@ -425,8 +425,6 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "debug/debug-summary": ["attempt"],
   "ship/ship-summary": ["attempt"],
   "ship/ship-merge-pr": ["attempt"],
-  "ship/ship-failure-diagnose": ["attempt"],
-  "ship/ship-failure-remediate": ["attempt", "strategy"],
 };
 
 /** The required fields missing (absent or empty) from a row. */
@@ -480,11 +478,7 @@ function progressPoint(workflow: string, step: string, soak: boolean): AskPoint 
     if (["debug-run-tests", "debug-failure-diagnose", "debug-failure-remediate"].includes(step))
       return "debug.fix";
   }
-  if (
-    workflow === "ship" &&
-    ["ship-merge-pr", "ship-failure-diagnose", "ship-failure-remediate"].includes(step)
-  )
-    return "ship.merge";
+  if (workflow === "ship" && ["ship-merge-pr"].includes(step)) return "ship.merge";
   return undefined;
 }
 

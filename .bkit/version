@@ -232,7 +232,7 @@
     ".cursor/hooks/bkit-readguard.cjs": "2f7bdff624bef3dc1cea1a04c91eda4e472a39a6579b30b7bd178c9dca779ed2",
     ".opencode/plugin/bkit-readguard.js": "cd784ceb8d319e95a562401df6f6d9ed862ba1b7769ab08be8c4e7c29d6b656f",
     ".codex/hooks/bkit-readguard.cjs": "140ae68164c31e349c9122d2b86bc88ddd58461b6de8f5d4bdbced6965dce5f1",
-    ".bkit/pipeline.md": "85977f1698328d4a081ed19303386ae29ecaff0dfdd52ccdc731393418d16c35",
+    ".bkit/pipeline.md": "9cea8e9dffe2358a6c0c6bec0899acb81ef241a31b6d720116ed968e989cc110",
     ".claude/agents/bkit-debug-failure-reproduce.md": "9a88da429bb2b84d4b7ef1e689eaa67a39f90586c474f6b29704fd238715b0da",
     ".cursor/agents/bkit-debug-failure-reproduce.md": "7ae3f377fe1742f6376120d0f7e9da666ced24ddf8ef9a64679aab11f2bf844b",
     ".opencode/agents/bkit-debug-failure-reproduce.md": "41165c69da40fa1b600a99de05b481f634a68df07d8720ad4ebd219f5fbd5422",

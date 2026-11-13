@@ -929,7 +929,7 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
   });
 
   it("names every missing field at once", async () => {
-    const r = await rowThenGate("ship", "ship-failure-remediate", []);
+    const r = await rowThenGate("build", "build-failure-remediate", []);
     expect(r.err).toContain("row is missing attempt, strategy");
   });
 

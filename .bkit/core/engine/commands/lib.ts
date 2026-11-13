@@ -150,6 +150,8 @@ export interface FlagSpec {
    * resolve it as an issued invocation (it may name one this checkout never issued).
    */
   unresolved?: boolean;
+  /** Exit code when the value still carries a `{UPPER}` placeholder (default: usage, exit 2). */
+  placeholderExit?: number;
   help: string;
 }
 
@@ -263,12 +265,12 @@ const camel = (kebab: string) => kebab.replace(/-([a-z0-9])/g, (_, c: string) =>
 const PLACEHOLDER = /\{[A-Z][A-Z0-9_]*\}/;
 
 /** Refuse a flag value still carrying a literal `{UPPER}` placeholder. */
-function refuseUnsubstituted(flag: string, value: string): void {
+function refuseUnsubstituted(spec: FlagSpec, value: string): void {
   const hit = PLACEHOLDER.exec(value);
   if (hit) {
     throw new CommandError(
-      EXIT.USAGE,
-      `--${flag} carries the unsubstituted placeholder ${hit[0]} — substitute it before running`,
+      spec.placeholderExit ?? EXIT.USAGE,
+      `--${spec.name} carries the unsubstituted placeholder ${hit[0]} — substitute it before running`,
     );
   }
 }
@@ -277,7 +279,7 @@ function refuseUnsubstituted(flag: string, value: string): void {
  * Parse `--flag=value` / `--flag value` / `--bool` against the verb's spec. Keys
  * are filled in argv order, so a verb may render repeated or free-form flags in
  * the order the caller gave them. A value holding a literal `{UPPER}` placeholder
- * is refused (exit 2): the workflow passed it through unsubstituted.
+ * is refused (exit 2, or the flag's `placeholderExit`): the workflow passed it through unsubstituted.
  */
 export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, FlagValue> {
   const byName = new Map(specs.map((s) => [s.name, s]));
@@ -293,7 +295,7 @@ export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, Fl
           `unexpected argument "${arg}" — commands take flags only`,
         );
       }
-      refuseUnsubstituted(positional.name, arg);
+      refuseUnsubstituted(positional, arg);
       out[key] = arg;
       continue;
     }
@@ -315,7 +317,7 @@ export function parseFlags(argv: string[], specs: FlagSpec[]): Record<string, Fl
       value = next;
       i++;
     }
-    if (typeof value === "string") refuseUnsubstituted(name, value);
+    if (typeof value === "string") refuseUnsubstituted(spec, value);
     const key = camel(name);
     if (spec.repeatable) {
       const prior = out[key];
