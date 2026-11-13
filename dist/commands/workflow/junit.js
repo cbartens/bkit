@@ -9,6 +9,18 @@ import { scriptCommand, testCommand } from "../../shared/package-manager.js";
 /** The env var naming the JUnit report path `bkit:test:file` must write. */
 export const REPORT_ENV = "BKIT_TEST_REPORT";
 /**
+ * The environment `runToLog` hands its command: the caller's, plus `env`, without
+ * pnpm's silent reporter. `pnpm -s` passes `npm_config_reporter=silent` to every
+ * child, which leaves out pnpm's own lines (the script run and its failure exit code);
+ * the log is the step's evidence, so it keeps them however bkit was started.
+ */
+export function logEnv(base, env) {
+    const merged = { ...base, ...env };
+    if (merged.npm_config_reporter === "silent")
+        delete merged.npm_config_reporter;
+    return merged;
+}
+/**
  * Run argv with stdout and stderr interleaved into `log` (like `> log 2>&1`).
  * Exit 127 when the binary is missing; 128 + n when killed by signal n.
  */
@@ -19,7 +31,7 @@ export function runToLog(argv, cwd, log, env) {
     const res = spawnSync(protectedArgv[0], protectedArgv.slice(1), {
         cwd,
         stdio: ["ignore", fd, fd],
-        env: env === undefined ? process.env : { ...process.env, ...env },
+        env: logEnv(process.env, env),
     });
     fs.closeSync(fd);
     if (res.error) {

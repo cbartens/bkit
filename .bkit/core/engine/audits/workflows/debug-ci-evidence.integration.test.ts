@@ -206,6 +206,9 @@ reject("unsupported fixture endpoint "+endpoint);
     PATH: `${bin}${path.delimiter}${process.env.PATH}`,
     CI: "true",
     GIT_TERMINAL_PROMPT: "0",
+    // What `pnpm -s` hands every child, as the pre-push gate starts this suite. Set here so the
+    // suite runs the same however it is started, and the gate logs must keep pnpm's own lines.
+    npm_config_reporter: "silent",
   };
   const runLine = (line: string) => {
     let rendered = line.replaceAll('"$SCRIPT"', '"{SCRIPT}"').replaceAll("<attempt>", vars.ROUND!);

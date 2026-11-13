@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { countReportFailures, parseJunit, reportFailures } from "./junit";
+import { countReportFailures, logEnv, parseJunit, reportFailures } from "./junit";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -18,6 +18,15 @@ afterEach(() => {
 });
 
 const report = (body: string) => `<testsuite>${body}</testsuite>`;
+
+describe("logEnv", () => {
+  it("drops pnpm's silent reporter and keeps every other variable and reporter", () => {
+    const silent = logEnv({ npm_config_reporter: "silent", PATH: "/bin" }, { EXTRA: "1" });
+    expect(silent).toEqual({ PATH: "/bin", EXTRA: "1" });
+    expect(logEnv({ npm_config_reporter: "ndjson" })).toEqual({ npm_config_reporter: "ndjson" });
+    expect(logEnv({}, { npm_config_reporter: "silent" })).toEqual({});
+  });
+});
 
 describe("parseJunit", () => {
   it("reads classname and file as null when a case carries neither", () => {
