@@ -25,6 +25,7 @@ _(above the bkit list — yours, never overwritten)_
 
 _(refreshed 2026-11-12T09:41:53Z)_
 _(refreshed 2026-11-11T23:05:25Z)_
+_(refreshed 2026-11-13T03:16:37Z)_
 
 ### Design
 
@@ -43,7 +44,6 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | 504-example-project | 504-example-project | 1791870640742 |
 | 546-knowledge-store-ledger | 546-knowledge-store-ledger | 1793687664562 |
 | 651-sops-env-backup | 651-sops-env-backup | 1792633642892 |
-| 787-show-authoring-rules | 787-show-authoring-rules | 1793699031010 |
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
@@ -64,6 +64,8 @@ _(refreshed 2026-11-11T23:05:25Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
+| 787-show-authoring-rules | 787-show-authoring-rules | 1794539797092 |
+| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
