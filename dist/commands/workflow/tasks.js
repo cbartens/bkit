@@ -81,7 +81,13 @@ export function gappedTasks(text) {
                 .map((g) => (typeof g === "object" && g !== null ? g.task : null))
                 .filter((t) => typeof t === "number");
     }
-    return [...text.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
+    const start = text.search(/^## Gaps\b/m);
+    if (start < 0)
+        return [];
+    const rest = text.slice(start).replace(/^## Gaps[^\n]*\n?/, "");
+    const end = rest.search(/^## /m);
+    const section = end < 0 ? rest : rest.slice(0, end);
+    return [...section.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
 }
 /** `task`'s heading line inside its block: its box and number, or null when the block holds none. */
 function headBox(lines, task) {

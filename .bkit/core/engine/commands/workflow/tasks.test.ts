@@ -183,6 +183,67 @@ describe("bkit tasks tick", () => {
     expect(tickOf(read(plan), 2)).toBe(" ");
   });
 
+  it("ticks a task listed only under Updated tests", async () => {
+    const plan = write("updated-tests.md", planText(group(1, task(8), task(9))));
+    const green = write(
+      "green-updated.md",
+      [
+        "Enforced: true",
+        "Verdict: PASS",
+        "Gaps: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+        "None.",
+        "",
+        "## Updated tests",
+        "",
+        "- Task 9 `updated` — `.bkit/x.test.ts` `a` changed",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=8,9", `--green=${green}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([8, 9]);
+    expect(tickOf(read(plan), 9)).toBe("x");
+  });
+
+  it("ticks a task listed only under Already landed and skips a Gaps task", async () => {
+    const plan = write("landed.md", planText(group(1, task(7), task(8), task(9))));
+    const green = write(
+      "green-landed.md",
+      [
+        "Enforced: true",
+        "Verdict: CONCERNS",
+        "Gaps: 1",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Already landed",
+        "",
+        "- Task 7 `passes` — `.bkit/x.test.ts` `a` already passes",
+        "",
+        "## Gaps",
+        "",
+        "- Task 9 `not-green` — `.bkit/x.test.ts` `b` does not exist — Fixable: true — log: TASK 9: not-green",
+        "",
+      ].join("\n"),
+    );
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=7,8,9",
+      `--green=${green}`,
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([7, 8]);
+    expect(tickOf(read(plan), 7)).toBe("x");
+    expect(tickOf(read(plan), 9)).toBe(" ");
+  });
+
   it("tick is idempotent on an already-ticked task", async () => {
     const plan = write("idempotent.md", planText(group(1, task(1), task(2))));
     const first = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=1,2"]);
