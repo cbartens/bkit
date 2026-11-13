@@ -392,6 +392,8 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
     - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `bounds direct source inspection without executing it` fails on an unsafe or unavailable source being treated as inspected, executed or read without a bound.
     - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `stops analysis at each internal bound` fails on overflow erasing established targets or continuing analysis without a limit reason.
     - `.bkit/core/engine/audits/hooks/guardrails-antigravity.integration.test.ts` `preserves stronger shell decisions and compound advice` fails on edit context downgrading a stronger decision or an allowed fetch hiding a following edit.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` `stops analysis at each internal bound` fails on overflow erasing established targets or continuing analysis without a limit reason. — accepted with no further reason given ("yes ok to accept all") (owner, 2026-11-13)
 
 <!-- bkit:task 3 end -->
 
@@ -579,6 +581,8 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
   - **TEST FIRST:**
     - `.bkit/core/engine/install/write.test.ts` `merges managed lists while keeping consumer-added entries` fails on a drift merge that drops a consumer's own list entry, duplicates a bkit entry or reorders the template's entries.
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades shipped registrations without dropping consumer hook groups or permissions` fails on an upgrade from the shipped layout that loses a custom hook group or custom permission entry on any host.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `upgrades shipped registrations without dropping consumer hook groups or permissions` fails on an upgrade from the shipped layout that loses a custom hook group or custom permission entry on any host. — accepted with no further reason given ("yes ok to accept all") (owner, 2026-11-13)
 
 <!-- bkit:task 13 end -->
 
@@ -631,6 +635,8 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
   - **DONE WHEN:** No agent can settle this alone: `mergeManagedList` keeps every base entry the current template lacks, and the upgrade path also routes `.mcp.json`, `.cursor/mcp.json` and `.opencode/opencode.json` through it (`.bkit/core/engine/commands/install/upgrade.ts:371`), so a narrowed allow rule or a renamed plugin path survives where `deepMergeJson`'s list replacement used to retract it, and a future plain-value `args` list would gain the old value beside the new one. The owner decides between recording previously shipped entries (an ownership ledger the merge subtracts), limiting list merging to named keys (`permissions.*`, hook-event groups) and keeping replacement elsewhere, or accepting the drift and shipping a migration for each retraction (`docs/migrations.md`). `.bkit/core/.bkit/install.md` § JSON ownership states the chosen rule.
   - **TEST FIRST:**
     - `.bkit/core/engine/install/write.test.ts` `drops an entry the previous template shipped and the current one retired` fails on `mergeManagedJson({ plugin: ["./plugin/bkit-old.js", "./plugin/bkit-gateguard.js"] }, { plugin: ["./plugin/bkit-gateguard.js"] })` keeping `./plugin/bkit-old.js` when the previous shipped template held it.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/install/write.test.ts` `drops an entry the previous template shipped and the current one retired` fails on `mergeManagedJson({ plugin: ["./plugin/bkit-old.js", "./plugin/bkit-gateguard.js"] }, { plugin: ["./plugin/bkit-gateguard.js"] })` keeping `./plugin/bkit-old.js` when the previous shipped template held it. — accepted with no further reason given ("yes ok to accept all") (owner, 2026-11-13)
 
 <!-- bkit:task 18 end -->
 <!-- bkit:group 4 end -->
@@ -680,6 +686,8 @@ One PR for all groups is appropriate. Groups are implementation order, not merge
   - **DONE WHEN:** No agent can settle this alone. The shared edit payload still calls `firstTouchAdvice`, which records the touch at once, and the Cursor driver's `additional_context` envelope is documented as unverified (`.bkit/core/.bkit/providers.md:413` and `:420`, decision `787-design-choice-16`). Because both channels now share one normalized identity, that unverified acknowledgement also suppresses the Cursor shell route's `agent_message` block. This contradicts the plan's Process Sketch ("an unverified route leaves it unacknowledged") and its Edge Case row ("share sequential acknowledgement on verified routes"). Probe: `firstTouchAdvice(<ws>/docs/a.md, sid, true)` then `shellTargetBlocks(["docs/a.md"], {root: ws}, sid)` returns 0 blocks. The fix cannot be surgical, because the Cursor and Claude managed blocks must stay byte-identical (`gateguard-cursor.integration.test.ts:176`) and the outer driver, which knows the host, is consumer-owned. The owner decides between: a host signal the shared block can read without breaking that parity, letting the Cursor edit route prepare without acknowledging (Cursor edits then repeat their reminder), or accepting the suppression and recording it in `.bkit/core/.bkit/providers.md` § host table.
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `keeps a shell target eligible after an unverified Cursor edit reminder` fails on `runShell("sed -i s/a/b/ docs/a.md", session)` after `run(writePayload("docs/a.md", session))` returning an `agent_message` without `First edit to`.
+  - **TEST EXCEPTION:**
+    - `.bkit/core/engine/audits/hooks/gateguard-cursor.integration.test.ts` `keeps a shell target eligible after an unverified Cursor edit reminder` fails on `runShell("sed -i s/a/b/ docs/a.md", session)` after `run(writePayload("docs/a.md", session))` returning an `agent_message` without `First edit to`. — accepted with no further reason given ("yes ok to accept all") (owner, 2026-11-13)
 
 <!-- bkit:task 22 end -->
 <!-- bkit:task 23 start -->
