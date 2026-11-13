@@ -138,7 +138,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ---
 
@@ -162,7 +162,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
+- [x] **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
 
 ---
 
@@ -180,7 +180,7 @@ The owner runs `/bkit-ship` on a PR whose CI is red; ship stops at the merge gat
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ---
 
