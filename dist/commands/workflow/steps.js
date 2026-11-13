@@ -30,7 +30,7 @@ import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readStatusRows, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
-import { PLAN_TASKS_STEP, readTestFirst, touchedTests } from "./tests.js";
+import { PLAN_TASKS_STEP, readTestFirst, runPlanPath, touchedTests } from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
 /**
  * An `agent-rework` friction row for a refused planned-test edit: the step reruns, so
@@ -1040,7 +1040,12 @@ async function finish(ctx) {
         (((step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) && group !== undefined) ||
             step === PLAN_REMEDIATE_HOLISTIC_STEP)) {
         const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-        const tests = touchedTests(top, file, workflow, group);
+        const planArg = str(f.plan);
+        const planFile = planArg === undefined
+            ? runPlanPath(path.resolve(ctx.cwd, file))
+            : path.resolve(ctx.cwd, planArg);
+        const plan = fs.existsSync(planFile) ? fs.readFileSync(planFile, "utf-8") : undefined;
+        const tests = touchedTests(top, file, workflow, group, plan);
         if (tests.length > 0) {
             const touched = [...new Set(tests.map((t) => t.test))];
             const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");

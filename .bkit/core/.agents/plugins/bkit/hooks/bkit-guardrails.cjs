@@ -42,6 +42,8 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+// {{BKIT_PART gateguard-engine.js}}
+
 // {{BKIT_PART guardrails-shell.js}}
 
 // {{BKIT_PART guardrails-tiers.js}}
@@ -96,7 +98,7 @@ function bkitGuardrails(payload) {
   if (typeof raw !== "string") return null;
 
   const cmd = raw.trim();
-  const tier = classifyShell(cmd, hookDirs(p));
+  const tier = classifyShell(cmd, hookDirs(p), hookContext(p));
   if (!tier) return null;
   if (tier.tier === "deny") {
     return {
@@ -116,11 +118,30 @@ function bkitGuardrails(payload) {
       reason: `bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}`,
     };
   }
-  const advisory =
+  const ctx = hookContext(p);
+  const notice = tier.edits ? shellEditAdvisory(tier.edits) : "";
+  const blocks = tier.edits
+    ? shellTargetBlocks(tier.edits.targets, ctx, p.session_id, p.agent_id)
+    : [];
+  const fetchLine =
     tier.tier === "fetch"
       ? `bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.\nConfirm the destination is intended before you rely on the result.\nCommand: ${cmd}`
-      : shellEditAdvisory(tier.edits);
-  return adviseOnce("guardrails", p.session_id, agCallSignature(tool, input), advisory);
+      : "";
+  // The fetch line, shell notice and retry text count against the budget with the blocks.
+  const fixed = [fetchLine, notice].filter(Boolean).join("\n\n");
+  const unit = ADVICE_BUDGETS.antigravity.unit;
+  const fixedCost = adviceSize(fixed, unit) + adviceSize(AG_RETRY_SUFFIX, unit) + (fixed ? 2 : 0);
+  const selection =
+    blocks.length > 0 ? selectAdvice(blocks, ADVICE_BUDGETS.antigravity, fixedCost) : null;
+  const advisory = [fixed, selection ? selection.context : ""].filter(Boolean).join("\n\n");
+  const sent = adviseOnceDelivery(
+    "guardrails",
+    p.session_id,
+    agCallSignature(tool, input),
+    advisory,
+  );
+  if (sent.delivered && selection) acknowledgeSelected(selection.selected);
+  return sent.decision;
 }
 
 // bkit:end

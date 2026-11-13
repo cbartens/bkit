@@ -34,7 +34,10 @@
 // {{BKIT_MANAGED_MARKER}}
 
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+
+// {{BKIT_PART gateguard-engine.js}}
 
 // {{BKIT_PART guardrails-shell.js}}
 
@@ -62,8 +65,20 @@ function bkitGuardrails(payload) {
         "If the host is a standing dependency, add it to allowed-domains.",
     );
   }
-  const edits = shellEditTargets(c);
-  if (edits.length > 0) notes.push(shellEditAdvisory(edits));
+  const edits = shellEditTargets(c, hookContext(payload));
+  if (hasEditEvidence(edits)) {
+    notes.push(
+      shellEditContext(
+        shellEditAdvisory(edits),
+        edits,
+        hookContext(payload),
+        payload.session_id,
+        payload.agent_id,
+        ADVICE_BUDGETS.claude,
+        notes.join("\n\n"),
+      ),
+    );
+  }
 
   return notes.length > 0 ? { context: notes.join("\n\n") } : null;
 }

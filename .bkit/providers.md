@@ -352,16 +352,18 @@ What it advises:
 - Gate-config paths (JS / TS: tsconfig/eslint/prettier/vitest/jest/vale/slop/lint-staged; Python: ruff.toml/.ruff.toml/.flake8/mypy.ini/.mypy.ini/pylintrc/.pylintrc/pytest.ini; Go: golangci; Rust: clippy.toml/.clippy.toml/rustfmt.toml/.rustfmt.toml; mixed-purpose manifests such as package.json, pyproject.toml, setup.cfg, tox.ini are not matched) → "fix code, don't weaken gate" advisory, except under a consumer's `.bkit/templates/`, which holds reference copies. In bkit's own repo (package name `@cbartens/bkit`), that folder is the template source and stays guarded.
 - New-file writes → reuse-over-duplicate nudge.
 - `docs/**.md` (not `docs/plans/`) → density advisory appended.
+- Agent-read files (below `.agents/`, `.bkit/` and `docs/`, plus `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) → one general authoring reminder that points to `.bkit/authoring.md` § Which Sections Apply. It is the same on every edit method and does not pick sections by file kind.
+- Shell edits (`>` / `>>`, `tee`, `sed -i`, `cp` / `mv`, `git apply` / `patch`, inline or directly named Python and Node scripts) → the same per-file blocks and the same once-per-file record as the edit tools. A script whose targets cannot be established gets one notice that GateGuard cannot determine all targets and the authoring reads apply to every file actually edited. Clearly read-only commands stay silent.
 
 It is fail-open and includes subagents. It dedups on `(session, agent, file)` via OS-temp state, with a 24h TTL.
 
 <!-- prettier-ignore -->
 | Host | Implementation | File | Registration |
 | --- | --- | --- | --- |
-| Claude | `bkit-gateguard.cjs` (CJS) | `.claude/hooks/bkit-gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
+| Claude | `bkit-gateguard.cjs` (CJS) | `.claude/hooks/bkit-gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit\|NotebookEdit` (`notebook_path`) |
 | Codex | `bkit-gateguard.cjs` (CJS) — Claude's stdin / stdout contract; parses the `apply_patch` envelope for target paths | `.codex/hooks/bkit-gateguard.cjs` | `.codex/hooks.json` → `hooks.PreToolUse` on `apply_patch` |
-| Antigravity | `bkit-gateguard.cjs` (CJS) — Antigravity's `{ toolCall, conversationId }` stdin / `{ decision, reason }` stdout; `write_to_file` / `replace_file_content` edit tools, path from `args.TargetFile` | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` | `.agents/plugins/bkit/hooks.json` → `hooks.PreToolUse` on `write_to_file\|replace_file_content` |
-| Cursor | `bkit-gateguard.cjs` (CJS) — managed block generated from the same parts as the Claude twin, so byte-identical | `.cursor/hooks/bkit-gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write`), no `failClosed`, because an advisory hook that fails closed would block the edit it only meant to comment on |
+| Antigravity | `bkit-gateguard.cjs` (CJS) — Antigravity's `{ toolCall, conversationId }` stdin / `{ decision, reason }` stdout; `write_to_file` / `replace_file_content` / `multi_replace_file_content` edit tools, path from `args.TargetFile` | `.agents/plugins/bkit/hooks/bkit-gateguard.cjs` | `.agents/plugins/bkit/hooks.json` → `hooks.PreToolUse` on `write_to_file\|replace_file_content\|multi_replace_file_content` |
+| Cursor | `bkit-gateguard.cjs` (CJS) — managed block generated from the same parts as the Claude twin, so byte-identical | `.cursor/hooks/bkit-gateguard.cjs` | `.cursor/hooks.json` → `preToolUse` (matcher `Write\|Delete`), no `failClosed`, because an advisory hook that fails closed would block the edit it only meant to comment on |
 | Cursor | `bkit-guardrails.cjs` (CJS) — destructive-op / secret-exposure gates, the Cursor equivalent of Claude's `permissions` and OpenCode's `permission` map | `.cursor/hooks/bkit-guardrails.cjs` | `.cursor/hooks.json` → `beforeShellExecution` + `preToolUse` (`Read\|TabRead`), both `failClosed` |
 | OpenCode | `bkit-gateguard.js` (ESM) | `.opencode/plugin/bkit-gateguard.js` | `.opencode/opencode.json` → `plugin` array, spec `./plugin/bkit-gateguard.js` (config-file-relative; OpenCode 2.0 reads a bare `.opencode/…` spec as an npm package and fails to load — the plugin also auto-loads from `.opencode/plugin/`) |
 
@@ -399,6 +401,51 @@ On Codex and Cursor a subagent editing a file its parent already touched gets no
 The behaviour is the same, with four delivery mechanisms across five hosts. `.bkit/core/engine/audits/hooks/gateguard-parity.integration.test.ts` asserts it uniformly.
 
 **Divergence budget:** every host's block carries `hooks/gateguard-engine.js` verbatim, and the Claude and Cursor blocks are byte-identical (both test-asserted on the generated hooks). OpenCode's block differs only where the runtime forces it: an ES module rather than CJS, the tool vocabulary `write`/`edit`/`patch` rather than `Edit`/`Write`/`MultiEdit`, and a `patchText` envelope parser for `patch`. Codex's block differs only in its payload. Every edit arrives as `apply_patch` with a V4A envelope and no file path, so its block carries the envelope parser (Add / Update / Delete / Move-to targets). Antigravity's differs in its tool vocabulary (`write_to_file` / `replace_file_content`), its `TargetFile` extraction and the `antigravity-hook.js` contract part. Every advisory string, gate-config pattern and docs-path rule is identical across all five.
+
+#### Shell edits, host coverage and delivery limits
+
+Tool registration, target extraction and delivery are three separate checks. A fixture response proves emission only. Receipt by the model and a chance to read before the pending edit are separate claims, and no live run has established either on any host. Sources: [Claude context](https://code.claude.com/docs/en/hooks#add-context-for-claude) and [matchers](https://code.claude.com/docs/en/hooks#matcher-patterns), [Cursor hooks](https://cursor.com/docs/hooks), [Codex hooks](https://learn.chatgpt.com/docs/hooks), [Antigravity hook tools](https://antigravity.google/docs/hooks#supported-tools), [OpenCode V2 server plugins](https://dev.opencode.ai/v2/docs/build/plugins/server/). Capability last checked against those pages on 2026-11-02.
+
+<!-- prettier-ignore -->
+| Host | Edit tools covered | Shell covered | Delivery boundary |
+| --- | --- | --- | --- |
+| Claude | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | `Bash` | `PreToolUse.additionalContext` is emitted before the tool runs, but the model reads it on its next request beside the tool result. The reminder may reach the model only after the pending edit ran. |
+| Cursor | `Write`, `Delete` | `beforeShellExecution` guard | The shipped edit driver sends `additional_context` on an allow. Current docs describe `agent_message` for a denied call, so the `additional_context` envelope is unverified. Shell hooks document `agent_message` separately. |
+| Codex | `apply_patch` (every target in the batch) | `Bash` initial commands | `PreToolUse.additionalContext` is documented as model-visible. Timing before the pending edit is unverified. Later interactive input through `write_stdin` is not checked. The `.codex/` layer must be trusted. |
+| Antigravity | `write_to_file`, `replace_file_content`, `multi_replace_file_content` | `run_command` | Deny once with the reminder as `reason`, then allow the identical retry. No new shell denial. |
+| OpenCode | `write`, `edit`, `patch` | none | The advisory is appended to the tool result after the edit. This is an explicit gap: it is not before-edit coverage, and no shell hook exists. |
+
+Arbitrary custom or MCP tools are not inferred from a generic tool name.
+
+**Default Cursor driver.** In `.cursor/hooks/bkit-gateguard.cjs` the consumer-owned outer driver reads the payload and emits the `additional_context` envelope. A managed-block update cannot change that envelope or add fields the driver drops, so edit delivery on a default install is unverified, and upgrades leave the driver bytes as they are. Check the installed Cursor version's pre-tool response contract first and keep custom driver text. If that version has no verified non-blocking before-edit route, keep the coverage limit. Do not rename a field by guesswork or use denied or post-tool delivery instead.
+
+**Customized drivers.** A customized outer driver stays consumer-owned. When the managed block cannot carry the new behavior through it, the install is not equivalent to the default. Name the exact wiring boundary in your own docs.
+
+**Response budgets.** The engine adds only complete per-file blocks, and counts the whole added context: the shell introduction, the blocks and the notices. It reserves 512 characters (Claude, OpenCode) or bytes (the others) of the budget for notices. Composed shell advice counts its own text, so the omitted-target notice is sized exactly instead.
+
+<!-- prettier-ignore -->
+| Host | Budget | Basis |
+| --- | --- | --- |
+| Claude | 8,000 characters | Below the documented 10,000-character spill threshold. |
+| Codex | 2,000 UTF-8 bytes | Below the documented default of about 2,500 tokens. |
+| Cursor, Antigravity | 2,000 bytes | Provisional until the route is verified. |
+| OpenCode | 8,000 characters | Same limit as Claude (`ADVICE_BUDGETS.opencode`). |
+
+These are conservative limits, not measured visibility guarantees. A target whose block does not fit is left unacknowledged, so a later exact edit warns again. The shell path inspects at most 256 KiB of command text, 64 KiB per directly named script, nesting depth 3 and 64 exact targets, with a cooperative 200 ms deadline. Each rendered shell hook must finish within the smaller of one second and a quarter of its host's documented timeout.
+
+**Diagnostic signatures.** These are the six recovery cases, named here so an agent can match what it sees. The hooks emit no signature string: the advisory carries plain prose for `analysis-unavailable` ("could not be safely read"), `analysis-limit` ("Analysis limit reached") and `output-limit` ("omitted (output limit)"). The other three have no advisory text; the recovery column is the only guidance. None is a counter, a service or a command log, and none includes raw commands, inline source or environment values.
+
+<!-- prettier-ignore -->
+| Signature | Meaning | Recovery |
+| --- | --- | --- |
+| `analysis-unavailable` | A directly named script cannot be read safely, or the working directory is unresolved. | Targets are unknown and unacknowledged. Check the named script and directory yourself. |
+| `analysis-limit` | A byte, nesting, target or time bound stopped inspection. | Targets found so far are kept. The authoring reads still apply to every file edited. |
+| `output-limit` | The host budget left out complete blocks for known targets. | The notice carries the omitted count. Omitted paths stay unacknowledged. Do not treat the batch as full coverage. |
+| `state-fallback` | The warning state is corrupt or unwritable. | The hook uses its in-process fallback, allows the call and may repeat advice. Check the state directory and its permissions, then reset the session state. Do not infer delivery from a partial file. |
+| `delivery-unverified` | The host route, project trust or timing is not established. | Check event registration, the tool payload, project trust and the table above. A fixture response is not proof of live delivery. |
+| `driver-wiring` | A preserved driver has input or response wiring the managed block cannot work with, including the default Cursor envelope. | Compare that driver with the host's current documented contract and keep custom text. State the limit when no supported route exists. |
+
+`BKIT_GATEGUARD=off` silences the advice and leaves the independent shell protections in place.
 
 ### ReadGuard
 

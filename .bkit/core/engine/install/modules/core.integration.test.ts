@@ -2689,3 +2689,257 @@ describe("deterministic bookkeeping contracts in a fresh consumer", { timeout: 1
     expect(poll("none").json).toMatchObject({ attempts: 6, nextAction: "retrigger" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fresh install and upgrade keep shared hook behaviour and consumer-owned drivers
+// ---------------------------------------------------------------------------
+
+describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
+  const HOOKS: Record<string, string[]> = {
+    claude: [".claude/hooks/bkit-gateguard.cjs", ".claude/hooks/bkit-guardrails.cjs"],
+    cursor: [".cursor/hooks/bkit-gateguard.cjs", ".cursor/hooks/bkit-guardrails.cjs"],
+    codex: [".codex/hooks/bkit-gateguard.cjs", ".codex/hooks/bkit-guardrails.cjs"],
+    antigravity: [
+      ".agents/plugins/bkit/hooks/bkit-gateguard.cjs",
+      ".agents/plugins/bkit/hooks/bkit-guardrails.cjs",
+    ],
+  };
+  const START = "// bkit:" + "start";
+  const END = "// bkit:" + "end";
+
+  const split = (text: string): { head: string; managed: string; tail: string } => {
+    const a = text.indexOf(START);
+    const b = text.indexOf(END);
+    return {
+      head: text.slice(0, a),
+      managed: text.slice(a, b + END.length),
+      tail: text.slice(b + END.length),
+    };
+  };
+
+  const installCtx = (): ModuleContext => {
+    const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+    return makeCtx({
+      modelLookup: parseModelLookup(promptsMd),
+      codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+      antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+      effortMap: parseEffortMap(promptsMd),
+    });
+  };
+
+  it("installs and upgrades shared hook behavior without replacing owned drivers", () => {
+    const hosts = Object.keys(HOOKS);
+    const modules = new Set<import("../../cli").ModuleFlag>(["core", ...hosts] as never);
+
+    // Fresh install: shared shell and edit behaviour arrives, and the pointer resolves locally.
+    dispatchModules(modules, installCtx());
+    const fresh: Record<string, string> = {};
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      fresh[rel] = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+      expect(fresh[rel], rel).toContain(START);
+      expect(fresh[rel], rel).toContain(END);
+    }
+    for (const host of hosts) {
+      const guard = split(fresh[HOOKS[host][1]]).managed;
+      expect(guard, `${host} guardrails shell advice`).toContain("edits files through the shell");
+      expect(guard, `${host} guardrails unknown-target`).toContain("cannot be determined");
+      expect(guard, `${host} guardrails authoring pointer`).toContain(".bkit/authoring.md");
+    }
+    const authoring = fs.readFileSync(path.join(tmpDir, ".bkit", "authoring.md"), "utf-8");
+    expect(authoring).toContain("Which Sections Apply");
+    expect(authoring).toContain("Doc Templates");
+
+    // No runtime package dependency is added to the consumer.
+    const pkgFresh = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgFresh.dependencies).toBeUndefined();
+
+    // Upgrade from the shipped layout: an old managed block, a customised outer driver (and
+    // one untouched default), and a custom registration group alongside bkit's own.
+    const customised = new Map<string, { head: string; tail: string }>();
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const parts = split(fresh[rel]);
+      // The gateguard driver is customised; the guardrails driver stays the shipped default.
+      const edits: Record<string, { head: string; tail: string }> = {
+        "bkit-gateguard.cjs": {
+          head: `// consumer-owned driver note \u00e9 ${rel}\n`,
+          tail: `\n// consumer tail ${rel}\n`,
+        },
+        "bkit-guardrails.cjs": { head: "", tail: "" },
+      };
+      const edit = edits[path.basename(rel)];
+      const head = parts.head + edit.head;
+      const tail = parts.tail + edit.tail;
+      fs.writeFileSync(
+        path.join(tmpDir, rel),
+        `${head}${START}\n// stale managed engine from the shipped layout\n${END}${tail}`,
+        "utf-8",
+      );
+      customised.set(rel, { head, tail });
+    }
+    const settingsPath = path.join(tmpDir, ".claude", "settings.json");
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: object[] };
+    };
+    const customGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    settings.hooks.PreToolUse.push(customGroup);
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+
+    dispatchModules(modules, installCtx());
+
+    for (const rel of hosts.flatMap((h) => HOOKS[h])) {
+      const now = split(fs.readFileSync(path.join(tmpDir, rel), "utf-8"));
+      const before = customised.get(rel) as { head: string; tail: string };
+      // Owned bytes identical; managed behaviour restored to the current shared engine.
+      expect(now.head, `${rel} head`).toBe(before.head);
+      expect(now.tail, `${rel} tail`).toBe(before.tail);
+      expect(now.managed, `${rel} managed`).toBe(split(fresh[rel]).managed);
+    }
+    const after = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as {
+      hooks: { PreToolUse: { matcher?: string }[] };
+    };
+    expect(after.hooks.PreToolUse).toContainEqual(customGroup);
+    expect(JSON.stringify(after.hooks.PreToolUse)).toContain("bkit-gateguard.cjs");
+    const pkgAfter = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkgAfter.dependencies).toBeUndefined();
+    expect(pkgAfter.devDependencies).toEqual(pkgFresh.devDependencies);
+  });
+
+  it("upgrades shipped registrations without dropping consumer hook groups or permissions", () => {
+    const BASE = "da97be38";
+    const shipped = (rel: string): string => {
+      const r = spawnSync("git", ["show", `${BASE}:.bkit/shared/${rel}`], {
+        cwd: getPkgRoot(),
+        encoding: "utf-8",
+        maxBuffer: 16 * 1024 * 1024,
+      });
+      expect(r.status, `git show ${rel}`).toBe(0);
+      return r.stdout;
+    };
+    const modules = new Set<import("../../cli").ModuleFlag>([
+      "core",
+      "claude",
+      "cursor",
+      "antigravity",
+    ] as never);
+
+    const claudePath = path.join(tmpDir, ".claude", "settings.json");
+    const cursorPath = path.join(tmpDir, ".cursor", "hooks.json");
+    const agyPath = path.join(tmpDir, ".agents", "plugins", "bkit", "hooks.json");
+    for (const [p, rel] of [
+      [claudePath, ".claude/settings.json"],
+      [cursorPath, ".cursor/hooks.json"],
+      [agyPath, ".agents/plugins/bkit/hooks.json"],
+    ] as const) {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.writeFileSync(p, shipped(rel), "utf-8");
+    }
+
+    const claudeGroup = {
+      matcher: "ConsumerTool",
+      hooks: [{ type: "command", command: "node scripts/consumer-hook.js" }],
+    };
+    const agyGroup = {
+      matcher: "consumer_tool",
+      hooks: [{ type: "command", command: "node scripts/consumer-agy.js" }],
+    };
+    const cursorEntry = { command: "node scripts/consumer-cursor.js", matcher: "ConsumerTool" };
+    const ownAllow = "Bash(consumer-own-command:*)";
+
+    const claude = JSON.parse(fs.readFileSync(claudePath, "utf-8"));
+    claude.hooks.PreToolUse.push(claudeGroup);
+    claude.permissions.allow = [...claude.permissions.allow, ownAllow];
+    fs.writeFileSync(claudePath, JSON.stringify(claude, null, 2) + "\n", "utf-8");
+    const cursor = JSON.parse(fs.readFileSync(cursorPath, "utf-8"));
+    cursor.hooks.preToolUse.push(cursorEntry);
+    fs.writeFileSync(cursorPath, JSON.stringify(cursor, null, 2) + "\n", "utf-8");
+    const agy = JSON.parse(fs.readFileSync(agyPath, "utf-8"));
+    agy.hooks.PreToolUse.push(agyGroup);
+    fs.writeFileSync(agyPath, JSON.stringify(agy, null, 2) + "\n", "utf-8");
+
+    const ctx = (): ModuleContext => {
+      const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+      return makeCtx({
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+      });
+    };
+    dispatchModules(modules, ctx());
+
+    const read = (p: string) => fs.readFileSync(p, "utf-8");
+
+    // New matchers arrive.
+    const claudeAfter = JSON.parse(read(claudePath));
+    expect(JSON.stringify(claudeAfter.hooks.PreToolUse)).toContain("NotebookEdit");
+    expect(read(cursorPath)).toContain("Write|Delete");
+    expect(read(agyPath)).toContain("multi_replace_file_content");
+
+    // Consumer-owned entries survive, byte-for-byte.
+    expect(claudeAfter.hooks.PreToolUse).toContainEqual(claudeGroup);
+    expect(claudeAfter.permissions.allow).toContain(ownAllow);
+    expect(JSON.parse(read(cursorPath)).hooks.preToolUse).toContainEqual(cursorEntry);
+    expect(JSON.parse(read(agyPath)).hooks.PreToolUse).toContainEqual(agyGroup);
+
+    // No duplicate bkit group: each bkit hook command is registered once per event.
+    const gateguardCommand = /"command":"(?:[^"\\]|\\.)*bkit-gateguard\.cjs(?:[^"\\]|\\.)*"/g;
+    const countCommands = (hooks: unknown): number =>
+      Array.from(JSON.stringify(hooks).matchAll(gateguardCommand)).length;
+    expect(countCommands(claudeAfter.hooks.PreToolUse)).toBe(1);
+    expect(countCommands(JSON.parse(read(cursorPath)).hooks.preToolUse)).toBe(1);
+    expect(countCommands(JSON.parse(read(agyPath)).hooks.PreToolUse)).toBe(1);
+
+    // A second install is a no-op.
+    const snapshot = [claudePath, cursorPath, agyPath].map(read);
+    dispatchModules(modules, ctx());
+    expect([claudePath, cursorPath, agyPath].map(read)).toEqual(snapshot);
+  });
+
+  it("upgrades a shipped Claude edit group without dropping a consumer hook inside it", () => {
+    const shippedRun = spawnSync("git", ["show", "da97be38:.bkit/shared/.claude/settings.json"], {
+      cwd: getPkgRoot(),
+      encoding: "utf-8",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    expect(shippedRun.status, "git show .claude/settings.json").toBe(0);
+    const claudePath = path.join(tmpDir, ".claude", "settings.json");
+    fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+
+    const consumerHook = { type: "command", command: "node scripts/my-check.js" };
+    const shipped = JSON.parse(shippedRun.stdout) as {
+      hooks: { PreToolUse: { hooks: object[] }[] };
+    };
+    const gateGroup = shipped.hooks.PreToolUse.find((g) =>
+      JSON.stringify(g.hooks).includes("bkit-gateguard.cjs"),
+    );
+    expect(gateGroup, "shipped gateguard group").toBeDefined();
+    gateGroup?.hooks.push(consumerHook);
+    fs.writeFileSync(claudePath, JSON.stringify(shipped, null, 2) + "\n", "utf-8");
+
+    const modules = new Set<import("../../cli").ModuleFlag>(["core", "claude"] as never);
+    const ctx = (): ModuleContext => {
+      const promptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+      return makeCtx({
+        modelLookup: parseModelLookup(promptsMd),
+        codexModelLookup: buildOpencodeModelLookup(promptsMd, "openai"),
+        antigravityModelLookup: buildAntigravityModelLookup(promptsMd),
+        effortMap: parseEffortMap(promptsMd),
+      });
+    };
+    dispatchModules(modules, ctx());
+
+    const after = JSON.parse(fs.readFileSync(claudePath, "utf-8")) as {
+      hooks: { PreToolUse: { matcher?: string; hooks: object[] }[] };
+    };
+    const groups = after.hooks.PreToolUse;
+    const upgraded = groups.filter((g) => JSON.stringify(g.hooks).includes("bkit-gateguard.cjs"));
+    // The new matcher arrives, the group is not duplicated, and the consumer hook survives in it.
+    expect(upgraded).toHaveLength(1);
+    expect(upgraded[0].matcher).toContain("NotebookEdit");
+    expect(upgraded[0].hooks).toContainEqual(consumerHook);
+    expect(JSON.stringify(groups).split("scripts/my-check.js")).toHaveLength(2);
+  });
+});

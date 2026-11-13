@@ -198,6 +198,106 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
 }
 
 // ---------------------------------------------------------------------------
+// mergeManagedJson — list-aware merge for managed Tier-2 JSON files
+//
+//   - Objects: merge like deepMergeJson (template keys first, consumer-only keys appended)
+//   - Lists of plain values: template entries in template order, then consumer-only entries
+//   - Lists of objects (hook groups): a consumer group sharing a hook `command`, or the same
+//     bkit hook file (`bkit-*.cjs`), with a template group is replaced by it; other consumer groups follow the template's groups
+//   - Anything else: the template wins
+// ---------------------------------------------------------------------------
+
+function isPlainObject(v: JsonValue | undefined): v is { [k: string]: JsonValue } {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function groupCommands(group: { [k: string]: JsonValue }): string[] {
+  const out: string[] = [];
+  if (typeof group.command === "string") out.push(group.command);
+  const hooks = group.hooks;
+  if (!Array.isArray(hooks)) return out;
+  for (const h of hooks) {
+    if (isPlainObject(h) && typeof h.command === "string") out.push(h.command);
+  }
+  return out;
+}
+
+// The bkit hook file a command runs (`bkit-gateguard.cjs`, `bkit-preflight.sh`, ...), so an
+// older spelling of the same bkit hook is still recognised as bkit's own.
+function bkitHookFile(command: string): string | undefined {
+  return /\bbkit-[a-z0-9-]+\.(?:cjs|js|sh)\b/.exec(command)?.[0];
+}
+
+function mergeManagedList(base: JsonValue[], override: JsonValue[]): JsonValue[] {
+  const objectLists = [...base, ...override].every((e) => isPlainObject(e));
+  if (objectLists) {
+    const templateCommands = new Set<string>();
+    for (const g of override) {
+      for (const c of groupCommands(g as { [k: string]: JsonValue })) {
+        templateCommands.add(c);
+        const file = bkitHookFile(c);
+        if (file) templateCommands.add(`bkit-file:${file}`);
+      }
+    }
+    const isTemplateCommand = (c: string): boolean => {
+      const file = bkitHookFile(c);
+      return (
+        templateCommands.has(c) || (file !== undefined && templateCommands.has(`bkit-file:${file}`))
+      );
+    };
+    const templateKeys = new Set(override.map((g) => JSON.stringify(g)));
+    const merged = override.map((g) => ({ ...(g as { [k: string]: JsonValue }) }));
+    const kept: JsonValue[] = [];
+    for (const g of base) {
+      if (templateKeys.has(JSON.stringify(g))) continue;
+      const group = g as { [k: string]: JsonValue };
+      const cmds = groupCommands(group);
+      if (!cmds.some(isTemplateCommand)) {
+        kept.push(g);
+        continue;
+      }
+      // A replaced bkit group: its consumer-added hooks move into the matching template group.
+      if (!Array.isArray(group.hooks)) continue;
+      const extras = group.hooks.filter(
+        (h) => isPlainObject(h) && typeof h.command === "string" && !isTemplateCommand(h.command),
+      );
+      if (extras.length === 0) continue;
+      const target = merged.find((t) =>
+        groupCommands(t).some((c) =>
+          cmds.some(
+            (bc) =>
+              bc === c || (bkitHookFile(c) !== undefined && bkitHookFile(c) === bkitHookFile(bc)),
+          ),
+        ),
+      );
+      if (!target || !Array.isArray(target.hooks)) continue;
+      const have = new Set(target.hooks.map((h) => JSON.stringify(h)));
+      const add = extras.filter((h) => !have.has(JSON.stringify(h)));
+      target.hooks = [...target.hooks, ...add];
+    }
+    return [...merged, ...kept];
+  }
+  const seen = new Set(override.map((e) => JSON.stringify(e)));
+  const extras = base.filter((e) => !seen.has(JSON.stringify(e)));
+  return [...override, ...extras];
+}
+
+export function mergeManagedJson(base: JsonValue, override: JsonValue): JsonValue {
+  if (Array.isArray(override)) {
+    return Array.isArray(base) ? mergeManagedList(base, override) : override;
+  }
+  if (!isPlainObject(override) || !isPlainObject(base)) return override;
+  const result: { [k: string]: JsonValue } = {};
+  for (const [key, val] of Object.entries(override)) {
+    result[key] = key in base ? mergeManagedJson(base[key] as JsonValue, val) : val;
+  }
+  for (const [key, val] of Object.entries(base)) {
+    if (!(key in result)) result[key] = val;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // MCP tracker entry — bkit owns the template's parts of the entry, not the whole entry (#613)
 //
 //   - every key the template sets is reset to the template's value
@@ -301,7 +401,7 @@ export function writeTier2JsonContained(
   }
 
   // Deep-merge: existing base, template override (template wins on conflicts)
-  const merged = deepMergeJson(existing as JsonValue, template as JsonValue);
+  const merged = mergeManagedJson(existing as JsonValue, template as JsonValue);
   const mergedStr = JSON.stringify(merged, null, 2) + "\n";
   if (mergedStr === dstRaw) return; // idempotent guard
 

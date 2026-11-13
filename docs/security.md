@@ -167,6 +167,17 @@ Runtime type-guards on subprocess args, even TypeScript-typed (type erasure at r
 
 GHA-injection: user-controlled text (commit message, PR title, dispatch inputs) → `run:` body ONLY via `env:` (runtime expansion), never inlined into `${{ }}` — see `docs/deployments.md` § `bkit-cloud.yml`.
 
+## Shell-Edit Inspection (GateGuard hooks)
+
+The shell hooks read a command, an inline script, a patch or a directly named script before it runs, to find the files it writes. Treat all of that text as untrusted data.
+
+- **Never run what is inspected.** The detector parses syntax only. It does not execute, import or fetch source, follow imports, walk directories or wait on a FIFO or device.
+- **Bounded reads.** Source files are opened only when directly named and regular (type checked on the descriptor), and read at most 64 KiB plus one byte. A symlink, race, missing or special file reports uncertainty instead.
+- **Fixed bounds.** 256 KiB of command text, depth 3, 64 exact targets and a 200 ms cooperative deadline. At the first limit the hook keeps the targets already found and reports `analysis-limit`.
+- **No source in output or state.** Output carries safe reason codes, counts and display paths only: no command, inline source or environment value. GateGuard state in `os.tmpdir()/bkit-gateguard-<uid>` holds normalized edited paths.
+- **Advisory, fail-open.** An analysis failure never blocks the command and never downgrades a stronger deny, ask, secret or fetch decision.
+- **Known limit.** The state folder is not yet created owner-only (`0o700`) and checked before use, so on a shared `/tmp` another local user can plant a symlink there. `docs/deferrals.jsonl` records the limit.
+
 ## CI Auto-Route Trust (bkit-cloud)
 
 **Engine-owned FID parse:** the router never matches a FID with its own regex. `bkit fids parse` (the consumer's own bkit, installed from its `dev` lockfile) returns the FID and issue id, and `bkit_dev_dispatch_guard` asserts the FID charset again before the counter write. The `dev` subject goes through `fids parse --prompt-file`, never an argument.

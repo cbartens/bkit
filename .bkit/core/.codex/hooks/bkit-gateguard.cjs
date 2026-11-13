@@ -79,14 +79,19 @@ function bkitGateguard(payload) {
   const input = payload.tool_input || {};
   const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
   const sessionId = dedupKey(payload.session_id, payload.agent_id);
-  // One patch can touch several files. Advises on the first not-yet-warned target, so a
-  // new file after an already-warned one still gets its advisory.
-  const target = parseApplyPatchTargets(input.command, cwd).find(
-    (t) => !alreadyWarned(sessionId, t.file),
-  );
-  if (!target) return null;
-  // `*** Add File:` IS the new-file signal; no existence probe.
-  return firstTouchAdvice(target.file, sessionId, target.isNew);
+  // One patch can touch several files. Every not-yet-warned target is prepared (nothing is
+  // recorded), complete blocks are selected inside Codex's output budget, and only the
+  // selected blocks are acknowledged; the rest stay eligible for a later edit.
+  const blocks = [];
+  const seen = new Set();
+  for (const t of parseApplyPatchTargets(input.command, cwd)) {
+    // `*** Add File:` IS the new-file signal; no existence probe.
+    const prepared = prepareAdvice(t.file, sessionId, t.isNew, cwd);
+    if (!prepared || seen.has(prepared.key)) continue;
+    seen.add(prepared.key);
+    blocks.push(prepared);
+  }
+  return deliverAdvice(blocks, ADVICE_BUDGETS.codex, true);
 }
 
 // bkit:end

@@ -266,12 +266,15 @@ function shellSecretRead(c) {
  *   `{ tier: "deny", what, fix }` — blocked on every host;
  *   `{ tier: "ask", what }`       — a destructive / privileged command;
  *   `{ tier: "secret", path }`    — a shell read of an env / secrets / private-key file;
- *   `{ tier: "fetch" }`           — curl / wget to a host off the network allowlist;
+ *   `{ tier: "fetch", edits? }`   — curl / wget to a host off the network allowlist, with the
+ *                                   edit evidence of the same command when it has any;
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
- * `dirs` locate the network allowlist (`hookDirs`).
+ * An allowed fetch never hides an edit in the same command. `edits` is the evidence from
+ * `shellEditTargets`. `dirs` locate the network allowlist (`hookDirs`); `ctx` is the call's
+ * `{ cwd, root }` (`hookContext`) that edit targets resolve against.
  */
-function classifyShell(c, dirs) {
+function classifyShell(c, dirs, ctx) {
   if (!c) return null;
   const denied = denyRule(c);
   if (denied) return { tier: "deny", ...denied };
@@ -279,7 +282,9 @@ function classifyShell(c, dirs) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(c);
   if (secret) return { tier: "secret", path: secret };
-  if (usesFetch(c)) return curlWgetHostAllowed(c, dirs) ? null : { tier: "fetch" };
-  const edits = shellEditTargets(c);
-  return edits.length > 0 ? { tier: "edit", edits } : null;
+  const offList = usesFetch(c) && !curlWgetHostAllowed(c, dirs);
+  const edits = shellEditTargets(c, ctx);
+  const found = hasEditEvidence(edits);
+  if (offList) return found ? { tier: "fetch", edits } : { tier: "fetch" };
+  return found ? { tier: "edit", edits } : null;
 }

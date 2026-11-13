@@ -184,13 +184,25 @@ export function redEntries(file, workflow, group) {
     return out;
 }
 /**
+ * The plan beside a run's status file: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` →
+ * `docs/plans/{YYYYMM}/{FID}-plan.md`.
+ */
+export function runPlanPath(statusFile) {
+    const logs = path.dirname(statusFile);
+    return path.join(path.dirname(path.dirname(logs)), `${path.basename(logs)}-plan.md`);
+}
+/**
  * The planned tests of `group` (every group when undefined) a code step changed since their red: a test whose own lines
  * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
  * per-test locking, or when no line carried the name) derives the block from the recorded
  * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
- * test file are free.
+ * test file are free. With `plan` (the plan's text), only records of tests a `TEST FIRST`
+ * line still names are checked: a name the plan dropped locks nothing.
  */
-export function touchedTests(top, file, workflow, group) {
+export function touchedTests(top, file, workflow, group, plan) {
+    const planned = plan === undefined
+        ? null
+        : new Set(readTestFirst(plan).flatMap((s) => s.kind === "test" ? s.tests.map((t) => redKey(s.task, t.test, t.name)) : []));
     const touched = [];
     const texts = new Map();
     const textOf = (test) => {
@@ -201,6 +213,8 @@ export function touchedTests(top, file, workflow, group) {
         return texts.get(test);
     };
     for (const t of redEntries(file, workflow, group).values()) {
+        if (planned !== null && !planned.has(redKey(t.task, t.test, t.testName)))
+            continue;
         let block = t.block ?? null;
         if (block === null)
             block = blockHash(blobText(top, t.blob), t.testName);

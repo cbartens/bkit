@@ -379,3 +379,60 @@ describe("renameScriptTokens", () => {
     expect(elapsed).toBeLessThan(500);
   });
 });
+
+const MANAGED_START = "<!-" + "- bkit:start -" + "->";
+const MANAGED_END = "<!-" + "- bkit:end -" + "->";
+
+describe("shipped authoring pointers", () => {
+  const coreRoot = path.resolve(__dirname, "../../..");
+  const templatesDir = path.join(coreRoot, "docs/templates");
+  const read = (p: string): string => fs.readFileSync(p, "utf-8");
+
+  it("keeps shipped authoring pointers in their editor context", () => {
+    // Rules: the script/bulk exception keeps authoring reads, and template editing follows Doc Templates.
+    const rules = read(path.join(coreRoot, ".agents/rules.md"));
+    const ruleLine = (head: string): string =>
+      rules
+        .split("\n")
+        .filter((l) => l.startsWith(head))
+        .join("\n");
+    const editTools = ruleLine("- **Edit tools:**");
+    expect(editTools).toMatch(/authoring/i);
+    expect(editTools).toContain(".bkit/authoring.md");
+    const authoring = ruleLine("- **Authoring:**");
+    expect(authoring).toContain("§ Doc Templates");
+
+    // Every current template: the pointer sits in the opening HTML note, not only in filling-agent rules.
+    const templates = fs
+      .readdirSync(templatesDir)
+      .filter((f) => /^bkit-(audit-.+|plan)\.md$/.test(f))
+      .sort();
+    expect(templates.length).toBeGreaterThanOrEqual(36);
+    for (const file of templates) {
+      const text = read(path.join(templatesDir, file));
+      const noteStart = text.indexOf("<!-" + "- Note:");
+      const note = text.slice(noteStart, text.indexOf("-" + "->", noteStart) + 3);
+      expect(note, `${file} opening note`).not.toBe("");
+      expect(note, `${file} editor pointer in opening note`).toContain(".bkit/authoring.md");
+      expect(note, `${file} editor pointer names Doc Templates`).toContain("§ Doc Templates");
+      // The opening note must stay inside the managed block.
+      expect(text.indexOf(MANAGED_START), file).toBeLessThan(text.indexOf(note));
+      expect(text.indexOf(note), file).toBeLessThan(text.indexOf(MANAGED_END));
+    }
+
+    // Provider guidance carries the six diagnostic signatures; no lite.md is recreated.
+    const providers = read(path.join(coreRoot, ".bkit/providers.md"));
+    for (const sig of [
+      "analysis-unavailable",
+      "analysis-limit",
+      "output-limit",
+      "state-fallback",
+      "delivery-unverified",
+      "driver-wiring",
+    ]) {
+      expect(providers, sig).toContain(sig);
+    }
+    expect(fs.existsSync(path.join(coreRoot, ".bkit/lite.md"))).toBe(false);
+    expect(fs.existsSync(path.join(coreRoot, "docs/lite.md"))).toBe(false);
+  });
+});

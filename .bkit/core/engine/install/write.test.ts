@@ -8,6 +8,7 @@ import {
   writeTier2JsonContained,
   deepContains,
   deepMergeJson,
+  mergeManagedJson,
   ensurePackageJsonScripts,
   type WriteSet,
   type JsonValue,
@@ -938,5 +939,87 @@ describe.skipIf(process.platform === "win32")("executable bit drift", () => {
     const ws = makeWriteSet();
     writeTier2(src, dst, TOKENS, "html-comment", true, ws);
     expect(ws.writes).toEqual([]);
+  });
+});
+
+describe("mergeManagedJson", () => {
+  it("merges managed lists while keeping consumer-added entries", () => {
+    const grp = (matcher: string, command: string): JsonValue => ({
+      matcher,
+      hooks: [{ type: "command", command }],
+    });
+    const template = {
+      permissions: { allow: ["Bash(a)", "Bash(b)"], deny: ["Read(x)"] },
+      env: { K: "template" },
+      hooks: {
+        PreToolUse: [
+          grp("Edit|Write|NotebookEdit", "node gate.cjs"),
+          grp("Bash", "node guard.cjs"),
+        ],
+      },
+    } as JsonValue;
+    const existing = {
+      permissions: { allow: ["Bash(mine)", "Bash(b)", "Bash(a)"], ask: ["Bash(ask)"] },
+      env: { K: "old", OWN: "1" },
+      hooks: {
+        PreToolUse: [
+          grp("ConsumerTool", "node consumer.js"),
+          grp("Edit|Write", "node gate.cjs"),
+          grp("Bash", "node guard.cjs"),
+        ],
+        Stop: [grp("", "echo own")],
+      },
+    } as JsonValue;
+
+    const merged = mergeManagedJson(existing, template) as Record<string, JsonValue>;
+    const perms = merged.permissions as Record<string, JsonValue>;
+
+    // Plain-value list: template entries in template order, then consumer-only entries.
+    expect(perms.allow).toEqual(["Bash(a)", "Bash(b)", "Bash(mine)"]);
+    expect(perms.deny).toEqual(["Read(x)"]);
+    expect(perms.ask).toEqual(["Bash(ask)"]);
+    // Objects merge as deepMergeJson does: template wins, consumer-only keys stay.
+    expect(merged.env).toEqual({ K: "template", OWN: "1" });
+    // Hook groups: a consumer group sharing a command is replaced; others follow the template's.
+    const hooks = merged.hooks as Record<string, JsonValue[]>;
+    expect(hooks.PreToolUse).toEqual([
+      grp("Edit|Write|NotebookEdit", "node gate.cjs"),
+      grp("Bash", "node guard.cjs"),
+      grp("ConsumerTool", "node consumer.js"),
+    ]);
+    expect(hooks.Stop).toEqual([grp("", "echo own")]);
+
+    // Re-merging the result is stable: no duplicates, same order.
+    expect(mergeManagedJson(merged, template)).toEqual(merged);
+    // deepMergeJson still replaces whole lists.
+    const dm = deepMergeJson(existing, template) as Record<string, Record<string, JsonValue>>;
+    expect(dm.permissions.allow).toEqual(["Bash(a)", "Bash(b)"]);
+  });
+
+  it("keeps a consumer hook placed inside a bkit hook group", () => {
+    const bkitHook: JsonValue = {
+      type: "command",
+      command: "node .claude/hooks/bkit-gateguard.cjs",
+    };
+    const mine: JsonValue = { type: "command", command: "node scripts/my-check.js" };
+    const existing = {
+      hooks: {
+        PreToolUse: [{ matcher: "Edit|Write|MultiEdit", hooks: [bkitHook, mine] }],
+      },
+    } as JsonValue;
+    const template = {
+      hooks: {
+        PreToolUse: [{ matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [bkitHook] }],
+      },
+    } as JsonValue;
+
+    const merged = mergeManagedJson(existing, template) as Record<string, JsonValue>;
+    const groups = (merged.hooks as Record<string, JsonValue[]>).PreToolUse;
+    // The template group replaces bkit's matcher and hook, and the consumer hook rides along.
+    expect(groups).toEqual([
+      { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [bkitHook, mine] },
+    ]);
+    // A second run is a no-op.
+    expect(mergeManagedJson(merged, template)).toEqual(merged);
   });
 });
