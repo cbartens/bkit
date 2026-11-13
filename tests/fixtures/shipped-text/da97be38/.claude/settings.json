@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "BKIT_LOCK_WAIT_S": "1200"
+  },
+  "permissions": {
+    "allow": [
+      "Skill(*)",
+      "Bash(*)",
+      "mcp__github__*",
+      "mcp__linear__*",
+      "mcp__jira__*",
+      "WebSearch",
+      "Bash(git push --force-with-lease:*)",
+      "Read(./.env.example)",
+      "Read(./**/.env.example)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(rm -rf $HOME/*)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf $HOME)",
+      "Bash(rm -rf ${HOME})",
+      "Bash(rm -rf ${HOME}/*)",
+      "Bash(rm -fr /*)",
+      "Bash(rm -fr ~)",
+      "Bash(rm -fr ~/*)",
+      "Bash(rm -fr $HOME)",
+      "Bash(rm -fr $HOME/*)",
+      "Bash(rm -fr ${HOME})",
+      "Bash(rm -fr ${HOME}/*)",
+      "Bash(chmod -R 777 /:*)",
+      "Bash(git push --force)",
+      "Bash(git push --force *)",
+      "Bash(git push -f)",
+      "Bash(git push -f *)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force)",
+      "Bash(git push * --force *)",
+      "Bash(git push * -f*)",
+      "Bash(git push * +*)",
+      "Bash(git -* push* --force)",
+      "Bash(git -* push* --force *)",
+      "Bash(git -* push* -f*)",
+      "Bash(git -* push* +*)",
+      "Bash(git push* -uf*)",
+      "Bash(git -* push* -uf*)",
+      "Bash(git push* -vf*)",
+      "Bash(git -* push* -vf*)",
+      "Bash(git push* -qf*)",
+      "Bash(git -* push* -qf*)",
+      "Bash(git push* -nf*)",
+      "Bash(git -* push* -nf*)",
+      "Bash(git push* -df*)",
+      "Bash(git -* push* -df*)",
+      "Bash(git push* -4f*)",
+      "Bash(git -* push* -4f*)",
+      "Bash(git push* -6f*)",
+      "Bash(git -* push* -6f*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.p12)",
+      "Read(./**/id_rsa)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(brew install:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(npm publish:*)",
+      "Bash(bun publish:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git checkout -- .:*)",
+      "Bash(git restore .:*)",
+      "Bash(git stash drop:*)",
+      "Bash(git stash clear:*)",
+      "Bash(git rebase -i:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh release delete:*)",
+      "Bash(git reset *--hard*)",
+      "Bash(git -* reset *--hard*)",
+      "Bash(git clean -*f*)",
+      "Bash(git checkout *.)",
+      "Bash(git checkout * . *)",
+      "Bash(git restore *.)",
+      "Bash(git restore * . *)",
+      "Bash(git rebase * -i)",
+      "Bash(git rebase * -i *)",
+      "Bash(git rebase *--interactive*)",
+      "Bash(git * --no-verify)",
+      "Bash(git * --no-verify *)",
+      "Bash(git commit -n*)",
+      "Bash(git commit * -n)",
+      "Bash(git commit * -n *)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./.bkit/.env)"
+    ],
+    "defaultMode": "acceptEdits"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/bkit-preflight.sh"
+          },
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-cloud-bootstrap.sh && bash .claude/hooks/bkit-cloud-bootstrap.sh || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-gateguard.cjs && node .claude/hooks/bkit-gateguard.cjs || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-guardrails.cjs && node .claude/hooks/bkit-guardrails.cjs || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-readguard.cjs && node .claude/hooks/bkit-readguard.cjs || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/bkit-readguard.cjs && node .claude/hooks/bkit-readguard.cjs || true"
+          }
+        ]
+      }
+    ]
+  }
+}

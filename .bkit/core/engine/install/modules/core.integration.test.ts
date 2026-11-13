@@ -2873,16 +2873,12 @@ describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
   });
 
   it("upgrades shipped registrations without dropping consumer hook groups or permissions", () => {
-    const BASE = "da97be38";
-    const shipped = (rel: string): string => {
-      const r = spawnSync("git", ["show", `${BASE}:.bkit/shared/${rel}`], {
-        cwd: getPkgRoot(),
-        encoding: "utf-8",
-        maxBuffer: 16 * 1024 * 1024,
-      });
-      expect(r.status, `git show ${rel}`).toBe(0);
-      return r.stdout;
-    };
+    // The shipped text at da97be38, frozen in tests/fixtures/shipped-text.
+    const shipped = (rel: string): string =>
+      fs.readFileSync(
+        path.join(getPkgRoot(), "tests/fixtures/shipped-text/da97be38", rel),
+        "utf-8",
+      );
     const modules = new Set<import("../../cli").ModuleFlag>([
       "core",
       "claude",
@@ -2964,17 +2960,15 @@ describe("shared hook behaviour footprint (fresh install and upgrade)", () => {
   });
 
   it("upgrades a shipped Claude edit group without dropping a consumer hook inside it", () => {
-    const shippedRun = spawnSync("git", ["show", "da97be38:.bkit/shared/.claude/settings.json"], {
-      cwd: getPkgRoot(),
-      encoding: "utf-8",
-      maxBuffer: 16 * 1024 * 1024,
-    });
-    expect(shippedRun.status, "git show .claude/settings.json").toBe(0);
+    const shippedSettings = fs.readFileSync(
+      path.join(getPkgRoot(), "tests/fixtures/shipped-text/da97be38/.claude/settings.json"),
+      "utf-8",
+    );
     const claudePath = path.join(tmpDir, ".claude", "settings.json");
     fs.mkdirSync(path.dirname(claudePath), { recursive: true });
 
     const consumerHook = { type: "command", command: "node scripts/my-check.js" };
-    const shipped = JSON.parse(shippedRun.stdout) as {
+    const shipped = JSON.parse(shippedSettings) as {
       hooks: { PreToolUse: { hooks: object[] }[] };
     };
     const gateGroup = shipped.hooks.PreToolUse.find((g) =>

@@ -1092,6 +1092,9 @@ describe("persistent CI handoff on a real local remote", () => {
     const work = path.join(root, "work");
     git(root, ["init", "-q", "--bare", "-b", branch, remote]);
     git(root, ["init", "-q", "-b", branch, work]);
+    // The engine commits in this clone itself, so it needs an identity of its own.
+    git(work, ["config", "user.name", "t"]);
+    git(work, ["config", "user.email", "t@t"]);
     fs.writeFileSync(path.join(work, "package.json"), JSON.stringify({ private: true }));
     git(work, ["add", "package.json"]);
     git(work, ["commit", "-q", "-m", "base"]);

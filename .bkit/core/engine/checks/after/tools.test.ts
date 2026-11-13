@@ -49,6 +49,10 @@ let tmpDir: string;
 
 let originalCwd: string;
 
+/** Shipped text frozen at `revision` in tests/fixtures/shipped-text, by its path under `.bkit/shared/`. */
+const shippedText = (revision: string, rel: string): string =>
+  fs.readFileSync(path.join(originalCwd, "tests/fixtures/shipped-text", revision, rel), "utf8");
+
 let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
@@ -513,7 +517,7 @@ describe("detectProjectDocs", () => {
     expect(findings.some((f) => f.id === "project-docs-index-missing")).toBe(false);
   });
 
-  it("recognizes current and migrated untouched starters", async () => {
+  it("recognizes current and migrated untouched starters", () => {
     const starter = fs.readFileSync(path.join(STARTER_DIR, "architecture.md"), "utf-8");
     // Current starter copied verbatim; a lightly edited placeholder-only copy of another starter.
     writeDoc("docs/architecture.md", starter);
@@ -527,12 +531,7 @@ describe("detectProjectDocs", () => {
       { doc: "docs/security.md" },
     ]);
 
-    const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    const legacy = cp.execFileSync(
-      "git",
-      ["show", `${LEGACY_STARTER_SOURCE_REVISION}:.bkit/shared/docs/noise.md`],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], cwd: originalCwd },
-    );
+    const legacy = shippedText(LEGACY_STARTER_SOURCE_REVISION, "docs/noise.md");
     // Migrated: the ownership wrapper lines are gone, the text is the shipped legacy text.
     const migrated = stripLegacyWrapper(legacy);
     writeDoc("docs/noise.md", migrated);
@@ -628,14 +627,8 @@ describe("detectProjectDocs", () => {
     }
   });
   /** The v6.1.1 shipped text of a topic as it was rendered into a consumer repo. */
-  async function renderedV611(topic: string, branch: string): Promise<string> {
-    const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    const raw = cp.execFileSync("git", ["show", `v6.1.1:.bkit/shared/docs/${topic}.md`], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      cwd: originalCwd,
-    });
-    return raw
+  function renderedV611(topic: string, branch: string): string {
+    return shippedText("v6.1.1", `docs/${topic}.md`)
       .replace(
         "{{BKIT_MANAGED_MARKER}}",
         "<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->",
@@ -643,16 +636,16 @@ describe("detectProjectDocs", () => {
       .replace(/\{\{DEFAULT_BRANCH\}\}/g, branch);
   }
 
-  it("recognizes the v6.1.1 untouched security starter as unpopulated", async () => {
-    writeDoc("docs/security.md", await renderedV611("security", "main"));
+  it("recognizes the v6.1.1 untouched security starter as unpopulated", () => {
+    writeDoc("docs/security.md", renderedV611("security", "main"));
     writeIndex([{ doc: "docs/security.md" }]);
     const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
     expect(unpopulated).toBeDefined();
     expect(unpopulated!.detect).toContain("docs/security.md");
   });
 
-  it("recognizes a legacy deployments starter rendered with default branch dev", async () => {
-    writeDoc("docs/deployments.md", await renderedV611("deployments", "dev"));
+  it("recognizes a legacy deployments starter rendered with default branch dev", () => {
+    writeDoc("docs/deployments.md", renderedV611("deployments", "dev"));
     writeIndex([{ doc: "docs/deployments.md" }]);
     const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
     expect(unpopulated).toBeDefined();
@@ -803,13 +796,8 @@ describe("detectProjectDocs", () => {
     expect(unpopulated!.detect).toContain("docs/security.md");
   });
 
-  it("classifies an indented legacy starter copy as unpopulated", async () => {
-    const cp = await vi.importActual<typeof import("node:child_process")>("node:child_process");
-    const legacy = cp.execFileSync(
-      "git",
-      ["show", `${LEGACY_STARTER_SOURCE_REVISION}:.bkit/shared/docs/security.md`],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], cwd: originalCwd },
-    );
+  it("classifies an indented legacy starter copy as unpopulated", () => {
+    const legacy = shippedText(LEGACY_STARTER_SOURCE_REVISION, "docs/security.md");
     const lines = stripLegacyWrapper(legacy).split("\n");
     const i = lines.findIndex((l) => /^[A-Za-z]/.test(l));
     expect(i).toBeGreaterThanOrEqual(0);

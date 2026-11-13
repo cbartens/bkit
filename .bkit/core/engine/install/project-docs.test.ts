@@ -1,10 +1,10 @@
 // install/project-docs.test.ts — Unit tests for project-doc ownership migration and indexing.
 
-import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { getPkgRoot } from "../shared/package-roots";
 import { stripManagedWrapper } from "./managed-block";
 import {
   LEGACY_STARTER_DIGESTS,
@@ -67,19 +67,15 @@ describe("legacy starter digests", () => {
 
   it("recognises the real legacy text of a topic at the recorded revision", () => {
     for (const t of ["noise", "architecture", "technology", "observability"] as const) {
-      let text: string;
-      try {
-        text = execFileSync(
-          "git",
-          ["show", `${LEGACY_STARTER_SOURCE_REVISION}:.bkit/shared/docs/${t}.md`],
-          {
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "ignore"],
-          },
-        );
-      } catch {
-        continue; // history not available (shallow clone)
-      }
+      const text = fs.readFileSync(
+        path.join(
+          getPkgRoot(),
+          "tests/fixtures/shipped-text",
+          LEGACY_STARTER_SOURCE_REVISION,
+          `docs/${t}.md`,
+        ),
+        "utf8",
+      );
       expect(legacyDigest(text)).toBe(LEGACY_STARTER_DIGESTS[t]);
       expect(legacyStarterTopic(text)).toBe(t);
     }

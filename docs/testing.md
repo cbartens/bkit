@@ -725,6 +725,8 @@ Workflow progress has focused Unit coverage for position math and command output
 
 The machine-lock integration tests in `audits/templates/machine-lock.integration.test.ts` run real Bash and Perl holders against isolated cache folders. `tests/fixtures/machine-lock/stack-lock-6.0.0.sh` freezes the older stack-lock script for compatibility checks, and `tests/fixtures/machine-lock/machine-lock-6.1.1.sh` freezes the 6.1.1 script, which has no waiting queue, for the mixed-version order test.
 
+Tests that compare against text an older bkit shipped read it from `tests/fixtures/shipped-text/<revision>/`, laid out by its path under `.bkit/shared/`, never through `git show <revision>:…`. CI checks out one commit with no history or tags, so a `git show` of an older revision fails there. `checks/after/tools.test.ts` and `install/project-docs.test.ts` read the `45f4254bd` and `v6.1.1` starters, and `install/modules/core.integration.test.ts` reads the `da97be38` hook registrations.
+
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
