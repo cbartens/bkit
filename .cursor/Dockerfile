@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 # Node — nodejs.org tarball checked against SHASUMS256.txt (linux-x64).
 # renovate: datasource=node-version depName=node
-ARG NODE_VERSION=24.22.1
+ARG NODE_VERSION=24.22.2
 ARG NODE_SHA256=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
 RUN cd /tmp \
     && curl -fsSLO --retry 3 --retry-all-errors "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # gh CLI — git push, PR ops, CI cache lookup. Release tarball checked against the release's checksums.txt.
 # renovate: datasource=github-releases depName=cli/cli
-ARG GH_VERSION=2.103.0
+ARG GH_VERSION=2.103.3
 ARG GH_SHA256=fdd768eb70f6409f80fcfa9f3a1c0adf0fc98d827ab3ce0bed2ac22762c5d786
 RUN cd /tmp \
     && curl -fsSLO --retry 3 --retry-all-errors "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
@@ -57,7 +57,7 @@ RUN cd /tmp \
 
 # vale — `pnpm bkit:lint:prose`. Version pinned for snapshot reproducibility; tarball checked before extract.
 # renovate: datasource=github-releases depName=errata-ai/vale
-ARG VALE_VERSION=3.24.0
+ARG VALE_VERSION=3.26.0
 ARG VALE_SHA256=867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214
 RUN cd /tmp \
     && curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
