@@ -43,7 +43,7 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@10.34.7",
+  "packageManager": "pnpm@10.34.9",
   "repository": {
     "type": "git",
     "url": "https://github.com/cbartens/bkit.git"
@@ -105,19 +105,19 @@
   },
   "devDependencies": {
     "@types/node": "24.19.2",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "bats": "1.13.0",
     "bkit": "link:.",
     "husky": "9.1.7",
     "lint-staged": "17.6.0",
-    "oxlint": "1.89.0",
-    "oxlint-tsgolint": "7.0.2004",
+    "oxlint": "1.92.0",
+    "oxlint-tsgolint": "7.0.2006",
     "prettier": "3.9.10",
     "slop-scan": "0.3.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "6.4.5",
-    "vitest": "5.0.5",
+    "vitest": "5.1.0",
     "yaml": "2.9.1"
   },
   "pnpm": {
