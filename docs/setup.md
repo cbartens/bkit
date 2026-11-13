@@ -76,6 +76,8 @@ direnv allow                            # trust .envrc; auto-loads on subsequent
 echo "len=${#BKIT_GH_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
 ```
 
+The pre-push hook loads `.envrc` itself, so a push from a shell that never loaded it still gets the repo's variables. Run `direnv allow .` once in every folder you push from, linked worktrees included, or the push blocks in seconds with that fix. `bkit worktrees setup` allows a worktree's `.envrc` for you when it matches the main checkout's byte for byte.
+
 `LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`. Cloud sessions set the same variable names in their dashboards, not this file.
 
 ## Bootstrap

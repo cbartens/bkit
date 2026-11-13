@@ -82,7 +82,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `9.x`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
+| Pre-push hook | `.husky/pre-push` | Loads `.envrc` through `direnv exec .` when the repo has one, `direnv` is on `PATH` and `CI` is unset, and blocks in seconds on an untrusted `.envrc`. Runs `pnpm bkit check`, then `bkit ci push-gate` with the selected script: `bkit:gate:min` for an eligible bookkeeping push, `bkit:gate:static` for a revert, else `bkit:gate:static-unit-integration` when declared or `bkit:gate:static-unit`. A successful full gate records local evidence for later bookkeeping increments. Source-repo full pushes also run `pnpm bkit:check:dist` and `pnpm bkit:lint:workflows`; the consumer template does not. Gate selection and release skips are in `docs/deployments.md` § Pre-push checklist and § Release test runs. |
 
 ## CI/CD
 

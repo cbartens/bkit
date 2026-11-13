@@ -426,6 +426,20 @@ describe("bkit worktrees setup — mint (create)", () => {
     expect(again.err).toContain("direnv allow failed (exit 1)");
   });
 
+  it("setup with an .envrc differing from the main checkout's reports that the push will block", async () => {
+    const f = fixture();
+    fs.writeFileSync(path.join(f.seed, ".envrc"), "export A=1\n");
+    git(f.seed, "add", ".envrc");
+    git(f.seed, "commit", "-q", "-m", "envrc");
+    git(f.seed, "push", "-q", "origin", "HEAD:dev");
+    // The main checkout's dev is behind, so its .envrc differs (it has none).
+    const r = await setup(f.repo, "build", "--worktrees");
+    expect(r.json.direnvAllowed).toBe(false);
+    expect(direnvCalls()).toBe("");
+    expect(r.err).toContain("push will block");
+    expect(r.err).toContain("direnv allow");
+  });
+
   it("copies the configured list, narrates each missing entry, and nothing outside it", async () => {
     const f = fixture();
     fs.mkdirSync(path.join(f.repo, "apps/web"), { recursive: true });

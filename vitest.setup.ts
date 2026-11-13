@@ -125,6 +125,7 @@ for (const key of [
   "CURSOR_REMOTE_AGENT",
   "GITHUB_ACTIONS",
   "CI",
+  "BKIT_PRE_PUSH_LOGGED",
 ]) {
   delete process.env[key];
 }

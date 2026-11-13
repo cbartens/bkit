@@ -866,6 +866,25 @@ describe("edge cases", () => {
       expect(finding!.detect).toBeTruthy();
       expect(finding!.action).toBeTruthy();
     });
+
+    it("runPostInstallCheck stays quiet about BKIT_GH_TOKEN inside the pre-push hook's inner run", () => {
+      delete process.env.BKIT_GH_TOKEN;
+      delete process.env.CI;
+      vi.stubEnv("BKIT_PRE_PUSH_LOGGED", "1");
+      fs.writeFileSync(
+        path.join(tmpDir, ".mcp.json"),
+        JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+      );
+      execSync.mockImplementation(() => {
+        throw new Error("gh: command not found");
+      });
+      try {
+        const result = runPostInstallCheck([], tmpDir);
+        expect(result.some((f) => f.id === "gh-mcp-token-unset-shell")).toBe(false);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   // ---------------------------------------------------------------------------

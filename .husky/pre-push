@@ -24,7 +24,9 @@ set -e
 # background, still has the whole run. The path is printed first (tail -f it while the push
 # runs) and last, with the exit code. Git's ref list on stdin reaches the inner run unchanged,
 # and the hook exits with the inner run's code. Output goes to stderr, where git sends a
-# hook's output anyway. `git push --no-verify`, and a checkout without husky installed (a
+# hook's output anyway. When the repo has an `.envrc`, `direnv` is on PATH and CI is unset, the
+# inner run goes through `direnv exec .`, so the gate sees the repo's variables whatever shell
+# pushed; an untrusted `.envrc` blocks first with the `direnv allow .` fix. The keys in `.bkit/.env` are unset for the gate. `git push --no-verify`, and a checkout without husky installed (a
 # linked worktree), run no hook and write no log.
 if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
   PRE_PUSH_LOG=tmp/pre-push.log
@@ -33,13 +35,38 @@ if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
   {
     echo "[pre-push] log: $PRE_PUSH_LOG"
     pre_push_rc=0
-    BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 sh "$0" "$@" 2>&1 || pre_push_rc=$?
+    if [ -f .envrc ] && [ -z "${CI:-}" ] && command -v direnv > /dev/null 2>&1; then
+      if direnv exec . true < /dev/null 2>&1; then
+        BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 direnv exec . sh "$0" "$@" 2>&1 || pre_push_rc=$?
+      else
+        echo "[pre-push] .envrc is not trusted: run \`direnv allow .\` in this folder, then push again."
+        pre_push_rc=1
+      fi
+    else
+      BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 sh "$0" "$@" 2>&1 || pre_push_rc=$?
+    fi
     echo "[pre-push] log: $PRE_PUSH_LOG (exit $pre_push_rc)"
     echo "$pre_push_rc" > "$PRE_PUSH_RC_FILE"
   } | tee "$PRE_PUSH_LOG" >&2
   pre_push_rc=$(cat "$PRE_PUSH_RC_FILE")
   rm -f "$PRE_PUSH_RC_FILE"
   exit "$pre_push_rc"
+fi
+
+# The bkit tooling keys are unset for the gate: its tests, lint plugins and dependency code never
+# need them, and their output lands in the agent-readable log. Two sources: the fixed list
+# (docs/security.md § `.bkit/.env` scope), whichever path loaded them (cloud dashboard env, an app
+# env file, ~/.zshrc, launchd), and every key `.bkit/.env` names, in direnv's dotenv grammar
+# (`KEY=v`, `KEY = v`, `KEY: v`, optional `export `).
+for gate_key in BKIT_GH_TOKEN BKIT_LINEAR_API_KEY BKIT_JIRA_API_KEY BKIT_ANTHROPIC_API_KEY \
+  BKIT_CURSOR_API_KEY BKIT_OPENCODE_API_KEY BKIT_OPENROUTER_API_KEY BKIT_OLLAMA_API_KEY \
+  BKIT_OPENAI_API_KEY; do
+  unset "$gate_key"
+done
+if [ -f .bkit/.env ]; then
+  for gate_key in $(sed -n 's/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*[=:].*/\2/p' .bkit/.env); do
+    unset "$gate_key"
+  done
 fi
 
 # Git exports GIT_DIR to a hook and everything it starts (from a linked worktree:

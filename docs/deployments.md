@@ -553,6 +553,8 @@ The full pre-push gate checks the same static, unit and integration tiers as CI.
 | 8 | Dist freshness | `pnpm bkit:check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 | 9 | Workflow lint | `pnpm bkit:lint:workflows` | source-repo only (appended directly; not in the consumer template) | actionlint finding in `.github/workflows/*` → fix the workflow. Guard-skips when actionlint is absent locally; CI installs it so it always enforces there. A YAML parse is not enough, because actionlint catches valid-YAML-but-invalid-GHA. |
 
+**direnv load (pre-push, before every gate):** when the repo has an `.envrc`, `direnv` is on `PATH` and `CI` is unset, the logged inner run goes through `direnv exec .`, so the gate sees `.envrc`'s variables whatever shell pushed. An untrusted `.envrc` → blocked before `bkit check`, with the `direnv allow .` fix. Every path then unsets the bkit tooling keys (`docs/security.md` § `.bkit/.env` scope). Contract: `.bkit/templates.md` § Git hooks — Husky.
+
 **Delete-only push (pre-push, first):** every stdin ref carries an all-zero local SHA (`git push origin --delete <branch>`) → exit 0, no gates. Any ref with a non-zero local SHA, empty stdin, or stdin a terminal (hook run by hand) → all gates run.
 
 **CI-suppressor HEAD guard (pre-push, before gates):** it applies on a branch other than `dev` / `main` whose HEAD carries a skip-CI token (`[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`), which `bkit ci skip-token` reports with exit 0. The hook then probes `gh pr list --head <branch> --state open`. First match wins:

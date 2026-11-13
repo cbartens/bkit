@@ -215,6 +215,16 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("gh-mcp").fires(cwd)).toBe(false);
   });
 
+  it("gh-mcp stays quiet about the token inside the pre-push hook's inner run", () => {
+    pkg({ tracker: { default: "github" } });
+    write(".mcp.json", JSON.stringify({ mcpServers: { github: { url: "https://x" } } }));
+    vi.stubEnv("CI", "");
+    vi.stubEnv("BKIT_GH_TOKEN", "");
+    expect(tip("gh-mcp").fires(cwd)).toBe(true);
+    vi.stubEnv("BKIT_PRE_PUSH_LOGGED", "1");
+    expect(tip("gh-mcp").fires(cwd)).toBe(false);
+  });
+
   it.each([
     ["github", ["BKIT_GH_TOKEN=x"]],
     ["linear", ["BKIT_GH_TOKEN=x", "BKIT_LINEAR_API_KEY=y"]],
@@ -459,6 +469,16 @@ describe("SETUP_TIPS — detection", () => {
       "pnpm -s bkit ci min-push --update=$OLD:$NEW\npnpm -s bkit ci push-gate --gate=bkit:gate:min\n",
     );
     expect(tip("min-push").fires(cwd)).toBe(false);
+  });
+
+  it("pre-push-direnv fires only for a hook without direnv exec in a repo with .envrc", () => {
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
+    write(".husky/pre-push", "pnpm -s bkit ci push-gate\n");
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
+    write(".envrc", "export FOO=1\n");
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(true);
+    write(".husky/pre-push", 'BKIT_PRE_PUSH_LOGGED=1 direnv exec . sh "$0" "$@"\n');
+    expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
   });
 
   it("disk-prune fires only once a pre-push hook exists without either step file", () => {

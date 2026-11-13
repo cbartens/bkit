@@ -647,7 +647,8 @@ function linkBkitEnv(
  * `direnv allow` the worktree's `.envrc` when it matches the main checkout's
  * byte for byte, so the worktree inherits the trust given there and nothing
  * more; a differing file is left for a human to read. No `.envrc`, direnv
- * missing or failing → false, narrated, never fatal.
+ * missing or failing → false, narrated (a differing or failed one says the push will
+ * block, since the pre-push hook refuses an untrusted `.envrc`), never fatal.
  */
 function allowDirenv(root: string, wt: string, log: (m: string) => void): boolean {
   const envrc = path.join(wt, ".envrc");
@@ -655,7 +656,7 @@ function allowDirenv(root: string, wt: string, log: (m: string) => void): boolea
   const main = path.join(root, ".envrc");
   if (!fs.existsSync(main) || !fs.readFileSync(main).equals(fs.readFileSync(envrc))) {
     log(
-      `direnv: ${envrc} differs from the main checkout's — not allowed; read it, then run direnv allow`,
+      `direnv: ${envrc} differs from the main checkout's — not allowed, so the pre-push hook will block the first push (the push will block until you read it and run direnv allow .)`,
     );
     return false;
   }
@@ -665,7 +666,9 @@ function allowDirenv(root: string, wt: string, log: (m: string) => void): boolea
     return false;
   }
   if (res.status !== 0) {
-    log(`direnv allow failed (exit ${res.status}): ${(res.stderr ?? "").trim()}`);
+    log(
+      `direnv allow failed (exit ${res.status}): ${(res.stderr ?? "").trim()} — the push will block until you run direnv allow . in the worktree`,
+    );
     return false;
   }
   return true;

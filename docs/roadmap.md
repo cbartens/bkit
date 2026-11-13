@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T06:49:24Z)_
+_(refreshed 2026-11-13T07:01:25Z)_
 
 ### Design
 
@@ -73,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 922-pre-push-load | 922-pre-push-load | 1794553285735 |
 | 903-build-owner-s | 903-build-owner-s | 1794552564939 |
 | 912-debug-loop-question | 912-debug-loop-question | 1794551937547 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794550421654 |
@@ -82,7 +83,6 @@ _(none)_
 | 719-cloud-variants-add | 719-cloud-variants-add | 1794142349684 |
 | 826-append-routine-workflow | 826-append-routine-workflow | 1794101597648 |
 | 724-machine-wide-test | 724-machine-wide-test | 1793707861076 |
-| 825-show-progress-bar | 825-show-progress-bar | 1793685847386 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

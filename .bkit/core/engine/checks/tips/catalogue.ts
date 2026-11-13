@@ -164,7 +164,9 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     advisories: ["gh-mcp-token-unset-shell", "gh-mcp-token-empty-shell"],
     fires: (cwd) =>
       readBkitConfig(cwd).issueTracker === "github" &&
-      (!hasGithubMcpServer(cwd) || detectGhMcpToken(cwd) !== null),
+      (!hasGithubMcpServer(cwd) ||
+        // The pre-push hook's inner run unsets the .bkit/.env keys on purpose, so a missing token there is not real.
+        (!process.env.BKIT_PRE_PUSH_LOGGED && detectGhMcpToken(cwd) !== null)),
   },
   {
     id: "bkit-env",
@@ -464,6 +466,20 @@ export const SETUP_TIPS: readonly SetupTip[] = [
       return ["bkit ci min-push", "--update=", "bkit ci push-gate"].some(
         (part) => !hook.includes(part),
       );
+    },
+  },
+  {
+    id: "pre-push-direnv",
+    workflows: ["plan", "ship"],
+    title: "Load .envrc when the pre-push hook runs",
+    line: "Your pre-push hook runs the gate without your .envrc variables when the shell that pushed never loaded them.",
+    why: "The newer hook runs its logged inner run through `direnv exec .`, so the gate always sees the repo's variables, and an untrusted .envrc stops the push in seconds with the fix instead of failing deep in the gate. The unset loops right after that block keep the fixed list of bkit tooling keys (BKIT_GH_TOKEN, ...), and every key `.bkit/.env` names, out of the gate and its log, however they were loaded.",
+    ask: "Replace the log block of .husky/pre-push (the `BKIT_PRE_PUSH_LOGGED` block) and the `.bkit/.env` unset block that follows it with the ones in .bkit/templates/.husky/pre-push.",
+    steps: "`.bkit/templates.md` § Git hooks.",
+    fires: (cwd) => {
+      if (!exists(cwd, ".husky/pre-push") || !exists(cwd, ".envrc")) return false;
+      const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+      return !hook.includes("direnv exec");
     },
   },
   {

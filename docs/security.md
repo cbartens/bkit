@@ -73,6 +73,8 @@ No database, server, or user-auth surface. Security concerns: secrets management
 
 `.bkit/.env` (gitignored, auto-loaded via `.envrc` / direnv) holds **bkit and agent-tooling secrets only**: tracker / cloud-agent tokens (`BKIT_GH_TOKEN`, `BKIT_LINEAR_API_KEY`, `BKIT_JIRA_API_KEY`, `BKIT_ANTHROPIC_API_KEY`, `BKIT_CURSOR_API_KEY`), OpenCode provider keys (`BKIT_OPENCODE_API_KEY`, `BKIT_OPENROUTER_API_KEY`, `BKIT_OLLAMA_API_KEY`) and the Codex router key (`BKIT_OPENAI_API_KEY`, never pasted into a cloud env block).
 
+The pre-push gate unsets each of these keys, plus every key `.bkit/.env` names, however they were loaded, so they stay out of the gate's tests and `tmp/pre-push.log` (`.bkit/templates.md` § Git hooks — Husky). A new tooling key goes in this list and in the hook's fixed list together.
+
 App / stack credentials do not belong here — runtime keys and `/bkit-debug` observability tokens (deploy-host, DB log-read, etc.) live in app env files (e.g. `apps/web/.env.local`, sourced by `.envrc`). Never re-add stack creds to `.bkit/.env`. Runtime-log source config → `.agents/context.md` (see `docs/observability.md`).
 
 `LINEAR_ISSUE_ID` — per-session cloud injection; never in `.bkit/.env`.

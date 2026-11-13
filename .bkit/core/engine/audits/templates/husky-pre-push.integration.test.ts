@@ -1235,3 +1235,306 @@ describe(".husky/pre-push min push", () => {
     expect(r.calls).toContain("bkit:lint:workflows");
   });
 });
+
+// ---------------------------------------------------------------------------
+// .husky/pre-push direnv — the logged inner run goes through `direnv exec .` when the repo
+// has an `.envrc`, `direnv` is on PATH and CI is unset; an untrusted `.envrc` blocks first.
+// Stub `direnv` records its argv, fails every call when `untrusted` exists, and otherwise
+// runs the command after `exec .` with GATE_VAR set; stub `pnpm` records the GATE_VAR it sees.
+// ---------------------------------------------------------------------------
+
+describe(".husky/pre-push direnv", () => {
+  const ZERO = "0".repeat(40);
+  const SHA = "d".repeat(40);
+  const REPO = process.cwd();
+  const HOOKS = [".bkit/templates/.husky/pre-push", ".husky/pre-push"];
+  const UPDATE = `refs/heads/dev ${SHA} refs/heads/dev ${ZERO}\n`;
+  const DELETE = `(delete) ${ZERO} refs/heads/a ${SHA}\n`;
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-prepush-direnv-")));
+    fs.mkdirSync(path.join(tmp, "bin"));
+    fs.writeFileSync(
+      path.join(tmp, "bin", "pnpm"),
+      `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    fs.writeFileSync(
+      path.join(tmp, "bin", "direnv"),
+      `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nif [ -e "${tmp}/untrusted" ]; then echo "direnv: error .envrc is blocked" >&2; exit 1; fi\nshift 2\nGATE_VAR=from-envrc exec "$@"\n`,
+      { mode: 0o755 },
+    );
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  const lines = (file: string): string[] => {
+    const p = path.join(tmp, file);
+    return fs.existsSync(p) ? fs.readFileSync(p, "utf-8").trim().split("\n") : [];
+  };
+
+  /** A bin dir holding every tool on PATH except `direnv`, so the hook finds none. */
+  const pathWithoutDirenv = (): string => {
+    const dir = path.join(tmp, "nodirenv");
+    fs.mkdirSync(dir);
+    const linked = new Set<string>();
+    for (const d of (process.env.PATH ?? "").split(path.delimiter)) {
+      if (!d || !fs.existsSync(d)) continue;
+      for (const name of fs.readdirSync(d)) {
+        if (name === "direnv" || linked.has(name)) continue;
+        linked.add(name);
+        fs.symlinkSync(path.join(d, name), path.join(dir, name));
+      }
+    }
+    return `${path.join(tmp, "bin-pnpm")}:${dir}`;
+  };
+
+  const runHook = (
+    hook: string,
+    stdin: string,
+    opts: {
+      envrc?: boolean;
+      untrusted?: boolean;
+      ci?: boolean;
+      noDirenv?: boolean;
+      extraEnv?: Record<string, string>;
+    } = {},
+  ) => {
+    const { envrc = true, untrusted = false, ci = false, noDirenv = false, extraEnv = {} } = opts;
+    if (envrc) fs.writeFileSync(path.join(tmp, ".envrc"), "export GATE_VAR=from-envrc\n");
+    if (untrusted) fs.writeFileSync(path.join(tmp, "untrusted"), "");
+    const env = { ...process.env };
+    delete env.BKIT_PRE_PUSH_LOGGED;
+    delete env.CI;
+    delete env.GATE_VAR;
+    if (ci) env.CI = "1";
+    let pathVar = `${path.join(tmp, "bin")}:${process.env.PATH}`;
+    if (noDirenv) {
+      fs.mkdirSync(path.join(tmp, "bin-pnpm"));
+      fs.copyFileSync(path.join(tmp, "bin", "pnpm"), path.join(tmp, "bin-pnpm", "pnpm"));
+      fs.chmodSync(path.join(tmp, "bin-pnpm", "pnpm"), 0o755);
+      pathVar = pathWithoutDirenv();
+    }
+    const result = spawnSync("sh", [path.join(REPO, hook)], {
+      cwd: tmp,
+      input: stdin,
+      encoding: "utf-8",
+      timeout: 20_000,
+      env: { ...env, ...extraEnv, PATH: pathVar },
+    });
+    return {
+      status: result.status,
+      stderr: result.stderr,
+      calls: lines("calls.log"),
+      direnv: lines("direnv.log"),
+    };
+  };
+
+  it("trusted .envrc → the gate sees its variables", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.direnv.some((c) => c.startsWith("exec . sh ")),
+        hook,
+      ).toBe(true);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) expect(g, hook).toContain("GATE_VAR=from-envrc");
+    }
+  });
+
+  it("untrusted .envrc → blocked before bkit check, names direnv allow", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      const r = runHook(hook, UPDATE, { untrusted: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("direnv allow .");
+      expect(
+        r.calls.some((c) => c.includes("bkit check")),
+        hook,
+      ).toBe(false);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(false);
+    }
+  });
+
+  it("no .envrc → no direnv call", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE, { envrc: false });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+    }
+  });
+
+  it("direnv not on PATH → gates run, no warning", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "nodirenv"), { recursive: true, force: true });
+      fs.rmSync(path.join(tmp, "bin-pnpm"), { recursive: true, force: true });
+      const r = runHook(hook, UPDATE, { noDirenv: true });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+      expect(r.stderr.toLowerCase(), hook).not.toContain("direnv");
+      expect(r.stderr, hook).not.toContain("WARN");
+    }
+  });
+
+  it("CI set → no direnv call", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, UPDATE, { ci: true });
+      expect(r.status, hook).toBe(0);
+      expect(r.direnv, hook).toEqual([]);
+      expect(
+        r.calls.some((c) => c.includes("push-gate")),
+        hook,
+      ).toBe(true);
+    }
+  });
+
+  it("delete-only push through direnv exec → exit 0, no gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      const r = runHook(hook, DELETE);
+      expect(r.status, hook).toBe(0);
+      expect(
+        r.direnv.some((c) => c.startsWith("exec . sh ")),
+        hook,
+      ).toBe(true);
+      expect(r.calls, hook).toEqual([]);
+      expect(r.stderr, hook).toContain("delete-only push");
+    }
+  });
+
+  it("trusted .envrc → .bkit/.env tooling keys do not reach the gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "direnv.log"), { force: true });
+      fs.mkdirSync(path.join(tmp, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".bkit", ".env"),
+        "BKIT_GH_TOKEN=dummy-write-pat\nBKIT_OTHER_KEY=dummy-other\n",
+      );
+      // direnv stub: like `dotenv_if_exists .bkit/.env` in the .envrc, export the file's keys
+      // and the .envrc's own variable, then run the command after `exec .`.
+      fs.writeFileSync(
+        path.join(tmp, "bin", "direnv"),
+        `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nshift 2\nset -a\n. ./.bkit/.env\nGATE_VAR=from-envrc\nset +a\nexec "$@"\n`,
+        { mode: 0o755 },
+      );
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset} BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset} BKIT_OTHER_KEY=\${BKIT_OTHER_KEY:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) {
+        expect(g, hook).toContain("GATE_VAR=from-envrc");
+        expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+        expect(g, hook).toContain("BKIT_OTHER_KEY=unset");
+      }
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+
+  it("trusted .envrc → spaced and colon .bkit/.env keys do not reach the gate", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.mkdirSync(path.join(tmp, ".bkit"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmp, ".bkit", ".env"),
+        "BKIT_GH_TOKEN = dummy-write-pat\nBKIT_OTHER_KEY: dummy-other\nexport BKIT_THIRD_KEY=dummy-third\n",
+      );
+      // direnv's dotenv grammar exports spaced, colon and `export` lines; the stub does the same.
+      fs.writeFileSync(
+        path.join(tmp, "bin", "direnv"),
+        `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nshift 2\nBKIT_GH_TOKEN=dummy-write-pat BKIT_OTHER_KEY=dummy-other BKIT_THIRD_KEY=dummy-third GATE_VAR=from-envrc exec "$@"\n`,
+        { mode: 0o755 },
+      );
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* GATE_VAR=\${GATE_VAR:-unset} BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset} BKIT_OTHER_KEY=\${BKIT_OTHER_KEY:-unset} BKIT_THIRD_KEY=\${BKIT_THIRD_KEY:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE);
+      expect(r.status, hook).toBe(0);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) {
+        expect(g, hook).toContain("GATE_VAR=from-envrc");
+        expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+        expect(g, hook).toContain("BKIT_OTHER_KEY=unset");
+        expect(g, hook).toContain("BKIT_THIRD_KEY=unset");
+      }
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+
+  it("no .bkit/.env, BKIT_GH_TOKEN exported by the pushing shell → the gate does not see it", () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      fs.rmSync(path.join(tmp, "bin-pnpm"), { recursive: true, force: true });
+      fs.rmSync(path.join(tmp, "nodirenv"), { recursive: true, force: true });
+      fs.writeFileSync(
+        path.join(tmp, "bin", "pnpm"),
+        `#!/bin/sh\ncase "$*" in *skip-token*|*"ci min-push"*) exit 1 ;; esac\necho "pnpm: $* BKIT_GH_TOKEN=\${BKIT_GH_TOKEN:-unset}" >> "${tmp}/calls.log"\nexit 0\n`,
+        { mode: 0o755 },
+      );
+      const r = runHook(hook, UPDATE, {
+        envrc: false,
+        noDirenv: true,
+        extraEnv: { BKIT_GH_TOKEN: "dummy-write-pat" },
+      });
+      expect(r.status, hook).toBe(0);
+      expect(fs.existsSync(path.join(tmp, ".bkit", ".env")), hook).toBe(false);
+      const gate = r.calls.filter((c) => c.includes("push-gate"));
+      expect(gate.length, hook).toBeGreaterThan(0);
+      for (const g of gate) expect(g, hook).toContain("BKIT_GH_TOKEN=unset");
+      expect(r.stderr, hook).not.toContain("dummy-write-pat");
+    }
+  });
+});
+
+describe("the gate's vitest run", () => {
+  it("the gate's vitest run does not inherit BKIT_PRE_PUSH_LOGGED", () => {
+    const env: NodeJS.ProcessEnv = { ...process.env, BKIT_PRE_PUSH_LOGGED: "1" };
+    delete env.CI;
+    delete env.GITHUB_ACTIONS;
+    const result = spawnSync(
+      "pnpm",
+      [
+        "exec",
+        "vitest",
+        "run",
+        "-c",
+        "vitest.unit.config.ts",
+        ".bkit/core/engine/checks/tips/catalogue.test.ts",
+        "-t",
+        "inside the pre-push hook",
+      ],
+      { cwd: process.cwd(), encoding: "utf-8", timeout: 120_000, env },
+    );
+    expect(`${result.stdout}\n${result.stderr}`, "vitest output").toContain("1 passed");
+    expect(result.status).toBe(0);
+  }, 150_000);
+});

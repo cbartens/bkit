@@ -362,8 +362,9 @@ export function runPostInstallCheck(
   const managedDuplicate = detectManagedDuplicate(cwd);
   if (managedDuplicate) phase3.push(managedDuplicate);
 
-  // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server.
-  const ghMcpToken = detectGhMcpToken(cwd);
+  // BKIT_GH_TOKEN shell env — authenticates the GitHub MCP server. Skipped inside the pre-push
+  // hook's inner run, which unsets the .bkit/.env keys on purpose (BKIT_PRE_PUSH_LOGGED is set).
+  const ghMcpToken = process.env.BKIT_PRE_PUSH_LOGGED ? null : detectGhMcpToken(cwd);
   if (ghMcpToken) phase3.push(ghMcpToken);
 
   // Main branch protection — bkit's PR-base gates (build Step 16, ship Step 2)
