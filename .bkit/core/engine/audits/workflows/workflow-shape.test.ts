@@ -2034,6 +2034,24 @@ describe("fix loops ask only when the last round made no progress", () => {
     expect(step3).toContain("`LOOP_POINT` = `soak`, `LOOP_FIX` = `debug-failure-soak`");
   });
 
+  it("debug Loop Question states the engine's trend line, never a fixed claim", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toContain("`trendLine` as `LOOP_TREND_LINE`");
+    expect(loop).not.toContain("left no fewer failures");
+    const questions = loop.split("\n").filter((l) => l.includes("**Q1 — "));
+    expect(questions.length).toBeGreaterThanOrEqual(4);
+    for (const q of questions) expect(q, q).toContain("{LOOP_TREND_LINE}");
+    expect(loop).toMatch(/taken without asking \([^\n]*\{LOOP_TREND_LINE\}/);
+  });
+
+  it("debug Loop Question at the used-up soak limit states the trend line", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toMatch(
+      /`LOOP_LIMIT` = true.*\*\*Q1 — Soak:\*\* The soak attempts are used up[^\n]*\{LOOP_TREND_LINE\}/,
+    );
+    expect(loop).toContain("`Recommended: A) Stop`");
+  });
+
   it("ship takes a merge fix round without asking when the diagnosis found the cause", () => {
     const step11 = section(workflow("ship"), /Step 11 — Failure Diagnose/);
     expect(step11).toContain("Hold `verdict` as `DIAGNOSE_VERDICT`");

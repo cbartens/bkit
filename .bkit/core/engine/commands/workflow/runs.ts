@@ -511,6 +511,7 @@ function locateCi(ctx: RunContext): number {
     headSha: text(run.head_sha),
     conclusion: text(run.conclusion) as Extract<CiSelection, { mode: "ci" }>["conclusion"],
     redTiers: tiers,
+    ...(failedJobs.length > 0 ? { failedJobCount: Math.max(1, mapped.length) } : {}),
     via,
   };
   if (

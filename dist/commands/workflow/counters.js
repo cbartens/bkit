@@ -218,7 +218,8 @@ function checkoutOf(file, cwd) {
 }
 /**
  * The loop's direction from its check rounds: `worse` when the problem count rose,
- * `closing` when it fell and the rounds changed code, `stuck` otherwise.
+ * `closing` when it fell and the rounds changed code, `stuck` otherwise, and `unknown` when
+ * the first or last round recorded no count.
  */
 export function loopTrend(rounds, codeChanged) {
     if (rounds.length < 2)
@@ -226,7 +227,7 @@ export function loopTrend(rounds, codeChanged) {
     const first = rounds[0]?.failures;
     const last = rounds.at(-1)?.failures;
     if (first === undefined || last === undefined)
-        return "stuck";
+        return "unknown";
     if (last > first)
         return "worse";
     if (last < first && codeChanged !== false)
@@ -284,8 +285,9 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
         return { ...r, failures };
     });
     const fixes = done(fix);
-    const first = rounds[0];
     const last = rounds.at(-1);
+    // Only rounds that ran the same tests are compared: the earliest round with the last round's scope.
+    const first = last === undefined ? undefined : rounds.find((r) => r.scope === last.scope);
     let codeChanged = null;
     if (first && last && first !== last && first.parentSha && last.parentSha) {
         const diff = runGit(checkoutOf(file, cwd), [
@@ -303,15 +305,43 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
             codeChanged = true;
     }
     const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
-    const trend = loopTrend(rounds, codeChanged);
-    const span = first && last && rounds.length > 1
-        ? (Date.parse(last.at) - Date.parse(first.at)) / 60000 / (rounds.length - 1)
+    const sameScope = first !== undefined && last !== undefined && first !== last;
+    const differentScopes = rounds.length >= 2 && !sameScope;
+    const trend = rounds.length < 2
+        ? "first-round"
+        : differentScopes
+            ? "unknown"
+            : loopTrend([first, last], codeChanged);
+    const countOf = (r) => (r?.failures === undefined ? "?" : String(r.failures));
+    const pairCounts = `${countOf(first)} → ${countOf(last)}`;
+    const firstFailures = first?.failures;
+    const lastFailures = last?.failures;
+    let trendLine;
+    if (trend === "first-round")
+        trendLine = "This was the first round, so there is no trend yet.";
+    else if (differentScopes)
+        trendLine = `The rounds ran different tests (${rounds[0]?.scope ?? "unscoped"}, then ${last?.scope ?? "unscoped"}), so their counts cannot be compared.`;
+    else if (trend === "unknown")
+        trendLine = `A round recorded no count (${rounds.map(countOf).join(" → ")}), so progress cannot be judged.`;
+    else if (trend === "closing")
+        trendLine = `The count fell between the first and the last round (${pairCounts}), and the code changed.`;
+    else if (trend === "worse")
+        trendLine = `The count rose between the first and the last round (${pairCounts}).`;
+    else if (firstFailures !== undefined &&
+        lastFailures !== undefined &&
+        lastFailures < firstFailures)
+        trendLine = `The count fell (${pairCounts}), but no source code changed between the rounds.`;
+    else
+        trendLine = `The count did not fall between the first and the last round (${pairCounts}).`;
+    const span = rounds[0] && last && rounds.length > 1
+        ? (Date.parse(last.at) - Date.parse(rounds[0].at)) / 60000 / (rounds.length - 1)
         : null;
     return {
         rounds: rounds.map((r, i) => ({
             attempt: r.attempt ?? null,
             failures: r.failures ?? null,
             ...(gateFailures[i] === undefined ? {} : { gateFailures: gateFailures[i] }),
+            scope: r.scope ?? null,
             at: r.at,
         })),
         counts: rounds.map((r) => (r.failures === undefined ? "?" : String(r.failures))).join(" → "),
@@ -328,7 +358,12 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
         finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
         minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
         trend,
-        recommend: trend === "first-round" ? null : trend === "closing" ? "try-again" : "stop",
+        trendLine,
+        recommend: trend === "first-round" || trend === "unknown"
+            ? null
+            : trend === "closing"
+                ? "try-again"
+                : "stop",
     };
 }
 /** `--since-clean`'s step: the single `--of` step, whose clean rounds close a loop. */
@@ -665,16 +700,17 @@ export const countersCommand = {
                 },
             ],
             output: {
-                rounds: "the check rounds counted: attempt, failures, gateFailures, at",
+                rounds: "the check rounds counted: attempt, failures, gateFailures, scope (what the round ran), at",
                 counts: "problem count after each round, e.g. 5 → 2 (with a gate, the gate's failing tests are added)",
                 gateCounts: "the group gate's failing tests after each round, e.g. 3 → 3 (absent without a gate)",
-                codeChanged: "source changed between the first and last check round (null when git cannot tell)",
+                codeChanged: "source changed between the compared rounds, the earliest and the last that ran the same tests (same scope) (null when git cannot tell)",
                 lastStrategy: "strategy of the last fix round (null when none ran)",
                 nextStrategy: "strategy the next fix round would use",
                 finalSpent: "true when a fix round already ran FINAL",
                 minutesPerRound: "average minutes between check rounds (null under two rounds)",
-                trend: "first-round | closing | stuck | worse",
-                recommend: "try-again when closing, else stop (null on the first round)",
+                trend: "first-round | closing | stuck | worse | unknown (a missing count, or rounds of different scopes)",
+                trendLine: "one plain sentence on what the counts show, with the counts and the reason",
+                recommend: "try-again when closing, stop when stuck or worse (null on the first round or an unknown trend)",
             },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON" },
             run: (ctx) => {

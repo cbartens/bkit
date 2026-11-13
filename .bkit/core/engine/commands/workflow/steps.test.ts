@@ -111,7 +111,7 @@ function ciFinishFixture() {
     scope: "ci:123",
     gate: null,
     exitCode: null,
-    failures: null,
+    failures: null as number | null,
     ciRun: "123",
     ciUrl: selection.runUrl,
     runAttempt: 2,
@@ -211,6 +211,32 @@ describe("test-round completion evidence", () => {
       ),
     );
     expect((await run(forged.cwd, forged.args)).code).not.toBe(0);
+  });
+
+  it("finishes a CI round only with its own failed job count", async () => {
+    const stepDone = (f: ReturnType<typeof ciFinishFixture>) =>
+      fs
+        .readFileSync(path.join(f.cwd, "logs/status.jsonl"), "utf-8")
+        .includes('"type":"step-done"');
+    const counted = ciFinishFixture();
+    counted.row.failures = 2;
+    counted.save();
+    const finished = await run(counted.cwd, [...counted.args, "--failures=2"]);
+    expect(finished.code).toBe(0);
+    expect(finished.json.row).toMatchObject({ step: "debug-run-tests", source: "ci", failures: 2 });
+    expect(stepDone(counted)).toBe(true);
+
+    const different = ciFinishFixture();
+    different.row.failures = 2;
+    different.save();
+    const wrong = await run(different.cwd, [...different.args, "--failures=3"]);
+    expect(wrong.code).not.toBe(0);
+    expect(stepDone(different)).toBe(false);
+
+    const uncounted = ciFinishFixture();
+    const refused = await run(uncounted.cwd, [...uncounted.args, "--failures=2"]);
+    expect(refused.code).not.toBe(0);
+    expect(stepDone(uncounted)).toBe(false);
   });
 
   it("preserves local clamp enforcement when completing test rounds", async () => {

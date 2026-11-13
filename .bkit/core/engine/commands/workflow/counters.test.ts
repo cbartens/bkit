@@ -919,6 +919,201 @@ describe("bkit counters progress", () => {
     expect((await progress(file)).json).toMatchObject({ codeChanged: true, trend: "closing" });
   });
 
+  it("a round with no count reports unknown and no recommendation", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", { parentSha: "b", group: 1 }),
+    ]);
+    const r = await progress(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ counts: "5 → ?", trend: "unknown", recommend: null });
+  });
+
+  const scoped = (at: string, scope: string, failures: number | null, sha: string) =>
+    done("build", "build-plan-verify", at, {
+      scope,
+      parentSha: sha,
+      group: 1,
+      ...(failures === null ? {} : { failures }),
+    });
+  const GATE = "pnpm bkit:gate:static-unit";
+
+  it("does not compare a CI round with a local gate round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ trend: "unknown", recommend: null });
+  });
+
+  it("compares the last round with the earliest round of the same scope", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:20:00Z", GATE, 5, "b"),
+      scoped("2026-10-01T00:30:00Z", GATE, 2, "c"),
+    ]);
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ trend: "closing", recommend: "try-again" });
+  });
+
+  it("measures minutesPerRound over all rounds, not only the compared same-scope ones", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:20:00Z", GATE, 5, "b"),
+      scoped("2026-10-01T00:50:00Z", GATE, 2, "c"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.minutesPerRound).toBe(20);
+  });
+
+  it("reports each round's scope", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      verify("2026-10-01T00:30:00Z", 2, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.rounds.map((x: { scope: string | null }) => x.scope)).toEqual(["ci:123", null]);
+  });
+
+  it("judges codeChanged between the compared same-scope rounds", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-git-"));
+    dirs.push(repo);
+    const sh = (...a: string[]) =>
+      spawnSync("git", a, { cwd: repo, encoding: "utf-8" }).stdout.trim();
+    const commit = (m: string) =>
+      sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", m);
+    sh("init", "-q");
+    commit("a");
+    const a = sh("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(repo, "src.ts"), "x\n");
+    sh("add", "-A");
+    commit("src");
+    const b = sh("rev-parse", "HEAD");
+    const logs = path.join(repo, "docs", "plans", "202610", "logs", "1-x");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "note.md"), "log only\n");
+    sh("add", "-A");
+    commit("logs");
+    const c = sh("rev-parse", "HEAD");
+    const file = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      file,
+      [
+        started("build", "2026-10-01T00:00:00Z"),
+        scoped("2026-10-01T00:10:00Z", "ci:123", 9, a),
+        scoped("2026-10-01T00:20:00Z", GATE, 5, b),
+        scoped("2026-10-01T00:30:00Z", GATE, 2, c),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const r = await progress(file);
+    expect(r.json).toMatchObject({ codeChanged: false, trend: "stuck" });
+  });
+
+  it("trendLine names an unknown count instead of claiming no fewer failures", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      done("build", "build-plan-verify", "2026-10-01T00:30:00Z", { parentSha: "b", group: 1 }),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("recorded no count");
+    expect(r.json.trendLine).not.toContain("no fewer");
+  });
+
+  it("trendLine says the rounds ran different tests", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("ran different tests");
+  });
+
+  it("trendLine for a fall without a code change says no source code changed", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "nope1"),
+      verify("2026-10-01T00:30:00Z", 2, "nope2"),
+    ]);
+    const base = (await progress(file)).json;
+    expect(base.codeChanged).toBeNull();
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-counters-git-"));
+    dirs.push(repo);
+    const sh = (...a: string[]) =>
+      spawnSync("git", a, { cwd: repo, encoding: "utf-8" }).stdout.trim();
+    sh("init", "-q");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "a");
+    const a = sh("rev-parse", "HEAD");
+    const logs = path.join(repo, "docs", "plans", "202610", "logs", "1-x");
+    fs.mkdirSync(logs, { recursive: true });
+    fs.writeFileSync(path.join(logs, "note.md"), "log only\n");
+    sh("add", "-A");
+    sh("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "logs");
+    const b = sh("rev-parse", "HEAD");
+    const gitFile = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      gitFile,
+      [
+        started("build", "2026-10-01T00:00:00Z"),
+        verify("2026-10-01T00:10:00Z", 5, a),
+        verify("2026-10-01T00:30:00Z", 2, b),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const r = await progress(gitFile);
+    expect(r.json.trend).toBe("stuck");
+    expect(r.json.trendLine).toContain("no source code changed");
+  });
+
+  it("trendLine for the same count states both counts", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 21, "a"),
+      fix("2026-10-01T00:20:00Z", "PIVOT"),
+      verify("2026-10-01T00:30:00Z", 21, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("(21 → 21)");
+  });
+
+  it("trendLine prefers different scopes over a missing count", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123", 2, "a"),
+      scoped("2026-10-01T00:30:00Z", GATE, null, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toContain("ran different tests");
+    expect(r.json.trendLine).not.toContain("recorded no count");
+  });
+
+  it("--since-clean over unscoped holistic rounds still compares them", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      done("build", "build-holistic-check", "2026-10-01T00:05:00Z", {
+        failures: 0,
+        parentSha: "z",
+      }),
+      verify("2026-10-01T00:10:00Z", 5, "a"),
+      verify("2026-10-01T00:30:00Z", 2, "b"),
+    ]);
+    const r = await progress(file, "--since-clean");
+    expect(r.code).toBe(0);
+    expect(r.json.counts).toBe("5 → 2");
+    expect(r.json.trend).not.toBe("unknown");
+  });
+
   it("exits 3 on a missing file", async () => {
     expect((await progress("/nonexistent/status.jsonl")).code).toBe(3);
   });
@@ -992,7 +1187,8 @@ describe("loopProgress with a gate", () => {
     const r = progress(file);
     expect(r.json.counts).toBe("2 → ?");
     expect(r.json.rounds[1].failures).toBeNull();
-    expect(r.json.trend).toBe("stuck");
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
   });
 
   it("a red gate row with 0 counted failures makes the round unknown", async () => {
@@ -1004,7 +1200,8 @@ describe("loopProgress with a gate", () => {
     ]);
     const r = progress(file);
     expect(r.json.counts).toBe("2 → ?");
-    expect(r.json.trend).toBe("stuck");
+    expect(r.json.trend).toBe("unknown");
+    expect(r.json.recommend).toBeNull();
   });
 
   it("a verify round whose gate did not run adds no gate failures", async () => {
@@ -1025,8 +1222,13 @@ describe("loopTrend", () => {
   it("a fall without a code change is stuck, not closing", () => {
     expect(loopTrend([r(5), r(2)], false)).toBe("stuck");
     expect(loopTrend([r(5), r(2)], true)).toBe("closing");
-    expect(loopTrend([r(5), r()], true)).toBe("stuck");
     expect(loopTrend([r(5)], true)).toBe("first-round");
+  });
+
+  it("a missing count is unknown, not stuck", () => {
+    expect(loopTrend([r(5), r()], true)).toBe("unknown");
+    expect(loopTrend([r(), r(5)], true)).toBe("unknown");
+    expect(loopTrend([r(), r()], false)).toBe("unknown");
   });
 });
 

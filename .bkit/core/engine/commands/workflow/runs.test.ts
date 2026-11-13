@@ -572,6 +572,67 @@ describe("bkit runs locate", () => {
     expect(issue.selected()).toMatchObject({ runId: "101" });
   });
 
+  it("saves the failed job count without the capstone job", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+      { id: 2, name: "bkit-tests-unit", status: "completed", conclusion: "failure" },
+      { id: 3, name: "bkit-tests-static", status: "completed", conclusion: "success" },
+      { id: 4, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 2 });
+  });
+
+  it("counts the capstone job when it is the only failed job", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 1 });
+  });
+
+  it("saves no failed job count when no job failed", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "success" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    const selected = f.selected() as Record<string, unknown>;
+    expect(selected.mode).toBe("ci");
+    expect("failedJobCount" in selected).toBe(false);
+  });
+
+  it("counts fallback evidence jobs without the capstone job", async () => {
+    const f = locateFixture();
+    fs.writeFileSync(f.prompt, "https://github.com/example/example/actions/runs/101/attempts/2");
+    const evidence = path.join(f.cwd, "evidence.json");
+    fs.writeFileSync(
+      evidence,
+      JSON.stringify({
+        request: {
+          repo: "example/example",
+          branch: "fix/ci",
+          kind: "run",
+          runId: "101",
+          runAttempt: 2,
+        },
+        run: f.data.runs[0],
+        jobs: [
+          { id: 1, name: "bkit-tests-integration", status: "completed", conclusion: "failure" },
+          { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+        ],
+        complete: true,
+      }),
+    );
+    f.data.error = true;
+    expect((await f.locate(`--evidence-file=${evidence}`)).code).toBe(0);
+    expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 1 });
+  });
+
   it("rejects ambiguous cross-repository and malformed attempt references", async () => {
     const f = locateFixture();
     fs.writeFileSync(

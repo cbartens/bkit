@@ -648,7 +648,7 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
   - Before the branches of a step that routes on the answer, say that a reply naming a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
   - Example (`bkit-debug.md` § Loop Question): "yes" stops the loop, which is the recommendation. The question already gives the reason, so the `Recommended:` line needs none.
     ```markdown
-    **Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?
+    **Q1 — Fix:** The count did not fall between the first and the last round (4 → 4). Stop here instead of trying again?
     Options: A) Stop / B) Try again
     Recommended: A) Stop
     ```

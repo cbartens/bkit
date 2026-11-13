@@ -980,7 +980,9 @@ async function finish(ctx) {
                 extras.source === "ci" &&
                 extras.ciGeneration === active.ciGeneration &&
                 verdict === "FAIL" &&
-                failures === undefined &&
+                (typeof round.failures === "number"
+                    ? failures === round.failures
+                    : failures === undefined) &&
                 extras.scope === round.scope &&
                 artifacts.includes(String(round.artifact));
             if (!matching)

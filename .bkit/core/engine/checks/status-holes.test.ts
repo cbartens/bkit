@@ -1066,6 +1066,75 @@ describe("check — hole classes", () => {
     expect(check(forged, contract).verdict).toBe("HOLEY");
   });
 
+  it("a counted CI round with its step-done row raises no CI evidence hole", () => {
+    const md = [
+      "## Step 1 — Run Tests",
+      ...fence(
+        "tests run --ci-run=123 --ci-url=https://github.com/example/example/actions/runs/123/attempts/2",
+        "steps finish --workflow=debug --step=debug-run-tests --number=1",
+      ),
+    ].join("\n");
+    const selection = {
+      mode: "ci",
+      provider: "github",
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure",
+      redTiers: ["integration"],
+      failedJobCount: 2,
+      via: "prompt-run",
+    };
+    const rows: StatusRow[] = [
+      { type: "workflow-started", workflow: "debug", at: AT },
+      { type: "workflow-meta", workflow: "debug", at: AT, ciSelection: selection, ciGeneration: 1 },
+      callRow("debug", "tests", "run"),
+      {
+        type: "test-run",
+        workflow: "debug",
+        at: AT,
+        step: "debug-run-tests",
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        exitCode: null,
+        failures: 2,
+        ciRun: "123",
+        ciUrl: selection.runUrl,
+        repo: selection.repo,
+        workflowId: selection.workflowId,
+        workflowPath: selection.workflowPath,
+        headSha: selection.headSha,
+        gate: null,
+        runAttempt: 2,
+        ciGeneration: 1,
+        artifact: "logs/ci-round-1.md",
+        log: "logs/ci-round-1.md",
+        attempt: 1,
+        run: 1,
+      },
+      callRow("debug", "steps", "finish"),
+      stepRow("debug", "debug-run-tests", {
+        source: "ci",
+        scope: "ci:123",
+        verdict: "FAIL",
+        failures: 2,
+        attempt: 1,
+        ciGeneration: 1,
+        artifacts: ["logs/ci-round-1.md"],
+      }),
+    ];
+    const contract = deriveContract(md, "debug");
+    const holes = check(rows, contract).evidenceHoles;
+    expect(holes.filter((hole) => hole.step === "debug-run-tests")).toEqual([]);
+    expect(holes.some((hole) => JSON.stringify(hole).includes("tests run --ci-run"))).toBe(false);
+  });
+
   const contextSelection = {
     mode: "ci",
     provider: "github",

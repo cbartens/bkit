@@ -304,6 +304,218 @@ describe("bkit decisions compose", () => {
     expect(text).toContain("Problems after each round: 3 → 3");
   });
 
+  it("--loop=verify with an uncounted group gate reads unknown", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verifyRow = (at: string, attempt: number, failures: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      attempt,
+      failures,
+    });
+    const gateRow = {
+      type: "test-run",
+      workflow: "build",
+      at: "2026-10-01T00:29:00Z",
+      step: "build-group-gate-1",
+      attempt: 2,
+      run: 1,
+      verdict: "FAIL",
+      exitCode: 1,
+      failures: null,
+      scope: "gate",
+      log: "x.log",
+    };
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verifyRow("2026-10-01T00:10:00Z", 1, 2),
+        gateRow,
+        verifyRow("2026-10-01T00:30:00Z", 2, 0),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      [],
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      "--attempt=2",
+      "--max=2",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Trend: unknown");
+    expect(text).not.toContain("Trend: stuck");
+    expect(r.json.loopRecommended).not.toBe("Decide");
+    expect(r.json.loopRecommended).not.toBe("Stop");
+  });
+
+  /** An uncounted group gate after a counted verify round: the trend reads `unknown`. */
+  async function composeUnknownTrend() {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verifyRow = (at: string, attempt: number, failures: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      attempt,
+      failures,
+    });
+    const gateRow = {
+      type: "test-run",
+      workflow: "build",
+      at: "2026-10-01T00:29:00Z",
+      step: "build-group-gate-1",
+      attempt: 2,
+      run: 1,
+      verdict: "FAIL",
+      exitCode: 1,
+      failures: null,
+      scope: "gate",
+      log: "x.log",
+    };
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verifyRow("2026-10-01T00:10:00Z", 1, 2),
+        gateRow,
+        verifyRow("2026-10-01T00:30:00Z", 2, 0),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      [],
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      "--attempt=2",
+      "--max=2",
+    );
+    expect(r.code).toBe(0);
+    return fs.readFileSync(out, "utf-8");
+  }
+
+  it("--loop on an unknown trend recommends Try again without claiming progress", async () => {
+    const text = await composeUnknownTrend();
+    expect(text).toContain("Trend: unknown");
+    expect(text).toMatch(/Recommended: (A\) )?Try again — /);
+    expect(text).not.toContain("the last round made progress");
+  });
+
+  it("--loop on an unknown trend says the limit is used up", async () => {
+    const text = await composeUnknownTrend();
+    expect(text).toContain("limit is used up");
+    expect(text).not.toContain("a round is left");
+  });
+
+  it("--loop=verify on an unknown trend below the limit does not say the limit is used up", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verifyRow = (at: string, attempt: number, failures: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      attempt,
+      failures,
+    });
+    const gateRow = {
+      type: "test-run",
+      workflow: "build",
+      at: "2026-10-01T00:29:00Z",
+      step: "build-group-gate-1",
+      attempt: 1,
+      run: 1,
+      verdict: "FAIL",
+      exitCode: 1,
+      failures: null,
+      scope: "gate",
+      log: "x.log",
+    };
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verifyRow("2026-10-01T00:10:00Z", 1, 2),
+        gateRow,
+        verifyRow("2026-10-01T00:30:00Z", 2, 0),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      [],
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      "--attempt=1",
+      "--max=3",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Trend: unknown");
+    expect(text).not.toContain("the limit is used up");
+    expect(text).not.toContain("a round is left");
+  });
+
+  it("--loop states the engine's trendLine in Q1", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verify = (at: string, failures: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify",
+      status: "DONE",
+      at,
+      group: 1,
+      failures,
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verify("2026-10-01T00:10:00Z", 5),
+        verify("2026-10-01T00:20:00Z", 2),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=verify",
+      `--file=${status}`,
+      "--group=1",
+      "--attempt=2",
+      "--max=3",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    const q1 = text.slice(text.indexOf("**Q1"), text.indexOf("**Q2"));
+    expect(q1).toContain("(5 → 2)");
+  });
+
   /** A verify loop stuck at 4 → 4, so the trend alone recommends `Decide` (`Stop` with no items). */
   function stuckStatus(logs: string) {
     const status = path.join(logs, "status.jsonl");

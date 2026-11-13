@@ -348,6 +348,7 @@ function locateCi(ctx) {
         headSha: text(run.head_sha),
         conclusion: text(run.conclusion),
         redTiers: tiers,
+        ...(failedJobs.length > 0 ? { failedJobCount: Math.max(1, mapped.length) } : {}),
         via,
     };
     if (saved?.mode === "ci" &&

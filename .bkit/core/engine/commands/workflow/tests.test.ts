@@ -201,6 +201,36 @@ describe("CI evidence test rounds", () => {
     expect(result.json.clamp).toBeNull();
   });
 
+  it("records the selected run's failed job count", async () => {
+    const f = ciRoundFixture();
+    const counted = { ...f.selection, failedJobCount: 2 };
+    fs.writeFileSync(
+      f.file,
+      [
+        { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+        {
+          type: "workflow-meta",
+          workflow: "debug",
+          at: "2026-10-01T00:00:01Z",
+          ciSelection: counted,
+          ciGeneration: 2,
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n",
+    );
+    const result = await run(f.args);
+    expect(result.code).toBe(1);
+    expect(result.json).toMatchObject({ source: "ci", scope: "ci:123", failures: 2 });
+    expect(result.json.row).toMatchObject({ type: "test-run", source: "ci", failures: 2 });
+    const rows = fs
+      .readFileSync(f.file, "utf-8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(rows.find((row) => row.type === "test-run")).toMatchObject({ failures: 2 });
+  });
+
   it("runs local gates only after current-generation remediation or soak", async () => {
     const f = ciRoundFixture();
     f.fix(1);

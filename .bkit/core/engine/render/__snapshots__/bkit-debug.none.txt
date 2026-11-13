@@ -105,15 +105,15 @@ _No tracker connected, skip step._
    "{BKIT}" counters progress --file="{STATUS}" --workflow=debug --check=debug-run-tests --fix={LOOP_FIX}
    ```
    **If** exit non-zero → **Failure Path**.
-   Hold `trend` as `LOOP_TREND` and `counts` as `LOOP_COUNTS`.
-   **If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
+   Hold `trend` as `LOOP_TREND`, `counts` as `LOOP_COUNTS` and `trendLine` as `LOOP_TREND_LINE`.
+   **If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking ({LOOP_TREND_LINE})` → return to the calling step.
 3. Ask the owner in this session; plain text, not through a host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - The question — first match wins:
-     - **If** `LOOP_LIMIT` = true → `**Q1 — Soak:** The soak attempts are used up. Stop here instead of trying one more set of attempts?`.
-     - **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?`.
-     - **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up, and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`.
-     - **Else** → `**Q1 — Soak:** The last soak attempt left no fewer failures. Stop here instead of trying again?`.
+     - **If** `LOOP_LIMIT` = true → `**Q1 — Soak:** The soak attempts are used up. {LOOP_TREND_LINE} Stop here instead of trying one more set of attempts?`.
+     - **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
+     - **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up. {LOOP_TREND_LINE} Stop here instead of starting soak (a slower, step-by-step investigation)?`.
+     - **Else** → `**Q1 — Soak:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
    - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop`.
    - The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
      Record the wait → end turn → wait for the answer:

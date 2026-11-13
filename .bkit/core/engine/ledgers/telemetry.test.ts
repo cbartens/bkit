@@ -105,6 +105,38 @@ describe("test-run status row validation", () => {
     expect(testRunProblem({ ...local, exitCode: 0.5 })).not.toBeNull();
     expect(testRunProblem({ ...local, failures: -1 })).not.toBeNull();
   });
+
+  it("accepts a counted CI evidence round and refuses 0", () => {
+    const ci = {
+      type: "test-run",
+      workflow: "debug",
+      step: "debug-run-tests",
+      at: "2026-10-01T00:00:00Z",
+      attempt: 1,
+      run: 1,
+      source: "ci",
+      verdict: "FAIL",
+      scope: "ci:123",
+      gate: null,
+      exitCode: null,
+      failures: 2,
+      ciRun: "123",
+      ciUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      runAttempt: 2,
+      ciGeneration: 1,
+      repo: "example/example",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headSha: "a".repeat(40),
+      log: "logs/run-tests-1.md",
+      artifact: "docs/plans/202611/logs/1-x/run-tests-1.md",
+    };
+    expect(testRunProblem(ci)).toBeNull();
+    expect(testRunProblem({ ...ci, failures: null })).toBeNull();
+    expect(testRunProblem({ ...ci, failures: 0 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, failures: -1 })).not.toBeNull();
+    expect(testRunProblem({ ...ci, failures: 1.5 })).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

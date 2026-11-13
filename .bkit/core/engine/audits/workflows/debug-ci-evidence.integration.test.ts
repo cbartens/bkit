@@ -79,6 +79,7 @@ function consumer() {
     `const fs = require("node:fs");
 fs.appendFileSync("events.jsonl", JSON.stringify({kind:"local-gate", gate:process.argv[2]}) + "\\n");
 const control = JSON.parse(fs.readFileSync("control.json", "utf8"));
+if (control.failLocal) process.exit(1);
 if (!control.local && fs.readFileSync("source.txt", "utf8").trim() !== "fixed") process.exit(1);
 console.log("consumer checks passed");
 `,
@@ -113,6 +114,8 @@ console.log("consumer checks passed");
     finalHead: head,
     verifyingId: 301,
     local: false,
+    secondFailedJob: false,
+    failLocal: false,
   };
   const save = () => write("control.json", JSON.stringify(control));
   save();
@@ -144,7 +147,7 @@ const run=id=>({id,run_attempt:2,workflow_id:777,path:".github/workflows/special
   html_url:"https://github.com/example/example/actions/runs/"+id,created_at:"2026-11-01T01:00:00Z",updated_at:"2026-11-01T01:01:00Z"});
 if(args[0]==="auth") process.exit(0);
 if(args[0]==="run" && args[1]==="view"){
-  if(!args.includes("--log-failed") || flag("--repo")!=="example/example" || flag("--attempt")!=="2" || flag("--job")!=="501") reject("unpinned context log request");
+  if(!args.includes("--log-failed") || flag("--repo")!=="example/example" || flag("--attempt")!=="2" || !["501","502","503"].includes(flag("--job"))) reject("unpinned context log request");
   if(!state.logs) reject("selected logs unavailable");
   process.stdout.write("integration fixture failure in run "+args[2]+" attempt 2\\n");process.exit(0);
 }
@@ -158,7 +161,10 @@ if(endpoint.includes("/actions/workflows/")){
 if(endpoint.includes("/jobs")){
   if(endpoint.includes("/201/")){emit({total_count:1,jobs:[{id:1,name:"bkit-tests-check",status:"completed",conclusion:"success"}]});process.exit(0)}
   if(!endpoint.includes("/attempts/2/jobs")) reject("jobs require the selected attempt");
-  const value={total_count:1,jobs:[{id:501,name:"bkit-tests-integration",status:"completed",conclusion:"failure"}]};
+  const jobs=[{id:501,name:"bkit-tests-integration",status:"completed",conclusion:"failure"}];
+  if(state.secondFailedJob) jobs.push({id:502,name:"bkit-tests-unit",status:"completed",conclusion:"failure"});
+  jobs.push({id:503,name:"bkit-tests-check",status:"completed",conclusion:"failure"});
+  const value={total_count:jobs.length,jobs};
   emit(args.includes("--slurp")?[value]:value);process.exit(0);
 }
 const match=endpoint.match(new RegExp("/actions/runs/([0-9]+)(?:/attempts/([0-9]+))?"));
@@ -335,6 +341,7 @@ reject("unsupported fixture endpoint "+endpoint);
     agent,
     gate,
     execute,
+    runLine,
   };
 }
 
@@ -365,6 +372,34 @@ describe("Debug CI evidence sequence", () => {
     expect.soft(local.json.row.source).toBe("local");
     const finished = override.finishRound();
     expect.soft(finished, finished.err).toMatchObject({ code: 0, json: { pass: true } });
+  });
+
+  it("records the failed job count and reads an uncounted local round as unknown", () => {
+    const f = consumer();
+    f.control.secondFailedJob = true;
+    f.save();
+    expect(f.select().state).toMatchObject({ ciRun: "123", ciGeneration: 1 });
+    const ciRound = f.round();
+    expect(ciRound).toMatchObject({ code: 1, json: { source: "ci", failures: 2 } });
+    expect(ciRound.json.row.failures).toBe(2);
+    expect(f.finishRound(), "finish CI round").toMatchObject({ code: 0, json: { pass: true } });
+    expect(f.context().json.outcome).toBe("checked");
+    expect(f.agent("diagnose").code).toBe(0);
+    expect(f.agent("remediate").code).toBe(0);
+    f.vars.DEBUG_ATTEMPT = "2";
+    f.control.local = true;
+    f.control.failLocal = true;
+    f.save();
+    const local = f.round();
+    expect(local).toMatchObject({ code: 1, json: { source: "local", failures: null } });
+    expect(f.finishRound().code).toBe(0);
+    f.vars.LOOP_FIX = "debug-failure-remediate";
+    const question = /^\s*"\{BKIT\}" counters progress .*$/m.exec(WORKFLOW)?.[0];
+    expect(question).toBeTruthy();
+    const progress = f.runLine(String(question).trim());
+    expect(progress.code).toBe(0);
+    expect(progress.json).toMatchObject({ counts: "2 → ?", trend: "unknown" });
+    expect(progress.json.recommend).not.toBe("stop");
   });
 
   it("finishes replacement CI evidence with the unchanged debug run number", () => {

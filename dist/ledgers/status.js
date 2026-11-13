@@ -56,6 +56,8 @@ export function validateCiSelection(value) {
         ["failure", "timed_out", "startup_failure"].includes(stringField("conclusion")) &&
         Array.isArray(v.redTiers) &&
         v.redTiers.every((tier) => CI_TIERS.some((known) => known === tier)) &&
+        (v.failedJobCount === undefined ||
+            (Number.isSafeInteger(v.failedJobCount) && Number(v.failedJobCount) > 0)) &&
         typeof v.via === "string" &&
         v.via.trim().length > 0);
 }
@@ -218,7 +220,7 @@ export function testRunProblem(value) {
             r.step !== "debug-run-tests" ||
             r.verdict !== "FAIL" ||
             r.exitCode !== null ||
-            r.failures !== null ||
+            (r.failures !== null && !positive(r.failures)) ||
             r.gate !== null ||
             !positive(r.ciGeneration) ||
             !positive(r.runAttempt) ||

@@ -148,13 +148,14 @@ The owner runs `/bkit-debug` from a red CI run, and when the fix loop reaches th
 | `testRunProblem` accepts a CI round with a positive count or `null`, and refuses 0 | Unit | `.bkit/core/engine/ledgers/telemetry.test.ts` | 5 |
 | A counted CI round with its matching `step-done` row raises no `tests run --ci-run` evidence hole | Unit | `.bkit/core/engine/checks/status-holes.test.ts` | 5 |
 | `steps finish` finishes a CI round whose `--failures` equals its `test-run` row, and refuses a different count or any `--failures` when the row has no count | Unit | `.bkit/core/engine/commands/workflow/steps.test.ts` | 6 |
-| Debug Step 3 commands record the CI round's failed job count with the failed capstone left out, and the Loop Question's `counters progress` then reads `unknown` after a local round with no count (the incident replayed through the real CLI) | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 6 |
+| Debug Step 3 commands record the CI round's failed job count with the failed capstone left out, and the Loop Question's `counters progress` then reads `unknown` after a local round with no count (the incident replayed through the real CLI) | Integration | `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` | 10 |
 | `decisions compose --loop` on an `unknown` trend recommends `Try again` with a reason built from `trendLine` | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 7 |
 | `decisions compose --loop` on an `unknown` trend says the limit is used up, never that a round is left | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 7 |
 | `decisions compose --loop=verify` with a red group gate that has no count reads `unknown` and recommends by the Q5 rule, not `Decide` | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 1 |
 | The debug Loop Question holds `trendLine` and states it in every `Q1`, with no fixed "left no fewer failures" text | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 8 |
 | The debug Loop Question's `LOOP_LIMIT` `Q1` (soak attempts used up) states `{LOOP_TREND_LINE}` and still recommends Stop | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 8 |
 | Typecheck, lint, prose, instructions coverage and mirror drift (`pnpm bkit:gate:static`, `node dist/cli.js check`) pass on the changed sources | Static | `.bkit/core/engine/commands/workflow/counters.ts`, `.bkit/core/engine/commands/workflow/decisions.ts`, `.bkit/core/workflows/bkit-debug.md`, `.bkit/core/workflows/bkit-build.md`, `.bkit/instructions.md` | 9 |
+| bkit decisions compose > --loop=verify on an unknown trend below the limit does not say the limit is used up | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 11 |
 
 The GitHub Actions jobs boundary that `runs locate` reads has no automated non-mock test: bkit declares no `@live` tier (`docs/testing.md` § Tiers, `bkit-tests-live` N/A for bkit). Manual Verification Step 3 runs `runs locate` against a real red run and reports the check as available or unavailable.
 
@@ -504,7 +505,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Read an unknown failure count as trend `unknown`, which recommends nothing
+- [x] **TASK 1:** Read an unknown failure count as trend `unknown`, which recommends nothing
   - **UPDATE:** `LoopTrend` in `.bkit/core/engine/commands/workflow/counters.ts`: add `"unknown"`
   - **UPDATE:** `loopTrend` in `.bkit/core/engine/commands/workflow/counters.ts`: two or more rounds with no `failures` on the first or last compared round → `unknown`; on #891's shape the round's `failures` is the combined check-plus-gate count `loopProgress` builds
   - **UPDATE:** `loopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: `recommend` is `null` on `first-round` and `unknown`
@@ -523,7 +524,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Compare only rounds that ran the same tests
+- [x] **TASK 2:** Compare only rounds that ran the same tests
   - **UPDATE:** `loopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: the compared pair is the earliest round whose `scope` equals the last round's (two absent scopes are equal) and the last round; fewer than two such rounds → `unknown`; `codeChanged` is judged between the pair's `parentSha` values
   - **UPDATE:** `LoopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: `rounds[]` items gain `scope: string | null`
   - **UPDATE:** `countersCommand` in `.bkit/core/engine/commands/workflow/counters.ts`: the `progress` verb's `rounds` and `codeChanged` output help name the scope rule
@@ -541,7 +542,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Print `trendLine`, one plain sentence with the counts and the reason
+- [x] **TASK 3:** Print `trendLine`, one plain sentence with the counts and the reason
   - **UPDATE:** `LoopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: add `trendLine: string`
   - **UPDATE:** `loopProgress` in `.bkit/core/engine/commands/workflow/counters.ts`: build `trendLine` per `Architecture & Component Changes` § Engine — loop trend (first round, closing, stuck with a count not lower, stuck with a lower count and no source change, worse, unknown count, different scopes), unit-free, with different scopes winning over a missing count
   - **UPDATE:** `countersCommand` in `.bkit/core/engine/commands/workflow/counters.ts`: the `progress` verb's output help adds `trendLine`
@@ -564,7 +565,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Save the selected run's failed job count on the CI selection
+- [x] **TASK 4:** Save the selected run's failed job count on the CI selection
   - **UPDATE:** `CiSelection` in `.bkit/core/engine/ledgers/status.ts`: optional `failedJobCount?: number` on the `mode: "ci"` variant
   - **UPDATE:** `validateCiSelection` in `.bkit/core/engine/ledgers/status.ts`: `failedJobCount` absent or a safe integer > 0
   - **READ:** `ciSelectionIdentity` in `.bkit/core/engine/ledgers/status.ts`: stays unchanged, so the count never starts a new CI generation
@@ -581,7 +582,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Record the failed job count on the CI `test-run` row
+- [x] **TASK 5:** Record the failed job count on the CI `test-run` row
   - **UPDATE:** `testRunProblem` in `.bkit/core/engine/ledgers/status.ts`: a `source: ci` row's `failures` is `null` or a safe integer > 0
   - **READ:** `ciRoundMatches` in `.bkit/core/engine/ledgers/status.ts`: calls `testRunProblem`, so a counted round still matches its selection
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: the `run` verb's CI branch writes `failures: selection.failedJobCount ?? null` to `appendTestRun` and the emitted object; the `failures` output help names the CI case
@@ -597,17 +598,27 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Finish a counted CI round, and prove the incident's sequence end to end
+- [x] **TASK 6:** Finish a counted CI round only with its own failed job count
   - **UPDATE:** `finish` in `.bkit/core/engine/commands/workflow/steps.ts`: on a CI round, `failures` must equal the `test-run` row's `failures` when that is a number, and be absent when it is `null`; the error text stays `CI evidence does not match the active selection`
   - **READ:** `.bkit/core/workflows/bkit-debug.md`: § Step 3 `{FAILURES_FLAG}` already passes `--failures` whenever `tests run` prints a count
-  - **UPDATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: the fake `gh` jobs fixture fails `bkit-tests-check` alongside the failed test jobs, as a real red run does, and the test asserts the count leaves the capstone out
   - **DEPENDS ON:** 2, 5
-  - **DONE WHEN:** `steps finish --failures=2` on a CI round whose row holds 2 writes the `step-done` row with `failures: 2`; `--failures=3` on that round is refused with no row written; `--failures=2` on a CI round whose row holds `failures: null` is refused with no row written; `pnpm build && git add dist/` has run, so `pnpm bkit:check:dist` exits 0, before the integration test runs `dist/cli.js`; the integration test replays Step 3 twice with the capstone failed, runs the Loop Question's `counters progress`, sees the CI round's `failures` without the capstone, `counts: "2 → ?"` and `trend: "unknown"`, and passes.
+  - **DONE WHEN:** `steps finish --failures=2` on a CI round whose row holds 2 writes the `step-done` row with `failures: 2`; `--failures=3` on that round is refused with no row written; `--failures=2` on a CI round whose row holds `failures: null` is refused with no row written; `pnpm build && git add dist/` has run, so `pnpm bkit:check:dist` exits 0,; Task 10 lands the integration test that replays the incident through `dist/cli.js`.
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/steps.test.ts` `finishes a CI round only with its own failed job count` fails on a `--failures=2` that matches the round's row being refused with a usage exit; the same test asserts that `--failures` on a row with `failures: null` and a different count are both refused
-    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `Debug CI evidence sequence > records the failed job count and reads an uncounted local round as unknown` fails on the CI round recording no failure count, so the Loop Question's `counters progress` never reads `unknown` for the right reason
+    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `Debug CI evidence sequence > records the failed job count and reads an uncounted local round as unknown` fails on the CI round recording no failure count; Task 10 corrects that test's second round, and this line keeps Task 6's recorded red in step with the corrected test
 
 <!-- bkit:task 6 end -->
+
+<!-- bkit:task 10 start -->
+
+- [x] **TASK 10:** Prove the incident's sequence end to end with an uncounted local round that fails
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`: the fake `gh` jobs fixture fails `bkit-tests-check` alongside the failed test jobs, as a real red run does; the test's second round runs a local gate that exits 1 and writes no JUnit report (a `control.failLocal` switch in the fixture's `gate.cjs`), so `tests run` records `failures: null`, instead of a passing gate that records `failures: 0`
+  - **DEPENDS ON:** 2, 5, 6
+  - **DONE WHEN:** the integration test replays Step 3 twice with the capstone failed, runs the Loop Question's `counters progress`, sees the CI round's `failures` without the capstone, a local round with `failures: null`, `counts: "2 → ?"` and `trend: "unknown"`, and passes against the built `dist/cli.js`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` `Debug CI evidence sequence > records the failed job count and reads an uncounted local round as unknown` fails on the second round passing and recording `failures: 0`, where the test expects the uncounted `failures: null`
+
+<!-- bkit:task 10 end -->
 
 <!-- bkit:group 2 end -->
 
@@ -617,7 +628,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** State `trendLine` at every build loop pause, and never claim progress on an unknown trend
+- [x] **TASK 7:** State `trendLine` at every build loop pause, and never claim progress on an unknown trend
   - **UPDATE:** `decisionsCommand` in `.bkit/core/engine/commands/workflow/decisions.ts`: the `compose` verb's `--loop` block ends `Q1`'s question with `p.trendLine`; on `unknown` it builds the reason from `p.trendLine`, says the limit is used up, and keeps `Try again` (Open Question Q5 default)
   - **DELETE:** `trendLine` in `.bkit/core/engine/commands/workflow/decisions.ts`: the per-trend map local to the `compose` verb, superseded by `p.trendLine`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.test.ts`: existing `--loop` cases that match the old fixed sentences now match `trendLine`
@@ -632,7 +643,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Make the debug Loop Question state what the counts show
+- [x] **TASK 8:** Make the debug Loop Question state what the counts show
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: § Loop Question step 2 holds `trendLine` as `LOOP_TREND_LINE` and adds it to the no-ask narration; step 3's `Q1` texts state `{LOOP_TREND_LINE}` per `Architecture & Component Changes` § Workflows, with no "left no fewer failures"
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: the § Human questions Loop Question example shows a filled `trendLine`
   - **UPDATE:** `.bkit/instructions.md`: the local entries of each edited `bkit-debug.md` standing line
@@ -648,7 +659,7 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Update the build route sentence and the docs, and regenerate every built and mirrored copy
+- [x] **TASK 9:** Update the build route sentence and the docs, and regenerate every built and mirrored copy
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 12's trailing sentence says a failed round whose trend is not `stuck` or `worse` (`closing`, `unknown`) is fixed without asking
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `Progress report` table (`trend` with `unknown` and the scope rule, `recommend` `null` on `unknown`, `codeChanged` judged between the compared same-scope pair, new `trendLine` row); § Selected CI loop (the CI round's failed job count); § Failure count from JUnit reports (a `source: ci` round's `failures` counts failed jobs, the capstone left out); the `/bkit-build` Step 12 row
   - **UPDATE:** `docs/testing.md`: § Counter derivation test coverage, `commands/workflow/counters.test.ts` row; § JUnit reports for bkit (a `source: ci` round counts failed CI jobs, the capstone left out)
@@ -661,6 +672,21 @@ Build order: the trend in the engine (Group 1), then the CI round count (Group 2
 <!-- bkit:task 9 end -->
 
 <!-- bkit:group 3 end -->
+
+<!-- bkit:group 4 start -->
+
+### TASK GROUP 4: Challenge round 1 findings
+
+<!-- bkit:task 11 start -->
+
+- [x] **TASK 11:** A build loop pause on an unknown trend tells the owner "the limit is used up" when rounds are still left (Step 8 GATE_RERUN re-ask, Step 9 VERIFY_FIXED = 0 with a red gate, Step 12 GATE_RERUN re-ask)
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/workflow/decisions.ts:464` · **Round:** 1
+  - **DONE WHEN:** decisions compose --loop on an unknown trend says the limit is used up only when --attempt >= --max (both numeric); below the limit, or with --max absent, the reason states p.trendLine without any claim about the limit or a round left; decisions.test.ts passes.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/decisions.test.ts` `bkit decisions compose > --loop=verify on an unknown trend below the limit does not say the limit is used up`
+
+<!-- bkit:task 11 end -->
+<!-- bkit:group 4 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

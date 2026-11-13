@@ -70,6 +70,32 @@ describe("CI evidence selection contract", () => {
     expect(identity).not.toBe(ciSelectionIdentity({ ...selection, headSha: "b".repeat(40) }));
     expect(identity).not.toBe(ciSelectionIdentity({ mode: "local", reason: "explicit-local" }));
   });
+
+  it("validates failedJobCount as a positive whole number outside the identity", () => {
+    const selection = {
+      mode: "ci" as const,
+      provider: "github" as const,
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure" as const,
+      redTiers: ["integration" as const],
+      via: "prompt-run",
+    };
+    expect(validateCiSelection(selection)).toBe(true);
+    expect(validateCiSelection({ ...selection, failedJobCount: 2 })).toBe(true);
+    expect(validateCiSelection({ ...selection, failedJobCount: 0 })).toBe(false);
+    expect(validateCiSelection({ ...selection, failedJobCount: -1 })).toBe(false);
+    expect(validateCiSelection({ ...selection, failedJobCount: 1.5 })).toBe(false);
+    expect(ciSelectionIdentity({ ...selection, failedJobCount: 2 })).toBe(
+      ciSelectionIdentity(selection),
+    );
+  });
 });
 
 describe("fold — event log → run array", () => {

@@ -458,17 +458,19 @@ export const decisionsCommand: CommandSpec = {
           const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
           const max = str(ctx.flags.max) ?? "?";
           const changed = p.codeChanged === null ? "unknown" : p.codeChanged ? "yes" : "no";
-          const trendLine = {
-            "first-round": "This was the first round, so there is no trend yet.",
-            closing: "Fewer problems after each round, and the code changed.",
-            stuck: "No fewer problems, or the code did not change.",
-            worse: "More problems than the first round.",
-          }[p.trend];
           loopRecommended = p.recommend === "stop" ? "Decide" : "Try again";
+          const attemptNum = Number(attempt);
+          const maxNum = Number(max);
+          const limitUsed =
+            Number.isFinite(attemptNum) && Number.isFinite(maxNum) && attemptNum >= maxNum;
           const trendReason =
-            loopRecommended === "Try again"
-              ? "the last round made progress"
-              : "another round is unlikely to close the remaining items";
+            p.trend === "unknown"
+              ? limitUsed
+                ? `the limit is used up and the counts cannot show whether the rounds helped (${p.trendLine})`
+                : `the counts cannot show whether the rounds helped (${p.trendLine})`
+              : loopRecommended === "Try again"
+                ? "the last round made progress"
+                : "another round is unlikely to close the remaining items";
           let reason = trendReason;
           let baseLine: string[] = [];
           if (baseCheck !== undefined) {
@@ -513,8 +515,8 @@ export const decisionsCommand: CommandSpec = {
               title: loop.title,
               question:
                 loopRecommended === "Try again"
-                  ? `another fix round? ${trendLine}`
-                  : `decide the items below instead of another round? ${trendLine}`,
+                  ? `another fix round? ${p.trendLine}`
+                  : `decide the items below instead of another round? ${p.trendLine}`,
               options: items.length > 0 ? ["Try again", "Decide"] : ["Try again", "Stop"],
               recommended:
                 items.length > 0 || loopRecommended === "Try again" ? loopRecommended : "Stop",

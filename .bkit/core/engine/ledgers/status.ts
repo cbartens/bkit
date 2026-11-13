@@ -39,6 +39,8 @@ export type CiSelection =
       headSha: string;
       conclusion: "failure" | "timed_out" | "startup_failure";
       redTiers: CiTier[];
+      /** Failed jobs of the selected run, the capstone left out (1 when only it failed). */
+      failedJobCount?: number;
       via: string;
     };
 
@@ -77,6 +79,8 @@ export function validateCiSelection(value: unknown): value is CiSelection {
     ["failure", "timed_out", "startup_failure"].includes(stringField("conclusion")) &&
     Array.isArray(v.redTiers) &&
     v.redTiers.every((tier) => CI_TIERS.some((known) => known === tier)) &&
+    (v.failedJobCount === undefined ||
+      (Number.isSafeInteger(v.failedJobCount) && Number(v.failedJobCount) > 0)) &&
     typeof v.via === "string" &&
     v.via.trim().length > 0
   );
@@ -295,7 +299,7 @@ export function testRunProblem(value: unknown): string | null {
       r.step !== "debug-run-tests" ||
       r.verdict !== "FAIL" ||
       r.exitCode !== null ||
-      r.failures !== null ||
+      (r.failures !== null && !positive(r.failures)) ||
       r.gate !== null ||
       !positive(r.ciGeneration) ||
       !positive(r.runAttempt) ||

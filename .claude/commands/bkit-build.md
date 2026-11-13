@@ -1026,7 +1026,7 @@ This step checks the whole feature against the plan after the last group, and ag
        ```
        **If** exit non-zero → **Failure Path**. Hold `trend` as `TEST_TREND`.
        - **If** `TEST_TREND` = `stuck` **or** `worse` → `PAUSE_STEP` = 12, `PAUSE_POINT` = `build.tests`, `PAUSE_QUESTION` = `TESTS_LOOP` → **Decision Pause**.
-       - **Else** → Step 13; a failed test round after a round that made progress is always fixed, never asked.
+       - **Else** → Step 13; a failed test round whose trend is not `stuck` or `worse` (`closing`, `unknown`) is always fixed, never asked.
      - **Else** → **Failure Path**.
    - **Else** → **Failure Path**.
 

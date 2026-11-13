@@ -333,6 +333,7 @@ Wrap each test-running `bkit:gate:*` script with the adopted machine lock (`.bki
 - **Counted:** failing plus erroring test cases across every file. Skipped cases do not count.
 - **No reports:** `failures` is `null` (count unknown), and a hint says to turn the reporters on. The verdict still comes from the gate's exit code.
 - **Unset variable:** the runner behaves as it always does, so a gate run by hand writes nothing extra.
+- **CI rounds:** a `source: ci` round has no reports. Its count is the selected run's failed CI jobs, the capstone left out.
 
 ## What each tier must do
 
@@ -589,12 +590,12 @@ No live tier (or `[live=off]`) → Debug degrades to CONCERNS + `testsLiveSkippe
 
 CI evidence, reproduction and local verification have separate purposes:
 
-1. A validated selected red run supplies the first failure round. Its artifact identifies the exact repository, workflow, run, attempt, commit and generation, and records that no local gate ran. Unavailable reads, missing logs and wrong-branch evidence block diagnosis; they do not establish a clean result.
+1. A validated selected red run supplies the first failure round. Its failure count is the run's failed jobs, the capstone left out, or unknown when the jobs were not read. Its artifact identifies the exact repository, workflow, run, attempt, commit and generation, and records that no local gate ran. Unavailable reads, missing logs and wrong-branch evidence block diagnosis; they do not establish a clean result.
 2. `[repro]` asks for a failing regression test before remediation, even when CI is already red. The successful reproduction is stored for its generation. A CI reproduction result of NO blocks resolution; an explicit `[local]` clears saved CI selection and restores local discovery.
 3. A DONE remediation or soak result for the active generation enables declared local gates. Known failed tiers guide their order, while `[live=off]` retains its live opt-out. The existing live-skipped warning and CONCERNS behavior still apply.
 4. After the final push, the configured gate and the selected workflow must both pass at the exact pushed head. Original failure and verifying run links remain distinct. Local success alone does not resolve a CI-only failure.
 
-`.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` runs real built CLI commands taken from the Debug workflow against fresh temporary consumers. It exercises selection, durable metadata and resume, exact-attempt context scripts, explicit local and reproduction overrides, generation-specific fixes, conditional local-gate execution, and green or red pushed-head verification. The fixture replaces remote CI reads and agent-produced reports; it uses the actual selection, context validation, status fold and gate evaluation.
+`.bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts` runs real built CLI commands taken from the Debug workflow against fresh temporary consumers. It exercises selection, durable metadata and resume, exact-attempt context scripts, explicit local and reproduction overrides, generation-specific fixes, conditional local-gate execution, the CI round's failed-job count (the capstone left out) followed by an `unknown` Loop Question trend after an uncounted local round, and green or red pushed-head verification. The fixture replaces remote CI reads and agent-produced reports; it uses the actual selection, context validation, status fold and gate evaluation.
 
 Run the focused integration file with `pnpm bkit:test:file .bkit/core/engine/audits/workflows/debug-ci-evidence.integration.test.ts`, then the complete `pnpm bkit:gate:static-unit-integration` and `pnpm bkit check`. Release dogfood also installs the built package into a scratch consumer under `tmp/` and inspects its metadata, artifacts and host files. Historical run replay is reported separately as available or unavailable; missing history or expired logs are never a passing smoke result.
 
@@ -636,7 +637,7 @@ When adding bkit-managed file types or scope keys, extend fixture — single sou
 <!-- prettier-ignore -->
 | File | Tier | Scope |
 | --- | --- | --- |
-| `commands/workflow/counters.test.ts` | Unit | Row counting at the three positions (`current` refuses 0); fold dedup (retries survive / replays collapse); active-run scoping; group isolation; `--all-runs`; run numbering incl. resume + interleave; fail-closed value / max; `--point` (limit and `ask` from `package.json`, `ask` false when headless); `--of` + `--rows` summed |
+| `commands/workflow/counters.test.ts` | Unit | Row counting at the three positions (`current` refuses 0); fold dedup (retries survive / replays collapse); active-run scoping; group isolation; `--all-runs`; run numbering incl. resume + interleave; fail-closed value / max; `loopProgress` same-scope trend, `unknown` trend with `recommend` null, `trendLine`; `--point` (limit and `ask` from `package.json`, `ask` false when headless); `--of` + `--rows` summed |
 | `commands/workflow/status.test.ts` | Unit | `debugMode`/`pushMode` meta (run-level over step); last verdict / failures; all-runs strategy + next rung; `--require` failures |
 | `commands/workflow/summary.test.ts` | Unit | `bkit workflows summary` verdict from status rows: unticked build task / last test FAIL / a build with no plan file (`No plan file`) → FAIL; a FAIL a later step answers, a CONCERNS row, a Decision Pause accept or a new deferral → CONCERNS; next step per workflow and verdict; issue ref per tracker; the `## Challenge` line naming a skipped challenge-1 from the latest `challenge-gate` row; `Publish: held` and `Docs: not synced` lines on a held build (`Publish: pr` otherwise), with the verdict and next step unchanged by `publish` |
 | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | Unit (markdown-invariant) | No prose `Init` / `Increment`, no bare `*_ATTEMPT` comparison outside fenced blocks; counters derived in the block that routes on them, or by the routing / writing command itself (`steps finish --attempt=next` / `--attempt-of`, `counters route --of`); each derived counter maps to the right step; counted steps commit in-block or are exempted |

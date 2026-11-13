@@ -10354,11 +10354,11 @@ Final return: display `{FINAL_RETURN}` verbatim. With selected CI, append `Origi
 **Modes:** Step 1 decides `PUSH_MODE` (`PR|LOCAL`) and `DEBUG_MODE` (`NORMAL|SOAK`). `DEBUG_MODE` selects the fix step: `NORMAL` → Diagnose (6) and Remediate (7); `SOAK` → Failure Remediate Soak (8). `REPRO` (`[repro]`) adds Failure Reproduce (5) after a first-attempt PASS, in either mode. A run starts in `SOAK` on `[soak]`, on an open run already soaking, or once the feature's runs hold `debug.fix.maxAttempts` Remediate rows. `NORMAL` switches to `SOAK` mid-run when the diagnose agent sets `Mode: SOAK`, or when the fix attempts are used up. `SOAK` is terminal.
 **If** `LOOP_ASK` = false → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking` → return to the calling step.
 Read the loop's progress:
-**If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking (failures {LOOP_COUNTS})` → return to the calling step.
+**If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking ({LOOP_TREND_LINE})` → return to the calling step.
 `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
-**If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** The last fix attempt left no fewer failures. Stop here instead of trying again?`.
-**If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up, and the last one left no fewer failures. Stop here instead of starting soak (a slower, step-by-step investigation)?`.
-**Else** → `**Q1 — Soak:** The last soak attempt left no fewer failures. Stop here instead of trying again?`.
+**If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
+**If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up. {LOOP_TREND_LINE} Stop here instead of starting soak (a slower, step-by-step investigation)?`.
+**Else** → `**Q1 — Soak:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
 `Options: A) Stop / B) Try again`, then `Recommended: A) Stop`.
 The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
 Record the wait → end turn → wait for the answer:
