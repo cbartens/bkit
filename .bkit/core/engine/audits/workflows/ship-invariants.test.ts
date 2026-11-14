@@ -1036,6 +1036,68 @@ describe("bkit-ship.md — red CI names /bkit-debug", () => {
     expect(bullets(route)[1]).toMatch(/\*\*If\*\* exit 81 → end turn, re-run this block\./);
   });
 
+  it("Step 2's exit-80 arm stops on a cancelled, action-required or stale check without naming /bkit-debug", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — /, /^## /);
+    const sub5 = section(step2, /^5\. \*\*If\*\* `SHIP_OPENED_PR` = true/, /^6\. /);
+    const route = sub5.slice(sub5.indexOf("Route:"));
+    const arm = routeArms(route).find((a) => /^ {3}- \*\*If\*\* exit 80\b/.test(a));
+    expect(arm, "no exit 80 arm").toBeDefined();
+    const subs = bullets(arm!.split("\n").slice(1).join("\n"));
+    const required = [/cancelled/i, /action[ -]required/i, /stale/i, /Failure Path/];
+    const forbidden = [HOLDS_DEBUG, /concluded failure/];
+    const stopArms = subs
+      .filter((b) => required.every((r) => r.test(b)))
+      .filter((b) => !forbidden.some((r) => r.test(b)));
+    const stop = subs.indexOf(stopArms[0]!);
+    expect(stop, "no sub-bullet stops on a cancelled/action-required/stale check").toBeGreaterThan(
+      -1,
+    );
+    const elseIdx = subs.findIndex((b) => /^\s*- \*\*Else\*\* → next sub-step/.test(b));
+    expect(elseIdx).toBeGreaterThan(-1);
+    expect(stop, "the stop arm must sit before the Else → next sub-step arm").toBeLessThan(elseIdx);
+  });
+
+  it("Step 2's exit-80 arm continues only when every check passed and sends a timed-out, startup-failure or error check to /bkit-debug", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — /, /^## /);
+    const sub5 = section(step2, /^5\. \*\*If\*\* `SHIP_OPENED_PR` = true/, /^6\. /);
+    const route = sub5.slice(sub5.indexOf("Route:"));
+    const arm = routeArms(route).find((a) => /^ {3}- \*\*If\*\* exit 80\b/.test(a));
+    expect(arm, "no exit 80 arm").toBeDefined();
+    const subs = bullets(arm!.split("\n").slice(1).join("\n"));
+    const elseIdx = subs.findIndex((b) => /^\s*- \*\*Else\*\* → next sub-step/.test(b));
+    expect(elseIdx).toBeGreaterThan(-1);
+    // The continue arm states its condition: every check passed.
+    expect(subs[elseIdx]!, "the next-sub-step bullet has no every-check-passed condition").toMatch(
+      /every check passed/i,
+    );
+    // A timed-out, startup-failure or error check holds /bkit-debug and goes to the Failure Path, before the continue arm.
+    const needed = [
+      /timed[ -]out/i,
+      /startup[ -]failure/i,
+      /\berror\b/i,
+      HOLDS_DEBUG,
+      /NEXT_STEP/,
+      /Failure Path/,
+    ];
+    const debugArms = subs.filter((b) => needed.every((r) => r.test(b)));
+    expect(
+      debugArms.length,
+      "no sub-bullet sends timed out / startup failure / error to /bkit-debug",
+    ).toBe(1);
+    expect(subs.indexOf(debugArms[0]!)).toBeLessThan(elseIdx);
+  });
+
+  it("Step 2's exit-80 arm reads check-run conclusions, not the combined commit status", () => {
+    const step2 = section(readShip(), /^## .*Step 2 — /, /^## /);
+    const sub5 = section(step2, /^5\. \*\*If\*\* `SHIP_OPENED_PR` = true/, /^6\. /);
+    const route = sub5.slice(sub5.indexOf("Route:"));
+    const arm = routeArms(route).find((a) => /^ {3}- \*\*If\*\* exit 80\b/.test(a));
+    expect(arm, "no exit 80 arm").toBeDefined();
+    const line = arm!.split("\n")[0]!;
+    expect(line).toMatch(/get_check_runs|actions_list/);
+    expect(line).not.toMatch(/get_status/);
+  });
+
   it("the Merge Question's Stop arm names NEXT_STEP when held and Try again clears it", () => {
     const mq = section(readShip(), /^## .*Merge Question$/, /^### /);
     const tryAgain = section(

@@ -29,6 +29,7 @@ import {
   checkBlocks,
   checkClauses,
   checkRuleCopies,
+  expandNames,
   compileText,
   loadCorpus,
   parseClauses,
@@ -47,6 +48,7 @@ import {
   type Surface,
   type CorpusFile,
 } from "./instructions";
+import { parseRuleEntries } from "./instructions-sources";
 import { applyOpencodeCommand, applyT1, applyT2 } from "../render/hosts";
 import { substituteWorkflow } from "../render/trackers";
 
@@ -1376,5 +1378,106 @@ describe("ledgers query readers", () => {
       expect(text, name).toMatch(/`partial`[^\n]*(report|diagnos)/i);
       expect(text, name).toMatch(/`unreadable`[^\n]*stop/i);
     }
+  });
+});
+
+describe("the local-pre-commit rule", () => {
+  const rule = parseRuleEntries(STORE, "Rules").find((r) => r.name === "local-pre-commit");
+  const promptsDir = path.join(REPO_ROOT, ".bkit/core/prompts");
+
+  it("every build and debug prompt that runs tests carries local-pre-commit", () => {
+    expect(rule).toBeDefined();
+    const prompts = CORPUS.filter((f) => f.surface === "prompt");
+    const names = prompts.map((f) => f.name);
+    // A prompt runs tests when it names the per-file test script, the changed-tests command or a filtered test run.
+    const runsTests = prompts
+      .filter((f) => /^bkit-(build|debug)-/.test(f.name))
+      .filter((f) =>
+        /bkit:test:file|bkit tests changed|Run only those tests|file or name filter/.test(
+          f.content,
+        ),
+      )
+      .map((f) => f.name);
+    expect(runsTests.length).toBeGreaterThan(0);
+    const carried = expandNames(`${rule!.carry}`, names);
+    for (const name of runsTests) expect(carried, name).toContain(name);
+    for (const name of [
+      "bkit-build-plan-tasks",
+      "bkit-build-plan-tests",
+      "bkit-build-plan-verify",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-debug-failure-remediate",
+    ]) {
+      expect(carried, name).toContain(name);
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).toContain(rule!.text);
+    }
+  });
+
+  it("every debug prompt that runs tests by file or name filter carries local-pre-commit", () => {
+    expect(rule).toBeDefined();
+    const prompts = CORPUS.filter((f) => f.surface === "prompt");
+    const names = prompts.map((f) => f.name);
+    const runsByFilter = prompts
+      .filter((f) => /^bkit-debug-/.test(f.name))
+      .filter((f) => /Run only those tests|test runner|file or name filter/i.test(f.content))
+      .map((f) => f.name);
+    expect(runsByFilter).toContain("bkit-debug-failure-reproduce");
+    const carried = expandNames(`${rule!.carry}`, names);
+    for (const name of runsByFilter) {
+      expect(carried, name).toContain(name);
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).toContain(rule!.text);
+    }
+  });
+
+  it("local-tests-first does not ask for the full local suite that local-pre-commit forbids while working", () => {
+    const entry = parseRuleEntries(STORE, "Rules").find((r) => r.name === "local-tests-first");
+    expect(entry).toBeDefined();
+    expect(entry!.text).not.toMatch(/Exhaust the local test suite/i);
+    expect(entry!.text).toMatch(/targeted repro/i);
+    expect(entry!.text).toMatch(/pre-push hook/i);
+    expect(entry!.retired.join("\n")).toMatch(/Exhaust the local test suite/);
+    const rules = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/.agents/rules.md"), "utf-8");
+    expect(rules).not.toMatch(/Exhaust the local test suite/i);
+    for (const name of [
+      "bkit-build-plan-tasks",
+      "bkit-build-plan-verify",
+      "bkit-build-plan-gaps-remediate",
+      "bkit-debug-failure-reproduce",
+    ]) {
+      const body = fs.readFileSync(path.join(promptsDir, `${name}.md`), "utf-8");
+      expect(body, name).not.toMatch(/Exhaust the local test suite/i);
+      expect(body, name).toContain(entry!.text);
+    }
+  });
+
+  it("bkit-debug-failure-reproduce runs its tests by naming each test file and asks for no unnamed wider run", () => {
+    const body = fs.readFileSync(path.join(promptsDir, "bkit-debug-failure-reproduce.md"), "utf-8");
+    const step6 = body.split("\n").find((l) => /^6\. Run only those tests/.test(l));
+    expect(step6, "step 6 not found").toBeDefined();
+    expect(step6!).toMatch(/bkit:test:file/);
+    expect(step6!).toMatch(/naming each test file|each test file/i);
+    expect(step6!).not.toMatch(/a file or name filter/i);
+    expect(body).not.toMatch(/other tests are unaffected/i);
+  });
+
+  it("local-pre-commit covers test runs made while working, not only before a commit", () => {
+    expect(rule).toBeDefined();
+    expect(rule!.text).toMatch(/before a commit and while working/i);
+    // Each run names its test files: never a folder, a pattern, the full suite or a gate script.
+    expect(rule!.text).toMatch(/naming each test file/i);
+    expect(rule!.text).toMatch(
+      /never a folder, a pattern, the full suite or a `bkit:gate:\*` script/i,
+    );
+    // The `/bkit-*` step's named command stays the only wider run.
+    expect(rule!.text).toMatch(/only wider run/i);
+    // The store entry and the shipped rules file hold the same bullet.
+    const rules = fs.readFileSync(path.join(REPO_ROOT, ".bkit/core/.agents/rules.md"), "utf-8");
+    expect(rules).toContain(`- ${rule!.text}`);
+    // The old text, limited to a commit, is retired rather than current.
+    expect(rule!.retired.join("\n")).toContain(
+      "Before a commit, run only the tests the change affects",
+    );
   });
 });

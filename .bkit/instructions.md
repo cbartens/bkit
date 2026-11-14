@@ -1386,7 +1386,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:663`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:664`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1674,14 +1674,15 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:104`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-build-plan-gaps-remediate:105`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
-**Local tests first:** Exhaust the local test suite and a targeted repro before remote CI. **If** a deployed-boundary / `@live` failure cannot be reproduced locally → review existing evidence first.
+**Local tests first:** Run only the tests the change affects and a targeted repro before remote CI; the full suite runs only in the pre-push hook. **If** a deployed-boundary / `@live` failure cannot be reproduced locally → review existing evidence first.
 ```
 
 ```retired
+**Local tests first:** Exhaust the local test suite and a targeted repro before remote CI. **If** a deployed-boundary / `@live` failure cannot be reproduced locally → review existing evidence first.
 **Local tests first:** ALWAYS exhaust the local test suite and a targeted repro before remote CI. A deployed-boundary / `@live` failure that cannot be reproduced locally → review existing evidence first.
 **Local tests first:** ALWAYS exhaust local test suite and targeted repro before remote CI. Deployed-boundary / `@live` that cannot reproduce locally → review existing evidence first.
 ```
@@ -1699,7 +1700,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:663`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:664`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1714,14 +1715,16 @@ Clause section lines:
 ### local-pre-commit
 
 - rule: Universal Rules › Testing & Debugging
+- carry: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-verify`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`
 - prompt:
-  - applies: `bkit-build-plan-tasks`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`
+  - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`
 
 ```text
-**Local pre-commit:** Before a commit, run only the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files, not a full suite or a `bkit:gate:*` script. `/bkit-*` steps run their own gates.
+**Local pre-commit:** Before a commit and while working, run only the tests the change affects (tests importing changed code or naming a changed file's path), naming each test file, never a folder, a pattern, the full suite or a `bkit:gate:*` script, and run static checks on changed files. A `/bkit-*` step's named command is the only wider run.
 ```
 
 ```retired
+**Local pre-commit:** Before a commit, run only the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files, not a full suite or a `bkit:gate:*` script. `/bkit-*` steps run their own gates.
 **Local pre-commit:** Before a commit → run ONLY the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files; NEVER a full suite or a `bkit:gate:*` script. `/bkit-*` steps run their own gates.
 **Local pre-commit:** Before a commit → ONLY the tests the change affects (tests importing changed code or naming a changed file's path) and static checks on changed files; NEVER a full suite or `bkit:gate:*` script. `/bkit-*` steps run their own gates.
 ```
@@ -1827,7 +1830,7 @@ Clause section lines:
   - specialised: `bkit-debug-failure-soak`
   - applies: `bkit-debug-failure-remediate`
 - drift:
-  - `bkit-debug-failure-remediate:87`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-debug-failure-remediate:88`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -3155,10 +3158,11 @@ Continue from the interrupted sub-step only after the retry is verified.
 - carriers: workflow all except `bkit-auto`
 
 ```text
-**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
+**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_check_runs`, the check-run conclusions for the PR head; or `actions_list` runs for the head SHA), never `get_status`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
 ```
 
 ```retired
+**gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
 **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
 **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
 **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `body` / `base` / `head`; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_status`); `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Record via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP only when a verb prints `tracker.done: false` or exits 80.
@@ -10633,9 +10637,11 @@ Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails →
 Read the PR's head SHA:
 [honest-reporting] **If** `SHIP_OPENED_PR` = true → wait for CI on the new PR first, then assert its check rollup green:
 **If** exit 1 **and** `CHECKS_FAILED` > 0 (a check concluded red: the CI run is red) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
-**If** exit 80 → read the checks with `pull_request_read` (`get_status`):
-**If** any check concluded failure (not cancelled, action required or stale) → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
+**If** exit 80 → read the check runs for the PR head with `pull_request_read` (`get_check_runs`), or `actions_list` runs for the head SHA:
+**If** any check concluded failure, timed out, startup failure or error (a commit status of `error`), and is not cancelled, action required or stale → hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
 **If** there is no check, **or** any check is pending → **Failure Path**.
+**If** any check is cancelled, action required or stale → **Failure Path**.
+**Else** → next sub-step, only when every check passed (success, neutral or skipped).
 Finish (bookkeeping to `$BOOK_ROOT`, no branch commit):
 Run **Confirm Assumed Items** → Step 3.
 Mechanical checks passed (`steps gate`, `steps finish`)
@@ -11264,7 +11270,7 @@ Pick the lowest tier that reaches the reported behaviours: unit before integrati
 Co-locate them with the tests that cover the affected areas, and match those tests' imports, helpers and naming.
 Write one test per reported behaviour, named for it and built from the reported steps, the affected areas and the `context-*` evidence. Assert the outcome the report expects, not the broken behaviour it describes.
 **If** `Mode` in the input Context = `SOAK` → make the tests repeat the reported scenarios (loop, concurrency, timing) until they fail reliably, within the suite's normal time budget.
-[local-tests-first] Run only those tests via Bash, with the repo's test runner and a file or name filter. Then append `DONE — run {N}: {command} — {outcome}` at EOF with Bash `echo {log entry} >> {output}`.
+[local-tests-first] Run only those tests via Bash, by naming each test file: through `bkit:test:file` when `package.json` declares it, otherwise with the repo's test runner given the file path. Add a name filter only on top of the file, never alone. Then append `DONE — run {N}: {command} — {outcome}` at EOF with Bash `echo {log entry} >> {output}`.
 Check the result:
 [reproduce-first] **If** they fail on the reported symptoms → the bug is reproduced.
 **If** any test fails for another reason (missing fixture, typo, wrong import, unreachable boundary) → fix only the tests, and run them again. Allow at most 3 rewrites.
@@ -11273,7 +11279,7 @@ Check the result:
 Delete the test files you created, and revert your test edits.
 Append `BLOCKED — {paths tried} — {why each missed}`.
 Set the header and body of **Create** with `Edit`, using this mapping:
-`PASS` = `Reproduced: YES`, the tests fail on the reported symptoms, and other tests are unaffected.
+`PASS` = `Reproduced: YES`, and the tests fail on the reported symptoms.
 `CONCERNS` = `Reproduced: YES`, but only partly: the tests cover only part of the report, or they are intermittent and fail in some runs only.
 `FAIL` = `Reproduced: NO`, and the test changes are removed.
 ```

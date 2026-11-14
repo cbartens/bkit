@@ -845,8 +845,8 @@ const NO_VERDICT_STATES = new Set(["CANCELLED", "ACTION_REQUIRED", "STALE"]);
  * The PR's check rollup, classified (ship Step 2's post-open assert). `green` only
  * when at least one check exists and none is failed, cancelled or pending. A check run is
  * open until `status` = `COMPLETED`; a commit status is open while its `state` is
- * `PENDING` / `EXPECTED`. gh missing → EXIT.USE_MCP (read the rollup through
- * `pull_request_read` `get_status`).
+ * `PENDING` / `EXPECTED`. gh missing → EXIT.USE_MCP (read the check runs through
+ * `pull_request_read` `get_check_runs`, or `actions_list` runs for the head SHA).
  */
 export function checksFor(
   cwd: string,
@@ -856,7 +856,7 @@ export function checksFor(
   const res = runGh(cwd, ["pr", "view", number, "--json", "statusCheckRollup"]);
   if (ghUnavailable(res)) {
     log(
-      "gh unavailable for gh pr view --json statusCheckRollup — read the rollup through pull_request_read (get_status)",
+      "gh unavailable for gh pr view --json statusCheckRollup — read the check runs through pull_request_read (get_check_runs), or actions_list runs for the head SHA",
     );
     return { code: EXIT.USE_MCP, out: null };
   }

@@ -22,6 +22,8 @@ Action SHA-pinning and the dependency-update pipeline (Renovate / Dependabot, Tr
 
 **Scanner isolation:** The CI vulnerability scanner (e.g. `bkit-trivy.yml`) runs with `contents: read`, `persist-credentials: false` and no secret. Its image or action is pinned by digest, never by a floating tag. Setup is in `.bkit/templates.md` § Trivy.
 
+**Accepted risk (audit reports and `[skip ci]`):** `docs/audits/**` sits in the files bkit writes (`minPushPathspecs`), so the pre-push hook lets an audit report reach `dev` or `main` under a `[skip ci]` head. No workflow runs on that push, the secret scan included. Audit reports are written from untrusted logs and CI evidence, so a report that quotes a leaked token lands unscanned. The owner accepted this risk; the decision is in `docs/decisions.jsonl`.
+
 ## Untrusted Content & Prompt Injection
 
 **Threat model.** Every phase workflow combines three things:
