@@ -5,7 +5,7 @@ bkitVersion: 6.1.1
 bkitLatest: 6.1.1
 -->
 
-Verdict: CONCERNS
+Verdict: PASS
 <!-- verdict:end -->
 
 # Review Doc Starters Implementation Plan
@@ -23,6 +23,7 @@ Goals beyond the issue's task list, found while reading the code or settled by t
 - Keep the template audits green: `.bkit/core/engine/audits/templates/templates.test.ts` (`unresolvedBkitDocAnchors`, `uncoveredBkitDocSections`, `UNAUDITED_DOC_SECTIONS`) and `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` (the `docs/*.md` entries, including the components anchor `"> Example document."`).
 - Make the index equivalence match accept only an affirmative `Equivalent to docs/{topic}.md` with an end boundary (owner answer 2, 2026-11-14), so the new upgrade marker, `detectProjectDocs` and `syncProjectDocs` never treat "Not equivalent to `docs/security.md`" or `docs/security.mdx` as an adopted copy.
 - Keep the `## Test first` section that #917 adds to the testing starter, marked as bkit practice (issue comment, 2026-11-13).
+- Merge `project-docs-empty` into `project-docs-unpopulated`, so an empty project doc is reported as unpopulated and `project-docs-missing` keeps its own id (owner answer 3, 2026-11-14).
 
 **Related Issues:**
 
@@ -63,13 +64,13 @@ Decisions settled with the owner on 2026-11-13:
 - `.bkit/authoring.md` § Docs holds the shared writing rules, including the Mermaid rule. § Doc Templates says fill-in instructions sit in the template and rules for acting on it live in the prompts, and that project-doc starters carry their own fill-in steps. bkit's own `docs/` copies follow the new rules: the ASCII lane graph in `docs/testing.md` § CI test tiers (the bkit scaffold) is Mermaid.
 - `.bkit/templates.md` has one project-docs adoption-order section with the waves table and a Mermaid chart, and names `docs/idea.md`. Each starter's **Fill these first** line matches it. Line 16 no longer says the `bkit tips` order covers project docs.
 - In `testing.md` and `deployments.md`, every `##` section is marked either as a project slot to fill or as bkit practice to keep, so an adopter can tell which is which.
-- A `project-docs` tip fires exactly when a `project-docs-missing`, `project-docs-empty` or `project-docs-unpopulated` advisory does. Those advisories point at the adoption-order section. The `bkit upgrade` "Templates updated" report marks each changed doc starter whose project copy exists as adopted, to review.
+- A `project-docs` tip fires exactly when a `project-docs-missing` or `project-docs-unpopulated` advisory does; an empty project doc is reported as `project-docs-unpopulated`, and no `project-docs-empty` advisory exists. Those advisories point at the adoption-order section. The `bkit upgrade` "Templates updated" report marks each changed doc starter whose project copy exists as adopted, to review.
 
 ### Process Sketch
 
 - **WHEN** an adopter opens any hand-written starter **→ THEN** it reads an introduction above `# {Title}` naming what to fill first, what to finish against, where the facts come from, numbered steps, the empty state, completion checks and the exact `.agents/docs.md` row, then a rules box with Purpose, Not here and Update when.
 - **WHEN** the adopter opens `.bkit/templates.md` § Project docs — adoption order **→ THEN** the waves table and Mermaid chart give the same prerequisites as each starter's **Fill these first** line.
-- **WHEN** `bkit check` or `bkit tips` runs in a project with a missing, empty or untouched project doc **→ THEN** the matching `project-docs-*` advisory names the adoption-order section and the `project-docs` tip fires.
+- **WHEN** `bkit check` or `bkit tips` runs in a project with a missing, empty or untouched project doc **→ THEN** `project-docs-missing` (for a missing doc) or `project-docs-unpopulated` (for an empty or untouched doc) names the adoption-order section and the `project-docs` tip fires.
 - **IF** a doc says `Not applicable: {reason}`, `docs/noise.md` holds only its rules box and table header, or `bkit.advisories.ignore` lists `project-docs-missing` **→ THEN** no tip for that cause.
 - **WHEN** `bkit upgrade` changes a doc starter the project has a copy of, at the recommended path or an affirmatively indexed equivalent **→ THEN** its `changed:` line ends `— adopted at {path}, review your copy`.
 - **IF** the starter has no copy, the copy is a symlink, a directory or out of the repo, the index row says "Not equivalent to", or the template is not a doc starter **→ THEN** the line has no adopted marker and the report never fails.
@@ -106,7 +107,8 @@ Decisions settled with the owner on 2026-11-13:
 | An index row says "Not equivalent to `docs/{topic}.md`" and `docs/{topic}.md` is present but unindexed | `syncProjectDocs` registers `docs/{topic}.md` in `.agents/docs.md` |
 | A non-doc template changes on upgrade | Listed as today, no adopted marker |
 | A chart would need more than about 15 nodes | Split by `subgraph` or into a second chart, per the § Docs rule |
-| `bkit.advisories.ignore` lists `project-docs-missing` and a doc is empty or an unchanged starter | `dropTipSilencedAdvisories` also drops `project-docs-empty` and `project-docs-unpopulated`, because the silenced tip names all three ids; `project-docs-index-missing` survives |
+| `bkit.advisories.ignore` lists `project-docs-missing` and a doc is empty or an unchanged starter | `dropTipSilencedAdvisories` also drops `project-docs-unpopulated`, because the silenced tip names both ids; `project-docs-index-missing` survives |
+| A project doc is empty or holds only whitespace | `detectProjectDocs` reports it under `project-docs-unpopulated`; no `project-docs-empty` finding is raised |
 | A starter's introduction uses a `##` heading | Not allowed: the introduction uses bold labels only, so `uncoveredBkitDocSections` and the slot/practice check see only skeleton and practice sections; the starter-shape test fails |
 | The recommended path `docs/{topic}.md` is a symlink or a directory | Not marked adopted: `adoptedProjectDocPath` accepts only a regular file, through `inspectRepoFile` |
 | The indexed equivalent path is a symlink, a directory or outside the repo | Not marked adopted: the upgrade report uses `inspectRepoFile` / `isInTreePath`, the same safety checks `detectProjectDocs` uses |
@@ -117,7 +119,7 @@ Decisions settled with the owner on 2026-11-13:
 
 ### Derived Test Matrix
 
-`Type` is a tier from `docs/testing.md` § Which tier does a behaviour need? (Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke). `Task` is the one runbook task that lands the row's test. The first 23 rows are the issue's, word for word. The tip-id test keeps the matrix wording "three" everywhere (owner answer 1, 2026-11-14), so the test has one name.
+`Type` is a tier from `docs/testing.md` § Which tier does a behaviour need? (Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke). `Task` is the one runbook task that lands the row's test. The first 23 rows are the issue's, word for word, except the tip-id row and the advisory-pointer row, which the owner renamed when `project-docs-empty` merged into `project-docs-unpopulated` (owner answer 3, 2026-11-14). The tip-id test uses the matrix wording "two" everywhere, so the test has one name.
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
@@ -140,16 +142,16 @@ Decisions settled with the owner on 2026-11-13:
 | capabilities names rollup and refresh and when to run each | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 9 |
 | project-docs tip fires when a project doc is missing | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
 | project-docs tip stays silent when every project doc is populated and indexed | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
-| project-docs tip names the three project-docs advisory ids | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
-| missing, empty and unpopulated advisories name the adoption-order section | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 11 |
+| project-docs tip names the two project-docs advisory ids | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
+| missing and unpopulated advisories name the adoption-order section | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 11 |
 | changed doc starter with a project copy is marked adopted | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
 | changed doc starter indexed under another path is marked adopted | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
 | changed doc starter with no copy and changed non-doc template are not marked | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
 | project-docs tip stays silent for a Not applicable data-schema and a header-only noise | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
-| project-docs tip fires when a project doc is empty | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
+| project-docs tip fires when a project doc is empty | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 11 |
 | project-docs tip fires when a project doc is an unchanged starter copy | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
 | project-docs tip stays silent when project-docs-missing is ignored | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
-| ignoring project-docs-missing drops the empty and unpopulated advisories and keeps project-docs-index-missing | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
+| ignoring project-docs-missing drops the unpopulated advisory and keeps project-docs-index-missing | Unit | `.bkit/core/engine/checks/tips/catalogue.test.ts` | 10 |
 | changed doc starter whose recommended path is a symlink is not marked adopted | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
 | changed doc starter whose recommended path is a directory is not marked adopted | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
 | changed doc starter whose indexed equivalent is a symlink or outside the repo is not marked adopted | Integration | `.bkit/core/engine/install/template-copies.integration.test.ts` | 13 |
@@ -160,6 +162,7 @@ Decisions settled with the owner on 2026-11-13:
 | capabilities starter has the Generated document opener, Fill these first, register row and completion checks | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 9 |
 | a Not equivalent to docs/{topic}.md or docs/{topic}.mdx row does not silence project-docs-missing | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 12 |
 | syncProjectDocs registers a present docs/{topic}.md beside a Not equivalent row | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 12 |
+| an empty project doc is reported as project-docs-unpopulated | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 11 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -180,13 +183,14 @@ Decisions settled with the owner on 2026-11-13:
   - Same-basename rows and affirmative rows that end at a backtick, whitespace, punctuation or the cell end match as today; every existing test row is of that kind.
   - Task 12's tests `a Not equivalent to docs/{topic}.md or docs/{topic}.mdx row does not silence project-docs-missing` and `syncProjectDocs registers a present docs/{topic}.md beside a Not equivalent row` pin both caller changes.
 - **Scope of the new § Docs rules in `.bkit/core/.bkit/authoring.md`:** the Mermaid rule covers every file § Docs covers (`.agents/**`, `.bkit/*.md`, `docs/*.md`), as the issue decides. The other new rules, including the **Not here** and **Update when** box lines, apply to the project-doc starters in `.bkit/templates/docs/*.md`, and a doc a project fills from a starter carries them in the rules box it copies. The existing § Docs **Rules header** rule keeps requiring only **Purpose** and **Rules**, so bkit's own `.agents/**`, `.bkit/*.md` and `docs/*.md` files do not break a rule the day Task 1 lands; of the new rules, bkit's own `docs/*.md` copies are held to the Mermaid rule (Success Criterion 2's lane graph).
-- **New tip id `project-docs`** in `SETUP_TIPS`. It differs from the advisory ids `project-docs-missing`, `project-docs-empty` and `project-docs-unpopulated`, which the existing "ids are unique and never collide with an advisory id" test checks. Placed after `graphify`, workflows `design`, `plan` and `build`, so the "X leads with Y" and "audit tips are …" tests keep their exact lists.
-- **Wider `bkit.advisories.ignore` effect:** because the tip's `advisories` names all three ids, one ignore entry for any of them silences the tip, and `dropTipSilencedAdvisories` then drops all three advisories. Today `ignore: ["project-docs-missing"]` drops only the missing advisory; after this change it also drops every `project-docs-empty` and `project-docs-unpopulated` finding. `project-docs-index-missing`, `project-docs-unindexed` and `project-docs-ambiguous` are not named, so they still survive.
+- **Removed advisory id `project-docs-empty`** (owner answer 3, 2026-11-14). `detectProjectDocs` reports an empty or whitespace-only project doc as `project-docs-unpopulated`, and the `project-docs-empty` finding and its `action` text are removed. `project-docs-missing` stays its own id, because an absent doc needs a different fix. The `project-docs-empty` row of the `docs/observability.md` advisory table is removed. No migration: `git show v6.1.1:.bkit/core/engine/checks/after/tools.ts` holds no `project-docs-` id, so no released project's `bkit.advisories.ignore` names `project-docs-empty`.
+- **New tip id `project-docs`** in `SETUP_TIPS`. It differs from the advisory ids `project-docs-missing` and `project-docs-unpopulated`, which the existing "ids are unique and never collide with an advisory id" test checks. Placed after `graphify`, workflows `design`, `plan` and `build`, so the "X leads with Y" and "audit tips are …" tests keep their exact lists.
+- **Wider `bkit.advisories.ignore` effect** (accepted by the owner, answer 1, 2026-11-14): because the tip's `advisories` names both ids, one ignore entry for either of them silences the tip, and `dropTipSilencedAdvisories` then drops both advisories. Today `ignore: ["project-docs-missing"]` drops only the missing advisory; after this change it also drops every `project-docs-unpopulated` finding, empty docs included. The tip's `caution` text states this effect. `project-docs-index-missing`, `project-docs-unindexed` and `project-docs-ambiguous` are not named, so they still survive.
 - **New `.bkit/templates.md` heading `## Project docs — adoption order`.** The tip's `steps` pointer and the advisory action texts name it, and the catalogue test "every docs pointer in steps resolves to a heading" checks it.
 - **Starter opener wording:** "Example document." becomes "Starter document." (hand-written) and "Example output." becomes "Generated document." (`capabilities.md`). The introduction moves above `# {Title}` in every starter, as in `components.md` today. Projects that already copied a starter keep their copy; the upgrade report marks the change.
 - **Starter section headings:** `## Project facts to record` is removed from the eight starters that have it (architecture, technology, setup, security, observability, testing, data-schema, deployments) and replaced by named skeleton slots (listed per task). Every kept bkit-practice heading keeps its exact text, because the audit templates anchor on it.
 - **Index wording:** `TOPIC_INFO[topic].scope` becomes each starter's new Purpose text, so a row `syncProjectDocs` inserts from now on uses the new wording. Rows already in a project's `Project Documents` table are not rewritten.
-- **Slot/practice marker:** the first line under every `##` heading of `testing.md` and `deployments.md` is `> **Project slot:** …` or `> **bkit practice:** keep this section; …` (see Open Questions).
+- **Slot/practice marker:** the first line under every `##` heading of `testing.md` and `deployments.md` is `> **Project slot:** …` or `> **bkit practice:** keep this section; …` (owner answer 6, 2026-11-14).
 
 ### 👤 ✅ Human Confirmation
 
@@ -202,7 +206,14 @@ Decisions settled with the owner on 2026-11-13:
 
 **Answered by the owner (2026-11-14), carried as decisions:**
 
-- **Answered:** the tip-id test keeps the name `project-docs tip names the three project-docs advisory ids` in the matrix and in Task 10.
+- **Answered:** `project-docs-empty` merges into `project-docs-unpopulated`, and `project-docs-missing` stays its own id. The tip-id test is named `project-docs tip names the two project-docs advisory ids` in the matrix and in Task 10; this replaces the earlier answer that kept "three" (`887-project-docs-empty-merged-into-unpopulated`).
+- **Answered:** one `bkit.advisories.ignore` entry silences the `project-docs` tip and both advisories it names, per the catalogue rule; the tip's `caution` text states this effect (`887-project-docs-tip-placement`).
+- **Answered:** v6.2 is held for #887, so the release-coupling assumption below stays as written and no code enforces it.
+- **Answered, option A:** the index row's Scope text stays in `TOPIC_INFO[topic].scope` in `project-docs.ts`, and the starter-shape test asserts the starter's given row equals `projectDocRow(topic)` (`887-project-doc-index-row-source`).
+- **Answered, option B:** the upgrade report marks the ten `PROJECT_DOC_TOPICS` and `docs/components.md` by a same-path check; `capabilities.md` stays unmarked, because the rollup regenerates it (`887-upgrade-report-adopted-marker`).
+- **Answered, option A:** a section is marked project slot or bkit practice by a blockquote first line under its heading, and each slot heading that `uncoveredBkitDocSections` reports goes in `UNAUDITED_DOC_SECTIONS` with the existing reason, replacing the six `§ Project facts to record` entries (`887-project-doc-slot-practice-marker`).
+- **Answered:** #863 being open does not block, because `.bkit/templates/docs/components.md` is on `dev`.
+- **Answered:** three Suggested Scope Expansion rows fold in: the `.bkit/instructions.md` § Template Instructions opener (Task 1), the ci-yml advisory's "promote after the capstone" (Task 8) and the `catalogue.ts` "README" comment (Task 10); every other row stays deferred.
 - **Answered, option A:** the equivalence match in `listIndexedEquivalents` (`.bkit/core/engine/install/project-docs.ts`) is fixed in Task 12 of the runbook. It accepts only an affirmative `Equivalent to docs/{topic}.md` whose path ends at a boundary (backtick, whitespace, punctuation or end of cell), and the upgrade-report task adds the test `changed doc starter indexed as Not equivalent to docs/{topic}.md is not marked adopted`. Plan review 2 added two tests for the matcher's other callers; with them the upgrade-report work exceeds the 10-test cap of one task, so the matcher fix and its two caller tests are Task 12, and the upgrade-report marker with that test is Task 13, which depends on Task 12. This closes the open deferral `864-move-project-docs-challenge-low-bkit-core-engine-install-project-docs-ts-429` once built; Breaking Changes states the effect on `detectProjectDocs` and `syncProjectDocs`.
 
 **Assumptions:**
@@ -212,28 +223,12 @@ Decisions settled with the owner on 2026-11-13:
 - **Assumption (corrected):** the issue says no engine code keys on "Example document." / "Example output.". No runtime code does, but `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` anchors the components entry on `"> Example document."`. → Task 3 changes that anchor; without it the dogfood test fails.
 - **Assumption:** #917 is closed, and its commit `959a7a6e9` (which adds `## Test first` to `.bkit/templates/docs/testing.md` after `## What each tier must do`) is on the local `dev` branch but not on this branch or `origin/dev`. Task 7 keeps and marks that section when the branch has it, and otherwise adds the same text from `docs/testing.md` § Test first. → If the branch is not brought up to `dev` and Task 7 adds its own copy, the later merge conflicts in `.bkit/templates/docs/testing.md`; the Pre-Flight rebase item avoids that.
 - **Assumption:** a starter's introduction uses bold labels, never `##` / `###` headings. → Otherwise `uncoveredBkitDocSections` in `templates.test.ts` and the slot/practice check would treat introduction headings as doc sections.
-- **Assumption (settled by the issue's Task 10):** the `project-docs` tip's `advisories` names all three ids (`project-docs-missing`, `project-docs-empty`, `project-docs-unpopulated`), following the catalogue's detection rule. → Ignoring `project-docs-missing` then also drops the empty and unpopulated advisories through `dropTipSilencedAdvisories` (Breaking Changes). If the owner wants the ignore entry to keep them, the tip names only `project-docs-missing` and can fire while two of its causes are silenced.
 - **Assumption:** with two same-basename indexed rows, `findIndexedEquivalent` takes the first one (open deferral `864-move-project-docs-challenge-low-bkit-core-engine-install-project-docs-ts-303`), and `adoptedProjectDocPath` inherits that. → If a project indexes two such rows, the marker may name the wrong copy; the line is still marked, so no adopted copy goes unreported.
 - **Assumption:** the tip's `fires` reads the main checkout through `tipsBase`, while `bkit check` advisories read `cwd`. → In a worktree whose `docs/` differs from the main checkout, the tip and the advisories can disagree until the branch merges; the "fires exactly when" criterion holds in the main checkout.
 
 **Open questions:**
 
-- **Open Question:** Where does the index row's Scope text live in code? → Owner, at plan review.
-  - **Options:** A) Keep `TOPIC_INFO[topic].scope` in `project-docs.ts` and let the starter-shape test assert the starter's given row equals `projectDocRow(topic)` — one more edit per starter, no runtime parsing · B) Parse the Purpose line out of the shipped starter at runtime — single source, but `syncProjectDocs` then depends on starter formatting and on the template folder being present
-  - **Recommended:** A) — the test already fails on any drift, and the install path stays free of Markdown parsing.
-  - **Default if unanswered:** A.
-- **Open Question:** Which changed starters get the "adopted" marker in the upgrade report? → Owner, at plan review.
-  - **Options:** A) Only the ten `PROJECT_DOC_TOPICS` — the issue's literal scope, but a changed `components.md` starter prints a plain `changed: .bkit/templates/docs/components.md` line and its adopter is not told to review `docs/components.md` · B) The ten topics plus `docs/components.md` by a same-path check — covers the wave-2 map, with no index equivalence for it · C) B plus `capabilities.md` — but that file is regenerated by `pnpm bkit:graph:rollup`, not reviewed by hand
-  - **Recommended:** B) — components is hand-written and adopted like the ten, and Success Criterion 5 says "each changed doc starter", which includes `components.md`.
-  - **Default if unanswered:** B; Task 13 marks a changed components starter whose `docs/components.md` is a regular file in the repo, asserted in `changed doc starter with a project copy is marked adopted`. On an answer of A, Task 13 drops that assertion and the components check.
-- **Open Question:** How is a section marked as a project slot or as bkit practice? → Owner, at plan review.
-  - **Options:** A) A blockquote first line under the heading: `> **Project slot:** …` or `> **bkit practice:** keep this section; …` — headings keep their text, so audit anchors stay valid · B) A heading suffix such as `## Rollback (project slot)` — visible in a table of contents, but renames every practice heading and breaks the audit anchors that `templates.test.ts` checks
-  - **Recommended:** A) — no audit template or anchor changes.
-  - **Default if unanswered:** A.
-- **Open Question:** How do the new project-slot headings satisfy `uncoveredBkitDocSections` in `templates.test.ts`? → Owner, at plan review.
-  - **Options:** A) Add each slot heading that `uncoveredBkitDocSections` reports to `UNAUDITED_DOC_SECTIONS` with the existing reason ("prompts for the project's own facts; …") and drop the six `§ Project facts to record` entries · B) Name the slots from an audit template (for example a documentation audit anchor) — more audit coverage, but it widens this plan into the audit templates, which the issue's Out of Scope excludes
-  - **Recommended:** A) — matches how `§ Project facts to record` is handled today.
-  - **Default if unanswered:** A.
+None
 
 ### 👤 ✅ Human Confirmation
 
@@ -247,8 +242,9 @@ Decisions settled with the owner on 2026-11-13:
 - **A shared "unfilled" marker in every starter** — rejected: `detectProjectDocs` already calls a doc unfilled only when it matches a shipped starter exactly or holds only headings and comments, so `Not applicable: …` docs and a header-only noise table already read as candidates.
 - **Index rows for all twelve starters in the managed block of `.bkit/core/.agents/docs.md`** — rejected: since #864 the adopter adds every row, and each starter's register step gives it.
 - **Keeping the introduction below `# {Title}`** — would avoid the dogfood region edits, but `components.md`, the model, puts it above, and an introduction above the title is the one block an adopter deletes whole. Rejected for consistency.
-- **A tip that names the next doc to fill** (the review's § 7 item 6) — new code beyond the three advisories; recommended for a future phase once the order has been used.
-- **Generating the Purpose line from `TOPIC_INFO`** — see Open Questions; recommended against for now.
+- **A tip that names the next doc to fill** (the review's § 7 item 6) — new code beyond the two advisories; recommended for a future phase once the order has been used.
+- **Generating the Purpose line from `TOPIC_INFO`** — recommended against for now; the owner kept `TOPIC_INFO[topic].scope` locked to the starter by test (answer 4, 2026-11-14).
+- **Keeping `project-docs-empty` as its own advisory** — rejected by the owner (answer 3, 2026-11-14): an empty doc is the extreme case of an unpopulated one, and both action texts gave the same fix.
 - **A second, stricter equivalence matcher only for the upgrade report** — rejected: the report and `detectProjectDocs` would then disagree on which copy is adopted. The owner chose to fix the one matcher both use (answer 2, 2026-11-14).
 
 ## Out of Scope
@@ -269,24 +265,19 @@ Decisions settled with the owner on 2026-11-13:
 <!-- prettier-ignore -->
 | Candidate | Source | Overlaps | Recommendation |
 | --- | --- | --- | --- |
-| `.bkit/instructions.md` § Template Instructions opens "The plan template holds shape only" — the same claim Task 1 rewords at line 27 | `.bkit/instructions.md:9879` | Task 1 | Fold in if the owner agrees; it contradicts the reworded § Doc Templates |
-| `docs/templates/bkit-audit-prompts.md` (source in `.bkit/core/docs/templates/`) says the supplied templates "hold shape only", which contradicts the reworded § Doc Templates | Plan review run 1 (tightness) | Task 1 | Follow-up issue with the `.bkit/instructions.md:9879` row; audit templates are out of scope |
-| The `catalogue.ts` text-rule comment says "README" where it means `DETAILS.md` § Templates ready to adopt | `.bkit/core/engine/checks/tips/catalogue.ts` header comment | Task 10 | Fold in as a one-word fix if the owner agrees |
+| `docs/templates/bkit-audit-prompts.md` (source in `.bkit/core/docs/templates/`) says the supplied templates "hold shape only", which contradicts the reworded § Doc Templates | Plan review run 1 (tightness) | Task 1 | Follow-up issue; audit templates are out of scope |
 | Mermaid charts for other bkit docs (`docs/architecture.md` § Install Lifecycle, `docs/deployments.md` § Run-level decision matrix, § One run per branch or pull request, § Smoke trigger plumbing) | #887 doc review comment § 6 | Task 14 | Keep deferred; only the lane graph is required |
 | A node cap check for generated Mermaid (tier and graph output) | #887 doc review comment § 3.11 | Task 9 | Needs a design decision |
 | Tip that names the next project doc to fill | #887 doc review comment § 7 item 6 | Task 10 | Keep deferred; own issue |
 | With two same-basename indexed rows, `findIndexedEquivalent` takes the first | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-install-project-docs-ts-303` (OPEN) | Tasks 12 and 13 | Keep deferred; named under Open Questions & Assumptions |
 | `ROW_RE` misses a Project Documents row without backticks | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-install-project-docs-ts-230` (OPEN) | Task 13 (`readProjectIndex`) | Keep deferred |
-| `readStarterText` reads a consumer starter with no symlink or containment check | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-checks-after-tools-ts-440` / `-441` (OPEN) | Tasks 10 and 11 (`detectProjectDocs`) | Fold into Task 11 if the owner agrees; one call in the same function |
+| `readStarterText` reads a consumer starter with no symlink or containment check | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-checks-after-tools-ts-440` / `-441` (OPEN) | Tasks 10 and 11 (`detectProjectDocs`) | Keep deferred (owner, 2026-11-14) |
 | The `project-docs-ambiguous` advisory echoes an untrusted index path raw | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-checks-after-tools-ts-506` / `-507` (OPEN) | Task 11 (advisory text) | Keep deferred; a different advisory id |
-| The out-of-tree fixture in `tools.test.ts` cannot fail | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-checks-after-tools-test-ts-621` (OPEN) | Task 11 (same test file) | Owner decides |
+| The out-of-tree fixture in `tools.test.ts` cannot fail | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-checks-after-tools-test-ts-621` (OPEN) | Task 11 (same test file) | Keep deferred (owner, 2026-11-14) |
 | The `doc-indexed-equivalent` clause never defines "valid" | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-instructions-md-3393` (OPEN) | Tasks 1 and 12 | Keep deferred; Task 12's affirmative match is a natural definition to cite when it is picked up |
 | `uninstall.ts` and `summary.ts` project-docs follow-ups | `docs/deferrals.jsonl` `864-move-project-docs-challenge-low-bkit-core-engine-commands-install-uninstall-ts-406`, `864-move-project-docs-challenge-low-bkit-core-engine-commands-workflow-summary-ts-611` / `-620` (OPEN) | None of this plan's tasks edit those files | Keep deferred |
-| The ci-yml advisory action text carries the same stale "promote after the capstone" fact Task 8 removes from `TOPIC_INFO.deployments` | `.bkit/core/engine/checks/after/tools.ts:304` | Tasks 8 and 11 | Fold into Task 8 if the owner agrees; one string |
 | The security, logs and accessibility audits read "every rule and section" of their doc, so project slots and a header-only noise table read as bkit rules | `bkit-audit-security.md`, `bkit-audit-logs.md`, `bkit-audit-accessibility.md` anchors | Tasks 4, 6 and 8 | Follow-up issue; audit templates are out of scope |
 | The graphify rollup writes "Box colour..." guidance into `docs/capabilities.md`, which the new no-colour Mermaid rule forbids | `.bkit/templates/scripts/graphify/bkit-graphify-rollup.py` | Tasks 1 and 9 | Follow-up issue on the generator |
-| #863 (Ship a purpose-based components document template) is open and in review, and its work sits on the project-docs surfaces | `related-issues.md`; plan review 1 | Tasks 3 and 13 (`components.md`, `template-copies.ts`) | Check whether it has landed before the build starts, to avoid merge conflicts |
-| Nothing enforces "ships in the same release as #864": if v6.2 ships without #887, an untouched copy of today's `.bkit/templates/docs/` starter reads as a candidate once the starter text changes | Plan review 2; `LEGACY_STARTER_DIGEST_HISTORY` in `.bkit/core/engine/install/project-docs.ts` covers only `.bkit/shared/docs/` releases | Tasks 3-9 (starter text) | Owner decides: a release-time check, or record today's starter digests now |
 
 ## Security & Privacy
 
@@ -312,7 +303,7 @@ None — no new routes, DB writes, secrets, credentials or user input (`docs/sec
 - [ ] **Secrets & Env Vars:** not applicable — no secrets or service-account roles.
 - [ ] **Schema State:** not applicable — no database.
 - [ ] **Architecture & UI:** checked against `docs/architecture.md` § Project documents boundary; no UI.
-- [ ] **Observability:** not applicable — no new logs, audit tables or traces; advisory text only.
+- [ ] **Observability:** no new logs, audit tables or traces; advisory text changes, and the `project-docs-empty` advisory id is removed from `detectProjectDocs` and from the `docs/observability.md` advisory table (Task 11).
 - [ ] **Deployments & Setup:** engine `.ts` edits rebuild `dist/` (`pnpm build && git add dist/`); `.bkit/core/.bkit/*` edits refresh mirrors (`pnpm tsx .bkit/core/engine/cli.ts upgrade`), per `.agents/rules.md`.
 - [ ] **Notifications:** not applicable — no alerts or toasts.
 
@@ -339,7 +330,7 @@ None — no new routes, DB writes, secrets, credentials or user input (`docs/sec
 | deployments | `docs/deployments.md` | yes — its starter changes | Rules box (lines 3-10), section headings | partial | The rules box carries the dangling "Pre-push checklist" pointer that the starter also has; the starter fix is Task 8, and bkit's copy keeps its own `## Project` section. |
 | data-schema | `docs/data-schema.md` | no — no database change | none | none | None |
 | design | `docs/design.md` | no — no UI | none | none | None |
-| observability | `docs/observability.md` | yes — advisory ids | Project-docs advisory table (lines 216-222) | covered | The table lists ids and when each is raised, not action text, so it stays unchanged. |
+| observability | `docs/observability.md` | yes — advisory ids | Project-docs advisory table (lines 214-222), re-read 2026-11-14 after owner answer 3 | covered | The table lists ids and when each is raised, not action text. Task 11 removes the `project-docs-empty` row (line 218) and rewords the `project-docs-unpopulated` row to "A covering document is empty, still a current or legacy starter, or only headings". |
 | noise | `docs/noise.md` | no — no signal change | none | none | None |
 | setup | `docs/setup.md` | no — no local-setup change | none | none | None |
 
@@ -376,8 +367,9 @@ None
 | Index row source | `.bkit/core/engine/install/project-docs.ts` | Read `TOPIC_INFO` (line 44), `projectDocRow` (line 433), `syncProjectDocs` (line 504) | `TOPIC_INFO[topic].scope` feeds `projectDocRow` | EXTEND | Each starter task sets `scope` to its new Purpose text |
 | Affirmative equivalence match | `.bkit/core/engine/install/project-docs.ts` | Read `listIndexedEquivalents` (line 451) and its callers (`findIndexedEquivalent`, `detectProjectDocs` at `tools.ts:500-501` and `541`, `syncProjectDocs` at line 553); `grep -n 'quivalent to'` over the engine tests | `listIndexedEquivalents` — the one matcher every caller uses; every existing test row is affirmative and ends at the cell end | EXTEND | Tighten its regex in place, so the detector, the sync and the upgrade report share one rule |
 | Find a project's adopted copy of a topic | `.bkit/core/engine/install/project-docs.ts` | Read `readProjectIndex` (line 361), `findIndexedEquivalent` (line 442), `inspectRepoFile` (line 281), `isInTreePath` (line 306); `detectProjectDocs` in `tools.ts` (line 478) | Those helpers — cover the parts; no single "where is the adopted copy" function | EXTEND | Add `adoptedProjectDocPath(root, topic)` composed from them in the same module |
-| `project-docs` setup tip | `.bkit/core/engine/checks/tips/catalogue.ts` | Read `SetupTip`, the `SETUP_TIPS` order (`graphify` at line 389, `dependabot-renovate` at line 399); `catalogue.test.ts` constraints (lines 102, 115, 136, 143, 152, 276) | `SETUP_TIPS` — the catalogue; `isTipSilenced` and `dropTipSilencedAdvisories` in `checks/tips/index.ts` handle `advisories` | EXTEND | One new entry; no new silencing code |
-| Advisory pointer text | `.bkit/core/engine/checks/after/tools.ts` | Read `detectProjectDocs` and its three `action` strings; `tools.test.ts` `describe("detectProjectDocs")` assertions | The three `action` strings | EXTEND | Append the section pointer; keep `.bkit/templates/docs/`, `.agents/docs.md` and "equivalent", which existing tests assert |
+| `project-docs` setup tip | `.bkit/core/engine/checks/tips/catalogue.ts` | Read `SetupTip` (its optional `caution` field at line 72), the `SETUP_TIPS` order (`graphify` at line 389, `dependabot-renovate` at line 399); `catalogue.test.ts` constraints (lines 102, 115, 136, 143, 152, 276) | `SETUP_TIPS` — the catalogue; `isTipSilenced` and `dropTipSilencedAdvisories` in `checks/tips/index.ts` handle `advisories` | EXTEND | One new entry; no new silencing code |
+| Advisory pointer text | `.bkit/core/engine/checks/after/tools.ts` | Read `detectProjectDocs` and its three `action` strings; `tools.test.ts` `describe("detectProjectDocs")` assertions | The `project-docs-missing` and `project-docs-unpopulated` `action` strings | EXTEND | Append the section pointer; keep `.bkit/templates/docs/`, `.agents/docs.md` and "equivalent", which existing tests assert |
+| Empty doc reported as unpopulated | `.bkit/core/engine/checks/after/tools.ts` | Read `detectProjectDocs` (the `assessed === "empty"` branch at line 538 and the `project-docs-empty` finding at lines 577-584); `grep -rl project-docs-empty` over `*.ts` and `*.md` (hits: `tools.ts`, `tools.test.ts` line 507, `docs/observability.md` line 218, plan logs); `git show v6.1.1:.bkit/core/engine/checks/after/tools.ts` (no `project-docs-` id) | The existing `unpopulated` list and its finding | EXTEND | Push an empty doc onto the `unpopulated` list and remove the `empty` list's finding; no migration, because no release has the id |
 | Adopted marker in upgrade report | `.bkit/core/engine/install/template-copies.ts` | Read `formatTemplateChanges` (line 127), `formatChangedLine` (line 117), `TEMPLATE_CHANGE_CONSEQUENCES` (line 111); its one caller `upgrade.ts:818-819` | `formatChangedLine` — builds each `changed:` line | EXTEND | Required `cwd`; note appended in `formatChangedLine` |
 | Upgrade passes the project root | `.bkit/core/engine/commands/install/upgrade.ts` | Read `runUpgradeCommand` around line 818 and `upgrade.integration.test.ts` lines 257-269 (spawned-CLI pattern) | The existing call and the spawned-CLI test pattern | EXTEND | Pass `process.cwd()`; one spawned-CLI case in the existing file |
 | Slot/practice marker check | `.bkit/core/engine/install/project-docs.test.ts` | `grep -rn 'bkit practice\|Project slot'` (no hits) | None — no marker exists | EXTEND | A helper in the same test file as the shape check; no new file |
@@ -387,18 +379,19 @@ None
 
 ## Architecture & Component Changes
 
-Decisions (see Open Questions for the options):
+Decisions (the options and the owner's answers are in each `docs/decisions.jsonl` row):
 
 - The introduction sits above `# {Title}` and uses bold labels only (`887-project-doc-intro-placement`).
 - A starter's index row is locked by test to `projectDocRow(topic)`; bkit's own `.agents/docs.md` rows follow bkit's own docs' Purpose lines, as the issue's Task 13 says (`887-project-doc-index-row-source`).
 - **Fill these first** = the sources of solid arrows and **Finish against** = the sources of dotted arrows into the topic's node in the adoption-order chart, or `none`. The chart gains a dotted `DATA -.-> SEC` arrow, because security's PII table "Where stored" column is finished against data-schema (doc review § 3.4) (`887-adoption-order-finish-against`).
 - Slot/practice is marked by a blockquote first line; new headings `uncoveredBkitDocSections` reports go in `UNAUDITED_DOC_SECTIONS` (`887-project-doc-slot-practice-marker`).
-- The `project-docs` tip names all three advisory ids, and the widening of `bkit.advisories.ignore` is stated under Breaking Changes (`887-project-docs-tip-placement`).
+- The `project-docs` tip names the two advisory ids `project-docs-missing` and `project-docs-unpopulated`; the widening of `bkit.advisories.ignore` is stated under Breaking Changes and in the tip's `caution` text (`887-project-docs-tip-placement`).
+- An empty project doc is reported as `project-docs-unpopulated`, and the `project-docs-empty` id is removed (`887-project-docs-empty-merged-into-unpopulated`).
 - The upgrade marker is exactly `— adopted at {path}, review your copy`; it covers the ten topics and `components.md` (same-path check), and `formatTemplateChanges` takes the project root as a required argument (`887-upgrade-report-adopted-marker`).
 - The index equivalence match accepts only an affirmative `Equivalent to docs/{topic}.md` with an end boundary (`887-equivalence-match-affirmative`).
 - The Mermaid rule covers every file § Docs covers; the other new § Docs rules, including **Not here** and **Update when**, apply to the starters in `.bkit/templates/docs/*.md`; the § Docs **Rules header** rule and § Which Sections Apply stay unchanged (`887-starter-writing-rules-scope`).
 
-**Ledger rows:** `887-project-doc-intro-placement`, `887-project-doc-index-row-source`, `887-project-doc-slot-practice-marker`, `887-project-docs-tip-placement`, `887-upgrade-report-adopted-marker`, `887-adoption-order-finish-against`, `887-equivalence-match-affirmative`, `887-starter-writing-rules-scope`, `887-project-docs-move-864`, `887-plan-audit-template-instructions`, `887-idea-md-template`, `887-persistent-starter-review-advisory`, `887-adopted-copy-migrations`, `887-starter-vendor-content`, `887-bkit-own-docs-starter-rules`
+**Ledger rows:** `887-project-doc-intro-placement`, `887-project-doc-index-row-source`, `887-project-doc-slot-practice-marker`, `887-project-docs-tip-placement`, `887-upgrade-report-adopted-marker`, `887-adoption-order-finish-against`, `887-equivalence-match-affirmative`, `887-starter-writing-rules-scope`, `887-project-docs-empty-merged-into-unpopulated`, `887-project-docs-move-864`, `887-plan-audit-template-instructions`, `887-idea-md-template`, `887-persistent-starter-review-advisory`, `887-adopted-copy-migrations`, `887-starter-vendor-content`, `887-bkit-own-docs-starter-rules`
 
 ### Database Migrations
 
@@ -412,6 +405,7 @@ Every `Supersession Inventory` `DELETE` row removes a section or a regex inside 
 - The ASCII lane graph in `.bkit/templates/docs/testing.md` — Task 7; in `docs/testing.md` — Task 14.
 - The `§ Project facts to record` entries in `UNAUDITED_DOC_SECTIONS` — Tasks 4, 5, 7 and 8.
 - The loose regex in `listIndexedEquivalents` — Task 12.
+- The `project-docs-empty` finding and its `action` text in `detectProjectDocs`, and the `project-docs-empty` row of the `docs/observability.md` advisory table — Task 11.
 - The general writing rules in the `components.md` introduction — Task 3.
 
 ### Shared rules and adoption order (docs)
@@ -427,8 +421,8 @@ Every `Supersession Inventory` `DELETE` row removes a section or a regex inside 
 
 #### [MODIFY] `.bkit/instructions.md`
 
-- **Existence Check:** exists; line 27 row for `## Template Instructions`.
-- Drops "shape-only". Kept in sync with `pnpm instructions:sync`; checked by `.bkit/core/engine/tools/instructions.test.ts`.
+- **Existence Check:** exists; line 27 row for `## Template Instructions`; § Template Instructions opener at line 9879 ("The plan template holds shape only").
+- Drops "shape-only" from the line 27 row, and rewords the § Template Instructions opener to match the reworded § Doc Templates (owner answer 8, 2026-11-14). Kept in sync with `pnpm instructions:sync`; checked by `.bkit/core/engine/tools/instructions.test.ts`.
 
 #### [MODIFY] `.bkit/core/.bkit/templates.md`
 
@@ -455,12 +449,20 @@ Every `Supersession Inventory` `DELETE` row removes a section or a regex inside 
 #### [MODIFY] `.bkit/core/engine/checks/tips/catalogue.ts`
 
 - **Existence Check:** exists; `graphify` entry at line 389.
-- New `project-docs` entry after `graphify`: `workflows: ["design", "plan", "build"]`; `advisories: ["project-docs-missing", "project-docs-empty", "project-docs-unpopulated"]`; `steps` "`.bkit/templates.md` § Project docs — adoption order."; `fires` true when `detectProjectDocs` returns any of the three ids not suppressed.
+- New `project-docs` entry after `graphify`: `workflows: ["design", "plan", "build"]`; `advisories: ["project-docs-missing", "project-docs-unpopulated"]`; `caution` says in plain English that ignoring either advisory also silences this tip and the other advisory; `steps` "`.bkit/templates.md` § Project docs — adoption order."; `fires` true when `detectProjectDocs` returns either id not suppressed.
+- The header comment's text rule names `DETAILS.md` § Templates ready to adopt where it says "README" (owner answer 8, 2026-11-14).
 
 #### [MODIFY] `.bkit/core/engine/checks/after/tools.ts`
 
 - **Existence Check:** exists; `detectProjectDocs` at line 478.
-- Each of the three `action` strings gains "Fill in the order in `.bkit/templates.md` § Project docs — adoption order." The inline fix stays, so each advisory is self-contained.
+- An empty or whitespace-only doc goes on the `unpopulated` list; the `project-docs-empty` finding and its `action` text are removed, and the `project-docs-unpopulated` `detect` text names empty docs too (Task 11).
+- The `project-docs-missing` and `project-docs-unpopulated` `action` strings gain "Fill in the order in `.bkit/templates.md` § Project docs — adoption order." The inline fix stays, so each advisory is self-contained.
+- The ci-yml advisory `action` text (line 304) drops "promote after the capstone", the same stale fact Task 8 removes from `TOPIC_INFO.deployments` (owner answer 8, 2026-11-14).
+
+#### [MODIFY] `docs/observability.md`
+
+- **Existence Check:** exists; project-docs advisory table at lines 214-222.
+- The `project-docs-empty` row is removed, and the `project-docs-unpopulated` row reads "A covering document is empty, still a current or legacy starter, or only headings" (Task 11).
 
 #### [MODIFY] `.bkit/core/engine/install/template-copies.ts`
 
@@ -518,6 +520,7 @@ None
 | ASCII lane graph in `.bkit/templates/docs/testing.md` | Mermaid `flowchart LR`, `needs:` / `if:` notes moved to the lanes table | DELETE | Same rule; the testing shape test fails on box-drawing characters |
 | `UNAUDITED_DOC_SECTIONS` entries for `§ Project facts to record` | Entries for the new slot headings | DELETE | The heading no longer exists |
 | The loose equivalence regex in `listIndexedEquivalents` | The affirmative, end-bounded regex in the same function | DELETE | Replaced in place; no caller keeps the old match |
+| The `project-docs-empty` advisory (finding, `action` text and `docs/observability.md` row) | `project-docs-unpopulated`, which now covers an empty doc | DELETE | Owner answer 3; no released version has the id, so no ignore list or caller needs it |
 | General writing rules in the `components.md` introduction | A link to `.bkit/authoring.md` § Docs | DELETE | One home per topic |
 
 ## Documentation Updates
@@ -526,7 +529,7 @@ None
 | Doc | Change required |
 | --- | --- |
 | `docs/knowledge.jsonl` | None expected; add a row if the dogfood region edits surface a gotcha |
-| `docs/decisions.jsonl` | The eight `887-*` decision rows listed under `Ledger rows` |
+| `docs/decisions.jsonl` | The nine `887-*` decision rows listed under `Ledger rows` |
 | `docs/deferrals.jsonl` | The seven `887-*` deferral rows, one per `Out of Scope` row; open deferral `864-move-project-docs-challenge-low-bkit-core-engine-install-project-docs-ts-429` is fixed by Task 12 |
 | `docs/components.md` | Rules box equals the new starter rules box (Task 3) |
 | `docs/architecture.md` | § Project documents boundary: one sentence on the upgrade-report marker and the affirmative equivalence (Task 13) |
@@ -534,12 +537,12 @@ None
 | `docs/data-schema.md` | None |
 | `docs/design.md` | None |
 | `docs/testing.md` | Lane graph to Mermaid; § Project documentation lifecycle coverage names the starter-shape, tip and upgrade-report tests (Task 14) |
-| `docs/observability.md` | None — its advisory table lists ids and when each is raised, not action text |
+| `docs/observability.md` | Advisory table: the `project-docs-empty` row removed and the `project-docs-unpopulated` row reworded to cover empty docs (Task 11) |
 | `.agents/docs.md` | deployments, data-schema, testing and security rows' Scope equals the Purpose text of bkit's own matching doc (Task 14) |
 | `.bkit/core/.bkit/authoring.md` | § Docs rules and scope line; § Doc Templates headline (Task 1) |
 | `.bkit/version` | Re-pinned by the Task 14 mirror refresh |
 | `.bkit/core/.bkit/templates.md` | Adoption-order section; line 16 (Task 2) |
-| `.bkit/instructions.md` | Line 27 (Task 1) |
+| `.bkit/instructions.md` | Line 27 and the § Template Instructions opener (Task 1) |
 | `DETAILS.md` | § Templates ready to adopt project-docs row (Task 10) |
 | Cron / scheduled-jobs doc | None — no scheduled task |
 
@@ -564,10 +567,11 @@ Integration shape (advice only): one PR for all fourteen tasks is fine; Group 1 
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: § Doc Templates headline "Template is shape, prompt owns rules" reworded to say fill-in instructions sit in the template and rules for acting on it live in the prompts; adds that project-doc starters carry their own fill-in steps because no prompt fills them
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: the § Docs scope line also names `.bkit/templates/docs/*.md`
   - **UPDATE:** `.bkit/instructions.md`: line 27, the `## Template Instructions` row no longer calls the plan and audit templates "shape-only"; run `pnpm instructions:sync`
+  - **UPDATE:** `.bkit/instructions.md`: the § Template Instructions opener (line 9879, "The plan template holds shape only") is reworded to match the reworded § Doc Templates, with the same claim the line 27 row makes
   - **READ:** `.bkit/templates/docs/components.md`: its general writing rules, which move to § Docs in Task 3
   - **READ:** `§ Which Sections Apply` in `.bkit/core/.bkit/authoring.md`: its `docs/*.md` row already matches `.bkit/templates/docs/*.md` ("A path matches at any depth"), so the table stays unchanged
   - **READ:** `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts`: how it parses § Docs `- **Lead:**` bullets (lines 119-136) and compares § Which Sections Apply rows with the hook's routes (lines 281-286)
-  - **DONE WHEN:** § Docs holds every rule listed; the Mermaid rule names no narrower scope than § Docs; the starter rules' lead names `.bkit/templates/docs/*.md` as their scope, and the starter-box rule names **Not here** and **Update when**; the existing § Docs **Rules header** rule still requires only **Purpose** and **Rules**; § Which Sections Apply is unchanged; the headline "Template is shape, prompt owns rules" no longer appears in `.bkit/core/.bkit/authoring.md`, and § Doc Templates says project-doc starters carry their own fill-in steps; the § Docs scope line names `.bkit/templates/docs/*.md`; `pnpm bkit:lint:prose` passes on both files; `.bkit/core/engine/tools/instructions.test.ts`, `.bkit/core/engine/tools/instructions-coverage.test.ts`, `.bkit/core/engine/tools/instructions-sources.test.ts` and `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` pass
+  - **DONE WHEN:** § Docs holds every rule listed; the Mermaid rule names no narrower scope than § Docs; the starter rules' lead names `.bkit/templates/docs/*.md` as their scope, and the starter-box rule names **Not here** and **Update when**; the existing § Docs **Rules header** rule still requires only **Purpose** and **Rules**; § Which Sections Apply is unchanged; the headline "Template is shape, prompt owns rules" no longer appears in `.bkit/core/.bkit/authoring.md`, and § Doc Templates says project-doc starters carry their own fill-in steps; the § Docs scope line names `.bkit/templates/docs/*.md`; the phrase "holds shape only" no longer appears in `.bkit/instructions.md` § Template Instructions; `pnpm bkit:lint:prose` passes on both files; `.bkit/core/engine/tools/instructions.test.ts`, `.bkit/core/engine/tools/instructions-coverage.test.ts`, `.bkit/core/engine/tools/instructions-sources.test.ts` and `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` pass
   - **TEST FIRST:** n/a — docs
 
 <!-- bkit:task 1 end -->
@@ -689,11 +693,12 @@ Integration shape (advice only): one PR for all fourteen tasks is fine; Group 1 
   - **UPDATE:** `.bkit/templates/docs/noise.md`: introduction (Fill these first: observability), one table header `| Date | Signal | Where | Change | Trigger | Why it is safe | Recheck when |` and no rows
   - **UPDATE:** `TOPIC_INFO["data-schema"].scope` in `.bkit/core/engine/install/project-docs.ts`: equals the new data-schema Purpose line
   - **UPDATE:** `TOPIC_INFO.deployments.scope` in `.bkit/core/engine/install/project-docs.ts`: equals the new deployments Purpose line, which drops "promote after the capstone"
+  - **UPDATE:** `.bkit/core/engine/checks/after/tools.ts`: in the ci-yml stub advisory `action` text (line 304), the `docs/deployments.md` pointer drops "promote after the capstone", the same stale fact as `TOPIC_INFO.deployments`
   - **UPDATE:** `TOPIC_INFO.noise.scope` in `.bkit/core/engine/install/project-docs.ts`: equals the new noise Purpose line
   - **UPDATE:** `UNAUDITED_DOC_SECTIONS` in `.bkit/core/engine/audits/templates/templates.test.ts`: every new data-schema and deployments heading that `uncoveredBkitDocSections` reports added with the existing reason, their `§ Project facts to record` entries removed
   - **UPDATE:** `.bkit/core/engine/audits/repo/dogfood-templates.test.ts`: the three entries gain a region edit removing the starter's introduction
   - **DEPENDS ON:** 3, 7
-  - **DONE WHEN:** the four tests below pass, each `starter shape` case passing the skeleton headings its UPDATE line lists; `UNAUDITED_DOC_SECTIONS` holds no `§ Project facts to record` key; `shipped-docs-refs.test.ts` passes; no starter in `.bkit/templates/docs/` has a `## Project facts to record` heading; `templates.test.ts` (anchors from the config, cost, dependencies, reliability, security, gates and ci-performance audits) and `dogfood-templates.test.ts` pass; `pnpm build` ran and `dist/` is staged
+  - **DONE WHEN:** the four tests below pass, each `starter shape` case passing the skeleton headings its UPDATE line lists; `UNAUDITED_DOC_SECTIONS` holds no `§ Project facts to record` key; `shipped-docs-refs.test.ts` passes; no starter in `.bkit/templates/docs/` has a `## Project facts to record` heading; "promote after the capstone" appears in neither `.bkit/core/engine/install/project-docs.ts` nor `.bkit/core/engine/checks/after/tools.ts`, and `tools.test.ts` passes; `templates.test.ts` (anchors from the config, cost, dependencies, reliability, security, gates and ci-performance audits) and `dogfood-templates.test.ts` pass; `pnpm build` ran and `dist/` is staged
   - **TEST FIRST:**
     - `.bkit/core/engine/install/project-docs.test.ts` `starter shape: data-schema` fails on today's starter, which has no fill-in introduction
     - `.bkit/core/engine/install/project-docs.test.ts` `starter shape: deployments` fails on today's starter, which has no fill-in introduction
@@ -725,36 +730,43 @@ Integration shape (advice only): one PR for all fourteen tasks is fine; Group 1 
 <!-- bkit:task 10 start -->
 
 - [ ] **TASK 10:** Add the `project-docs` setup tip
-  - **UPDATE:** `SETUP_TIPS` in `.bkit/core/engine/checks/tips/catalogue.ts`: new `project-docs` entry after `graphify`, `workflows: ["design", "plan", "build"]`, whose `fires` calls `detectProjectDocs` and is true when it returns `project-docs-missing`, `project-docs-empty` or `project-docs-unpopulated`; `advisories` names those three ids; `ask` and `steps` point at `.bkit/templates.md` § Project docs — adoption order
+  - **UPDATE:** `SETUP_TIPS` in `.bkit/core/engine/checks/tips/catalogue.ts`: new `project-docs` entry after `graphify`, `workflows: ["design", "plan", "build"]`, whose `fires` calls `detectProjectDocs` and is true when it returns `project-docs-missing` or `project-docs-unpopulated`; `advisories` names those two ids; `ask` and `steps` point at `.bkit/templates.md` § Project docs — adoption order
+  - **UPDATE:** `SETUP_TIPS` in `.bkit/core/engine/checks/tips/catalogue.ts`: the `project-docs` entry's `caution` says in plain English that ignoring either the missing-doc or the unfilled-doc advisory also silences this tip and the other advisory (owner answer 1, 2026-11-14)
+  - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: the header comment's text rule names `DETAILS.md` § Templates ready to adopt where it says "README"
   - **UPDATE:** `DETAILS.md`: § Templates ready to adopt gains a project-docs row whose benefit reads the same as the tip and the `.bkit/templates.md` section opener, per the catalogue's text rule
   - **READ:** `isTipSilenced` in `.bkit/core/engine/checks/tips/index.ts`: an ignored advisory id silences the tip
   - **READ:** `dropTipSilencedAdvisories` in `.bkit/core/engine/checks/tips/index.ts`: a silenced tip drops every advisory its `advisories` names, applied to all after-phase findings at `.bkit/core/engine/checks/after/index.ts:531`
   - **READ:** `§ Which tier does a behaviour need?` in `docs/testing.md`: the tip cases run on temp directories, so they are Unit
   - **READ:** `readStarterText` in `.bkit/core/engine/checks/after/tools.ts`: it compares a project copy with the package starter first (lines 443-446), so the "unchanged starter copy" fixture copies the real `.bkit/templates/docs/{topic}.md`, not hand-written starter text
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.test.ts`: the two "stays silent" cases for populated docs and for a Not applicable data-schema with a header-only noise look the tip up by id and assert it is defined before reading `fires`
+  - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.test.ts`: the `ignoring project-docs-missing drops the unpopulated advisory and keeps project-docs-index-missing` fixture uses an unchanged starter copy, not an empty doc, because an empty doc reads as unpopulated only after Task 11
   - **DEPENDS ON:** 2
-  - **DONE WHEN:** the eight tip tests and the existing catalogue tests ("every docs pointer in steps resolves to a heading", "ids are unique and never collide with an advisory id", "%s leads with %s", "audit tips are …") pass; the existing `.bkit/core/engine/checks/after/index.test.ts` case `reports and suppresses project documentation advisories without a blocker` (lines 1022-1058) passes; `DETAILS.md` § Templates ready to adopt has a project-docs row whose benefit text equals the tip's `line` and the opener of `.bkit/core/.bkit/templates.md` § Project docs — adoption order; `pnpm build` ran and `dist/` is staged
+  - **DONE WHEN:** the seven tip tests below and the existing catalogue tests ("every docs pointer in steps resolves to a heading", "ids are unique and never collide with an advisory id", "%s leads with %s", "audit tips are …") pass; the existing `.bkit/core/engine/checks/after/index.test.ts` case `reports and suppresses project documentation advisories without a blocker` (lines 1022-1058) passes; `DETAILS.md` § Templates ready to adopt has a project-docs row whose benefit text equals the tip's `line` and the opener of `.bkit/core/.bkit/templates.md` § Project docs — adoption order; the `project-docs` tip's `advisories` is exactly `["project-docs-missing", "project-docs-unpopulated"]` and its `caution` is set; the `catalogue.ts` header comment names `DETAILS.md` and not "README"; `pnpm build` ran and `dist/` is staged
   - **TEST FIRST:**
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip fires when a project doc is missing` fails because no such tip exists
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip stays silent when every project doc is populated and indexed` fails because the lookup by id finds no `project-docs` tip, which the test asserts is defined before it reads `fires`
-    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip names the three project-docs advisory ids` fails because no such tip exists
+    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip names the two project-docs advisory ids` fails because no such tip exists; the test asserts `advisories` equals `["project-docs-missing", "project-docs-unpopulated"]` and that `caution` is set
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip stays silent for a Not applicable data-schema and a header-only noise` fails because the lookup by id finds no `project-docs` tip, which the test asserts is defined before it reads `fires`
-    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip fires when a project doc is empty` fails because no such tip exists
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip fires when a project doc is an unchanged starter copy` fails because no such tip exists; its fixture copies the real `.bkit/templates/docs/{topic}.md`
     - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip stays silent when project-docs-missing is ignored` fails because no `project-docs` tip is reported as suppressed
-    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `ignoring project-docs-missing drops the empty and unpopulated advisories and keeps project-docs-index-missing` fails because today the `project-docs-empty` and `project-docs-unpopulated` findings survive the ignore entry
+    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `ignoring project-docs-missing drops the unpopulated advisory and keeps project-docs-index-missing` fails because today the `project-docs-unpopulated` finding survives the ignore entry
 
 <!-- bkit:task 10 end -->
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Point the project-doc advisories at the adoption order
-  - **UPDATE:** `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts`: the `action` text of `project-docs-missing`, `project-docs-empty` and `project-docs-unpopulated` names `.bkit/templates.md` § Project docs — adoption order, keeping the inline fix and the `.bkit/templates/docs/`, `.agents/docs.md` and "equivalent" wording existing tests assert
-  - **READ:** `docs/observability.md`: its project-docs advisory table (lines 216-222) lists ids and when each is raised, not action text, so it stays unchanged
-  - **DEPENDS ON:** 2
-  - **DONE WHEN:** the advisory test and the existing `tools.test.ts` `describe("detectProjectDocs")` tests pass; `pnpm build` ran and `dist/` is staged
+- [ ] **TASK 11:** Merge the empty-doc advisory into `project-docs-unpopulated` and point the project-doc advisories at the adoption order
+  - **UPDATE:** `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts`: a doc assessed as empty (the `assessed === "empty"` branch, line 538) goes on the `unpopulated` list; the `project-docs-empty` finding and its `action` text (lines 577-584) are removed; the `project-docs-unpopulated` `detect` text names empty docs as well as untouched starters
+  - **UPDATE:** `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts`: the `action` text of `project-docs-missing` and `project-docs-unpopulated` names `.bkit/templates.md` § Project docs — adoption order, keeping the inline fix and the `.bkit/templates/docs/`, `.agents/docs.md` and "equivalent" wording existing tests assert
+  - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: in `distinguishes missing and empty project documentation from populated candidates`, the `project-docs-empty` assertion (line 507) moves to the `project-docs-unpopulated` id, keeping its `docs/testing.md`, `docs/setup.md` and not-`docs/security.md` checks
+  - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.test.ts`: the `project-docs tip fires when a project doc is empty` case, which lands here because the tip fires on an empty doc only once it reads as `project-docs-unpopulated`
+  - **UPDATE:** `docs/observability.md`: the `project-docs-empty` row of the project-docs advisory table (line 218) is removed, and the `project-docs-unpopulated` row reads "A covering document is empty, still a current or legacy starter, or only headings"
+  - **DEPENDS ON:** 2, 10
+  - **DONE WHEN:** the three tests below, the existing `tools.test.ts` `describe("detectProjectDocs")` tests and the existing `.bkit/core/engine/checks/after/index.test.ts` case `reports and suppresses project documentation advisories without a blocker` pass; the string `project-docs-empty` appears in none of `.bkit/core/engine/checks/after/tools.ts`, `.bkit/core/engine/checks/after/tools.test.ts`, `.bkit/core/engine/checks/tips/catalogue.ts` or `docs/observability.md`; `pnpm build` ran and `dist/` is staged
   - **TEST FIRST:**
-    - `.bkit/core/engine/checks/after/tools.test.ts` `missing, empty and unpopulated advisories name the adoption-order section` fails on today's action text, which has no "Project docs — adoption order"
+    - `.bkit/core/engine/checks/after/tools.test.ts` `missing and unpopulated advisories name the adoption-order section` fails on today's action text, which has no "Project docs — adoption order"
+    - `.bkit/core/engine/checks/after/tools.test.ts` `an empty project doc is reported as project-docs-unpopulated` fails because today an empty doc is reported under `project-docs-empty` and no `project-docs-unpopulated` finding names it
+    - `.bkit/core/engine/checks/tips/catalogue.test.ts` `project-docs tip fires when a project doc is empty` fails because an empty doc still raises only `project-docs-empty`, which the tip does not read, so `fires` returns false
 
 <!-- bkit:task 11 end -->
 
@@ -831,7 +843,7 @@ Integration shape (advice only): one PR for all fourteen tasks is fine; Group 1 
 - [ ] **Verify test coverage against Derived Test Matrix:** each row's test is in one task's `DONE WHEN`.
 - [ ] **Sweep existing tests:** broken tests are fixed, and the full suite passes.
 - [ ] **Sweep new tests:** every test a task's `DONE WHEN` names exists and passes.
-- [ ] **Verify observability:** no new logs; advisory ids and their table in `docs/observability.md` are unchanged.
+- [ ] **Verify observability:** no new logs; the `project-docs-empty` id is gone from `detectProjectDocs` and from the `docs/observability.md` advisory table, whose `project-docs-unpopulated` row covers empty docs; no other advisory id changes.
 - [ ] **Update documentation:** the affected docs are rewritten to match.
 
 ### 🔒 Gate 3: Testing & Documentation Check
@@ -845,10 +857,10 @@ Integration shape (advice only): one PR for all fourteen tasks is fine; Group 1 
 ### Automated Tests
 
 - [ ] **Full Local Gate Suite:** the deepest declared `bkit:gate:*` script and `node dist/cli.js check` pass.
-- [ ] **Test Synchronization:** existing tests kept green: `templates.test.ts`, `dogfood-templates.test.ts`, `shipped-docs-refs.test.ts`, `catalogue.test.ts`, the `tools.test.ts` `describe("detectProjectDocs")` block (every affirmative `Equivalent to docs/{topic}.md` fixture still matches), `project-docs.test.ts` `describe("syncProjectDocs")`, `template-copies.integration.test.ts` `describe("formatTemplateChanges")` (its calls now pass a root with no adopted copy), `.bkit/core/engine/tools/instructions.test.ts`, `instructions-coverage.test.ts`, `instructions-sources.test.ts`, `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` and the `.bkit/core/engine/checks/after/index.test.ts` project documentation advisories case.
+- [ ] **Test Synchronization:** existing tests kept green: `templates.test.ts`, `dogfood-templates.test.ts`, `shipped-docs-refs.test.ts`, `catalogue.test.ts`, the `tools.test.ts` `describe("detectProjectDocs")` block (every affirmative `Equivalent to docs/{topic}.md` fixture still matches, and `distinguishes missing and empty project documentation from populated candidates` asserts the empty docs under `project-docs-unpopulated`), `project-docs.test.ts` `describe("syncProjectDocs")`, `template-copies.integration.test.ts` `describe("formatTemplateChanges")` (its calls now pass a root with no adopted copy), `.bkit/core/engine/tools/instructions.test.ts`, `instructions-coverage.test.ts`, `instructions-sources.test.ts`, `.bkit/core/engine/audits/hooks/gateguard-dogfood.integration.test.ts` and the `.bkit/core/engine/checks/after/index.test.ts` project documentation advisories case.
 - [ ] **Build Configuration:** test files stay `*.test.ts` / `*.integration.test.ts`, excluded from `dist/` as today; `pnpm build` and a staged `dist/` after each engine task.
 - [ ] **Unit (`.bkit/core/engine/install/project-docs.test.ts`):** seventeen starter-shape, register-row, adoption-order, slot/practice and capabilities cases read the shipped starters with no fixtures; one `adoptedProjectDocPath` case and one `syncProjectDocs` "Not equivalent" case run on temp directories.
-- [ ] **Unit (`.bkit/core/engine/checks/tips/catalogue.test.ts`, `.bkit/core/engine/checks/after/tools.test.ts`):** eight tip cases, one advisory case and one "Not equivalent" detector case on temp directories built with the existing `write` / `pkg` and `writeIndex` / `writeDoc` helpers.
+- [ ] **Unit (`.bkit/core/engine/checks/tips/catalogue.test.ts`, `.bkit/core/engine/checks/after/tools.test.ts`):** eight tip cases (seven in Task 10, one in Task 11), two advisory cases (the adoption-order pointer and the empty-doc merge) and one "Not equivalent" detector case on temp directories built with the existing `write` / `pkg` and `writeIndex` / `writeDoc` helpers.
 - [ ] **Integration (`.bkit/core/engine/install/template-copies.integration.test.ts`, `.bkit/core/engine/commands/install/upgrade.integration.test.ts`):** eight upgrade-report cases on a real scratch project under `os.tmpdir()` (real symlinks, directories and index files, no filesystem mocks), and one spawned `bkit upgrade` case that reads the printed "Templates updated" block.
 - [ ] **Apply local migrations:** not applicable — no database.
 - [ ] **Run all tests:** `pnpm test` and `pnpm test:integration` pass.
