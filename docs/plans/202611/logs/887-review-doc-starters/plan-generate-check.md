@@ -1,4 +1,4 @@
-Problems: 10
+Problems: 0
 Existence: 0
 
 <!-- verdict:end -->
@@ -12,10 +12,10 @@ Plan: `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md`. Caps: 5
 <!-- prettier-ignore -->
 | Group | Title | Tasks | TEST FIRST tests | KB |
 | --- | --- | --- | --- | --- |
-| 1 | Shared rules and adoption order | 2 | 0 | 2.6 |
-| 2 | Hand-written starters, waves 2 to 4 | 3 | 7 | 6.1 |
-| 3 | Hand-written starters, waves 5 and 6, and capabilities | 4 | 9 | 7.5 |
-| 4 | Point adopters at the order | 4 | 8 | 5.3 |
+| 1 | Shared rules and adoption order | 2 | 0 | 4.1 |
+| 2 | Hand-written starters, waves 2 to 4 | 3 | 7 | 7.0 |
+| 3 | Hand-written starters, waves 5 and 6, and capabilities | 4 | 9 | 9.4 |
+| 4 | Point adopters at the order | 4 | 19 | 11.5 |
 
 ## Tasks
 
@@ -31,23 +31,14 @@ Plan: `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md`. Caps: 5
 | 7 | 3 | 2 | 1 |
 | 8 | 3 | 4 | 1 |
 | 9 | 3 | 1 | 1 |
-| 10 | 4 | 4 | 1 |
+| 10 | 4 | 8 | 1 |
 | 11 | 4 | 1 | 1 |
-| 12 | 4 | 3 | 1 |
+| 12 | 4 | 10 | 3 |
 | 13 | 4 | 0 | 0 |
 
 ## Problems
 
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:435` `format` — TASK 1: READ is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:463` `format` — TASK 3: READ is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:478` `format` — TASK 4: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:494` `format` — TASK 5: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:516` `format` — TASK 6: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:517` `format` — TASK 6: READ is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:535` `format` — TASK 7: READ is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:550` `format` — TASK 8: UPDATE is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:567` `format` — TASK 9: READ is neither `symbol` in `file`: what nor `file`: what
-- `docs/plans/202611/logs/887-review-doc-starters/plan-v1-draft.md:629` `format` — TASK 13: UPDATE is neither `symbol` in `file`: what nor `file`: what
+None.
 
 ## Existence (refuses the plan)
 
