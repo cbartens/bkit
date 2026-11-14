@@ -446,6 +446,7 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 ### Permissions
 
 - `gh api user/installations` → 403 with a PAT (endpoint needs a GitHub App user token); no allow rule clears it. Mend App state → repo Settings → Integrations → GitHub Apps, by hand.
+- A loop using zsh nested parameter expansion (e.g. `${${p#@}%@*}`) is blocked by a built-in Claude Code safety check ("the shell may read it differently than it was parsed"); no allow rule clears it. Write such loops in `bash -c '…'` with plain expansions.
 
 ### Bot Health
 
@@ -459,17 +460,19 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 ### Inventory
 
 - `gh pr list --state open --limit 100 --json number,title,headRefName,headRefOid,mergeable,mergeStateStatus,labels,author,files`, filter `headRefName` on `renovate/`. Behind-count: `git rev-list --count <headSha>..<baseSha>`. CI: `gh pr checks <n>`.
-- CI volume on bot branches: `gh run list --workflow bkit-ci.yml --created '>=<date>' --limit 500 --json headBranch`, filter on `renovate/`.
+- CI volume on bot branches: `gh run list --workflow bkit-ci.yml --created '>=<date>' --limit 500 --json headBranch,headSha,createdAt`, filter on `renovate/`; use the last Monday window as `<date>`, and count runs per branch to see pushes outside the window.
 
 ### Classify
 
 - Root copies of templates (`.github/workflows/bkit-*.yml`, `.cursor/Dockerfile`, `scripts/graphify/bkit-graphify.sh`) must stay byte-identical to `.bkit/templates/` twins, which sit in `ignorePaths`. A bot PR changing only the root copy fails `.bkit/core/engine/audits/repo/dogfood-templates.test.ts` and `.bkit/core/engine/audits/templates/template-action-pins.test.ts` → class C, fix = mirror into the template copy. `.bkit/core/engine/install/cloud-env.test.ts` fails when a version + sha256 pin shared by `.bkit/shared/.claude/bkit-cloud.md` and the Cursor Dockerfile template differ.
-- Repro: clean worktree off `<baseSha>`, `git switch --detach origin/renovate/<branch>`, then `node_modules/.bin/vitest run <the three files>` (not `pnpm exec`: a `packageManager` bump makes Corepack fetch and dirty the tree).
+- Repro: clean worktree off `<baseSha>`, `git switch --detach <baseSha> && git merge --no-edit origin/renovate/<branch>` (proves the red survives a rebase), then `node_modules/.bin/vitest run <the three files>` (not `pnpm exec`: a `packageManager` bump makes Corepack fetch and dirty the tree). Switch back to `<baseSha>` after each PR.
+- Baseline reds: for a red outside the three files, compare with `dev` CI at the PR's merge base (`git merge-base <headSha> <baseSha>`, then `gh run list --workflow bkit-ci.yml --branch dev --json headSha,conclusion,databaseId`); the same red there and green at a later `dev` commit = class B.
 - Checksum repro for any PR bumping a `*_VERSION` paired with a `*_SHA256` (green CI is not evidence; jq is in the cloud setup only, which CI never runs): `gh release view <tag> -R <owner>/<repo> --json assets --jq '.assets[] | select(.name=="<asset>") | .digest'` vs the PR's hash; Node → `https://nodejs.org/dist/v<v>/SHASUMS256.txt` (linux-x64 tarball).
 
 ### Batch
 
 - Worktrees under `tmp/` (gitignored): `git worktree add --detach tmp/<name> <baseSha>`; rebuild = `git worktree remove --force tmp/<name>` + re-add.
+- The gate takes the machine tests lock; other agents' worktrees often hold it and the default wait exits 75. Run it as `LOCAL_STACK_LOCK_WAIT_S=2400 pnpm bkit:gate:install-static-unit-build` in the background.
 - Lockfile checks: `grep -c "resolution: {"` must equal `grep -c "resolution: {integrity: sha512-"`; `grep -nE "tarball:|git\+|codeload\.github|github:|https?://" pnpm-lock.yaml | grep -v registry.npmjs.org` must be empty. No `.npmrc` → default npm registry.
 - Screen: package keys = entries under `packages:` up to `snapshots:` in `pnpm-lock.yaml`; `comm` base vs batch; publish times `npm view <name> time --json`.
 
@@ -479,14 +482,15 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 - Under high load average the unit tier can time out (`test-timeout-budget` line prints the load) or the gate can be killed (exit 143). Re-run the failing file alone: `node_modules/.bin/vitest run -c vitest.unit.config.ts <file>`; then `pnpm bkit:test:bats` and `pnpm build` separately; match the timeout against open `docs/failures.jsonl` rows before calling it a batch red.
 - Override check: after the batch install, every `pnpm.overrides` entry in `package.json` that shadows an exact devDependency pin → `grep -n -A3 '^  <pkg>:' pnpm-lock.yaml` under `importers` shows `specifier` and `version`; a `version` below the manifest pin = override wins.
 - The frozen install runs husky `prepare`; after removing the worktree confirm `git config core.hooksPath` in the main checkout still prints `.husky/_`.
-- No framework doctor; no single-version runtime packages (no `dependencies`).
+- No framework doctor. Single-version check for the runtime dependency `cross-spawn` (`package.json` `dependencies`): `grep '^  cross-spawn@' pnpm-lock.yaml | sort -u | wc -l` must print 1 (each version appears once under `packages:` and once under `snapshots:`).
 
 ### Unseen
 
-- Off-manifest CLI surfaces, root copy + `.bkit/templates/` twin each: `.github/workflows/bkit-ci.yml` (Vale `VALE_VERSION`, actionlint script, `setup-uv` `version:`, apt `zsh`), `bkit-cloud.yml` (Vale, `@opencode/cli`), `bkit-trivy.yml` (`docker://` Trivy + digest), `bkit-renovate.yml` (`renovate-version`), `scripts/graphify/bkit-graphify.sh` (`GRAPHIFY_SPEC`), `.cursor/Dockerfile` (`FROM` digest, `ARG NODE_VERSION` / `GH_VERSION` / `VALE_VERSION` + `*_SHA256`, `ARG PNPM_VERSION` via Corepack, apt lines, commented supabase example). bats = devDependency. Cloud setup source `.bkit/shared/.claude/bkit-cloud.md` (Node, Vale, gh, jq + sha256), rendered to gitignored `.claude/bkit-cloud.md` (read the render for derived pins).
+- Off-manifest CLI surfaces, root copy + `.bkit/templates/` twin each: `.github/workflows/bkit-ci.yml` (Vale `VALE_VERSION`, actionlint script, `setup-uv` `version:`, apt `zsh`), `bkit-cloud.yml` (Vale, `@opencode/cli`, `codex-version` for `@openai/codex`), `bkit-trivy.yml` (`docker://` Trivy + digest), `bkit-renovate.yml` (`renovate-version`), `scripts/graphify/bkit-graphify.sh` (`GRAPHIFY_SPEC`), `.cursor/Dockerfile` (`FROM` digest, `ARG NODE_VERSION` / `GH_VERSION` / `VALE_VERSION` + `*_SHA256`, `ARG PNPM_VERSION` via Corepack, apt lines, commented supabase example). bats = devDependency. Cloud setup source `.bkit/shared/.claude/bkit-cloud.md` (Node, Vale, gh, jq + sha256), rendered to gitignored `.claude/bkit-cloud.md` (read the render for derived pins).
 - apt lines: `git grep -nE 'apt-get install' HEAD -- .cursor .github .bkit/templates .bkit/shared`.
 - Latest releases: `gh api repos/<owner>/<repo>/releases/latest --jq '.tag_name + " " + .published_at'`; npm `npm view <pkg> version time --json`; PyPI `curl -s https://pypi.org/pypi/<pkg>/json`; Node `https://nodejs.org/dist/index.json`.
-- Vendor advisories: `gh api repos/<owner>/<repo>/security-advisories` for `pnpm/pnpm`, `vitejs/vite`, `vitest-dev/vitest`, `nodejs/node`, `cli/cli`. Global lookup per id: `gh api advisories/<GHSA>` and `curl -s https://api.osv.dev/v1/vulns/<GHSA>` (404 = not carried). Known-hit check: any GHSA that resolves in both.
+- Vendor advisories: `gh api repos/<owner>/<repo>/security-advisories` for `pnpm/pnpm`, `vitejs/vite`, `vitest-dev/vitest`, `nodejs/node`, `cli/cli`, `moxystudio/node-cross-spawn` (the shipped runtime dependency). `nodejs/node` returns `[]`: Node publishes on nodejs.org, so mark it `Not Checked` or read nodejs.org/en/blog/vulnerability. Global lookup per id: `gh api advisories/<GHSA>` and `curl -s https://api.osv.dev/v1/vulns/<GHSA>` (404 = not carried). Known-hit check: any GHSA that resolves in both.
+- Trivy needs a running Docker daemon (OrbStack here: `docker info` must succeed). When it is down, the second lockfile source is the OSV batch API: build `{"queries":[{"package":{"ecosystem":"npm","name":"<n>"},"version":"<v>"}, …]}` from the `packages:` keys, `curl -s -X POST https://api.osv.dev/v1/querybatch -d @<file>`, count results with `vulns`; known-hit check `lodash@4.17.15`.
 - Scorecard per new package: `curl -s https://api.deps.dev/v3/projects/github.com%2F<owner>%2F<repo>` → `scorecard.overallScore` (absent = `no score`). Adoption: `curl -s https://api.npmjs.org/downloads/point/last-week/<pkg>`.
 - serena-agent in the cloud setup = tool server → `bkit-audit-agents`.
 - Deprecation: `npm view <name>@<version> deprecated` over every `packages:` key. Licences: `pnpm licenses list --json` and `--prod` inside an installed worktree.
