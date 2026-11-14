@@ -391,7 +391,7 @@ Decisions (see Open Questions for the options):
 - The index equivalence match accepts only an affirmative `Equivalent to docs/{topic}.md` with an end boundary (`887-equivalence-match-affirmative`).
 - The Mermaid rule covers every file § Docs covers; the other new § Docs rules, including **Not here** and **Update when**, apply to the starters in `.bkit/templates/docs/*.md`; the § Docs **Rules header** rule and § Which Sections Apply stay unchanged (`887-starter-writing-rules-scope`).
 
-**Ledger rows:** 887-project-doc-intro-placement, 887-project-doc-index-row-source, 887-project-doc-slot-practice-marker, 887-project-docs-tip-placement, 887-upgrade-report-adopted-marker, 887-adoption-order-finish-against, 887-equivalence-match-affirmative, 887-starter-writing-rules-scope, 887-project-docs-move-864, 887-plan-audit-template-instructions, 887-idea-md-template, 887-persistent-starter-review-advisory, 887-adopted-copy-migrations, 887-starter-vendor-content, 887-bkit-own-docs-starter-rules
+**Ledger rows:** `887-project-doc-intro-placement`, `887-project-doc-index-row-source`, `887-project-doc-slot-practice-marker`, `887-project-docs-tip-placement`, `887-upgrade-report-adopted-marker`, `887-adoption-order-finish-against`, `887-equivalence-match-affirmative`, `887-starter-writing-rules-scope`, `887-project-docs-move-864`, `887-plan-audit-template-instructions`, `887-idea-md-template`, `887-persistent-starter-review-advisory`, `887-adopted-copy-migrations`, `887-starter-vendor-content`, `887-bkit-own-docs-starter-rules`
 
 ### Database Migrations
 
