@@ -182,7 +182,7 @@
     "docs/templates/bkit-audit-security.md": "4122baa5b35784128ab27d2ad7db04161cc6410cdc20dc62474f8d4fbbf4f4d2",
     "docs/templates/bkit-audit-slop.md": "4b62345a868760e6e3447a1b86b2a4bfd1bf9d25aba125c7785f628b81d36c15",
     "docs/templates/bkit-audit-usability.md": "1683eb698874688081b46ea684914d5c91fd46bee0e2372005347d53d196d618",
-    "docs/templates/bkit-audit-testing.md": "b7e1ca149eb5945460b4173cc9ac5a4072a1107d350a30ee0dbca251bcd11707",
+    "docs/templates/bkit-audit-testing.md": "ce01369dfd50246ba7abdafcedffe4c971255b0fbb00a86b2425f0b155e76c9c",
     ".opencode/agents/bkit-utility-update-roadmap.md": "8ed1422f62edebd823bba24cf9f25c28c3038cebc321a17c28ecc019fad91e51",
     ".codex/agents/bkit-utility-update-roadmap.toml": "b44757d2b03f3862635951f3d151ed6dfc2ec92f510721da711773dc62359091",
     "docs/templates/bkit-audit-aio-seo.md": "fe2d947aea4436b1fb1772b7d6bc30260927ca28294bdbf456f107af142e118d",

@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-13T22:49:58Z)_
+_(refreshed 2026-11-14T00:20:36Z)_
 
 ### Design
 
@@ -72,6 +72,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 917-docs-node-test | 917-docs-node-test | 1794615636061 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794610198037 |
 | 929-hung-test-never | 929-hung-test-never | 1794608796745 |
 | 930-build-tick-green | 930-build-tick-green | 1794607449835 |
@@ -81,7 +82,6 @@ _(none)_
 | 912-debug-loop-question | 912-debug-loop-question | 1794551937547 |
 | 916-tests-lock-waiting | 916-tests-lock-waiting | 1794550421654 |
 | 787-show-authoring-rules | 787-show-authoring-rules | 1794548664404 |
-| 842-ship-fails-local | 842-ship-fails-local | 1794266068232 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->
