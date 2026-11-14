@@ -190,6 +190,45 @@ case "$HEAD_SUBJECT" in
   'Revert "'*) IS_REVERT=1 ;;
 esac
 
+# Open-PR lookup: one `gh pr list` for every branch except dev / main, shared by the
+# CI-suppressor guard (the number) and the PR conflict check (the number and its base).
+# gh absent or failing leaves PR_LOOKUP naming why; the check that needs an answer warns.
+OPEN_PR=""
+PR_BASE=""
+PR_LOOKUP=""
+PR_LOOKUP_FULL=0
+case "$BRANCH" in
+  dev|main|"") ;;
+  *)
+    if command -v gh >/dev/null 2>&1; then
+      # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
+      # push target owner/name from the URL in $2: a PR from that repo counts even when gh reports it cross-repository (a fork checkout)
+      PR_TARGET=${2%.git}
+      PR_TARGET_NAME=${PR_TARGET##*/}
+      PR_TARGET_OWNER=${PR_TARGET%/*}
+      PR_TARGET_OWNER=${PR_TARGET_OWNER##*[/:]}
+      case "$PR_TARGET_OWNER$PR_TARGET_NAME" in *[!A-Za-z0-9._-]*|"") PR_TARGET_OWNER=""; PR_TARGET_NAME="" ;; esac
+      # --limit 1000: fork PRs sharing the head name must not push the same-repo PR off the page; a full page with no match is an unknown, not "no PR"
+      PR_JQ='map(select((.isCrossRepository | not) or (.headRepositoryOwner.login == "'"$PR_TARGET_OWNER"'" and .headRepository.name == "'"$PR_TARGET_NAME"'"))) as $m | if ($m | length) > 0 then "\($m[0].number) \($m[0].baseRefName)" elif length >= 1000 then "FULL" else empty end'
+      if PR_INFO=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --limit 1000 --json number,baseRefName,isCrossRepository,headRepositoryOwner,headRepository --jq "$PR_JQ" < /dev/null 2>/dev/null); then
+        if [ "$PR_INFO" = "FULL" ]; then
+          PR_LOOKUP="1000 open PRs share this head branch name and none is from this repo"
+          PR_LOOKUP_FULL=1
+          PR_INFO=""
+        else
+          PR_LOOKUP=ok
+        fi
+        OPEN_PR=${PR_INFO%% *}
+        case "$PR_INFO" in *" "*) PR_BASE=${PR_INFO#* } ;; esac
+      else
+        PR_LOOKUP="gh pr list failed (offline, or gh not signed in)"
+      fi
+    else
+      PR_LOOKUP="gh is not installed"
+    fi
+    ;;
+esac
+
 # CI-suppressor HEAD guard: blocks a push whose HEAD commit carries a [skip ci]-class
 # token while the branch has an OPEN PR (that token silences GitHub's pull_request
 # trigger). Covers manual pushes (rebase + force-push, post-close commits). No open PR
@@ -206,9 +245,7 @@ case "$BRANCH" in
   dev|main) ;;
   *)
     if pnpm -s bkit ci skip-token < /dev/null > /dev/null; then
-      if command -v gh >/dev/null 2>&1; then
-        # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
-        OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+      if [ "$PR_LOOKUP" != "gh is not installed" ]; then
         if [ -n "$OPEN_PR" ]; then
           if [ -n "$PUSH_BRANCH_REMOTE_SHA" ] &&
             pnpm -s bkit ci bookkeeping-push --from="$PUSH_BRANCH_REMOTE_SHA" < /dev/null > /dev/null; then
@@ -218,6 +255,10 @@ case "$BRANCH" in
             echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
             exit 1
           fi
+        elif [ "$PR_LOOKUP_FULL" = "1" ]; then
+          echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and $PR_LOOKUP — an open PR for this branch cannot be ruled out." >&2
+          echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
+          exit 1
         fi
       else
         echo "[pre-push] WARN: HEAD on '$BRANCH' carries a CI-suppressing token but gh is unavailable to check for an open PR; allowing. If a PR is open, ensure HEAD triggers CI." >&2
@@ -255,6 +296,46 @@ done
 # block (seconds to ~30s, needing nothing the gates build) here too. Slow extras go below
 # the gates.
 #
+# PR conflict: a feature branch whose open PR no longer merges into its base never starts CI,
+# so the push stops here, before the gates. Fetches the base, then a trial merge of the pushed
+# commit (`git merge-tree` exit 1 = conflicts; the work tree is untouched). A lookup, fetch or
+# merge-tree that cannot answer warns and goes on: CI reports the conflict itself.
+case "$BRANCH" in
+  dev|main|"") ;;
+  *)
+    if [ "$PR_LOOKUP" != "ok" ]; then
+      [ -z "$PR_LOOKUP" ] || echo "[pre-push] WARN: PR conflict check skipped — $PR_LOOKUP, so whether '$BRANCH' has an open PR that conflicts is unknown." >&2
+    elif [ -n "$OPEN_PR" ] && [ -n "$PR_BASE" ] && [ -n "$PUSH_BRANCH_SHA" ]; then
+      if [ "${BKIT_PR_CONFLICT_CHECK:-}" = "false" ]; then
+        echo "[pre-push] PR conflict check off (BKIT_PR_CONFLICT_CHECK=false)." >&2
+      # a shallow clone has no shared history with the base: the fetch would download all of it and merge-tree still refuse
+      elif [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+        echo "[pre-push] WARN: PR conflict check skipped — shallow clone; run git fetch --unshallow to enable it." >&2
+      # explicit refspec: a single-branch clone's `git fetch origin <base>` would leave no origin/<base>
+      elif git fetch --quiet origin "+refs/heads/$PR_BASE:refs/remotes/origin/$PR_BASE" < /dev/null > /dev/null 2>&1; then
+        PR_MERGE_RC=0
+        # empty attribute source: GitHub applies no merge=union driver, so neither does this trial merge
+        PR_MERGE_OUT=$(git --attr-source="$(git hash-object -t tree /dev/null)" merge-tree --write-tree --name-only "refs/remotes/origin/$PR_BASE" "$PUSH_BRANCH_SHA" < /dev/null 2>/dev/null) || PR_MERGE_RC=$?
+        # exit 1 is a conflict only when the first output line is the result tree's OID
+        case "$PR_MERGE_OUT" in
+          [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
+          *) [ "$PR_MERGE_RC" != "1" ] || PR_MERGE_RC=2 ;;
+        esac
+        if [ "$PR_MERGE_RC" = "1" ]; then
+          echo "[pre-push] BLOCKED: PR #$OPEN_PR does not merge into '$PR_BASE', so CI would not start. Conflicting files:" >&2
+          echo "$PR_MERGE_OUT" | sed '1d;/^$/,$d;s/^/[pre-push]   /' >&2
+          echo "[pre-push] Fix: git fetch origin $PR_BASE && git merge origin/$PR_BASE (or rebase), resolve, commit, push again." >&2
+          exit 1
+        elif [ "$PR_MERGE_RC" != "0" ]; then
+          echo "[pre-push] WARN: PR conflict check skipped — git merge-tree failed (exit $PR_MERGE_RC)." >&2
+        fi
+      else
+        echo "[pre-push] WARN: PR conflict check skipped — could not fetch '$PR_BASE' from origin." >&2
+      fi
+    fi
+    ;;
+esac
+
 # bkit mirror-drift gate — fails if `.agents/*` was edited without `bkit install`
 # regenerating the `.claude/*`/`.cursor/*` mirrors (same check CI runs).
 # Outside the gate scripts: it validates the bkit install, not your source.

@@ -306,7 +306,10 @@ describe("deferred landing of a held build (ship, matrix: held → landed)", () 
   function openPr() {
     const step2 = /^## .*Step 2 —/m;
     const probe = extractStepLine(step2, '"{BKIT}" prs probe --head=');
-    const push = extractStepLine(step2, '"{BKIT}" branches push --mode=plain --set-upstream');
+    const push = extractStepLine(
+      step2,
+      'BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain --set-upstream',
+    );
     const open = extractStepLine(step2, '"{BKIT}" prs open ');
     expect(run(fill(probe)).status, "no PR exists, so the probe exits 1").toBe(1);
     const res = run(`OPEN_EXIT=0\n${fill(push)}\n${fill(open)}`);

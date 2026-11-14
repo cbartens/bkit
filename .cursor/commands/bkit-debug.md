@@ -590,7 +590,7 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
 3. **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
    ```bash
-   "{BKIT}" branches push --mode=feature
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature
    ```
    Route:
    - **If** exit 81 → end turn, re-run this block.
@@ -621,7 +621,7 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
    **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
    ```bash
-   "{BKIT}" branches push --mode=feature
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature
    ```
 3. Route:
    - **If** exit 81 → end turn, re-run this block.
@@ -691,7 +691,7 @@ Debug Feature — Autonomous diagnosis and remediation
 
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
-     "{BKIT}" branches push --mode=feature --require-ci
+     BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature --require-ci
      ```
 
      Route:
@@ -731,7 +731,7 @@ Debug Feature — Autonomous diagnosis and remediation
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when `ISSUE_ID` is empty:
 
    ```bash
-   "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
    ```
 
    Route:

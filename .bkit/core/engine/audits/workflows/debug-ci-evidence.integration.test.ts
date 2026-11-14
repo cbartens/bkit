@@ -613,3 +613,13 @@ describe("Debug CI evidence sequence", () => {
     expect(fs.readFileSync(path.join(wrong.cwd, "source.txt"), "utf8")).toBe("unfixed\n");
   });
 });
+
+describe("Debug PR conflict check switch", () => {
+  it("debug switches the PR conflict check off for every feature-branch push", () => {
+    const pushLines = WORKFLOW.split("\n").filter((line) =>
+      line.includes("branches push --mode=feature"),
+    );
+    expect(pushLines.length).toBeGreaterThanOrEqual(4);
+    for (const line of pushLines) expect(line).toContain("BKIT_PR_CONFLICT_CHECK=false");
+  });
+});

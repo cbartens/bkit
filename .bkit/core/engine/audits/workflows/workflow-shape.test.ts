@@ -1694,7 +1694,9 @@ const blockerBlocks = (step1: string[]): TrackerBlock[] =>
 
 /** Line indexes of `branches push` fences. */
 const pushFences = (lines: string[]): number[] =>
-  lines.flatMap((l, i) => (/^\s*"\{BKIT\}" branches push\b/.test(l) ? [i] : []));
+  lines.flatMap((l, i) =>
+    /^\s*(?:BKIT_PR_CONFLICT_CHECK=false )?"\{BKIT\}" branches push\b/.test(l) ? [i] : [],
+  );
 
 describe("issue-less runs", () => {
   it.each(PHASES)(

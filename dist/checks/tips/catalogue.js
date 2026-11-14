@@ -390,6 +390,21 @@ export const SETUP_TIPS = [
         },
     },
     {
+        id: "pre-push-pr-conflict",
+        workflows: ["plan", "ship"],
+        title: "Stop a push whose PR no longer merges",
+        line: "Your pre-push hook runs the whole gate even when the branch's open PR conflicts with its base, and CI never starts.",
+        why: "The newer hook looks up the open PR once, fetches its base and trial-merges the pushed commit. A conflict stops the push in seconds and names the files; a lookup or fetch that cannot answer only warns.",
+        ask: "Paste the `Open-PR lookup` block (above the CI-suppressor guard, which now reads the PR number from it) and the `PR conflict` block (before `pnpm bkit check`) of .bkit/templates/.husky/pre-push into .husky/pre-push, and add the `PUSH_BRANCH_SHA` line of its stdin loop: without it the check never runs.",
+        steps: "`.bkit/templates.md` § Git hooks.",
+        fires: (cwd) => {
+            if (!exists(cwd, ".husky/pre-push"))
+                return false;
+            const hook = fs.readFileSync(path.join(cwd, ".husky/pre-push"), "utf-8");
+            return !hook.includes("merge-tree") || !hook.includes("PUSH_BRANCH_SHA=");
+        },
+    },
+    {
         id: "pre-push-direnv",
         workflows: ["plan", "ship"],
         title: "Load .envrc when the pre-push hook runs",

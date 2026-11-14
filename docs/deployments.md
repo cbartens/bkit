@@ -563,6 +563,16 @@ The full pre-push gate checks the same static, unit and integration tiers as CI.
 - **If** a PR is open → blocked, because the PR's checks would stay green without testing the pushed code. This covers any other file, a rewritten head and no remote head. Add a clean trigger commit and push again.
 - **If** no PR is open → allowed. Workflows push `[skip ci]` heads for mid-loop status and the abort handover.
 - **If** `gh` is unavailable → warn and allow. This is the manual-push backstop, and the workflows' CI-Dispatch Gate covers the close push.
+- **If** the lookup returned a full page (1000 open PRs share the head branch name, none from this repo) → blocked, because an open PR cannot be ruled out.
+
+The guard reads the PR number from the shared open-PR lookup that also feeds the PR conflict check below: one `gh pr list --head <branch> --state open` per push of any branch but `dev` / `main`. It keeps same-repo PRs and a cross-repository PR whose head repository is the push target; a fork PR with the same head branch name is ignored.
+
+**PR conflict check (pre-push, before `bkit check` and the gates):** a feature branch whose open PR does not merge into its base never starts CI, so the hook stops it in seconds. Contract: `.bkit/templates.md` § Git hooks — Husky.
+
+- **If** the branch has an open PR and the push carries a commit → the hook fetches the base with an explicit refspec (`+refs/heads/<base>:refs/remotes/origin/<base>`), then runs `git merge-tree --write-tree --name-only` of `origin/<base>` against the pushed commit, ignoring the work tree's `.gitattributes` as GitHub does, so a `merge=union` ledger conflict blocks. Exit 1 with a tree OID on the first line → blocked, naming the files and the fix. This holds for a min push too.
+- **If** `gh` is missing or fails, the lookup returned a full page, the clone is shallow, the base fetch fails, or `git merge-tree` fails for another reason → warn that the check was skipped and go on. CI reports the conflict itself.
+- **If** no PR is open, or the branch is `dev` / `main` → no fetch and no message.
+- `BKIT_PR_CONFLICT_CHECK=false` skips the check with one stderr line. `/bkit-ship` and `/bkit-debug` set it on their pushes: the conflict is what ship's Step 4 merges away, and a `dev` that moves after Step 4 is left to `bkit runs gate --fresh-base`; debug's fix commits must always reach `origin`. A repo whose hook copy lacks the check gets the `pre-push-pr-conflict` tip from `bkit tips`.
 
 **Revert-branch bypass:** `revert-*` branch or HEAD subject `Revert "` → run `pnpm bkit:gate:static` instead of the full gate, dropping the test suites. Gates 5-9 still run unless the push qualifies for the minimum gate. Rollback trees can be temporarily inconsistent, and surviving tests may reference deleted files.
 

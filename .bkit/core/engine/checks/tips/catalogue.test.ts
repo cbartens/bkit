@@ -471,6 +471,27 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("min-push").fires(cwd)).toBe(false);
   });
 
+  it("pre-push-pr-conflict fires only for a hook without merge-tree", () => {
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+    write(".husky/pre-push", "pnpm -s bkit ci push-gate\n");
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      'PUSH_BRANCH_SHA="$l"\ngit merge-tree --write-tree --name-only "$BASE" "$SHA"\n',
+    );
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+  });
+
+  it("pre-push-pr-conflict fires for a hook with merge-tree but no PUSH_BRANCH_SHA", () => {
+    write(".husky/pre-push", 'git merge-tree --write-tree --name-only "$BASE" "$SHA"\n');
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(true);
+    write(
+      ".husky/pre-push",
+      'PUSH_BRANCH_SHA="$local_sha"\ngit merge-tree --write-tree --name-only "$BASE" "$PUSH_BRANCH_SHA"\n',
+    );
+    expect(tip("pre-push-pr-conflict").fires(cwd)).toBe(false);
+  });
+
   it("pre-push-direnv fires only for a hook without direnv exec in a repo with .envrc", () => {
     expect(tip("pre-push-direnv").fires(cwd)).toBe(false);
     write(".husky/pre-push", "pnpm -s bkit ci push-gate\n");

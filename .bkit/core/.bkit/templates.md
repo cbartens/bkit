@@ -321,6 +321,13 @@ chmod +x .husky/pre-commit .husky/pre-push
   - With a PR open, `bkit ci bookkeeping-push --from=<remote head>` lets the push through when every file changed since the head the remote holds is on ship's `--scope=pr` allow-list. Such a push adds nothing that CI has not tested at that head.
   - A rewritten head or a code file still blocks.
   - On `dev` / `main`, the skip-CI check uses the complete branch diff, independently of local gate receipts. Code cannot skip CI merely because its local gate passed.
+- PR conflict check:
+  - A fast check, run before `bkit check` and the gate. One `gh pr list --head <branch> --state open` lookup (every branch but `dev` / `main`) gives the PR number and its base; the `[skip ci]` guard reads the number from it.
+  - **If** the branch has an open PR → the hook fetches the base from `origin`, then runs `git merge-tree --write-tree --name-only` on `origin/<base>` and the pushed commit. Conflicts → the push is blocked, naming the files and the fix. This holds for a min push too, because a conflicting PR never starts CI.
+  - **If** `gh` is missing or fails, the clone is shallow (fix: `git fetch --unshallow`), the base fetch fails, or `git merge-tree` fails for another reason → the hook warns that the check was skipped, and the push goes on. No open PR → no fetch and no message.
+  - The lookup keeps same-repo PRs plus a cross-repository PR whose head repository is the push target. A fork PR with the same head branch name that is not the push target is ignored. It asks for up to 1000 open PRs; if a full page comes back with no match, the conflict check warns and skips, and the `[skip ci]` guard blocks a `[skip ci]` head, because it cannot tell that no PR is open. The base is fetched with an explicit refspec, and the trial merge ignores the work tree's `.gitattributes`, as GitHub does, so a `merge=union` ledger conflict blocks.
+  - `BKIT_PR_CONFLICT_CHECK=false` skips the whole check with one stderr line. `/bkit-ship` sets it on every push, because the conflict is what Step 4 merges away and a `dev` that moves after Step 4 is left to the Step 10 merge gate's `--fresh-base`. `/bkit-debug` sets it on its feature-branch pushes, so fix commits always reach `origin`.
+  - A repo whose hook copy lacks this gets the `pre-push-pr-conflict` tip.
 - Slop base:
   - **If** the push is to `dev` **and** `scripts/ci/lanes/bkit-resolve-push-base.mjs` is copied → the hook runs it with `--local --branch=dev --head=<pushed sha>`, and exports `SLOP_BASE_REF` as CI's push base. That base is the head of the last green CI push run on `dev`, else `origin/dev`. The hook prints the base and its source.
   - Pre-push and CI slop then share a base, so a finding that an earlier red push landed fails locally too.

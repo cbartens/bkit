@@ -237,7 +237,7 @@ $ARGUMENTS
    - **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 2 → Step 4 sub-step 2.
    - **If** exit 0 → hold `reconciledHead` as `ENTRY_HEAD` and `CODE_HEAD` → publish the resulting local head before sweep/docs bookkeeping.
      ```bash
-     "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null
+     BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null
      ```
      Route:
      **If** exit 81 → end turn, re-run this block. **If** another non-zero exit → **Failure Path**.
@@ -261,7 +261,7 @@ $ARGUMENTS
    - **If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
 
      ```bash
-     "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null || exit $?
+     BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null || exit $?
      OPEN_EXIT=0
      "{BKIT}" prs open --fid="{FID}" --title="feat({FID}): {summary}" --issue="{ISSUE_ID}" --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --file="{STATUS}" --workflow=ship --note="⚠️ PR opened by /bkit-ship — no PR existed for this branch." || OPEN_EXIT=$?
      case "$OPEN_EXIT" in 0 | 80) "{BKIT}" status meta --file="{STATUS}" --workflow=ship --opened-pr >/dev/null || exit 1 ;; esac
@@ -388,7 +388,7 @@ $ARGUMENTS
    ```
    Hold `basePath` as `BASE_PATH`, `reconciledHead` as `ENTRY_HEAD` and `CODE_HEAD`. **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 3 → Step 4 sub-step 2. **If** another non-zero exit → **Failure Path**.
    ```bash
-   "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain --set-upstream --ahead-of=origin/dev >/dev/null
    ```
    Route:
    **If** exit 81 → end turn, re-run this block. **If** another non-zero exit → **Failure Path**.
@@ -441,7 +441,7 @@ $ARGUMENTS
 3. Push the merged branch. The merge adds commits on top of the pushed head, so the push is plain, NEVER forced:
 
    ```bash
-   "{BKIT}" branches push --mode=plain >/dev/null
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain >/dev/null
    ```
 
    Route:
@@ -600,7 +600,7 @@ Read the latest successful `ship-feature-coverage` row for `step=ship-update-doc
    Hold `parentSha` as `CODE_HEAD`.
 2. **If** the printed `outcome` = committed → push, and NEVER force:
    ```bash
-   "{BKIT}" branches push --mode=plain >/dev/null
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain >/dev/null
    ```
    Route:
    - **If** exit 81 → end turn, re-run this block.
@@ -702,7 +702,7 @@ Read the latest successful `ship-feature-coverage` row for `step=ship-update-doc
        - **If** exit 0 **and** `REGEN_OUTCOME` = committed → push the fix, and NEVER force:
 
          ```bash
-         "{BKIT}" branches push --mode=plain >/dev/null
+         BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain >/dev/null
          ```
 
          Route:

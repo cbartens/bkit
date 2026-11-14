@@ -431,14 +431,18 @@ describe("bkit-ship.md — push-timing invariant (feature-branch pushes before m
     const pushes = fencedLinesByStep(readShip())
       .filter(isIntegratePush)
       .map((l) => l.line);
-    expect(pushes).toEqual(['"{BKIT}" branches push --mode=plain >/dev/null']);
+    expect(pushes).toEqual([
+      'BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain >/dev/null',
+    ]);
   });
 
   it("the pre-merge bookkeeping push is a plain push — never forced", () => {
     const pushes = fencedLinesByStep(readShip())
       .filter(isBookkeepingPush)
       .map((l) => l.line);
-    expect(pushes).toEqual(['"{BKIT}" branches push --mode=plain >/dev/null']);
+    expect(pushes).toEqual([
+      'BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=plain >/dev/null',
+    ]);
   });
 
   it("the pre-merge bookkeeping commit stages through bkit ledgers --scope=pr, after the step-done row", () => {
@@ -1140,5 +1144,15 @@ describe("bkit-ship.md — red CI names /bkit-debug", () => {
     const step1 = section(block, /^1\. /, /^2\. /);
     expect(step1, "no exit 6 retry without --next-step").toMatch(/exit 6/);
     expect(step1).toMatch(/without `?--next-step/);
+  });
+});
+
+describe("ship PR conflict check switch", () => {
+  it("ship switches the PR conflict check off for every push", () => {
+    const pushLines = readShip()
+      .split("\n")
+      .filter((line) => line.includes("branches push"));
+    expect(pushLines.length).toBeGreaterThanOrEqual(6);
+    for (const line of pushLines) expect(line).toContain("BKIT_PR_CONFLICT_CHECK=false");
   });
 });

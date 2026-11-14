@@ -549,7 +549,7 @@ _No tracker connected, skip step._
    ```
 3. **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
    ```bash
-   "{BKIT}" branches push --mode=feature
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature
    ```
    Route:
    - **If** exit 81 → end turn, re-run this block.
@@ -580,7 +580,7 @@ _No tracker connected, skip step._
    ```
    **Skip if** `BRANCH` = `dev` (the Step 11 close pushes). Push:
    ```bash
-   "{BKIT}" branches push --mode=feature
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature
    ```
 3. Route:
    - **If** exit 81 → end turn, re-run this block.
@@ -641,7 +641,7 @@ _No tracker connected, skip step._
 
      ```bash
      "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
-     "{BKIT}" branches push --mode=feature --require-ci
+     BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature --require-ci
      ```
 
      Route:
@@ -681,7 +681,7 @@ _No tracker connected, skip step._
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry:
 
    ```bash
-   "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
+   BKIT_PR_CONFLICT_CHECK=false "{BKIT}" branches push --mode=feature --require-ci --commit="chore({FID}): create-pr bkit [verbose ci]" {LABEL_FLAGS} --file="{STATUS}" --workflow=debug
    ```
 
    Route:
