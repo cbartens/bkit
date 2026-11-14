@@ -466,7 +466,7 @@ Use one, because both open PRs for the same packages. Record your choice in `bki
 <!-- prettier-ignore -->
 | Setting | Effect |
 | --- | --- |
-| `rebaseWhen: "conflicted"` | A PR is rebased only when it conflicts; the default re-runs CI on every auto-merge PR each time the base branch moves. |
+| `rebaseWhen: "never"` | Renovate never rebases or updates an open PR by itself, so each update runs CI once. A PR that conflicts with `dev` waits until you tick its rebase checkbox. Otherwise each merge makes the other `pnpm-lock.yaml` PRs conflict, rebase and re-run the full CI. The Dependabot example sets `rebase-strategy: disabled` for the same reason. |
 | `schedule` | Every hour of Monday (UTC). A scheduled GitHub run can start hours after its cron time, so a window of a few hours misses the daily wake. |
 | `lockFileMaintenance.schedule` | Every hour of the first day of the month (UTC), for the same reason. |
 | Majors rule `dependencyDashboardApproval: true` | No branch, PR or CI run until you tick the update on the Dependency Dashboard issue. |

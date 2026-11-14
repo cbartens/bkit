@@ -83,9 +83,11 @@
     schedule: ["* * 1 * *"],
   },
 
-  // Rebase a Renovate PR only when it conflicts. The default re-bases every open PR
-  // each time the base branch moves, which re-runs CI on PRs that auto-merge.
-  rebaseWhen: "conflicted",
+  // Renovate never rebases or updates an open PR by itself, so each update runs CI
+  // once. Every rebase re-runs the full CI, and most PRs touch `pnpm-lock.yaml`, so
+  // each merge would make the others conflict and rebuild. A PR that conflicts with
+  // `dev` waits until you tick its rebase checkbox.
+  rebaseWhen: "never",
 
   // A repo-level `ignorePaths` REPLACES the list from `:ignoreModulesAndTests`
   // (pulled in by `config:best-practices`), so that preset's entries are repeated

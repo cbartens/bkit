@@ -289,8 +289,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     );
   });
 
-  it("rebases a Renovate PR only when it conflicts (no CI re-run on every base move)", () => {
-    expect(content).toMatch(/rebaseWhen:\s*"conflicted"/);
+  it("never rebases a Renovate PR by itself (no CI re-run when another PR merges)", () => {
+    expect(content).toMatch(/rebaseWhen:\s*"never"/);
   });
 
   it("does not extend a renovate-local preset (the copy is the whole config)", () => {
@@ -628,6 +628,10 @@ describe("example dependabot template (.bkit/templates/.github/dependabot.yml)",
 
   it("holds new releases behind a 7-day cooldown", () => {
     expect(content).toMatch(/cooldown:\s*\n\s+default-days:\s*7/);
+  });
+
+  it("never rebases a Dependabot PR by itself (no CI re-run when another PR merges)", () => {
+    expect(content).toMatch(/^ {4}rebase-strategy:\s*disabled$/m);
   });
 });
 
