@@ -194,7 +194,7 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
       # Both tooling steps are `continue-on-error`: a missing packageManager / lockfile or a failed
       # download leaves bkit absent, and the gate then reports bkit-unavailable (green, nothing starts).
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         if: steps.gate.outputs.enabled == 'true'
         continue-on-error: true
 
@@ -713,8 +713,8 @@ jobs:
       - name: Install vale
         env:
           # renovate: datasource=github-releases depName=errata-ai/vale
-          VALE_VERSION: "3.24.0"
-          VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
+          VALE_VERSION: "3.26.0"
+          VALE_SHA256: "22aa69a556558e4a9dfc63c17030777383d8d3c48dcdfad655fa98e839d666ed"
         run: |
           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
@@ -727,7 +727,7 @@ jobs:
           git config user.email 'bkit-auto@users.noreply.github.com'
 
       - name: Dispatch /bkit-auto on Claude Code runner
-        uses: anthropics/claude-code-action@aa8a7738e48bf30a40ee499ce818bef081c5ab5e # v1.0.257
+        uses: anthropics/claude-code-action@c0949c50a78c1ec8ce2647db36629b870e715d0c # v1.0.268
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
           # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
@@ -780,7 +780,7 @@ jobs:
 
       # Repo dependencies for the dispatched phase (bkit:* scripts, the committed config).
       # Pnpm version comes from the consumer's package.json#packageManager (no `with: version:`).
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -798,7 +798,7 @@ jobs:
           # (https://opencode.ai/install) installs OpenCode 1 only and refuses a 2.x version.
           # npm's postinstall selects the runner's platform binary.
           # renovate: datasource=npm depName=@opencode/cli
-          npm install -g @opencode/cli@2.1.2
+          npm install -g @opencode/cli@2.2.5
           echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
 
       - name: Dispatch /bkit-auto on opencode runner
@@ -854,8 +854,8 @@ jobs:
       - name: Install vale
         env:
           # renovate: datasource=github-releases depName=errata-ai/vale
-          VALE_VERSION: "3.24.0"
-          VALE_SHA256: "867534ddb678abca7f214bc4706ead0922bd5252ffe8035fc227013f66c8b214"
+          VALE_VERSION: "3.26.0"
+          VALE_SHA256: "22aa69a556558e4a9dfc63c17030777383d8d3c48dcdfad655fa98e839d666ed"
         run: |
           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
@@ -864,7 +864,7 @@ jobs:
 
       # Repo dependencies BEFORE the action: the action sandbox cannot fetch them.
       # Pnpm version comes from the consumer's package.json#packageManager (no `with: version:`).
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -896,7 +896,7 @@ jobs:
           allow-bots: true
           codex-home: ${{ runner.temp }}/codex-home
           # renovate: datasource=npm depName=@openai/codex
-          codex-version: "0.165.0"
+          codex-version: "0.167.0"
           prompt: "$bkit-auto ${{ needs.context.outputs.phase }} ${{ needs.context.outputs.arg }}"
         env:
           GH_TOKEN: ${{ github.token }}
