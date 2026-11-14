@@ -59,3 +59,14 @@
 {"type":"engine-call","workflow":"plan","at":"2026-11-14T00:05:16Z","noun":"workflows","verb":"fail","flags":["post","issue","workflow","fid","month","token","label","step-number","step-title","sub-step","error-file","session-dir"]}
 {"type":"workflow-failed","workflow":"plan","at":"2026-11-14T00:05:16Z"}
 {"type":"engine-action","action":"comment","key":"plan/1/failure/6/6/comment","hash":"0d706800af0af9a983727859eecb7832f094d759bc9709da09ef9ee2a96169f1","ref":"https://github.com/cbartens/bkit/issues/887#issuecomment-6868125548","at":"2026-11-14T00:05:17Z"}
+{"type":"workflow-started","workflow":"plan","at":"2026-11-14T00:14:01Z","parentSha":"399f24e74f005de934e41e42acca687081e39c7e"}
+{"type":"session","workflow":"plan","at":"2026-11-14T00:14:01Z","platform":"claude-code","session":"fp:ee6555857e1b"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-14T00:14:01Z","noun":"runtime","verb":"row","flags":["workflow","base-sha","file"]}
+{"type":"runtime-resolved","workflow":"plan","at":"2026-11-14T00:14:01Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":"2d510c666901ca890d9166face8b676187a08496"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-14T00:14:02Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-14T00:17:15Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-14T00:17:15Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-11-14T00:17:15Z","parentSha":"399f24e74f005de934e41e42acca687081e39c7e","artifacts":[]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-14T00:17:15Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/2/plan-worktree-setup/-/-/comment","hash":"3e433059e72ad6508ef4dc2ee874f37deb76d75fb7aa9a1663ab115d51358e22","ref":"https://github.com/cbartens/bkit/issues/887#issuecomment-6868258453","at":"2026-11-14T00:17:18Z"}
+{"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-14T00:17:18Z","parentSha":"399f24e74f005de934e41e42acca687081e39c7e","artifacts":["docs/plans/202611/logs/887-review-doc-starters/plan-input-2.md"]}
