@@ -952,6 +952,18 @@ Clause section lines:
 **Flaky tests:** Any tests passing ONLY on retry / failing intermittently, ALWAYS append rows to `docs/failures.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom); check existing entries first.
 ```
 
+### discovered-gotchas
+
+- rule: Universal Rules › Workflows & Process
+- distinct-from: `discovered-bugs`
+- refs:
+  - `docs/knowledge.jsonl`
+  - `.bkit/jsonl.md`
+
+```text
+**Discovered gotchas:** Record each discovered gotcha instead of dropping it silently: append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
+```
+
 ### tracker-issue-creation
 
 - rule: Universal Rules › Workflows & Process

@@ -1302,24 +1302,24 @@ describe("bkit ledgers append", () => {
 
   it("append refuses a writer not listed for the kind", async () => {
     const r = repo();
-    const knowledge = {
-      kind: "knowledge",
-      by: { workflow: "build", step: "build-challenge" },
+    const decision = {
+      kind: "decision",
+      by: { workflow: "debug", step: "debug-failure-remediate" },
       key: "k",
       summary: "s",
     };
     const as = (subagent: string) => ({
-      ...knowledge,
-      by: { ...knowledge.by, subagent, model: "m" },
+      ...decision,
+      by: { ...decision.by, subagent, model: "m" },
     });
-    const bySubagent = await append(r, "knowledge", [as("bkit-plan-generate")]);
+    const bySubagent = await append(r, "decisions", [as("bkit-build-plan-tests")]);
     expect(bySubagent.code).toBe(EXIT_ROW_REFUSED);
-    expect(bySubagent.err).toContain("subagent bkit-plan-generate does not write knowledge rows");
-    const byOrchestrator = await append(r, "knowledge", [knowledge]);
+    expect(bySubagent.err).toContain("subagent bkit-build-plan-tests does not write decision rows");
+    const byOrchestrator = await append(r, "decisions", [decision]);
     expect(byOrchestrator.code).toBe(EXIT_ROW_REFUSED);
-    expect(byOrchestrator.err).toContain("the build orchestrator does not write knowledge rows");
-    expect(fs.existsSync(path.join(r, "docs/knowledge.jsonl"))).toBe(false);
-    const ok = await append(r, "knowledge", [as("bkit-utility-update-knowledge")]);
+    expect(byOrchestrator.err).toContain("the debug orchestrator does not write decision rows");
+    expect(fs.existsSync(path.join(r, "docs/decisions.jsonl"))).toBe(false);
+    const ok = await append(r, "decisions", [as("bkit-debug-failure-remediate")]);
     expect(ok.code).toBe(0);
   });
 
@@ -1875,25 +1875,26 @@ describe("bkit ledgers append --invocation", () => {
     }
 
     // Legacy callers keep their restrictions: no invocation, an unlisted orchestrator is refused.
+    const decision = (o: Record<string, unknown> = {}) => ({ ...knowledge(o), kind: "decision" });
     const legacy = await appendWith(
       r,
-      "knowledge",
-      [knowledge({ key: "third", by: { workflow: "build", step: "build-close-workflow" } })],
+      "decisions",
+      [decision({ key: "third", by: { workflow: "debug", step: "debug-close-workflow" } })],
       [],
     );
     expect(legacy.code).toBe(EXIT_ROW_REFUSED);
-    expect(legacy.err).toContain("does not write knowledge rows");
+    expect(legacy.err).toContain("does not write decision rows");
 
     // An invocation whose agent may not write the kind cannot launder the row.
-    const other = await issue(r, ["--agent=bkit-build-challenge", "--observed-model=m"]);
     const unauthorized = await appendWith(
       r,
-      "knowledge",
-      [knowledge({ key: "fourth" })],
-      [`--invocation=${other}`],
+      "decisions",
+      [decision({ key: "fourth" })],
+      [`--invocation=${id}`],
     );
     expect(unauthorized.code).toBe(EXIT_ROW_REFUSED);
-    expect(unauthorized.err).toContain("does not write knowledge rows");
+    expect(unauthorized.err).toContain("does not write decision rows");
+    expect(fs.existsSync(path.join(r, "docs/decisions.jsonl"))).toBe(false);
     expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(written);
   });
 

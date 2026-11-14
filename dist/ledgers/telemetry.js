@@ -236,17 +236,8 @@ export const KIND_WRITERS = {
     // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
     deferral: { subagents: DEFERRAL_WRITERS, orchestrators: new Set(["build", "ship", "utility"]) },
     failure: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
-    knowledge: {
-        subagents: new Set([
-            "bkit-build-plan-tests",
-            "bkit-build-plan-tasks",
-            "bkit-build-plan-gaps-remediate",
-            "bkit-debug-failure-remediate",
-            "bkit-utility-update-knowledge",
-        ]),
-        // Utility: a direct chat outside any workflow (`by.step` `manual`), the owner deciding in it.
-        orchestrators: new Set(["utility"]),
-    },
+    // Any agent on a discovered gotcha (`.agents/rules.md` Discovered gotchas).
+    knowledge: { subagents: ANY_WRITER, orchestrators: ANY_WRITER },
     friction: {
         subagents: new Set(),
         // Utility: a direct chat outside any workflow (`by.step` `manual`) that meets friction.

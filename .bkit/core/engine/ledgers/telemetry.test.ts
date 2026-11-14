@@ -2147,6 +2147,16 @@ describe("writerProblem", () => {
     ).toBeUndefined();
   });
 
+  it("admits any agent on knowledge rows, as a discovered gotcha", () => {
+    expect(
+      writerProblem({
+        kind: "knowledge",
+        by: { workflow: "build", subagent: "bkit-build-challenge-1", model: "m" },
+      }),
+    ).toBeUndefined();
+    expect(writerProblem({ kind: "knowledge", by: { workflow: "ship" } })).toBeUndefined();
+  });
+
   it("admits a direct chat (utility) on friction rows", () => {
     expect(
       writerProblem({ kind: "friction", by: { workflow: "utility", step: "manual" } }),
