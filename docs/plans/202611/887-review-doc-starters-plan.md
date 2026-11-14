@@ -230,7 +230,7 @@ Decisions settled with the owner on 2026-11-13:
   - Deployments has no `## Rollback` slot; `## Production rollback runbook` and `## Dev rollback runbook` are project slots with their headings kept and their host-specific steps as `[e.g., …]` text.
   - Deployments has no `## Migrations at deploy time` slot; the kept `## Applying migrations at deploy time` holds a `### This project` slot.
 - **Answered, option A (reader review):** a starter's Purpose line says what the doc holds and the question it answers, with no "Read before …" clause. The phase columns of `.agents/docs.md` alone say when to read a doc (`887-starter-purpose-no-read-when`; Tasks 1 and 3).
-- **Answered, option A (reader review):** Task 15 stays in this plan: one citation test in `shipped-docs-refs.test.ts` and the four pointer fixes (`887-section-citation-guard`).
+- **Answered, option A (reader review):** the section-citation guard stays in this plan as Task 15: one citation test in `shipped-docs-refs.test.ts` and the four pointer fixes (`887-section-citation-guard`).
 - **Answered, option A (reader review):** `docs/setup.md` is marked Build `○` and Debug `○`, and its Purpose line and Scope name no "humans only" audience, because `## Local services` holds the start and reset commands an integration test run needs (`887-setup-doc-phases`; Task 5). bkit's own `docs/setup.md` row is unchanged, because it follows bkit's own doc (`887-project-doc-index-row-source`).
 
 **Assumptions:**
@@ -906,6 +906,12 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 14 end -->
 
+<!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Guard shipped section citations
+
 <!-- bkit:task 15 start -->
 
 - [ ] **TASK 15:** Guard the section names shipped files cite
@@ -916,9 +922,13 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
   - **UPDATE:** `.bkit/templates/.husky/pre-push`: the comment at line 58 cites `.bkit/templates.md` § Git hooks — Husky where it cites `docs/security.md § .bkit/.env scope`
   - **UPDATE:** `.bkit/templates/scripts/graphify/bkit-graphify-graphml.py`: the docstring at line 14 cites `.bkit/templates.md` § graphify — map where it cites `docs/setup.md § Code Graph`
   - **UPDATE:** `.bkit/templates/.github/ISSUE_TEMPLATE/bkit-idea.yml`: the placeholder example at line 55 reads `docs/architecture.md § Containers`
-  - **UPDATE:** `.husky/pre-push`, `scripts/graphify/bkit-graphify-graphml.py`, `.github/ISSUE_TEMPLATE/bkit-idea.yml`: the same edit as each template, so `dogfood-templates.test.ts` keeps comparing them equal; a host mirror of the hook that carries the same comment takes the edit too
+  - **UPDATE:** `.husky/pre-push`: the same edit as `.bkit/templates/.husky/pre-push`, so `dogfood-templates.test.ts` keeps comparing them equal; a host mirror of the hook that carries the same comment takes the edit too
+  - **UPDATE:** `scripts/graphify/bkit-graphify-graphml.py`: the same edit as `.bkit/templates/scripts/graphify/bkit-graphify-graphml.py`, so `dogfood-templates.test.ts` keeps comparing them equal
+  - **UPDATE:** `.github/ISSUE_TEMPLATE/bkit-idea.yml`: the same edit as `.bkit/templates/.github/ISSUE_TEMPLATE/bkit-idea.yml`, so `dogfood-templates.test.ts` keeps comparing them equal
   - **UPDATE:** `.bkit/workflows.md`: refreshed from `.bkit/core/.bkit/workflows.md` with `pnpm tsx .bkit/core/engine/cli.ts upgrade`
-  - **READ:** `.bkit/core/.bkit/cli.md`, `§ Git hooks — Husky` and `§ graphify — map` in `.bkit/core/.bkit/templates.md`: confirm each new target holds the fact the citing line names before repointing; when a target lacks it, report the gap in the task summary and cite the nearest shipped section that holds it
+  - **READ:** `.bkit/core/.bkit/cli.md`: confirm it lists the `bkit runs gate` exit codes before repointing the `workflows.md` citation; when it lacks them, report the gap in the task summary and cite `bkit runs gate --help`
+  - **READ:** § Git hooks — Husky in `.bkit/core/.bkit/templates.md`: confirm it holds the fact the `pre-push` comment names before repointing; when it lacks it, report the gap in the task summary and cite the nearest shipped section that holds it
+  - **READ:** § graphify — map in `.bkit/core/.bkit/templates.md`: confirm it holds the fact the graphify docstring names before repointing; when it lacks it, report the gap in the task summary and cite the nearest shipped section that holds it
   - **READ:** `§ Which tier does a behaviour need?` in `docs/testing.md`: the case reads repo files with no fixture, so it is Unit
   - **DEPENDS ON:** 4, 5, 6, 7, 8, 9, 14
   - **DONE WHEN:** the test below passes with no skip list and no allowed-failure list; the other `shipped-docs-refs.test.ts` cases and `dogfood-templates.test.ts` pass; `node dist/cli.js check` reports no drift
@@ -927,7 +937,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 15 end -->
 
-<!-- bkit:group 4 end -->
+<!-- bkit:group 5 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
