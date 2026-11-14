@@ -371,7 +371,7 @@ flowchart LR
       n_bkit_core_engine_shared_settings["settings<br/>31 symbols · 1 files"]
     end
     subgraph gn_bkit_core_engine_tools[".bkit/core/engine/tools"]
-      n_bkit_core_engine_tools_instructions["instructions<br/>92 symbols · 1 files"]
+      n_bkit_core_engine_tools_instructions["instructions<br/>97 symbols · 1 files"]
       n_bkit_core_engine_tools_instructions_sources["instructions-sources<br/>48 symbols · 1 files"]
     end
   end

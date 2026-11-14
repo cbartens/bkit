@@ -1203,46 +1203,56 @@ function citeFiles(ix, name) {
     return COVERED.map((s) => ix.byName(s, name)).filter((f) => f !== undefined);
 }
 const lineHolds = (file, line, excerpt) => (file.content.split("\n")[line - 1] ?? "").includes(excerpt);
-/** Findings for the both-ways check of the store against the corpus. */
-export function checkCoverage(store, corpus) {
-    const out = [];
-    const ix = coverageIndex(store, corpus);
-    const partialOf = new Map();
+/** File id → the sentences of each rule the file carries partially. */
+function partialSentences(ix) {
+    const out = new Map();
     for (const r of ix.rules) {
         for (const { file } of ruleCarriers(ix, r, ["partial"])) {
-            partialOf.set(file.id, [...(partialOf.get(file.id) ?? []), ...splitSentences(r.text)]);
+            out.set(file.id, [...(out.get(file.id) ?? []), ...splitSentences(r.text)]);
         }
     }
-    const localOf = new Map();
+    return out;
+}
+/** File id → its own local entries plus the shared lines that list it as a carrier. */
+function localEntriesOf(ix, out) {
+    const byFile = new Map();
     for (const e of ix.local) {
         if (e.file !== undefined)
-            localOf.set(e.file, [...(localOf.get(e.file) ?? []), e]);
+            byFile.set(e.file, [...(byFile.get(e.file) ?? []), e]);
         else {
             for (const [surface, names] of sharedCarriers(e.carriers ?? "", ix.namesOf)) {
                 for (const n of names) {
                     const f = ix.byName(surface, n);
                     if (!f) {
-                        out.push(`shared line: carrier \`${n}\` is no ${surface} file: ${e.text}`);
+                        out?.push(`shared line: carrier \`${n}\` is no ${surface} file: ${e.text}`);
                         continue;
                     }
-                    localOf.set(f.id, [...(localOf.get(f.id) ?? []), e]);
+                    byFile.set(f.id, [...(byFile.get(f.id) ?? []), e]);
                 }
             }
         }
     }
+    return byFile;
+}
+/** The standing lines of `f` that no local entry, clause, rule or partial rule sentence covers. */
+function uncoveredLines(ix, f, local, partial) {
+    const own = new Set(local.map((e) => e.text));
+    return ix.standing
+        .get(f.id)
+        .filter(({ text }) => !own.has(text) &&
+        !ix.clauseForms.some((c) => c.re.test(text)) &&
+        !ix.rules.some((r) => text.includes(r.text)) &&
+        !partial.some((s) => text.includes(s)));
+}
+/** Findings for the both-ways check of the store against the corpus. */
+export function checkCoverage(store, corpus) {
+    const out = [];
+    const ix = coverageIndex(store, corpus);
+    const partialOf = partialSentences(ix);
+    const localOf = localEntriesOf(ix, out);
     // Nothing missing.
     for (const f of ix.files) {
-        const own = new Set((localOf.get(f.id) ?? []).map((e) => e.text));
-        const partial = partialOf.get(f.id) ?? [];
-        for (const { line, text } of ix.standing.get(f.id)) {
-            if (own.has(text))
-                continue;
-            if (ix.clauseForms.some((c) => c.re.test(text)))
-                continue;
-            if (ix.rules.some((r) => text.includes(r.text)))
-                continue;
-            if (partial.some((s) => text.includes(s)))
-                continue;
+        for (const { line, text } of uncoveredLines(ix, f, localOf.get(f.id) ?? [], partialOf.get(f.id) ?? [])) {
             out.push(`${f.id}:${line}: no entry — add under #### ${f.name}: ${text}`);
         }
     }
@@ -1484,6 +1494,63 @@ export function similarEntries(store) {
     }
     return out;
 }
+/** How alike a reworded line must stay to its stored copy for `refreshLocal` to pair them. */
+export const REFRESH_MIN = 0.5;
+/**
+ * The store with each per-file local entry whose line was reworded in place rewritten to the
+ * new wording, tags kept, and one `{file}: {old} → {new}` note per rewrite. A stale entry pairs
+ * with an uncovered line of its file only when the line sits between the file lines of the
+ * nearest unchanged entries before and after it in the store, is at least `REFRESH_MIN` alike,
+ * and no other pairing scores the same for either side; pairs never cross. A deleted line, a
+ * new line and a shared line stay as findings for a person to settle.
+ */
+export function refreshLocal(store, corpus) {
+    const ix = coverageIndex(store, corpus);
+    const partialOf = partialSentences(ix);
+    const localOf = localEntriesOf(ix);
+    const lines = store.split("\n");
+    const refreshed = [];
+    for (const f of ix.files) {
+        const own = ix.local.filter((e) => e.file === f.id).sort((a, b) => a.at - b.at);
+        const standing = ix.standing.get(f.id);
+        const lineOf = own.map((e) => standing.find((s) => s.text === e.text)?.line);
+        const uncovered = uncoveredLines(ix, f, localOf.get(f.id) ?? [], partialOf.get(f.id) ?? []);
+        const pairs = [];
+        own.forEach((e, i) => {
+            if (lineOf[i] !== undefined)
+                return;
+            const before = lineOf.slice(0, i).filter((n) => n !== undefined);
+            const after = lineOf.slice(i + 1).find((n) => n !== undefined);
+            const lo = before.length > 0 ? Math.max(...before) : 0;
+            const hi = after ?? Infinity;
+            for (const u of uncovered) {
+                if (u.line <= lo || u.line >= hi)
+                    continue;
+                const score = similarity(e.text, u.text);
+                if (score >= REFRESH_MIN)
+                    pairs.push({ entry: i, line: u.line, text: u.text, score });
+            }
+        });
+        const tied = (p) => pairs.some((q) => q !== p && q.score === p.score && (q.entry === p.entry || q.line === p.line));
+        const taken = [];
+        for (const p of [...pairs].sort((a, b) => b.score - a.score)) {
+            if (tied(p))
+                continue;
+            if (taken.some((t) => t.entry === p.entry || t.line === p.line))
+                continue;
+            if (taken.some((t) => t.entry < p.entry !== t.line < p.line))
+                continue;
+            taken.push(p);
+        }
+        for (const p of taken.sort((a, b) => a.entry - b.entry)) {
+            const e = own[p.entry];
+            const at = lines[e.at];
+            lines[e.at] = at.slice(0, at.length - e.text.length) + p.text;
+            refreshed.push(`${f.name}: ${e.text} → ${p.text}`);
+        }
+    }
+    return { store: lines.join("\n"), refreshed };
+}
 /** The store with shared-line carriers and drift line numbers recomputed from the corpus. */
 export function syncCoverage(store, corpus) {
     const ix = coverageIndex(store, corpus);
@@ -1588,7 +1655,10 @@ function main(argv) {
             console.error(`[bkit-instructions] rewrote ${id}`);
         }
         files = loadCorpus(root);
-        const synced = syncCoverage(syncStore(store, files), files);
+        const fresh = refreshLocal(syncStore(store, files), files);
+        for (const r of fresh.refreshed)
+            console.error(`[bkit-instructions] refreshed local entry ${r}`);
+        const synced = syncCoverage(fresh.store, files);
         if (synced !== store) {
             fs.writeFileSync(storeFile, synced, "utf-8");
             console.error(`[bkit-instructions] rewrote ${STORE_PATH}`);

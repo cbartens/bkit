@@ -15,6 +15,7 @@ import {
   loadCorpus,
   openDrift,
   openFits,
+  refreshLocal,
   similarEntries,
   syncCarry,
   syncCoverage,
@@ -204,6 +205,63 @@ describe("checkCoverage", () => {
       /drift `p-one:6` does not hold "skip the shortcut"/,
     );
     expect(checkCoverage(syncCoverage(moved, FILES), FILES)).toEqual([]);
+  });
+});
+
+describe("refreshLocal", () => {
+  const withPOne = (body: string[]) => [prompt("p-one", body), ...FILES.slice(1)];
+
+  it("rewrites the copy of a line reworded in place, keeping its tags", () => {
+    const files = withPOne([
+      "- **Order:** Execute steps in order.",
+      "- **Rule:** NEVER skip. ALWAYS finish.",
+      "- Keep the local line here.",
+      "- NEVER skip the shortcut, ever.",
+    ]);
+    const { store, refreshed } = refreshLocal(STORE_MD, files);
+    expect(store).toContain("\nKeep the local line here.\n");
+    expect(store).toContain("\n[rule] NEVER skip the shortcut, ever.\n");
+    expect(refreshed).toEqual([
+      "p-one: Keep the local line. → Keep the local line here.",
+      "p-one: NEVER skip the shortcut. → NEVER skip the shortcut, ever.",
+    ]);
+    expect(checkCoverage(store, files)).toEqual([]);
+  });
+
+  it("leaves a deleted line and an unrelated new line in its place for a person to decide", () => {
+    const files = withPOne([
+      "- **Order:** Execute steps in order.",
+      "- **Rule:** NEVER skip. ALWAYS finish.",
+      "- Write the report before the review.",
+      "- NEVER skip the shortcut.",
+    ]);
+    const { store, refreshed } = refreshLocal(STORE_MD, files);
+    expect(refreshed).toEqual([]);
+    expect(store).toBe(STORE_MD);
+    const findings = checkCoverage(store, files).join("\n");
+    expect(findings).toMatch(
+      /no entry — add under #### p-one: Write the report before the review\./,
+    );
+    expect(findings).toMatch(/p-one: local entry no longer in the file: Keep the local line\./);
+  });
+
+  it("pairs a reworded line only with a line between the same unchanged neighbours", () => {
+    const files = withPOne([
+      "- Keep the local line here.",
+      "- **Order:** Execute steps in order.",
+      "- **Rule:** NEVER skip. ALWAYS finish.",
+      "- NEVER skip the shortcut.",
+    ]);
+    const swapped = STORE_MD.replace(
+      "Keep the local line.\n[rule] NEVER skip the shortcut.",
+      "[rule] NEVER skip the shortcut.\nKeep the local line.",
+    );
+    const { refreshed } = refreshLocal(swapped, files);
+    expect(refreshed).toEqual([]);
+  });
+
+  it("changes nothing when every copy still matches", () => {
+    expect(refreshLocal(STORE_MD, FILES)).toEqual({ store: STORE_MD, refreshed: [] });
   });
 });
 
