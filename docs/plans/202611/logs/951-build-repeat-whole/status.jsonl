@@ -1,0 +1,11 @@
+{"type":"workflow-started","workflow":"plan","at":"2026-11-15T03:19:22Z","parentSha":"dd8b4390c4bbba6cc0bffdd59303832b8dc6d826"}
+{"type":"session","workflow":"plan","at":"2026-11-15T03:19:22Z","platform":"claude-code","session":"fp:d77557fbf68e"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-15T03:19:23Z","noun":"runtime","verb":"row","flags":["workflow","base-sha","file"]}
+{"type":"runtime-resolved","workflow":"plan","at":"2026-11-15T03:19:23Z","runtime":"LOCAL","runtimeWorktrees":true,"runtimeDevPushes":true,"runtimeGithubCli":true,"runtimeGithubCliExit":0,"runtimeGithubCliErr":"","baseSha":"dd8b4390c4bbba6cc0bffdd59303832b8dc6d826"}
+{"type":"engine-call","workflow":"plan","at":"2026-11-15T03:19:23Z","noun":"runtime","verb":"assert","flags":["file","workflow"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-15T03:19:29Z","noun":"workflows","verb":"input","flags":["workflow","fid","run","file","prompt-file","description-file","comments-file"]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-15T03:19:29Z","noun":"steps","verb":"done","flags":["file","workflow","step","commit"]}
+{"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-11-15T03:19:29Z","parentSha":"dd8b4390c4bbba6cc0bffdd59303832b8dc6d826","artifacts":[]}
+{"type":"engine-call","workflow":"plan","at":"2026-11-15T03:19:29Z","noun":"steps","verb":"finish","flags":["file","workflow","step","artifact","message","number","post","title","link-ref"]}
+{"type":"engine-action","action":"comment","key":"plan/1/plan-worktree-setup/-/-/comment","hash":"787b0bc6286c58161bb6f5cc26e72cd273c56b94d33566248697b7a1d3ebcd5d","ref":"https://github.com/cbartens/bkit/issues/951#issuecomment-6888466744","at":"2026-11-15T03:19:32Z"}
+{"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-11-15T03:19:32Z","parentSha":"dd8b4390c4bbba6cc0bffdd59303832b8dc6d826","artifacts":["docs/plans/202611/logs/951-build-repeat-whole/plan-input-1.md"]}
