@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-15T13:23:18Z)_
+_(refreshed 2026-11-15T20:00:38Z)_
 
 ### Design
 
@@ -63,7 +63,6 @@ _(refreshed 2026-11-15T13:23:18Z)_
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
 | 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
-| 921-tests-lock-default | 921-tests-lock-default | 1794748998645 |
 
 ### Debug
 
@@ -74,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 921-tests-lock-default | 921-tests-lock-default | 1794772838726 |
 | 951-build-repeat-whole | 951-build-repeat-whole | 1794738945847 |
 | 814-local-test-limits | 814-local-test-limits | 1794736903637 |
 | 923-pre-push-block | 923-pre-push-block | 1794689727505 |
@@ -83,7 +83,6 @@ _(none)_
 | 929-hung-test-never | 929-hung-test-never | 1794608796745 |
 | 930-build-tick-green | 930-build-tick-green | 1794607449835 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794576192090 |
-| 922-pre-push-load | 922-pre-push-load | 1794553285735 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

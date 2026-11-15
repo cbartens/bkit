@@ -79,6 +79,7 @@ beforeEach(() => {
     )
       delete env[key];
   }
+  env.BKIT_TEST_SLOTS = "1";
   fs.mkdirSync(path.join(cwd, "scripts", "ci"), { recursive: true });
   fs.mkdirSync(path.join(cwd, "src"));
   fs.copyFileSync(TEMPLATE, path.join(cwd, "scripts", "ci", "bkit-machine-lock.sh"));

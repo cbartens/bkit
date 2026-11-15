@@ -130,7 +130,11 @@ function push(extra: Record<string, string>) {
 describe("branches push through a real pre-push lock", () => {
   it("branches push exits 81 naming the holder when the pre-push hook's gate gave up on the tests lock", async () => {
     const holder = await hold();
-    const result = push({ BKIT_LOCK_WAIT_S: "0", LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const result = push({
+      BKIT_LOCK_WAIT_S: "0",
+      LOCAL_STACK_LOCK_WAIT_S: "0",
+      BKIT_TEST_SLOTS: "1",
+    });
     expect(result.status, result.stderr).toBe(81);
     expect(result.json).toMatchObject({
       pushed: false,

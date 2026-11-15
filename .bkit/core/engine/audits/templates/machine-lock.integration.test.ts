@@ -74,7 +74,28 @@ function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   }
   delete env.BKIT_TEST_SLOTS;
   delete env.BKIT_LOCAL_STACK;
+  if (extra.PATH === undefined) env.PATH = coreProbeBin(4) + path.delimiter + env.PATH;
   return { ...env, ...extra };
+}
+
+/** A folder holding a fake `getconf` that reports `cores`; with null, every core probe fails. */
+function coreProbeBin(cores: number | null): string {
+  const bin = path.join(tmp, "core-probe-" + String(cores));
+  if (fs.existsSync(bin)) return bin;
+  fs.mkdirSync(bin);
+  const body =
+    cores === null
+      ? "#!/bin/sh\nexit 1\n"
+      : `#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "${cores}\\n"\n`;
+  for (const name of cores === null ? ["getconf", "nproc", "sysctl"] : ["getconf"]) {
+    fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 });
+  }
+  return bin;
+}
+
+/** The test's env with the machine reporting `cores`; `BKIT_TEST_SLOTS` stays unset unless passed. */
+function coresEnv(cores: number | null, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return envFor({ PATH: coreProbeBin(cores) + path.delimiter + process.env.PATH, ...extra });
 }
 
 /** Runs a bash snippet with `script` sourced. */
@@ -306,6 +327,90 @@ describe("machine lock slots, order and wait budgets", () => {
     );
     expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
     expect(results.map((result) => result.stdout)).toEqual(["9", "4", "1"]);
+  });
+
+  it("with slots unset on 10 cores, two runs hold tests at once and a third waits naming both", async () => {
+    const env = coresEnv(10, { LOCAL_STACK_LOCK_WAIT_S: "2" });
+    const first = slotHolder("first core slot", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("second core slot", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third core slot", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stdout).not.toContain("entered");
+    expect(third.stderr).toContain("first core slot");
+    expect(third.stderr).toContain("second core slot");
+  });
+
+  it("with slots unset on 7 cores, a second run waits behind the first", async () => {
+    const env = coresEnv(7, { LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("only core slot", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("only core slot");
+  });
+
+  it("with slots unset, BKIT_TEST_WORKERS follows the core-count slots", () => {
+    const workers = (cores: number) =>
+      commandRun(
+        ["workers", "--lock", "tests", "--", "bash", "-c", 'printf "%s" "$BKIT_TEST_WORKERS"'],
+        coresEnv(cores),
+      );
+    const results = [10, 8, 7].map(workers);
+    expect(results.map((result) => result.status)).toEqual([0, 0, 0]);
+    expect(results.map((result) => result.stdout)).toEqual(["4", "3", "6"]);
+  });
+
+  it("a set BKIT_TEST_SLOTS overrides the core-count default both ways", async () => {
+    const one = coresEnv(10, { BKIT_TEST_SLOTS: "1", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const holder = slotHolder("override one", one);
+    await waitForOutput(holder, "acquired");
+    const blocked = commandRun(["next", "--lock", "tests", "--", "echo", "entered"], one);
+    expect(blocked.status).toBe(75);
+    expect(blocked.stdout).not.toContain("entered");
+    holder.child.kill("SIGKILL");
+    await holder.done;
+    const three = coresEnv(4, { BKIT_TEST_SLOTS: "3", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const extra = [slotHolder("three a", three), slotHolder("three b", three)];
+    for (const h of extra) await waitForOutput(h, "acquired");
+    const third = slotHolder("three c", three);
+    await waitForOutput(third, "acquired");
+    const fourth = commandRun(["fourth", "--lock", "tests", "--", "echo", "entered"], three);
+    expect(fourth.status).toBe(75);
+    expect(fourth.stderr).toContain("three c");
+  });
+
+  it("an invalid slots value falls back to the core-count default and names it", async () => {
+    const twice =
+      "take_local_stack_lock invalid tests || exit 1; release_local_stack_lock tests; take_local_stack_lock again tests || exit 1; release_local_stack_lock tests";
+    const ten = run(twice, coresEnv(10, { BKIT_TEST_SLOTS: "garbage" }));
+    expect(ten.status).toBe(0);
+    expect(ten.stderr.match(/BKIT_TEST_SLOTS/g)?.length).toBe(1);
+    expect(ten.stderr).toContain("[machine-lock] invalid BKIT_TEST_SLOTS; using 2 slot(s)");
+    const four = run(twice, coresEnv(4, { BKIT_TEST_SLOTS: "0" }));
+    expect(four.status).toBe(0);
+    expect(four.stderr.match(/BKIT_TEST_SLOTS/g)?.length).toBe(1);
+    expect(four.stderr).toContain("[machine-lock] invalid BKIT_TEST_SLOTS; using 1 slot(s)");
+    const env = coresEnv(10, { BKIT_TEST_SLOTS: "-1", LOCAL_STACK_LOCK_WAIT_S: "2" });
+    const first = slotHolder("fallback first", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("fallback second", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stdout).not.toContain("entered");
+  });
+
+  it("with no working core probe, slots unset gives one slot", async () => {
+    const env = coresEnv(null, { LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("no probe holder", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("no probe holder");
   });
 
   it("a killed tests-lock holder frees its slot within a second and the waiter starts", async () => {

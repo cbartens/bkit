@@ -81,7 +81,12 @@ export default async function setup(
       "-c",
       'printf "locked %s\\n" "$LOCAL_STACK_LOCK_OWNER_tests"; exec cat <&3 >/dev/null',
     ],
-    { stdio: ["inherit", "pipe", "pipe", "pipe"] },
+    {
+      stdio: ["inherit", "pipe", "pipe", "pipe"],
+      // Vitest fixed its worker count before this lock was taken, so a second slot would
+      // run cores - 1 workers beside another holder; queue behind it unless the owner chose.
+      env: { ...process.env, BKIT_TEST_SLOTS: process.env.BKIT_TEST_SLOTS ?? "1" },
+    },
   );
   let stderr = "";
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; error?: Error }>(

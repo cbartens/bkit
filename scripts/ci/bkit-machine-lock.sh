@@ -27,7 +27,7 @@
 #
 # Take locks in this order: tests, other named locks, then the unnamed stack lock.
 # A child reuses only the named or unnamed lock its live parent holds.
-# BKIT_TEST_SLOTS sets the tests slots (whole number >= 1, default 1). Taking tests
+# The tests slots default to 2 with 8 or more cores, else 1; BKIT_TEST_SLOTS (whole number >= 1) overrides. Taking tests
 # exports BKIT_TEST_WORKERS=max(1, floor(cores / slots) - 1) for the runner to use.
 # LOCAL_STACK_LOCK_WAIT_S caps the wait; otherwise it is 60s without a TTY, 3600s
 # with a TTY. Named releases save each checkout's held seconds in <name>.last.
@@ -89,23 +89,9 @@ local_stack_lock_holder() {
   return 0
 }
 
-_local_stack_lock_slots() {
-  _lsl_slots="${BKIT_TEST_SLOTS-1}"
-  case "$_lsl_slots" in
-    *[!0-9]*|"") _lsl_slots=0 ;;
-    *) _lsl_slots=$((10#$_lsl_slots)) ;;
-  esac
-  if [ "$_lsl_slots" -lt 1 ]; then
-    if [ "${_LOCAL_STACK_LOCK_SLOTS_NOTED:-}" != 1 ]; then
-      echo "[machine-lock] invalid BKIT_TEST_SLOTS; using 1 slot" >&2
-      _LOCAL_STACK_LOCK_SLOTS_NOTED=1
-    fi
-    _lsl_slots=1
-  fi
-}
-
-_local_stack_lock_workers() {
-  local _lsl_cores="" _lsl_probe
+_local_stack_lock_cores() {
+  local _lsl_probe
+  _lsl_cores=""
   for _lsl_probe in getconf nproc sysctl; do
     case "$_lsl_probe" in
       getconf) _lsl_cores="$(getconf _NPROCESSORS_ONLN 2>/dev/null)" || continue ;;
@@ -116,6 +102,30 @@ _local_stack_lock_workers() {
     break
   done
   case "$_lsl_cores" in *[!0-9]*|""|0) _lsl_cores=1 ;; esac
+}
+
+_local_stack_lock_slots() {
+  local _lsl_default=1
+  [ "$_lsl_cores" -ge 8 ] && _lsl_default=2
+  if [ "${BKIT_TEST_SLOTS+x}" != x ]; then
+    _lsl_slots="$_lsl_default"
+    return 0
+  fi
+  _lsl_slots="$BKIT_TEST_SLOTS"
+  case "$_lsl_slots" in
+    *[!0-9]*|"") _lsl_slots=0 ;;
+    *) _lsl_slots=$((10#$_lsl_slots)) ;;
+  esac
+  if [ "$_lsl_slots" -lt 1 ]; then
+    if [ "${_LOCAL_STACK_LOCK_SLOTS_NOTED:-}" != 1 ]; then
+      echo "[machine-lock] invalid BKIT_TEST_SLOTS; using $_lsl_default slot(s)" >&2
+      _LOCAL_STACK_LOCK_SLOTS_NOTED=1
+    fi
+    _lsl_slots="$_lsl_default"
+  fi
+}
+
+_local_stack_lock_workers() {
   BKIT_TEST_WORKERS=$((_lsl_cores / _lsl_slots - 1))
   [ "$BKIT_TEST_WORKERS" -ge 1 ] || BKIT_TEST_WORKERS=1
   export BKIT_TEST_WORKERS
@@ -141,13 +151,14 @@ _local_stack_lock() {
   local _lsl_mode="$1" _lsl_who="$2" _lsl_name="${3:-}"
   local _lsl_pid_var _lsl_owner_var _lsl_name_var _lsl_owner _lsl_existing
   local _lsl_file _lsl_label _lsl_fifo _lsl_pid _lsl_reply _lsl_checkout
-  local _lsl_slots=1 _lsl_wait _lsl_var _lsl_held_name _lsl_held_name_var
+  local _lsl_slots=1 _lsl_cores=1 _lsl_wait _lsl_var _lsl_held_name _lsl_held_name_var
   _LOCAL_STACK_LOCK_EXIT=73
   _local_stack_lock_vars "$_lsl_name"
   _lsl_owner="${!_lsl_owner_var:-}"
   _lsl_existing="${!_lsl_pid_var:-}"
   if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then return 0; fi
   if [ "$_lsl_name" = tests ]; then
+    _local_stack_lock_cores
     _local_stack_lock_slots
     _local_stack_lock_workers
   fi
