@@ -2,7 +2,7 @@
 /**
  * bkit-test-limits.mjs — the time limit for `node --test` and bats runs, taken from the Vitest
  * integration budget (`vitest.timeout-budget.ts`) so every runner bkit uses on itself shares one
- * number: 30s under CI, scaled by machine load elsewhere.
+ * number: 30s under CI, else 180s.
  */
 
 import { tierTimeouts } from "../../vitest.timeout-budget.ts";

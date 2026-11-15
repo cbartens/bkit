@@ -18,6 +18,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { readTemplate } from "../../render/parts";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const HOOK_SOURCES = path.join(__dirname, "..", "..", "..", "..", "core");
 const GENERATED = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-preflight-"));
@@ -425,24 +426,28 @@ describe("preflight-tracker.sh — Jira and session issue sources", () => {
     expect(context).toMatch(/missing|absent|not (?:found|installed|available)/i);
   });
 
-  it("jira fetch %s stops the session naming the tracker and the reason", () => {
-    for (const [reason, message] of [
-      ["auth", /auth/i],
-      ["timeout", /timeout|timed out/i],
-    ] as const) {
-      const fixture = jiraFixture(false, ["bkit:auto"], reason);
-      const result = runPreflight(CURSOR_HOOK, fixture.env, BACKGROUND, {
-        cwd: fixture.cwd,
-        timeout: 25_000,
-      });
-      expect(result.status, reason).toBe(1);
-      const context = onlyDocument(result.stdout);
-      expect(context, reason).toContain("HARD STOP");
-      expect(context, reason).toMatch(/Jira/i);
-      expect(context, reason).toMatch(message);
-      expect(fs.existsSync(fixture.calls), reason).toBe(true);
-    }
-  }, 30_000);
+  it(
+    "jira fetch %s stops the session naming the tracker and the reason",
+    () => {
+      for (const [reason, message] of [
+        ["auth", /auth/i],
+        ["timeout", /timeout|timed out/i],
+      ] as const) {
+        const fixture = jiraFixture(false, ["bkit:auto"], reason);
+        const result = runPreflight(CURSOR_HOOK, fixture.env, BACKGROUND, {
+          cwd: fixture.cwd,
+          timeout: 25_000,
+        });
+        expect(result.status, reason).toBe(1);
+        const context = onlyDocument(result.stdout);
+        expect(context, reason).toContain("HARD STOP");
+        expect(context, reason).toMatch(/Jira/i);
+        expect(context, reason).toMatch(message);
+        expect(fs.existsSync(fixture.calls), reason).toBe(true);
+      }
+    },
+    localLimit(30_000),
+  );
 
   it("%s session with no issue id records bkit:auto not verified and exits 0", () => {
     for (const tracker of ["github", "jira"]) {

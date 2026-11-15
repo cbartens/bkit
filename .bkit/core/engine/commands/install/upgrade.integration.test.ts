@@ -24,6 +24,7 @@ import {
   type BkitVersion,
 } from "../../install/version-file";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -1832,99 +1833,108 @@ describe("upgrade-render", () => {
   });
 
   describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => {
-    it("restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides", () => {
-      // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
-      //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
-      const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
-      const installCombined = `${install.stdout}\n${install.stderr}`;
-      // Sanity: install reached dispatch and produced the rendered outputs.
-      expect(installCombined).toMatch(/\[bkit-install\]/);
+    it(
+      "restores tampered agents + docs and refreshes the prompts.md block while preserving consumer overrides",
+      () => {
+        // --- Install: core + claude + opencode host (gives .claude/agents, .opencode/agents,
+        //     .claude/commands, .opencode/commands, and the .bkit/*.md docs). ---
+        const install = runBkit(["install", "--claude", "--opencode=openrouter"]);
+        const installCombined = `${install.stdout}\n${install.stderr}`;
+        // Sanity: install reached dispatch and produced the rendered outputs.
+        expect(installCombined).toMatch(/\[bkit-install\]/);
 
-      const claudeAgentsDir = path.join(tmpDir, ".claude", "agents");
-      const opencodeAgentsDir = path.join(tmpDir, ".opencode", "agents");
-      const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
-      expect(
-        fs.existsSync(claudeAgentsDir),
-        `install must render ${claudeAgentsDir}\n${installCombined}`,
-      ).toBe(true);
-      expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
-      expect(fs.existsSync(promptsPath)).toBe(true);
+        const claudeAgentsDir = path.join(tmpDir, ".claude", "agents");
+        const opencodeAgentsDir = path.join(tmpDir, ".opencode", "agents");
+        const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
+        expect(
+          fs.existsSync(claudeAgentsDir),
+          `install must render ${claudeAgentsDir}\n${installCombined}`,
+        ).toBe(true);
+        expect(fs.existsSync(opencodeAgentsDir)).toBe(true);
+        expect(fs.existsSync(promptsPath)).toBe(true);
 
-      const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
-      const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
-      expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
-      expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
+        const claudeAgentFile = firstBkitMarkdown(claudeAgentsDir);
+        const opencodeAgentFile = firstBkitMarkdown(opencodeAgentsDir);
+        expect(claudeAgentFile, "expected a bkit-* agent in .claude/agents").toBeTruthy();
+        expect(opencodeAgentFile, "expected a bkit-* agent in .opencode/agents").toBeTruthy();
 
-      const claudeAgentPath = path.join(claudeAgentsDir, claudeAgentFile!);
-      const opencodeAgentPath = path.join(opencodeAgentsDir, opencodeAgentFile!);
-      const claudeOriginal = fs.readFileSync(claudeAgentPath, "utf-8");
-      const opencodeOriginal = fs.readFileSync(opencodeAgentPath, "utf-8");
+        const claudeAgentPath = path.join(claudeAgentsDir, claudeAgentFile!);
+        const opencodeAgentPath = path.join(opencodeAgentsDir, opencodeAgentFile!);
+        const claudeOriginal = fs.readFileSync(claudeAgentPath, "utf-8");
+        const opencodeOriginal = fs.readFileSync(opencodeAgentPath, "utf-8");
 
-      const promptsOriginal = fs.readFileSync(promptsPath, "utf-8");
-      expect(promptsOriginal).toContain("bkit:start");
-      expect(promptsOriginal).toContain("bkit:end");
+        const promptsOriginal = fs.readFileSync(promptsPath, "utf-8");
+        expect(promptsOriginal).toContain("bkit:start");
+        expect(promptsOriginal).toContain("bkit:end");
 
-      // --- Tamper: rendered agents, the prompts.md managed block, and add a consumer override row. ---
-      const AGENT_SENTINEL = "STALE-TAMPERED-AGENT-DO-NOT-KEEP";
-      const MANAGED_SENTINEL = "STALE-TAMPERED-MANAGED-BLOCK";
-      const OVERRIDE_ROW = "CONSUMER-OVERRIDE-ROW-MUST-SURVIVE";
+        // --- Tamper: rendered agents, the prompts.md managed block, and add a consumer override row. ---
+        const AGENT_SENTINEL = "STALE-TAMPERED-AGENT-DO-NOT-KEEP";
+        const MANAGED_SENTINEL = "STALE-TAMPERED-MANAGED-BLOCK";
+        const OVERRIDE_ROW = "CONSUMER-OVERRIDE-ROW-MUST-SURVIVE";
 
-      fs.writeFileSync(claudeAgentPath, `${AGENT_SENTINEL}\n${claudeOriginal}`, "utf-8");
-      fs.writeFileSync(opencodeAgentPath, `${AGENT_SENTINEL}\n${opencodeOriginal}`, "utf-8");
+        fs.writeFileSync(claudeAgentPath, `${AGENT_SENTINEL}\n${claudeOriginal}`, "utf-8");
+        fs.writeFileSync(opencodeAgentPath, `${AGENT_SENTINEL}\n${opencodeOriginal}`, "utf-8");
 
-      // Inject a sentinel INSIDE the managed block (right after the start marker) and append a
-      // consumer override row AFTER the file's content (below bkit:end).
-      const tamperedPrompts =
-        promptsOriginal.replace(/(<!--\s*bkit:start\s*-->)/, `$1\n${MANAGED_SENTINEL}`).trimEnd() +
-        `\n\n${OVERRIDE_ROW}\n`;
-      expect(tamperedPrompts).toContain(MANAGED_SENTINEL); // replace actually landed
-      fs.writeFileSync(promptsPath, tamperedPrompts, "utf-8");
+        // Inject a sentinel INSIDE the managed block (right after the start marker) and append a
+        // consumer override row AFTER the file's content (below bkit:end).
+        const tamperedPrompts =
+          promptsOriginal
+            .replace(/(<!--\s*bkit:start\s*-->)/, `$1\n${MANAGED_SENTINEL}`)
+            .trimEnd() + `\n\n${OVERRIDE_ROW}\n`;
+        expect(tamperedPrompts).toContain(MANAGED_SENTINEL); // replace actually landed
+        fs.writeFileSync(promptsPath, tamperedPrompts, "utf-8");
 
-      // --- Upgrade: must re-render everything install does. ---
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgradeCombined).toMatch(/\[bkit-upgrade\]/);
-      // Summary surfaces the re-render pass.
-      expect(upgradeCombined).toMatch(/re-rendered:/);
+        // --- Upgrade: must re-render everything install does. ---
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgradeCombined).toMatch(/\[bkit-upgrade\]/);
+        // Summary surfaces the re-render pass.
+        expect(upgradeCombined).toMatch(/re-rendered:/);
 
-      // Agents fully restored to their rendered form (tamper gone, byte-identical).
-      const claudeAfter = fs.readFileSync(claudeAgentPath, "utf-8");
-      const opencodeAfter = fs.readFileSync(opencodeAgentPath, "utf-8");
-      expect(claudeAfter).not.toContain(AGENT_SENTINEL);
-      expect(claudeAfter).toBe(claudeOriginal);
-      expect(opencodeAfter).not.toContain(AGENT_SENTINEL);
-      expect(opencodeAfter).toBe(opencodeOriginal);
+        // Agents fully restored to their rendered form (tamper gone, byte-identical).
+        const claudeAfter = fs.readFileSync(claudeAgentPath, "utf-8");
+        const opencodeAfter = fs.readFileSync(opencodeAgentPath, "utf-8");
+        expect(claudeAfter).not.toContain(AGENT_SENTINEL);
+        expect(claudeAfter).toBe(claudeOriginal);
+        expect(opencodeAfter).not.toContain(AGENT_SENTINEL);
+        expect(opencodeAfter).toBe(opencodeOriginal);
 
-      // prompts.md: managed block refreshed (sentinel gone) AND consumer override preserved.
-      const promptsAfter = fs.readFileSync(promptsPath, "utf-8");
-      expect(promptsAfter).not.toContain(MANAGED_SENTINEL);
-      expect(promptsAfter).toContain(OVERRIDE_ROW);
-    }, 180_000);
+        // prompts.md: managed block refreshed (sentinel gone) AND consumer override preserved.
+        const promptsAfter = fs.readFileSync(promptsPath, "utf-8");
+        expect(promptsAfter).not.toContain(MANAGED_SENTINEL);
+        expect(promptsAfter).toContain(OVERRIDE_ROW);
+      },
+      localLimit(180_000),
+    );
 
-    it("dead override reported: upgrade names an override row for an agent bkit no longer ships, exit 0", () => {
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
-      const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
-      const dead = `bkit-retired-${"agent"}`;
-      const prompts = fs.readFileSync(promptsPath, "utf-8");
-      // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
-      // table cell, and indexOf would land there and insert into a preset table instead.
-      const end = prompts.search(/^<!-- bkit:end -->$/m);
-      const sep = prompts.indexOf("| --- | --- | --- |\n", end);
-      expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
-        end,
-      );
-      const at = sep + "| --- | --- | --- |\n".length;
-      fs.writeFileSync(
-        promptsPath,
-        `${prompts.slice(0, at)}| ${dead} | cursor | some-model |\n${prompts.slice(at)}`,
-        "utf-8",
-      );
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      const combined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgrade.status, combined).toBe(0);
-      expect(combined).toContain(dead);
-    }, 180_000);
+    it(
+      "dead override reported: upgrade names an override row for an agent bkit no longer ships, exit 0",
+      () => {
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        const promptsPath = path.join(tmpDir, ".bkit", "prompts.md");
+        const dead = `bkit-retired-${"agent"}`;
+        const prompts = fs.readFileSync(promptsPath, "utf-8");
+        // Line-anchored, as the engine reads it: the managed block quotes the marker inside a
+        // table cell, and indexOf would land there and insert into a preset table instead.
+        const end = prompts.search(/^<!-- bkit:end -->$/m);
+        const sep = prompts.indexOf("| --- | --- | --- |\n", end);
+        expect(sep, "installed prompts.md carries an empty Model Overrides table").toBeGreaterThan(
+          end,
+        );
+        const at = sep + "| --- | --- | --- |\n".length;
+        fs.writeFileSync(
+          promptsPath,
+          `${prompts.slice(0, at)}| ${dead} | cursor | some-model |\n${prompts.slice(at)}`,
+          "utf-8",
+        );
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        const combined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgrade.status, combined).toBe(0);
+        expect(combined).toContain(dead);
+      },
+      localLimit(180_000),
+    );
 
     it.each(["github", "linear", "jira"])(
       "upgrade renders opencode.json with provider/tracker sentinels resolved for %s (no raw @@…@@ leak, #245)",
@@ -1978,168 +1988,194 @@ describe("upgrade-render", () => {
       180_000,
     );
 
-    it("opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)", () => {
-      type OpencodeDoc = {
-        provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
-      };
+    it(
+      "opencode-go gateway: install records the manifest provider; upgrade re-renders the opencode-go block (no ollama fallback)",
+      () => {
+        type OpencodeDoc = {
+          provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
+        };
 
-      // Install the opencode host as the OpenCode Go built-in (apiKey only).
-      const install = runBkit(["install", "--opencode=opencode-go"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        // Install the opencode host as the OpenCode Go built-in (apiKey only).
+        const install = runBkit(["install", "--opencode=opencode-go"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-      // (1) opencode.json has a built-in `opencode-go` block — options.apiKey only (no npm/baseURL).
-      const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
-      expect(fs.existsSync(opencodeJsonPath)).toBe(true);
-      const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
-      expect(
-        installed.provider?.["opencode-go"],
-        "opencode-go gateway seeds an `opencode-go` provider block",
-      ).toBeDefined();
-      expect(installed.provider?.["opencode-go"]?.npm).toBeUndefined();
-      expect(installed.provider?.["opencode-go"]?.options?.baseURL).toBeUndefined();
-      expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe(
-        "{env:BKIT_OPENCODE_API_KEY}",
-      );
+        // (1) opencode.json has a built-in `opencode-go` block — options.apiKey only (no npm/baseURL).
+        const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+        expect(fs.existsSync(opencodeJsonPath)).toBe(true);
+        const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+        expect(
+          installed.provider?.["opencode-go"],
+          "opencode-go gateway seeds an `opencode-go` provider block",
+        ).toBeDefined();
+        expect(installed.provider?.["opencode-go"]?.npm).toBeUndefined();
+        expect(installed.provider?.["opencode-go"]?.options?.baseURL).toBeUndefined();
+        expect(installed.provider?.["opencode-go"]?.options?.apiKey).toBe(
+          "{env:BKIT_OPENCODE_API_KEY}",
+        );
 
-      // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
-      const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
-        bkit?: { providers?: { opencode?: { default?: string } } };
-      };
-      expect(pkg.bkit?.providers?.opencode?.default).toBe("opencode-go");
+        // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
+        const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+          bkit?: { providers?: { opencode?: { default?: string } } };
+        };
+        expect(pkg.bkit?.providers?.opencode?.default).toBe("opencode-go");
 
-      // (3) Agents seeded with the opencode-go prefix (opencode-go/…).
-      const agentsDir = path.join(tmpDir, ".opencode", "agents");
-      const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
-      expect(anAgent).toBeTruthy();
-      const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
-      expect(agentBody).toMatch(/model:\s*opencode-go\//);
+        // (3) Agents seeded with the opencode-go prefix (opencode-go/…).
+        const agentsDir = path.join(tmpDir, ".opencode", "agents");
+        const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
+        expect(anAgent).toBeTruthy();
+        const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
+        expect(agentBody).toMatch(/model:\s*opencode-go\//);
 
-      // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
-      //     `opencode-go` block, NOT falling back to ollama.
-      const upgrade = runBkit(["upgrade", "--auto-apply"]);
-      expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
-      const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
-      expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe("{env:BKIT_OPENCODE_API_KEY}");
-      expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
-      expect(
-        after.provider?.["ollama"],
-        "upgrade must NOT re-render opencode-go as ollama",
-      ).toBeUndefined();
-    }, 180_000);
+        // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
+        //     `opencode-go` block, NOT falling back to ollama.
+        const upgrade = runBkit(["upgrade", "--auto-apply"]);
+        expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+        const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+        expect(after.provider?.["opencode-go"]?.options?.apiKey).toBe(
+          "{env:BKIT_OPENCODE_API_KEY}",
+        );
+        expect(after.provider?.["opencode-go"]?.npm).toBeUndefined();
+        expect(
+          after.provider?.["ollama"],
+          "upgrade must NOT re-render opencode-go as ollama",
+        ).toBeUndefined();
+      },
+      localLimit(180_000),
+    );
   });
 
   describe("#459 — bkit upgrade keeps bkit's recorded hash for a consumer-edited whole-file", () => {
-    it("a no-op upgrade does not re-record a hand-edited canonical file as bkit's content", () => {
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+    it(
+      "a no-op upgrade does not re-record a hand-edited canonical file as bkit's content",
+      () => {
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-      // Whole-file managed (Tier 1, no markers) → drift-detected via diffFile.
-      const rel = ".bkit/.env.example";
-      const abs = path.join(tmpDir, rel);
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      const recordedHash = (): string | undefined =>
-        (
-          JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-            canonicalHashes: Record<string, string>;
-          }
-        ).canonicalHashes[rel];
+        // Whole-file managed (Tier 1, no markers) → drift-detected via diffFile.
+        const rel = ".bkit/.env.example";
+        const abs = path.join(tmpDir, rel);
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        const recordedHash = (): string | undefined =>
+          (
+            JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+              canonicalHashes: Record<string, string>;
+            }
+          ).canonicalHashes[rel];
 
-      const before = recordedHash();
-      expect(before, `install must record a hash for ${rel}`).toBeTruthy();
+        const before = recordedHash();
+        expect(before, `install must record a hash for ${rel}`).toBeTruthy();
 
-      fs.appendFileSync(abs, "// consumer edit\n", "utf-8");
+        fs.appendFileSync(abs, "// consumer edit\n", "utf-8");
 
-      // The CLI rebuilds the result it hands to the hash refresh — this exercises that seam.
-      const upgrade = runBkit(["upgrade"]);
-      expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\] Done\./);
+        // The CLI rebuilds the result it hands to the hash refresh — this exercises that seam.
+        const upgrade = runBkit(["upgrade"]);
+        expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\] Done\./);
 
-      expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
-      expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
-    }, 180_000);
+        expect(fs.readFileSync(abs, "utf-8")).toContain("// consumer edit");
+        expect(recordedHash(), "upgrade must not re-record the consumer's content").toBe(before);
+      },
+      localLimit(180_000),
+    );
 
-    it("re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it", () => {
-      // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
-      expect(runBkit(["install", "--codex"]).status).toBe(0);
+    it(
+      "re-records the hash of .bkit/allowlist.json when upgrade regenerates it, so uninstall still deletes it",
+      () => {
+        // Codex: a host whose guardrails hook reads the allowlist without the cursor module.
+        expect(runBkit(["install", "--codex"]).status).toBe(0);
 
-      const rel = path.join(".bkit", "allowlist.json");
-      const abs = path.join(tmpDir, rel);
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      const recordedHash = (): string | undefined =>
-        (
-          JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-            canonicalHashes: Record<string, string>;
-          }
-        ).canonicalHashes[rel];
-      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+        const rel = path.join(".bkit", "allowlist.json");
+        const abs = path.join(tmpDir, rel);
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        const recordedHash = (): string | undefined =>
+          (
+            JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+              canonicalHashes: Record<string, string>;
+            }
+          ).canonicalHashes[rel];
+        expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
 
-      fs.appendFileSync(
-        path.join(tmpDir, ".agents", "context.md"),
-        "\n<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n",
-      );
-      expect(runBkit(["upgrade"]).status).toBe(0);
-      expect(fs.readFileSync(abs, "utf-8")).toContain("example.com");
-      expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
+        fs.appendFileSync(
+          path.join(tmpDir, ".agents", "context.md"),
+          "\n<!-- allowed-domains:start -->\nexample.com\n<!-- allowed-domains:end -->\n",
+        );
+        expect(runBkit(["upgrade"]).status).toBe(0);
+        expect(fs.readFileSync(abs, "utf-8")).toContain("example.com");
+        expect(recordedHash()).toBe(sha256(fs.readFileSync(abs, "utf-8")));
 
-      expect(runBkit(["uninstall"]).status).toBe(0);
-      expect(fs.existsSync(abs)).toBe(false);
-    }, 180_000);
+        expect(runBkit(["uninstall"]).status).toBe(0);
+        expect(fs.existsSync(abs)).toBe(false);
+      },
+      localLimit(180_000),
+    );
 
-    it("upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json", () => {
-      expect(runBkit(["install", "--cursor"]).status).toBe(0);
-      // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
-      const retired = path.join(".cursor", "allowlist.json");
-      const versionPath = path.join(tmpDir, ".bkit", "version");
-      fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
-      const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-        canonicalHashes: Record<string, string>;
-      };
-      version.canonicalHashes[retired] = sha256(
-        fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
-      );
-      fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
+    it(
+      "upgrade moves a recorded .cursor/allowlist.json to .bkit/allowlist.json",
+      () => {
+        expect(runBkit(["install", "--cursor"]).status).toBe(0);
+        // What an install up to 5.2.4 left: the cursor copy, recorded in .bkit/version.
+        const retired = path.join(".cursor", "allowlist.json");
+        const versionPath = path.join(tmpDir, ".bkit", "version");
+        fs.copyFileSync(path.join(tmpDir, ".bkit", "allowlist.json"), path.join(tmpDir, retired));
+        const version = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+          canonicalHashes: Record<string, string>;
+        };
+        version.canonicalHashes[retired] = sha256(
+          fs.readFileSync(path.join(tmpDir, retired), "utf-8"),
+        );
+        fs.writeFileSync(versionPath, JSON.stringify(version, null, 2) + "\n", "utf-8");
 
-      expect(runBkit(["upgrade"]).status).toBe(0);
-      expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
-      expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
-      const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
-        canonicalHashes: Record<string, string>;
-      };
-      expect(after.canonicalHashes[retired]).toBeUndefined();
-      expect(runBkit(["check"]).status).toBe(0);
-    }, 180_000);
+        expect(runBkit(["upgrade"]).status).toBe(0);
+        expect(fs.existsSync(path.join(tmpDir, retired))).toBe(false);
+        expect(fs.existsSync(path.join(tmpDir, ".bkit", "allowlist.json"))).toBe(true);
+        const after = JSON.parse(fs.readFileSync(versionPath, "utf-8")) as {
+          canonicalHashes: Record<string, string>;
+        };
+        expect(after.canonicalHashes[retired]).toBeUndefined();
+        expect(runBkit(["check"]).status).toBe(0);
+      },
+      localLimit(180_000),
+    );
   });
 
   describe("advisories — check and upgrade report what install reports", () => {
-    it("surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md", () => {
-      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+    it(
+      "surfaces test-file-script-missing on check, and upgrade rewrites .bkit/advisories.md",
+      () => {
+        const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
 
-      const install = runBkit(["install", "--claude"]);
-      expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+        const install = runBkit(["install", "--claude"]);
+        expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
 
-      const check = runBkit(["check"]);
-      expect(`${check.stdout}\n${check.stderr}`).toContain("test-file-script-missing");
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
+        const check = runBkit(["check"]);
+        expect(`${check.stdout}\n${check.stderr}`).toContain("test-file-script-missing");
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toContain("test-file-script-missing");
 
-      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
-      const upgrade = runBkit(["upgrade"]);
-      const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
-      expect(upgrade.status, upgradeCombined).toBe(0);
-      expect(upgradeCombined).toContain("test-file-script-missing");
-      const after = fs.readFileSync(advisoriesPath, "utf-8");
-      expect(after).not.toContain("STALE-ADVISORIES");
-      expect(after).toContain("_Mode: upgrade_");
-      expect(after).toContain("test-file-script-missing");
-    }, 180_000);
+        fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+        const upgrade = runBkit(["upgrade"]);
+        const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
+        expect(upgrade.status, upgradeCombined).toBe(0);
+        expect(upgradeCombined).toContain("test-file-script-missing");
+        const after = fs.readFileSync(advisoriesPath, "utf-8");
+        expect(after).not.toContain("STALE-ADVISORIES");
+        expect(after).toContain("_Mode: upgrade_");
+        expect(after).toContain("test-file-script-missing");
+      },
+      localLimit(180_000),
+    );
 
-    it("a dry-run upgrade leaves .bkit/advisories.md alone", () => {
-      const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
-      runBkit(["install", "--claude"]);
-      fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
-      const upgrade = runBkit(["upgrade", "--dry-run"]);
-      expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
-      expect(fs.readFileSync(advisoriesPath, "utf-8")).toBe("STALE-ADVISORIES\n");
-    }, 180_000);
+    it(
+      "a dry-run upgrade leaves .bkit/advisories.md alone",
+      () => {
+        const advisoriesPath = path.join(tmpDir, ".bkit", "advisories.md");
+        runBkit(["install", "--claude"]);
+        fs.writeFileSync(advisoriesPath, "STALE-ADVISORIES\n", "utf-8");
+        const upgrade = runBkit(["upgrade", "--dry-run"]);
+        expect(upgrade.status, `${upgrade.stdout}\n${upgrade.stderr}`).toBe(0);
+        expect(fs.readFileSync(advisoriesPath, "utf-8")).toBe("STALE-ADVISORIES\n");
+      },
+      localLimit(180_000),
+    );
   });
 });
 

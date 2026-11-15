@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { substituteWorkflow } from "../../render/trackers";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
 const WORKFLOWS = path.join(REPO_ROOT, ".bkit", "core", "workflows");
@@ -107,13 +108,17 @@ describe("workflow shell fences", () => {
     expect(fence).toEqual({ file: "x.md", line: 2, body: 'echo "DUMMY"\n' });
   });
 
-  it("every fence parses under bash -n", { timeout: 60_000 }, () => {
+  it("every fence parses under bash -n", { timeout: localLimit(60_000) }, () => {
     expect(syntaxErrors("bash")).toEqual([]);
   });
 
-  it.skipIf(!hasShell("zsh"))("every fence parses under zsh -n", { timeout: 60_000 }, () => {
-    expect(syntaxErrors("zsh")).toEqual([]);
-  });
+  it.skipIf(!hasShell("zsh"))(
+    "every fence parses under zsh -n",
+    { timeout: localLimit(60_000) },
+    () => {
+      expect(syntaxErrors("zsh")).toEqual([]);
+    },
+  );
 });
 
 // Git, GitHub and file I/O belong to `bkit` verbs: a workflow fence never calls `git` or

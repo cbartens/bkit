@@ -21,6 +21,7 @@ import {
   syncCoverage,
   type CorpusFile,
 } from "./instructions";
+import { localLimit } from "../../../../vitest.timeout-budget";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const STORE = fs.readFileSync(path.join(REPO_ROOT, ".bkit/instructions.md"), "utf-8");
@@ -332,11 +333,11 @@ describe("open review items", () => {
 });
 
 describe("the repo", () => {
-  it("has no coverage findings", { timeout: 60_000 }, () => {
+  it("has no coverage findings", { timeout: localLimit(60_000) }, () => {
     expect(checkCoverage(STORE, CORPUS)).toEqual([]);
   });
 
-  it("has no unreviewed near-alike entries", { timeout: 60_000 }, () => {
+  it("has no unreviewed near-alike entries", { timeout: localLimit(60_000) }, () => {
     expect(similarEntries(STORE)).toEqual([]);
   });
 
@@ -344,15 +345,23 @@ describe("the repo", () => {
     expect(openFits(STORE)).toEqual([]);
   });
 
-  it("every prompt carries verbatim each rule its carry line names", { timeout: 60_000 }, () => {
-    expect(checkCarry(STORE, CORPUS).missing).toEqual([]);
-  });
+  it(
+    "every prompt carries verbatim each rule its carry line names",
+    { timeout: localLimit(60_000) },
+    () => {
+      expect(checkCarry(STORE, CORPUS).missing).toEqual([]);
+    },
+  );
 
-  it("no prompt carries a bkit rule its carry line does not name", { timeout: 60_000 }, () => {
-    expect(checkCarry(STORE, CORPUS).undeclared).toEqual([]);
-  });
+  it(
+    "no prompt carries a bkit rule its carry line does not name",
+    { timeout: localLimit(60_000) },
+    () => {
+      expect(checkCarry(STORE, CORPUS).undeclared).toEqual([]);
+    },
+  );
 
-  it("every prompt carries at least one rule", { timeout: 60_000 }, () => {
+  it("every prompt carries at least one rule", { timeout: localLimit(60_000) }, () => {
     expect(checkCarry(STORE, CORPUS).empty).toEqual([]);
   });
 

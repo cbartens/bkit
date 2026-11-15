@@ -12,6 +12,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { isNamedCase, judgeGreen, judgeRed } from "../../commands/workflow/tests.js";
 import { parseJunit, REPORT_ENV } from "../../commands/workflow/junit.js";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const ROOT = process.cwd();
 
@@ -77,7 +78,7 @@ const FILES = [
 describe("bkit:test:file runs every test file kind into a JUnit report", () => {
   it.each(FILES)(
     "$kind — $file reports its named test passed",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ file, test }) => {
       const report = path.join(tempDir(), "junit.xml");
       const res = pnpm({ [REPORT_ENV]: report }, "bkit:test:file", file);
@@ -88,7 +89,7 @@ describe("bkit:test:file runs every test file kind into a JUnit report", () => {
 
   it.each(FILES)(
     "$kind — with no report path the test file is left as it was",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ file }) => {
       const before = fs.readFileSync(path.join(ROOT, file), "utf-8");
       const res = pnpm({ [REPORT_ENV]: "" }, "bkit:test:file", file);
@@ -136,7 +137,7 @@ const FAILING = [
 describe("bkit:test:file reports a failing test file kind as a red", () => {
   it.each(FAILING)(
     "$kind — a failing $name exits non-zero with a <failure> for its named test",
-    { timeout: 120_000 },
+    { timeout: localLimit(120_000) },
     ({ name, test, body }) => {
       const dir = tempDir();
       const file = path.join(dir, name);
@@ -154,7 +155,7 @@ describe("bkit:test:file reports a failing test file kind as a red", () => {
 });
 
 describe("bkit:lint:file passes a test file its linter does not cover", () => {
-  it.each(FILES)("$kind — $file lints clean", { timeout: 120_000 }, ({ file }) => {
+  it.each(FILES)("$kind — $file lints clean", { timeout: localLimit(120_000) }, ({ file }) => {
     const res = pnpm({}, "bkit:lint:file", file);
     expect(res.status, `${res.stdout}\n${res.stderr}`).toBe(0);
   });
@@ -163,7 +164,7 @@ describe("bkit:lint:file passes a test file its linter does not cover", () => {
 describe("bkit:test:file ends a node --test file whose test awaits a child that never exits", () => {
   it(
     "node — a test awaiting a child that never exits fails within the limit",
-    { timeout: 100_000 },
+    { timeout: localLimit(100_000) },
     () => {
       const dir = tempDir();
       const file = path.join(dir, "hang.test.mjs");

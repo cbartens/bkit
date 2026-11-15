@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { stopGroup } from "../../../../../vitest.process-group";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const OLD_SCRIPT = path.resolve("tests/fixtures/machine-lock/stack-lock-6.0.0.sh");
 const OLD_LOCK_SCRIPT = path.resolve("tests/fixtures/machine-lock/machine-lock-6.1.1.sh");
@@ -1576,38 +1577,42 @@ describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
     expect(readLines(order)).toEqual(["x", "z", "y"]);
   });
 
-  it("concurrent first takes on a fresh cache exit 0 with no cannot-create refusal", async () => {
-    const rounds = 50;
-    const takes = 16;
-    const results: { round: number; i: number; status: string; err: string }[] = [];
-    for (let round = 0; round < rounds; round++) {
-      const env = envFor({
-        LOCAL_STACK_LOCK_WAIT_S: "60",
-        XDG_CACHE_HOME: path.join(tmp, "race-cache-" + round),
-      });
-      // One shell forks every taker back to back, so they reach the queue folder together.
-      const burst = spawnSync(
-        "bash",
-        [
-          "-c",
-          `for i in $(seq ${takes}); do ( bash "${SCRIPT}" run race$i --lock tests -- true 2>"$XDG_CACHE_HOME.err$i"; echo $? >"$XDG_CACHE_HOME.st$i" ) & done; wait`,
-        ],
-        { env, cwd: process.cwd(), encoding: "utf8" },
-      );
-      expect(burst.error).toBeUndefined();
-      for (let i = 1; i <= takes; i++) {
-        const base = path.join(tmp, "race-cache-" + round);
-        const status = fs.readFileSync(`${base}.st${i}`, "utf8").trim();
-        const err = fs.readFileSync(`${base}.err${i}`, "utf8").trim();
-        // The "in line" waiting note is normal; only a non-zero exit or a queue-folder refusal counts.
-        results.push({ round, i, status, err });
+  it(
+    "concurrent first takes on a fresh cache exit 0 with no cannot-create refusal",
+    async () => {
+      const rounds = 50;
+      const takes = 16;
+      const results: { round: number; i: number; status: string; err: string }[] = [];
+      for (let round = 0; round < rounds; round++) {
+        const env = envFor({
+          LOCAL_STACK_LOCK_WAIT_S: "60",
+          XDG_CACHE_HOME: path.join(tmp, "race-cache-" + round),
+        });
+        // One shell forks every taker back to back, so they reach the queue folder together.
+        const burst = spawnSync(
+          "bash",
+          [
+            "-c",
+            `for i in $(seq ${takes}); do ( bash "${SCRIPT}" run race$i --lock tests -- true 2>"$XDG_CACHE_HOME.err$i"; echo $? >"$XDG_CACHE_HOME.st$i" ) & done; wait`,
+          ],
+          { env, cwd: process.cwd(), encoding: "utf8" },
+        );
+        expect(burst.error).toBeUndefined();
+        for (let i = 1; i <= takes; i++) {
+          const base = path.join(tmp, "race-cache-" + round);
+          const status = fs.readFileSync(`${base}.st${i}`, "utf8").trim();
+          const err = fs.readFileSync(`${base}.err${i}`, "utf8").trim();
+          // The "in line" waiting note is normal; only a non-zero exit or a queue-folder refusal counts.
+          results.push({ round, i, status, err });
+        }
       }
-    }
-    const refused = results
-      .filter((r) => /^exit=(?!0\n)|cannot create|File exists/.test(`exit=${r.status}\n${r.err}`))
-      .map((r) => `round ${r.round} take ${r.i} exit ${r.status}: ${r.err}`);
-    expect(refused).toEqual([]);
-  }, 600_000);
+      const refused = results
+        .filter((r) => /^exit=(?!0\n)|cannot create|File exists/.test(`exit=${r.status}\n${r.err}`))
+        .map((r) => `round ${r.round} take ${r.i} exit ${r.status}: ${r.err}`);
+      expect(refused).toEqual([]);
+    },
+    localLimit(600_000),
+  );
 
   it("a waiter whose caller ignores SIGHUP keeps its place when its helper gets SIGHUP", async () => {
     const env = waitEnv();

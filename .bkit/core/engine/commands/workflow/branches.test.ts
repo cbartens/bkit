@@ -6,6 +6,7 @@ import * as path from "node:path";
 import * as prettier from "prettier";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gatePackage, useGateRunner } from "../../../../../vitest.gate-fixture";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 import { runCommand } from "../lib";
 import { LOCKFILE_REGENERATE, PACKAGE_RUNNER } from "../../shared/package-manager";
@@ -99,7 +100,7 @@ function stubBin(scripts: Record<string, string>): string {
 }
 const withBin = (bin: string) => `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
 // Each case drives several real git processes; a busy machine needs more than the 5s default.
-const GIT_TIMEOUT = 60_000;
+const GIT_TIMEOUT = localLimit(60_000);
 const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
 
 // ---------------------------------------------------------------------------

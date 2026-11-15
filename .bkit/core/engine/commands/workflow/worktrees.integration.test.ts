@@ -15,6 +15,7 @@ import { PACKAGE_RUNNER } from "../../shared/package-manager";
 import { branchesCommand } from "./branches";
 import { workflowsCommand } from "./workflows";
 import { ownershipMarker, rebaseNoteFile, worktreesCommand } from "./worktrees";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 /**
  * Filesystem refusals on demand: `symlink` refuses every symlink (Windows without
@@ -165,47 +166,51 @@ const marker = (f: Fixture) => ownershipMarker(f.repo, FID);
 
 describe("ship feature reconciliation wiring", () => {
   useGateRunner();
-  it("reconciles cloud and laptop feature commits through the command boundary", async () => {
-    const f = fixture();
-    fs.rmSync(path.join(f.repo, ".env"));
-    git(f.repo, "switch", "-q", "-c", `feat/${FID}`);
-    fs.writeFileSync(path.join(f.repo, "feature.txt"), "shared\n");
-    git(f.repo, "add", "feature.txt");
-    git(f.repo, "commit", "-qm", "feat: shared work");
-    expect(g(f.repo, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
-    git(f.seed, "fetch", "-q", "origin", `feat/${FID}`);
-    git(f.seed, "switch", "-q", "-c", `feat/${FID}`, "FETCH_HEAD");
-    fs.writeFileSync(path.join(f.seed, "cloud.txt"), "cloud contribution\n");
-    git(f.seed, "add", "cloud.txt");
-    git(f.seed, "commit", "-qm", "feat: cloud contribution");
-    const remoteTip = git(f.seed, "rev-parse", "HEAD");
-    expect(g(f.seed, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
-    fs.writeFileSync(path.join(f.repo, "laptop.txt"), "laptop contribution\n");
-    git(f.repo, "add", "laptop.txt");
-    git(f.repo, "commit", "-qm", "feat: laptop contribution");
-    const localTip = git(f.repo, "rev-parse", "HEAD");
-    const configured = await setup(f.repo, "ship", `--branch=feat/${FID}`);
-    expect(configured.code, configured.err).toBe(0);
-    const errors: string[] = [];
-    const output: string[] = [];
-    const dispatch = (args: string[]) =>
-      runCommand(["branches", ...args, "--json"], [branchesCommand], {
-        classicVerbs: new Set(),
-        cwd: configured.json.worktreePath,
-        io: { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) },
-      });
-    expect(await dispatch(["sync", "--reconcile-feature", `--fid=${FID}`]), errors.join("")).toBe(
-      0,
-    );
-    expect(await dispatch(["push", "--mode=plain"]), errors.join("")).toBe(0);
-    const published = git(f.origin, "rev-parse", `refs/heads/feat/${FID}`);
-    expect(g(f.origin, "merge-base", "--is-ancestor", localTip, published).status).toBe(0);
-    expect(g(f.origin, "merge-base", "--is-ancestor", remoteTip, published).status).toBe(0);
-    expect(git(f.origin, "show", `${published}:cloud.txt`)).toBe("cloud contribution");
-    expect(git(f.origin, "show", `${published}:laptop.txt`)).toBe("laptop contribution");
-    expect(git(f.origin, "log", "-1", "--format=%s", published)).not.toContain("[skip ci]");
-    expect(output.join("")).toContain(published);
-  }, 60_000);
+  it(
+    "reconciles cloud and laptop feature commits through the command boundary",
+    async () => {
+      const f = fixture();
+      fs.rmSync(path.join(f.repo, ".env"));
+      git(f.repo, "switch", "-q", "-c", `feat/${FID}`);
+      fs.writeFileSync(path.join(f.repo, "feature.txt"), "shared\n");
+      git(f.repo, "add", "feature.txt");
+      git(f.repo, "commit", "-qm", "feat: shared work");
+      expect(g(f.repo, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
+      git(f.seed, "fetch", "-q", "origin", `feat/${FID}`);
+      git(f.seed, "switch", "-q", "-c", `feat/${FID}`, "FETCH_HEAD");
+      fs.writeFileSync(path.join(f.seed, "cloud.txt"), "cloud contribution\n");
+      git(f.seed, "add", "cloud.txt");
+      git(f.seed, "commit", "-qm", "feat: cloud contribution");
+      const remoteTip = git(f.seed, "rev-parse", "HEAD");
+      expect(g(f.seed, "push", "-q", "origin", `HEAD:feat/${FID}`).status).toBe(0);
+      fs.writeFileSync(path.join(f.repo, "laptop.txt"), "laptop contribution\n");
+      git(f.repo, "add", "laptop.txt");
+      git(f.repo, "commit", "-qm", "feat: laptop contribution");
+      const localTip = git(f.repo, "rev-parse", "HEAD");
+      const configured = await setup(f.repo, "ship", `--branch=feat/${FID}`);
+      expect(configured.code, configured.err).toBe(0);
+      const errors: string[] = [];
+      const output: string[] = [];
+      const dispatch = (args: string[]) =>
+        runCommand(["branches", ...args, "--json"], [branchesCommand], {
+          classicVerbs: new Set(),
+          cwd: configured.json.worktreePath,
+          io: { stdout: (text) => output.push(text), stderr: (text) => errors.push(text) },
+        });
+      expect(await dispatch(["sync", "--reconcile-feature", `--fid=${FID}`]), errors.join("")).toBe(
+        0,
+      );
+      expect(await dispatch(["push", "--mode=plain"]), errors.join("")).toBe(0);
+      const published = git(f.origin, "rev-parse", `refs/heads/feat/${FID}`);
+      expect(g(f.origin, "merge-base", "--is-ancestor", localTip, published).status).toBe(0);
+      expect(g(f.origin, "merge-base", "--is-ancestor", remoteTip, published).status).toBe(0);
+      expect(git(f.origin, "show", `${published}:cloud.txt`)).toBe("cloud contribution");
+      expect(git(f.origin, "show", `${published}:laptop.txt`)).toBe("laptop contribution");
+      expect(git(f.origin, "log", "-1", "--format=%s", published)).not.toContain("[skip ci]");
+      expect(output.join("")).toContain(published);
+    },
+    localLimit(60_000),
+  );
 
   async function closeWithRemoteChange(when: "before" | "after-proof" | "recreated") {
     const f = fixture();
@@ -314,11 +319,15 @@ describe("ship feature reconciliation wiring", () => {
     }
   }
 
-  it("keeps a newer remote feature tip while closing the landed local tip", async () => {
-    await closeWithRemoteChange("before");
-    expect(await closeWithRemoteChange("after-proof")).toBe(true);
-    expect(await closeWithRemoteChange("recreated")).toBe(true);
-  }, 60_000);
+  it(
+    "keeps a newer remote feature tip while closing the landed local tip",
+    async () => {
+      await closeWithRemoteChange("before");
+      expect(await closeWithRemoteChange("after-proof")).toBe(true);
+      expect(await closeWithRemoteChange("recreated")).toBe(true);
+    },
+    localLimit(60_000),
+  );
 });
 
 describe("bkit worktrees setup — mint (create)", () => {

@@ -16,7 +16,7 @@ BKIT_GUARDED_PATTERN='^(user\.(name|email)|core\.(bare|worktree))$'
 
 # Every bats test gets a time limit, so a hung test fails with `timeout after` and the run ends
 # (docs/testing.md § Time limits). node's runners pass BATS_TEST_TIMEOUT already; `pnpm bkit:test:bats`
-# runs no node code first. 30s under CI, else 180s (30s x MAX_LOAD_FACTOR 6 in vitest.timeout-budget.ts).
+# runs no node code first. 30s under CI, else 180s (30s x LOCAL_HANG_FACTOR 6 in vitest.timeout-budget.ts).
 setup_suite() {
   local var common
   if [ -n "${CI:-}" ]; then

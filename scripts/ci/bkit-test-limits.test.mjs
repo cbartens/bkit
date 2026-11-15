@@ -25,6 +25,7 @@ test("gives --test-timeout from the integration budget and --test-force-exit", (
   assert.equal(local.length, 2);
   assert.match(local[0], /^--test-timeout=\d+$/);
   assert.ok(Number(local[0].split("=")[1]) >= 30000, local[0]);
+  assert.equal(local[0], "--test-timeout=180000");
   assert.equal(local[1], "--test-force-exit");
 });
 
@@ -36,4 +37,5 @@ test("gives the bats limit in whole seconds, 30 under CI", (t) => {
   const local = withCi(t, undefined, () => batsTestTimeoutSeconds());
   assert.ok(Number.isInteger(local), String(local));
   assert.ok(local >= 30, String(local));
+  assert.equal(local, 180);
 });

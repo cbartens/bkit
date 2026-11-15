@@ -21,7 +21,7 @@ import * as path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { loadFactor } from "../../../../vitest.timeout-budget";
+import { localLimit } from "../../../../vitest.timeout-budget";
 import {
   NEAR_COPY,
   SHARED_MIN,
@@ -54,9 +54,9 @@ import { substituteWorkflow } from "../render/trackers";
 
 /**
  * The whole-corpus cases' time limit: a 60s base for a CPU-bound scan of every agent-read
- * file, scaled by the load factor the tier budget uses (1 on CI).
+ * file, scaled by `localLimit` (1 under CI, else LOCAL_HANG_FACTOR).
  */
-const CORPUS_CASE = { timeout: Math.ceil(60_000 * loadFactor()) };
+const CORPUS_CASE = { timeout: localLimit(60_000) };
 
 const REPO_ROOT = path.resolve(__dirname, "../../../..");
 const STORE = fs.readFileSync(path.join(REPO_ROOT, ".bkit/instructions.md"), "utf-8");

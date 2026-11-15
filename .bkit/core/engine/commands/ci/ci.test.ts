@@ -19,6 +19,7 @@ import {
   resolveBaseRef,
   slopScanArgv,
 } from "./ci";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const REPO = path.resolve(__dirname, "../../../../..");
 const REPO_BIN = path.join(REPO, "node_modules", ".bin");
@@ -504,76 +505,96 @@ describe("bkit ci slop — real slop-scan", () => {
     return { cwd, base };
   };
 
-  it("a genuinely new finding fails the gate", async () => {
-    const { cwd, base } = realRepo({ "x.ts": CLEAN });
-    write(cwd, "y.ts", EMPTY_CATCH);
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(1);
-    expect(r.json.netFindingCount).toBeGreaterThan(0);
-    expect(r.json.findings).toContainEqual(
-      expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
-    );
-    expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
-    expectCleaned(cwd);
-  }, 30_000);
+  it(
+    "a genuinely new finding fails the gate",
+    async () => {
+      const { cwd, base } = realRepo({ "x.ts": CLEAN });
+      write(cwd, "y.ts", EMPTY_CATCH);
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(1);
+      expect(r.json.netFindingCount).toBeGreaterThan(0);
+      expect(r.json.findings).toContainEqual(
+        expect.objectContaining({ status: "added", path: "y.ts", line: expect.any(Number) }),
+      );
+      expect(r.err).toMatch(/added {5}y\.ts:\d+ {2}\S+/);
+      expectCleaned(cwd);
+    },
+    localLimit(30_000),
+  );
 
-  it("names the file and rule when a per-file finding's count grows (score rise, flat count)", async () => {
-    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
-    write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(1);
-    expect(r.json.netFindingCount).toBe(0);
-    expect(
-      r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
-    ).toEqual(["y.ts:3", "y.ts:8"]);
-    expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
-  }, 30_000);
+  it(
+    "names the file and rule when a per-file finding's count grows (score rise, flat count)",
+    async () => {
+      const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+      write(cwd, "y.ts", "// shifted\n" + EMPTY_CATCH + EMPTY_CATCH.replace("risky", "risky2"));
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(1);
+      expect(r.json.netFindingCount).toBe(0);
+      expect(
+        r.json.findings.map((f: { path: string; line: number }) => `${f.path}:${f.line}`),
+      ).toEqual(["y.ts:3", "y.ts:8"]);
+      expect(r.err).toContain("y.ts:8  defensive.empty-catch  Found 2 empty catch blocks");
+    },
+    localLimit(30_000),
+  );
 
-  it("an unchanged tree nets to zero and passes — and every gated summary field is present", async () => {
-    const { cwd, base } = realRepo({ "x.ts": CLEAN });
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(0);
-    expect(r.json).toMatchObject({ passed: true, netFindingCount: 0 });
-  }, 30_000);
+  it(
+    "an unchanged tree nets to zero and passes — and every gated summary field is present",
+    async () => {
+      const { cwd, base } = realRepo({ "x.ts": CLEAN });
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ passed: true, netFindingCount: 0 });
+    },
+    localLimit(30_000),
+  );
 
-  it("a pre-existing finding that merely moves nets to zero and passes (#226)", async () => {
-    const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
-    write(cwd, "y.ts", "// new line one\n// new line two\n" + EMPTY_CATCH);
-    const r = await run(cwd, [`--base=${base}`]);
-    expect(r.code).toBe(0);
-    expect(r.json.netFindingCount).toBe(0);
-  }, 30_000);
+  it(
+    "a pre-existing finding that merely moves nets to zero and passes (#226)",
+    async () => {
+      const { cwd, base } = realRepo({ "y.ts": EMPTY_CATCH });
+      write(cwd, "y.ts", "// new line one\n// new line two\n" + EMPTY_CATCH);
+      const r = await run(cwd, [`--base=${base}`]);
+      expect(r.code).toBe(0);
+      expect(r.json.netFindingCount).toBe(0);
+    },
+    localLimit(30_000),
+  );
 });
 
 describe("bkit ci slop — interrupted", () => {
-  it("removes the base worktree when SIGTERM arrives mid-scan, then dies of the signal", () => {
-    const { cwd, base } = repo();
-    // The fake signals its parent (the command's process) while the scan blocks.
-    const bin = mkdir("bkit-ci-sig-");
-    fs.writeFileSync(
-      path.join(bin, "slop-scan"),
-      `#!/bin/sh\nkill -TERM $PPID\nsleep 0.2\necho '${JSON.stringify({ summary: summary() })}'\n`,
-      { mode: 0o755 },
-    );
-    const driver = path.join(bin, "driver.mts");
-    fs.writeFileSync(
-      driver,
-      [
-        `import { runCommand } from ${JSON.stringify(path.join(__dirname, "..", "lib.ts"))};`,
-        `import { ciCommand } from ${JSON.stringify(path.join(__dirname, "ci.ts"))};`,
-        `const code = await runCommand(["ci", "slop", "--base=${base}"], [ciCommand], { classicVerbs: new Set(), cwd: ${JSON.stringify(cwd)} });`,
-        `process.stdout.write("returned " + code);`,
-      ].join("\n"),
-    );
-    const res = spawnSync(requireTsx(), [driver], {
-      cwd: REPO,
-      encoding: "utf-8",
-      env: { ...process.env, PATH: pathWith(bin) },
-    });
-    expect(res.stdout).not.toContain("returned");
-    expect(diedOfSigterm(res)).toBe(true);
-    expectCleaned(cwd);
-  }, 30_000);
+  it(
+    "removes the base worktree when SIGTERM arrives mid-scan, then dies of the signal",
+    () => {
+      const { cwd, base } = repo();
+      // The fake signals its parent (the command's process) while the scan blocks.
+      const bin = mkdir("bkit-ci-sig-");
+      fs.writeFileSync(
+        path.join(bin, "slop-scan"),
+        `#!/bin/sh\nkill -TERM $PPID\nsleep 0.2\necho '${JSON.stringify({ summary: summary() })}'\n`,
+        { mode: 0o755 },
+      );
+      const driver = path.join(bin, "driver.mts");
+      fs.writeFileSync(
+        driver,
+        [
+          `import { runCommand } from ${JSON.stringify(path.join(__dirname, "..", "lib.ts"))};`,
+          `import { ciCommand } from ${JSON.stringify(path.join(__dirname, "ci.ts"))};`,
+          `const code = await runCommand(["ci", "slop", "--base=${base}"], [ciCommand], { classicVerbs: new Set(), cwd: ${JSON.stringify(cwd)} });`,
+          `process.stdout.write("returned " + code);`,
+        ].join("\n"),
+      );
+      const res = spawnSync(requireTsx(), [driver], {
+        cwd: REPO,
+        encoding: "utf-8",
+        env: { ...process.env, PATH: pathWith(bin) },
+      });
+      expect(res.stdout).not.toContain("returned");
+      expect(diedOfSigterm(res)).toBe(true);
+      expectCleaned(cwd);
+    },
+    localLimit(30_000),
+  );
 });
 
 // ---------------------------------------------------------------------------

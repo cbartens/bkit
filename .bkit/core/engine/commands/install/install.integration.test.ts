@@ -19,6 +19,7 @@ import { resolveNetworkAllowlist } from "../../install/cloud-env";
 import { listFilesRecursive, remapTemplateDest } from "../../install/template-copies";
 import { getCoreRoot, getSharedRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -589,63 +590,67 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
 // ---------------------------------------------------------------------------
 
 describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (P2.T10)", () => {
-  it("--auto-revert: exits 1, auto-revert message present, Tier-1 writes reverted", () => {
-    // Set up a Phase 3 blocker condition (same as Scenario 7): a stale bkit-managed
-    // marker on a host this run does NOT install (claude).
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({
-        name: "test-consumer",
-        version: "0.0.0",
-        devDependencies: {},
-        scripts: { test: "echo ok" },
-      }),
-    );
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
-      "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
-    );
+  it(
+    "--auto-revert: exits 1, auto-revert message present, Tier-1 writes reverted",
+    () => {
+      // Set up a Phase 3 blocker condition (same as Scenario 7): a stale bkit-managed
+      // marker on a host this run does NOT install (claude).
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({
+          name: "test-consumer",
+          version: "0.0.0",
+          devDependencies: {},
+          scripts: { test: "echo ok" },
+        }),
+      );
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+      fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".claude", "agents", "bkit-stale.md"),
+        "<!-- bkit:managed v1.0.0 — stale — do not edit -->\n\nstale content\n",
+      );
 
-    const bkitInstallPath = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../cli.ts",
-    );
+      const bkitInstallPath = path.resolve(
+        path.dirname(new URL(import.meta.url).pathname),
+        "../../cli.ts",
+      );
 
-    // Capture pre-install state: .bkit/version must not exist
-    const versionFilePath = path.join(tmpDir, ".bkit", "version");
-    expect(fs.existsSync(versionFilePath)).toBe(false);
+      // Capture pre-install state: .bkit/version must not exist
+      const versionFilePath = path.join(tmpDir, ".bkit", "version");
+      expect(fs.existsSync(versionFilePath)).toBe(false);
 
-    const result = spawnSync(
-      requireTsx(),
-      [bkitInstallPath, "install", "--cursor", "--auto-revert"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: {
-          ...process.env,
-          NODE_NO_WARNINGS: "1",
-          // Protected branch → the stale managed marker is a blocker.
-          GITHUB_REF_NAME: "dev",
+      const result = spawnSync(
+        requireTsx(),
+        [bkitInstallPath, "install", "--cursor", "--auto-revert"],
+        {
+          cwd: tmpDir,
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            NODE_NO_WARNINGS: "1",
+            // Protected branch → the stale managed marker is a blocker.
+            GITHUB_REF_NAME: "dev",
+          },
+          timeout: 60_000,
         },
-        timeout: 60_000,
-      },
-    );
+      );
 
-    // Exit 1 due to Phase 3 blocker
-    expect(result.status).toBe(1);
+      // Exit 1 due to Phase 3 blocker
+      expect(result.status).toBe(1);
 
-    const combined = combinedOutput(result);
+      const combined = combinedOutput(result);
 
-    // Auto-revert log messages must be present — confirms in-process revert ran
-    expect(combined).toContain("--auto-revert");
+      // Auto-revert log messages must be present — confirms in-process revert ran
+      expect(combined).toContain("--auto-revert");
 
-    // The Tier-1 .bkit/version written by --core MUST be absent after
-    // auto-revert (runUninstall deleted it as a Tier-1 file).
-    // This is the byte-identical-to-pre-install check: file was absent → now absent.
-    expect(fs.existsSync(versionFilePath)).toBe(false);
-  }, 90_000);
+      // The Tier-1 .bkit/version written by --core MUST be absent after
+      // auto-revert (runUninstall deleted it as a Tier-1 file).
+      // This is the byte-identical-to-pre-install check: file was absent → now absent.
+      expect(fs.existsSync(versionFilePath)).toBe(false);
+    },
+    localLimit(90_000),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1216,42 +1221,46 @@ describe("T10 — claudeAllowDerived survives a real install", () => {
     fs.writeFileSync(p, `${body}${block}`);
   };
 
-  it("records the resolved grant set, then updates it when allowed-domains shrinks", () => {
-    const { bkitInstallPath } = paths();
-    fs.writeFileSync(
-      path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "t10", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
-    );
-    // preflight requires a repo root; the other spawned-install cases seed it the same way
-    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+  it(
+    "records the resolved grant set, then updates it when allowed-domains shrinks",
+    () => {
+      const { bkitInstallPath } = paths();
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "t10", version: "1.0.0", packageManager: "pnpm@10.34.3" }, null, 2),
+      );
+      // preflight requires a repo root; the other spawned-install cases seed it the same way
+      fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    const first = install(bkitInstallPath);
-    expect(first.status, `install crashed:\n${first.stdout}\n${first.stderr}`).toBe(0);
+      const first = install(bkitInstallPath);
+      expect(first.status, `install crashed:\n${first.stdout}\n${first.stderr}`).toBe(0);
 
-    const recorded = readDerived();
-    expect(Array.isArray(recorded)).toBe(true);
-    expect(recorded.length).toBeGreaterThan(0);
-    // equal to what the resolver produces for this consumer, not merely non-empty
-    expect([...recorded].sort()).toEqual(
-      resolveNetworkAllowlist(tmpDir)
-        .map((d) => `WebFetch(domain:${d})`)
-        .sort(),
-    );
+      const recorded = readDerived();
+      expect(Array.isArray(recorded)).toBe(true);
+      expect(recorded.length).toBeGreaterThan(0);
+      // equal to what the resolver produces for this consumer, not merely non-empty
+      expect([...recorded].sort()).toEqual(
+        resolveNetworkAllowlist(tmpDir)
+          .map((d) => `WebFetch(domain:${d})`)
+          .sort(),
+      );
 
-    // widen, then shrink: the record must follow the derived set both ways
-    setAllowedDomains(["shrink-probe.example"]);
-    expect(install(bkitInstallPath).status).toBe(0);
-    expect(readDerived()).toContain("WebFetch(domain:shrink-probe.example)");
+      // widen, then shrink: the record must follow the derived set both ways
+      setAllowedDomains(["shrink-probe.example"]);
+      expect(install(bkitInstallPath).status).toBe(0);
+      expect(readDerived()).toContain("WebFetch(domain:shrink-probe.example)");
 
-    setAllowedDomains([]);
-    expect(install(bkitInstallPath).status).toBe(0);
-    expect(readDerived()).not.toContain("WebFetch(domain:shrink-probe.example)");
-    // and the grant itself was withdrawn from settings, not just from the record
-    const allow = JSON.parse(
-      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
-    ).permissions.allow;
-    expect(allow).not.toContain("WebFetch(domain:shrink-probe.example)");
-  }, 180_000);
+      setAllowedDomains([]);
+      expect(install(bkitInstallPath).status).toBe(0);
+      expect(readDerived()).not.toContain("WebFetch(domain:shrink-probe.example)");
+      // and the grant itself was withdrawn from settings, not just from the record
+      const allow = JSON.parse(
+        fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+      ).permissions.allow;
+      expect(allow).not.toContain("WebFetch(domain:shrink-probe.example)");
+    },
+    localLimit(180_000),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1304,53 +1313,65 @@ describe("Scenario — Codex + Antigravity install side by side without conflict
     expect(check.status, `${label}: check drifted:\n${check.stdout}\n${check.stderr}`).toBe(0);
   };
 
-  it("combined `--codex --antigravity`: skills at separate paths, check green, advisory fires", () => {
-    seedConsumer();
-    const install = run(["install", "--codex", "--antigravity", "--tracker=github"]);
-    expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+  it(
+    "combined `--codex --antigravity`: skills at separate paths, check green, advisory fires",
+    () => {
+      seedConsumer();
+      const install = run(["install", "--codex", "--antigravity", "--tracker=github"]);
+      expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
 
-    // Codex keeps `.agents/skills/` with its own (Claude-spelled) vocabulary.
-    expect(exists(CODEX_SKILL)).toBe(true);
-    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
-    expect(read(CODEX_SKILL)).not.toContain("`view_file`");
+      // Codex keeps `.agents/skills/` with its own (Claude-spelled) vocabulary.
+      expect(exists(CODEX_SKILL)).toBe(true);
+      expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+      expect(read(CODEX_SKILL)).not.toContain("`view_file`");
 
-    // Antigravity lives entirely in the plugin, with its own (view_file) vocabulary.
-    expect(exists(".agents/plugins/bkit/plugin.json")).toBe(true);
-    expect(exists(".agents/plugins/bkit/hooks.json")).toBe(true);
-    expect(exists(".agents/plugins/bkit/hooks/bkit-gateguard.cjs")).toBe(true);
-    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
-    // Workflow skills that delegate to subagents point at the plugin's agents/ dir.
-    expect(read(".agents/plugins/bkit/skills/bkit-build/SKILL.md")).toContain(
-      ".agents/plugins/bkit/agents/",
-    );
+      // Antigravity lives entirely in the plugin, with its own (view_file) vocabulary.
+      expect(exists(".agents/plugins/bkit/plugin.json")).toBe(true);
+      expect(exists(".agents/plugins/bkit/hooks.json")).toBe(true);
+      expect(exists(".agents/plugins/bkit/hooks/bkit-gateguard.cjs")).toBe(true);
+      expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+      // Workflow skills that delegate to subagents point at the plugin's agents/ dir.
+      expect(read(".agents/plugins/bkit/skills/bkit-build/SKILL.md")).toContain(
+        ".agents/plugins/bkit/agents/",
+      );
 
-    // Both installed → the overlap advisory is emitted.
-    expect(`${install.stdout}\n${install.stderr}`).toContain("antigravity-codex-skill-overlap");
+      // Both installed → the overlap advisory is emitted.
+      expect(`${install.stdout}\n${install.stderr}`).toContain("antigravity-codex-skill-overlap");
 
-    assertCleanCheck("combined");
-  }, 180_000);
+      assertCleanCheck("combined");
+    },
+    localLimit(180_000),
+  );
 
-  it("separate `--antigravity` then `--codex`: both land at their own paths, check green", () => {
-    seedConsumer();
-    expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
-    expect(exists(PLUGIN_SKILL)).toBe(true);
-    // Codex not installed yet → no `.agents/skills/`.
-    expect(exists(".agents/skills")).toBe(false);
+  it(
+    "separate `--antigravity` then `--codex`: both land at their own paths, check green",
+    () => {
+      seedConsumer();
+      expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
+      expect(exists(PLUGIN_SKILL)).toBe(true);
+      // Codex not installed yet → no `.agents/skills/`.
+      expect(exists(".agents/skills")).toBe(false);
 
-    expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
-    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
-    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
-    assertCleanCheck("antigravity→codex");
-  }, 180_000);
+      expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
+      expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+      expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+      assertCleanCheck("antigravity→codex");
+    },
+    localLimit(180_000),
+  );
 
-  it("separate `--codex` then `--antigravity`: both land at their own paths, check green", () => {
-    seedConsumer();
-    expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
-    expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
-    expect(read(CODEX_SKILL)).toContain("`Skill` tool");
-    expect(read(PLUGIN_SKILL)).toContain("`view_file`");
-    assertCleanCheck("codex→antigravity");
-  }, 180_000);
+  it(
+    "separate `--codex` then `--antigravity`: both land at their own paths, check green",
+    () => {
+      seedConsumer();
+      expect(run(["install", "--codex", "--tracker=github"]).status).toBe(0);
+      expect(run(["install", "--antigravity", "--tracker=github"]).status).toBe(0);
+      expect(read(CODEX_SKILL)).toContain("`Skill` tool");
+      expect(read(PLUGIN_SKILL)).toContain("`view_file`");
+      assertCleanCheck("codex→antigravity");
+    },
+    localLimit(180_000),
+  );
 });
 
 // A tracker switch and an active-provider uninstall leave a consumer `bkit check` passes.
@@ -1440,19 +1461,23 @@ describe("Scenario — tracker switch and active opencode provider removal leave
     240_000,
   );
 
-  it("uninstall --opencode=<active> re-renders the agents to the remaining provider", () => {
-    seedConsumer();
-    runOk(["install", "--opencode=openrouter"]);
-    runOk(["install", "--opencode=ollama"]);
-    expect(agentModels().every((m) => m.startsWith("ollama/"))).toBe(true);
+  it(
+    "uninstall --opencode=<active> re-renders the agents to the remaining provider",
+    () => {
+      seedConsumer();
+      runOk(["install", "--opencode=openrouter"]);
+      runOk(["install", "--opencode=ollama"]);
+      expect(agentModels().every((m) => m.startsWith("ollama/"))).toBe(true);
 
-    const out = runOk(["uninstall", "--opencode=ollama"]);
-    expect(out).toContain('active provider switched to "openrouter"');
-    const models = agentModels();
-    expect(models.length).toBeGreaterThan(0);
-    expect(models.filter((m) => !m.startsWith("openrouter/"))).toEqual([]);
-    runOk(["check"]);
-  }, 240_000);
+      const out = runOk(["uninstall", "--opencode=ollama"]);
+      expect(out).toContain('active provider switched to "openrouter"');
+      const models = agentModels();
+      expect(models.length).toBeGreaterThan(0);
+      expect(models.filter((m) => !m.startsWith("openrouter/"))).toEqual([]);
+      runOk(["check"]);
+    },
+    localLimit(240_000),
+  );
 });
 
 describe("5.x package.json layout — the tracker survives the first re-render", () => {

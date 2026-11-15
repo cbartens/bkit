@@ -30,9 +30,10 @@ import {
   stepsBlock,
   timeBlock,
 } from "./run-facts";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // Real git repos per test; a busy machine needs more than the default 5s.
-const TIMEOUT = { timeout: 30_000 };
+const TIMEOUT = { timeout: localLimit(30_000) };
 
 const dirs: string[] = [];
 afterEach(() => {

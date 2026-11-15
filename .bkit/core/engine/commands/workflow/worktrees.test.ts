@@ -19,6 +19,7 @@ import {
   worktreeDir,
   worktreesCommand,
 } from "./worktrees";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const FID = "42-thing";
 const MONTH = "202610";
@@ -463,28 +464,32 @@ describe("bkit worktrees setup — ship branch", () => {
     expect(git(cwd, "rev-parse", `refs/remotes/origin/feat/${FID}`)).toBe(expected);
   });
 
-  it("refuses inherited unpublished dev commits in every ship mode", async () => {
-    const created = inheritedShip("created");
-    const resumed = inheritedShip("resumed");
-    const adopted = inheritedShip("adopted");
-    const a = await setup(created.cwd, "ship", ...created.flags);
-    const b = await setup(resumed.cwd, "ship", ...resumed.flags);
-    const c = await setup(adopted.cwd, "ship", ...adopted.flags);
-    expect([a.code, b.code, c.code]).toEqual([7, 7, 7]);
-    expect(a.err).toMatch(/unpublished|unpushed/);
-    expect(b.err).toMatch(/unpublished|unpushed/);
-    expect(c.err).toMatch(/unpublished|unpushed/);
-    expect(git(created.origin, "branch", "--list", `feat/${FID}`)).toBe("");
-    expect(git(resumed.cwd, "rev-parse", `feat/${FID}`)).toBe(resumed.inherited);
-    expect(git(adopted.cwd, "rev-parse", `feat/${FID}`)).toBe(adopted.inherited);
+  it(
+    "refuses inherited unpublished dev commits in every ship mode",
+    async () => {
+      const created = inheritedShip("created");
+      const resumed = inheritedShip("resumed");
+      const adopted = inheritedShip("adopted");
+      const a = await setup(created.cwd, "ship", ...created.flags);
+      const b = await setup(resumed.cwd, "ship", ...resumed.flags);
+      const c = await setup(adopted.cwd, "ship", ...adopted.flags);
+      expect([a.code, b.code, c.code]).toEqual([7, 7, 7]);
+      expect(a.err).toMatch(/unpublished|unpushed/);
+      expect(b.err).toMatch(/unpublished|unpushed/);
+      expect(c.err).toMatch(/unpublished|unpushed/);
+      expect(git(created.origin, "branch", "--list", `feat/${FID}`)).toBe("");
+      expect(git(resumed.cwd, "rev-parse", `feat/${FID}`)).toBe(resumed.inherited);
+      expect(git(adopted.cwd, "rev-parse", `feat/${FID}`)).toBe(adopted.inherited);
 
-    const independent = inheritedShip("adopted");
-    git(independent.cwd, "switch", "-q", "-c", "independent", "origin/dev");
-    git(independent.cwd, "commit", "-q", "--allow-empty", "-m", "feat: independent work");
-    const allowed = await setup(independent.cwd, "ship", "--branch=independent");
-    expect(allowed.code, allowed.err).toBe(0);
-    expect(allowed.json.branch).toBe("independent");
-  }, 60_000);
+      const independent = inheritedShip("adopted");
+      git(independent.cwd, "switch", "-q", "-c", "independent", "origin/dev");
+      git(independent.cwd, "commit", "-q", "--allow-empty", "-m", "feat: independent work");
+      const allowed = await setup(independent.cwd, "ship", "--branch=independent");
+      expect(allowed.code, allowed.err).toBe(0);
+      expect(allowed.json.branch).toBe("independent");
+    },
+    localLimit(60_000),
+  );
 
   it("names inherited commits and ship recovery in the refusal", async () => {
     const f = inheritedShip("adopted");

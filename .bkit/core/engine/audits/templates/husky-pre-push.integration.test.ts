@@ -5,6 +5,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 // Gate-order fixtures stand in for package execution; the min-push suite runs the real CLI.
 const UNWRAP_PUSH_GATE =
@@ -1545,27 +1546,31 @@ describe(".husky/pre-push direnv", () => {
 });
 
 describe("the gate's vitest run", () => {
-  it("the gate's vitest run does not inherit BKIT_PRE_PUSH_LOGGED", () => {
-    const env: NodeJS.ProcessEnv = { ...process.env, BKIT_PRE_PUSH_LOGGED: "1" };
-    delete env.CI;
-    delete env.GITHUB_ACTIONS;
-    const result = spawnSync(
-      "pnpm",
-      [
-        "exec",
-        "vitest",
-        "run",
-        "-c",
-        "vitest.unit.config.ts",
-        ".bkit/core/engine/checks/tips/catalogue.test.ts",
-        "-t",
-        "inside the pre-push hook",
-      ],
-      { cwd: process.cwd(), encoding: "utf-8", timeout: 120_000, env },
-    );
-    expect(`${result.stdout}\n${result.stderr}`, "vitest output").toContain("1 passed");
-    expect(result.status).toBe(0);
-  }, 150_000);
+  it(
+    "the gate's vitest run does not inherit BKIT_PRE_PUSH_LOGGED",
+    () => {
+      const env: NodeJS.ProcessEnv = { ...process.env, BKIT_PRE_PUSH_LOGGED: "1" };
+      delete env.CI;
+      delete env.GITHUB_ACTIONS;
+      const result = spawnSync(
+        "pnpm",
+        [
+          "exec",
+          "vitest",
+          "run",
+          "-c",
+          "vitest.unit.config.ts",
+          ".bkit/core/engine/checks/tips/catalogue.test.ts",
+          "-t",
+          "inside the pre-push hook",
+        ],
+        { cwd: process.cwd(), encoding: "utf-8", timeout: 120_000, env },
+      );
+      expect(`${result.stdout}\n${result.stderr}`, "vitest output").toContain("1 passed");
+      expect(result.status).toBe(0);
+    },
+    localLimit(150_000),
+  );
 });
 
 // ---------------------------------------------------------------------------

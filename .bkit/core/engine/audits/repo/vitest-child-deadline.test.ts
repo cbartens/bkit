@@ -7,6 +7,7 @@
 import * as childProcess from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { withChildDeadline } from "../../../../../vitest.child-deadline";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 function wrapped(remainingMs: () => number) {
   const target = {
@@ -37,7 +38,7 @@ describe("withChildDeadline", () => {
   it("leaves an explicit timeout as the caller set it", () => {
     const cp = wrapped(() => 60_000);
     const started = Date.now();
-    const result = cp.spawnSync("sleep", ["30"], { timeout: 200 });
+    const result = cp.spawnSync("sleep", ["30"], { timeout: localLimit(200) });
     expect(Date.now() - started).toBeLessThan(10_000);
     expect(result.error).toBeDefined();
     expect((result.error as NodeJS.ErrnoException).code).toBe("ETIMEDOUT");

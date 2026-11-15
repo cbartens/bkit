@@ -292,7 +292,7 @@ PENDING
 ### Step 4 — Source
 
 - Capability-register rows: read the step result on the latest dev run with `gh run list --workflow bkit-ci.yml --branch dev --limit 5` and `gh run view {id} --json jobs`, rather than running graphify locally.
-- Flaky-test rows: confirm the cited title still exists with `git grep -c -F "{title}" HEAD -- {spec}`, and check `vitest.timeout-budget.ts` (`loadFactor`, `tierTimeouts`) before calling a timeout row fixed.
+- Flaky-test rows: confirm the cited title still exists with `git grep -c -F "{title}" HEAD -- {spec}`, and check `vitest.timeout-budget.ts` (`limitFactor`, `localLimit`, `tierTimeouts`) before calling a timeout row fixed.
 - Engine symbols (`.bkit/core/engine/**/*.ts`): Serena `find_symbol` with `include_body`; workflow and prompt text (`.bkit/core/workflows/*.md`, `.bkit/core/prompts/*.md`), hooks (`.husky/*`) and templates (`.bkit/templates/**`): `git grep -n ... HEAD --`.
 
 ### Step 6 — Classes

@@ -20,7 +20,7 @@
 
 ### Context & Goals
 
-A ledger row can record that a flake exists, but the useful part is the mechanism, and that never fits in one line. The standing danger is reading a flake as timing and widening the timeout. The reported error is usually a consequence, and a timeout bump made before the trace is read turns a real bug into a slow green. On shared dev machines, a load-scaled time budget sampled once at config or worker load goes stale mid-run, because a load ramp starves the later files. Re-read it per test file (vitest `vi.setConfig` in a setup file, jest `jest.setTimeout` in setup), with the same base and cap, and the factor pinned to 1 on CI. That freshness fix is a mechanism fix, not a widen. The failure this audit targets is a skip, a quarantine or a wider timeout standing in for a named mechanism.
+A ledger row can record that a flake exists, but the useful part is the mechanism, and that never fits in one line. The standing danger is reading a flake as timing and widening the timeout. The reported error is usually a consequence, and a timeout bump made before the trace is read turns a real bug into a slow green. Keep time limits strict under CI. Locally, use a fixed multiple of the CI limit whose only job is to catch a hang, with no load-based scaling: a limit that moves with machine load hides a slow test instead of naming it. Widening one test's limit to hide a flake is still a widen, not a fix. The failure this audit targets is a skip, a quarantine or a wider timeout standing in for a named mechanism.
 
 **Applies when:** the suite runs more than once, in CI or as a local repeat. **If** it does not → write one `N/A` row with its evidence, and never report the surface as "clean".
 

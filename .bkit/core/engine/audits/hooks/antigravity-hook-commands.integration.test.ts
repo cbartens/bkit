@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const CLI = path.resolve(".bkit/core/engine/cli.ts");
 
@@ -65,7 +66,7 @@ beforeAll(() => {
   control = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ag-cmd-control-"));
   fs.cpSync(path.join(consumer, ".agents"), path.join(control, ".agents"), { recursive: true });
   fs.rmSync(path.join(control, PLUGIN_REL, "hooks"), { recursive: true, force: true });
-}, 120_000);
+}, localLimit(120_000));
 
 afterAll(() => {
   for (const dir of [consumer, control]) {

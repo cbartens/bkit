@@ -2,8 +2,8 @@
 //
 // Five jobs: strip inherited git environment variables (below), fail any test that
 // changes the git identity or core.bare of the repo the suite runs from, point the bkit
-// config and cache folders at an empty temp folder, and re-read the load-scaled test
-// budget as each test file starts (bottom, via vitest.timeout-budget.ts), and give every
+// config and cache folders at an empty temp folder, and set the fixed CI / local test
+// limits as each test file starts (bottom, via vitest.timeout-budget.ts), and give every
 // synchronous child call that sets no `timeout` the running test's remaining time, so a hung
 // child fails the test instead of blocking the worker (vitest.child-deadline.ts).
 //
@@ -18,6 +18,7 @@ import { afterAll, afterEach, beforeEach, expect, type Task, vi } from "vitest";
 import { withChildDeadline } from "./vitest.child-deadline.ts";
 import { guardRepoConfig, repoConfigFile } from "./vitest.repo-config-guard.ts";
 import { tierTimeouts } from "./vitest.timeout-budget.ts";
+import { LIMIT_FACTOR_ENV, ciLimitFactor } from "./vitest.timeout-budget.ts";
 
 // Strip inherited git environment variables so no test can accidentally operate
 // on the real bkit repo.
@@ -100,23 +101,12 @@ if (testPath.includes(`${path.sep}audits${path.sep}hooks${path.sep}`)) {
   });
 }
 
-// Budget: re-read once per test file from `vitest.timeout-budget.ts`, scaled by how
-// contended the machine is RIGHT NOW.
+// Budget: pick the tier's limits once per test file from `vitest.timeout-budget.ts`.
 //
-// WHY: both tiers spawn real subprocesses — `git`, `tsx`, the bkit CLI, fake
-// binaries — so a budget fixed when the run starts goes stale. The box ramps under
-// the run (a parallel agent session, a build), and a file that starts late runs
-// several times slower against a number read minutes earlier. That reads as a flaky
-// product but is only ever a starved subprocess: `Error: Test timed out in 5000ms`
-// on a DIFFERENT test each run, all green in isolation. Both tiers are pre-push gates
-// (.husky/pre-push -> bkit:gate:static-unit-integration), so that starvation blocks pushes
-// on a green tree, and `--no-verify` is prohibited (.agents/rules.md). See
-// docs/failures.jsonl `subprocess-integration-tests-time-out-at-5000ms-under-high-load`.
-//
-// setupFiles run once per test FILE, so `testPath` here is that file, and the
-// re-read lands as each file starts. The config's own `...unitTimeouts()` sampled
-// the same budget once at load; this overrides it per file. CI pins the factor to 1
-// (in `loadFactor`), so the gate stays strict there.
+// setupFiles run once per test FILE, so `testPath` here is that file: integration files get the
+// integration base, every other file the unit base. The config's own `...unitTimeouts()` sets
+// the unit default; this overrides it per file. The factor is fixed (1 under CI, else
+// LOCAL_HANG_FACTOR), so no load is read.
 vi.setConfig(tierTimeouts(testPath.endsWith(".integration.test.ts")));
 const { hookTimeout } = tierTimeouts(testPath.endsWith(".integration.test.ts"));
 
@@ -180,7 +170,9 @@ syncBuiltinESMExports();
 // engine reads those (and the cloud markers) as "headless, nobody to ask"
 // (`commands/workflow/runtime.ts`, `checks/before/env.ts`). Left set, a test passes on the
 // laptop and fails in CI. Cleared after the budget above has read `CI`. A test of another
-// runtime sets its own with `vi.stubEnv`.
+// runtime sets its own with `vi.stubEnv`. The factor is recorded first, so a test file's own
+// `localLimit(N)` still reads 1 under CI.
+process.env[LIMIT_FACTOR_ENV] = String(ciLimitFactor());
 for (const key of [
   "BKIT_RUNTIME",
   "CLAUDE_CODE_REMOTE",

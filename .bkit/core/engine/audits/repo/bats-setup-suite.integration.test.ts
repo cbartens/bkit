@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 const ROOT = process.cwd();
 const BATS = path.join(ROOT, "node_modules", ".bin", "bats");
@@ -108,7 +109,7 @@ describe("tests/shell/setup_suite.bash", () => {
 });
 
 describe("a bats test's time limit", () => {
-  it("a hanging bats test fails with timeout after", { timeout: 100_000 }, () => {
+  it("a hanging bats test fails with timeout after", { timeout: localLimit(100_000) }, () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-bats-suite-"));
     temps.push(dir);
     fs.copyFileSync(SETUP_SUITE, path.join(dir, "setup_suite.bash"));

@@ -479,7 +479,7 @@ Doctrine: `docs/deployments.md` § Dependency updaters, § Renovate — fencing 
 ### Verification
 
 - `git status --porcelain` → `pnpm install --frozen-lockfile` → `pnpm bkit:gate:install-static-unit-build` → `git status --porcelain` → `pnpm bkit check`.
-- Under high load average the unit tier can time out (`test-timeout-budget` line prints the load) or the gate can be killed (exit 143). Re-run the failing file alone: `node_modules/.bin/vitest run -c vitest.unit.config.ts <file>`; then `pnpm bkit:test:bats` and `pnpm build` separately; match the timeout against open `docs/failures.jsonl` rows before calling it a batch red.
+- The unit tier can time out on a hang or the gate can be killed (exit 143). Re-run the failing file alone: `node_modules/.bin/vitest run -c vitest.unit.config.ts <file>`; then `pnpm bkit:test:bats` and `pnpm build` separately; match the timeout against open `docs/failures.jsonl` rows before calling it a batch red.
 - Override check: after the batch install, every `pnpm.overrides` entry in `package.json` that shadows an exact devDependency pin → `grep -n -A3 '^  <pkg>:' pnpm-lock.yaml` under `importers` shows `specifier` and `version`; a `version` below the manifest pin = override wins.
 - The frozen install runs husky `prepare`; after removing the worktree confirm `git config core.hooksPath` in the main checkout still prints `.husky/_`.
 - No framework doctor. Single-version check for the runtime dependency `cross-spawn` (`package.json` `dependencies`): `grep '^  cross-spawn@' pnpm-lock.yaml | sort -u | wc -l` must print 1 (each version appears once under `packages:` and once under `snapshots:`).

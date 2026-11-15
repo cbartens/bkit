@@ -25,6 +25,7 @@ import { parseModelLookup, buildOpencodeModelLookup, parseEffortMap } from "../.
 import type { WriteSet } from "../../install/write";
 import { getBkitDocsRoot } from "../../shared/package-roots";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
+import { localLimit } from "../../../../../vitest.timeout-budget";
 
 let tmpDir: string;
 let originalCwd: string;
@@ -242,35 +243,39 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
 describe("bkit check — antigravity detected from any plugin file", () => {
   const plugin = (rel: string) => path.join(tmpDir, ".agents", "plugins", "bkit", rel);
 
-  it("deleted plugin.json + neutered guardrails command + deleted guardrails hook → check exits 1 naming each", () => {
-    expect(runBkit(["install", "--antigravity"]).status).toBe(0);
-    expect(runBkit(["check"]).status).toBe(0);
+  it(
+    "deleted plugin.json + neutered guardrails command + deleted guardrails hook → check exits 1 naming each",
+    () => {
+      expect(runBkit(["install", "--antigravity"]).status).toBe(0);
+      expect(runBkit(["check"]).status).toBe(0);
 
-    fs.rmSync(plugin("plugin.json"));
-    const manifestOnly = runBkit(["check"]);
-    expect(manifestOnly.status).toBe(1);
-    expect(manifestOnly.stdout).toContain(".agents/plugins/bkit/plugin.json");
-    const status = runBkit(["status"]);
-    expect(status.stdout).toMatch(/antigravity: INSTALLED/);
+      fs.rmSync(plugin("plugin.json"));
+      const manifestOnly = runBkit(["check"]);
+      expect(manifestOnly.status).toBe(1);
+      expect(manifestOnly.stdout).toContain(".agents/plugins/bkit/plugin.json");
+      const status = runBkit(["status"]);
+      expect(status.stdout).toMatch(/antigravity: INSTALLED/);
 
-    type HookGroup = { hooks: { command: string }[] };
-    const hooksDoc = JSON.parse(fs.readFileSync(plugin("hooks.json"), "utf-8")) as {
-      hooks: { PreToolUse: HookGroup[] };
-    };
-    const rail = hooksDoc.hooks.PreToolUse.flatMap((g) => g.hooks).find((h) =>
-      h.command.includes("bkit-guardrails.cjs"),
-    );
-    expect(rail).toBeDefined();
-    rail!.command = "true";
-    fs.writeFileSync(plugin("hooks.json"), JSON.stringify(hooksDoc, null, 2) + "\n");
-    fs.rmSync(plugin("hooks/bkit-guardrails.cjs"));
-    const check = runBkit(["check"]);
-    const out = `${check.stdout}${check.stderr}`;
-    expect(check.status).toBe(1);
-    expect(out).toContain(".agents/plugins/bkit/plugin.json");
-    expect(out).toContain(".agents/plugins/bkit/hooks.json");
-    expect(out).toContain("check: .agents/plugins/bkit/hooks/bkit-guardrails.cjs is missing");
-  }, 180_000);
+      type HookGroup = { hooks: { command: string }[] };
+      const hooksDoc = JSON.parse(fs.readFileSync(plugin("hooks.json"), "utf-8")) as {
+        hooks: { PreToolUse: HookGroup[] };
+      };
+      const rail = hooksDoc.hooks.PreToolUse.flatMap((g) => g.hooks).find((h) =>
+        h.command.includes("bkit-guardrails.cjs"),
+      );
+      expect(rail).toBeDefined();
+      rail!.command = "true";
+      fs.writeFileSync(plugin("hooks.json"), JSON.stringify(hooksDoc, null, 2) + "\n");
+      fs.rmSync(plugin("hooks/bkit-guardrails.cjs"));
+      const check = runBkit(["check"]);
+      const out = `${check.stdout}${check.stderr}`;
+      expect(check.status).toBe(1);
+      expect(out).toContain(".agents/plugins/bkit/plugin.json");
+      expect(out).toContain(".agents/plugins/bkit/hooks.json");
+      expect(out).toContain("check: .agents/plugins/bkit/hooks/bkit-guardrails.cjs is missing");
+    },
+    localLimit(180_000),
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -403,7 +408,7 @@ describe("check-owned-hooks", () => {
         "--auto=claude",
       ]);
       expect(install.status, install.combined).toBe(0);
-    }, 120_000);
+    }, localLimit(120_000));
 
     afterAll(() => {
       fs.rmSync(dir, { recursive: true, force: true });
