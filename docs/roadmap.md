@@ -23,8 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-14T00:20:36Z)_
-_(refreshed 2026-11-14T00:58:18Z)_
+_(refreshed 2026-11-15T04:11:22Z)_
 
 ### Design
 
@@ -52,6 +51,7 @@ _(refreshed 2026-11-14T00:58:18Z)_
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
+| 951-build-repeat-whole | 951-build-repeat-whole | 1794715882867 |
 
 ### Build
 
