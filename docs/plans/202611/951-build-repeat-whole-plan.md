@@ -15,14 +15,14 @@ Verdict: CONCERNS
 
 ## Context & Goals
 
-Since #889, build Step 10 (holistic verify, the whole-feature check after the last group) runs as a check, fix and check loop, and it runs again after every Build Challenge round that adds fix groups. Every round runs `bkit tests changed --base=origin/dev`, so each round re-tests every file the feature changed. In `923-pre-push-block`, tests and test-lock waits took 372 of the 442 minutes the holistic agents spent (84%). The same whole-suite re-run happens in four more places: the holistic limit resets after each clean check and on restart; the Step 8 group gate runs the whole `bkit:gate:static-unit`; the debug soak agent runs the whole `pnpm bkit:gate:static-unit`; and the push after Step 12 runs the full pre-push gate again.
+Since #889, build Step 10 (holistic verify, the whole-feature check after the last group) runs as a check, fix and check loop, and it runs again after every Build Challenge round that adds fix groups. Every round runs `bkit tests changed --base=origin/dev`, so each round re-tests every file the feature changed. In `923-pre-push-block`, tests and test-lock waits took 372 of the 442 minutes the holistic agents spent (84%). The same whole-suite re-run happens in four more places: the holistic limit resets after each clean check, so one run can reach 15 holistic checks; the Step 8 group gate runs the whole `bkit:gate:static-unit`; the debug soak agent runs the whole `pnpm bkit:gate:static-unit`; and the push after Step 12 runs the full pre-push gate again.
 
 Goals:
 
 - Scope every test run inside the build loop to the files changed since the last proven point: the last clean holistic commit, the group's start commit, or the soak agent's own changes.
 - Keep exactly one full-suite run per build (Step 12), and let the branch's first push reuse it through a push-gate receipt.
-- Make the holistic limit one non-resetting allowance per build (`build.holistic`, max 2), counted across restarts, and set every limit to 2.
-- Number holistic reports and fix logs across every run, so a restart overwrites nothing.
+- Make the holistic limit one non-resetting allowance per run (`build.holistic`, max 2), counted like every other build limit, and set every limit to 2.
+- Put the run number in holistic report and fix-log names, so a restart overwrites nothing.
 
 Investigation findings that shape the plan:
 
@@ -55,7 +55,7 @@ Investigation findings that shape the plan:
 ### Success Criteria
 
 - A repeat holistic check runs only the tests for files changed since the last holistic check that found no problems. The first check covers the whole feature diff.
-- Holistic fix rounds count once per build, across restarts, with no reset. The third fix round the build needs goes to the Decision Pause (or to the Failure Path when `ask` is false). A restart writes no holistic report or fix log over one from an earlier run.
+- Holistic fix rounds count within the run, with no reset after a clean check. The third fix round the run needs goes to the Decision Pause (or to the Failure Path when `ask` is false). A restart writes no holistic report or fix log over one from an earlier run.
 - The Step 8 group gate and the soak agent's post-fix run check only changed files. Build Step 12 and debug Step 3 still run the full suite.
 - After Step 12 passes, the Step 16 push skips the full pre-push gate when the commits after the Step 12 commit touch bookkeeping paths only. Any code change after it runs the full gate.
 - On a build shaped like 923 (two challenge rounds, each adding a fix group), the repeat holistic rounds take at least half less time, measured from the step rows with owner waits excluded.
@@ -63,8 +63,8 @@ Investigation findings that shape the plan:
 ### Process Sketch
 
 - **WHEN** a holistic check runs after an earlier clean holistic check **→ THEN** it tests only the files changed since that clean check's commit; the first check, or one with no clean check before it, tests the whole feature diff from `origin/dev`.
-- **WHEN** a holistic check finds gaps **→ THEN** the base does not move, and the fix round counts against `build.holistic` across every run of the build, so the third fix round goes to the Decision Pause (or the Failure Path when `ask` is false).
-- **WHEN** the build restarts **→ THEN** the allowance, the last-clean commit and the report number are read across every run, and the next report is numbered after the last run's.
+- **WHEN** a holistic check finds gaps **→ THEN** the base does not move, and the fix round counts against `build.holistic` within the run, with no reset after a clean check, so the third fix round goes to the Decision Pause (or the Failure Path when `ask` is false).
+- **WHEN** the build restarts (a new run) **→ THEN** the allowance, the last-clean commit and the report number start again for that run, and its report and fix-log names carry its run number, so no earlier run's file is overwritten.
 - **WHEN** the Step 8 group gate or the soak agent's post-fix run checks the code **→ THEN** it runs `bkit:gate:changed` on the changed files, or the `--fallback` whole gate when the script is undeclared; Step 12 and debug Step 3 still run the whole deepest gate.
 - **WHEN** Step 12 passes on a commit whose only uncommitted changes are bookkeeping **→ THEN** it records a full-gate receipt, and a push whose commits after that commit touch bookkeeping paths only runs `bkit:gate:min`.
 - **IF** code lands after the receipted commit, or the gate definition changed **→ THEN** the push runs the full pre-push gate.
@@ -75,10 +75,10 @@ Investigation findings that shape the plan:
 
 **Steps:**
 
-1. The orchestrator reaches Step 10 for the first time → System derives report number 1 across every run, finds no clean holistic row, and holds `HOLISTIC_BASE` = `origin/dev`. The verifier runs `bkit tests changed --base=origin/dev` over the whole feature and finds two gaps.
-2. The orchestrator routes the fix round → `counters route --of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic` prints 1 of 2, and fix round 1 runs. The re-check (report 2) still uses `origin/dev`, because no check has been clean yet, and it is clean.
-3. Build Challenge round 1 adds fix group 5 → System runs the Step 8 group gate with `tests run --changed-since={GROUP_BASE}`, which tests only group 5's files. The third holistic check (report 3) takes `HOLISTIC_BASE` = the commit of report 2 and tests only group 5's files.
-4. The build fails and restarts → System numbers the restart's first holistic report 4, not 1, and the fix-round count stays at 1.
+1. The orchestrator reaches Step 10 for the first time in run 1 → System derives report number 1, finds no clean holistic row in the run, and holds `HOLISTIC_BASE` = `origin/dev`. The verifier writes `build-plan-verify-holistic-1-1.md`: it runs `bkit tests changed --base=origin/dev` over the whole feature and finds two gaps.
+2. The orchestrator routes the fix round → `counters route --of=build-plan-gaps-remediate-holistic:next --point=build.holistic` prints 1 of 2, and fix round 1 runs. The re-check (report `1-2`) still uses `origin/dev`, because no check has been clean yet, and it is clean.
+3. Build Challenge round 1 adds fix group 5 → System runs the Step 8 group gate with `tests run --changed-since={GROUP_BASE}`, which tests only group 5's files. The third holistic check (report `1-3`) takes `HOLISTIC_BASE` = the commit of report `1-2` and tests only group 5's files. The fix-round count is still 1: the clean check did not reset it.
+4. The build fails and restarts as run 2 → System starts run 2's fix-round count at 0 and its `HOLISTIC_BASE` at `origin/dev`, and its first holistic report is `build-plan-verify-holistic-2-1.md`, so run 1's reports stay as they were.
 5. Step 12 runs the whole `bkit:gate:static-unit-integration` and passes → System records a push-gate receipt for the Step 12 commit.
 6. Step 15 pushes the new feature branch, whose commits after the Step 12 commit hold only logs and ledgers → pre-push runs `bkit:gate:min`. The Step 16 push is a bookkeeping increment and also runs `bkit:gate:min`.
 
@@ -93,7 +93,8 @@ Investigation findings that shape the plan:
 | A holistic check finds gaps after an earlier clean check | The next check keeps the clean check's commit as its base, so it tests the unproven changes and the fix together |
 | A consumer's `package.json` sets `build.verify.maxAttempts` above 2 | `bkit upgrade` lowers it to 2 and prints one line naming the old value; 2 or less is left alone |
 | Decision Pause "Fix now" adds tasks to an earlier group after a clean holistic check | Those changes are commits after the clean commit, so the next check covers them |
-| The build fails and restarts (a new `workflow-started` row) | The holistic allowance, the last-clean commit and the report number are read across every run of the build, so the restart's first check is numbered after the last run's |
+| The build fails and restarts (a new `workflow-started` row) | The new run gets a fresh holistic allowance, its first check uses `origin/dev`, and its report and fix-log names carry the new run number, so no earlier run's file is overwritten |
+| A paused run resumes (the same `workflow-started` row) | The allowance, the last-clean commit and the report number continue from where the run stopped |
 | `bkit tests changed` exits 81 (tests lock held) | Unchanged: wait and run again |
 | A consumer declares no `bkit:gate:changed` | `bkit tests changed` runs the `--fallback` whole gate, as today |
 | A code commit lands after Step 12 passed | Steps 13–14 re-run Step 12, or pre-push runs the full gate |
@@ -118,17 +119,17 @@ Investigation findings that shape the plan:
 | Test description | Type | Target file | Task |
 | --- | --- | --- | --- |
 | `build.holistic` defaults to `ask: true`, max 2 | Unit | `.bkit/core/engine/shared/settings.test.ts` | 1 |
-| Holistic fix rounds count across runs and do not reset after a clean check | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 1 |
+| Holistic fix rounds count within the run, do not reset after a clean check, and start at 0 in a new run | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 1 |
 | `counters route --point=build.holistic` falls back to the current `package.json` setting when the run's frozen `workflow-started.limits` lack the point | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 1 |
 | Install and upgrade seed `bkit.workflows.build.holistic` `{ ask: true, maxAttempts: 2 }` into a consumer `package.json` and keep an existing block as written | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 1 |
 | The decision file's holistic loop line names `build holistic` and its max | Unit | `.bkit/core/engine/commands/workflow/decisions.test.ts` | 3 |
 | The last-clean holistic base is the `parentSha` of the newest holistic row with 0 failures, else `origin/dev` | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 2 |
 | A holistic row with gaps does not move the base | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 2 |
+| A clean holistic row from an earlier run does not set the base | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 2 |
 | A clean row whose `parentSha` is no longer an ancestor of HEAD falls back to `origin/dev` | Unit | `.bkit/core/engine/commands/workflow/status.test.ts` | 2 |
 | The holistic verify prompt takes its test base from Context, not `origin/dev` | Unit | `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` | 3 |
-| Step 10 routes and grants holistic rounds on `build.holistic` across every run, with no `--since-clean` | Unit | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | 3 |
-| Step 10 derives the holistic report number with `--all-runs`, at sub-step 1 and at the sub-step 7 resume read-back | Unit | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | 4 |
-| Step 10 finishes the holistic report and fix log with `steps finish --attempt-of` `:next:all` and `:current:all` | Unit | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | 4 |
+| Step 10 routes and grants holistic rounds on `build.holistic` within the run, with no `--since-clean` and no `--all-runs` | Unit | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | 3 |
+| Every holistic report and fix-log name in the build workflow carries the run number (`build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md`, `build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md`), and the fix-log globs read the current run only | Unit | `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` | 4 |
 | `counters route` and `counters grant` refuse `--since-clean` as an unknown flag | Unit | `.bkit/core/engine/commands/workflow/counters.test.ts` | 5 |
 | `tests run --changed-since` runs `bkit:gate:changed` on the files changed since that commit and writes a `test-run` row | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 6 |
 | `tests run --changed-since` runs the resolved `--gate` whole when `bkit:gate:changed` is undeclared | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 6 |
@@ -165,7 +166,7 @@ Investigation findings that shape the plan:
 | Change | Kind | Who notices |
 | --- | --- | --- |
 | New ask point `build.holistic` (`bkit.workflows.build.holistic.maxAttempts` / `.ask`, default `ask: true`, max 2) | new name | Consumers reading the ask points table; holistic pauses now name `build.holistic` as `PAUSE_POINT` instead of `build.verify` |
-| Holistic fix rounds count across every run with no reset after a clean check | behaviour | A build that used to get up to 15 holistic checks per run now gets at most 5 per build before the Decision Pause |
+| Holistic fix rounds count within the run with no reset after a clean check | behaviour | A build run that used to get up to 15 holistic checks now gets at most 5 per run before the Decision Pause |
 | `bkit upgrade` lowers `bkit.workflows.build.verify.maxAttempts` above 2 to 2 | config migration (one-way) | Consumers who set a higher verify limit; one log line names the old value |
 | `bkit install` and `bkit upgrade` seed a `bkit.workflows.build.holistic` block (`ask: true`, `maxAttempts: 2`) into every consumer `package.json` that lacks one (`askBlocks` in `.bkit/core/engine/install/modules/core.ts`) | config seed | Every consumer, on its next install or upgrade; an existing block is kept as written |
 | bkit's own `package.json` `build.verify.maxAttempts` 5 → 2, plus a `build.holistic` block, committed by the owner before the build (Pre-Flight § Core, "Own `bkit.workflows` config") | config | bkit's own builds; this build's own verify limit is 2 from its start |
@@ -178,7 +179,7 @@ Investigation findings that shape the plan:
 | The debug soak agent's post-fix run tests only its changes | behaviour | Debug runs; debug Step 3 still runs the full suite |
 | A passing Step 12 records a push-gate receipt, and a new branch whose commits after a receipted ancestor are bookkeeping only runs `bkit:gate:min` at pre-push (reverses the expectation at `.bkit/core/engine/commands/ci/push-gate.test.ts:274`, which has no recorded rationale) | behaviour | Anyone pushing a fresh branch after a full local gate pass |
 | Any `bkit tests run` of the exact required push gate records a receipt, so in bkit, where debug Step 3's deepest declared gate is `bkit:gate:static-unit-integration` (the required push gate), debug Step 3 records receipts too | behaviour | Debug runs whose later push follows a passing Step 3 with bookkeeping-only commits |
-| Holistic reports and fix logs are numbered across runs, so a restarted build's files continue from the last number | file naming | Owners reading `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic-{N}.md` |
+| Holistic report and fix-log names gain the run number (`build-plan-verify-holistic-{RUN}-{N}.md`, `build-plan-gaps-remediate-holistic-{RUN}-{N}-log.md`), like `build-decision-{RUN}-*`, so a restarted build writes new files | file naming | Owners reading `docs/plans/{YYYYMM}/logs/{FID}/`; files from builds before the change keep their old names |
 
 ### 👤 ✅ Human Confirmation
 
@@ -195,7 +196,7 @@ Investigation findings that shape the plan:
 No unanswered owner questions remain: all five are answered A, and the owner accepts every assumption below.
 
 - **Open Question 1:** The input disagrees on whether holistic report numbering is in scope. The issue body (item 6, Success Criterion 2, the restart Edge Case and Task 10) puts it in scope. The issue comment of 2026-11-15T03:07:34Z lists "restarts overwriting earlier runs' holistic reports" as left out on purpose and "a separate bug". The issue's edit history shows the body edit of 2026-11-15T03:17:05Z, after that comment, is the edit that added item 6, so the body is the newer text. → The owner confirms at Gate 1.
-  - **Options:** A) Keep it in scope (Task 4) — the body carries it, Success Criterion 2 needs it, and it is two flag additions in Step 10 · B) Drop it to its own issue — matches the comment and the input's own labels, but Success Criterion 2's last sentence then fails and must be cut from the contract; Task 4, its two Derived Test Matrix rows and the report-number half of the restart Edge Case go, and 4 leaves Task 12's `DEPENDS ON`.
+  - **Options:** A) Keep it in scope (Task 4) — the body carries it, Success Criterion 2 needs it, and it is the run number added to the holistic file names in Step 10 and the Decision Pause · B) Drop it to its own issue — matches the comment and the input's own labels, but Success Criterion 2's last sentence then fails and must be cut from the contract; Task 4, its Derived Test Matrix row and the file-name half of the restart Edge Case go, and 4 leaves Task 12's `DEPENDS ON`.
   - **Recommended:** A) Keep it in scope — the newer body and the confirmed Success Criteria both require it.
   - **Default if unanswered:** A.
   - **Owner answer:** A — keep it in scope; the newer body governs.
@@ -214,14 +215,14 @@ No unanswered owner questions remain: all five are answered A, and the owner acc
   - **Recommended:** A) Measure it in Manual Verification.
   - **Default if unanswered:** A.
   - **Owner answer:** A — measure it in Manual Verification Step 2.
-- **Open Question 5:** "Across every run" counts every `workflow-started` run of `build` in the FID's `status.jsonl`, finished runs included. A second `/bkit-build` of the same FID after an earlier run finished would start with its holistic allowance already used and inherit the earlier run's last-clean base. The debug soak once had the same class of bug, where a finished run's rows forced a mode on a later run. → The owner confirms at Gate 1.
-  - **Options:** A) Count across every run of the FID, finished ones included — matches the issue's wording and needs no new reader; a re-build of a finished FID reaches the Decision Pause sooner, where the owner grants more rounds, and the inherited base is still guarded by the ancestor check · B) Count only the runs after the FID's last `workflow-done` row — a re-build starts fresh, but `counters route --all-runs` and `status route` gain a run-window rule, which widens Tasks 1 and 2 · C) Record that a finished build is never re-run under the same FID — no code change, but nothing enforces it.
-  - **Recommended:** A) Count across every run — a re-build of a finished FID is rare, its cost is one extra owner grant, and B's run-window rule is new engine scope.
+- **Open Question 5:** Which runs does the holistic allowance, the last-clean base and the report number count? The issue says "across restarts". Every other build limit (`build.verify`, `build.tests`, `build.challenge`) counts the active run only; only debug's `{FIX_ATTEMPT}` and `{SOAK_ATTEMPT}` count every run of the feature (`.bkit/core/workflows/bkit-debug.md` § Limits, through `allRunsDoneSteps` in `.bkit/core/engine/ledgers/status.ts`). → The owner confirms at Gate 1.
+  - **Options:** A) Count within the active run, like every other build limit, with no reset after a clean check; put `{RUN}` in the holistic report and fix-log names, like `build-decision-{RUN}-*`, so a restart overwrites nothing · B) Count across every run of the FID, finished ones included, like debug — a second `/bkit-build` of a finished FID starts with its allowance used and inherits the earlier run's base.
+  - **Recommended:** A) Count within the run — it matches every other build limit, and a resumed run still keeps its count because resume continues the same run.
   - **Default if unanswered:** A.
-  - **Owner answer:** A — the rule must match every workflow. The only other limits that span runs are debug's `{FIX_ATTEMPT}` and `{SOAK_ATTEMPT}`, which count every debug run of the feature, finished runs included, and never clear (`.bkit/core/workflows/bkit-debug.md` § Limits, through `allRunsDoneSteps` in `.bkit/core/engine/ledgers/status.ts`). `build.holistic` counts the same way and through the same reader; every other limit counts the active run only.
+  - **Owner answer:** A — only debug counts across runs; `build.holistic` counts within the run, and the maximum is the maximum: no reset after a clean check.
 - **Assumption:** `build.holistic` is a new ask point rather than a reuse of `build.verify`, so the holistic and group limits are counted apart. It needs no migration of its own: install and upgrade seed its default block, and no consumer file sets it yet. → If a consumer already sets `bkit.workflows.build.holistic` to a value that meant something else, Step 10 routes on that value as written, and the third-fix-round pause of Success Criterion 2 moves to wherever that value puts it.
-- **Assumption:** The decision file's progress trend for the holistic loop keeps counting rounds since the last clean round in the active run only (`sinceClean` at `.bkit/core/engine/commands/workflow/decisions.ts:474`), while its attempt line counts across every run. → If the owner expects both across every run, a restarted build's Decision Pause file shows an attempt line of 2 of 2 next to a trend over the restart's rounds only.
-- **Assumption:** `counters route` and `counters grant` already accept `--all-runs` with an `--of=<step>:next` count and freeze every `build.*` ask point in `workflow-started.limits` (`ASK_POINTS.filter` in `workflows.ts`), so adding `build.holistic` to `ASK_POINTS` is the only engine change routing needs. → If the frozen limits miss the new point, a restarted run reads the current setting instead; the edge case row covers it.
+- **Assumption:** The decision file's progress trend for the holistic loop keeps counting rounds since the last clean round in the active run (`sinceClean` at `.bkit/core/engine/commands/workflow/decisions.ts:474`), while its attempt line counts every fix round of the run. → If the owner expects the trend over every fix round of the run, the Decision Pause file shows an attempt line of 2 of 2 next to a trend over the rounds since the last clean check only.
+- **Assumption:** `counters route` and `counters grant` already accept an `--of=<step>:next` count over the active run and freeze every `build.*` ask point in `workflow-started.limits` (`ASK_POINTS.filter` in `workflows.ts`), so adding `build.holistic` to `ASK_POINTS` is the only engine change routing needs. → If the frozen limits miss the new point, a restarted run reads the current setting instead; the edge case row covers it.
 - **Assumption:** bkit's own `bkit:gate:changed` vitest stages inherit `$BKIT_TEST_REPORT_DIR` (its `run()` passes `process.env`), and `vitest.config.ts` writes a pid-named JUnit file when it is set, so `tests run --changed-since` keeps a failure count. Its `node --test` and `bats` stages write no JUnit. → If wrong, a failing changed-files group gate prints `failures` null and the verify-loop trend reads unknown (decision `912-unknown-count-is-an-unknown-trend`); the test in Task 6 proves the report directory reaches the changed gate.
 - **Assumption:** The first push of a build's feature branch is Step 15 sub-step 4 (`branches push --mode=feature --set-upstream`), a new-branch push, and the Step 16 push is an increment on it. The issue names the Step 16 push; the plan makes both pushes take the minimum gate. → If the first push is not a new-branch push (for example, the branch already exists on the remote), Step 15 is not the receipt's first use, Concrete Example step 6 no longer holds, and the Task 11 new-branch rule serves no build push.
 - **Assumption:** A consumer whose `bkit.workflows.build.verify.maxAttempts` is above 2 accepts the upgrade lowering it, because the issue sets every limit to 2. → If a consumer depends on more verify rounds, they must set it again after the upgrade; the upgrade's log line names the old value so they can.
@@ -378,22 +379,22 @@ None
 <!-- prettier-ignore -->
 | Capability | File | Search performed | Existing candidates | Decision | Justification |
 | --- | --- | --- | --- | --- | --- |
-| A holistic allowance per build | `.bkit/core/engine/shared/settings.ts` | `ASK_POINTS` and `CONFIG_DEFAULTS.asks` read; `grep -rl 'build\.challenge'` over `.ts`, `.md`, `.json`, `.mjs`; references to `askPoint`, `frozenAskSetting`; no framework built-in applies: ask points are bkit's own `package.json` config | `ASK_POINTS` / `CONFIG_DEFAULTS.asks` — every ask point, frozen per run by `workflows.ts` | EXTEND | Add `"build.holistic": { ask: true, max: 2 }`. |
-| Counting holistic fix rounds across runs | `.bkit/core/engine/commands/workflow/counters.ts` | `derivedOf`, `grantCount`, `pointLimit`, `SINCE_CLEAN_FLAG` read; `grep -n -- '--since-clean'` in workflows, prompts and docs; no framework built-in applies: the counts are read from bkit's own `status.jsonl` | `counters route` / `grant` with `--of=<step>:next --all-runs` | EXTEND | No logic change: Step 10 calls the existing flags with the new point; `--since-clean` is removed from route and grant (Supersession). |
+| A holistic allowance per run | `.bkit/core/engine/shared/settings.ts` | `ASK_POINTS` and `CONFIG_DEFAULTS.asks` read; `grep -rl 'build\.challenge'` over `.ts`, `.md`, `.json`, `.mjs`; references to `askPoint`, `frozenAskSetting`; no framework built-in applies: ask points are bkit's own `package.json` config | `ASK_POINTS` / `CONFIG_DEFAULTS.asks` — every ask point, frozen per run by `workflows.ts` | EXTEND | Add `"build.holistic": { ask: true, max: 2 }`. |
+| Counting holistic fix rounds within the run | `.bkit/core/engine/commands/workflow/counters.ts` | `derivedOf`, `grantCount`, `pointLimit`, `SINCE_CLEAN_FLAG` read; `grep -n -- '--since-clean'` in workflows, prompts and docs; no framework built-in applies: the counts are read from bkit's own `status.jsonl` | `counters route` / `grant` with `--of=<step>:next` (active run) | EXTEND | No logic change: Step 10 calls the existing flags with the new point; `--since-clean` is removed from route and grant (Supersession). |
 | Holistic loop line in the decision file | `.bkit/core/engine/commands/workflow/decisions.ts` | `LOOPS` read; `loop.point` references | `LOOPS.holistic` | EXTEND | `point: "holistic"`, so the line reads `build holistic: attempt N of M`. |
-| Last clean holistic base | `.bkit/core/engine/commands/workflow/status.ts` | `route()` read; `cleanRound`, `lastCleanRound`, `allRunsDoneSteps` in `.bkit/core/engine/ledgers/status.ts`; git built-in for the ancestor guard: `git merge-base --is-ancestor`, already used by `hasVerifiedIncrement` (`.bkit/core/engine/commands/ci/push-gate.ts:197`); `DIFF_BASE` in `.bkit/core/engine/commands/workflow/context.ts:833` considered for the fallback | `status route --step` (prints `parentSha`); `cleanRound` | EXTEND | Add output `cleanBase`: the newest `cleanRound` DONE row's `parentSha` across every run, else `origin/dev`. `DIFF_BASE` is not imported: `context.ts` already imports `status.ts`, so the reverse import would add a cycle. |
+| Last clean holistic base | `.bkit/core/engine/commands/workflow/status.ts` | `route()` read; `cleanRound`, `lastCleanRound` (active run only) in `.bkit/core/engine/ledgers/status.ts`; git built-in for the ancestor guard: `git merge-base --is-ancestor`, already used by `hasVerifiedIncrement` (`.bkit/core/engine/commands/ci/push-gate.ts:197`); `DIFF_BASE` in `.bkit/core/engine/commands/workflow/context.ts:833` considered for the fallback | `status route --step` (prints `parentSha`); `lastCleanRound` | EXTEND | Add output `cleanBase`: the `parentSha` of the active run's `lastCleanRound` row, else `origin/dev`. `DIFF_BASE` is not imported: `context.ts` already imports `status.ts`, so the reverse import would add a cycle. |
 | Changed-files group gate with a `test-run` row | `.bkit/core/engine/commands/workflow/tests.ts` | `tests run` verb read; `changedFiles` and `testsChangedVerb` in `tests-changed.ts`; `resolveGate`; `BKIT_GATE_CHANGED_SCRIPT`; framework built-in considered: Vitest's `--changed <sha>` | `bkit tests changed` (no row); `bkit tests run` (row, whole gate only); Vitest `--changed` | EXTEND | Add `--changed-since=<sha>` to `tests run`, reusing `changedFiles`. Vitest's `--changed` is rejected: the engine is stack-agnostic, so the consumer-owned `bkit:gate:changed` contract (`.bkit/workflows.md` § Local gate scripts) decides how a stack tests changed files. |
 | Step 12 push-gate receipt | `.bkit/core/engine/commands/ci/push-gate.ts` | `runPushGate`, `cleanHead`, `receiptPath`, `validReceipt` read; callers in `ci.ts` and `land.ts`; `runToLog` and the lock environment in `tests.ts`; no framework built-in: the receipt format is bkit's own outbox contract | `runPushGate` writes receipts inline | EXTEND | Extract its receipt, `.running` and `.failed` writing into one exported helper that takes the tolerated pathspecs and a run callback; `runPushGate` passes none and its `spawnSync` run, and `tests run` passes `minPushPathspecs` and its `runToLog` run. |
 | New-branch receipt reuse | `.bkit/core/engine/commands/ci/push-gate.ts` | `hasVerifiedIncrement` read; `minPushUpdates` in `ci.ts:733-753`; `push-gate.test.ts`; git built-in: `git rev-list --max-count` for the ancestor walk | `hasVerifiedIncrement` (existing branches only) | EXTEND | For an all-zero old sha, search the ancestors of the new sha for a valid receipt. |
 | Upgrade lowering `build.verify.maxAttempts` | `.bkit/core/engine/install/modules/core.ts` | `seedCorePackageJsonScripts` and `pruneMinPushPaths` read; `docs/migrations.md` rows; current practice in this repo: config migrations live in the install module and are registered in `docs/migrations.md` (`.agents/rules.md` § Migrations) | `pruneMinPushPaths` (same read, rewrite and log pattern) | EXTEND | Add `lowerVerifyMaxAttempts` to the same module, called from `seedCorePackageJsonScripts`. |
 | Holistic test base and soak scope in prompts | `.bkit/core/prompts/bkit-build-plan-verify.md`, `.bkit/core/prompts/bkit-debug-failure-soak.md` | `grep -n 'origin/dev\|static-unit'` in both; `bkit-debug-failure-remediate.md` lines 87-88 | remediate's `bkit tests changed --fallback=bkit:gate:static-unit` and its exit-81 line | EXTEND | Verify reads `Test base` from Context; soak copies remediate's command and exit-81 line. |
-| Workflow wiring | `.bkit/core/workflows/bkit-build.md` | Step 8 sub-steps 3 and 8, Step 9 sub-step 3, Step 10, Decision Pause and resume mapping read | existing `GROUP_BASE` hold, `counters derive`, `steps finish --attempt-of` with `:all` | EXTEND | Edit the existing blocks; no new step. |
+| Workflow wiring | `.bkit/core/workflows/bkit-build.md` | Step 8 sub-steps 3 and 8, Step 9 sub-step 3, Step 10, Decision Pause and resume mapping read | existing `GROUP_BASE` hold, `counters derive`, `steps finish --attempt-of`, the `{RUN}` hold and `build-decision-{RUN}-*` naming | EXTEND | Edit the existing blocks; no new step. |
 
 ## Architecture & Component Changes
 
 Every engine change lands in `.bkit/core/engine/**` and is rebuilt into `dist/` with `pnpm build`; every workflow, prompt or managed-doc change is mirrored to the host copies, `.bkit/instructions.md`, `.bkit/core/.bkit/cli.md` and the render snapshots by `pnpm bkit:generate`.
 
-**Ledger rows:** `951-test-what-changed-full-suite-once`, `build-group-gate-unit-tier-only`, `951-build-holistic-allowance-every-limit-2`, `951-holistic-base-last-clean-check`, `951-holistic-report-numbers-all-runs`, `951-retire-counters-since-clean`, `951-tests-run-changed-since`, `951-tests-run-records-push-receipt`, `951-new-branch-receipted-ancestor`, `951-trim-holistic-verifier-inputs`, `951-holistic-mechanical-gap-regen-option-e`, `951-skip-holistic-between-challenge-rounds-option-d`, `951-ship-deferred-sweep-840`
+**Ledger rows:** `951-test-what-changed-full-suite-once`, `build-group-gate-unit-tier-only`, `951-build-holistic-allowance-every-limit-2`, `951-holistic-base-last-clean-check`, `951-holistic-file-names-carry-run` (supersedes `951-holistic-report-numbers-all-runs`), `951-retire-counters-since-clean`, `951-tests-run-changed-since`, `951-tests-run-records-push-receipt`, `951-new-branch-receipted-ancestor`, `951-trim-holistic-verifier-inputs`, `951-holistic-mechanical-gap-regen-option-e`, `951-skip-holistic-between-challenge-rounds-option-d`, `951-ship-deferred-sweep-840`
 
 ### Database Migrations
 
@@ -425,7 +426,7 @@ bkit's own `package.json` `bkit.workflows` change (verify 2 and the `build.holis
 #### [MODIFY] `.bkit/core/engine/commands/workflow/status.ts`
 
 - **Existence Check:** the file exists; `route()` prints `parentSha` from the step's last DONE row in the active run.
-- Add output `cleanBase`: the `parentSha` of the newest DONE row of `--step` that `cleanRound` accepts, across every run of the workflow in the file; `origin/dev` when there is none or when `git merge-base --is-ancestor {sha} HEAD` fails (the sha is gone, or a resume rebase left it off the branch).
+- Add output `cleanBase`: the `parentSha` of `lastCleanRound(runs, workflow, step)`, the active run's newest DONE row of `--step` that `cleanRound` accepts; `origin/dev` when there is none or when `git merge-base --is-ancestor {sha} HEAD` fails (the sha is gone, or a resume rebase left it off the branch).
 
 ### Test runs and push proof
 
@@ -455,9 +456,10 @@ bkit's own `package.json` `bkit.workflows` change (verify 2 and the `build.holis
 - **Existence Check:** the file exists.
 - Resume mapping (line 49): drop the `holistic` → `build.verify` special case, so `PAUSE_POINT` = `build.holistic`.
 - Limits paragraph (line 85): names `build.holistic`.
-- Decision Pause holistic grant (lines 279-283): `counters grant --name=HOLISTIC_ATTEMPT --of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic`.
+- Decision Pause holistic grant (lines 279-283): `counters grant --name=HOLISTIC_ATTEMPT --of=build-plan-gaps-remediate-holistic:next --point=build.holistic`.
+- Decision Pause `VERIFY_GAPS` item (line 141): reads `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md` and the glob `build-plan-gaps-remediate-holistic-{RUN}-*-log.md`.
 - Step 8 sub-step 8 (line 748) and Step 9 sub-step 3 Context `Group gate` (line 837): add `--changed-since={GROUP_BASE}`; when `GROUP_BASE` is not held (the Decision Pause re-run or a resume), re-derive it from `status route --step=build-group-start --group={GROUP}` first.
-- Step 10: intro (line 869) names `build.holistic`; sub-step 1 derives the report number with `--all-runs` and holds `cleanBase` from `status route --step=build-plan-verify-holistic` as `HOLISTIC_BASE`; sub-step 2 passes `Test base: {HOLISTIC_BASE}`; sub-steps 3 and 9 use `--attempt-of=build-plan-verify-holistic:next:all` / `:current:all`; sub-step 6 routes with `--of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic`, and `PAUSE_POINT` = `build.holistic` at lines 908, 911, 912 and 943; sub-step 7's resume read-back takes `--all-runs`.
+- Step 10: intro (line 869) names `build.holistic` and the file pattern `{step}-holistic-{RUN}-{HOLISTIC_ATTEMPT}`; sub-step 1 holds `cleanBase` from `status route --step=build-plan-verify-holistic` as `HOLISTIC_BASE`; sub-step 2 passes `Test base: {HOLISTIC_BASE}` and its Create and Result paths, sub-step 3's `steps stub` paths and `steps finish --artifact`, sub-step 7's Read and Create paths and sub-step 9's `steps finish --artifact` carry `{RUN}-` before the attempt; sub-step 7's fix-log glob reads `build-plan-gaps-remediate-holistic-{RUN}-*-log.md`; sub-step 6 routes with `--of=build-plan-gaps-remediate-holistic:next --point=build.holistic`, and `PAUSE_POINT` = `build.holistic` at lines 908, 911, 912 and 943. `counters derive` and `--attempt-of` keep counting the active run.
 
 #### [MODIFY] `.bkit/core/prompts/bkit-build-plan-verify.md`
 
@@ -485,7 +487,7 @@ None
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
-| `--since-clean` on `counters route` and `counters grant` (`SINCE_CLEAN_FLAG` in `VALUE_FLAGS`, the `derivedOf` branch, `grantCount`'s `sinceClean` parameter and `sinceCleanStep` in `.bkit/core/engine/commands/workflow/counters.ts`), with its tests in `describe("bkit counters route --since-clean")` in `counters.test.ts` | `--of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic` | DELETE | Step 10 and the Decision Pause were its only callers (Task 5). `counters progress --since-clean` is not replaced and stays. |
+| `--since-clean` on `counters route` and `counters grant` (`SINCE_CLEAN_FLAG` in `VALUE_FLAGS`, the `derivedOf` branch, `grantCount`'s `sinceClean` parameter and `sinceCleanStep` in `.bkit/core/engine/commands/workflow/counters.ts`), with its tests in `describe("bkit counters route --since-clean")` in `counters.test.ts` | `--of=build-plan-gaps-remediate-holistic:next --point=build.holistic` | DELETE | Step 10 and the Decision Pause were its only callers (Task 5). `counters progress --since-clean` is not replaced and stays. |
 | Holistic routing on `build.verify` and the `holistic` → `build.verify` resume special case in `.bkit/core/workflows/bkit-build.md` | `build.holistic` | DELETE | The new point replaces it (Task 3). |
 | `--base=origin/dev` in `.bkit/core/prompts/bkit-build-plan-verify.md` | `--base={Test base}` from Context | DELETE | Task 3. |
 | Whole `bkit:gate:static-unit` in Step 8 sub-step 8 and Step 9's `Group gate` Context | `tests run --changed-since={GROUP_BASE}` | DELETE | Task 7. |
@@ -498,7 +500,7 @@ None
 <!-- prettier-ignore -->
 | Doc | Change required |
 | --- | --- |
-| `.bkit/core/.bkit/workflows.md` | § Group gate: changed-files scope since `GROUP_BASE`, Step 12 as the one full run; Step 10 row (line 974): last-clean base and `build.holistic`; Allowance bullet (line 1001): holistic grants on `build.holistic` with `--all-runs`, no `--since-clean`; ask points table (lines 1014-1019): new `build.holistic` row, `build.verify` row reads verify rounds per group only, every limit 2; loop table (lines 1852ff): holistic point; § Local gate scripts: `bkit:gate:changed` callers gain the Step 8 group gate (through `tests run --changed-since`) and soak, the "orchestrator's gates still run whole gates" sentence names Step 12, debug Step 3, pre-push and CI only, the `static-unit` row's "build Step 8 (group gate)" becomes the undeclared fallback, and the contract states that `tests run --changed-since` passes `$BKIT_TEST_REPORT_DIR` to the changed gate. |
+| `.bkit/core/.bkit/workflows.md` | § Group gate: changed-files scope since `GROUP_BASE`, Step 12 as the one full run; Step 10 row (line 974): last-clean base, `build.holistic` counted within the run, and the `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md` / `build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md` names; Allowance bullet (line 1001): holistic grants on `build.holistic`, no `--since-clean`; ask points table (lines 1014-1019): new `build.holistic` row, `build.verify` row reads verify rounds per group only, every limit 2; loop table (lines 1852ff): holistic point; § Local gate scripts: `bkit:gate:changed` callers gain the Step 8 group gate (through `tests run --changed-since`) and soak, the "orchestrator's gates still run whole gates" sentence names Step 12, debug Step 3, pre-push and CI only, the `static-unit` row's "build Step 8 (group gate)" becomes the undeclared fallback, and the contract states that `tests run --changed-since` passes `$BKIT_TEST_REPORT_DIR` to the changed gate. |
 | `.bkit/core/.bkit/templates.md` | Receipt contract (lines 308-309): a new branch also qualifies when every commit after a receipted ancestor is bookkeeping; `bkit tests run` of the required push gate records receipts and tolerates uncommitted min-push paths only. |
 | `.bkit/core/.bkit/cli.md` | Regenerated by `pnpm cli:sync`: `--since-clean` leaves route and grant, `--changed-since` joins `tests run`. |
 | `.bkit/core/.bkit/prompts.md` | None expected — the rows for the three edited prompts (`bkit-build-plan-verify` and `bkit-build-plan-gaps-remediate` at lines 206-207, `bkit-debug-failure-soak` at lines 213 and 352) describe re-running tests-lock waits and the orchestrator's test re-runs, which stay true. Task 12 re-reads them after Tasks 3, 7 and 8 and updates any row that no longer matches. |
@@ -536,19 +538,19 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** One holistic allowance per build
+- [ ] **TASK 1:** One holistic allowance per run
   - **UPDATE:** `ASK_POINTS` in `.bkit/core/engine/shared/settings.ts`: add `build.holistic`
   - **UPDATE:** `CONFIG_DEFAULTS` in `.bkit/core/engine/shared/settings.ts`: `asks["build.holistic"]` = `{ ask: true, max: 2 }`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the exact frozen `limits` object (lines 259-271) gains `build.holistic`
   - **UPDATE:** `.bkit/core/engine/install/modules/core.integration.test.ts`: the exact seeded `build` block enumeration (lines 1148-1157) gains `holistic`
   - **READ:** `askBlocks` in `.bkit/core/engine/install/modules/core.ts`: seeds one block per ask point into a consumer `package.json` on install and upgrade, so the new point is seeded with no code change
-  - **READ:** `derivedOf` in `.bkit/core/engine/commands/workflow/counters.ts`: `--of=<step>:next --all-runs` already counts across runs
+  - **READ:** `derivedOf` in `.bkit/core/engine/commands/workflow/counters.ts`: `--of=<step>:next` already counts the active run's rows
   - **READ:** `pointLimit` in `.bkit/core/engine/commands/workflow/counters.ts`: frozen max times one plus the grants, and the `package.json` fallback for an unfrozen point, so no counting logic changes
   - **READ:** `docs/testing.md`: § Which tier does a behaviour need?
-  - **DONE WHEN:** `counters route --of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic` exits 1 on the third holistic fix round of a build, including across a restart; no task commit changes `bkit.workflows` in `package.json`; `pnpm build` refreshes `dist/`; the tests below pass, and every existing settings or counters test that enumerates the ask points is updated for the new point, including `workflows.test.ts:259-271` and `core.integration.test.ts:1148-1157`; the generated `counter-prose-audit.test.ts` "2. ask points: none dead, none unknown" case for `build.holistic` fails until Task 3 adds its caller in this group, and passes at the group's end
+  - **DONE WHEN:** `counters route --of=build-plan-gaps-remediate-holistic:next --point=build.holistic` exits 1 on the third holistic fix round of a run, with a clean check between the rounds, and a new run starts its count at 0; no task commit changes `bkit.workflows` in `package.json`; `pnpm build` refreshes `dist/`; the tests below pass, and every existing settings or counters test that enumerates the ask points is updated for the new point, including `workflows.test.ts:259-271` and `core.integration.test.ts:1148-1157`; the generated `counter-prose-audit.test.ts` "2. ask points: none dead, none unknown" case for `build.holistic` fails until Task 3 adds its caller in this group, and passes at the group's end
   - **TEST FIRST:**
     - `.bkit/core/engine/shared/settings.test.ts` `build.holistic defaults to ask true, max 2` fails on the missing ask point
-    - `.bkit/core/engine/commands/workflow/counters.test.ts` `holistic fix rounds count across runs without a reset` fails on the route refusing the point with "unknown point build.holistic"
+    - `.bkit/core/engine/commands/workflow/counters.test.ts` `holistic fix rounds count within the run without a reset` fails on the route refusing the point with "unknown point build.holistic"
     - `.bkit/core/engine/commands/workflow/counters.test.ts` `build.holistic falls back to the package.json setting when the run's frozen limits lack it` fails on the route refusing the point with "unknown point build.holistic"
     - `.bkit/core/engine/install/modules/core.integration.test.ts` `install seeds a build.holistic block and keeps an existing one` fails on the seeded `package.json` holding no `bkit.workflows.build.holistic` block
 
@@ -557,15 +559,16 @@ Build order: engine counting and status first, then the workflow that calls them
 <!-- bkit:task 2 start -->
 
 - [ ] **TASK 2:** Read the last clean holistic commit
-  - **UPDATE:** `route` in `.bkit/core/engine/commands/workflow/status.ts`: output `cleanBase`, the `parentSha` of the newest DONE row of `--step` that `cleanRound` accepts, across every run, else `origin/dev`; `origin/dev` also when `git merge-base --is-ancestor {sha} HEAD` fails (the sha is gone, or a resume rebase left it off the branch)
+  - **UPDATE:** `route` in `.bkit/core/engine/commands/workflow/status.ts`: output `cleanBase`, the `parentSha` of `lastCleanRound(runs, workflow, step)` for `--step`, else `origin/dev`; `origin/dev` also when `git merge-base --is-ancestor {sha} HEAD` fails (the sha is gone, or a resume rebase left it off the branch)
   - **READ:** `cleanRound` in `.bkit/core/engine/ledgers/status.ts`: the clean-round rule
-  - **READ:** `allRunsDoneSteps` in `.bkit/core/engine/ledgers/status.ts`: the all-runs reader
+  - **READ:** `lastCleanRound` in `.bkit/core/engine/ledgers/status.ts`: the active run's last clean round, so an earlier run's clean row never sets the base
   - **READ:** `hasVerifiedIncrement` in `.bkit/core/engine/commands/ci/push-gate.ts`: its `merge-base --is-ancestor` call (line 197) is the pattern to follow
-  - **DONE WHEN:** `status route --step=build-plan-verify-holistic` prints `cleanBase`, a check with gaps leaves it unchanged, a clean sha that is not an ancestor of HEAD prints `origin/dev`, `pnpm build` refreshes `dist/`, and the tests below pass
+  - **DONE WHEN:** `status route --step=build-plan-verify-holistic` prints `cleanBase`, a check with gaps leaves it unchanged, a clean row from an earlier run is ignored, a clean sha that is not an ancestor of HEAD prints `origin/dev`, `pnpm build` refreshes `dist/`, and the tests below pass
   - **TEST FIRST:**
     - `.bkit/core/engine/commands/workflow/status.test.ts` `last clean holistic base is the newest zero-failure row` fails on no `cleanBase` output
     - `.bkit/core/engine/commands/workflow/status.test.ts` `a holistic row with gaps does not move the base` fails on no `cleanBase` output
     - `.bkit/core/engine/commands/workflow/status.test.ts` `holistic base falls back to origin/dev with no clean row` fails on no `cleanBase` output
+    - `.bkit/core/engine/commands/workflow/status.test.ts` `a clean holistic row from an earlier run does not set the base` fails on no `cleanBase` output
     - `.bkit/core/engine/commands/workflow/status.test.ts` `holistic base falls back to origin/dev when the clean sha is no longer an ancestor of HEAD` fails on the pre-rebase sha being printed as the base
 
 <!-- bkit:task 2 end -->
@@ -573,7 +576,7 @@ Build order: engine counting and status first, then the workflow that calls them
 <!-- bkit:task 3 start -->
 
 - [ ] **TASK 3:** Holistic checks test only what changed
-  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 10 sub-step 1 holds `cleanBase` from `status route --step=build-plan-verify-holistic` as `HOLISTIC_BASE`; sub-step 2's verify Context passes `Test base: {HOLISTIC_BASE}`; sub-step 6 routes with `--of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic`, without `--since-clean`; only the `HOLISTIC_ROUNDS = PAUSE_MAX` disjunct of the pause conditions (lines 909 and 913) is dropped, and the `HOLISTIC_FIXABLE = false` route to `VERIFY_GAPS` at line 913 stays; `PAUSE_POINT` = `build.holistic` at each holistic pause; the Step 10 intro and the Limits paragraph name `build.holistic`; the Decision Pause holistic grant is `counters grant --name=HOLISTIC_ATTEMPT --of=build-plan-gaps-remediate-holistic:next --all-runs --point=build.holistic`; the resume mapping drops the `holistic` → `build.verify` special case
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 10 sub-step 1 holds `cleanBase` from `status route --step=build-plan-verify-holistic` as `HOLISTIC_BASE`; sub-step 2's verify Context passes `Test base: {HOLISTIC_BASE}`; sub-step 6 routes with `--of=build-plan-gaps-remediate-holistic:next --point=build.holistic`, without `--since-clean`; only the `HOLISTIC_ROUNDS = PAUSE_MAX` disjunct of the pause conditions (lines 909 and 913) is dropped, and the `HOLISTIC_FIXABLE = false` route to `VERIFY_GAPS` at line 913 stays; `PAUSE_POINT` = `build.holistic` at each holistic pause; the Step 10 intro and the Limits paragraph name `build.holistic`; the Decision Pause holistic grant is `counters grant --name=HOLISTIC_ATTEMPT --of=build-plan-gaps-remediate-holistic:next --point=build.holistic`; the resume mapping drops the `holistic` → `build.verify` special case
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: the holistic run is `bkit tests changed --base={Test base} --fallback=bkit:gate:static-unit`, with the Context field documented
   - **UPDATE:** `LOOPS` in `.bkit/core/engine/commands/workflow/decisions.ts`: `holistic.point` = `"holistic"`, `sinceClean` kept
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.test.ts`: the existing `--loop=holistic` test (lines 220-255) expects `build holistic: attempt 2 of 2` instead of `build verify: attempt 2 of 2`
@@ -581,22 +584,21 @@ Build order: engine counting and status first, then the workflow that calls them
   - **DONE WHEN:** a repeat holistic check runs `bkit tests changed --base=<last clean commit>`; `.bkit/core/workflows/bkit-build.md` holds no `--since-clean`; the decision file's holistic loop line reads `build holistic: attempt N of M`; the counter-prose audit section "2. ask points: none dead, none unknown" passes; `pnpm bkit:generate` refreshes the host mirrors, `.bkit/instructions.md` and the render snapshots, and `bkit check` reports no mirror drift; `pnpm build` refreshes `dist/`; the tests below pass
   - **TEST FIRST:**
     - `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts` `holistic verify takes its test base from Context` fails on the prompt's `--base=origin/dev`
-    - `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` `holistic rounds route and grant on build.holistic across every run` fails on the route reading "--since-clean" on `build.verify`
+    - `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` `holistic rounds route and grant on build.holistic within the run` fails on the route reading "--since-clean" on `build.verify`
     - `.bkit/core/engine/commands/workflow/decisions.test.ts` `--loop=holistic names build holistic in the attempt line` fails on the line reading "build verify: attempt"
 
 <!-- bkit:task 3 end -->
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Holistic reports keep every run's number
-  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 10 sub-step 1's `counters derive --step=build-plan-verify-holistic --position=next` and the sub-step 7 resume read-back (`--position=current`) both take `--all-runs`; sub-step 3's `steps finish --attempt-of=build-plan-verify-holistic:next` becomes `:next:all` and sub-step 9's `:current` becomes `:current:all`
-  - **READ:** `.bkit/core/engine/commands/workflow/counters.ts`: `derive` already takes `--all-runs`
-  - **READ:** `.bkit/core/engine/commands/workflow/steps.ts`: `--attempt-of` already takes `<step>:<next|current|count>:all`
+- [ ] **TASK 4:** Holistic file names carry the run number
+  - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: every holistic report path becomes `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md` (the Step 10 intro's file pattern, sub-step 2's Create and Result paths, sub-step 3's `steps stub` paths and `steps finish --artifact` as `build-plan-verify-holistic-{RUN}-<attempt>.md`, sub-step 7's Read path, the Decision Pause `VERIFY_GAPS` item at line 141); every holistic fix-log path becomes `build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md` (sub-step 7's Create path, sub-step 9's `steps finish --artifact` as `build-plan-gaps-remediate-holistic-{RUN}-<attempt>-log.md`); the fix-log globs at line 141 and sub-step 7 read `build-plan-gaps-remediate-holistic-{RUN}-*-log.md`
+  - **READ:** `.bkit/core/workflows/bkit-build.md` Step 2 sub-step 3: holds `run` as `RUN` and runs again on every resume, so `{RUN}` is held at Step 10 and the Decision Pause
+  - **READ:** `.bkit/core/workflows/bkit-build.md`: the `build-decision-{RUN}-{DECISION}.md` naming is the pattern to follow
   - **DEPENDS ON:** 3
-  - **DONE WHEN:** after a restart, the first holistic check writes `build-plan-verify-holistic-{N+1}.md`, where N is the earlier run's last number, and its fix log `build-plan-gaps-remediate-holistic-{N+1}-log.md`; `pnpm bkit:generate` refreshes the mirrors and `bkit check` reports no drift; the test below passes
+  - **DONE WHEN:** a restarted run's first holistic check writes `build-plan-verify-holistic-{RUN}-1.md` and leaves every earlier run's report and fix log as they were; `counters derive` and `--attempt-of` take no `--all-runs` or `:all`; `pnpm bkit:generate` refreshes the mirrors and `bkit check` reports no drift; the test below passes
   - **TEST FIRST:**
-    - `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` `holistic report number counts every run` fails on the derive without `--all-runs`
-    - `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` `holistic report and fix log finish with attempt-of all` fails on `steps finish --attempt-of=build-plan-verify-holistic:next` without `:all`, which lets a restart overwrite an earlier run's fix log
+    - `.bkit/core/engine/audits/workflows/counter-prose-audit.test.ts` `holistic report and fix log names carry the run number` fails on `build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md` without `{RUN}`, which lets a restart overwrite an earlier run's report
 
 <!-- bkit:task 4 end -->
 
