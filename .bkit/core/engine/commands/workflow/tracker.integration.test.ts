@@ -650,41 +650,38 @@ describe("workflow comment lifecycle across real CLI processes", () => {
     expect(remote().comments.at(-1)?.body).not.toContain("Old progress");
   });
 
-  it("preserves substantive step results under every comment boundary fault", () => {
+  it.each([
+    "preparation",
+    "cache",
+    "receipt",
+    "lock",
+    "read",
+    "append",
+    "create",
+    "reconciliation",
+    "diagnostic",
+  ])("preserves substantive step results under a %s comment boundary fault", (boundary) => {
     const dir = session();
     start(cwd, dir);
     report(cwd, "Initial progress", { file: REL });
-    for (const boundary of [
-      "preparation",
-      "cache",
-      "receipt",
-      "lock",
-      "read",
-      "append",
-      "create",
-      "reconciliation",
-      "diagnostic",
-    ]) {
-      fault();
-      report(cwd, `Before ${boundary}`, { file: REL, number: 6 });
-      faultForBoundary(boundary);
-      for (const verdict of ["PASS", "FAIL"] as const) {
-        const result = finish(cwd, verdict, { BKIT_PROGRESS_IO_FAULT: boundary });
-        expect(result.code, `${boundary}: ${result.stderr}`).toBe(0);
-        const done = rows(cwd)
-          .filter((row) => row.type === "step-done")
-          .at(-1);
-        expect(done).toMatchObject({ verdict, failures: failuresFor(verdict) });
-        const subsequent = ok(cwd, [
-          "status",
-          "row",
-          `--file=${REL}`,
-          "--workflow=build",
-          "--type=owner-answer",
-        ]);
-        expect(subsequent).toBeDefined();
-        expect(rows(cwd).at(-1)?.type).toBe("owner-answer");
-      }
+    report(cwd, `Before ${boundary}`, { file: REL, number: 6 });
+    faultForBoundary(boundary);
+    for (const verdict of ["PASS", "FAIL"] as const) {
+      const result = finish(cwd, verdict, { BKIT_PROGRESS_IO_FAULT: boundary });
+      expect(result.code, `${boundary}: ${result.stderr}`).toBe(0);
+      const done = rows(cwd)
+        .filter((row) => row.type === "step-done")
+        .at(-1);
+      expect(done).toMatchObject({ verdict, failures: failuresFor(verdict) });
+      const subsequent = ok(cwd, [
+        "status",
+        "row",
+        `--file=${REL}`,
+        "--workflow=build",
+        "--type=owner-answer",
+      ]);
+      expect(subsequent).toBeDefined();
+      expect(rows(cwd).at(-1)?.type).toBe("owner-answer");
     }
   });
 
