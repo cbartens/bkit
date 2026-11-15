@@ -310,6 +310,12 @@ describe("readBkitConfig", () => {
     for (const p of ASK_POINTS.slice(1)) expect(asks[p]).toEqual({ ask: true, max: 2 });
   });
 
+  it("build.holistic defaults to ask true, max 2", () => {
+    expect(ASK_POINTS).toContain("build.holistic");
+    expect(CONFIG_DEFAULTS.asks["build.holistic"]).toEqual({ ask: true, max: 2 });
+    expect(readBkitConfig(root()).asks["build.holistic"]).toEqual({ ask: true, max: 2 });
+  });
+
   it("reads each ask point's ask and limit, falling back per key", () => {
     const asks = (workflows: unknown) =>
       readBkitConfig(root(JSON.stringify({ bkit: { workflows } }))).asks;

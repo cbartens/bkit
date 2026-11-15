@@ -453,6 +453,7 @@ describe("bkit counters route --point", () => {
   const DEFAULT_MAX: Record<string, number> = {
     "design.grill": 6,
     "build.verify": 2,
+    "build.holistic": 2,
     "build.challenge": 2,
     "build.tests": 2,
     "debug.fix": 2,
@@ -534,6 +535,77 @@ describe("bkit counters route --point", () => {
         max: 5,
         limitsFrom: "package.json",
       });
+  });
+
+  const holisticRoute = (file: string, cwd: string) =>
+    run(
+      [
+        "counters",
+        "route",
+        "--name=HOLISTIC_ATTEMPT",
+        "--of=build-plan-gaps-remediate-holistic:next",
+        `--file=${file}`,
+        "--workflow=build",
+        "--point=build.holistic",
+        "--continue=step-10",
+        "--exceeded=failure-path",
+      ],
+      cwd,
+    );
+
+  it("holistic fix rounds count within the run without a reset", async () => {
+    const cwd = pkgDir({});
+    const check = (at: string, verdict: string, failures: number) =>
+      done("build", "build-plan-verify-holistic", at, { verdict, failures });
+    const fix = (at: string) => done("build", "build-plan-gaps-remediate-holistic", at);
+    const first = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      check("2026-10-01T00:01:00Z", "FAIL", 2),
+      fix("2026-10-01T00:02:00Z"),
+    ]);
+    expect((await holisticRoute(first, cwd)).json).toMatchObject({ value: 2, max: 2 });
+    expect((await holisticRoute(first, cwd)).code).toBe(0);
+    const clean = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      check("2026-10-01T00:01:00Z", "FAIL", 2),
+      fix("2026-10-01T00:02:00Z"),
+      check("2026-10-01T00:03:00Z", "PASS", 0),
+      check("2026-10-01T00:04:00Z", "FAIL", 1),
+      fix("2026-10-01T00:05:00Z"),
+    ]);
+    const third = await holisticRoute(clean, cwd);
+    expect(third.code).toBe(1);
+    expect(third.json).toMatchObject({ value: 3, max: 2, exceeded: true });
+    const nextRun = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      fix("2026-10-01T00:02:00Z"),
+      fix("2026-10-01T00:05:00Z"),
+      finished("build", "2026-10-01T01:00:00Z"),
+      started("build", "2026-10-02T00:00:00Z"),
+    ]);
+    const fresh = await holisticRoute(nextRun, cwd);
+    expect(fresh.code).toBe(0);
+    expect(fresh.json).toMatchObject({ value: 1, exceeded: false });
+  });
+
+  it("build.holistic falls back to the package.json setting when the run's frozen limits lack it", async () => {
+    const cwd = pkgDir({ workflows: { build: { holistic: { ask: true, maxAttempts: 4 } } } });
+    const file = log([
+      {
+        ...started("build", "2026-10-01T00:00:00Z"),
+        limits: { "build.verify": { ask: true, max: 2 } },
+      },
+      done("build", "build-plan-gaps-remediate-holistic", "2026-10-01T00:02:00Z"),
+      done("build", "build-plan-gaps-remediate-holistic", "2026-10-01T00:05:00Z"),
+    ]);
+    const r = await holisticRoute(file, cwd);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      value: 3,
+      max: 4,
+      exceeded: false,
+      limitsFrom: "package.json",
+    });
   });
 
   it("max --point takes the run's frozen limit with --file and --workflow, else package.json", async () => {
@@ -711,103 +783,6 @@ describe("bkit counters grant", () => {
       );
     expect((await soak()).json).toMatchObject({ max: 2, grants: 0, exceeded: true });
     expect((await soak("--all-runs")).json).toMatchObject({ max: 4, grants: 1, exceeded: false });
-  });
-});
-
-describe("bkit counters route --since-clean", () => {
-  const start = started("build", "2026-10-01T00:00:00Z");
-  const holistic = (at: string, verdict: string, failures: number) =>
-    done("build", "build-plan-verify-holistic", at, { verdict, failures });
-  const grantRow = (at: string, group?: number) => ({
-    type: "allowance-granted",
-    workflow: "build",
-    at,
-    point: "build.verify",
-    ...(group === undefined ? {} : { group }),
-  });
-  const route = (file: string, cwd: string, ...extra: string[]) =>
-    run(
-      [
-        "counters",
-        "route",
-        "--name=HOLISTIC_ROUNDS",
-        "--of=build-plan-verify-holistic:current",
-        `--file=${file}`,
-        "--workflow=build",
-        "--point=build.verify",
-        ...extra,
-      ],
-      cwd,
-    );
-
-  it("counts only the rounds after the step's last clean round", async () => {
-    const cwd = pkgDir({});
-    const file = log([
-      start,
-      holistic("2026-10-01T00:10:00Z", "FAIL", 2),
-      holistic("2026-10-01T00:20:00Z", "CONCERNS", 1),
-      holistic("2026-10-01T00:30:00Z", "PASS", 0),
-      holistic("2026-10-01T00:40:00Z", "FAIL", 1),
-    ]);
-    expect((await route(file, cwd)).json).toMatchObject({ value: 4, exceeded: true });
-    expect((await route(file, cwd, "--since-clean")).json).toMatchObject({
-      value: 1,
-      max: 2,
-      exceeded: false,
-    });
-  });
-
-  it("a CONCERNS round with 0 failures is clean, one with failures is not", async () => {
-    const cwd = pkgDir({});
-    const rounds = (verdict: string, failures: number) =>
-      log([
-        start,
-        holistic("2026-10-01T00:10:00Z", "FAIL", 1),
-        holistic("2026-10-01T00:20:00Z", verdict, failures),
-        holistic("2026-10-01T00:30:00Z", "FAIL", 1),
-      ]);
-    expect((await route(rounds("CONCERNS", 0), cwd, "--since-clean")).json.value).toBe(1);
-    expect((await route(rounds("CONCERNS", 1), cwd, "--since-clean")).json.value).toBe(3);
-  });
-
-  it("counts only the grants after the last clean round, and only those without a group", async () => {
-    const cwd = pkgDir({});
-    const file = log([
-      start,
-      holistic("2026-10-01T00:10:00Z", "FAIL", 1),
-      grantRow("2026-10-01T00:11:00Z"),
-      holistic("2026-10-01T00:20:00Z", "PASS", 0),
-      grantRow("2026-10-01T00:25:00Z", 3),
-      holistic("2026-10-01T00:30:00Z", "FAIL", 1),
-      grantRow("2026-10-01T00:31:00Z"),
-    ]);
-    expect((await route(file, cwd)).json).toMatchObject({ grants: 3, max: 8 });
-    expect((await route(file, cwd, "--since-clean")).json).toMatchObject({
-      value: 1,
-      grants: 1,
-      max: 4,
-    });
-  });
-
-  it("refuses --since-clean without one --of step, or with --all-runs", async () => {
-    const cwd = pkgDir({});
-    const file = log([start, holistic("2026-10-01T00:10:00Z", "FAIL", 1)]);
-    const value = await run(
-      [
-        "counters",
-        "route",
-        "--name=X",
-        "--value=1",
-        `--file=${file}`,
-        "--workflow=build",
-        "--point=build.verify",
-        "--since-clean",
-      ],
-      cwd,
-    );
-    expect(value.code).toBe(2);
-    expect(value.out).toBe("");
-    expect((await route(file, cwd, "--since-clean", "--all-runs")).code).toBe(2);
   });
 });
 
@@ -1487,5 +1462,47 @@ describe("bkit counters correction", () => {
     expect(final.code).toBe(1);
     expect(final.json).toMatchObject({ allowed: false, used: 2, limit: 2, remaining: 0 });
     expect(candidates(file)).toHaveLength(2);
+  });
+});
+
+describe("bkit counters --since-clean retired from route and grant", () => {
+  const file = () => log([started("build", "2026-10-01T00:00:00Z")]);
+
+  it("route refuses --since-clean as an unknown flag", async () => {
+    const r = await run(
+      [
+        "counters",
+        "route",
+        "--name=X",
+        "--of=build-plan-verify-holistic:current",
+        `--file=${file()}`,
+        "--workflow=build",
+        "--point=build.verify",
+        "--since-clean",
+      ],
+      pkgDir({}),
+    );
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("unknown flag --since-clean");
+  });
+
+  it("grant refuses --since-clean as an unknown flag", async () => {
+    const r = await run(
+      [
+        "counters",
+        "grant",
+        "--name=X",
+        "--of=build-plan-verify-holistic:current",
+        `--file=${file()}`,
+        "--workflow=build",
+        "--point=build.verify",
+        "--since-clean",
+      ],
+      pkgDir({}),
+    );
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("unknown flag --since-clean");
   });
 });

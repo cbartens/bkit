@@ -252,9 +252,32 @@ describe("bkit decisions compose", () => {
     );
     expect(r.code).toBe(0);
     const text = fs.readFileSync(out, "utf-8");
-    expect(text).toContain("build verify: attempt 2 of 2");
+    expect(text).toContain("build holistic: attempt 2 of 2");
     expect(text).toContain("Problems after each round: 3 → 3");
     expect(text).toMatch(/\*\*Q1 — Holistic verify:\*\* decide the items below/);
+  });
+
+  it("--loop=holistic names build holistic in the attempt line", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" }) +
+        "\n",
+    );
+    const { r, out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=holistic",
+      `--file=${status}`,
+      "--attempt=2",
+      "--max=2",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("build holistic: attempt 2 of 2");
+    expect(text).not.toContain("build verify: attempt");
   });
 
   it("prints the group gate's failing tests per round for the verify loop", async () => {

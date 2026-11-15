@@ -31,7 +31,7 @@ export function changedFiles(top, base) {
     return [...all].filter((f) => fs.existsSync(path.join(top, f))).sort();
 }
 /** Whether `dir/package.json` declares `name` as a non-empty script. */
-function declares(dir, name) {
+export function declares(dir, name) {
     const read = readPackageJson(dir);
     const scripts = read.ok ? read.pkg.scripts : undefined;
     if (typeof scripts !== "object" || scripts === null)

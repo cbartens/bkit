@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-15T10:01:43Z)_
+_(refreshed 2026-11-15T10:35:45Z)_
 
 ### Design
 
@@ -51,7 +51,6 @@ _(refreshed 2026-11-15T10:01:43Z)_
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
 | 914-build-planned-test | 914-build-planned-test | 1794354847222 |
-| 951-build-repeat-whole | 951-build-repeat-whole | 1794715882867 |
 
 ### Build
 
@@ -74,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 951-build-repeat-whole | 951-build-repeat-whole | 1794738945847 |
 | 814-local-test-limits | 814-local-test-limits | 1794736903637 |
 | 923-pre-push-block | 923-pre-push-block | 1794689727505 |
 | 920-build-agents-run | 920-build-agents-run | 1794637457684 |
@@ -83,7 +83,6 @@ _(none)_
 | 930-build-tick-green | 930-build-tick-green | 1794607449835 |
 | 911-ship-failed-merge | 911-ship-failed-merge | 1794576192090 |
 | 922-pre-push-load | 922-pre-push-load | 1794553285735 |
-| 903-build-owner-s | 903-build-owner-s | 1794552564939 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

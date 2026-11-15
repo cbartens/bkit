@@ -88,6 +88,7 @@ export interface TaskCaps {
 export const ASK_POINTS = [
   "design.grill",
   "build.verify",
+  "build.holistic",
   "build.challenge",
   "build.tests",
   "debug.fix",
@@ -207,6 +208,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   asks: {
     "design.grill": { ask: true, max: 6 },
     "build.verify": { ask: true, max: 2 },
+    "build.holistic": { ask: true, max: 2 },
     "build.challenge": { ask: true, max: 2 },
     "build.tests": { ask: true, max: 2 },
     "debug.fix": { ask: true, max: 2 },

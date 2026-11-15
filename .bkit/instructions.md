@@ -1715,9 +1715,9 @@ Clause section lines:
 ### local-pre-commit
 
 - rule: Universal Rules › Testing & Debugging
-- carry: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-verify`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`
+- carry: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-verify`, `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-debug-failure-soak`
 - prompt:
-  - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`
+  - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-tests`, `bkit-build-plan-gaps-remediate`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`, `bkit-debug-failure-reproduce`, `bkit-debug-failure-soak`
 
 ```text
 **Local pre-commit:** Before a commit and while working, run only the tests the change affects (tests importing changed code or naming a changed file's path), naming each test file, never a folder, a pattern, the full suite or a `bkit:gate:*` script, and run static checks on changed files. A `/bkit-*` step's named command is the only wider run.
@@ -4421,7 +4421,7 @@ Run `pnpm bkit:gate:static-unit`. Every local test must pass.
 
 - prompt: where-used
 - tags: local-tests-first
-- carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`
+- carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`, `bkit-build-plan-verify`, `bkit-debug-failure-remediate`, `bkit-debug-failure-soak`
 
 ```text
 **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
@@ -10035,7 +10035,7 @@ Orchestrator exits and the dispatched skill owns the session
 **If** `PUBLISH` = false **or** `PUBLISH` is not held yet → keep the record in the worktree, linked by branch, and NEVER pass `--push`, because a held run pushes nothing and neither does a failure before `status route` resolves `publish`:
 [workflow-pushes] **Else** → commit and push the record, but NEVER onto a branch with an open PR:
 Derive the decision number:
-**If** `PAUSE_QUESTION` = `VERIFY_GAPS` **and** `PAUSE_STEP` = 10 → write one item per `Identified Gaps Log` line of `build-plan-verify-holistic-{HOLISTIC_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-holistic-*-log.md` when it has one.
+**If** `PAUSE_QUESTION` = `VERIFY_GAPS` **and** `PAUSE_STEP` = 10 → write one item per `Identified Gaps Log` line of `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-holistic-{RUN}-*-log.md` when it has one.
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
 For either `VERIFY_GAPS` list:
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
@@ -10072,7 +10072,7 @@ Route — first match wins:
 **If** `From: holistic`, `From: tests` **or** `From: challenge` → put it in a new last group, keeping each new group within the caps.
 **If** `From: holistic` → `DECISION_ROUTE` = `holistic`.
 Clear `PAUSE_LOOP`. **If** `From: verify`, `From: holistic` **or** `From: tests` → the owner chose to go on, so give that loop one more full allowance when its limit is used up. Below the limit, or with `ask` = false, the command grants nothing and exits 1; both exits go on:
-**If** `From: holistic` → count the allowance from the last holistic round that found no problems:
+**If** `From: holistic` → count the allowance over the run's holistic fix rounds:
 Route — first match wins:
 **If** the owner says stop, **or** answers `Stop` → step 8.
 **If** the loop question is answered `Try again` → step 6. The items then need no decision.
@@ -10126,12 +10126,12 @@ Derive the attempt the holistic report is named for:
 **If** `HOLISTIC_VERDICT` = PASS → Step 11.
 **If** `HOLISTIC_VERDICT` = CONCERNS **and** `HOLISTIC_FAILURES` = 0 → Step 11. No gap is open: the report's concern is a group count, which the summary lists.
 **If** `HOLISTIC_VERDICT` = CONCERNS **or** `HOLISTIC_VERDICT` = FAIL → sub-step 6.
-Route on the holistic rounds since the last one that found no problems:
-**If** `LIMIT_ASK` = true **and** either exit 1 **or** `HOLISTIC_ROUNDS` = `PAUSE_MAX` → `PAUSE_LOOP` = `holistic`, so the pause also asks whether to try another round.
-**If** exit 0 **and** either `HOLISTIC_FIXABLE` = false **or** `HOLISTIC_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+Route on the holistic fix rounds of this run:
+**If** `LIMIT_ASK` = true **and** exit 1 → `PAUSE_LOOP` = `holistic`, so the pause also asks whether to try another round.
+**If** exit 0 **and** `HOLISTIC_FIXABLE` = false → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 **Run only if** sub-step 6 **or** the **Decision Pause** routed here. Read status.jsonl and derive the next `STRATEGY`:
 **If** `HOLISTIC_ATTEMPT` is not held (resumed into this sub-step) → read the last holistic round's attempt back:
-**If** exit 1 **or** `HOLISTIC_FIXED` = 0 → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
+**If** exit 1 **or** `HOLISTIC_FIXED` = 0 → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic`, `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
 Holistic gaps routed: fixed in a holistic round, or asked at the **Decision Pause**
 Holistic fix invoked (`@bkit-build-plan-gaps-remediate`, holistic, no inline work), or no round run
 No-progress holistic round routed
@@ -10228,14 +10228,16 @@ Tick the satisfied tasks in the plan. A task that the test-first report lists as
 **If** `CONVERT_RETRY` is not held **and** exit 1 with a `matrix` or `supersession` problem → `CONVERT_RETRY` = the printed `problems` → Step 4 sub-step 2.
 **If** the printed `groups` hold a group numbered above `GROUP` → sub-step 8.
 **Else** → `GATE_VERDICT` = SKIPPED → sub-step 10.
-Run the group gate: the static checks and the unit tier. The integration tier runs once, at Step 12. The gate writes the trimmed log to the artifact:
+Run the group gate on the files the group changed: the static checks and the unit tier for them. The whole unit tier and the integration tier run once, at Step 12. **If** `GROUP_BASE` is not held (a Decision Pause re-run or a resume) → re-derive it first:
+Hold `parentSha` as `GROUP_BASE`. **If** `GROUP_BASE` = null → **Failure Path**. The gate writes the trimmed log to the artifact:
 **If** exit 0 **or** 1 → hold `verdict` as `GATE_VERDICT` and `scope` as `TEST_SCOPE` → sub-step 9.
 **If** `VERIFY_VERDICT` = PASS **and** `GATE_VERDICT` != FAIL → clear `GATE_RERUN`, then Step 7 without asking, which briefs the next group or goes to Step 10 when none is open.
 **If** `VERIFY_VERDICT` = CONCERNS **or** `VERIFY_VERDICT` = FAIL **or** `GATE_VERDICT` = FAIL → route on the group's verify rounds:
 **If** `GATE_RERUN` = true **and** `GATE_VERDICT` = FAIL → clear `GATE_RERUN`, `PAUSE_QUESTION` = `VERIFY_GAPS`, `PAUSE_LOOP` = `verify` → **Decision Pause** — the re-run gate is still red, so the pause is asked again with fresh numbers.
+**If** `GROUP_BASE` is not held (a Decision Pause re-run or a resume) → re-derive it first:
 **If** `LIMIT_ASK` = true **and** either exit 1 **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_LOOP` = `verify`, so the pause also asks whether to try another round.
-**If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides.
-**If** exit 1 → **Failure Path** — `build.verify.maxAttempts` is used up.
+**If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.holistic.maxAttempts` is used up, so the owner decides.
+**If** exit 1 → **Failure Path** — `build.holistic.maxAttempts` is used up.
 Test-first reds audited (`tests green`)
 Group diff cut from its start commit (`context diff`)
 Group gate verdict decided
@@ -11129,7 +11131,7 @@ Judge them against the supplied group diff (the changes since the group started)
 **If** a brief has a `Deviations` section → judge the tasks it names as the owner's instructions there direct.
 Check that every task field and gate maps to real changes in the codebase.
 Find missing components, skipped steps and unimplemented edge cases.
-A failing test that the group gate (`bkit:gate:static-unit`) runs is not a gap, unless a task's `DONE WHEN` or `TEST FIRST` names that test: the workflow routes the gate's result itself. After the last group there is no group gate, so Step 12's final run and the holistic verify cover a failing test.
+A failing test that the group gate (`bkit:gate:static-unit`, run on the files changed since the group started) runs is not a gap, unless a task's `DONE WHEN` or `TEST FIRST` names that test: the workflow routes the gate's result itself. After the last group there is no group gate, so Step 12's final run and the holistic verify cover a failing test.
 **If** `Mode` = `Holistic`:
 Run the same task and gate check across every group of the plan.
 Check the integration between groups:
@@ -11137,7 +11139,7 @@ The groups' components work together.
 The API contracts match.
 Shared state is consistent.
 Cross-domain boundaries are respected.
-[local-pre-commit] Run `bkit tests changed --base=origin/dev --fallback=bkit:gate:static-unit`.
+[local-pre-commit] Run `bkit tests changed --base={Test base} --fallback=bkit:gate:static-unit`. Your Context names `Test base`: the commit the last clean holistic check tested up to, or `origin/dev` for the first check.
 Log each integration gap and each failing test as one gap: append `INTEGRATION: {what does not work together, naming the groups or tasks} — Fixable: true|false` with Bash `echo >>`, and describe it under `Integration Gaps`.
 `Fixable: false` only when closing the gap needs a choice the plan does not make; the owner then decides. Every other gap is `Fixable: true`, because the holistic fix round closes it.
 **If** a supplied decision record accepts the gap → no gap. Name the record in `Notes`.
@@ -11303,13 +11305,13 @@ External signal:
 Run web searches only after an instrument-and-observe pass, never before.
 **If** this iteration applied a fix:
 [honest-reporting] Verify that `git grep -F '[DEBUG-OBSERVE]'` over the source returns nothing.
-Run `pnpm bkit:gate:static-unit`, and record pass or fail in the log entry.
+Run `bkit tests changed --fallback=bkit:gate:static-unit`, and record pass or fail in the log entry.
 Log the step: append the entry at EOF with Bash `echo {log entry} >> {output}`.
 On success → `DONE — {instrument|fix}: {what} — {evidence / expected effect}`.
 When stuck → `BLOCKED — {what} — {reason}`.
-`PASS` = this iteration applied a fix, its log entry is `DONE`, and `pnpm bkit:gate:static-unit` passes.
+`PASS` = this iteration applied a fix, its log entry is `DONE`, and `bkit tests changed --fallback=bkit:gate:static-unit` passes.
 `CONCERNS` = this iteration applied instrumentation only, and its log entry is `DONE`.
-`FAIL` = this iteration has no `DONE` log entry (none at all, or `BLOCKED` with no later `DONE`), **or** it applied a fix and `pnpm bkit:gate:static-unit` fails, **or** it applied a fix and `git grep -F '[DEBUG-OBSERVE]'` still finds a line.
+`FAIL` = this iteration has no `DONE` log entry (none at all, or `BLOCKED` with no later `DONE`), **or** it applied a fix and `bkit tests changed --fallback=bkit:gate:static-unit` fails, **or** it applied a fix and `git grep -F '[DEBUG-OBSERVE]'` still finds a line.
 ```
 
 #### bkit-design-brainstorm-ideate-1

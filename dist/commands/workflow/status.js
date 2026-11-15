@@ -6,7 +6,7 @@ import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
 import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastCleanRound, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, worktreeFingerprint, writeInvocation, } from "../lib.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
@@ -152,6 +152,16 @@ const ROUTE_FIELDS = [
 ];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
+/**
+ * The commit a repeat check tests from: the step's last clean round's `parentSha`, else
+ * `origin/dev`, which is also the answer when that sha is not an ancestor of HEAD.
+ */
+function cleanBase(cwd, clean) {
+    const sha = clean?.parentSha;
+    if (typeof sha !== "string" || sha === "")
+        return "origin/dev";
+    return git(cwd, ["merge-base", "--is-ancestor", sha, "HEAD"]) === null ? "origin/dev" : sha;
+}
 function route(runs, workflow, step, group) {
     const out = {
         verdict: null,
@@ -399,6 +409,7 @@ export const statusCommand = {
                 gates: "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
                 publish: "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
                 publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
+                cleanBase: "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else origin/dev; origin/dev also when that sha is not an ancestor of HEAD",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
             },
             exitCodes: {
@@ -440,6 +451,7 @@ export const statusCommand = {
                 }
                 const runs = promptFile !== undefined && !fs.existsSync(file) ? [] : readRuns(file);
                 const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
+                out.cleanBase = cleanBase(ctx.cwd, step === undefined ? undefined : lastCleanRound(runs, String(ctx.flags.workflow), step));
                 if (promptFile !== undefined) {
                     const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
                     const config = readBkitConfig(root);

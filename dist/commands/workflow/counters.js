@@ -10,7 +10,7 @@
 //            0 is a legal answer (that step simply has not run).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, activeDoneStepsSinceClean, allRunsDoneSteps, appendLine, CORRECTION_CANDIDATE_ROW, lastCleanRound, lastDoneStepAllRuns, nextStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, activeDoneStepsSinceClean, allRunsDoneSteps, appendLine, CORRECTION_CANDIDATE_ROW, lastDoneStepAllRuns, nextStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
 import { ASK_POINTS, readBkitConfig, } from "../../shared/settings.js";
 import { headlessRun } from "./runtime.js";
 import { CommandError, EXIT, git, runGit, wholeNumber, } from "../lib.js";
@@ -46,8 +46,7 @@ const nonNegativeInt = (v, flag) => {
 /**
  * `--of=<step>:<position>` over `--file` / `--workflow`: the counter at that position.
  * `--of=<step>,<step>...:count` sums the DONE rows of every listed step. `--all-runs`
- * counts every run of the workflow in the file, not only the active one. `--since-clean`
- * counts only the rows after the step's last clean round (`cleanRound`).
+ * counts every run of the workflow in the file, not only the active one.
  */
 function derivedOf(ctx) {
     const [list, position] = String(ctx.flags.of).split(":");
@@ -58,26 +57,14 @@ function derivedOf(ctx) {
         throw new CommandError(EXIT.USAGE, "--of with several steps takes distinct steps and :count");
     if (ctx.flags.file === undefined || ctx.flags.workflow === undefined)
         throw new CommandError(EXIT.USAGE, "--of needs --file and --workflow");
-    if (ctx.flags.sinceClean === true && (steps.length > 1 || ctx.flags.allRuns === true))
-        throw new CommandError(EXIT.USAGE, "--since-clean takes one --of step, without --all-runs");
     const runs = readRuns(statusFile(ctx));
     const group = positiveInt(ctx.flags.group, "group");
-    const doneSteps = ctx.flags.allRuns === true
-        ? allRunsDoneSteps
-        : ctx.flags.sinceClean === true
-            ? (r, w, f) => activeDoneStepsSinceClean(r, w, f, steps[0])
-            : activeDoneSteps;
+    const doneSteps = ctx.flags.allRuns === true ? allRunsDoneSteps : activeDoneSteps;
     const count = steps.reduce((n, step) => n + doneSteps(runs, String(ctx.flags.workflow), { step, group }).length, 0);
     if (position === "current" && count === 0)
         throw new CommandError(EXIT_NO_OWN_ROW, `${steps[0]}: no DONE row in the active run — the step's own row is missing`);
     return position === "next" ? count + 1 : count;
 }
-/** `--since-clean`: count one loop's rounds since its check last found no problems. */
-const SINCE_CLEAN_FLAG = {
-    name: "since-clean",
-    type: "boolean",
-    help: "with --of: only rows after the --of step's last clean round (PASS, or CONCERNS with 0 failures); with --point: only grants after it, for exactly --group (none: grants with no group)",
-};
 /** `--all-runs`: count every run of the workflow in `--file`, not only the active one. */
 const ALL_RUNS_FLAG = {
     name: "all-runs",
@@ -171,10 +158,9 @@ export function spendCorrection(file, workflow, scope, operation, limit, extra =
 export const ALLOWANCE_ROW = "allowance-granted";
 /**
  * Allowances granted to `point` (and `group`, when given) in `workflow`'s active run, or
- * across every run of the file with `allRuns`. With `sinceClean` (a step), only the grants
- * after that step's last clean round, for exactly `group`: none means grants with no group.
+ * across every run of the file with `allRuns`.
  */
-export function grantCount(file, workflow, point, group, allRuns, sinceClean) {
+export function grantCount(file, workflow, point, group, allRuns) {
     if (!fs.existsSync(file))
         return 0;
     const rows = readStatusRows(file);
@@ -184,15 +170,12 @@ export function grantCount(file, workflow, point, group, allRuns, sinceClean) {
             if (r.type === "workflow-started" && r.workflow === workflow)
                 start = i;
         });
-    const cleanAt = sinceClean === undefined ? undefined : lastCleanRound(readRuns(file), workflow, sinceClean)?.at;
     return rows
         .slice(start + 1)
         .filter((r) => r.type === ALLOWANCE_ROW &&
         r.workflow === workflow &&
         r.point === point &&
-        (sinceClean === undefined
-            ? group === undefined || r.group === group
-            : r.group === group && (cleanAt === undefined || String(r.at) > cleanAt))).length;
+        (group === undefined || r.group === group)).length;
 }
 /** A loop's frozen allowance, including the owner's saved grants; absent for legacy runs. */
 export function savedPointLimit(file, workflow, point, group, allRuns = false) {
@@ -366,13 +349,6 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
                 : "stop",
     };
 }
-/** `--since-clean`'s step: the single `--of` step, whose clean rounds close a loop. */
-function sinceCleanStep(ctx) {
-    const step = ctx.flags.of === undefined ? undefined : String(ctx.flags.of).split(":")[0];
-    if (step === undefined || step === "" || step.includes(","))
-        throw new CommandError(EXIT.USAGE, "--since-clean needs --of with one step");
-    return step;
-}
 /**
  * `--point`'s limit for route and grant: the run's frozen setting (else package.json's), its
  * max raised by one full allowance per `allowance-granted` row when `--file` and
@@ -388,7 +364,7 @@ function pointLimit(ctx) {
         : undefined;
     const setting = frozen ?? askSetting(ctx.cwd, point);
     const grants = inRun
-        ? grantCount(statusFile(ctx), String(ctx.flags.workflow), point, positiveInt(ctx.flags.group, "group"), ctx.flags.allRuns === true, ctx.flags.sinceClean === true ? sinceCleanStep(ctx) : undefined)
+        ? grantCount(statusFile(ctx), String(ctx.flags.workflow), point, positiveInt(ctx.flags.group, "group"), ctx.flags.allRuns === true)
         : 0;
     return {
         point,
@@ -425,7 +401,6 @@ const VALUE_FLAGS = [
         ...ALL_RUNS_FLAG,
         help: "with --of: count every run of the workflow in --file; with --point: grants of every run",
     },
-    SINCE_CLEAN_FLAG,
 ];
 /** The counter's value: `--value`, or derived with `--of` and/or `--rows`. */
 function counterValue(ctx) {

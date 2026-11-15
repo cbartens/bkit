@@ -48,7 +48,7 @@ export function changedFiles(top: string, base: string): string[] {
 }
 
 /** Whether `dir/package.json` declares `name` as a non-empty script. */
-function declares(dir: string, name: string): boolean {
+export function declares(dir: string, name: string): boolean {
   const read = readPackageJson(dir);
   const scripts = read.ok ? read.pkg.scripts : undefined;
   if (typeof scripts !== "object" || scripts === null) return false;

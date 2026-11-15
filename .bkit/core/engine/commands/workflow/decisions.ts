@@ -200,12 +200,12 @@ const LOOPS: Record<
     point: "verify",
     gate: "build-group-gate",
   },
-  // The whole-feature check reopens after each clean round, so its loop starts there.
+  // The whole-feature check reopens after each clean round, so its loop starts there. Its allowance is `build.holistic`.
   holistic: {
     title: "Holistic verify",
     check: "build-plan-verify-holistic",
     fix: "build-plan-gaps-remediate-holistic",
-    point: "verify",
+    point: "holistic",
     sinceClean: true,
   },
   tests: {

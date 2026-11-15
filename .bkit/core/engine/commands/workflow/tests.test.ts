@@ -6,6 +6,8 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 
+import { tierTimeouts } from "../../../../../vitest.timeout-budget";
+
 import { PLAN_FIELDS, parsePlanBlocks, type PlanField, type PlanTaskBlock } from "./plan-blocks";
 import {
   BKIT_BUILD_GATES,
@@ -52,7 +54,8 @@ const scripts = (s: Record<string, string>) => JSON.stringify({ scripts: s });
  * the script it was asked for on stdout and stderr, writes FAKE_JUNIT to
  * $BKIT_TEST_REPORT when both are set, writes FAKE_REPORT_A / FAKE_REPORT_B into
  * $BKIT_TEST_REPORT_DIR (B one folder down), prints FAKE_LINES numbered lines,
- * then exits FAKE_EXIT. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
+ * then exits FAKE_EXIT. It appends its arguments to FAKE_ARGS_LOG when set, and with FAKE_LOCK_GIVEUP
+ * prints the tests-lock give-up line for $LOCAL_STACK_LOCK_WHO and exits 75. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
  */
 let cwd: string;
 let bin: string;
@@ -67,6 +70,8 @@ beforeEach(() => {
     path.join(bin, PACKAGE_RUNNER),
     '#!/bin/sh\necho "out: $1 in $(pwd)"\necho "err: $1" >&2\necho "arg: $2"\n' +
       'printf "wait=%s who=%s\\n" "$LOCAL_STACK_LOCK_WAIT_S" "$LOCAL_STACK_LOCK_WHO"\n' +
+      'if [ -n "$FAKE_ARGS_LOG" ]; then echo "$*" >> "$FAKE_ARGS_LOG"; fi\n' +
+      'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] ❌ $LOCAL_STACK_LOCK_WHO gave up after 0s waiting for tests, in use by another agent — /tmp/holder (pid 123, since 12:00:00), no earlier run"; exit 75; fi\n' +
       'if [ "$1" = "bkit:lint:file" ]; then exit "${FAKE_LINT_EXIT:-0}"; fi\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
       'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
@@ -719,6 +724,330 @@ describe("bkit tests run --file", () => {
     expect(missing.err).toContain("does not exist");
     expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
   });
+});
+
+describe("bkit tests run --changed-since", () => {
+  const STATUS = "logs/status.jsonl";
+  const CHANGED = "bkit:gate:changed";
+  const gitIn = (...args: string[]) => {
+    const r = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd, encoding: "utf-8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout.trim();
+  };
+  let argsLog: string;
+  let base: string;
+  const repo = (declared: Record<string, string>) => {
+    checkout(scripts(declared));
+    fs.writeFileSync(path.join(cwd, ".gitignore"), "logs/\n");
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "-m", "base");
+    base = gitIn("rev-parse", "HEAD");
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, STATUS), "");
+    argsLog = path.join(bin, "args.log");
+    vi.stubEnv("FAKE_ARGS_LOG", argsLog);
+  };
+  const changeTwoFiles = () => {
+    fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, "src/committed.ts"), "export const a = 1;\n");
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "-m", "change");
+    fs.writeFileSync(path.join(cwd, "src/loose.ts"), "export const b = 2;\n");
+  };
+  const args = (since: string) => [
+    `--gate=${SHALLOW}`,
+    "--log=logs/test.md",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    "--step=build-group-gate-1",
+    `--changed-since=${since}`,
+  ];
+  const rows = () =>
+    fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.type === "test-run");
+  const timeout = tierTimeouts(true).testTimeout;
+
+  it(
+    "changed-since runs the changed gate on changed files and writes a test-run row",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", gate: CHANGED, failures: 0 });
+      const handed = fs.readFileSync(argsLog, "utf-8");
+      expect(handed).toContain(CHANGED);
+      expect(handed).toContain("src/committed.ts");
+      expect(handed).toContain("src/loose.ts");
+      expect(r.json.scope).toContain(CHANGED);
+      expect(r.json.scope).toContain("2");
+      expect(r.json.scope).not.toContain("src/committed.ts");
+      expect(rows()).toEqual([
+        expect.objectContaining({
+          workflow: "build",
+          step: "build-group-gate-1",
+          run: 1,
+          verdict: "PASS",
+          exitCode: 0,
+          scope: r.json.scope,
+        }),
+      ]);
+      expect(r.json.row).toEqual(rows()[0]);
+    },
+    timeout,
+  );
+
+  it(
+    "changed-since runs the --gate whole when bkit:gate:changed is undeclared",
+    async () => {
+      repo({ [SHALLOW]: "x" });
+      changeTwoFiles();
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", gate: SHALLOW, scope: gateScope(SHALLOW) });
+      const handed = fs.readFileSync(argsLog, "utf-8");
+      expect(handed).toContain(SHALLOW);
+      expect(handed).not.toContain(CHANGED);
+      expect(handed).not.toContain("src/committed.ts");
+      expect(rows()).toEqual([
+        expect.objectContaining({ verdict: "PASS", scope: gateScope(SHALLOW) }),
+      ]);
+    },
+    timeout,
+  );
+
+  it(
+    "changed-since with no changed files writes a PASS row and runs nothing",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", exitCode: 0, failures: 0 });
+      expect(fs.existsSync(argsLog)).toBe(false);
+      expect(rows()).toEqual([
+        expect.objectContaining({ verdict: "PASS", step: "build-group-gate-1", failures: 0 }),
+      ]);
+      expect(String(rows()[0]!.scope)).toContain("0");
+    },
+    timeout,
+  );
+
+  it(
+    "changed-since counts failures from the changed gate's JUnit reports",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv(
+        "FAKE_REPORT_A",
+        `<?xml version="1.0"?><testsuites><testsuite name="s"><testcase name="a"><failure message="boom">t</failure></testcase><testcase name="b"><error message="crash">t</error></testcase><testcase name="c"/></testsuite></testsuites>`,
+      );
+      const r = await run(args(base));
+      expect(r.code).toBe(1);
+      expect(r.json).toMatchObject({ verdict: "FAIL", gate: CHANGED, failures: 2 });
+      expect(rows()).toEqual([expect.objectContaining({ verdict: "FAIL", failures: 2 })]);
+    },
+    timeout,
+  );
+
+  it(
+    "changed-since refuses a sha that names no commit",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      const r = await run(args("nosuchrevision"));
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("nosuchrevision");
+      expect(r.err).toContain("--changed-since");
+      expect(r.err).not.toContain("unknown flag");
+      expect(fs.existsSync(argsLog)).toBe(false);
+      expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+      expect(rows()).toEqual([]);
+    },
+    timeout,
+  );
+
+  it(
+    "changed-since on a tests-lock wait exits 81 with no row and reports lockHolder",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      vi.stubEnv("FAKE_LOCK_GIVEUP", "1");
+      const r = await run([...args(base), "--lock-wait-s=0"]);
+      expect(r.code).toBe(81);
+      expect(r.json).toMatchObject({
+        verdict: null,
+        gate: CHANGED,
+        row: null,
+        lockHolder: expect.stringContaining("another agent"),
+      });
+      expect(rows()).toEqual([]);
+    },
+    timeout,
+  );
+});
+
+describe("bkit tests run — push-gate receipt", () => {
+  const gitIn = (...args: string[]) => {
+    const r = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=T",
+        "-c",
+        "user.email=t@example.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd, encoding: "utf-8" },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    return r.stdout.trim();
+  };
+  const head = () => gitIn("rev-parse", "HEAD");
+  const receipt = (sha: string) => path.join(cwd, ".git/bkit-outbox/push-gates", `${sha}.json`);
+  const repo = () => {
+    checkout(scripts({ [SHALLOW]: "x", [DEEP]: "y" }));
+    fs.writeFileSync(path.join(cwd, ".gitignore"), "logs/\n");
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "-m", "base");
+  };
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(path.join(cwd, file)), { recursive: true });
+    fs.writeFileSync(path.join(cwd, file), content);
+  };
+  const gateArgs = (gate: string) => [`--gate=${gate}`, "--log=logs/test.md"];
+  const timeout = tierTimeouts(true).testTimeout;
+
+  it(
+    "a passing required push gate records a receipt",
+    async () => {
+      repo();
+      const sha = head();
+      const r = await run(gateArgs(DEEP));
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(true);
+      expect(JSON.parse(fs.readFileSync(receipt(sha), "utf-8"))).toMatchObject({
+        sha,
+        gate: DEEP,
+        passed: true,
+      });
+      expect(fs.existsSync(`${receipt(sha)}.failed`)).toBe(false);
+    },
+    timeout,
+  );
+
+  it(
+    "a passing required push gate with only bookkeeping uncommitted records a receipt",
+    async () => {
+      repo();
+      const sha = head();
+      write("docs/plans/202611/logs/x/status.jsonl", '{"type":"engine-call"}\n');
+      const r = await run(gateArgs(DEEP));
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(true);
+    },
+    timeout,
+  );
+
+  it(
+    "a failing required push gate leaves the failed marker",
+    async () => {
+      repo();
+      const sha = head();
+      vi.stubEnv("FAKE_EXIT", "1");
+      const r = await run(gateArgs(DEEP));
+      expect(r.code).toBe(1);
+      expect(fs.existsSync(`${receipt(sha)}.failed`)).toBe(true);
+      expect(fs.existsSync(receipt(sha))).toBe(false);
+    },
+    timeout,
+  );
+
+  it(
+    "uncommitted code blocks the receipt until it is committed",
+    async () => {
+      repo();
+      write("src/code.ts", "export const a = 1;\n");
+      const first = await run(gateArgs(DEEP));
+      expect(first.code).toBe(0);
+      expect(fs.existsSync(receipt(head()))).toBe(false);
+      gitIn("add", "-A");
+      gitIn("commit", "-q", "-m", "code");
+      const sha = head();
+      const second = await run(gateArgs(DEEP));
+      expect(second.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(true);
+    },
+    timeout,
+  );
+
+  it(
+    "a staged rename of code into a bookkeeping path records no receipt",
+    async () => {
+      repo();
+      write("src/a.test.ts", "export const a = 1;\n");
+      gitIn("add", "-A");
+      gitIn("commit", "-q", "-m", "code");
+      const sha = head();
+      fs.mkdirSync(path.join(cwd, "docs/plans"), { recursive: true });
+      gitIn("mv", "src/a.test.ts", "docs/plans/x.ts");
+      const r = await run(gateArgs(DEEP));
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(false);
+    },
+    timeout,
+  );
+
+  it(
+    "only the required push gate records a receipt",
+    async () => {
+      repo();
+      const sha = head();
+      const other = await run(gateArgs(SHALLOW));
+      expect(other.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(false);
+      const required = await run(gateArgs(DEEP));
+      expect(required.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(true);
+    },
+    timeout,
+  );
+
+  it(
+    "a tests-lock wait records no receipt and the re-run after the lock frees does",
+    async () => {
+      repo();
+      const sha = head();
+      vi.stubEnv("FAKE_LOCK_GIVEUP", "1");
+      const waited = await run([...gateArgs(DEEP), "--lock-wait-s=0"]);
+      expect(waited.code).toBe(81);
+      expect(fs.existsSync(receipt(sha))).toBe(false);
+      expect(fs.existsSync(`${receipt(sha)}.failed`)).toBe(false);
+      vi.stubEnv("FAKE_LOCK_GIVEUP", "");
+      const rerun = await run(gateArgs(DEEP));
+      expect(rerun.code).toBe(0);
+      expect(fs.existsSync(receipt(sha))).toBe(true);
+    },
+    timeout,
+  );
 });
 
 // ---------------------------------------------------------------------------

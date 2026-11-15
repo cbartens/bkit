@@ -16,6 +16,7 @@ import {
   appendLine,
   type InvocationEvent,
   fold,
+  lastCleanRound,
   lastDoneStepAllRuns,
   lastRun,
   nextStrategy,
@@ -200,6 +201,16 @@ type RouteField = (typeof ROUTE_FIELDS)[number];
 
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
+
+/**
+ * The commit a repeat check tests from: the step's last clean round's `parentSha`, else
+ * `origin/dev`, which is also the answer when that sha is not an ancestor of HEAD.
+ */
+function cleanBase(cwd: string, clean: { parentSha?: unknown } | undefined): string {
+  const sha = clean?.parentSha;
+  if (typeof sha !== "string" || sha === "") return "origin/dev";
+  return git(cwd, ["merge-base", "--is-ancestor", sha, "HEAD"]) === null ? "origin/dev" : sha;
+}
 
 function route(runs: WorkflowRun[], workflow: string, step: string | undefined, group?: number) {
   const out: Record<string, unknown> = {
@@ -477,6 +488,8 @@ export const statusCommand: CommandSpec = {
           "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
         publishSource:
           "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
+        cleanBase:
+          "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else origin/dev; origin/dev also when that sha is not an ancestor of HEAD",
         parentSha:
           "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
       },
@@ -530,6 +543,10 @@ export const statusCommand: CommandSpec = {
           String(ctx.flags.workflow),
           step,
           positiveInt(ctx.flags.group, "group"),
+        );
+        out.cleanBase = cleanBase(
+          ctx.cwd,
+          step === undefined ? undefined : lastCleanRound(runs, String(ctx.flags.workflow), step),
         );
         if (promptFile !== undefined) {
           const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;

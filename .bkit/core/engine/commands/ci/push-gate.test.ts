@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { useGateRunner } from "../../../../../vitest.gate-fixture";
 import { runCommand } from "../lib";
 import { ciCommand } from "./ci";
+import { runWithReceipt } from "./push-gate";
+import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 
 const ROOT = path.resolve(__dirname, "../../../../..");
@@ -190,6 +192,29 @@ describe("verified incremental push gates", () => {
     expect((await gate(cwd)).status).toBe(9);
     expect(fs.existsSync(receipt(cwd, code))).toBe(false);
   });
+  it("records a failure marker when a full gate exits 81, and a lock wait leaves the earlier receipt as it was", async () => {
+    const { cwd, code } = fixture(
+      "node -e \"const fs=require('fs'); if(fs.existsSync('.gate-ran')) process.exit(81); fs.writeFileSync('.gate-ran','yes')\"",
+    );
+    expect((await gate(cwd)).status).toBe(0);
+    const before = fs.readFileSync(receipt(cwd, code), "utf8");
+    expect((await gate(cwd)).status).toBe(81);
+    expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(true);
+    expect(fs.existsSync(receipt(cwd, code))).toBe(false);
+    fs.writeFileSync(receipt(cwd, code), before);
+    fs.rmSync(`${receipt(cwd, code)}.failed`);
+    const status = runWithReceipt(
+      cwd,
+      UNIT,
+      [],
+      () => 81,
+      () => undefined,
+      (s) => s === 81,
+    );
+    expect(status).toBe(81);
+    expect(fs.readFileSync(receipt(cwd, code), "utf8")).toBe(before);
+    expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(false);
+  });
   it("executes the full gate and carries its proof across bookkeeping and empty commits", async () => {
     const { cwd, code } = fixture();
     expect((await gate(cwd)).status).toBe(0);
@@ -271,7 +296,10 @@ describe("verified incremental push gates", () => {
     const { cwd, code, base } = fixture();
     expect((await gate(cwd)).status).toBe(0);
     const docs = book(cwd);
-    expect((await min(cwd, ZERO, docs)).status).toBe(1);
+    write(cwd, "src/code.ts", "after receipt\n");
+    const afterReceipt = commit(cwd);
+    expect((await min(cwd, ZERO, afterReceipt)).status).toBe(1);
+    git(cwd, "reset", "-q", "--hard", docs);
     git(cwd, "checkout", "-qb", "other", base);
     write(cwd, "src/code.ts", "rewritten\n");
     const rewrite = book(cwd);
@@ -282,6 +310,18 @@ describe("verified incremental push gates", () => {
     expect((await min(cwd, docs, newCode)).status).toBe(1);
     expect((await min(cwd, code, docs, `--update=${docs}:${newCode}`)).status).toBe(1);
   });
+  it(
+    "a new branch with only bookkeeping after a receipted ancestor takes the minimum gate",
+    async () => {
+      const { cwd } = fixture();
+      expect((await gate(cwd)).status).toBe(0);
+      book(cwd);
+      write(cwd, "docs/plans/202611/logs/test/more.md", "more\n");
+      const tip = commit(cwd);
+      expect((await min(cwd, ZERO, tip)).status).toBe(0);
+    },
+    tierTimeouts(true).testTimeout,
+  );
   it("invalidates proof when the gate definition changes", async () => {
     const { cwd, code } = fixture();
     expect((await gate(cwd)).status).toBe(0);

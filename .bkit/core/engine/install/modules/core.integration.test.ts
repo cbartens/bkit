@@ -25,6 +25,7 @@ import {
   migrateBrandedScriptNames,
   pruneMinPushPaths,
   seedBkitDefaults,
+  seedCorePackageJsonScripts,
   SEEDED_BKIT_DEFAULTS,
 } from "./core";
 import { dispatchModules, listStampedFiles, type ModuleContext } from "./index";
@@ -1153,7 +1154,23 @@ describe("seedBkitDefaults (via seedCorePackageJsonScripts)", () => {
       verify: { ask: true, maxAttempts: 2 },
       challenge: { ask: true, maxAttempts: 2 },
       tests: { ask: true, maxAttempts: 2 },
+      holistic: { ask: true, maxAttempts: 2 },
       publish: { remote: true, local: true },
+    });
+  });
+
+  it("install seeds a build.holistic block and keeps an existing one", () => {
+    seed({});
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.holistic).toEqual({
+      ask: true,
+      maxAttempts: 2,
+    });
+    seed({ bkit: { workflows: { build: { holistic: { ask: false, maxAttempts: 1 } } } } });
+    run();
+    expect(JSON.parse(read()).bkit.workflows.build.holistic).toEqual({
+      ask: false,
+      maxAttempts: 1,
     });
   });
 
@@ -1403,6 +1420,7 @@ describe("migrateBkitLayout (via seedCorePackageJsonScripts)", () => {
     expect(bkitKey()).not.toHaveProperty("loopPause");
     expect(workflows.build).toEqual({
       verify: { ask: true, maxAttempts: 3 },
+      holistic: { ask: false },
       challenge: { ask: false },
       tests: { ask: false },
     });
@@ -1491,6 +1509,132 @@ describe("pruneMinPushPaths (via seedCorePackageJsonScripts)", () => {
     seed({ testing: { ciWorkflow: "ci.yml" } });
     expect(run()).toBe(false);
     expect(testing()).toEqual({ ciWorkflow: "ci.yml" });
+  });
+});
+
+describe("lowerVerifyMaxAttempts (via seedCorePackageJsonScripts)", () => {
+  const seed = (maxAttempts: number, indent = 4): void =>
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        { name: "x", bkit: { workflows: { build: { verify: { ask: false, maxAttempts } } } } },
+        null,
+        indent,
+      ) + "\n",
+      "utf-8",
+    );
+  const read = (): string => fs.readFileSync("package.json", "utf-8");
+  const verify = (): Record<string, unknown> => JSON.parse(read()).bkit.workflows.build.verify;
+  const run = (dryRun = false): string[] => {
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(" "));
+    });
+    try {
+      seedCorePackageJsonScripts(makeCtx({ dryRun }));
+    } finally {
+      spy.mockRestore();
+    }
+    return lines.filter((l) => l.includes("maxAttempts"));
+  };
+
+  it("upgrade lowers build.verify.maxAttempts above 2 to 2 and leaves 2 or less alone", () => {
+    seed(5);
+    const logged = run();
+    expect(verify()).toEqual({ ask: false, maxAttempts: 2 });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toContain("core:");
+    expect(logged[0]).toContain("build.verify.maxAttempts");
+    expect(logged[0]).toContain("5");
+    expect(read().split("\n")[1]).toMatch(/^ {4}"/);
+    const settled = read();
+    expect(run()).toEqual([]);
+    expect(read()).toBe(settled);
+    for (const kept of [2, 1]) {
+      seed(kept);
+      expect(run()).toEqual([]);
+      expect(verify()).toEqual({ ask: false, maxAttempts: kept });
+    }
+    seed(7);
+    const dry = read();
+    const dryLogged = run(true);
+    expect(read()).toBe(dry);
+    expect(dryLogged).toHaveLength(1);
+    expect(dryLogged[0]).toContain("[dry-run]");
+  });
+});
+
+describe("lowerVerifyMaxAttempts runs once per install", () => {
+  it("a verify limit set above 2 after this release's upgrade is kept and bkit check reports no drift", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        {
+          name: "x",
+          bkit: { workflows: { build: { verify: { ask: false, maxAttempts: 3 } } } },
+        },
+        null,
+        4,
+      ) + "\n",
+      "utf-8",
+    );
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: readInstallingVersion(),
+      canonicalHashes: {},
+      claudeAllowDerived: [],
+    });
+    const verify = (): unknown =>
+      JSON.parse(fs.readFileSync("package.json", "utf-8")).bkit.workflows.build.verify;
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+      lines.push(a.join(" "));
+    });
+    try {
+      seedCorePackageJsonScripts(makeCtx());
+      expect(verify()).toEqual({ ask: false, maxAttempts: 3 });
+      const dry = makeCtx({ dryRun: true });
+      seedCorePackageJsonScripts(dry);
+      expect(dry.ws.writes.filter((w) => w.path === "package.json")).toEqual([]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(verify()).toEqual({ ask: false, maxAttempts: 3 });
+    expect(lines.filter((l) => l.includes("maxAttempts"))).toEqual([]);
+  });
+});
+
+describe("lowerVerifyMaxAttempts fixed threshold", () => {
+  it("an install recorded after 6.1.1 keeps a verify limit above 2 across a later version upgrade", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify(
+        { name: "x", bkit: { workflows: { build: { verify: { ask: false, maxAttempts: 3 } } } } },
+        null,
+        4,
+      ) + "\n",
+      "utf-8",
+    );
+    const versionFile = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "6.1.2",
+      canonicalHashes: {},
+      claudeAllowDerived: [],
+    });
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    try {
+      seedCorePackageJsonScripts(makeCtx());
+    } finally {
+      spy.mockRestore();
+    }
+    expect(
+      JSON.parse(fs.readFileSync("package.json", "utf-8")).bkit.workflows.build.verify,
+    ).toEqual({
+      ask: false,
+      maxAttempts: 3,
+    });
   });
 });
 

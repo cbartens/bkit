@@ -264,6 +264,7 @@ describe("bkit workflows start", () => {
         parentSha: git(cwd, "rev-parse", "HEAD"),
         limits: {
           "build.verify": { ask: true, max: 2 },
+          "build.holistic": { ask: true, max: 2 },
           "build.challenge": { ask: true, max: 2 },
           "build.tests": { ask: true, max: 2 },
         },

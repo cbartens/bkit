@@ -138,6 +138,7 @@ const GATE_CALLERS: ReadonlyArray<readonly [string, string]> = [
   [".bkit/core/prompts/bkit-build-plan-tasks.md", "--fallback=bkit:gate:static`"],
   [".bkit/core/prompts/bkit-build-plan-gaps-remediate.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-debug-failure-remediate.md", "--fallback=bkit:gate:static-unit`"],
+  [".bkit/core/prompts/bkit-debug-failure-soak.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-build-plan-verify.md", "--fallback=bkit:gate:static-unit`"],
   [".bkit/core/prompts/bkit-ship-conflict-resolve.md", "pnpm bkit:gate:install-static-unit-build"],
   // bkit-build.md / bkit-debug.md are NOT listed: they run the gate through
@@ -181,7 +182,7 @@ describe("bkit-local-gate-audit (#437)", () => {
 
   it("every prompt that runs bkit tests changed routes exit 81 to a re-run of the command", () => {
     const callers = GATE_CALLERS.filter(([, call]) => call.startsWith("--fallback=bkit:gate:"));
-    expect(callers).toHaveLength(4);
+    expect(callers).toHaveLength(5);
     for (const [rel, call] of callers) {
       const body = fs.readFileSync(path.join(REPO_ROOT, rel), "utf-8");
       const steps = body.split(/\n(?=\d+\. )/);
@@ -430,5 +431,73 @@ describe("bkit-local-gate-audit (#437)", () => {
       "lint-staged",
     ]);
     expect(unresolvedGateCalls(declared, subcommands)).toEqual([]);
+  });
+});
+
+describe("holistic verify prompt test base", () => {
+  it("holistic verify takes its test base from Context", () => {
+    const body = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-build-plan-verify.md"), "utf-8");
+    expect(body).toContain(
+      "bkit tests changed --base={Test base} --fallback=bkit:gate:static-unit",
+    );
+    expect(body).not.toContain("bkit tests changed --base=origin/dev");
+    expect(body).toMatch(/Test base/);
+  });
+});
+
+describe("group gate scope", () => {
+  const SINCE = "--changed-since={GROUP_BASE}";
+  const DERIVE = "status route --step=build-group-start --group=";
+  const build = () => fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+  /** The numbered sub-step that holds `index`: from its own line to `index`. */
+  const subStepBefore = (body: string, index: number): string => {
+    const starts = [...body.slice(0, index).matchAll(/\n\d+\. /g)];
+    return body.slice(starts.at(-1)!.index, index);
+  };
+  const gateBlock = (body: string) => {
+    const block = commandRoutes(body, /\btests run\b/).find(({ block: b }) =>
+      b.includes("--step=build-group-gate-"),
+    )!.block;
+    return { block, at: body.indexOf(block) };
+  };
+  const gateContext = (body: string) => {
+    const line = body.split("\n").find((l) => /Context:.*`Group gate`/.test(l))!;
+    return { line, at: body.indexOf(line) };
+  };
+
+  it("group gate runs the changed-files scope from GROUP_BASE", () => {
+    const { block } = gateBlock(build());
+    expect(block).toContain("--gate=bkit:gate:static-unit");
+    expect(block).toContain(SINCE);
+  });
+
+  it("the remediate group gate runs the changed-files scope from GROUP_BASE", () => {
+    const { line } = gateContext(build());
+    expect(line).toContain("tests run --gate=bkit:gate:static-unit");
+    expect(line).toContain(SINCE);
+  });
+
+  it("both group-gate sites re-derive GROUP_BASE before the changed-since gate", () => {
+    const body = build();
+    const run = gateBlock(body);
+    const before = subStepBefore(body, run.at + run.block.length);
+    expect(before.indexOf(DERIVE), "the Step 8 gate sub-step").toBeGreaterThanOrEqual(0);
+    expect(before.indexOf(DERIVE)).toBeLessThan(before.indexOf(SINCE));
+    const context = gateContext(body);
+    const step = subStepBefore(body, context.at + context.line.length);
+    expect(step.indexOf(DERIVE), "the Step 9 Group gate Context's sub-step").toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(step.indexOf(DERIVE)).toBeLessThan(step.indexOf(SINCE));
+  });
+});
+
+describe("debug soak gate scope", () => {
+  it("soak runs the changed-files gate", () => {
+    const body = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-debug-failure-soak.md"), "utf-8");
+    expect(body).toContain("bkit tests changed --fallback=bkit:gate:static-unit");
+    expect(body).not.toContain("pnpm bkit:gate:static-unit");
+    const step = body.split(/\n(?=\d+\. )/).find((part) => part.includes("tests changed"))!;
+    expect(step).toMatch(/exit(?:s)?\s+`?81\b/i);
   });
 });

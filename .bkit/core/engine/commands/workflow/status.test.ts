@@ -619,6 +619,126 @@ describe("bkit status route", () => {
   });
 });
 
+describe("bkit status route holistic cleanBase", () => {
+  const STEP = "build-plan-verify-holistic";
+  const git = (cwd: string, ...args: string[]) => {
+    const r = spawnSync(
+      "git",
+      [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "commit.gpgsign=false",
+        ...args,
+      ],
+      { cwd, encoding: "utf-8" },
+    );
+    return r.stdout.trim();
+  };
+  /** A repo with commits c1 < c2 on dev, plus `side`, a commit not on dev. */
+  function repo() {
+    const root = tmp();
+    git(root, "init", "-q", "-b", "dev");
+    git(root, "commit", "-q", "--allow-empty", "-m", "c1");
+    const c1 = git(root, "rev-parse", "HEAD");
+    git(root, "commit", "-q", "--allow-empty", "-m", "c2");
+    const c2 = git(root, "rev-parse", "HEAD");
+    git(root, "checkout", "-q", "-b", "other", c1);
+    git(root, "commit", "-q", "--allow-empty", "-m", "side");
+    const side = git(root, "rev-parse", "HEAD");
+    git(root, "checkout", "-q", "dev");
+    return { root, c1, c2, side };
+  }
+  const holistic = (at: string, parentSha: string, verdict: string, failures: number) =>
+    done("build", STEP, at, { parentSha, verdict, failures });
+  const cleanBase = async (rows: object[], cwd: string) => {
+    const r = await run(
+      ["status", "route", `--file=${log(rows)}`, "--workflow=build", `--step=${STEP}`],
+      cwd,
+    );
+    expect(r.code).toBe(0);
+    return r.json.cleanBase;
+  };
+
+  it("last clean holistic base is the newest zero-failure row", async () => {
+    const { root, c1, c2 } = repo();
+    expect(
+      await cleanBase(
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
+          holistic("2026-10-01T00:02:00Z", c2, "CONCERNS", 0),
+        ],
+        root,
+      ),
+    ).toBe(c2);
+  });
+
+  it("a holistic row with gaps does not move the base", async () => {
+    const { root, c1, c2 } = repo();
+    expect(
+      await cleanBase(
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
+          holistic("2026-10-01T00:02:00Z", c2, "FAIL", 2),
+        ],
+        root,
+      ),
+    ).toBe(c1);
+  });
+
+  it("holistic base falls back to origin/dev with no clean row", async () => {
+    const { root, c1 } = repo();
+    expect(
+      await cleanBase(
+        [started("build", "2026-10-01T00:00:00Z"), holistic("2026-10-01T00:01:00Z", c1, "FAIL", 1)],
+        root,
+      ),
+    ).toBe("origin/dev");
+    expect(await cleanBase([started("build", "2026-10-01T00:00:00Z")], root)).toBe("origin/dev");
+  });
+
+  it("a clean holistic row from an earlier run does not set the base", async () => {
+    const { root, c1 } = repo();
+    expect(
+      await cleanBase(
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
+          { type: "workflow-done", workflow: "build", at: "2026-10-01T00:02:00Z" },
+          started("build", "2026-10-02T00:00:00Z"),
+        ],
+        root,
+      ),
+    ).toBe("origin/dev");
+  });
+
+  it("holistic base falls back to origin/dev when the clean sha is no longer an ancestor of HEAD", async () => {
+    const { root, side } = repo();
+    expect(
+      await cleanBase(
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          holistic("2026-10-01T00:01:00Z", side, "PASS", 0),
+        ],
+        root,
+      ),
+    ).toBe("origin/dev");
+    expect(
+      await cleanBase(
+        [
+          started("build", "2026-10-01T00:00:00Z"),
+          holistic("2026-10-01T00:01:00Z", "f".repeat(40), "PASS", 0),
+        ],
+        root,
+      ),
+    ).toBe("origin/dev");
+  });
+});
+
 describe("bkit status route --prompt-file (debug Step 1)", () => {
   const GATES = [
     "bkit:gate:static-unit-integration-e2e-live",

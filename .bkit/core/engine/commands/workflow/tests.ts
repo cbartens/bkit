@@ -22,7 +22,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
+import {
+  BKIT_GATE_CHANGED_SCRIPT,
+  BKIT_LINT_FILE_SCRIPT,
+  BKIT_TEST_FILE_SCRIPT,
+} from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import {
   appendLine,
@@ -66,8 +70,10 @@ import {
 import { writeStepRow } from "./steps.js";
 import { REPORT_ENV, countReportFailures, runTestFile, runToLog, type JunitCase } from "./junit.js";
 import { appendRecord, clampFile, type ClampRecord } from "./context.js";
+import { minPushPathspecs } from "../ci/ci.js";
+import { requiredPushGate, runWithReceipt } from "../ci/push-gate.js";
 import { testsBaseVerb } from "./tests-base.js";
-import { testsChangedVerb } from "./tests-changed.js";
+import { changedFiles, declares, testsChangedVerb } from "./tests-changed.js";
 import { testsJumpVerb } from "./tests-jump.js";
 
 /** Exit code: no candidate gate is declared in package.json. */
@@ -1597,6 +1603,11 @@ export const testsCommand: CommandSpec = {
           help: "status.jsonl: append one test-run row for this run, pass or fail; needs --workflow and --step",
         },
         { name: "workflow", type: "string", help: "--file: workflow name, for the test-run row" },
+        {
+          name: "changed-since",
+          type: "string",
+          help: `commit the work began on: run \`${BKIT_GATE_CHANGED_SCRIPT}\` on the files changed since it (uncommitted and committed), recording the file count as the scope; undeclared → the --gate runs whole`,
+        },
         { name: "ci-run", type: "string", help: "selected GitHub evidence run ID" },
         { name: "ci-url", type: "string", help: "selected GitHub evidence attempt URL" },
       ],
@@ -1760,7 +1771,15 @@ export const testsCommand: CommandSpec = {
         // Gates are declared and run at the top of the checkout being tested (the
         // feature worktree), wherever in it the caller happens to stand.
         const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-        const gate = resolveGate(top, candidates);
+        const sinceRaw = str(ctx.flags.changedSince);
+        if (
+          sinceRaw !== undefined &&
+          git(top, ["rev-parse", "-q", "--verify", `${sinceRaw}^{commit}`]) === null
+        )
+          throw new CommandError(EXIT.USAGE, `--changed-since ${sinceRaw} names no commit`);
+        const useChanged = sinceRaw !== undefined && declares(top, BKIT_GATE_CHANGED_SCRIPT);
+        const changed = useChanged ? changedFiles(top, sinceRaw!) : [];
+        const gate = useChanged ? BKIT_GATE_CHANGED_SCRIPT : resolveGate(top, candidates);
         if (gate === null) {
           const read = readPackageJson(top);
           if (!read.ok) ctx.log(`package.json at ${top} is ${read.reason}`);
@@ -1769,17 +1788,77 @@ export const testsCommand: CommandSpec = {
           );
           return EXIT_NO_GATE;
         }
-        const scope = gateScope(gate);
+        const scope = useChanged
+          ? `${gateScope(gate)} (${changed.length} changed file${changed.length === 1 ? "" : "s"})`
+          : gateScope(gate);
         const log = path.resolve(ctx.cwd, logArg);
+        if (useChanged && changed.length === 0) {
+          ctx.log(`no files changed since ${sinceRaw} — nothing to run`);
+          const row =
+            status === undefined
+              ? null
+              : appendTestRun(status, {
+                  workflow: workflow!,
+                  step: step!,
+                  attempt,
+                  verdict: "PASS",
+                  exitCode: 0,
+                  failures: 0,
+                  scope,
+                  log: logArg,
+                  artifact: undefined,
+                  source: "local",
+                });
+          ctx.emit({
+            source: "local",
+            verdict: "PASS",
+            exitCode: 0,
+            gate,
+            scope,
+            failures: 0,
+            reports: null,
+            log: logArg,
+            logBytes: 0,
+            artifact: null,
+            clamp: null,
+            row,
+            lockHolder: null,
+          });
+          return EXIT.OK;
+        }
         const reports = freshReportDir(log);
         ctx.log(`running ${scope} — full output in ${logArg}`);
         const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
         const who = ["bkit tests run", gate, fid, step].filter(Boolean).join(" ");
-        const exitCode = runToLog(scriptCommand(gate), top, log, {
-          [REPORT_DIR_ENV]: reports,
-          LOCAL_STACK_LOCK_WAIT_S: String(waitS),
-          LOCAL_STACK_LOCK_WHO: who,
-        });
+        const runGate = () =>
+          runToLog(
+            useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate),
+            top,
+            log,
+            {
+              [REPORT_DIR_ENV]: reports,
+              LOCAL_STACK_LOCK_WAIT_S: String(waitS),
+              LOCAL_STACK_LOCK_WHO: who,
+            },
+          );
+        // The required full gate leaves a push receipt, so the branch's first push
+        // reuses it; bookkeeping paths may be uncommitted, as every engine call writes one.
+        const exitCode =
+          sinceRaw === undefined && gate === requiredPushGate(top)
+            ? runWithReceipt(
+                top,
+                gate,
+                minPushPathspecs(readBkitConfig(top)),
+                runGate,
+                ctx.log,
+                (code) =>
+                  classifyLockExit({
+                    exitCode: code,
+                    log: fs.readFileSync(log, "utf-8"),
+                    who,
+                  }) === "lock-wait",
+              )
+            : runGate();
         const logText = fs.readFileSync(log, "utf-8");
         const lockExit = classifyLockExit({ exitCode, log: logText, who });
         const lockWait = lockExit === "lock-wait";

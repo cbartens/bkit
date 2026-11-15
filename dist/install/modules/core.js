@@ -13,6 +13,7 @@ import { migrateContextCiWorkflow } from "../context-ci-workflow.js";
 import { migrateTemplateNotes } from "../template-notes.js";
 import { isAdvisorySuppressed } from "../../checks/after/suppression.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
+import { compareSemver } from "../../shared/bkit-latest.js";
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { detectDepUpdater } from "../../shared/dep-updater.js";
 import { ASK_POINTS, CONFIG_DEFAULTS, ciWorkflowPath, limitKey } from "../../shared/settings.js";
@@ -468,6 +469,9 @@ export function seedCorePackageJsonScripts(ctx) {
         written.push("package.json");
     }
     if (pruneMinPushPaths(dryRun, ws, logPrefix) && !written.includes("package.json")) {
+        written.push("package.json");
+    }
+    if (lowerVerifyMaxAttempts(dryRun, ws, logPrefix) && !written.includes("package.json")) {
         written.push("package.json");
     }
     if (seedBkitDefaults(dryRun, ws, logPrefix) && !written.includes("package.json")) {
@@ -1392,6 +1396,44 @@ export function pruneMinPushPaths(dryRun, ws, logPrefix) {
     if (!dryRun)
         writePackageJsonLike(raw, pkg);
     console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: dropped [${dropped.join(", ")}] from bkit.testing.minPushPaths in package.json — bkit always allows what it writes, and ciSkipPaths counts`);
+    return true;
+}
+const LAST_RELEASE_WITHOUT_VERIFY_CAP = "6.1.1";
+// Migration (up to 6.1.x installs, `docs/migrations.md`): `bkit.workflows.build.verify.maxAttempts`
+// is one non-resetting allowance per run, and every build limit is 2. A value above 2 is
+// lowered to 2 once, on the upgrade from an install that predates this release (no recorded
+// version, an unreadable one, or an older one); 2 or less is left alone, and a value set after
+// that upgrade is the consumer's. Returns true when package.json changed.
+export function lowerVerifyMaxAttempts(dryRun, ws, logPrefix) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath))
+        return false;
+    const recorded = readBkitVersion(path.join(".bkit", "version"))?.pinnedVersion ?? "";
+    // Skip a re-run of the same version, and any install recorded after the last release without
+    // this migration, so a value set after the upgrade to this release is never lowered again.
+    const order = compareSemver(recorded, readInstallingVersion());
+    if (order === 0 || order === 1)
+        return false;
+    if (compareSemver(recorded, LAST_RELEASE_WITHOUT_VERIFY_CAP) === 1)
+        return false;
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const parsed = parseJson(raw);
+    if (!parsed.ok)
+        return false;
+    const pkg = parsed.value;
+    if (!plainObject(pkg.bkit) || !plainObject(pkg.bkit.workflows))
+        return false;
+    const build = pkg.bkit.workflows.build;
+    if (!plainObject(build) || !plainObject(build.verify))
+        return false;
+    const old = build.verify.maxAttempts;
+    if (typeof old !== "number" || old <= 2)
+        return false;
+    build.verify.maxAttempts = 2;
+    ws.writes.push({ path: pkgPath, action: "update" });
+    if (!dryRun)
+        writePackageJsonLike(raw, pkg);
+    console.log(`${logPrefix} ${dryRun ? "[dry-run] " : ""}core: lowered bkit.workflows.build.verify.maxAttempts from ${old} to 2 in package.json — the holistic allowance is one per run`);
     return true;
 }
 // Fill `into` with each `from` key it lacks, descending into blocks both sides hold.

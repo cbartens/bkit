@@ -91,7 +91,7 @@ Investigation findings that shape the plan:
 | --- | --- |
 | No holistic check has passed yet (the first one found gaps) | The re-check after the fix still uses `--base=origin/dev` |
 | A holistic check finds gaps after an earlier clean check | The next check keeps the clean check's commit as its base, so it tests the unproven changes and the fix together |
-| A consumer's `package.json` sets `build.verify.maxAttempts` above 2 | `bkit upgrade` lowers it to 2 and prints one line naming the old value; 2 or less is left alone |
+| A consumer's `package.json` sets `build.verify.maxAttempts` above 2 | `bkit upgrade` lowers it to 2 once, on the upgrade to this release (an install recorded at 6.1.1 or earlier), and prints one line naming the old value; 2 or less is left alone, and a value set afterwards is kept |
 | Decision Pause "Fix now" adds tasks to an earlier group after a clean holistic check | Those changes are commits after the clean commit, so the next check covers them |
 | The build fails and restarts (a new `workflow-started` row) | The new run gets a fresh holistic allowance, its first check uses `origin/dev`, and its report and fix-log names carry the new run number, so no earlier run's file is overwritten |
 | A paused run resumes (the same `workflow-started` row) | The allowance, the last-clean commit and the report number continue from where the run stopped |
@@ -150,6 +150,8 @@ Investigation findings that shape the plan:
 | A tests-lock wait on the required push gate exits 81 and records no receipt | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 10 |
 | A new branch whose only commits after a receipted ancestor are bookkeeping qualifies for the minimum push gate | Unit | `.bkit/core/engine/commands/ci/push-gate.test.ts` | 11 |
 | A new branch with code after the receipted ancestor still needs the full gate | Unit | `.bkit/core/engine/commands/ci/push-gate.test.ts` | 11 |
+| a verify limit set above 2 after this release's upgrade is kept and bkit check reports no drift | Integration | `.bkit/core/engine/install/modules/core.integration.test.ts` | 13 |
+| a staged rename of code into a bookkeeping path records no receipt | Unit | `.bkit/core/engine/commands/workflow/tests.test.ts` | 14 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -167,7 +169,7 @@ Investigation findings that shape the plan:
 | --- | --- | --- |
 | New ask point `build.holistic` (`bkit.workflows.build.holistic.maxAttempts` / `.ask`, default `ask: true`, max 2) | new name | Consumers reading the ask points table; holistic pauses now name `build.holistic` as `PAUSE_POINT` instead of `build.verify` |
 | Holistic fix rounds count within the run with no reset after a clean check | behaviour | A build run that used to get up to 15 holistic checks now gets at most 5 per run before the Decision Pause |
-| `bkit upgrade` lowers `bkit.workflows.build.verify.maxAttempts` above 2 to 2 | config migration (one-way) | Consumers who set a higher verify limit; one log line names the old value |
+| `bkit upgrade` lowers `bkit.workflows.build.verify.maxAttempts` above 2 to 2, once, on the upgrade to this release | config migration (one-way) | Consumers who set a higher verify limit; one log line names the old value |
 | `bkit install` and `bkit upgrade` seed a `bkit.workflows.build.holistic` block (`ask: true`, `maxAttempts: 2`) into every consumer `package.json` that lacks one (`askBlocks` in `.bkit/core/engine/install/modules/core.ts`) | config seed | Every consumer, on its next install or upgrade; an existing block is kept as written |
 | bkit's own `package.json` `build.verify.maxAttempts` 5 → 2, plus a `build.holistic` block, committed by the owner before the build (Pre-Flight § Core, "Own `bkit.workflows` config") | config | bkit's own builds; this build's own verify limit is 2 from its start |
 | A run that started before this change and was granted extra holistic rounds on `build.verify` has no grant on `build.holistic`, so it pauses on resume when its count reaches 2 | behaviour | Owners resuming an in-flight build across the upgrade; they grant again at the Decision Pause |
@@ -225,7 +227,7 @@ No unanswered owner questions remain: all five are answered A, and the owner acc
 - **Assumption:** `counters route` and `counters grant` already accept an `--of=<step>:next` count over the active run and freeze every `build.*` ask point in `workflow-started.limits` (`ASK_POINTS.filter` in `workflows.ts`), so adding `build.holistic` to `ASK_POINTS` is the only engine change routing needs. → If the frozen limits miss the new point, a restarted run reads the current setting instead; the edge case row covers it.
 - **Assumption:** bkit's own `bkit:gate:changed` vitest stages inherit `$BKIT_TEST_REPORT_DIR` (its `run()` passes `process.env`), and `vitest.config.ts` writes a pid-named JUnit file when it is set, so `tests run --changed-since` keeps a failure count. Its `node --test` and `bats` stages write no JUnit. → If wrong, a failing changed-files group gate prints `failures` null and the verify-loop trend reads unknown (decision `912-unknown-count-is-an-unknown-trend`); the test in Task 6 proves the report directory reaches the changed gate.
 - **Assumption:** The first push of a build's feature branch is Step 15 sub-step 4 (`branches push --mode=feature --set-upstream`), a new-branch push, and the Step 16 push is an increment on it. The issue names the Step 16 push; the plan makes both pushes take the minimum gate. → If the first push is not a new-branch push (for example, the branch already exists on the remote), Step 15 is not the receipt's first use, Concrete Example step 6 no longer holds, and the Task 11 new-branch rule serves no build push.
-- **Assumption:** A consumer whose `bkit.workflows.build.verify.maxAttempts` is above 2 accepts the upgrade lowering it, because the issue sets every limit to 2. → If a consumer depends on more verify rounds, they must set it again after the upgrade; the upgrade's log line names the old value so they can.
+- **Assumption:** A consumer whose `bkit.workflows.build.verify.maxAttempts` is above 2 accepts the upgrade lowering it once, on the upgrade to this release, because the issue sets every limit to 2. → If a consumer depends on more verify rounds, they must set it again after the upgrade; the upgrade's log line names the old value so they can.
 
 ### 👤 ✅ Human Confirmation
 
@@ -447,7 +449,7 @@ bkit's own `package.json` `bkit.workflows` change (verify 2 and the `build.holis
 #### [MODIFY] `.bkit/core/engine/install/modules/core.ts`
 
 - **Existence Check:** the file exists; `seedCorePackageJsonScripts` (line 547) and `pruneMinPushPaths` (line 1569).
-- Add `lowerVerifyMaxAttempts`, called after `migrateBkitLayout`: when `bkit.workflows.build.verify.maxAttempts` is an integer above 2, set it to 2, keep the file's indent (`writePackageJsonLike`), push a `ws.writes` update and log `[bkit] core: lowered bkit.workflows.build.verify.maxAttempts {old} → 2`; `[dry-run]` prefix and no write under `dryRun`; 2 or less, absent or non-integer → no write.
+- Add `lowerVerifyMaxAttempts`, called after `migrateBkitLayout`: once, on the upgrade to this release (recorded `.bkit/version` missing, unparseable or at or below 6.1.1), when `bkit.workflows.build.verify.maxAttempts` is an integer above 2, set it to 2, keep the file's indent (`writePackageJsonLike`), push a `ws.writes` update and log `[bkit] core: lowered bkit.workflows.build.verify.maxAttempts {old} → 2`; `[dry-run]` prefix and no write under `dryRun`; 2 or less, absent or non-integer → no write.
 
 ### Workflows and prompts
 
@@ -538,7 +540,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** One holistic allowance per run
+- [x] **TASK 1:** One holistic allowance per run
   - **UPDATE:** `ASK_POINTS` in `.bkit/core/engine/shared/settings.ts`: add `build.holistic`
   - **UPDATE:** `CONFIG_DEFAULTS` in `.bkit/core/engine/shared/settings.ts`: `asks["build.holistic"]` = `{ ask: true, max: 2 }`
   - **UPDATE:** `.bkit/core/engine/commands/workflow/workflows.test.ts`: the exact frozen `limits` object (lines 259-271) gains `build.holistic`
@@ -558,7 +560,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Read the last clean holistic commit
+- [x] **TASK 2:** Read the last clean holistic commit
   - **UPDATE:** `route` in `.bkit/core/engine/commands/workflow/status.ts`: output `cleanBase`, the `parentSha` of `lastCleanRound(runs, workflow, step)` for `--step`, else `origin/dev`; `origin/dev` also when `git merge-base --is-ancestor {sha} HEAD` fails (the sha is gone, or a resume rebase left it off the branch)
   - **READ:** `cleanRound` in `.bkit/core/engine/ledgers/status.ts`: the clean-round rule
   - **READ:** `lastCleanRound` in `.bkit/core/engine/ledgers/status.ts`: the active run's last clean round, so an earlier run's clean row never sets the base
@@ -575,7 +577,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Holistic checks test only what changed
+- [x] **TASK 3:** Holistic checks test only what changed
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 10 sub-step 1 holds `cleanBase` from `status route --step=build-plan-verify-holistic` as `HOLISTIC_BASE`; sub-step 2's verify Context passes `Test base: {HOLISTIC_BASE}`; sub-step 6 routes with `--of=build-plan-gaps-remediate-holistic:next --point=build.holistic`, without `--since-clean`; only the `HOLISTIC_ROUNDS = PAUSE_MAX` disjunct of the pause conditions (lines 909 and 913) is dropped, and the `HOLISTIC_FIXABLE = false` route to `VERIFY_GAPS` at line 913 stays; `PAUSE_POINT` = `build.holistic` at each holistic pause; the Step 10 intro and the Limits paragraph name `build.holistic`; the Decision Pause holistic grant is `counters grant --name=HOLISTIC_ATTEMPT --of=build-plan-gaps-remediate-holistic:next --point=build.holistic`; the resume mapping drops the `holistic` → `build.verify` special case
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: the holistic run is `bkit tests changed --base={Test base} --fallback=bkit:gate:static-unit`, with the Context field documented
   - **UPDATE:** `LOOPS` in `.bkit/core/engine/commands/workflow/decisions.ts`: `holistic.point` = `"holistic"`, `sinceClean` kept
@@ -591,7 +593,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Holistic file names carry the run number
+- [x] **TASK 4:** Holistic file names carry the run number
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: every holistic report path becomes `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md` (the Step 10 intro's file pattern, sub-step 2's Create and Result paths, sub-step 3's `steps stub` paths and `steps finish --artifact` as `build-plan-verify-holistic-{RUN}-<attempt>.md`, sub-step 7's Read path, the Decision Pause `VERIFY_GAPS` item at line 141); every holistic fix-log path becomes `build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md` (sub-step 7's Create path, sub-step 9's `steps finish --artifact` as `build-plan-gaps-remediate-holistic-{RUN}-<attempt>-log.md`); the fix-log globs at line 141 and sub-step 7 read `build-plan-gaps-remediate-holistic-{RUN}-*-log.md`
   - **READ:** `.bkit/core/workflows/bkit-build.md`: Step 2 sub-step 3 holds `run` as `RUN` and runs again on every resume, so `{RUN}` is held at Step 10 and the Decision Pause
   - **READ:** `.bkit/core/workflows/bkit-build.md`: the `build-decision-{RUN}-{DECISION}.md` naming is the pattern to follow
@@ -604,7 +606,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Retire `--since-clean` from route and grant
+- [x] **TASK 5:** Retire `--since-clean` from route and grant
   - **DELETE:** `SINCE_CLEAN_FLAG` in `.bkit/core/engine/commands/workflow/counters.ts`: the route and grant flag; the `progress` verb's own `since-clean` flag stays
   - **DELETE:** `sinceCleanStep` in `.bkit/core/engine/commands/workflow/counters.ts`: its only callers are the removed flag paths
   - **UPDATE:** `derivedOf` in `.bkit/core/engine/commands/workflow/counters.ts`: drop the `--since-clean` branch
@@ -628,7 +630,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Changed-files scope for `tests run`
+- [x] **TASK 6:** Changed-files scope for `tests run`
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: the `run` verb's `--changed-since=<sha>` validates the sha, runs `bkit:gate:changed` with `changedFiles(top, sha)` as arguments under the same `BKIT_TEST_REPORT_DIR` and lock environment, writes the same `test-run` row with `scope` naming the changed gate and the changed-file count (not the file list); zero files → PASS row, nothing run; undeclared → the resolved `--gate` whole; a lock wait keeps exit 81, no row and `lockHolder`
   - **READ:** `changedFiles` in `.bkit/core/engine/commands/workflow/tests-changed.ts`: the changed-file list
   - **READ:** `resolveGate` in `.bkit/core/engine/commands/workflow/tests.ts`: declared-gate resolution
@@ -649,7 +651,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** The group gate tests the group's own changes
+- [x] **TASK 7:** The group gate tests the group's own changes
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: Step 8 sub-step 8 and Step 9 sub-step 3's `Group gate` Context run `tests run --gate=bkit:gate:static-unit --changed-since={GROUP_BASE}`; when `GROUP_BASE` is not held (Decision Pause re-run or resume), each re-derives it from `status route --step=build-group-start --group={GROUP}` first
   - **UPDATE:** `.bkit/core/prompts/bkit-build-plan-verify.md`: line 77 describes the group gate's changed-files scope
   - **DEPENDS ON:** 6
@@ -663,7 +665,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Soak tests only what it changed
+- [x] **TASK 8:** Soak tests only what it changed
   - **UPDATE:** `.bkit/core/prompts/bkit-debug-failure-soak.md`: step 6 and the `Verdict` lines run `bkit tests changed --fallback=bkit:gate:static-unit`, with the exit-81 line remediate has
   - **READ:** `.bkit/core/prompts/bkit-debug-failure-remediate.md`: its `bkit tests changed` command and exit-81 line (lines 87-88)
   - **UPDATE:** `GATE_CALLERS` in `.bkit/core/engine/audits/workflows/local-gate-audit.test.ts`: add the soak prompt's `--fallback=bkit:gate:static-unit` call site
@@ -676,7 +678,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Upgrade lowers verify limits above 2
+- [x] **TASK 9:** Upgrade lowers verify limits above 2
   - **UPDATE:** `seedCorePackageJsonScripts` in `.bkit/core/engine/install/modules/core.ts`: call a new `lowerVerifyMaxAttempts` after `migrateBkitLayout`, built like `pruneMinPushPaths`; it sets `bkit.workflows.build.verify.maxAttempts` above 2 to 2, logs one `[bkit] core:` line naming the old value, keeps the original indent, honours `dryRun` and leaves 2 or less alone
   - **UPDATE:** `docs/migrations.md`: one row for it (`Where` `.bkit/core/engine/install/modules/core.ts`, `Releases` up to 6.1.x, `Test` the test below)
   - **READ:** `docs/observability.md`: § Log Format
@@ -694,7 +696,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Step 12 records a full-gate receipt
+- [x] **TASK 10:** Step 12 records a full-gate receipt
   - **UPDATE:** `runPushGate` in `.bkit/core/engine/commands/ci/push-gate.ts`: extract the `.running` / `.failed` markers, the before/after HEAD and fingerprint check and the receipt write into one exported helper that takes tolerated pathspecs and a run callback; `runPushGate` passes no pathspecs and its own `spawnSync` run with `gitEnv()`, so its behaviour is unchanged
   - **UPDATE:** `testsCommand` in `.bkit/core/engine/commands/workflow/tests.ts`: when the `run` verb's resolved gate equals `requiredPushGate(top)` and `--changed-since` is not set, it runs the gate through the helper with `minPushPathspecs(readBkitConfig(top))` as the tolerated pathspecs and its `runToLog` run (with `BKIT_TEST_REPORT_DIR` and the lock environment) as the run callback; a lock wait (exit 81) records no receipt
   - **READ:** `minPushPathspecs` in `.bkit/core/engine/commands/ci/ci.ts`: the bookkeeping pathspecs; `tests.ts` imports it from `ci.ts`, which imports nothing from `commands/workflow/`, so no import cycle forms (the helper does not import `ci.ts`, because `ci.ts` already imports `push-gate.ts`)
@@ -714,7 +716,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** A new branch reuses a receipted ancestor
+- [x] **TASK 11:** A new branch reuses a receipted ancestor
   - **UPDATE:** `hasVerifiedIncrement` in `.bkit/core/engine/commands/ci/push-gate.ts`: an all-zero old sha searches the ancestors of the new sha for a valid receipt and qualifies when every commit after it touches min-push paths only and no later failure exists
   - **UPDATE:** `.bkit/core/engine/commands/ci/push-gate.test.ts`: the existing test `rejects new code, a mixed push, new branches with code, and non-ancestor old heads` changes its new-branch case (line 274) to push code after the receipt instead of bookkeeping, and still asserts rejection; it is the regression guard for the matrix row "A new branch with code after the receipted ancestor still needs the full gate"
   - **READ:** `minPushUpdates` in `.bkit/core/engine/commands/ci/ci.ts`: already passes new-branch updates to `hasVerifiedIncrement`
@@ -728,7 +730,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Docs state the new rule
+- [x] **TASK 12:** Docs state the new rule
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: § Group gate (changed-files scope, Step 12 as the full check), the Step 10 row, the Allowance bullet, the ask points table (`build.holistic`, every limit 2), the loop table, § Local gate scripts (callers, the "still run whole gates" sentence, the `static-unit` row, the `$BKIT_TEST_REPORT_DIR` contract for `tests run --changed-since`)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: the receipt contract (new-branch case, `tests run` receipts, tolerated bookkeeping paths)
   - **UPDATE:** `docs/deployments.md`: the full pre-push gate paragraph and the Min push paragraph (Step 12 receipt reuse)
@@ -741,6 +743,31 @@ Build order: engine counting and status first, then the workflow that calls them
 <!-- bkit:task 12 end -->
 
 <!-- bkit:group 3 end -->
+
+<!-- bkit:group 4 start -->
+
+### TASK GROUP 4: Challenge round 1 findings
+
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** A consumer who sets `build.verify.maxAttempts: 3` after upgrading gets it silently lowered on every later upgrade, and `bkit check` exits 1 with DRIFT DETECTED until they give in
+      **Severity:** HIGH · **Class:** architectural · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/core.ts:1610` · **Round:** 1
+  - **Fix now:** The owner decided a verify limit above 2 is a legal setting: the migration runs once per install.
+  - **DONE WHEN:** `lowerVerifyMaxAttempts` runs only when the install's recorded bkit version predates this release, so a `build.verify.maxAttempts` above 2 set afterwards survives `bkit upgrade`, and a `bkit check` dry run records no `package.json` write for it. `validCap` keeps accepting any integer >= 1. The plan's and `docs/migrations.md`'s wording says the migration lowers the value once, on the upgrade to this release.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/core.integration.test.ts` `a verify limit set above 2 after this release's upgrade is kept and bkit check reports no drift` fails on the dry-run `seedCorePackageJsonScripts` pushing a `package.json` update for `maxAttempts: 3`
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** A staged `git mv src/a.test.ts docs/plans/x.ts` during Step 12 hides a code deletion from the tolerated-dirt check, so a push receipt is written for a HEAD whose test file never ran
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/commands/ci/push-gate.ts:46` · **Round:** 1
+  - **DONE WHEN:** `cleanHead` counts uncommitted paths with rename detection off (`git status --porcelain --no-renames ...` in `STATUS`), so a staged rename between a code path and a min-push path shows its code side as its own line, the filtered count differs from the full count, and `runWithReceipt` records no receipt. Verified by hand in a scratch repo: with renames on, the full status prints `R  src/a.ts -> docs/a.ts` (1 line) and the `:(glob)docs/**` filtered status prints `A  docs/a.ts` (1 line), so the counts match today.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/workflow/tests.test.ts` `a staged rename of code into a bookkeeping path records no receipt` fails on a receipt for HEAD being written after the passing required push gate
+
+<!-- bkit:task 14 end -->
+<!-- bkit:group 4 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
