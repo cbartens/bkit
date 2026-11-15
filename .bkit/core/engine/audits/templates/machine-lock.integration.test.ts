@@ -17,6 +17,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { stopGroup } from "../../../../../vitest.process-group";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 
 const OLD_SCRIPT = path.resolve("tests/fixtures/machine-lock/stack-lock-6.0.0.sh");
@@ -60,22 +61,6 @@ function track(command: string, args: string[], opts: SpawnOptions): Piped {
   const child = spawn(command, args, { ...opts, detached: true }) as Piped;
   children.push(child);
   return child;
-}
-
-/** SIGKILLs the child's whole process group, the perl holder included, and waits for the child to exit. */
-async function stopGroup(child: ChildProcess): Promise<void> {
-  const exited =
-    child.exitCode !== null || child.signalCode !== null
-      ? Promise.resolve()
-      : new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  try {
-    process.kill(-child.pid!, "SIGKILL");
-  } catch (err) {
-    // Everything in the group has already exited: ESRCH, or EPERM on macOS when only zombies are left.
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== "ESRCH" && code !== "EPERM") throw err;
-  }
-  await exited;
 }
 
 /** The test's own lock folder; CI, an inherited owner and a stack name are cleared so the lock really runs. */

@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,6 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { useGateRunner } from "../../../../../vitest.gate-fixture";
+import { spawnGroup, stopGroup } from "../../../../../vitest.process-group";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 
@@ -150,8 +151,8 @@ beforeEach(() => {
   git("commit", "-q", "-m", "fixture");
 });
 
-afterEach(() => {
-  for (const child of children) child.kill("SIGKILL");
+afterEach(async () => {
+  await Promise.all(children.map(stopGroup));
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -173,7 +174,7 @@ function execute(args: string[], extra: Record<string, string> = {}): Result {
 
 function start(args: string[], extra: Record<string, string> = {}) {
   const started = Date.now();
-  const child = spawn(requireTsx(), [CLI, "tests", ...args, "--json"], {
+  const child = spawnGroup(requireTsx(), [CLI, "tests", ...args, "--json"], {
     cwd,
     env: { ...env, ...extra },
     stdio: ["ignore", "pipe", "pipe"],
@@ -201,7 +202,7 @@ async function waitForFile(file: string, text: string, child: ChildProcess): Pro
 }
 
 async function hold() {
-  const child = spawn(
+  const child = spawnGroup(
     "bash",
     [
       "-c",

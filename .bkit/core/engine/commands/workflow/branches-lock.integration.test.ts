@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { type ChildProcess, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { spawnGroup, stopGroup } from "../../../../../vitest.process-group";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 import { requireTsx } from "../../../../../vitest.tsx-bin";
 
@@ -86,13 +87,13 @@ beforeEach(() => {
   env.HOOK_ENV = path.join(tmp, "hook-env.json");
 });
 
-afterEach(() => {
-  for (const child of children) child.kill("SIGKILL");
+afterEach(async () => {
+  await Promise.all(children.map(stopGroup));
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
 async function hold(): Promise<ChildProcess> {
-  const child = spawn(
+  const child = spawnGroup(
     "bash",
     [
       "-c",
