@@ -201,7 +201,11 @@
       "build": {
         "verify": {
           "ask": true,
-          "maxAttempts": 5
+          "maxAttempts": 2
+        },
+        "holistic": {
+          "ask": true,
+          "maxAttempts": 2
         },
         "challenge": {
           "ask": true,

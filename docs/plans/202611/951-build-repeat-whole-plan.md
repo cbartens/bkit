@@ -152,7 +152,7 @@ Investigation findings that shape the plan:
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Process Sketch, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 ---
 
@@ -182,7 +182,7 @@ Investigation findings that shape the plan:
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
+- [x] **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
 
 ---
 
@@ -192,26 +192,33 @@ Investigation findings that shape the plan:
 > 🛑 The owner reads and confirms this section.
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
-- **Open Question 1:** The input disagrees on whether holistic report numbering is in scope. The issue body (item 6, Success Criterion 2, the restart Edge Case and Task 10) puts it in scope. The issue comment lists "restarts overwriting earlier runs' holistic reports" as left out on purpose and "a separate bug". The supplied input (`plan-input-1.md`) labels the issue description "oldest" and dates the comment 2026-11-15T03:07:34Z, so under the input-dates rule as the input presents it, the comment wins and report numbering is out of scope. The plan's draft read the body as newer, from an edit time (2026-11-15T03:17:05Z) that the supplied input does not hold; that timestamp is unverified. The body itself still carries the report-numbering scope the comment says was removed, which fits a body edit after the comment. → The owner confirms at Gate 1.
+No unanswered owner questions remain: all five are answered A, and the owner accepts every assumption below.
+
+- **Open Question 1:** The input disagrees on whether holistic report numbering is in scope. The issue body (item 6, Success Criterion 2, the restart Edge Case and Task 10) puts it in scope. The issue comment of 2026-11-15T03:07:34Z lists "restarts overwriting earlier runs' holistic reports" as left out on purpose and "a separate bug". The issue's edit history shows the body edit of 2026-11-15T03:17:05Z, after that comment, is the edit that added item 6, so the body is the newer text. → The owner confirms at Gate 1.
   - **Options:** A) Keep it in scope (Task 4) — the body carries it, Success Criterion 2 needs it, and it is two flag additions in Step 10 · B) Drop it to its own issue — matches the comment and the input's own labels, but Success Criterion 2's last sentence then fails and must be cut from the contract; Task 4, its two Derived Test Matrix rows and the report-number half of the restart Edge Case go, and 4 leaves Task 12's `DEPENDS ON`.
   - **Recommended:** A) Keep it in scope — the newer body and the confirmed Success Criteria both require it.
   - **Default if unanswered:** A.
+  - **Owner answer:** A — keep it in scope; the newer body governs.
 - **Open Question 2:** The issue's test `a new branch with code after the receipted ancestor needs the full gate` passes today, because a new branch with code always runs the full gate. A test that passes before the change cannot be recorded red. The existing test `rejects new code, a mixed push, new branches with code, and non-ancestor old heads` asserts the opposite of the new rule at `.bkit/core/engine/commands/ci/push-gate.test.ts:274` (a new branch whose only commit after the receipt is bookkeeping is rejected). No recorded decision gives a rationale for that rejection. → The owner confirms at Gate 1.
   - **Options:** A) Change the existing test's new-branch case to push code after the receipt, as a Task 11 `UPDATE` and `DONE WHEN` item rather than a `TEST FIRST` test, and keep it as the named regression guard for the issue's row — no unprovable red, and no removed expectation goes through the red verifier (which refuses an `updated` test that drops an assertion, `.bkit/core/engine/commands/workflow/tests.ts:2076-2080`) · B) Keep a separate test with the issue's name — it cannot go red, so it needs an owner-written `TEST EXCEPTION`.
   - **Recommended:** A) Change the existing test as a regression guard — the behaviour is asserted with no exception needed, and the new acceptance rule is proven red by Task 11's new test.
   - **Default if unanswered:** A.
+  - **Owner answer:** A — change the existing test's new-branch case as Task 11's regression guard.
 - **Open Question 3:** Which uncommitted changes may a Step 12 receipt tolerate? Every engine call appends an `engine-call` row to the tracked `status.jsonl`, so the tree is never fully clean during a build; the clean-tree rule `runPushGate` uses would never write a Step 12 receipt, and Success Criterion 4 would fail. → The owner confirms at Gate 1.
   - **Options:** A) Accept uncommitted changes inside the min-push pathspecs (`minPushPathspecs`, the same bookkeeping paths a min push accepts untested) and reject any other change, before and after the run; the receipt records HEAD — the receipt proves the same code a min push would accept anyway · B) Commit the bookkeeping before Step 12 runs, then require a fully clean tree — keeps one rule, but the run's own `engine-call` and `test-run` rows dirty the tree again during the run, so the after-run check still fails · C) Keep the clean-tree rule and drop Success Criterion 4 — no receipt reuse at all · D) Accept uncommitted changes inside a narrower list (plans, audits and the ledgers) and reject the rest of the min-push pathspecs (`docs/*.md`, skill directories) — safer against a hand edit in those paths during Step 12, but a second pathspec list to keep in step with the min push, and a receipt still proves only the committed HEAD either way.
   - **Recommended:** A) Accept bookkeeping-only dirt — it is the only option that writes a receipt during a real build, and it proves exactly what the min gate trusts. `runPushGate` (the pre-push path) keeps its fully clean rule.
   - **Default if unanswered:** A.
+  - **Owner answer:** A — the Step 12 receipt accepts uncommitted changes inside `minPushPathspecs` only.
 - **Open Question 4:** Success Criterion 5 (repeat holistic rounds take at least half less time on a 923-shaped build) can only be measured on a real build after this change ships; no unit or integration test can show wall-clock savings. → The owner, after the next comparable build.
   - **Options:** A) Measure it in Manual Verification from that build's step rows, with owner waits excluded — advisory, blocks nothing · B) Wait for #952's time split and measure it there — more exact, but ties this plan's acceptance to another issue.
   - **Recommended:** A) Measure it in Manual Verification.
   - **Default if unanswered:** A.
+  - **Owner answer:** A — measure it in Manual Verification Step 2.
 - **Open Question 5:** "Across every run" counts every `workflow-started` run of `build` in the FID's `status.jsonl`, finished runs included. A second `/bkit-build` of the same FID after an earlier run finished would start with its holistic allowance already used and inherit the earlier run's last-clean base. The debug soak once had the same class of bug, where a finished run's rows forced a mode on a later run. → The owner confirms at Gate 1.
   - **Options:** A) Count across every run of the FID, finished ones included — matches the issue's wording and needs no new reader; a re-build of a finished FID reaches the Decision Pause sooner, where the owner grants more rounds, and the inherited base is still guarded by the ancestor check · B) Count only the runs after the FID's last `workflow-done` row — a re-build starts fresh, but `counters route --all-runs` and `status route` gain a run-window rule, which widens Tasks 1 and 2 · C) Record that a finished build is never re-run under the same FID — no code change, but nothing enforces it.
   - **Recommended:** A) Count across every run — a re-build of a finished FID is rare, its cost is one extra owner grant, and B's run-window rule is new engine scope.
   - **Default if unanswered:** A.
+  - **Owner answer:** A — the rule must match every workflow. The only other limits that span runs are debug's `{FIX_ATTEMPT}` and `{SOAK_ATTEMPT}`, which count every debug run of the feature, finished runs included, and never clear (`.bkit/core/workflows/bkit-debug.md` § Limits, through `allRunsDoneSteps` in `.bkit/core/engine/ledgers/status.ts`). `build.holistic` counts the same way and through the same reader; every other limit counts the active run only.
 - **Assumption:** `build.holistic` is a new ask point rather than a reuse of `build.verify`, so the holistic and group limits are counted apart. It needs no migration of its own: install and upgrade seed its default block, and no consumer file sets it yet. → If a consumer already sets `bkit.workflows.build.holistic` to a value that meant something else, Step 10 routes on that value as written, and the third-fix-round pause of Success Criterion 2 moves to wherever that value puts it.
 - **Assumption:** The decision file's progress trend for the holistic loop keeps counting rounds since the last clean round in the active run only (`sinceClean` at `.bkit/core/engine/commands/workflow/decisions.ts:474`), while its attempt line counts across every run. → If the owner expects both across every run, a restarted build's Decision Pause file shows an attempt line of 2 of 2 next to a trend over the restart's rounds only.
 - **Assumption:** `counters route` and `counters grant` already accept `--all-runs` with an `--of=<step>:next` count and freeze every `build.*` ask point in `workflow-started.limits` (`ASK_POINTS.filter` in `workflows.ts`), so adding `build.holistic` to `ASK_POINTS` is the only engine change routing needs. → If the frozen limits miss the new point, a restarted run reads the current setting instead; the edge case row covers it.
@@ -221,7 +228,7 @@ Investigation findings that shape the plan:
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
+- [x] **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 
 ---
 
@@ -290,7 +297,7 @@ None — no new routes, DB writes, secrets, or user input. The one trust change 
 ### Core
 
 - [ ] **Package Management:** no package is added or removed, and no task changes `package.json` (its `bkit.workflows` change is the owner commit below), so `pnpm-lock.yaml` is unaffected.
-- [ ] **Own `bkit.workflows` config:** before `/bkit-build` starts, the owner commits bkit's own `package.json` on this branch with `bkit.workflows.build.verify.maxAttempts: 2` and `bkit.workflows.build.holistic: { "ask": true, "maxAttempts": 2 }`.
+- [x] **Own `bkit.workflows` config:** before `/bkit-build` starts, the owner commits bkit's own `package.json` on this branch with `bkit.workflows.build.verify.maxAttempts: 2` and `bkit.workflows.build.holistic: { "ask": true, "maxAttempts": 2 }`.
   - No task can write it: `steps finish` refuses a step commit that changes `bkit.workflows` (`EXIT_WORKFLOWS_CHANGED`, `.bkit/core/engine/commands/workflow/steps.ts:1366-1378`), and the build's code-step commit runs through it.
   - The early commit is safe: before Task 1 lands, `askSettings` and `invalidAskSettings` iterate `ASK_POINTS` only (`.bkit/core/engine/shared/settings.ts:305-335`), so the unknown `build.holistic` key is ignored.
   - After it, the `pnpm bkit:generate` upgrade in Tasks 3, 4, 7, 8 and 12 finds nothing to write: the Task 1 seed sees the block, and the Task 9 migration sees 2.
