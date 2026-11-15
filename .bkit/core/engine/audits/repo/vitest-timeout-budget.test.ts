@@ -94,7 +94,8 @@ describe("the configs read the fixed budget", () => {
 
 const BARE = new RegExp(
   [
-    String.raw`\{ ?timeout: ?[0-9][0-9_]* ?\}`,
+    // a single-key option, unless it is a child process's own limit in a call on the same line
+    String.raw`(?<!\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync)\([^\n]*)\{ ?timeout: ?[0-9][0-9_]* ?\}`,
     // a numeric literal in a multi-key option on a test, hook or suite call
     String.raw`\b(?:it|test|describe)(?:\.\w+)*\(\s*(["'\x60])[^\n]*?\1\s*,\s*\{\s*timeout:\s*[0-9][0-9_]*\s*,`,
     String.raw`\}, ?[0-9][0-9_]{3,}\);`,
@@ -124,6 +125,10 @@ describe("no test file sets a bare limit", () => {
     expect(BARE.test('it("x", { timeout: 30_000 }, fn)')).toBe(true);
     expect(BARE.test("it('x', () => {\n}, 30_000);")).toBe(true);
     expect(BARE.test('it("x", { timeout: localLimit(30_000) }, fn)')).toBe(false);
+    // a child process's own limit is not a test limit, but a test limit beside one still is
+    expect(BARE.test('cp.spawnSync("sleep", ["30"], { timeout: 200 });')).toBe(false);
+    expect(BARE.test('execFileSync("git", ["log"], { timeout: 5_000 });')).toBe(false);
+    expect(BARE.test('cp.spawnSync("sleep", ["30"]);\nit("x", { timeout: 200 }, fn)')).toBe(true);
     // the wrapped form the guard accepts really is scaled by the fixed local factor
     expect(localLimit(30_000, limitFactor({}))).toBe(30_000 * LOCAL_HANG_FACTOR);
   });

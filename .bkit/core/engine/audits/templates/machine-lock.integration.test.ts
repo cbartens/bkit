@@ -18,8 +18,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { stopGroup } from "../../../../../vitest.process-group";
-import { tierTimeouts } from "../../../../../vitest.timeout-budget";
-import { localLimit } from "../../../../../vitest.timeout-budget";
+import { localLimit, tierTimeouts } from "../../../../../vitest.timeout-budget";
 
 const OLD_SCRIPT = path.resolve("tests/fixtures/machine-lock/stack-lock-6.0.0.sh");
 const OLD_LOCK_SCRIPT = path.resolve("tests/fixtures/machine-lock/machine-lock-6.1.1.sh");

@@ -218,6 +218,27 @@ function advise(
   };
 }
 
+/**
+ * Run one shell call like `advise`, and return the CPU time in ms the hook spent loading and
+ * deciding it. Unlike wall time, CPU time does not grow while the hook waits for a free core.
+ */
+function adviseCpu(
+  command: string,
+  cwd: string = GENERATED,
+): { permission: string | undefined; cpuMs: number } {
+  const measure =
+    "const s = process.cpuUsage(); require(process.argv[1]); const u = process.cpuUsage(s);" +
+    " process.stderr.write(String((u.user + u.system) / 1000));";
+  const res = spawnSync("node", ["-e", measure, HOOK], {
+    cwd: GENERATED,
+    input: JSON.stringify({ command, cwd, workspace_roots: [GENERATED] }),
+    encoding: "utf-8",
+    timeout: 20_000,
+  });
+  const doc = JSON.parse(res.stdout.trim()) as { permission?: string };
+  return { permission: doc.permission, cpuMs: Number(res.stderr.trim()) };
+}
+
 const UNCERTAIN = /cannot be determined/i;
 const LIMIT = /analysis[- ]limit/i;
 
@@ -611,9 +632,10 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
       path.join(dir, "evil.patch"),
       `diff --git a/a b/b\nrename from a${" ".repeat(60_000)}x\nrename to b\n`,
     );
-    const r = advise("git apply evil.patch", dir);
+    const r = adviseCpu("git apply evil.patch", dir);
     expect(r.permission).toBe("allow");
-    expect(r.ms).toBeLessThan(1000);
+    expect(r.cpuMs).toBeGreaterThan(0);
+    expect(r.cpuMs).toBeLessThan(1000);
   });
 
   it("keeps commands after a heredoc substitution that holds an apostrophe", () => {
@@ -699,9 +721,10 @@ describe("cursor guardrails.cjs — shell edit evidence", () => {
 
   it("analyses dense script sources in linear time", () => {
     const dir = workDir("dense");
-    const r = advise("node -e '" + "a;".repeat(125 * 1024) + "'", dir);
+    const r = adviseCpu("node -e '" + "a;".repeat(125 * 1024) + "'", dir);
     expect(r.permission).toBe("allow");
-    expect(r.ms).toBeLessThan(1000);
+    expect(r.cpuMs).toBeGreaterThan(0);
+    expect(r.cpuMs).toBeLessThan(1000);
   });
 
   it("marks scripts run by unanalysed interpreters as uncertain", () => {

@@ -13554,7 +13554,7 @@ Lockfile sources: every entry has an integrity hash, and every tarball comes fro
 Run a frozen install, then the static, unit and integration gate, then local E2E for each app. A store build or a deployed environment tests none of the batch, so use the local-build substrate.
 Go beyond a green typecheck: run the framework's dependency doctor, where the framework ships one (e.g., `expo-doctor`), because packages outside the SDK's range compile and typecheck, then break the native app.
 Run a single-version check for the runtime packages named in `Project Instructions`. Two versions is trap (3): report it, and the fix is one version everywhere.
-**If** a red is a timeout under heavy load (e.g., exit 143) → re-run that file alone and record the load average before blaming the batch.
+**If** a red is a timeout or a killed run (e.g., exit 143) → re-run that file alone and match it against open `docs/failures.jsonl` rows before blaming the batch.
 A red can come from a stale install. Clear the installed dependencies (e.g., `node_modules`, `.venv`, `target/`), run a frozen install, and re-run before blaming the bump.
 Reproduce each red on the audited commit without the batch, in a clean worktree off `baseSha`. A red there is a baseline red: it goes in `Verification` as a finding, reported apart from the batch, and it is not a batch FAIL.
 Judge the batch on the remaining reds.
