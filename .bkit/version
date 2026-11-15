@@ -254,7 +254,7 @@
     ".codex/hooks/bkit-rules.cjs": "8aee2cde5448c083ae0dc07a4f1db86ce7e815a2a2eafe54b886b7f4393cab91",
     ".opencode/plugin/bkit-rules.js": "417d3ca107ebf005060953a17340620e1fcfb5bcdf491316a937e0c747b0377e",
     ".bkit/router.md": "c20d006757e350c173da94686d48500bc83e12d9f7bb6ff5911e47e332e45eab",
-    ".bkit/cli.md": "17463466f345c5c085be58ae9b0d05d447080409fc26b069e5c92fc876417a7c",
+    ".bkit/cli.md": "ceb5fb9b891085cba9f6c19b47de25b4254c750fcbb58bbc3d44a1d15aee4cd3",
     ".claude/agents/bkit-build-plan-tests.md": "048eedc214f02c1c72cdf460bf1aecea0b38836420181796cb8112e9b8eb74da",
     ".cursor/agents/bkit-build-plan-tests.md": "d8090b4065d6ba337ea522926c254a5f4a11681d7afaa47090056b71952e4dc7",
     ".opencode/agents/bkit-build-plan-tests.md": "92d4a922d62cf7d913dedf18bc3910f9333fbba3b93ba23ea341e6971b1aa6b6",

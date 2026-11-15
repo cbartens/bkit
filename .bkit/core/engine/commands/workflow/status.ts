@@ -433,7 +433,7 @@ export const statusCommand: CommandSpec = {
     },
     route: {
       summary:
-        "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --prompt-file, debug's start decisions.",
+        "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, cleanBase (the step's last clean commit, else origin/dev); with --prompt-file, debug's start decisions.",
       use: "workflow",
       flags: [
         { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },

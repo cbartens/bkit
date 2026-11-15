@@ -1146,7 +1146,7 @@ export const testsCommand = {
         changed: testsChangedVerb,
         jump: testsJumpVerb,
         run: {
-            summary: "Run the first declared --gate, and with --file append a test-run status row for the run; exit 0 PASS, 1 FAIL, 4 could not run, 81 tests lock held.",
+            summary: "Run the first declared --gate, or with --changed-since only the files changed since that commit, and with --file append a test-run status row for the run; exit 0 PASS (also when nothing changed), 1 FAIL, 4 could not run, 81 tests lock held.",
             use: "by-hand",
             flags: [
                 {
