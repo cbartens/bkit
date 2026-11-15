@@ -593,7 +593,7 @@ Build order: engine counting and status first, then the workflow that calls them
 
 - [ ] **TASK 4:** Holistic file names carry the run number
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: every holistic report path becomes `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md` (the Step 10 intro's file pattern, sub-step 2's Create and Result paths, sub-step 3's `steps stub` paths and `steps finish --artifact` as `build-plan-verify-holistic-{RUN}-<attempt>.md`, sub-step 7's Read path, the Decision Pause `VERIFY_GAPS` item at line 141); every holistic fix-log path becomes `build-plan-gaps-remediate-holistic-{RUN}-{HOLISTIC_ATTEMPT}-log.md` (sub-step 7's Create path, sub-step 9's `steps finish --artifact` as `build-plan-gaps-remediate-holistic-{RUN}-<attempt>-log.md`); the fix-log globs at line 141 and sub-step 7 read `build-plan-gaps-remediate-holistic-{RUN}-*-log.md`
-  - **READ:** `.bkit/core/workflows/bkit-build.md` Step 2 sub-step 3: holds `run` as `RUN` and runs again on every resume, so `{RUN}` is held at Step 10 and the Decision Pause
+  - **READ:** `.bkit/core/workflows/bkit-build.md`: Step 2 sub-step 3 holds `run` as `RUN` and runs again on every resume, so `{RUN}` is held at Step 10 and the Decision Pause
   - **READ:** `.bkit/core/workflows/bkit-build.md`: the `build-decision-{RUN}-{DECISION}.md` naming is the pattern to follow
   - **DEPENDS ON:** 3
   - **DONE WHEN:** a restarted run's first holistic check writes `build-plan-verify-holistic-{RUN}-1.md` and leaves every earlier run's report and fix log as they were; `counters derive` and `--attempt-of` take no `--all-runs` or `:all`; `pnpm bkit:generate` refreshes the mirrors and `bkit check` reports no drift; the test below passes
