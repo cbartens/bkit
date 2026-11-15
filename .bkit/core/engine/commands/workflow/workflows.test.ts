@@ -569,6 +569,7 @@ describe("bkit workflows start — resume facts", () => {
       verifyAttempt: 3,
       testAttempt: null,
       gate: null,
+      sourceChanged: null,
       status: "OPEN",
       plan: `docs/plans/${M}/${FID}-plan.md`,
     });
@@ -589,6 +590,22 @@ describe("bkit workflows start — resume facts", () => {
     const r = await run(cwd, wf("start", "build"));
     expect(r.code).toBe(0);
     expect(r.json.openDecision).toMatchObject({ decision: 1, gate: "FAIL" });
+  });
+
+  it("openDecision carries the Source changed header", async () => {
+    const cwd = repo();
+    write(cwd, `${REL}/status.jsonl`, jsonl([started("2026-07-01T00:00:00Z")]));
+    writeDecision(cwd, 1, 1, [
+      "Status: OPEN",
+      "Question: VERIFY_LOOP",
+      "From: holistic",
+      "Pause step: 10",
+      "Source changed: false",
+      `Plan: docs/plans/${M}/${FID}-plan.md`,
+    ]);
+    const r = await run(cwd, wf("start", "build"));
+    expect(r.code).toBe(0);
+    expect(r.json.openDecision).toMatchObject({ decision: 1, sourceChanged: "false" });
   });
 
   it("workflows start reports openDecision for a DECIDED decision file that no build-decision row names", async () => {

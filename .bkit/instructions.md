@@ -1155,7 +1155,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:445`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:458`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1252,7 +1252,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:445`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:458`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -9747,6 +9747,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 <!-- prettier-ignore -->
 | Invariant | Rule |
 | --- | --- |
+| **Re-runs follow answers** | build, debug, ship: after an owner answer or an automatic one (`ask: false`, headless), a check or test runs again only when the answer changes code (`Fix now`), asks for another round (`Try again`), or a red gate is still unsettled. Otherwise the workflow goes on. Build routes an all-`Accept` verify or holistic pause with no `Gate: FAIL` and no source change (the decision file header holds `Source changed: false`: the pause came from a verify or holistic check, not a fix round that edited source; a missing header keeps the re-run) to `continue`; debug's Loop Question and ship's Merge Question and Confirm Assumed Items offer no answer that re-runs a check without a change. `workflow-shape.test.ts` guards the debug and ship options. |
 | **Diff per reader** | build, debug, ship: Every agent that reads the run's diff gets `tmp/bkit-diff-{FID}.md`, written by `bkit context diff --reset-log` in the same sub-step, just before it: build Steps 10, 11 and the Failure Path; debug Step 10 and the Failure Path; ship Step 5 and the Failure Path. Build's group verify (Step 8) reads `build-diff-{GROUP}-{VERIFY_ATTEMPT}.md` instead: `bkit context diff --base=` the group's start commit (`status route --step=build-group-start --group=N` `parentSha`), so a group's review reads only that group's commits. Past 10000 lines the file is a per-file budget: line 1 says `partial diff coverage`, line 2 lists the files not shown whole, and the whole diff stays in `{OUTBOX}` (§ Context artifact clamping). Debug passes `--base={DIFF_BASE}` (run start commit). |
 | **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused (`workflow already running for {FID}`) → Failure Path; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
 | **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: on Path B the Step 4 merge of `origin/dev` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
@@ -10037,6 +10038,7 @@ Orchestrator exits and the dispatched skill owns the session
 Derive the decision number:
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` **and** `PAUSE_STEP` = 10 → write one item per `Identified Gaps Log` line of `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-holistic-{RUN}-*-log.md` when it has one.
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
+For the verify list, title each item `Task {N}` from its `TASK {N}` gap line, so a decision tick finds the task. A gap with no task number gets its description as the title.
 For either `VERIFY_GAPS` list:
 A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
 Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
@@ -10052,8 +10054,8 @@ Title each item with its task number, when it has one, followed by its `Location
 Check a red gate against the base commit, the commit the branch started from. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`, else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
 `{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; `--loop=holistic --attempt={HOLISTIC_ROUNDS} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `holistic`; empty otherwise.
 `{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|holistic|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
-**If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}"` to `{HEADER_FLAGS}`.
-**If** the pause comes from holistic → add `--header="Holistic attempt={HOLISTIC_ATTEMPT}"` to `{HEADER_FLAGS}`.
+**If** the pause comes from verify → add `--header=Group={GROUP} --header="Verify attempt={VERIFY_ATTEMPT}" --header="Source changed={SOURCE_CHANGED}"` to `{HEADER_FLAGS}`.
+**If** the pause comes from holistic → add `--header="Holistic attempt={HOLISTIC_ATTEMPT}" --header="Source changed={SOURCE_CHANGED}"` to `{HEADER_FLAGS}`.
 **If** the pause comes from tests → add `--header="Test attempt={TEST_ATTEMPT}"` to `{HEADER_FLAGS}`.
 `{BASE_FLAGS}` = `--header=Gate=FAIL` when the base check ran, plus `--base-check="{OUTBOX}/base-check.json"` when `{LOOP_FLAGS}` is not empty; empty otherwise.
 **If** `decisions compose` exits non-zero → **Failure Path**.
@@ -10139,14 +10141,19 @@ No-progress holistic round routed
 **Else** → `CHALLENGE_ROUND` = `CHALLENGE_ROUND` + 1.
 **If** any item was answered `Fix now` → `DECISION_ROUTE` = `fix`.
 **If** the loop question was answered `Try again` → `DECISION_ROUTE` = `retry`.
+**If** `From: verify` or `From: holistic` with every item answered `Accept` or `Accept (assumed)`, the loop question (when asked) answered `Decide`, no `Gate: FAIL` header, **and** the decision file header holds `Source changed: false` (read from the file, so a resumed or reopened pause routes as the original session did; `SOURCE_CHANGED` = false when the pause came from Step 8 or Step 10 sub-steps 5-6, or the `branches scan-diff` in Step 9 or Step 10 sub-step 10 exited 1) → `DECISION_ROUTE` = `continue`. The answers changed no code and asked for no round, so a re-run would return what they already settled. A pause reached with scan-diff exit 0 and `VERIFY_FIXED` / `HOLISTIC_FIXED` = 0 has edited source the verify never saw, so it keeps the re-run. A header that is missing or not `false` (a pause resumed without it) also keeps the re-run, never a guess.
 **If** `From: verify` → `DECISION_ROUTE` = `verify`.
 **If** `From: summary` → `DECISION_ROUTE` = `summary`.
 **Else** → `DECISION_ROUTE` = `tests`. This covers `From: tests` and `From: challenge`.
 **If** `From: verify`:
 **If** exit >= 2 → **Failure Path**.
+**If** `DECISION_ROUTE` = `continue` **and** `From: verify` → tick the accepted gaps' tasks before the decision is recorded, so a resume either reopens the unrecorded decision (the tick already made is kept) or finds the tasks ticked:
+**If** exit != 0 → **Failure Path**.
 **If** `DECISION_ROUTE` = `fix` → Step 7.
 **If** `DECISION_ROUTE` = `retry` **and** `From: verify` → Step 9.
 **If** `DECISION_ROUTE` = `retry` → Step 13.
+**If** `DECISION_ROUTE` = `continue` **and** `From: holistic` → Step 11.
+**If** `DECISION_ROUTE` = `continue` **and** `From: verify` → run `"{BKIT}" tasks tick --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --group={GROUP} --decision="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"` again (it ticks nothing twice), **If** exit != 0 → **Failure Path**, else Step 7.
 **If** `DECISION_ROUTE` = `verify` → re-run Step 8.
 **If** `DECISION_ROUTE` = `summary` → Step 15.
 [workflow-pushes] Record the wait (step 4 `owner-pause` block). Create `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md` = the decision file plus the line `Stopped by the owner ({RUNTIME}); run stays IN_PROGRESS. /bkit-build {REF} resumes at this pause.`; `REF` empty → `{FID}`. Then keep the record:
@@ -10161,6 +10168,7 @@ Acceptances written only on the owner's approval
 Assumed acceptances left without a ledger row or `TEST EXCEPTION`
 Fix now tasks shaped to the owner's direction, each named on a `Fix task` line in the decision file
 Fix now tasks checked (`tests plan-check`)
+Accept-only verify or holistic pause with no `Gate: FAIL` and no source change (the decision file header holds `Source changed: false`: the pause came from a verify or holistic check, not a fix round that edited source) routed `continue`: holistic to Step 11, verify to the decision tick (`tasks tick --decision`, made before the decision is recorded) then Step 7, with no new verify round
 Resolve the repo, the branch and how far the branch is behind `dev`:
 **If** `open` > 0 → **Failure Path** naming the open `blockers`.
 **If** exit 80:

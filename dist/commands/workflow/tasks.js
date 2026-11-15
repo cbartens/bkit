@@ -17,6 +17,7 @@ import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
 import { DIFF_BASE } from "./context.js";
+import { parseDecisionItems } from "./decisions.js";
 import { NO_MARKERS_REASON, parsePlanBlocks, } from "./plan-blocks.js";
 import { positiveInt, str } from "./status.js";
 import { doneTasks } from "./tests.js";
@@ -149,7 +150,12 @@ export const tasksCommand = {
                     name: "tasks",
                     type: "string",
                     repeatable: true,
-                    help: "the task numbers to tick, comma-separated or once per number; `none` ticks nothing (one of --tasks / --green)",
+                    help: "the task numbers to tick, comma-separated or once per number; `none` ticks nothing (one of --tasks / --green / --decision)",
+                },
+                {
+                    name: "decision",
+                    type: "string",
+                    help: "a decision file: the task each item answered `Accept` or `Accept (assumed)` names in its `Task {N}` title is ticked; `Fix now` and undecided items tick nothing (one of --tasks / --green / --decision)",
                 },
                 {
                     name: "green",
@@ -171,11 +177,25 @@ export const tasksCommand = {
                 const greenArg = str(ctx.flags.green);
                 if (greenArg === "")
                     throw new CommandError(EXIT.USAGE, "--green must be non-empty");
-                if (tasksFlag === undefined && greenArg === undefined)
-                    throw new CommandError(EXIT.USAGE, "give one of --tasks and --green");
+                const decisionArg = str(ctx.flags.decision);
+                if (decisionArg === "")
+                    throw new CommandError(EXIT.USAGE, "--decision must be non-empty");
+                if (tasksFlag === undefined && greenArg === undefined && decisionArg === undefined)
+                    throw new CommandError(EXIT.USAGE, "give one of --tasks, --green and --decision");
                 const plan = readPlan(ctx.cwd, planArg);
                 const candidates = groupTasks(plan, planArg, group);
-                const named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
+                let named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
+                if (decisionArg !== undefined) {
+                    const decisionFile = path.resolve(ctx.cwd, decisionArg);
+                    if (fs.statSync(decisionFile, { throwIfNoEntry: false })?.isFile() !== true)
+                        throw new CommandError(EXIT.USAGE, `--decision ${decisionArg} does not exist`);
+                    const accepted = parseDecisionItems(fs.readFileSync(decisionFile, "utf-8"))
+                        .filter((it) => it.decision !== null && /^Accept\b/.test(it.decision))
+                        .map((it) => /\btask\s+(\d+)\b/i.exec(it.title))
+                        .filter((m) => m !== null)
+                        .map((m) => Number(m[1]));
+                    named = [...(named ?? []), ...accepted].filter((n) => candidates.some((t) => t.task === n));
+                }
                 for (const n of named ?? []) {
                     const task = plan.tasks.find((t) => t.task === n);
                     if (task === undefined)

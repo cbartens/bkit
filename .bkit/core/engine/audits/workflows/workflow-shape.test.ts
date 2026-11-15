@@ -2293,3 +2293,112 @@ describe("build publish ending", () => {
     );
   });
 });
+
+describe("build Decision Pause continue route", () => {
+  const pause = () => section(workflow("build"), /Decision Pause/);
+  /** The line number and text of the rule that sets `DECISION_ROUTE` to `route`. */
+  const routeRule = (text: string, route: string) => {
+    const lines = text.split("\n");
+    const at = lines.findIndex((l) => l.includes(`\`DECISION_ROUTE\` = \`${route}\``));
+    expect(at, `no rule setting DECISION_ROUTE = ${route}`).toBeGreaterThanOrEqual(0);
+    return { at, line: lines.at(at) ?? "" };
+  };
+  /** The routing lines of step 7 that mention `continue`, continuation lines joined. */
+  const continueRoutes = (text: string) =>
+    text
+      .slice(text.indexOf("7. Route"))
+      .replace(/\\\n\s*/g, " ")
+      .split("\n")
+      .filter((l) => l.includes("`continue`"));
+
+  it("an Accept-only verify or holistic pause routes continue before the verify and holistic re-runs", () => {
+    const text = pause();
+    const cont = routeRule(text, "continue");
+    expect(cont.at).toBeGreaterThan(routeRule(text, "retry").at);
+    expect(cont.at).toBeLessThan(routeRule(text, "holistic").at);
+    expect(cont.at).toBeLessThan(routeRule(text, "verify").at);
+    expect(cont.line).toMatch(
+      /`From: verify` or `From: holistic`|`From: holistic` or `From: verify`/,
+    );
+    expect(cont.line).toContain("Accept (assumed)");
+  });
+
+  it("continue sends holistic to Step 11 and verify to the decision tick then Step 7", () => {
+    const routes = continueRoutes(pause()).join("\n");
+    expect(routes).toMatch(/holistic[^\n]*Step 11/);
+    expect(routes).toMatch(/verify[^\n]*"\{BKIT\}" tasks tick[^\n]*--decision=[^\n]*Step 7/);
+  });
+
+  it("a Gate FAIL pause never routes continue", () => {
+    const { line } = routeRule(pause(), "continue");
+    expect(line).toMatch(/no `Gate: FAIL`/);
+  });
+
+  it("continue is never set after a fix round that changed source files", () => {
+    const { line } = routeRule(pause(), "continue");
+    expect(line).toMatch(/source/i);
+    expect(line).toMatch(/changed|scan-diff/i);
+  });
+
+  it("the continue decision tick runs before the build-decision row is recorded", () => {
+    const lines = pause().split("\n");
+    const tick = lines.findIndex((l) => /tasks tick[^\n]*--decision=/.test(l));
+    const record = lines.findIndex((l) =>
+      l.includes("steps finish --workflow=build --step=build-decision"),
+    );
+    expect(tick, "no tasks tick --decision line").toBeGreaterThanOrEqual(0);
+    expect(record, "no build-decision steps finish line").toBeGreaterThanOrEqual(0);
+    expect(tick).toBeLessThan(record);
+  });
+
+  it("a verify or holistic decision file records Source changed and a resume holds it", () => {
+    const text = pause().replace(/\\\n\s*/g, " ");
+    expect(text).toContain('--header="Source changed={SOURCE_CHANGED}"');
+    const headerLines = text
+      .split("\n")
+      .filter((l) => l.includes('--header="Source changed={SOURCE_CHANGED}"'));
+    expect(headerLines.join("\n")).toMatch(/verify/);
+    expect(headerLines.join("\n")).toMatch(/holistic/);
+    const resume = workflow("build")
+      .split("\n")
+      .find((l) => l.startsWith("- **Resume:**"));
+    expect(resume, "no Resume line").toBeDefined();
+    expect(resume).toMatch(/`sourceChanged` as `SOURCE_CHANGED`/);
+  });
+
+  it("the continue rule reads the source change from the decision file header", () => {
+    const { line } = routeRule(pause(), "continue");
+    expect(line).toContain("Source changed");
+    expect(line).toMatch(/header/i);
+    // a missing or non-false header keeps the re-run
+    expect(line).toMatch(/Source changed: false/);
+    expect(line).toMatch(/missing|no `Source changed|without/i);
+  });
+
+  it("the continue decision tick routes a non-zero exit to the Failure Path", () => {
+    const verifyRoute = continueRoutes(pause())
+      .filter((l) => /From: verify/.test(l))
+      .join("\n");
+    expect(verifyRoute).not.toBe("");
+    expect(verifyRoute).toMatch(/non-zero|exit/i);
+    expect(verifyRoute).toContain("Failure Path");
+  });
+});
+
+describe("questions never re-run a check without a change", () => {
+  it("debug and ship questions offer no answer that re-runs a check without a change", () => {
+    const allowed = new Set(["Stop", "Try again", "Confirm", "Reject"]);
+    for (const name of ["debug", "ship"]) {
+      const offered = [...workflow(name).matchAll(/Options: ([^`\n]*)/g)].flatMap((m) =>
+        String(m[1])
+          .split(" / ")
+          .map((o) => o.replace(/^[A-Z]\) /, "").trim()),
+      );
+      expect(offered.length, `${name} has no Options lines`).toBeGreaterThan(0);
+      expect(
+        offered.filter((o) => !allowed.has(o)),
+        `${name} offers an unexpected answer`,
+      ).toEqual([]);
+    }
+  });
+});

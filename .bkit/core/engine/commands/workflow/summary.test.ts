@@ -597,6 +597,96 @@ describe("buildSummary", () => {
     ).toContain("build-plan-gaps-remediate-holistic FAIL");
   });
 
+  describe("a holistic pause", () => {
+    const DEC = "log/build-decision-1-1.md";
+    const row = (step: string, verdict: string, extra: object = {}) => ({
+      type: "step-done",
+      step,
+      verdict,
+      attempt: 1,
+      ...extra,
+    });
+    const decisionRow = {
+      type: "step-done",
+      step: "build-decision",
+      attempt: 1,
+      route: "continue",
+      artifacts: [DEC],
+    };
+    const pause = (...answers: string[]) =>
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: holistic",
+        "Pause step: 10",
+        "Plan: docs/plans/p-plan.md",
+        "",
+        ...answers.flatMap((answer, i) => [
+          `**Q${i + 1} — Gap ${i + 1}:** accept it?`,
+          "Options: A) Accept / B) Fix now",
+          "Recommended: A) Accept — minor",
+          `Decision: ${answer}`,
+          "",
+        ]),
+      ].join("\n");
+    const run = (decision: string) =>
+      buildSummary(
+        input({
+          rows: [
+            row("build-plan-verify-holistic", "FAIL"),
+            row("build-plan-gaps-remediate-holistic", "FAIL"),
+            decisionRow,
+          ],
+          decisionFiles: [DEC],
+          read: (p: string) => (p === DEC ? decision : null),
+        }),
+      );
+
+    it("an all-Accept holistic pause settles the holistic FAIL before it", () => {
+      const s = run(pause("Accept — minor", "Accept (assumed) — headless"));
+      expect(s.reasons).not.toContain("build-plan-verify-holistic FAIL");
+      expect(s.reasons).not.toContain("build-plan-gaps-remediate-holistic FAIL");
+      const resolved = s.markdown.split("## Resolved Findings")[1]!.split("## ")[0]!;
+      expect(resolved).toContain("build-plan-verify-holistic FAIL, resolved by the Decision Pause");
+      expect(resolved).toContain(
+        "build-plan-gaps-remediate-holistic FAIL, resolved by the Decision Pause",
+      );
+      expect(resolved).toContain("every item accepted");
+      expect(s.verdict).not.toBe("FAIL");
+    });
+
+    it("an all-Accept holistic pause with a Decide loop question settles the holistic FAIL", () => {
+      const loop = (answer: string) => [
+        "**Q3 — Holistic verify:** the round limit is used up, go on?",
+        "Options: A) Decide / B) Try again",
+        "Recommended: A) Decide",
+        `Decision: ${answer}`,
+        "",
+      ];
+      const withLoop = (answer: string) =>
+        [pause("Accept — minor", "Accept (assumed) — headless"), ...loop(answer)].join("\n");
+      const settled = run(withLoop("Decide"));
+      expect(settled.reasons).not.toContain("build-plan-verify-holistic FAIL");
+      expect(settled.reasons).not.toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(settled.markdown.split("## Resolved Findings")[1]!.split("## ")[0]!).toContain(
+        "build-plan-verify-holistic FAIL, resolved by the Decision Pause",
+      );
+      expect(settled.verdict).not.toBe("FAIL");
+
+      const again = run(withLoop("Try again"));
+      expect(again.reasons).toContain("build-plan-verify-holistic FAIL");
+      expect(again.verdict).toBe("FAIL");
+    });
+
+    it("a holistic pause with a Fix now item settles nothing", () => {
+      const s = run(pause("Accept — minor", "Fix now"));
+      expect(s.reasons).toContain("build-plan-verify-holistic FAIL");
+      expect(s.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(s.markdown).not.toContain("every item accepted");
+      expect(s.verdict).toBe("FAIL");
+    });
+  });
+
   it("a later PASS whole-plan verify resolves a group's failed execution and gaps fix", () => {
     const execute = { type: "step-done", step: "build-plan-tasks", verdict: "FAIL", group: 2 };
     const gaps = {

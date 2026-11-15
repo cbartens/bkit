@@ -149,6 +149,7 @@ export function openDecision(logDir, tree, workflow, run, finished = []) {
             testAttempt: num("Test attempt"),
             plan: field("Plan"),
             gate,
+            sourceChanged: field("Source changed"),
             status: status ?? "OPEN",
         };
     }
@@ -1719,7 +1720,7 @@ export const workflowsCommand = {
                 row: "the appended workflow-started row, with `limits` (the workflow's ask points from bkit.workflows, frozen for the run), or null when resuming",
                 run: "which run of the workflow this is (1-based)",
                 lastDoneStep: "the current run's last DONE step: resume after it (null on a new run)",
-                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, status} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null",
+                openDecision: "{file, decision, question, from, pauseStep, group, verifyAttempt, testAttempt, plan, gate, sourceChanged, status} of the current run's highest {workflow}-decision-{run}-{N}.md holding Status: OPEN, or DECIDED / ASSUMED when no {workflow}-decision row names it, else null",
             },
             textOmit: ["row"],
             exitCodes: {

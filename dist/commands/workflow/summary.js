@@ -228,6 +228,8 @@ function stepGroups(rows) {
 const lastOf = (g) => g.rows.at(-1);
 /** Steps of a task group that a verify pause's answer settles when they ended FAIL. */
 const PAUSE_SETTLES = ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"];
+/** The whole-run steps an all-Accept holistic pause settles. */
+const HOLISTIC_PAUSE_SETTLES = ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"];
 /** A level-2 section whose heading matches `title`, minus the template's non-content subsections. */
 function planSection(text, title) {
     const lines = text.split("\n");
@@ -347,6 +349,41 @@ export function buildSummary(input) {
                 if (g !== undefined && lastOf(g).index < pause.index)
                     pauseSettled.add(key);
             }
+        // A holistic pause with every item accepted settles the whole-run FAIL rows before it.
+        let holistic;
+        input.rows.forEach((row, index) => {
+            if (row.type !== "step-done" || row.step !== "build-decision")
+                return;
+            for (const rel of artifactsOf(row)) {
+                const text = read(rel);
+                if (text === null || decisionHeader(text).From !== "holistic")
+                    continue;
+                const items = parseDecisionItems(text);
+                const gaps = items.filter((i) => i.title !== "Holistic verify");
+                const loop = items.filter((i) => i.title === "Holistic verify");
+                if (gaps.length === 0)
+                    continue;
+                if (!gaps.every((i) => /^Accept\b/.test(i.decision ?? "")))
+                    continue;
+                if (!loop.every((i) => /^Decide\b/.test(i.decision ?? "")))
+                    continue;
+                holistic = { index, rel };
+            }
+        });
+        if (holistic !== undefined) {
+            const pause = holistic;
+            for (const step of HOLISTIC_PAUSE_SETTLES) {
+                const rows = input.rows
+                    .map((row, index) => ({ row, index }))
+                    .filter(({ row, index }) => row.type === "step-done" && row.step === step && index < pause.index);
+                if (rows.at(-1)?.row.verdict !== "FAIL")
+                    continue;
+                resolvedFindings.push(`${step} FAIL, resolved by the Decision Pause (\`${pause.rel}\`), every item accepted`);
+                const g = groups.find((x) => x.step === step);
+                if (g !== undefined && lastOf(g).index < pause.index)
+                    pauseSettled.add(g.key);
+            }
+        }
     }
     for (const g of groups) {
         const { row, index } = lastOf(g);

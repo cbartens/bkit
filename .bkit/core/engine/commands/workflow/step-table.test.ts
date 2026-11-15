@@ -362,6 +362,36 @@ describe("bkit status resume", () => {
     });
   });
 
+  it("a continue decision after a holistic round resumes at Build Challenge", async () => {
+    for (const prior of ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", prior, { verdict: "FAIL" }),
+        done("build", "build-decision", { route: "continue" }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-challenge",
+        number: 11,
+        after: "build-decision",
+      });
+    }
+  });
+
+  it("a continue decision after a group verify resumes at Plan Execute", async () => {
+    for (const prior of ["build-plan-verify", "build-group-gate", "build-plan-gaps-remediate"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", prior, { verdict: "FAIL", group: 1 }),
+        done("build", "build-decision", { route: "continue" }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-plan-tasks",
+        number: 7,
+        after: "build-decision",
+      });
+    }
+  });
+
   it("challengeDone is true once a round-2 challenge has merged", async () => {
     const doneOf = async (rows: object[]) => (await resume("build", log(rows))).json.challengeDone;
     const r1 = [...setUp("build"), done("build", "build-challenge", { round: 1 })];

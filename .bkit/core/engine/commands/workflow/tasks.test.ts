@@ -131,6 +131,75 @@ const headOf = (text: string, n: number) =>
 const tickOf = (text: string, n: number) => /^- \[([ x])\]/.exec(headOf(text, n))![1];
 
 describe("bkit tasks tick", () => {
+  /** A verify-pause decision file: one item per `[title, answer]`, titled as `decisions compose` titles a gap. */
+  const decisionFile = (...items: Array<[string, string | null]>) =>
+    [
+      "Status: DECIDED",
+      "Question: VERIFY_GAPS",
+      "From: verify",
+      "Group: 1",
+      "",
+      ...items.flatMap(([title, answer], i) => [
+        `**Q${i + 1} — ${title}:** accept it?`,
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        ...(answer === null ? [] : [`Decision: ${answer}`]),
+        "",
+      ]),
+    ].join("\n");
+
+  it("tick --decision ticks the tasks of accepted verify-gap items", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(["Task 1 gap", "Accept — minor"], ["Task 3 gap", "Accept (assumed) — headless"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      "x",
+    ]);
+  });
+
+  it("tick --decision ticks a task whose item title reads TASK {N}", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(["TASK 3", "Accept — minor"], ["TASK 2", "Fix now"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      " ",
+      " ",
+      "x",
+    ]);
+  });
+
+  it("tick --decision leaves a Fix now item's task open", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      decisionFile(
+        ["Task 1 gap", "Accept — minor"],
+        ["Task 2 gap", "Fix now"],
+        ["Task 3 gap", null],
+      ),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      " ",
+    ]);
+  });
+
   it("tick marks only the named tasks", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
     const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);

@@ -201,6 +201,15 @@ export const DECISION_ROUTES = {
                 "build-plan-gaps-remediate-holistic": "build-plan-gaps-remediate-holistic",
                 "build-run-tests": "build-failure-diagnose",
             },
+            // Continue: every gap accepted, so the loop is settled. A group verify goes on to the next
+            // group's Plan Execute, a holistic round to Build Challenge.
+            continue: {
+                "build-plan-verify": "build-plan-tasks",
+                "build-group-gate": "build-plan-tasks",
+                "build-plan-gaps-remediate": "build-plan-tasks",
+                "build-plan-verify-holistic": "build-challenge",
+                "build-plan-gaps-remediate-holistic": "build-challenge",
+            },
         },
     },
 };
