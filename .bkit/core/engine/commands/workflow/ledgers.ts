@@ -281,6 +281,8 @@ export interface SharedCheckoutRecord {
 }
 
 const RECORD_DIR = "bkit/shared-checkout";
+/** Where a stopped run's commit list is parked: a directory the record listing never reads. */
+const PARKED_DIR = "bkit/shared-checkout-parked";
 const RECORD_FID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** The checkout's top: git status and pathspecs are relative to it, whatever `cwd` is. */
@@ -394,6 +396,56 @@ export function withSetupGuard<T>(cwd: string, fn: () => T): { value: T } | null
 /** Remove the FID's record; false when there was none. */
 export function removeRecord(cwd: string, fid: string): boolean {
   const file = recordFile(cwd, fid);
+  if (file === null || !fs.existsSync(file)) return false;
+  fs.rmSync(file, { force: true });
+  return true;
+}
+
+/** `$(git rev-parse --git-path bkit/shared-checkout-parked/{fid}.json)`, absolute; null for a bad FID or outside a repo. */
+function parkedFile(cwd: string, fid: string): string | null {
+  if (!RECORD_FID.test(fid) || fid.includes("..")) return null;
+  const res = gitRaw(cwd, ["rev-parse", "--git-path", `${PARKED_DIR}/${fid}.json`]);
+  return res.status === 0 && res.stdout.trim() !== "" ? path.resolve(cwd, res.stdout.trim()) : null;
+}
+
+/**
+ * Park `rec`'s start, commits and pushed list for `workflow` in this clone's git dir, so a
+ * resume of a run that stays open can rebuild its record without any remote.
+ */
+export function writeParkedCommits(cwd: string, workflow: string, rec: SharedCheckoutRecord): void {
+  const file = parkedFile(cwd, rec.fid);
+  if (file === null) throw new CommandError(EXIT_ROOT, `cannot park commits for "${rec.fid}"`);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const parked = {
+    workflow,
+    at: statusTimestamp(),
+    startSha: rec.startSha,
+    commits: rec.commits,
+    pushed: rec.pushed ?? [],
+  };
+  fs.writeFileSync(file, `${JSON.stringify(parked, null, 2)}\n`);
+}
+
+/** The FID's parked commit list for `workflow`; null when absent, unreadable or parked for another workflow. */
+export function readParkedCommits(cwd: string, fid: string, workflow: string): RunCommits | null {
+  const file = parkedFile(cwd, fid);
+  if (file === null || !fs.existsSync(file)) return null;
+  const parsed = parseJson(fs.readFileSync(file, "utf-8"));
+  if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") return null;
+  const p = parsed.value as Record<string, unknown>;
+  if (p["workflow"] !== workflow) return null;
+  const ids = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return {
+    startSha: typeof p["startSha"] === "string" ? p["startSha"] : "",
+    commits: ids(p["commits"]),
+    pushed: ids(p["pushed"]),
+  };
+}
+
+/** Remove the FID's parked commit list; false when there was none. */
+export function removeParkedCommits(cwd: string, fid: string): boolean {
+  const file = parkedFile(cwd, fid);
   if (file === null || !fs.existsSync(file)) return false;
   fs.rmSync(file, { force: true });
   return true;

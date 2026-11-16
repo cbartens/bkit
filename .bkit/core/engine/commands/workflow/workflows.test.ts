@@ -2946,6 +2946,39 @@ describe("bkit workflows close / handover — a debug run in place on dev that s
       expect(fs.existsSync(recordAt(cwd))).toBe(false);
     });
 
+    const parkedAt = (cwd: string) =>
+      path.resolve(
+        cwd,
+        git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout-parked/${FID}.json`),
+      );
+
+    it("an IN_PROGRESS run also keeps a local parked copy of the commit list", async () => {
+      const { cwd, startSha, first, second } = made();
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(JSON.parse(fs.readFileSync(parkedAt(cwd), "utf-8"))).toEqual({
+        workflow: "debug",
+        at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+        startSha,
+        commits: [first, second],
+        pushed: [],
+      });
+    });
+
+    it.each(["workflow-failed", "workflow-done"])(
+      "a run closed by %s keeps no parked copy",
+      async (type) => {
+        const { cwd } = made();
+        fs.appendFileSync(
+          statusOf(cwd),
+          jsonl([{ type, workflow: "debug", at: new Date().toISOString() }]),
+        );
+        const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+        expect(r.code).toBe(0);
+        expect(fs.existsSync(parkedAt(cwd))).toBe(false);
+      },
+    );
+
     it("a FAILED run gets no row", async () => {
       const { cwd, remote } = made();
       fs.appendFileSync(

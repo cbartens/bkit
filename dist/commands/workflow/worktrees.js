@@ -24,7 +24,7 @@ import { readBkitConfig } from "../../shared/settings.js";
 import { COULD_NOT_RUN_EXIT_CODES, installCommand } from "../../shared/package-manager.js";
 import { CommandError, DEV, EXIT, git, isIgnoredPath, isSharedBranch, MAIN, mainCheckoutRoot, repoRoot, runGit, } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
-import { RUN_COMMITS_ROW, listRecords, newRecord, readRecord, readRunCommits, removeRecord, runCommitsIn, withSetupGuard, writeRecord, } from "./ledgers.js";
+import { RUN_COMMITS_ROW, listRecords, newRecord, readParkedCommits, readRecord, readRunCommits, removeParkedCommits, removeRecord, runCommitsIn, withSetupGuard, writeRecord, } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
 import { WORKFLOW_FLAG, readRuns } from "./status.js";
@@ -149,9 +149,12 @@ function landedRunCommits(root, statusFile, workflow) {
  * record with a live workflow lock means that run owns the checkout; one
  * without is left over and removed. The same feature with an open run in
  * `{logDir}/status.jsonl` is a resume and keeps its record. A run with no record
- * takes the start, commits and pushed list of its `run-commits` row: the row in
- * `{logDir}/status.jsonl` of an open run, else the row on `origin/dev` while that log
- * shows no closed run after it.
+ * takes the start, commits and pushed list of the first of these that has one:
+ * the parked copy in this clone's git dir, unless the checkout's log shows the
+ * run closed (then it is stale and removed); the `run-commits` row in
+ * `{logDir}/status.jsonl` of an open run; the row on `origin/dev` while that log
+ * shows no closed run after it, which is the only one that fetches. The parked
+ * copy is removed once the record is written.
  */
 function openSharedRecord(root, fid, workflow, logDir) {
     const busy = (other) => new CommandError(EXIT_SHARED_BUSY, `${other} is running in this checkout (workflow lock held) — wait for it to finish, then re-run`);
@@ -169,14 +172,20 @@ function openSharedRecord(root, fid, workflow, logDir) {
         const statusFile = path.join(logDir, "status.jsonl");
         const last = fs.existsSync(statusFile) ? lastRun(readRuns(statusFile), workflow) : undefined;
         const open = last?.status === "IN_PROGRESS";
-        if (existing !== null && existing.branch === DEV && open)
+        if (existing !== null && existing.branch === DEV && open) {
+            removeParkedCommits(root, fid);
             return existing;
+        }
         const fresh = newRecord(root, fid, DEV);
-        // A closed run in the checkout's log ended the run the landed row belongs to.
-        const row = (open ? readRunCommits(statusFile, workflow) : null) ??
-            (open || last === undefined ? landedRunCommits(root, statusFile, workflow) : null);
+        // A closed run in the checkout's log ended the run every copy of the row belongs to.
+        const closed = last !== undefined && !open;
+        const parked = closed ? null : readParkedCommits(root, fid, workflow);
+        const row = parked ??
+            (open ? readRunCommits(statusFile, workflow) : null) ??
+            (closed ? null : landedRunCommits(root, statusFile, workflow));
         const rebuilt = rebuildFromRow(root, fresh, row);
         writeRecord(root, rebuilt);
+        removeParkedCommits(root, fid);
         return rebuilt;
     });
     if (guarded === null)

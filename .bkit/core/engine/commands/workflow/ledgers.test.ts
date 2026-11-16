@@ -13,9 +13,13 @@ import {
   bookPathspecs,
   commitOwnSet,
   ledgersCommand,
+  listRecords,
   newRecord,
+  readParkedCommits,
   readRecord,
+  removeParkedCommits,
   unionLedgers,
+  writeParkedCommits,
   writeRecord,
 } from "./ledgers";
 import { COMMANDS } from "../registry";
@@ -2324,5 +2328,57 @@ describe("bkit ledgers append --operation", () => {
     const both = await run(r, [...base, "--issue-operation", "--operation=op-1"]);
     expect(both.code).toBe(2);
     expect(fs.existsSync(path.join(r, "docs/failures.jsonl"))).toBe(false);
+  });
+});
+
+describe("parked run commits", () => {
+  const FID = "971-parked";
+  const parkedFile = (cwd: string, fid = FID) =>
+    path.resolve(
+      cwd,
+      git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout-parked/${fid}.json`),
+    );
+  const recordOf = (cwd: string) => ({
+    ...newRecord(cwd, FID, "dev"),
+    commits: ["a1", "b2"],
+    pushed: ["a1"],
+  });
+
+  it("round-trips the record's start, commits and pushed list for its workflow", () => {
+    const cwd = repo();
+    commitAll(cwd);
+    const rec = recordOf(cwd);
+    writeParkedCommits(cwd, "debug", rec);
+    expect(readParkedCommits(cwd, FID, "debug")).toEqual({
+      startSha: rec.startSha,
+      commits: ["a1", "b2"],
+      pushed: ["a1"],
+    });
+    expect(JSON.parse(fs.readFileSync(parkedFile(cwd), "utf-8"))).toMatchObject({
+      workflow: "debug",
+      startSha: rec.startSha,
+    });
+  });
+
+  it("reads null for a missing file, another workflow, an unreadable file and a bad fid", () => {
+    const cwd = repo();
+    commitAll(cwd);
+    expect(readParkedCommits(cwd, FID, "debug")).toBeNull();
+    writeParkedCommits(cwd, "debug", recordOf(cwd));
+    expect(readParkedCommits(cwd, FID, "build")).toBeNull();
+    expect(readParkedCommits(cwd, "../x", "debug")).toBeNull();
+    fs.writeFileSync(parkedFile(cwd), "not json");
+    expect(readParkedCommits(cwd, FID, "debug")).toBeNull();
+  });
+
+  it("is invisible to the record listing and removes by fid", () => {
+    const cwd = repo();
+    commitAll(cwd);
+    writeParkedCommits(cwd, "debug", recordOf(cwd));
+    expect(listRecords(cwd)).toEqual([]);
+    expect(readRecord(cwd, FID)).toBeNull();
+    removeParkedCommits(cwd, FID);
+    expect(fs.existsSync(parkedFile(cwd))).toBe(false);
+    expect(() => removeParkedCommits(cwd, FID)).not.toThrow();
   });
 });

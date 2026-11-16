@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import { newRecord, writeRecord } from "./ledgers";
+import { newRecord, writeParkedCommits, writeRecord } from "./ledgers";
 import {
   addAllButCopied,
   ownershipMarker,
@@ -411,7 +411,7 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
       appendRow(cwd, { startSha, commits: [first, stray, missing], pushed: [stray] });
       expect((await setup(cwd, "debug")).code).toBe(0);
       expect(record(cwd).commits).toEqual([first]);
-      expect(record(cwd).pushed ?? []).toEqual([]);
+      expect(record(cwd).pushed).toEqual([]);
     });
 
     it("keeps the fresh startSha when the row's startSha is not a commit", async () => {
@@ -501,6 +501,95 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
       ]);
       expect((await setup(cwd, "debug")).code).toBe(0);
       expect(record(cwd).commits).toEqual([]);
+    });
+
+    describe("from the parked local copy", () => {
+      const parkedFile = (cwd: string) =>
+        path.resolve(
+          cwd,
+          git(cwd, "rev-parse", "--git-path", `bkit/shared-checkout-parked/${FID}.json`),
+        );
+      /** What a handover that kept the run open parks: the record's commit list. */
+      const park = (
+        cwd: string,
+        parked: { startSha: string; commits: string[]; pushed?: string[] },
+        workflow = "debug",
+      ) => writeParkedCommits(cwd, workflow, { ...newRecord(cwd, FID, "dev"), ...parked });
+
+      it("restores commits, pushed and startSha when no copy of the row is reachable", async () => {
+        const { cwd, startSha, first, second } = await stopped();
+        park(cwd, { startSha, commits: [first, second], pushed: [first] });
+        fs.rmSync(statusFile(cwd));
+        git(cwd, "remote", "remove", "origin");
+        const r = await setup(cwd, "debug");
+        expect(r.code).toBe(0);
+        expect(record(cwd)).toMatchObject({ startSha, commits: [first, second], pushed: [first] });
+        expect(r.json.startSha).toBe(startSha);
+      });
+
+      it("wins over the row on origin/dev, which is then not needed", async () => {
+        const { cwd, startSha, first, second } = await stopped();
+        appendRow(cwd, { startSha, commits: [first], pushed: [] });
+        landed(cwd);
+        park(cwd, { startSha, commits: [first, second], pushed: [] });
+        git(cwd, "remote", "set-url", "origin", `${cwd}-gone.git`);
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd)).toMatchObject({ startSha, commits: [first, second] });
+      });
+
+      it("wins over the row in the checkout's own log while the run is open", async () => {
+        const { cwd, startSha, first, second } = await stopped();
+        appendRow(cwd, { startSha, commits: [first], pushed: [] });
+        park(cwd, { startSha, commits: [first, second], pushed: [first] });
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd)).toMatchObject({ commits: [first, second], pushed: [first] });
+      });
+
+      it("still drops a commit id that is not on the branch", async () => {
+        const { cwd, startSha, first } = await stopped();
+        const stray = git(cwd, "commit-tree", "HEAD^{tree}", "-m", "never on dev");
+        park(cwd, { startSha, commits: [first, stray], pushed: [stray] });
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd).commits).toEqual([first]);
+        expect(record(cwd).pushed).toEqual([]);
+      });
+
+      it("is ignored and removed when the checkout's log shows the run closed", async () => {
+        const { cwd, startSha, first } = await stopped();
+        park(cwd, { startSha, commits: [first] });
+        const done = { type: "workflow-done", workflow: "debug", at: new Date(Date.now() + 1000) };
+        fs.appendFileSync(statusFile(cwd), `${JSON.stringify(done)}\n`);
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd).commits).toEqual([]);
+        expect(fs.existsSync(parkedFile(cwd))).toBe(false);
+      });
+
+      it("is ignored when it was parked for another workflow", async () => {
+        const { cwd, startSha, first } = await stopped();
+        park(cwd, { startSha, commits: [first] }, "build");
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd).commits).toEqual([]);
+      });
+
+      it("is removed once the record is rebuilt", async () => {
+        const { cwd, startSha, first } = await stopped();
+        park(cwd, { startSha, commits: [first] });
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(record(cwd).commits).toEqual([first]);
+        expect(fs.existsSync(parkedFile(cwd))).toBe(false);
+      });
+
+      it("is removed when the live record already stands for the open run", async () => {
+        const cwd = shared();
+        await setup(cwd, "debug");
+        await liveRun(cwd, FID);
+        const first = commit(cwd, "fix part one");
+        park(cwd, { startSha: record(cwd).startSha as string, commits: [first] });
+        const before = fs.readFileSync(recordFile(cwd), "utf-8");
+        expect((await setup(cwd, "debug")).code).toBe(0);
+        expect(fs.readFileSync(recordFile(cwd), "utf-8")).toBe(before);
+        expect(fs.existsSync(parkedFile(cwd))).toBe(false);
+      });
     });
   });
 
