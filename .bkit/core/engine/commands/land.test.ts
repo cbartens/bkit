@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useGateRunner } from "../../../../vitest.gate-fixture";
+import { tierTimeouts } from "../../../../vitest.timeout-budget";
 
 import { replayBuild } from "./workflow/branches";
 import {
@@ -199,7 +200,7 @@ describe("withoutHooks", () => {
   });
 });
 
-describe("pushToDev", () => {
+describe("pushToDev", { timeout: tierTimeouts(true).testTimeout }, () => {
   it.each([
     ["docs/plans/notes.md", false, "min"],
     ["code.ts", false, "unit"],

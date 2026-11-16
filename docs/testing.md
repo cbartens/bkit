@@ -32,27 +32,33 @@ CI runs the tiers through the bkit scaffold as one parallel lane (job) per tier,
 
 The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e:
 
-```
-  bkit-tests-scope ─┬─ bkit-tests-static
-    always-on        ├─ bkit-tests-unit
-    never skips      ├─ bkit-tests-build-web ─────────────────────┐
-    (~15s)           ├─ bkit-tests-integration                    │
-                     ├─ bkit-tests-build-ios                      │
-                     ├─ bkit-tests-build-android                  │
-                     └─ bkit-tests-migration ─┬─→ bkit-tests-deploy (default-branch push only; promotes)
-                                              │            │
-                                              │            ▼
-                                              └─→ bkit-tests-reset ─┬─→ bkit-tests-e2e-web
-                                                    (lease)         ├─→ bkit-tests-live-web
-                                                                    ├─→ bkit-tests-e2e-ios
-                                                                    └─→ bkit-tests-e2e-android
-                                          │
-                                          ▼
-                               bkit-tests-cleanup (always(); releases the lease)
-                                          │
-                                          ▼
-                               bkit-tests-check (needs: scope + every lane you have, deploy included)
+Each arrow points from a lane to a lane that waits for it (`needs:`); the dashed arrow marks a wait that is only ordering.
 
+```mermaid
+flowchart LR
+    scope["bkit-tests-scope (always on, never skips, ~15s)"] --> static["bkit-tests-static"]
+    scope --> unit["bkit-tests-unit"]
+    scope --> integration["bkit-tests-integration"]
+    scope --> buildweb["bkit-tests-build-web"]
+    scope --> buildios["bkit-tests-build-ios"]
+    scope --> buildandroid["bkit-tests-build-android"]
+    scope --> migration["bkit-tests-migration"]
+    migration --> deploy["bkit-tests-deploy (default-branch push only; promotes)"]
+    buildweb --> deploy
+    migration --> reset["bkit-tests-reset (lease)"]
+    reset --> e2eweb["bkit-tests-e2e-web"]
+    reset --> liveweb["bkit-tests-live-web"]
+    reset --> e2eios["bkit-tests-e2e-ios"]
+    reset --> e2eandroid["bkit-tests-e2e-android"]
+    deploy -.-> reset
+    e2eweb --> cleanup["bkit-tests-cleanup (always(); releases the lease)"]
+    liveweb --> cleanup
+    e2eios --> cleanup
+    e2eandroid --> cleanup
+    cleanup --> check["bkit-tests-check (needs: scope + every lane you have, deploy included)"]
+```
+
+```
   static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
   bkit-tests-migration:            needs:[bkit-tests-scope]; no job-level if (always-on)
   bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web]; default-branch push only
@@ -720,6 +726,7 @@ Replay a stored verdict: each `completeness` row carries `sourceSha` (the sha256
 
 - `install/project-docs.test.ts` and the install and upgrade integration tests cover template refresh, the ownership migration, index registration and uninstall preserving adopted documents.
 - `checks/after/tools.test.ts` and `checks/after/index.test.ts` cover `detectProjectDocs` states, equivalents, unsafe paths, suppression and the advisory-only severity.
+- `install/project-docs.test.ts` (starter shape, `adoptedProjectDocPath`, equivalence), `checks/tips/catalogue.test.ts` (the `project-docs` tip), `checks/after/tools.test.ts` (advisory text and equivalence), `install/template-copies.integration.test.ts` and `commands/install/upgrade.integration.test.ts` (the adopted-starter marker in the upgrade report) cover the adoption pointers.
 - `commands/workflow/summary.test.ts` and `commands/workflow/workflows.integration.test.ts` cover warning aggregation for the active run through the real `workflows summary` command.
 - `audits/repo/shipped-docs-refs.test.ts` covers the responsibility inventory in the workflow and prompt catalogs, the named references and the warning contracts.
 

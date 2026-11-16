@@ -1,28 +1,98 @@
+> Starter document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/deployments.md`, fill the project slots, keep the bkit practice sections, then delete this introduction.
+>
+> **Fill these first:** `docs/observability.md`, `docs/testing.md`.
+>
+> **Finish against:** `docs/data-schema.md` for `### This project` under `## Applying migrations at deploy time`, which waits for the schema.
+>
+> **Where the facts come from:** the CI and deploy workflow files, the hosting configuration, the branch protection settings, the secret stores and the release history.
+>
+> **Fill in:**
+>
+> 1. Copy this starter to `docs/deployments.md`.
+> 2. Fill `## Environments` with one row per environment: its branch, URL and when it deploys. Read hosting and the data store from `docs/architecture.md` § Environments.
+> 3. Redraw `## Release path` as the route a change takes from a branch to production.
+> 4. Fill `## Secrets and env config` with how each environment's config is synced. Read the secret names from `docs/security.md` § Secrets.
+> 5. Fill `## Branch protection` with the required checks and rules of each protected branch.
+> 6. Replace the example steps in `## Production rollback runbook` and `## Dev rollback runbook` with the project's own. Keep both headings.
+> 7. Fill the `### This project` slot under `## Applying migrations at deploy time` with what applies migrations, and when.
+> 8. Keep every section marked `bkit practice`. Edit its text only to correct it for the stack, and never change its heading.
+> 9. Record unresolved facts under `## Open questions`.
+> 10. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/deployments.md` | ○ | ○ | ○ | ● | ● | Deployment and CI/CD: environments, release path, secrets, branch protection, run-level tiers and rollback. |
+> 11. Check the document against each completion check, then delete this introduction.
+>
+> **If it does not apply:** write `Not applicable: {reason}` under a project slot that does not apply, such as `## Branch protection` for a project with no protected branch.
+>
+> **Completion checks:**
+>
+> - Every environment in `docs/architecture.md` § Environments has a row in `## Environments`.
+> - The chart in `## Release path` names every environment that a release reaches.
+> - Every secret in `docs/security.md` § Secrets has a sync route in `## Secrets and env config`.
+> - Both rollback runbooks hold the project's own steps, with no example step left.
+> - Every section is marked as a project slot or as bkit practice.
+> - No example row remains.
+
 # Deployments
 
-> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/deployments.md` and add its row to `.agents/docs.md` `## Project Documents`.
-
 > [!CAUTION]
-> **Purpose:** The rules for deployment, environment config and the CI/CD pipeline: secrets sync, branch protection and run-level tiers.
+> **Purpose:** Deployment and CI/CD: environments, release path, secrets, branch protection, run-level tiers and rollback.
 >
 > **Rules:**
 >
-> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
-> - Pre-push runs the project's gate set locally (see "Pre-push checklist" below).
-> - Never use `--no-verify`.
+> - Follow `.bkit/authoring.md` § Docs when you edit this file.
+> - Pre-push runs the project's gate set locally. The gate scripts are in `docs/testing.md`.
+>
+> **bkit practice:** every section marked `bkit practice` is bkit's own advice. Sections marked **bkit practice** keep their heading text and stay separate sections. Do not rename, merge or compress them, because bkit's CI template, advisories and audits cite them by name. Every section marked `Project slot` holds the project's own facts.
+>
+> **Not here:** Commit-message tags, phase-close prerequisites, post-merge routing and the ship gate go in `.bkit/workflows.md` § Test and release mechanics. Hosting and the data store go in `docs/architecture.md` § Environments. Secret names go in `docs/security.md` § Secrets.
+>
+> **Update when:** An environment, release step, secret route, protected branch or rollback step is added, changed or removed.
 
-## Project facts to record
+## Environments
 
-Replace the generic text below with the project's own deployment facts where they differ.
+> **Project slot:** one row per environment. Hosting and the data store are in `docs/architecture.md` § Environments.
 
-- Hosts, environments and how a release reaches production.
-- Secrets sync and branch protection.
-- Rollback and deploy decisions specific to this project.
-- Commit-message tags, phase-close prerequisites, post-merge routing and the ship gate are bkit mechanics in `.bkit/workflows.md` § Test and release mechanics.
+<!-- prettier-ignore -->
+| Environment | Branch | URL | Deploys when |
+| --- | --- | --- | --- |
+| [Environment] | [Branch it deploys from.] | [Address.] | [Event that starts a deploy.] |
+| [e.g., Production] | The default branch. | [e.g., the public site address.] | A release pull request merges. |
+
+## Release path
+
+> **Project slot:** the route a change takes to production.
+
+```mermaid
+flowchart LR
+    FEATURE["Feature branch"] --> DEV["Integration branch"]
+    DEV --> MAIN["Default branch"]
+    MAIN --> PROD["Production"]
+```
+
+## Secrets and env config
+
+> **Project slot:** how each environment's config is synced. The secret names are in `docs/security.md` § Secrets.
+
+<!-- prettier-ignore -->
+| Environment | Config store | Synced by | Checked by |
+| --- | --- | --- | --- |
+| [Environment] | [Store that holds its config.] | [Command or workflow that syncs it.] | [How a mismatch is found.] |
+| [e.g., Production] | The hosting platform's environment settings. | A sync script run by the release workflow. | A comparison step that prints no values. |
+
+## Branch protection
+
+> **Project slot:** the rules on each protected branch.
+
+<!-- prettier-ignore -->
+| Branch | Required checks | Other rules |
+| --- | --- | --- |
+| [Branch] | [Checks that must pass.] | [Reviews, history and push rules.] |
+| [e.g., Default branch] | The capstone check. | No force pushes. |
 
 ## Production rollback runbook
 
-> Use this runbook when a bad release is live. Move production back to the last good deployment, then fix forward through `dev`. Production moves first, and `main` keeps its history. The steps work on any host. The commands use Vercel as the example.
+> **Project slot:** replace the example steps with this project's own; keep the heading, because plans cite it.
+
+> Use this runbook when a bad release is live. Move production back to the last good deployment, then fix forward through `dev`. Production moves first, and `main` keeps its history. The steps work on any host.
 
 ### Preconditions
 
@@ -31,15 +101,10 @@ Replace the generic text below with the project's own deployment facts where the
 
 ### Playbook
 
-1. **Move production back** to the last good deployment. Do not rebuild, and make no git change. Move every production host the release moved (the site, and webhook or background-job aliases), never the website alone. With `bkit-tests-deploy` adopted, run the switch from a `workflow_dispatch` rollback workflow in the deploy job's `concurrency:` group (`cancel-in-progress: false`), so a release and a rollback never switch production at once. For example, on Vercel:
-   ```bash
-   vercel ls --meta githubCommitSha=<green-sha>
-   vercel promote <prior-deployment-url>
-   ```
+1. **Move production back** to the last good deployment. Do not rebuild, and make no git change. Move every production host the release moved (the site, and webhook or background-job aliases), never the website alone. With `bkit-tests-deploy` adopted, run the switch from a `workflow_dispatch` rollback workflow in the deploy job's `concurrency:` group (`cancel-in-progress: false`), so a release and a rollback never switch production at once. For example:
+   [e.g., list the deployments of the green commit with the host's CLI, then promote the prior deployment.]
 2. **Mark the bad deployment** when `bkit-tests-deploy` is adopted. `bkit-tests-deploy` refuses the deployment id in repo variable `ROLLED_BACK_DEPLOYMENT_ID` (§ Promote before the lanes), so a "Re-run all jobs" of the bad run cannot promote it again.
-   ```bash
-   gh variable set ROLLED_BACK_DEPLOYMENT_ID --body <bad-deployment-id>
-   ```
+   [e.g., set the repository variable `ROLLED_BACK_DEPLOYMENT_ID` to the bad deployment id with the `gh` CLI.]
 3. **Verify** the rollback with § Post-rollback verification.
 4. **Fix forward through `dev`.** Revert the bad change on a `revert-*` branch off `dev`, or ship the fix. Open a PR into `dev`, then release `dev` → `main` as usual. Hold every other release PR into `main` until it carries the fix, because a release cut from `main`'s tip ships the bad commit again. The release descends from the commit production serves, so `bkit-tests-deploy` promotes it. Never rewind or re-seed the database. Ship a corrective migration instead (§ Applying migrations at deploy time). The rolled-back build must work on the newer schema, so expand first and contract later.
 5. **Reset `main` — last resort.** Do this only when `main` holds commits that a `dev` release cannot undo (for example, a squash that landed on `main` without going through `dev`), and only after step 1. If you reset first, `bkit-tests-deploy` refuses every release until production moves, including the run the reset starts, because production's commit is no longer an ancestor of `main`. The reset is a push to `main`. With `bkit-tests-deploy`, it starts a release run that builds and promotes a fresh deployment of `<green-sha>`. You need `jq`, a local repo on `main` and a clean tree.
@@ -69,6 +134,8 @@ Replace the generic text below with the project's own deployment facts where the
 
 ## Dev rollback runbook
 
+> **Project slot:** replace the example steps with this project's own; keep the heading, because plans cite it.
+
 > Use this runbook to unwind a bad commit on `dev` to the prior known-good SHA when the rolled-out range included applied migrations. A code-only rollback leaves the dev DB ahead of the code, so schema-aware tests (schema introspection, access-policy integration) fail on an otherwise clean tree. The steps work with any database. The commands use Supabase as the example.
 
 ### Preconditions
@@ -85,11 +152,8 @@ Replace the generic text below with the project's own deployment facts where the
    git revert --no-edit <green-sha>..HEAD
    git diff --stat <green-sha> HEAD   # empty = tree matches known-good
    ```
-2. **Reset the dev DB.** Drop every schema your migrations create (`CASCADE`), then truncate the migration ledger. Name only your own app-managed schemas. For example, on Supabase (`public` is shown; add each schema your migrations create):
-   ```bash
-   psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE;'
-   psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
-   ```
+2. **Reset the dev DB.** Drop every schema your migrations create (`CASCADE`), then truncate the migration ledger. Name only the schemas your own migrations create.
+   [e.g., drop each schema the migrations create with `DROP SCHEMA ... CASCADE`, then truncate the migration ledger table.]
 3. **Push the revert.** The push run's `bkit-tests-migration` re-applies every migration on the reverted tree, because an empty ledger makes every migration new. NEVER apply by hand. **If** `dev` is protected → push the revert on a `revert-*` branch and merge its PR. The apply then runs on the merge push to `dev`.
    ```bash
    git push origin dev
@@ -111,6 +175,8 @@ Replace the generic text below with the project's own deployment facts where the
 - Re-run the schema-aware test suite (e.g. `pnpm test:integration`) to confirm DB and code agree.
 
 ## Run-level decision matrix
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 bkit ships a mostly flat, wide scaffold. `bkit-tests-scope` always runs. It reads the markers once, computes `run_level`, the optional `run_migration` and `tenant_target`, and emits the `bkit-test-plan` JSON. It fans out to every lane (`bkit-tests-static` / `-unit` / `-build-web` / `-build-ios` / `-build-android` / `-integration` / `-e2e-web` / `-e2e-ios` / `-e2e-android` / `-live-web` / `-migration` / `-reset` / `-cleanup`), and `bkit-tests-check` joins them. `bkit-tests-deploy` runs on a push to the default branch only, promotes the release before the E2E / `@live` lanes run, and is not required. Static/unit/integration/build wait only on the planner.
 
@@ -134,6 +200,8 @@ Adopt only the lanes this repo has. Lane names and the adopt order are in `testi
 Device lanes follow `plan.run_native_*`, not `run_level`. The same rule holds on a PR, a push (including `partial`), and a dispatch.
 
 ## One run per branch or pull request
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 ```yaml
 group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
@@ -236,6 +304,8 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 
 ## Workflow-file limits GitHub does not enforce visibly
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 **The 21,000-character expression cap.** GitHub compiles every block scalar containing a `${{ … }}` expression as one expression and refuses to compile the workflow past 21,000 characters:
 
 ```
@@ -250,6 +320,8 @@ The cap is undocumented and invisible to the toolchain, because the file stays v
 
 ## Smoke trigger plumbing
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 Smoke runs after the deploy, in its own workflow, off the merge gate (what it actually probes is in `testing.md` § Smoke). When `bkit-tests-deploy` promotes inside CI, that probe is `bkit-health.yml` (`.bkit/templates.md` § Health check): one workflow, not a second smoke file. Pick the trigger by where the deploy happens, not by habit:
 
 - **If** the deploy happens inside CI → key smoke to `workflow_run` (the CI workflow `completed`, any conclusion), and probe only when production serves that run's commit. The deploy promotes before the tenant lanes, so a red run can still have put a release live. Fail, rather than skip, when production's commit cannot be read. Mind the 3-level `workflow_run` chain cap, because a fourth chained workflow will not fire.
@@ -259,6 +331,8 @@ Smoke runs after the deploy, in its own workflow, off the merge gate (what it ac
 - Do not key smoke to `workflow_run` for an externally deployed app, because it then probes the old build.
 
 ## Applying migrations at deploy time
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 The deploy-time apply and the test-time replay gate are different guarantees. Keep both, preferably in the same always-on lane (`bkit-tests-migration`):
 
@@ -275,7 +349,15 @@ The deploy-time apply and the test-time replay gate are different guarantees. Ke
 - Do not assume the deploy-time apply also validates a clean from-scratch install or the seed, because it does neither.
 - Do not put the remote push inside e2e while live is not gated on e2e.
 
+### This project
+
+> **Project slot:** what applies this project's migrations, and when.
+
+[What applies migrations to each environment, and when it runs.]
+
 ## Build-vs-migration race
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 When your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a separate, unordered step, the deploy's build and the migration race. A build-time DB read that lands before the migration creates its object makes the first deploy that ships it fail with a hard error. Build-time reads come from any statically rendered or build-generated route. Examples in Next.js: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. The missing-object error signatures in Postgres, for example, are `42P01` (relation), `42703` (column), `42704` (type) and `3F000` (schema).
 
@@ -289,6 +371,8 @@ When your host auto-deploys on push (Vercel / Netlify Git integration) while CI 
 The race stays hidden until the first build-time DB read lands, so flag it in review when one is added. `bkit-tests-migration` proves that migrations replay from empty, and on push it owns the remote apply. It still does nothing for the order of build and deploy on the host, because this race is separate from that gate. Serialise migrate → deploy at the host.
 
 ## Promote before the lanes (`bkit-tests-deploy`)
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 With `bkit-tests-deploy` adopted, the host does not auto-build the default branch. `bkit-tests-build-web` creates this SHA's deployment, polls it until it is ready, and publishes `deployment_url` + `deployment_id`. The production alias still serves the previous release. `bkit-tests-deploy` `needs: [bkit-tests-migration, bkit-tests-build-web]`, runs on a push to the default branch only, and is not a required check. It promotes the exact `deployment_id` the build lane published, without looking the deployment up again by SHA. A `409` counts as success only when the body says this id is already current production. On `main` it runs before the E2E / `@live` lanes. Each of those lanes `needs:` it and starts by proving, by deployment id, that production serves this run's build. A re-run after a rollback therefore refuses, instead of testing the old build and going green. A red deploy job means the release did not happen, and production still serves the previous deployment.
 
@@ -310,12 +394,16 @@ The capstone `needs:` `bkit-tests-deploy`, so on a default-branch push a skipped
 
 ## Disable GitHub Code Quality billing
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 GitHub Code Quality (coverage-on-PR plus the `Code Quality: CodeQL` runs) bills per active committer, plus Actions minutes, plus AI credits. It is opt-out: a repo with default setup enabled is billed silently until it is turned off.
 
 - **If** your repo has Code Quality default setup enabled → either disable it in repo → **Settings → Code security → Code Quality** (turn off default setup), or accept the per-committer charge.
 - **The bkit coverage stub replaces the coverage-on-PR value only.** `bkit-stub:coverage` gives a free, in-Actions coverage comment with no third-party service (the shipped stub targets Vitest; `testing.md` § Coverage on PRs). It does not replace CodeQL security scanning. If you rely on that scanning, keep it or re-enable it separately, because it is a distinct product and a distinct decision.
 
 ## GitHub Actions pinning
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 **Pin every third-party dependency to an immutable digest, and pair each pin with an updater.** A floating ref (a `@v{N}` tag, a `ubuntu:26.04` image, an unversioned `curl … | bash`) is mutable, because a compromised maintainer can re-point it, on their next push, to malicious code that runs with your runner token. It is one exposure class across three surfaces:
 
@@ -433,3 +521,7 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs against `dev` imm
    - **If** the parent itself cannot upgrade → override the transitive to a fixed version (for example, a `pnpm.overrides` entry; with Renovate, fence it, see **Fence a `pnpm.overrides` pin**), or add the transitive as a direct dev dependency (for example, in `devDependencies`) to force the resolution.
 4. Open a PR against `dev` titled `fix(security): bump <pkg> >=<fixed-version> (CVE-XXXX-YYYY)`. After the merge to `dev → main`, the alert closes automatically once GitHub re-scans the default branch.
 5. **If** a CVE has no impact on your usage pattern (for example, a dev-server-only vuln in a build tool that you never run as a server) → dismiss it in the GitHub UI with the "Vulnerable code is not actually used" reason and a one-line justification. Do not dismiss an alert without documenting why.
+
+## Open questions
+
+[Each unresolved fact, who can answer it and which section it affects.]

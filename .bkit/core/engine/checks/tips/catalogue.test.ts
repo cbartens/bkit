@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getCoreRoot, getTemplatesRoot } from "../../shared/package-roots";
 import { detectContextFetchMissing } from "../before/context-fetch";
 import { buildTrackerSetupAdvisory } from "../after/github";
-import { buildDepUpdaterSetupAdvisory } from "../after/tools";
+import { buildDepUpdaterSetupAdvisory, detectProjectDocs } from "../after/tools";
+import { PROJECT_DOC_TOPICS, projectDocPath } from "../../install/project-docs";
 import { COMPLY_PHASES, TIPS_CONTEXTS } from "../../cli";
 import { ALL_WORKFLOWS, EVERY_CONTEXT, SETUP_TIPS, type SetupTip } from "./catalogue";
 import {
@@ -538,6 +539,105 @@ describe("SETUP_TIPS — detection", () => {
     expect(tip("bkit-output-json").fires(cwd)).toBe(true);
     write(".claude/hooks/bkit-cloud-bootstrap.sh", '"$BKIT" context list-blocks --json | jq .x\n');
     expect(tip("bkit-output-json").fires(cwd)).toBe(false);
+  });
+
+  describe("project-docs", () => {
+    const POPULATED_DOC =
+      "# Doc\n\nThe api service issues session cookies; the edge proxy applies the rate limits.\n";
+    const INDEX_HEAD =
+      "<!-- bkit:start -->\nmanaged\n<!-- bkit:end -->\n\n## Project Documents\n\n" +
+      "| Doc | Design | Plan | Build | Debug | Ship | Scope |\n| --- | --- | --- | --- | --- | --- | --- |\n";
+
+    /** The `project-docs` tip, asserted present so a missing entry fails with a clear message. */
+    const projectDocsTip = (): SetupTip => {
+      const found = SETUP_TIPS.find((t) => t.id === "project-docs");
+      expect(found, "project-docs tip is in the catalogue").toBeDefined();
+      return found!;
+    };
+
+    /** Write every project doc as `texts[topic]` (populated by default) and index them all. */
+    const writeProjectDocs = (texts: Partial<Record<string, string>> = {}) => {
+      const rows: string[] = [];
+      for (const topic of PROJECT_DOC_TOPICS) {
+        const rel = projectDocPath(topic);
+        write(rel, texts[topic] ?? POPULATED_DOC);
+        rows.push(`| \`${rel}\` | ○ | ○ | ○ | ○ | ○ | Project doc. |\n`);
+      }
+      write(".agents/docs.md", INDEX_HEAD + rows.join(""));
+    };
+
+    const starterText = (topic: string): string =>
+      fs.readFileSync(path.join(getTemplatesRoot(), "docs", `${topic}.md`), "utf-8");
+
+    it("project-docs tip fires when a project doc is missing", () => {
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "security.md"));
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-missing");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip stays silent when every project doc is populated and indexed", () => {
+      writeProjectDocs();
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual([]);
+      expect(projectDocsTip().fires(cwd)).toBe(false);
+    });
+
+    it("project-docs tip names the two project-docs advisory ids", () => {
+      const t = projectDocsTip();
+      expect([...advisoriesOf(t)]).toEqual(["project-docs-missing", "project-docs-unpopulated"]);
+      expect(t.caution).toBeTruthy();
+    });
+
+    it("project-docs tip stays silent for a Not applicable data-schema and a header-only noise", () => {
+      writeProjectDocs({
+        "data-schema":
+          "# Data schema\n\n## Overview\n\nNot applicable: no persistent store\n\n## Open questions\n",
+        noise:
+          "# Noise\n\n## Downgrades\n\n| Date | Signal | Where | Change | Trigger | Why it is safe | Recheck when |\n| --- | --- | --- | --- | --- | --- | --- |\n",
+      });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual([]);
+      expect(projectDocsTip().fires(cwd)).toBe(false);
+    });
+
+    it("project-docs tip fires when a project doc is an unchanged starter copy", () => {
+      writeProjectDocs({ architecture: starterText("architecture") });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-unpopulated");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip fires when a project doc is empty", () => {
+      writeProjectDocs({ testing: "" });
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-unpopulated");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip stays silent when project-docs-missing is ignored", () => {
+      pkg({ advisories: { ignore: ["project-docs-missing"] } });
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "security.md"));
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+      const result = collectTips(cwd);
+      expect(result.tips.map((t) => t.id)).not.toContain("project-docs");
+      expect(result.suppressed.map((s) => s.id)).toContain("project-docs");
+    });
+
+    it("ignoring project-docs-missing drops the unpopulated advisory and keeps project-docs-index-missing", () => {
+      pkg({ advisories: { ignore: ["project-docs-missing"] } });
+      write("docs/architecture.md", starterText("architecture"));
+      const findings = detectProjectDocs(cwd);
+      const ids = findings.map((f) => f.id);
+      expect(ids).toEqual(
+        expect.arrayContaining([
+          "project-docs-missing",
+          "project-docs-unpopulated",
+          "project-docs-index-missing",
+        ]),
+      );
+      const kept = dropTipSilencedAdvisories(findings, cwd).map((f) => f.id);
+      expect(kept).not.toContain("project-docs-missing");
+      expect(kept).not.toContain("project-docs-unpopulated");
+      expect(kept).toContain("project-docs-index-missing");
+    });
   });
 
   describe("bkit-upgrade", () => {

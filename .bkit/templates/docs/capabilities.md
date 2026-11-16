@@ -1,6 +1,20 @@
-> Example output. Copy it to `docs/capabilities.md` and own it. `bkit install` does not write this file and does not overwrite a copy.
+> Generated document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/capabilities.md`, build it with the command below, then delete this introduction.
 >
-> `pnpm bkit:graph:rollup` rewrites everything outside the Overrides block, so do not edit the generated body. To add a capability, add it in `scripts/graphify/bkit-graph-drift-rules.json`. How to run the tools is in `.bkit/templates.md`.
+> **Fill these first:** `docs/deployments.md`.
+>
+> **Prerequisites:** the code exists, and the graphify templates are adopted as `.bkit/templates.md` § graphify — map describes.
+>
+> **Build it:**
+>
+> 1. Copy this starter to `docs/capabilities.md`.
+> 2. Add each capability to `scripts/graphify/bkit-graph-drift-rules.json`. That file is the source of truth, and it stays hand-maintained.
+> 3. Run `pnpm bkit:graph:rollup` to build the register from the working tree. Run it while you edit, when you want to see the result before staging.
+> 4. Run `pnpm bkit:graph:refresh` to build the register from the staged files in a throwaway checkout. Run it before a commit, so the committed file matches the committed code.
+> 5. Keep only the Overrides block by hand. Every other part is rewritten on each run, so do not edit it.
+> 6. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/capabilities.md` | ● | ● | ● | — | ○ | One row per capability, with its owner module, the literal marker that finds every use of it, and whether anything bypasses the owner. |
+> 7. Check the document against each completion check, then delete this introduction.
+>
+> **Completion checks:** the register has a row for every capability in `scripts/graphify/bkit-graph-drift-rules.json`, every responsibility in `docs/components.md` that owns a capability appears in both documents, and no row reads `Not built`.
 
 # Capabilities
 

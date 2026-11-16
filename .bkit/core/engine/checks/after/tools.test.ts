@@ -504,7 +504,7 @@ describe("detectProjectDocs", () => {
     expect(missing!.action).toContain(".bkit/templates/docs/");
     expect(missing!.action).toContain(".agents/docs.md");
 
-    const empty = findings.find((f) => f.id === "project-docs-empty");
+    const empty = findings.find((f) => f.id === "project-docs-unpopulated");
     expect(empty).toBeDefined();
     expect(empty!.detect).toContain("docs/testing.md");
     expect(empty!.detect).toContain("docs/setup.md");
@@ -515,6 +515,45 @@ describe("detectProjectDocs", () => {
     // No claim that populated content is semantically complete.
     expect(allText(findings).toLowerCase()).not.toContain("complete");
     expect(findings.some((f) => f.id === "project-docs-index-missing")).toBe(false);
+  });
+
+  it("missing and unpopulated advisories name the adoption-order section", () => {
+    writeDoc(
+      "docs/architecture.md",
+      fs.readFileSync(path.join(STARTER_DIR, "architecture.md"), "utf-8"),
+    );
+    writeIndex([{ doc: "docs/architecture.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    for (const id of ["project-docs-missing", "project-docs-unpopulated"]) {
+      const finding = findings.find((f) => f.id === id);
+      expect(finding, id).toBeDefined();
+      expect(finding!.action, id).toContain("Project docs \u2014 adoption order");
+    }
+  });
+
+  it("an empty project doc is reported as project-docs-unpopulated", () => {
+    writeDoc("docs/testing.md", "  \n");
+    writeDoc("docs/security.md", POPULATED);
+    writeIndex([{ doc: "docs/testing.md" }, { doc: "docs/security.md" }]);
+    const findings = detectProjectDocs(tmpDir);
+    const unpopulated = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/testing.md");
+    expect(unpopulated!.detect).not.toContain("docs/security.md");
+    expect(findings.map((f) => f.id)).not.toContain("project-docs-empty");
+  });
+
+  it("a Not equivalent to docs/{topic}.md or docs/{topic}.mdx row does not silence project-docs-missing", () => {
+    writeDoc("handbook/sec-negated.md", POPULATED);
+    writeDoc("handbook/sec-mdx.md", POPULATED);
+    writeIndex([
+      { doc: "handbook/sec-negated.md", scope: "Not equivalent to `docs/security.md`" },
+      { doc: "handbook/sec-mdx.md", scope: "Equivalent to `docs/security.mdx`" },
+    ]);
+    const findings = detectProjectDocs(tmpDir);
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).toContain("docs/security.md");
   });
 
   it("recognizes current and migrated untouched starters", () => {

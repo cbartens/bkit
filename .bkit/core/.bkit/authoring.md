@@ -225,7 +225,7 @@ This section applies to `.bkit/core/prompts/*.md`, `.bkit/core/workflows/*.md`, 
 
 ## Docs
 
-This section applies to `.agents/**`, `.bkit/*.md` and `docs/*.md`. § All Agent-Read Files applies as well.
+This section applies to `.agents/**`, `.bkit/*.md`, `docs/*.md` and `.bkit/templates/docs/*.md`. § All Agent-Read Files applies as well.
 
 - **Rules header:** Open every doc with a `> [!CAUTION]` box holding `**Purpose:**` and `**Rules:**`.
   - Why: The box tells an agent what belongs in the doc and how to edit it before it reads the rest. The **Authoring** rule in `.agents/rules.md` has every agent follow it.
@@ -237,6 +237,31 @@ This section applies to `.agents/**`, `.bkit/*.md` and `docs/*.md`. § All Agent
 
 - **Index:** Give each new doc one row in `.agents/docs.md`, with the phases that read it and a one-line scope, and copy no text from the doc into it.
   - Why: The index is how agents find docs. Every prompt's Process starts by reading `.agents/docs.md` and loading the docs it lists for the task.
+
+- **Mermaid for diagrams:** Draw every diagram of flow, order, dependency or relationship as Mermaid; directory trees and command output stay plain text.
+  - Why: Mermaid renders on GitHub and reads as text to an agent, while ASCII art breaks when edited and misreads in a diff. A doc needs no chart, but a chart it has follows this rule.
+  - Say in one sentence what the arrows mean, and use node names from the doc's tables.
+  - Keep a chart to about 15 nodes, and split larger ones with `subgraph` or a second chart.
+  - Use only `flowchart`, `sequenceDiagram`, `erDiagram` or `stateDiagram-v2`, quote every label, and set no colours, `style` or `classDef`.
+  - Example: `.bkit/core/.bkit/templates.md` § Project docs — adoption order.
+
+- **Project-doc starters:** A starter in `.bkit/templates/docs/*.md` opens with a rules box holding **Purpose**, the rules, **Not here** and **Update when**.
+  - Why: The adopter fills a starter by hand, and no prompt does it for them, so the starter carries what a prompt would.
+  - **Purpose** says what the doc holds and the question it answers, with no "Read before …" clause, because the phase columns of `.agents/docs.md` say when to read it.
+  - **Not here** names what belongs elsewhere and where. **Update when** names the events that change the doc.
+  - A section marked `> **bkit practice:**` keeps its heading text and stays a separate section from the project's blanks.
+  - Example: `.bkit/templates/docs/components.md`.
+
+- **Starter facts only:** In a starter in `.bkit/templates/docs/*.md`, write the current state with no history, take every fact from code, config or an approved spec, and never copy template example text as a fact.
+  - Why: Agents act on what a doc says, so a stale or invented line causes wrong work.
+  - Put each unknown under `## Open questions`.
+
+- **Starter: write once, link elsewhere:** In a starter in `.bkit/templates/docs/*.md`, write each topic once, link to it from other docs, and name the file that holds a value instead of typing the value.
+  - Why: A second copy of a value goes stale and contradicts the first.
+  - Use a table for facts, and prose only for reasoning.
+
+- **Starter empty state:** In a starter in `.bkit/templates/docs/*.md`, write `Not applicable: {reason}` for a doc, or a section, that does not apply to the project.
+  - Why: A reason separates a doc that does not apply from one nobody filled in.
 
 ## Prompts and Workflows
 
@@ -485,8 +510,9 @@ A doc template is the skeleton of a document an agent fills in: the plan (`docs/
 | Build | `@bkit-build-plan-tasks` | Works each task until its `DONE WHEN` holds, and logs `DONE` or `BLOCKED`. It never edits a planned test and never ticks a task box. |
 | Verify | `@bkit-build-plan-verify`, then `bkit tasks tick` | Checks each task against the code. The engine ticks the tasks that pass. |
 
-- **Template is shape, prompt owns rules:** A template holds headings, tables, placeholders, checkbox labels, owner callouts and the markers the engine parses, and nothing else.
+- **Fill-in steps in the template, acting rules in the prompt:** A template holds headings, tables, placeholders, checkbox labels, owner callouts, the markers the engine parses and the instructions for filling it in; the rules for acting on it live in the prompts.
   - Why: Different agents write, review, convert, build and verify the plan, and a rule in the template reaches all of them, whether it applies or not.
+  - Project-doc starters in `.bkit/templates/docs/*.md` carry their own fill-in steps, because no prompt fills them.
   - Every rule for filling, reviewing or acting on a template lives in the prompt that acts on it, as a labelled Contract bullet worded the same in every prompt that carries it. `.bkit/instructions.md` § Template Instructions names the prompts that carry each rule and keeps their wording identical.
   - Exception: **Audit templates carry their procedure**.
   - Example (`docs/templates/bkit-plan.md` § Agent Execution Runbook): the plan template holds the shape of a task block.

@@ -816,7 +816,7 @@ export async function runUpgradeCommand(upgradeFlags: UpgradeFlags): Promise<voi
     dryRun: upgradeFlags.dryRun,
     ws: { writes: [] },
   });
-  const templateReport = formatTemplateChanges(templateChanges);
+  const templateReport = formatTemplateChanges(templateChanges, process.cwd());
   if (templateReport) console.log(`${LOG_PREFIX} ${templateReport}`);
 
   // Payload view links — the same sync install runs (`.bkit/core` + `.bkit/shared`

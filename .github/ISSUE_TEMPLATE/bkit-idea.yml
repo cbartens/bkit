@@ -52,5 +52,5 @@ body:
       description: Related issues with their titles, earlier attempts, docs paths, and ledger rows by `key`. Nothing fetches these, so write exact paths and keys that agents can search for.
       placeholder: |
         Related: #<number> — <its title>
-        Docs: docs/architecture.md § Sync
+        Docs: docs/architecture.md § Containers
         Ledger: docs/decisions.jsonl key `offline-first-sync`

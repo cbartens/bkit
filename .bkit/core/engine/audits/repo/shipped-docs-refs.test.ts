@@ -422,3 +422,89 @@ describe("documentation warning contracts", () => {
     expect(managedStarterProblems()).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Section citations of the project-document starters
+// ---------------------------------------------------------------------------
+
+const STARTER_TOPICS = [...TOPICS, "components", "capabilities"];
+const CITATION_SKIP_DIRS = new Set(["__fixtures__", "dist", "node_modules"]);
+
+/** Every shipped file under `.bkit/core/` and `.bkit/templates/`, relative to the repo root. */
+function shippedFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const ent of fs.readdirSync(path.join(REPO_ROOT, dir), { withFileTypes: true })) {
+    const rel = path.posix.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      if (!CITATION_SKIP_DIRS.has(ent.name)) out.push(...shippedFiles(rel));
+    } else if (ent.isFile() && !ent.name.endsWith(".test.ts")) out.push(rel);
+  }
+  return out;
+}
+
+/** The `##`, `###` and `####` headings of a starter, outside fenced blocks. */
+function starterHeadings(topic: string): string[] {
+  let inFence = false;
+  const out: string[] = [];
+  for (const line of readRepo(`.bkit/templates/docs/${topic}.md`).split("\n")) {
+    if (/^\s*(`{3,})/.test(line)) inFence = !inFence;
+    else if (!inFence) {
+      const m = /^#{2,4}\s+(.+?)\s*$/.exec(line);
+      if (m) {
+        out.push(normaliseCitation(m[1]));
+        const bare = normaliseCitation(m[1].replace(/\s*[([].*$/, ""));
+        if (bare) out.push(bare);
+      }
+    }
+  }
+  return out;
+}
+
+/** Quotes and backticks removed, lower case. */
+function normaliseCitation(text: string): string {
+  const unquoted = text.replace(/["'`‘’“”]/g, "");
+  return unquoted.trim().toLowerCase();
+}
+
+/** A citation resolves when a heading starts the cited text, or the cited text's first clause starts a heading. */
+function resolvesToHeading(cited: string, headings: string[]): boolean {
+  const full = normaliseCitation(cited);
+  const clause = full.split(/[\]),;:.]/)[0].trim();
+  return headings.some((h) => full.startsWith(h) || (clause.length > 0 && h.startsWith(clause)));
+}
+
+const CITATION = new RegExp(
+  `(?<![\\w-])(?:docs/)?(${STARTER_TOPICS.join("|")})\\.md[\`\\]]?\\s*§\\s*([^\\n]+)`,
+  "g",
+);
+
+/** `file:line` of every citation that matches no starter heading. */
+function unresolvedCitations(): string[] {
+  const headingsByTopic = new Map(STARTER_TOPICS.map((t) => [t, starterHeadings(t)]));
+  const problems: string[] = [];
+  const files = [...shippedFiles(".bkit/core"), ...shippedFiles(".bkit/templates")];
+  for (const rel of files) {
+    const raw = fs.readFileSync(path.join(REPO_ROOT, rel));
+    if (raw.includes(0)) continue;
+    raw
+      .toString("utf-8")
+      .split("\n")
+      .forEach((line, i) => {
+        for (const m of line.matchAll(CITATION)) {
+          const cited = m[2].trim();
+          if (cited.startsWith("{")) continue;
+          if (!resolvesToHeading(cited, headingsByTopic.get(m[1]) ?? []))
+            problems.push(`${rel}:${i + 1}: ${m[1]}.md § ${cited.slice(0, 80)}`);
+        }
+      });
+  }
+  return problems;
+}
+
+describe("starter section citations", () => {
+  it("every shipped docs/{topic}.md § citation resolves to a starter heading", () => {
+    expect(shippedFiles(".bkit/templates").length).toBeGreaterThan(20);
+    expect(starterHeadings("testing").length).toBeGreaterThan(3);
+    expect(unresolvedCitations()).toEqual([]);
+  });
+});

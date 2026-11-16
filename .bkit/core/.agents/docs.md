@@ -45,7 +45,7 @@
 | `.bkit/jsonl.md` | ○ | ○ | ○ | ○ | ○ | Row format for the `*.jsonl` ledgers — envelope, per-kind fields, dedup tuples, write idiom. |
 | `.bkit/authoring.md` | ○ | ○ | ○ | ○ | ○ | Authoring rules for agent-read markdown — docs, prompts, workflows; punctuation and capitals. |
 
-> `Project Documents` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it. Add project-specific docs there. The ten recommended project documents (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) start as copies of `.bkit/templates/docs/`. Copy one into `docs/` and add its row there; an indexed document at another path stands in for its topic when its Scope names the recommended path (`Equivalent to docs/security.md`).
+> `Project Documents` below `bkit:end` belongs to the project, so `bkit install` never overwrites it and `bkit check` reports no drift for it. Add project-specific docs there. The ten recommended project documents (`docs/architecture.md`, `docs/technology.md`, `docs/security.md`, `docs/data-schema.md`, `docs/testing.md`, `docs/deployments.md`, `docs/observability.md`, `docs/design.md`, `docs/noise.md`, `docs/setup.md`) start as copies of `.bkit/templates/docs/`. Copy one into `docs/` and add its row there; an indexed document at another path stands in for its topic when its Scope names the recommended path (`Equivalent to docs/security.md`). Fill them in the order in `.bkit/templates.md` § Project docs — adoption order.
 
 <!-- bkit:end -->
 

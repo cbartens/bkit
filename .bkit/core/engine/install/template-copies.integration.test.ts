@@ -172,11 +172,14 @@ describe("install copies the template set into .bkit/templates/", () => {
 
 describe("formatTemplateChanges", () => {
   it("names every changed, added and removed path, then points at templates.md", () => {
-    const text = formatTemplateChanges({
-      changed: [".envrc"],
-      added: [path.join(".husky", "pre-push")],
-      removed: ["old.yml"],
-    });
+    const text = formatTemplateChanges(
+      {
+        changed: [".envrc"],
+        added: [path.join(".husky", "pre-push")],
+        removed: ["old.yml"],
+      },
+      tmpDir,
+    );
     expect(text).toContain(path.join(COPIES, ".envrc"));
     expect(text).toContain(path.join(COPIES, ".husky", "pre-push"));
     expect(text).toContain(path.join(COPIES, "old.yml"));
@@ -184,23 +187,161 @@ describe("formatTemplateChanges", () => {
   });
 
   it("names the consequence when a changed template's adopted copy backs a gate", () => {
-    const text = formatTemplateChanges({
-      changed: ["slop-scan.config.json"],
-      added: [],
-      removed: [],
-    });
+    const text = formatTemplateChanges(
+      {
+        changed: ["slop-scan.config.json"],
+        added: [],
+        removed: [],
+      },
+      tmpDir,
+    );
     expect(text).toContain(path.join(COPIES, "slop-scan.config.json"));
     expect(text).toContain("slop gate may go red");
   });
 
   it("leaves a changed template with no gate consequence unannotated", () => {
-    const text = formatTemplateChanges({ changed: [".envrc"], added: [], removed: [] });
+    const text = formatTemplateChanges({ changed: [".envrc"], added: [], removed: [] }, tmpDir);
     expect(text).toContain(path.join(COPIES, ".envrc"));
     expect(text).not.toContain("slop gate may go red");
   });
 
   it("is empty when nothing changed", () => {
-    expect(formatTemplateChanges({ changed: [], added: [], removed: [] })).toBe("");
+    expect(formatTemplateChanges({ changed: [], added: [], removed: [] }, tmpDir)).toBe("");
+  });
+});
+
+describe("formatTemplateChanges marks adopted doc starters", () => {
+  const REVIEW = "review your copy";
+
+  /** The report line for each changed template, keyed by its path under the templates root. */
+  const changedLines = (changed: string[]): Map<string, string> => {
+    const report = formatTemplateChanges({ changed, added: [], removed: [] }, tmpDir);
+    const lines = report.split("\n");
+    return new Map(
+      changed.map((rel) => [
+        rel,
+        lines.find((l) => l.startsWith(`  changed: ${path.join(COPIES, rel)}`)) ?? "",
+      ]),
+    );
+  };
+
+  const writeFile = (rel: string, text = "# Doc\n\nProject text.\n"): void => {
+    fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, rel), text, "utf-8");
+  };
+
+  const writeIndexRows = (rows: string[]): void =>
+    writeFile(
+      ".agents/docs.md",
+      "<!-- bkit:start -->\nmanaged\n<!-- bkit:end -->\n\n## Project Documents\n\n| Document | Scope |\n| --- | --- |\n" +
+        rows.map((r) => `${r}\n`).join(""),
+    );
+
+  it("changed doc starter with a project copy is marked adopted", () => {
+    writeFile("docs/architecture.md");
+    writeFile("docs/components.md");
+    const lines = changedLines(["docs/architecture.md", "docs/components.md"]);
+    expect(lines.get("docs/architecture.md")).toContain(
+      "\u2014 adopted at docs/architecture.md, review your copy",
+    );
+    expect(lines.get("docs/components.md")).toContain(
+      "\u2014 adopted at docs/components.md, review your copy",
+    );
+  });
+
+  it("changed doc starter indexed under another path is marked adopted", () => {
+    writeFile("handbook/ops-testing.md");
+    writeIndexRows(["| `handbook/ops-testing.md` | Equivalent to `docs/testing.md` |"]);
+    const lines = changedLines(["docs/testing.md"]);
+    expect(lines.get("docs/testing.md")).toContain(
+      "adopted at handbook/ops-testing.md, review your copy",
+    );
+  });
+
+  it("changed doc starter with no copy and changed non-doc template are not marked", () => {
+    writeFile("docs/architecture.md");
+    const lines = changedLines(["docs/architecture.md", "docs/technology.md", ".envrc"]);
+    expect(lines.get("docs/architecture.md")).toContain(REVIEW);
+    expect(lines.get("docs/technology.md")).toContain(path.join(COPIES, "docs", "technology.md"));
+    expect(lines.get("docs/technology.md")).not.toContain(REVIEW);
+    expect(lines.get(".envrc")).toContain(path.join(COPIES, ".envrc"));
+    expect(lines.get(".envrc")).not.toContain(REVIEW);
+  });
+
+  it("changed doc starter whose recommended path is a symlink is not marked adopted", () => {
+    writeFile("docs/architecture.md");
+    fs.symlinkSync(
+      path.join(tmpDir, "docs", "architecture.md"),
+      path.join(tmpDir, "docs", "technology.md"),
+    );
+    const lines = changedLines(["docs/architecture.md", "docs/technology.md"]);
+    expect(lines.get("docs/architecture.md")).toContain(REVIEW);
+    expect(lines.get("docs/technology.md")).toContain(path.join(COPIES, "docs", "technology.md"));
+    expect(lines.get("docs/technology.md")).not.toContain(REVIEW);
+  });
+
+  it("changed doc starter whose recommended path is a directory is not marked adopted", () => {
+    writeFile("docs/architecture.md");
+    fs.mkdirSync(path.join(tmpDir, "docs", "security.md"));
+    const lines = changedLines(["docs/architecture.md", "docs/security.md"]);
+    expect(lines.get("docs/architecture.md")).toContain(REVIEW);
+    expect(lines.get("docs/security.md")).toContain(path.join(COPIES, "docs", "security.md"));
+    expect(lines.get("docs/security.md")).not.toContain(REVIEW);
+  });
+
+  it("changed doc starter whose indexed equivalent is a symlink or outside the repo is not marked adopted", () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-doc-"));
+    try {
+      fs.writeFileSync(path.join(outside, "noise.md"), "# Outside\n", "utf-8");
+      writeFile("handbook/ops-testing.md");
+      writeFile("handbook/real-design.md");
+      fs.symlinkSync(
+        path.join(tmpDir, "handbook", "real-design.md"),
+        path.join(tmpDir, "handbook", "design-link.md"),
+      );
+      writeIndexRows([
+        "| `handbook/ops-testing.md` | Equivalent to `docs/testing.md` |",
+        "| `handbook/design-link.md` | Equivalent to `docs/design.md` |",
+        `| \`../${path.basename(outside)}/noise.md\` | Equivalent to \`docs/noise.md\` |`,
+      ]);
+      const lines = changedLines(["docs/testing.md", "docs/design.md", "docs/noise.md"]);
+      expect(lines.get("docs/testing.md")).toContain(REVIEW);
+      expect(lines.get("docs/design.md")).toContain(path.join(COPIES, "docs", "design.md"));
+      expect(lines.get("docs/design.md")).not.toContain(REVIEW);
+      expect(lines.get("docs/noise.md")).toContain(path.join(COPIES, "docs", "noise.md"));
+      expect(lines.get("docs/noise.md")).not.toContain(REVIEW);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("changed doc starter indexed as Not equivalent to docs/{topic}.md is not marked adopted", () => {
+    writeFile("handbook/arch.md");
+    writeFile("handbook/sec-negated.md");
+    writeFile("handbook/setup-mdx.md");
+    writeIndexRows([
+      "| `handbook/arch.md` | Equivalent to `docs/architecture.md` |",
+      "| `handbook/sec-negated.md` | Not equivalent to `docs/security.md` |",
+      "| `handbook/setup-mdx.md` | Equivalent to `docs/setup.mdx` |",
+    ]);
+    const lines = changedLines(["docs/architecture.md", "docs/security.md", "docs/setup.md"]);
+    expect(lines.get("docs/architecture.md")).toContain(REVIEW);
+    expect(lines.get("docs/security.md")).toContain(path.join(COPIES, "docs", "security.md"));
+    expect(lines.get("docs/security.md")).not.toContain(REVIEW);
+    expect(lines.get("docs/setup.md")).toContain(path.join(COPIES, "docs", "setup.md"));
+    expect(lines.get("docs/setup.md")).not.toContain(REVIEW);
+  });
+
+  it("missing or unreadable .agents/docs.md falls back to the recommended-path check without failing the report", () => {
+    writeFile("docs/architecture.md");
+    expect(changedLines(["docs/architecture.md"]).get("docs/architecture.md")).toContain(
+      "adopted at docs/",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".agents", "docs.md"), { recursive: true });
+    const lines = changedLines(["docs/architecture.md", "docs/technology.md"]);
+    expect(lines.get("docs/architecture.md")).toContain("adopted at docs/architecture.md");
+    expect(lines.get("docs/technology.md")).toContain(path.join(COPIES, "docs", "technology.md"));
+    expect(lines.get("docs/technology.md")).not.toContain(REVIEW);
   });
 });
 

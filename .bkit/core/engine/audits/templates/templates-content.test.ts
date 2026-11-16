@@ -713,7 +713,7 @@ describe("templates", () => {
     expect(templates).toContain(path.join(".github", "workflows", "bkit-ci.yml"));
     for (const rel of templates) {
       const text = fs.readFileSync(path.join(root, rel), "utf-8");
-      expect(text, rel).toMatch(/Example/);
+      expect(text, rel).toMatch(/Example|Starter document\.|Generated document\./);
       expect(text, rel).toMatch(/does not write this file|does not write it/);
     }
   });

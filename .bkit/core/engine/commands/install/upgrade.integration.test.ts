@@ -396,6 +396,39 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(after).not.toContain("bkit:start");
     expect(after).not.toContain("bkit:end");
   });
+
+  it(
+    "bkit upgrade prints the adopted marker for a changed starter with a project copy",
+    () => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "consumer" }),
+        "utf-8",
+      );
+      writeVersionFile();
+      // The project's own architecture doc, plus a stale copy of the starter that the upgrade replaces.
+      fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "docs", "architecture.md"),
+        "# Architecture\n\nThe api service talks to the worker over a queue.\n",
+        "utf-8",
+      );
+      fs.mkdirSync(path.join(tmpDir, ".bkit", "templates", "docs"), { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".bkit", "templates", "docs", "architecture.md"),
+        "# Stale starter\n",
+        "utf-8",
+      );
+
+      const result = runBkitUpgrade();
+
+      expect(result.status).toBe(0);
+      expect(combinedOutput(result)).toContain(
+        "changed: .bkit/templates/docs/architecture.md — adopted at docs/architecture.md, review your copy",
+      );
+    },
+    localLimit(180_000),
+  );
 });
 
 // ---------------------------------------------------------------------------

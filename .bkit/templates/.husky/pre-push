@@ -55,7 +55,7 @@ fi
 
 # The bkit tooling keys are unset for the gate: its tests, lint plugins and dependency code never
 # need them, and their output lands in the agent-readable log. Two sources: the fixed list
-# (docs/security.md § `.bkit/.env` scope), whichever path loaded them (cloud dashboard env, an app
+# (.bkit/templates.md § Git hooks — Husky), whichever path loaded them (cloud dashboard env, an app
 # env file, ~/.zshrc, launchd), and every key `.bkit/.env` names, in direnv's dotenv grammar
 # (`KEY=v`, `KEY = v`, `KEY: v`, optional `export `).
 for gate_key in BKIT_GH_TOKEN BKIT_LINEAR_API_KEY BKIT_JIRA_API_KEY BKIT_ANTHROPIC_API_KEY \

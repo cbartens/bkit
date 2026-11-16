@@ -11,6 +11,12 @@ import {
 } from "../shared/package-roots.js";
 import { hasLintStagedConfig } from "../checks/tips/detect.js";
 import { readDependencyNames, readPackageJson } from "../shared/package-json.js";
+import {
+  adoptedProjectDocPath,
+  inspectRepoFile,
+  PROJECT_DOC_TOPICS,
+  type ProjectDocTopic,
+} from "./project-docs.js";
 import type { WriteSet } from "./write.js";
 
 export function listFilesRecursive(dir: string): string[] {
@@ -113,20 +119,39 @@ export const TEMPLATE_CHANGE_CONSEQUENCES: Readonly<Record<string, string>> = {
     "your adopted copy's guardrails exemptions are now stale; your slop gate may go red",
 };
 
-/** `  changed: <dest>`, plus the consequence when that template's adopted copy backs a gate. */
-function formatChangedLine(rel: string): string {
+/** Where the project keeps its copy of a changed `docs/{topic}.md` starter, or null. */
+function adoptedDocCopy(rel: string, cwd: string): string | null {
+  const match = /^docs\/([^/]+)\.md$/.exec(rel);
+  if (match === null) return null;
+  const topic = match[1];
+  if (topic === "components") return inspectRepoFile(cwd, rel) === "regular" ? rel : null;
+  return PROJECT_DOC_TOPICS.includes(topic as ProjectDocTopic)
+    ? adoptedProjectDocPath(cwd, topic as ProjectDocTopic)
+    : null;
+}
+
+/**
+ * `  changed: <dest>`, plus the consequence when that template's adopted copy backs a gate, and
+ * `adopted at <path>, review your copy` when the project keeps a copy of a changed doc starter.
+ */
+function formatChangedLine(rel: string, cwd: string): string {
   const line = `  changed: ${path.join(TEMPLATE_COPIES_DIR, rel)}`;
   const note = TEMPLATE_CHANGE_CONSEQUENCES[rel];
-  return note === undefined ? line : `${line} — ${note}`;
+  const adopted = adoptedDocCopy(rel, cwd);
+  const parts = [
+    ...(note === undefined ? [] : [note]),
+    ...(adopted === null ? [] : [`adopted at ${adopted}, review your copy`]),
+  ];
+  return parts.length === 0 ? line : `${line} \u2014 ${parts.join("; ")}`;
 }
 
 /**
  * The upgrade report for a template sync: one line per changed, added or removed
  * template, then where to read about adopting them. Empty when nothing changed.
  */
-export function formatTemplateChanges(changes: TemplateCopyChanges): string {
+export function formatTemplateChanges(changes: TemplateCopyChanges, cwd: string): string {
   const lines = [
-    ...changes.changed.map(formatChangedLine),
+    ...changes.changed.map((rel) => formatChangedLine(rel, cwd)),
     ...changes.added.map((p) => `  added:   ${path.join(TEMPLATE_COPIES_DIR, p)}`),
     ...changes.removed.map((p) => `  removed: ${path.join(TEMPLATE_COPIES_DIR, p)}`),
   ];

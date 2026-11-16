@@ -486,6 +486,11 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Architecture\n"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
         region: { template: ["# Architecture\n", null], copy: ["# Architecture\n", null] },
       },
@@ -494,6 +499,11 @@ const ADOPTED: Record<string, Entry> = {
   "docs/technology.md": {
     status: "adopted",
     edits: [
+      {
+        kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Technology\n"], copy: ["", ""] },
+      },
       {
         kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
@@ -506,6 +516,11 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Security\n"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
         region: { template: ["# Security\n", null], copy: ["# Security\n", null] },
       },
@@ -514,6 +529,11 @@ const ADOPTED: Record<string, Entry> = {
   "docs/data-schema.md": {
     status: "adopted",
     edits: [
+      {
+        kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Data Schema\n"], copy: ["", ""] },
+      },
       {
         kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
@@ -526,6 +546,11 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Testing\n"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
         region: { template: ["# Testing\n", null], copy: ["# Testing\n", null] },
       },
@@ -534,6 +559,11 @@ const ADOPTED: Record<string, Entry> = {
   "docs/deployments.md": {
     status: "adopted",
     edits: [
+      {
+        kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Deployments\n"], copy: ["", ""] },
+      },
       {
         kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
@@ -546,6 +576,11 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Observability\n"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
         region: { template: ["# Observability\n", null], copy: ["# Observability\n", null] },
       },
@@ -554,6 +589,11 @@ const ADOPTED: Record<string, Entry> = {
   "docs/design.md": {
     status: "adopted",
     edits: [
+      {
+        kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Design\n"], copy: ["", ""] },
+      },
       {
         kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
@@ -566,6 +606,11 @@ const ADOPTED: Record<string, Entry> = {
     edits: [
       {
         kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Noise\n"], copy: ["", ""] },
+      },
+      {
+        kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
         region: { template: ["# Noise\n", null], copy: ["# Noise\n", null] },
       },
@@ -574,6 +619,11 @@ const ADOPTED: Record<string, Entry> = {
   "docs/setup.md": {
     status: "adopted",
     edits: [
+      {
+        kind: "adapt",
+        what: "remove the starter's introduction",
+        region: { template: ["> Starter document.", "# Setup\n"], copy: ["", ""] },
+      },
       {
         kind: "adapt",
         what: "this repo's own facts, recorded over the starter",
@@ -587,7 +637,7 @@ const ADOPTED: Record<string, Entry> = {
       {
         kind: "adapt",
         what: "remove the template's copy instructions",
-        region: { template: ["> Example document.", "# Components"], copy: ["", ""] },
+        region: { template: ["> Starter document.", "# Components"], copy: ["", ""] },
       },
       {
         kind: "adapt",

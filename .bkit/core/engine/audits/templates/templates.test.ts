@@ -108,11 +108,43 @@ function unresolvedBkitDocAnchors(content: string): string[] {
 }
 
 /** Starter sections no audit can check, keyed `<doc> § <heading>`, each with its reason. */
+const UNAUDITED_REASON =
+  "prompts for the project's own facts; the project's content is checked by the documentation audit";
 const UNAUDITED_DOC_SECTIONS: Record<string, string> = Object.fromEntries(
-  ["architecture", "data-schema", "deployments", "setup", "technology", "testing"].map((doc) => [
-    `${doc}.md § Project facts to record`,
-    "prompts for the project's own facts; the project's content is checked by the documentation audit",
-  ]),
+  [
+    ...[
+      "Containers",
+      "Environments",
+      "File placement",
+      "Open questions",
+      "Package boundaries",
+      "System context",
+    ].map((h) => `architecture.md § ${h}`),
+    ...[
+      "Environment variables",
+      "Everyday commands",
+      "First-time setup",
+      "Local services",
+      "Open questions",
+      "Troubleshooting",
+    ].map((h) => `setup.md § ${h}`),
+    ...["Conventions", "Not used", "Open questions", "Stack"].map((h) => `technology.md § ${h}`),
+    ...["Functions", "Open questions", "Overview", "[Table name]"].map(
+      (h) => `data-schema.md § ${h}`,
+    ),
+    ...["Branch protection", "Open questions", "Release path", "Secrets and env config"].map(
+      (h) => `deployments.md § ${h}`,
+    ),
+    ...[
+      "Open questions",
+      "Running locally",
+      "Stack",
+      "Test data",
+      "Test reports",
+      "Tiers this project has",
+      "Where tests live",
+    ].map((h) => `testing.md § ${h}`),
+  ].map((key) => [key, UNAUDITED_REASON]),
 );
 
 /**

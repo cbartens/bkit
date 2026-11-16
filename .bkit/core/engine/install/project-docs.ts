@@ -44,49 +44,53 @@ interface TopicInfo {
 const TOPIC_INFO: Record<ProjectDocTopic, TopicInfo> = {
   architecture: {
     phases: ["●", "●", "●", "○", "○"],
-    scope: "System design — service boundaries, deployment topology, integration sketch.",
+    scope:
+      "How the system is built and where it runs: runtimes, package boundaries, file placement and environments.",
   },
   technology: {
     phases: ["●", "●", "○", "○", "○"],
     scope:
-      "Chosen frameworks, libraries, styling systems, coding conventions. Why a choice was made goes in `decisions.jsonl`.",
+      "Which frameworks, libraries and styling systems the project uses, and the coding conventions a reviewer enforces. Why a choice was made goes in `decisions.jsonl`.",
   },
   security: {
     phases: ["●", "●", "●", "○", "○"],
     scope:
-      "Authentication, authorization, input validation, rate limiting, secrets management, PII handling.",
+      "Authentication, authorization, input validation, rate limiting, secrets management and PII handling.",
   },
   "data-schema": {
     phases: ["○", "○", "●", "○", "○"],
     scope:
-      "Active production database schema — entities / tables, fields, access policies (e.g. RLS), indices, functions, triggers.",
+      "The active production schema: tables, fields, access policies, indices, functions and triggers.",
   },
   testing: {
     phases: ["○", "●", "●", "●", "—"],
     scope:
-      "Testing strategy — tier boundaries, framework choices, naming conventions, CI lane graph (names, needs, when a lane runs).",
+      "Testing strategy: tier boundaries, framework choices, naming conventions and the CI lane graph.",
   },
   deployments: {
     phases: ["○", "○", "○", "●", "●"],
     scope:
-      "Deployment / CI/CD — secrets, branch protection, one-run concurrency, push base, promote after the capstone.",
+      "Deployment and CI/CD: environments, release path, secrets, branch protection, run-level tiers and rollback.",
   },
   observability: {
     phases: ["○", "○", "●", "●", "○"],
-    scope: "Logging architecture, correlation tracing, telemetry pipelines, log drains.",
+    scope:
+      "Logging architecture, correlation tracing, telemetry pipelines, error tracking and alerts.",
   },
   design: {
     phases: ["○", "○", "○", "—", "—"],
-    scope: "Design system — palette, typography, components, spacing, a11y, layout tokens.",
+    scope:
+      "The project's design system: tokens, typography, spacing and layout, components and accessibility rules.",
   },
   noise: {
     phases: ["—", "—", "○", "●", "○"],
     scope:
-      "Registry of intentional signal downgrades — log levels, error-tracker archives / mutes, alert thresholds.",
+      "Intentional signal downgrades: log levels, error-tracker archives and mutes, and alert thresholds, each with its trigger and reason.",
   },
   setup: {
-    phases: ["—", "—", "—", "—", "—"],
-    scope: "Local dev — CLIs, configuration, secrets, troubleshooting. Humans only.",
+    phases: ["—", "—", "○", "○", "—"],
+    scope:
+      "How a developer sets up and runs the project locally: prerequisites, first-time setup, environment variables, local services, everyday commands and troubleshooting.",
   },
 };
 
@@ -437,7 +441,7 @@ export function projectDocRow(topic: ProjectDocTopic): string {
 
 /**
  * The indexed document that already covers `topic` at another path: a same-basename row, or a
- * row whose Scope names the recommended path as its equivalent (`Equivalent to docs/x.md`).
+ * row whose Scope affirms the recommended path as its equivalent (`Equivalent to docs/x.md`).
  */
 export function findIndexedEquivalent(
   rows: readonly IndexRow[],
@@ -454,13 +458,35 @@ export function listIndexedEquivalents(
 ): string[] {
   const recommended = projectDocPath(topic);
   const base = `${topic}.md`;
-  const mentions = new RegExp(`equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}\`?`, "i");
+  // Affirmative only (no `not` / `non` before it), and the path ends at a non-word character,
+  // so `docs/x.mdx` and `docs/x.md.bak` name no equivalent.
+  const mentions = new RegExp(
+    `(?<!\\b(?:not|non)[-\\s]*)equivalent\\s+to\\s+\`?${recommended.replace(".", "\\.")}(?![\\w-]|\\.\\w)`,
+    "i",
+  );
   const found: string[] = [];
   for (const row of rows) {
     if (row.path === recommended) continue;
     if (path.posix.basename(row.path) === base || mentions.test(row.scope)) found.push(row.path);
   }
   return found;
+}
+
+/**
+ * Where the project keeps its copy of `topic`'s starter: the recommended path when it is a
+ * regular file, else the indexed equivalent that is an in-tree regular file, else null. A missing
+ * or unreadable index leaves only the recommended-path check.
+ */
+export function adoptedProjectDocPath(root: string, topic: ProjectDocTopic): string | null {
+  const recommended = projectDocPath(topic);
+  if (inspectRepoFile(root, recommended) === "regular") return recommended;
+  const index = readProjectIndex(root);
+  if (index.status !== "ok") return null;
+  return findIndexedEquivalent(
+    index.rows,
+    topic,
+    (rel) => isInTreePath(rel) && inspectRepoFile(root, rel) === "regular",
+  );
 }
 
 // ---------------------------------------------------------------------------

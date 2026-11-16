@@ -13,6 +13,7 @@ import { buildCloudDashboardsAdvisory, detectCiRouterSecrets, detectGhMcpToken }
 import { buildCloudSetupAdvisory, buildGithubProjectAdvisory, buildGithubProjectTokenScopeAdvisory, buildTrackerSetupAdvisory, buildTrivyProtectionAdvisory, detectActionsWritePermissions, detectMainBranchProtection, } from "./github.js";
 import { buildDepUpdaterSetupAdvisory, detectBkitStubs, detectProjectDocs, detectValeMissing, detectValePackageNotSynced, detectWorkflowLintToolsMissing, } from "./tools.js";
 import { detectBkitCloudYmlAlwaysTrueGate, detectCiScriptsOldNames, detectCiYmlCapstoneContractDrift, detectCiYmlMissingActionlint, detectCiYmlRunInjection, detectGhaFloatingTags, detectRunLevelsNotComposed, detectTaggedTestsWithoutCiHome, detectTestIntegrationEnv, detectTurboIntegrationInputs, } from "./ci-yml.js";
+import { isAdvisorySuppressed, } from "./suppression.js";
 import { dropTipSilencedAdvisories, setupTipsChecklistLines, setupTipsMarkdownLines, } from "../tips/index.js";
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
@@ -373,8 +374,12 @@ export function runPostInstallCheck(preflightAdvisories, cwd = process.cwd(), su
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);
     // Project documents (docs/*.md): missing, empty, starter-only or unindexed. Advisory only.
-    for (const f of detectProjectDocs(cwd, onSuppressed))
-        phase3.push(f);
+    for (const f of detectProjectDocs(cwd)) {
+        if (!isAdvisorySuppressed(cwd, f.id, f.severity))
+            phase3.push(f);
+        else
+            onSuppressed?.({ id: f.id, scope: "." });
+    }
     // turbo.json inputs for cache-replay safety (KN-24).
     for (const f of detectTurboIntegrationInputs(cwd))
         phase3.push(f);

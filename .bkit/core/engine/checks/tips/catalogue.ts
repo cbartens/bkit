@@ -14,7 +14,7 @@
 // Text rules: `line`, `why`, `caution` and `ask` are for the person, in plain English, and
 // never name an outside service — examples of specific services go in `steps`, which is
 // for the agent. A template's benefit reads the same here, in its `.bkit/templates.md`
-// section opener and in the README's "Templates ready to adopt" row; change all three in
+// section opener and in `DETAILS.md` § Templates ready to adopt; change all three in
 // the same commit.
 //
 // Detection rules: every `fires` is local (files, settings, environment) — no network. The
@@ -38,7 +38,7 @@ import {
 } from "../before/env.js";
 import { detectGhMcpToken, hasGithubMcpServer } from "../after/auth.js";
 import { buildTrackerSetupAdvisory } from "../after/github.js";
-import { buildDepUpdaterSetupAdvisory } from "../after/tools.js";
+import { buildDepUpdaterSetupAdvisory, detectProjectDocs } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import type { ComplyPhase, TipsContext } from "../../cli.js";
@@ -394,6 +394,22 @@ export const SETUP_TIPS: readonly SetupTip[] = [
     ask: 'Run `uv tool install "graphifyy[sql]"`, copy .bkit/templates/scripts/graphify/ to scripts/graphify/ and .bkit/templates/.graphifyignore to .graphifyignore, then add the graph scripts to package.json as listed in .bkit/templates.md § graphify.',
     steps: "`.bkit/templates.md` § graphify.",
     fires: (cwd) => !exists(cwd, "scripts/graphify"),
+  },
+  {
+    id: "project-docs",
+    workflows: ["design", "plan", "build"],
+    title: "Project docs",
+    line: "Fill the project docs in waves, because each doc reads facts the earlier ones record.",
+    why: "Agents read your architecture, testing and security docs before they plan and build. A doc that is missing or still holds the starter text gives them nothing to go on, so they guess from the code each time.",
+    caution:
+      "Ignoring either the missing-doc advisory or the unfilled-doc advisory also silences this tip and the other advisory.",
+    ask: "Fill in my project docs in the order of .bkit/templates.md § Project docs — adoption order: copy each missing starter from .bkit/templates/docs/ to docs/, fill it from the repository, and add its row to .agents/docs.md.",
+    steps: "`.bkit/templates.md` § Project docs — adoption order.",
+    advisories: ["project-docs-missing", "project-docs-unpopulated"],
+    fires: (cwd) =>
+      detectProjectDocs(cwd).some(
+        (f) => f.id === "project-docs-missing" || f.id === "project-docs-unpopulated",
+      ),
   },
   {
     id: "dependabot-renovate",

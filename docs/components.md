@@ -5,12 +5,15 @@
 >
 > **Rules:**
 >
+> - Follow `.bkit/authoring.md` § Docs when you edit this file.
 > - Group components by the purpose they serve, independently of files, packages and deployment units.
 > - Describe each component's responsibility and its relationships in plain language.
-> - Keep implementation boundaries and deployment topology in `docs/architecture.md`.
-> - Reference `docs/capabilities.md` when present for implementation ownership and drift. Components and capabilities may have different names, counts and boundaries.
 > - Distinguish current behavior from agreed scope, proposals and later candidates.
-> - Update this document when the repository's purpose, responsibilities or main journeys change.
+> - Components and capabilities may have different names, counts and boundaries.
+>
+> **Not here:** Implementation boundaries and deployment topology go in `docs/architecture.md`. Implementation ownership and drift go in `docs/capabilities.md` when present. Issue state and delivery plans stay in the tracker.
+>
+> **Update when:** The repository's purpose, responsibilities, constraints or main journeys change.
 
 ## Repository purpose
 

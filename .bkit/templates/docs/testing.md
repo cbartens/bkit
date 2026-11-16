@@ -1,13 +1,44 @@
+> Starter document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/testing.md`, fill the project slots, keep the bkit practice sections, then delete this introduction.
+>
+> **Fill these first:** `docs/architecture.md`.
+>
+> **Finish against:** `docs/data-schema.md` for `## Test data`, which waits for the fixtures, the seed and the fresh store each tier needs.
+>
+> **Where the facts come from:** the package manifest scripts, the test runner configuration, the folders that hold test files, the CI configuration and the shared test helpers.
+>
+> **Fill in:**
+>
+> 1. Copy this starter to `docs/testing.md`.
+> 2. Fill `## Stack` with the runner and framework each tier uses.
+> 3. Fill `## Tiers this project has` with one row per tier. Write `Not applicable` in a tier the project does not have.
+> 4. Fill `## Where tests live` with the folder, file naming and shared helpers of each tier. Record every new test file pattern here.
+> 5. Fill `## Test data` with the shared login setup that UI tests reuse, the typed factories that build test data and the fresh store each tier starts from.
+> 6. Fill `## CI lanes` with the lanes the project runs, what each needs and when it runs.
+> 7. Fill `## Test reports` with where each tier writes its report, and the `bkit:test:file` command.
+> 8. Fill `## Running locally` with the commands that run each tier.
+> 9. Keep every section marked `bkit practice`. Edit its text only to correct it for the stack, and never change its heading.
+> 10. Record unresolved facts under `## Open questions`.
+> 11. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/testing.md` | ○ | ● | ● | ● | — | Testing strategy: tier boundaries, framework choices, naming conventions and the CI lane graph. |
+> 12. Check the document against each completion check, then delete this introduction.
+>
+> **If it does not apply:** write `Not applicable: {reason}` under a project slot that does not apply, such as `## Test data` for a project with no stored data.
+>
+> **Completion checks:**
+>
+> - Every tier named in `## Which tier does a behaviour need?` has a row in `## Tiers this project has`.
+> - Every lane in the CI configuration appears in `## CI lanes`.
+> - Every tier with a runner has a command in `## Running locally`.
+> - Every section is marked as a project slot or as bkit practice.
+> - No example row remains.
+
 # Testing
 
-> Example document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/testing.md` and add its row to `.agents/docs.md` `## Project Documents`.
-
 > [!CAUTION]
-> **Purpose:** The testing strategy: tier boundaries, framework choices, naming conventions and CI execution.
+> **Purpose:** Testing strategy: tier boundaries, framework choices, naming conventions and the CI lane graph.
 >
 > **Rules:**
 >
-> - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
+> - Follow `.bkit/authoring.md` § Docs when you edit this file.
 > - Keep the tiers strictly separate: Static · Unit · Integration · E2E · @live · Smoke.
 > - Pre-push runs `bkit check`, then selects one gate script in this order:
 >   - **If** `bkit ci min-push` accepts every outgoing ref → pre-push runs `pnpm bkit:gate:min`.
@@ -18,54 +49,142 @@
 > - A gate runs its tiers one after another, never two at once. A push gate stops at the first red tier. The E2E gate runs every tier after a red one, reports each, and runs the whole E2E suite. Keep parallel work inside a tier. A cached task replay reports the earlier run's result, not a fresh run.
 > - Integration runs at pre-push once its gate is declared. Local services, such as a Docker database, are fine there.
 > - E2E, @live and tests against a deployed service are excluded from pre-push. They run in CI (see below).
-> - Never bypass the hooks with `--no-verify`.
+>
+> **bkit practice:** every section marked `bkit practice` is bkit's own advice. Sections marked **bkit practice** keep their heading text and stay separate sections. Do not rename, merge or compress them, because bkit's CI template, advisories and audits cite them by name. Every section marked `Project slot` holds the project's own facts.
+>
+> **Not here:** Live alerts and log signals go in `docs/observability.md`. The runner, gate, lock and JUnit requirements bkit adds go in `.bkit/workflows.md` § Test and release mechanics. Deploy promotion and branch protection go in `docs/deployments.md`.
+>
+> **Update when:** A tier, runner, test folder, shared helper, CI lane or test command is added, changed or removed.
 
-## Project facts to record
+## Stack
 
-Replace the generic text below with the project's own tiers and lanes where they differ.
+> **Project slot:** the runner and framework each tier uses.
 
-- Which tiers exist, the framework for each and where its tests live.
-- The gate scripts in `package.json` and what each one runs.
-- The CI lanes, their `needs` and when each runs.
-- The runner, gate, lock and JUnit requirements bkit adds are in `.bkit/workflows.md` § Test and release mechanics.
+<!-- prettier-ignore -->
+| Tier | Runner | Framework or tool |
+| --- | --- | --- |
+| [Tier] | [Command that runs it.] | [Framework or tool.] |
+| [e.g., Unit] | The package's test script. | A test runner and its assertion library. |
+
+## Tiers this project has
+
+> **Project slot:** one row per tier. Names match § Which tier does a behaviour need?, because a plan's `Derived Test Matrix` copies the tier name from here.
+
+<!-- prettier-ignore -->
+| Tier | Has it | Covers |
+| --- | --- | --- |
+| Static | [Yes or no.] | [What it checks.] |
+| Unit | [Yes or no.] | [What it checks.] |
+| Integration | [Yes or no.] | [What it checks.] |
+| @live (golden) | [Yes or no.] | [What it checks.] |
+| E2E | [Yes or no.] | [What it checks.] |
+| fresh-DB replay | [Yes or no.] | [What it checks.] |
+| Smoke | [Yes or no.] | [What it checks.] |
+| [e.g., Unit] | Yes | Pure logic in the report service. |
+
+## Where tests live
+
+> **Project slot:** where each tier's files sit. Record a new test file or pattern here.
+
+<!-- prettier-ignore -->
+| Tier | Folder | File naming | Shared helpers |
+| --- | --- | --- | --- |
+| [Tier] | [Folder.] | [Name pattern.] | [Helper modules.] |
+| [e.g., Unit] | Next to the file it tests. | The source file's name with a test suffix. | The shared test utilities folder. |
+
+## Test data
+
+> **Project slot:** the login setup, the factories and the fresh store.
+
+[The shared login setup whose saved auth state UI tests reuse, the typed factories that build test data, and the fresh store each tier starts from.]
+
+## CI lanes
+
+> **Project slot:** the lanes this project runs, as a chart and a table. § CI test tiers (the bkit scaffold) holds bkit's full lane graph.
+
+```mermaid
+flowchart LR
+    STATIC["static"] --> CHECK["check"]
+    UNIT["unit"] --> CHECK
+```
+
+<!-- prettier-ignore -->
+| Lane | Needs | Runs when |
+| --- | --- | --- |
+| [Lane] | [Lanes it waits for.] | [Event or condition.] |
+| [e.g., unit] | scope | Every push and pull request. |
+
+## Test reports
+
+> **Project slot:** where each tier writes its report.
+
+<!-- prettier-ignore -->
+| Tier | Report format | Path |
+| --- | --- | --- |
+| [Tier] | [Format.] | [Where it is written.] |
+| [e.g., Unit] | JUnit XML | The path in `$BKIT_TEST_REPORT`. |
+
+## Running locally
+
+> **Project slot:** the commands a developer runs for each tier.
+
+<!-- prettier-ignore -->
+| Tier | Command |
+| --- | --- |
+| [Tier] | [Command.] |
+| [e.g., Unit] | `pnpm test` |
 
 ## CI test tiers (the bkit scaffold)
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 CI runs the tiers through the bkit scaffold as one parallel lane (job) per tier, not as steps in one job. The step-by-step shape is in `.github/workflows/bkit-ci.yml` § "full CI scaffold reference", and the run-level shape is in `deployments.md` § Run-level decision matrix.
 
-The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e:
+The graph is flat and wide for static / unit / build / integration: scope fans out, and the capstone joins. **One exception:** when `bkit-tests-migration` owns the shared-remote migration apply, e2e / live `needs:` that lane for ordering. Never gate live behind static / unit / build / e2e.
 
+```mermaid
+flowchart LR
+    SCOPE["bkit-tests-scope"] --> STATIC["bkit-tests-static"]
+    SCOPE --> UNIT["bkit-tests-unit"]
+    SCOPE --> BWEB["bkit-tests-build-web"]
+    SCOPE --> INTEG["bkit-tests-integration"]
+    SCOPE --> BIOS["bkit-tests-build-ios"]
+    SCOPE --> BAND["bkit-tests-build-android"]
+    SCOPE --> MIG["bkit-tests-migration"]
+    MIG --> DEPLOY["bkit-tests-deploy"]
+    BWEB --> DEPLOY
+    MIG --> RESET["bkit-tests-reset"]
+    DEPLOY --> E2EW["bkit-tests-e2e-web"]
+    DEPLOY --> LIVE["bkit-tests-live-web"]
+    DEPLOY --> E2EI["bkit-tests-e2e-ios"]
+    DEPLOY --> E2EA["bkit-tests-e2e-android"]
+    RESET --> E2EW
+    RESET --> LIVE
+    RESET --> E2EI
+    RESET --> E2EA
+    E2EW --> CLEAN["bkit-tests-cleanup"]
+    LIVE --> CLEAN
+    E2EI --> CLEAN
+    E2EA --> CLEAN
+    CLEAN --> CHECK["bkit-tests-check"]
+    STATIC --> CHECK
+    UNIT --> CHECK
+    INTEG --> CHECK
 ```
-  bkit-tests-scope ─┬─ bkit-tests-static
-    always-on        ├─ bkit-tests-unit
-    never skips      ├─ bkit-tests-build-web ─────────────────────┐
-    (~15s)           ├─ bkit-tests-integration                    │
-                     ├─ bkit-tests-build-ios                      │
-                     ├─ bkit-tests-build-android                  │
-                     └─ bkit-tests-migration ─┬─→ bkit-tests-deploy (default-branch push only; promotes)
-                                              │            │
-                                              │            ▼
-                                              └─→ bkit-tests-reset ─┬─→ bkit-tests-e2e-web
-                                                    (lease)         ├─→ bkit-tests-live-web
-                                                                    ├─→ bkit-tests-e2e-ios
-                                                                    └─→ bkit-tests-e2e-android
-                                          │
-                                          ▼
-                               bkit-tests-cleanup (always(); releases the lease)
-                                          │
-                                          ▼
-                               bkit-tests-check (needs: scope + every lane you have, deploy included)
 
-  static/unit/integration/build-*: needs:[bkit-tests-scope]; if: run_level != 'none'
-  bkit-tests-migration:            needs:[bkit-tests-scope]; no job-level if (always-on)
-  bkit-tests-deploy:               needs:[bkit-tests-migration, bkit-tests-build-web]; default-branch push only
-  bkit-tests-reset:                needs:[scope, migration]; if: tenant_target != ''
-  e2e-web / live-web / e2e-ios / e2e-android:
-                                   needs:[scope, migration, deploy, reset, <build>];
-                                   if: !cancelled() && scope==success && <own gate>
-                                   && migration != 'failure' && deploy != 'failure'
-                                   && reset != 'failure'
-```
+Each lane's `needs:` and `if:` are in this table.
+
+<!-- prettier-ignore -->
+| Lane | `needs:` | `if:` |
+| --- | --- | --- |
+| `bkit-tests-scope` | none | always on; never skips (~15s) |
+| `bkit-tests-static` / `-unit` / `-integration` / `-build-*` | `bkit-tests-scope` | `run_level != 'none'` |
+| `bkit-tests-migration` | `bkit-tests-scope` | no job-level `if:` (always on) |
+| `bkit-tests-deploy` | `bkit-tests-migration`, `bkit-tests-build-web` | default-branch push only |
+| `bkit-tests-reset` | scope, migration | `tenant_target != ''` |
+| `-e2e-web` / `-live-web` / `-e2e-ios` / `-e2e-android` | scope, migration, deploy, reset, the lane's build | `!cancelled() && scope == success && <own gate> && migration != 'failure' && deploy != 'failure' && reset != 'failure'` |
+| `bkit-tests-cleanup` | the lanes that use the lease | `always()`; releases the lease |
+| `bkit-tests-check` | scope and every lane you have, deploy included | always |
 
 Adopt only lanes your repo has. Add a lane the moment its tier exists, because a tier with no lane is a tier nothing gates. The jobs above the reference in `bkit-ci.yml` are the starter: `bkit-tests-static` and `bkit-tests-unit`, joined by the `bkit-tests-check` capstone `/bkit-ship` merges on. Every lane you add joins the capstone's `needs:` and its assert. The reference is the target. A starter stub that still sits inside `bkit-tests-unit` is the pre-split shape.
 
@@ -281,6 +400,8 @@ Two further axes share the same root cause:
 
 ## Which tier does a behaviour need?
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 Assign every behaviour its **lowest sufficient tier(s)**: the lowest tier that actually exercises it. A behaviour may need more than one. Never substitute a lower or mocked tier for a boundary that a higher tier validates. **Under-tiering** is a defect, not a shortcut. It means using a lower or mocked tier where the rubric demands a higher or `@live` one, for example a user-visible flow with no E2E row, an external-API behaviour tested only against a local fixture, or a migration with no fresh-DB replay.
 
 <!-- prettier-ignore -->
@@ -299,6 +420,8 @@ Assign every behaviour its **lowest sufficient tier(s)**: the lowest tier that a
 A plan's `Derived Test Matrix` (`docs/templates/bkit-plan.md`) applies this rubric to one feature: one row per behaviour, each mapped to a build + verify task. Boundary rows carry the rigor above: reach the boundary, assert a signal only it can produce, and use no `as unknown as` at the call-site.
 
 ## What each tier must do
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 Each tier lists the rule to follow, then a **Not:** line naming the failure the rule prevents. Stack tools (Vitest / Playwright / a Supabase-style local stack / a Vercel-style preview) appear only as worked examples, because the rule is the principle. Implement it for your stack.
 
@@ -367,6 +490,8 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 
 ## Test first
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 `/bkit-build` runs each plan task's `**TEST FIRST:**` tests before their code and records each one failing (red) before the code step. This covers the unit and integration tiers only. The runners below are examples; declare the one the project uses.
 
 - **Declare `bkit:test:file`:** it runs the one test file bkit appends as its argument (a repo-relative path), and writes a JUnit XML report to the path in `$BKIT_TEST_REPORT`. Vitest: `vitest run --reporter=default --reporter=junit --outputFile.junit="$BKIT_TEST_REPORT"`. pytest: `pytest --junitxml="$BKIT_TEST_REPORT"`. jest: `jest --runTestsByPath` with the `jest-junit` reporter and `JEST_JUNIT_OUTPUT_FILE="$BKIT_TEST_REPORT"`. Node: `node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination="$BKIT_TEST_REPORT"`; write Node tests with `node:test` (`test` / `describe` + `it`).
@@ -377,6 +502,8 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
   - **If** `$BKIT_TEST_REPORT` is unset → pass no report flag. An empty `--outputFile.junit=` takes the next argument, the test file, as the report path, and overwrites it.
 
 ## Design assertions are a dimension, not a lane
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 **Never add a design lane.** The lane axis is **resource profile** (a millisecond file read vs a booted app + browser), not subject matter, because design assertions span both. A `bkit-tests-design` job (or a design-only browser project) splits one concern across two profiles and buys nothing that the existing lanes do not already provide. Fold each assertion into the tier that already fits it. The CI topology, the capstone's `needs:` and the browser-project partition all stay unchanged. A real consumer's full design-system rollout landed with `bkit-ci.yml` byte-unchanged.
 
@@ -407,6 +534,8 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 
 ## Schema-invariant DB checks (e.g. RLS coverage)
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 Access-policy coverage is stack-specific. bkit ships the pattern (the two routes below), not a drop-in test. Supabase / PostgREST is the worked example. Implement it for your backing store by swapping the catalog source and the anon probe for your stack's equivalent.
 
 Assert DB-level invariants (for example, "every public table has RLS enabled", with no hardcoded list) in one of two co-equal ways. Pick by deploy topology, not by whether you can run a local DB-test runner (for example, pgTAP):
@@ -418,6 +547,8 @@ Assert DB-level invariants (for example, "every public table has RLS enabled", w
 An auto-discovering access-policy suite belongs in `bkit-tests-live-web`. For RLS it checks RLS-enabled, anon-reads-`[]` and cross-tenant-denial with no hardcoded table list, so it catches the next table too.
 
 ## Provision backing services fresh
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 A tier that needs a stateful backing service (database, cache, queue, search index) must run against a freshly-provisioned instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is not evidence of reproducibility. A migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove that a fresh provision + seed succeeds in CI: for example, an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote / dev instance for the `@live` tier and push-side E2E, because they validate the real deployed schema. It is never the integration tier's source of truth.
 
@@ -447,6 +578,8 @@ bkit's `bkit-tests-migration` lane (`bkit-stub:bkit-tests-migration`) is the rea
 
 ## Optional hardening (adopt when the cost is justified)
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 Beyond the gates above, three practices raise confidence further. They are opt-in, not baseline.
 
 - **Mutation testing** (for example, StrykerJS over a Vitest suite) automates the "executed != exercised" intent. It injects bugs into production code and fails when no test catches them.
@@ -457,6 +590,8 @@ Beyond the gates above, three practices raise confidence further. They are opt-i
 - **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk only when it is paired with explicit flake tracking. An auto-retry that silently passes hides a real regression, which is the inverse of "validated != didn't fail".
 
 ## Coverage on PRs
+
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
 
 Shipped stubs target Vitest (`bkit-stub:coverage`) and Playwright (`bkit-stub:e2e-coverage`). On another runner, keep the rules (per-tier, report-only, ratchet from current) and swap the tooling.
 
@@ -504,6 +639,8 @@ The E2E tier (`bkit-stub:e2e-coverage`) reports Playwright coverage in the same 
 
 ## CI verbosity (`[verbose ci]`)
 
+> **bkit practice:** keep this section; bkit's CI template, advisories and audits cite its heading by name, so leave the heading text unchanged.
+
 See `.bkit/workflows.md` § Test and release mechanics (Commit-message force tags) for the marker mechanics. That covers where to put it: the PR title for feature-branch pushes, and the commit message for a direct push to `dev` / `main`. This section covers the testing-specific knobs.
 
 **Knobs flipped under the marker.** The shipped stub flips turbo / Node / Vercel / Supabase / Playwright knobs. Add your stack's equivalents.
@@ -521,3 +658,7 @@ See `.bkit/workflows.md` § Test and release mechanics (Commit-message force tag
 **Hostile gap: Playwright `--reporter=line` override.** **If** your `playwright test` invocation passes `--reporter=line` → drop it. With the marker on, traces are written but no reporter surfaces them, so the artifact upload is wasted. `bkit install` flags this as an advisory.
 
 **Artifact paths** (already in `.gitignore` via the bkit template): `test-results/`, `playwright-report/`, `blob-report/`, `playwright/.auth/`. Never commit these, because traces alone run 1-50MB each.
+
+## Open questions
+
+[Each unresolved fact, who can answer it and which section it affects.]

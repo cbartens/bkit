@@ -23,7 +23,6 @@ import {
   starterPath,
 } from "../../install/project-docs.js";
 import { stripManagedWrapper } from "../../install/managed-block.js";
-import { isAdvisorySuppressed, type SuppressionReporter } from "./suppression.js";
 import { ciWorkflowPath, readBkitConfig } from "../../shared/settings.js";
 import {
   DEP_UPDATER_NAMES,
@@ -301,7 +300,7 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
       detect: `${ciRel} contains the bkit-stub:${stub.id} sentinel — a commented-in block shipped disabled by default.`,
       action:
         `${stub.description}\n\n` +
-        `Before enabling a CI lane, read docs/testing.md § CI test tiers and docs/deployments.md (one run per branch, push base, promote after the capstone). The FULL CI SCAFFOLD REFERENCE in ${ciRel} is the job graph: needs, if, step names. Write the job from that graph and from those docs. Uncomment only a block that is already commented YAML or shell.\n\n` +
+        `Before enabling a CI lane, read docs/testing.md § CI test tiers and docs/deployments.md (one run per branch, push base). The FULL CI SCAFFOLD REFERENCE in ${ciRel} is the job graph: needs, if, step names. Write the job from that graph and from those docs. Uncomment only a block that is already commented YAML or shell.\n\n` +
         `Decide with the user: (a) enable — uncomment the YAML/shell block AND delete the \`# bkit-stub:${stub.id} — ...\` header line; (b) customise — adjust paths/secrets/conditions before uncommenting; (c) dismiss — delete the entire stub block (header + commented body).\n\n` +
         `Until the sentinel is removed, this advisory fires every install / check.`,
     });
@@ -475,15 +474,11 @@ function assessDocText(cwd: string, topic: ProjectDocTopic, text: string): DocAs
  * file outside the repository. A document that differs from every starter is a candidate for
  * the agent to assess; the mechanical read makes no claim about what it covers.
  */
-export function detectProjectDocs(
-  cwd: string,
-  onSuppressed?: SuppressionReporter,
-): PreflightFinding[] {
+export function detectProjectDocs(cwd: string): PreflightFinding[] {
   const index = readProjectIndex(cwd);
   const rows = index.status === "ok" ? index.rows : [];
   const indexedPaths = new Set(rows.map((r) => r.path));
   const missing: string[] = [];
-  const empty: string[] = [];
   const unpopulated: string[] = [];
   const unindexed: string[] = [];
   const unindexedWrapped: string[] = [];
@@ -535,8 +530,7 @@ export function detectProjectDocs(
     const wrapper = stripManagedWrapper(read.text);
     if (wrapper.status === "ambiguous") cleanup.push(`${target} (${wrapper.problem})`);
     const assessed = assessDocText(cwd, topic, read.text);
-    if (assessed === "empty") empty.push(target);
-    else if (assessed === "unpopulated") unpopulated.push(target);
+    if (assessed === "empty" || assessed === "unpopulated") unpopulated.push(target);
     else if (index.status === "ok" && !indexedPaths.has(target)) {
       const covering = findIndexedEquivalent(
         rows,
@@ -571,23 +565,15 @@ export function detectProjectDocs(
       id: "project-docs-missing",
       severity: "advisory",
       detect: `No project document covers: ${missing.join(", ")}.`,
-      action: `Copy the starter for each topic you want from \`.bkit/templates/docs/\` into \`docs/\`, fill it in from the repository, and add its row to \`## Project Documents\` in ${PROJECT_INDEX_PATH}. A document you already keep elsewhere counts: index it with \`Equivalent to <recommended path>\` in its Scope cell. Skip topics that do not apply.`,
-    });
-  }
-  if (empty.length > 0) {
-    findings.push({
-      id: "project-docs-empty",
-      severity: "advisory",
-      detect: `These project documents are empty: ${empty.join(", ")}.`,
-      action: `Write the project's facts into each file, or delete it and remove its row from ${PROJECT_INDEX_PATH}. Agents cannot use an empty document.`,
+      action: `Copy the starter for each topic you want from \`.bkit/templates/docs/\` into \`docs/\`, fill it in from the repository, and add its row to \`## Project Documents\` in ${PROJECT_INDEX_PATH}. A document you already keep elsewhere counts: index it with \`Equivalent to <recommended path>\` in its Scope cell. Skip topics that do not apply. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
     });
   }
   if (unpopulated.length > 0) {
     findings.push({
       id: "project-docs-unpopulated",
       severity: "advisory",
-      detect: `These project documents still hold only the shipped starter text: ${unpopulated.join(", ")}.`,
-      action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, or index an equivalent document that already holds them (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes.`,
+      detect: `These project documents are empty or still hold only the shipped starter text: ${unpopulated.join(", ")}.`,
+      action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, or index an equivalent document that already holds them (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
     });
   }
   if (unindexed.length > 0) {
@@ -639,9 +625,5 @@ export function detectProjectDocs(
     });
   }
 
-  return findings.filter((f) => {
-    if (!isAdvisorySuppressed(cwd, f.id, f.severity)) return true;
-    onSuppressed?.({ id: f.id, scope: "." });
-    return false;
-  });
+  return findings;
 }

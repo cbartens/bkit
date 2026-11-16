@@ -45,7 +45,11 @@ import {
   detectTestIntegrationEnv,
   detectTurboIntegrationInputs,
 } from "./ci-yml.js";
-import { type SuppressionNote, type SuppressionReporter } from "./suppression.js";
+import {
+  isAdvisorySuppressed,
+  type SuppressionNote,
+  type SuppressionReporter,
+} from "./suppression.js";
 import {
   dropTipSilencedAdvisories,
   setupTipsChecklistLines,
@@ -475,7 +479,10 @@ export function runPostInstallCheck(
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
 
   // Project documents (docs/*.md): missing, empty, starter-only or unindexed. Advisory only.
-  for (const f of detectProjectDocs(cwd, onSuppressed)) phase3.push(f);
+  for (const f of detectProjectDocs(cwd)) {
+    if (!isAdvisorySuppressed(cwd, f.id, f.severity)) phase3.push(f);
+    else onSuppressed?.({ id: f.id, scope: "." });
+  }
 
   // turbo.json inputs for cache-replay safety (KN-24).
   for (const f of detectTurboIntegrationInputs(cwd)) phase3.push(f);

@@ -1,19 +1,26 @@
-> Example document. The populated `docs/components.md` belongs to the project. `bkit install` does not write this file and does not overwrite a copy.
+> Starter document. `bkit install` does not write this file and does not overwrite a copy. Copy it to `docs/components.md`, fill it in, then delete this introduction.
 >
-> **Populate this document:**
+> **Fill these first:** `docs/idea.md`.
 >
-> 1. Copy this template to `docs/components.md`.
-> 2. Read the relevant documents listed in `.agents/docs.md`, plus the repository's README and any product guide or approved specification.
-> 3. **If** an implementation exists → check its main entry points and representative behavior against those documents before describing anything as current.
+> **Finish against:** none.
+>
+> **Where the facts come from:** `docs/idea.md`, the repository's README, any approved specification and, once code exists, its main entry points.
+>
+> **Fill in:**
+>
+> 1. Copy this starter to `docs/components.md`.
+> 2. Read `docs/idea.md`, the README and any approved specification.
+> 3. **If** an implementation exists → check its main entry points and representative behavior against those sources before describing anything as current.
 > 4. **If** no implementation exists → use the approved specification as the source for a planned view.
 > 5. **If** neither source establishes the purpose, intended users or main journey → ask the owner for that missing context before filling the affected sections.
 > 6. Select components by distinct responsibilities or outcomes, including supporting work the main journeys depend on. Code that serves one purpose can share a component; separate a responsibility when it has its own outcome or a meaningful handoff.
-> 7. Replace the bracketed fields and example content with the project's facts, keeping the rules header.
-> 8. Omit optional sections that do not apply, including delivery and ownership for a repository without distinct distributed content. Core, Shared and Templates are examples, not required categories.
-> 9. Record unresolved facts as open questions in Scope, separate from current behavior and approved plans.
-> 10. Register `docs/components.md` under `Project Documents` in `.agents/docs.md`, with conditional reads for Design, Plan, Build, Debug and Ship.
-> 11. Check the populated document against each completion check below.
-> 12. Remove this introduction and its completion checks from the adopted document.
+> 7. Replace the bracketed fields and example rows with the project's facts, keeping the rules box.
+> 8. Fill `## Constraints` from `docs/idea.md`, and name the source of each row.
+> 9. Record unresolved facts under `## Open questions`, separate from current behavior and approved plans.
+> 10. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/components.md` | ○ | ● | ○ | ○ | ○ | A purpose-based view of what the repository does, its major responsibilities and how they work together, readable without inspecting the code. |
+> 11. Check the document against each completion check, then delete this introduction.
+>
+> **If it does not apply:** every repository has components. Write `Not applicable: {reason}` under a section that does not apply, such as Delivery and ownership for a repository without distinct distributed content. Core, Shared and Templates are examples, not required categories.
 >
 > **Completion checks:**
 >
@@ -23,6 +30,7 @@
 > - Exactly one Mermaid chart uses names consistent with the tables and explains what its arrows mean.
 > - The chart renders in a Mermaid-capable viewer.
 > - Every claimed current responsibility is supported by the implementation or project evidence; planned responsibilities and unknowns are labelled separately.
+> - Every constraint names its source in `docs/idea.md`.
 > - References link to existing documents; missing optional views are marked as unavailable rather than linked to nonexistent files.
 > - Implementation detail stays in its canonical document rather than being copied into this overview.
 > - No instructional placeholders or unrelated example content remain.
@@ -34,18 +42,35 @@
 >
 > **Rules:**
 >
+> - Follow `.bkit/authoring.md` § Docs when you edit this file.
 > - Group components by the purpose they serve, independently of files, packages and deployment units.
 > - Describe each component's responsibility and its relationships in plain language.
-> - Keep implementation boundaries and deployment topology in `docs/architecture.md`.
-> - Reference `docs/capabilities.md` when present for implementation ownership and drift. Components and capabilities may have different names, counts and boundaries.
 > - Distinguish current behavior from agreed scope, proposals and later candidates.
-> - Update this document when the repository's purpose, responsibilities or main journeys change.
+> - Components and capabilities may have different names, counts and boundaries.
+>
+> **Not here:** Implementation boundaries and deployment topology go in `docs/architecture.md`. Implementation ownership and drift go in `docs/capabilities.md` when present. Issue state and delivery plans stay in the tracker.
+>
+> **Update when:** The repository's purpose, responsibilities, constraints or main journeys change.
 
 ## Repository purpose
 
 [The intended users, problem, result and main limits of the repository.]
 
 [The core concepts expressed as responsibilities, with links to the existing product guide or specification for detail.]
+
+## Constraints
+
+[The platforms, offline behavior, live-update needs, scale and hard external requirements the repository must meet.]
+
+<!-- prettier-ignore -->
+| Constraint | What it requires | Source in `docs/idea.md` |
+| --- | --- | --- |
+| [Constraint] | [What it requires of the repository.] | [The `docs/idea.md` passage that states it.] |
+| [e.g., Works offline] | Reports open and save without a network connection. | The "Field use" notes. |
+
+## Open questions
+
+[Each unresolved fact, who can answer it and which section it affects.]
 
 ## Primary workflows
 
@@ -112,5 +137,6 @@ flowchart LR
 | `docs/architecture.md`, when present | How is the system implemented and deployed? |
 | `docs/capabilities.md`, when present | Where is a capability implemented, and do callers use its owner? |
 | `floorplan/`, when present | How can I explore the code's files, connections and guided flows? |
+| [e.g., Product guide] | What does the product do, for whom? |
 
 [Links to the available views above and the repository's product guide or specification. Missing views identified as unavailable.]

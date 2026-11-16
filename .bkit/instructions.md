@@ -24,7 +24,7 @@
 | `## Permissions` | Shipped `deny` / `ask` / `allow` patterns by group |
 | `## Special Behaviors` | `.bkit/prompts.md` § Special Behaviors rows |
 | `## Authoring Rules` | The workflow anatomy sections of `.bkit/workflows.md` |
-| `## Template Instructions` | The prompts carrying each instruction the shape-only plan and audit templates leave out |
+| `## Template Instructions` | The prompts carrying each instruction the plan and audit templates leave out |
 | `## Local Instructions` | Every standing line no clause matches, shared lines first, then file by file |
 
 Rule section lines:
@@ -9915,7 +9915,7 @@ Every command has a `🤖 Failure Path` section before Step 1. Any step, tool or
 
 ## Template Instructions
 
-The plan template holds shape only: headings, tables, placeholders, checkbox labels, owner callouts and the lines engine code parses. An audit template holds shape plus what only it knows: its probe steps and its own rules. Every other instruction lives in the prompts that act on it. Plan rules sit in each prompt's **Contract** as a labelled bullet, word for word across prompts; `.agents/rules.md` rules sit in its `**Rules:**` block, named by the rule's `- carry:` line.
+The plan template holds headings, tables, placeholders, checkbox labels, owner callouts and the lines engine code parses; the rules for acting on it live in the prompts. An audit template holds shape plus what only it knows: its probe steps and its own rules. Every other instruction lives in the prompts that act on it. Plan rules sit in each prompt's **Contract** as a labelled bullet, word for word across prompts; `.agents/rules.md` rules sit in its `**Rules:**` block, named by the rule's `- carry:` line.
 
 ### Plan template
 

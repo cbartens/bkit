@@ -169,6 +169,8 @@ Decisions settled with the owner on 2026-11-13:
 | an empty project doc is reported as project-docs-unpopulated | Unit | `.bkit/core/engine/checks/after/tools.test.ts` | 11 |
 | every shipped docs/{topic}.md § citation resolves to a starter heading | Unit | `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts` | 15 |
 | setup index row marks Build and Debug as read when relevant | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 5 |
+| adoptionArrows reads labelled, chained and grouped edges | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 16 |
+| docPaths ignores template paths and longer suffixes | Unit | `.bkit/core/engine/install/project-docs.test.ts` | 16 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -621,7 +623,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Write the shared project-doc writing rules and reword § Doc Templates
+- [x] **TASK 1:** Write the shared project-doc writing rules and reword § Doc Templates
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: § Docs gains the Mermaid rule for every file § Docs covers: diagrams of flow, order, dependency or relationship are Mermaid, while directory trees and command output stay plain text; each chart says in one sentence what its arrows mean, uses node names from the doc's tables, keeps to about 15 nodes (else `subgraph` or a second chart), uses only `flowchart`, `sequenceDiagram`, `erDiagram` or `stateDiagram-v2`, quotes every label and sets no colours or `style` / `classDef`
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: § Docs gains the starter rules under one lead scoped to the project-doc starters in `.bkit/templates/docs/*.md`: the rules box carries **Purpose**, the rules, **Not here** and **Update when**; **Purpose** says what the doc holds and the question it answers, with no "Read before …" clause, because the phase columns of `.agents/docs.md` say when to read it; a section marked `> **bkit practice:**` keeps its heading text and stays a separate section; content is current state with no history; facts come from code, config or an approved spec, never from template example text; unknowns go under `## Open questions`; each topic is written once and linked from elsewhere; tables over prose for facts; name the file that holds a value instead of typing the value; `Not applicable: {reason}` is the empty state for a doc that does not apply
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: each new rule is one `- **Lead:** text` bullet with `Why` / `Example` sub-bullets, kept short, because `gateguard-dogfood.integration.test.ts` parses § Docs bullets and every Docs-route advisory repeats them
@@ -639,7 +641,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Add the project-docs adoption order to `.bkit/templates.md` and point the document index at it
+- [x] **TASK 2:** Add the project-docs adoption order to `.bkit/templates.md` and point the document index at it
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: new `## Project docs — adoption order` section with the waves table (1 `docs/idea.md`; 2 components; 3 technology, design; 4 architecture, setup; 5 security, testing, observability; 6 data-schema, deployments, noise; 7 capabilities), the Mermaid chart with solid "must exist first" and dotted "finished against" arrows from the doc review comment § 2.2 plus a dotted `DATA -.-> SEC` arrow (security's PII table "Where stored" column is finished against data-schema, per doc review § 3.4) and a sentence saying what each arrow means, the dotted-arrow notes with a "data-schema → security" note, and the `docs/idea.md` rule (free-form, kept, not indexed, no template)
   - **UPDATE:** `.bkit/core/.bkit/templates.md`: line 16 says the `bkit tips` order covers the tool templates and points to the new section for project docs; § Project documents — starters and the index links to the new section
   - **UPDATE:** `.bkit/core/.agents/docs.md`: the note under the Universal Documents table (line 48) gains one last sentence, "Fill them in the order in `.bkit/templates.md` § Project docs — adoption order."; the rest of the note stays as it is, because a project's index has no row for `.bkit/templates.md` and this note is where the 39 prompts that load the index meet the order
@@ -656,7 +658,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Rewrite `components.md` as the model introduction and add the starter-shape tests
+- [x] **TASK 3:** Rewrite `components.md` as the model introduction and add the starter-shape tests
   - **UPDATE:** `.bkit/templates/docs/components.md`: opener line "Starter document."; **Fill these first:** `docs/idea.md`; step 2 reads `docs/idea.md`, the README and any approved spec instead of the other docs; new `## Constraints` section (platforms, offline, live updates, scale, hard external requirements, each naming its source in `docs/idea.md`); open questions under `## Open questions`; both new sections sit after `## Repository purpose`, so the dogfood span from `# Components` to `## Repository purpose` stays byte-equal; general writing rules replaced by a link to `.bkit/authoring.md` § Docs; register step gives the exact `.agents/docs.md` row with Scope = Purpose; introduction uses bold labels, no `##` headings
   - **UPDATE:** `.bkit/templates/docs/components.md`: the introduction carries an **If it does not apply** line, because Success Criterion 1 requires one in every starter; the issue body wins over doc review § 3.12, which says components needs none
   - **UPDATE:** `.bkit/core/engine/install/project-docs.test.ts`: a shared `starterShape(topic, headings)` check that reads `.bkit/templates/docs/{topic}.md` and asserts every introduction part (opener line, Fill these first, Finish against, Where the facts come from, numbered steps, If it does not apply, Completion checks, register row), the rules box lines (Purpose, Not here, Update when), a Purpose line that holds no "Read before" or "Read when", the bkit-practice rules-box line in every starter that holds a `> **bkit practice:**` marker and in no other, `## Open questions`, every skeleton heading in `headings`, bracketed fields in the skeleton, one `[e.g.,` row in every table of a section not marked `> **bkit practice:**` (`noise`: a header-only table instead), the register row equal to `projectDocRow(topic)` for the ten topics and its Scope equal to the Purpose line, Fill these first / Finish against equal to the solid / dotted arrow sources into the topic's node in `.bkit/core/.bkit/templates.md` § Project docs — adoption order (`none` when the chart has no such arrow), no `##` or `###` heading above `# {Title}`, and no `## Project facts to record` heading. The arrow reader takes only arrows of the matching kind into the topic's node, so the `SEC --> DATA` / `DATA -.-> SEC` pair gives security Fill these first `docs/architecture.md` and Finish against `docs/data-schema.md`, and data-schema Fill these first `docs/security.md` and Finish against `none`. Each later starter task adds its own `starter shape: {topic}` case, passing the skeleton headings its UPDATE line lists
@@ -674,7 +676,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Rewrite `technology.md` and `design.md` (wave 3)
+- [x] **TASK 4:** Rewrite `technology.md` and `design.md` (wave 3)
   - **UPDATE:** `.bkit/templates/docs/technology.md`: introduction above `# Technology`, rules box (never type a version number) and skeleton `## Stack` (Layer, Technology, Version from, Chosen for), `## Conventions`, `## Not used`, `## Open questions`; no chart; `## Project facts to record` removed
   - **UPDATE:** `.bkit/templates/docs/design.md`: introduction; the four hard rules become bracketed defaults the project confirms; the machine-checked token guidance split into fill steps and the two rules that survive adoption, keeping the heading `## Machine-checked reference` verbatim (the gates audit anchors on it and `bkit-ci.yml` cites it) and marking it `> **bkit practice:** …`, with the bkit-practice line in the rules box; skeleton `## Tokens`, `## Typography`, `## Spacing and layout`, `## Components`, `## Accessibility`, `## Open questions`; Not applicable: no user interface
   - **UPDATE:** `TOPIC_INFO.technology.scope` in `.bkit/core/engine/install/project-docs.ts`: equals the new technology Purpose line
@@ -691,7 +693,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Rewrite `architecture.md` and `setup.md` (wave 4)
+- [x] **TASK 5:** Rewrite `architecture.md` and `setup.md` (wave 4)
   - **UPDATE:** `.bkit/templates/docs/architecture.md`: introduction, rules box, skeleton `## System context`, `## Containers`, `## Package boundaries`, `## File placement`, `## Environments`, `## Open questions`; one `flowchart LR` with a `subgraph` per runtime, the same shape the architecture audit draws; `## Project facts to record` removed
   - **UPDATE:** `.bkit/templates/docs/architecture.md`: `## File placement` is a table (Kind of file, Goes in, Naming) with one row per kind of file the repo holds, because `.agents/rules.md` **New files** places every new file by this doc; a completion check says every top-level source folder appears in a row
   - **UPDATE:** `.bkit/templates/docs/architecture.md`: `## Environments` is the one table of where each part runs (Environment, Hosting, Data store, Who uses it); **Not here** sends each environment's branch, URL and release trigger to `deployments.md` § Environments
@@ -721,7 +723,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Rewrite `security.md` and `observability.md` (wave 5)
+- [x] **TASK 6:** Rewrite `security.md` and `observability.md` (wave 5)
   - **UPDATE:** `.bkit/templates/docs/security.md`: introduction, rules box, skeleton `## Trust boundaries`, `## Authentication`, `## Authorization`, `## Input validation`, `## Rate limiting`, `## Secrets`, `## PII`, `## Open questions`; a `sequenceDiagram` of one authenticated request; § Supply-Chain (GitHub Actions) kept with its exact heading and marked as bkit practice, with the bkit-practice line in the rules box; no separate `## Supply chain` slot, because the project's own dependency and CI rules go in a `### This project` slot under the kept section, opened by `> **Project slot:** …`; `## Project facts to record` removed; **Fill these first:** `docs/architecture.md`; **Finish against:** `docs/data-schema.md` (the PII table's "Where stored" column)
   - **UPDATE:** `.bkit/templates/docs/security.md`: `## Authorization` lists service accounts as rows beside user roles, and `## Secrets` is the one register of secret names and stores, because the plan template's Pre-Flight reads "the secret store and the service-account roles" from this doc; **Not here** sends the variables a developer sets locally to `setup.md` § Environment variables and per-environment config sync to `deployments.md` § Secrets and env config
   - **UPDATE:** `.bkit/templates/docs/observability.md`: introduction, rules box (Not here points at testing for smoke checks), skeleton `## Signal pipeline`, `## Log format`, `## Signals`, `## Correlation`, `## Error tracking`, `## Alerts`, `## Where to look`, `## Open questions`; a `flowchart LR` from app to people; `## Project facts to record` removed
@@ -741,7 +743,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Rewrite `testing.md` (wave 5), keeping bkit's practice in place
+- [x] **TASK 7:** Rewrite `testing.md` (wave 5), keeping bkit's practice in place
   - **UPDATE:** `.bkit/templates/docs/testing.md`: introduction; rules box keeps "keep the tiers separate" and adds Not here (points at observability for live alerts) and Update when; project slots `## Stack`, `## Tiers this project has`, `## Where tests live`, `## Test data`, `## CI lanes`, `## Test reports`, `## Running locally`, `## Open questions`; every existing practice section kept with its exact heading and marked `> **bkit practice:** …`; each slot marked `> **Project slot:** …`; the ASCII lane graph replaced by a `flowchart LR`, its `needs:` / `if:` notes moved to the lanes table; `## Project facts to record` removed
   - **UPDATE:** `.bkit/templates/docs/testing.md`: `## Tiers this project has` has one row per tier name in § Which tier does a behaviour need? (Static, Unit, Integration, @live (golden), E2E, fresh-DB replay, Smoke), spelled the same, because a plan's `Derived Test Matrix` copies the tier name from this doc
   - **UPDATE:** `.bkit/templates/docs/testing.md`: `## Where tests live` is a table (Tier, Folder, File naming, Shared helpers) and is where a new test file or pattern is recorded; `## Test data` names the shared login setup whose auth state UI tests reuse and the typed factories that build test data, which the **Testing strategy** clause of the build prompts reads "per `docs/testing.md`"
@@ -762,7 +764,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Rewrite `data-schema.md`, `deployments.md` and `noise.md` (wave 6)
+- [x] **TASK 8:** Rewrite `data-schema.md`, `deployments.md` and `noise.md` (wave 6)
   - **UPDATE:** `.bkit/templates/docs/data-schema.md`: introduction, rules box (Pending defined; link a generated schema instead of copying it), skeleton `## Overview`, one `## {table}` section shape, `## Functions`, `## Open questions`; an `erDiagram` of keys and relationships; Not applicable: no persistent store; **Fill these first:** `docs/security.md`; **Finish against:** none; `## Project facts to record` removed
   - **UPDATE:** `.bkit/templates/docs/deployments.md`: introduction, rules box (dangling "Pre-push checklist" reference removed; `--no-verify` line dropped as `.agents/rules.md` owns it), project slots `## Environments`, `## Release path`, `## Secrets and env config`, `## Branch protection`, `## Open questions`; every practice section kept with its exact heading as bkit practice, with the bkit-practice line in the rules box and the marker text Task 7 gives; every section marked slot or practice; a `flowchart LR` release path; `## Project facts to record` removed
   - **UPDATE:** `.bkit/templates/docs/deployments.md`: no `## Rollback` slot; `## Production rollback runbook` and `## Dev rollback runbook` keep their headings, because the plan template's `Rollback Strategy` cites § Dev rollback runbook, and each is marked `> **Project slot:** replace the example steps with this project's own; keep the heading, because plans cite it.`, with its host-specific steps turned into `[e.g., …]` text
@@ -788,7 +790,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Rewrite the `capabilities.md` introduction (wave 7, generated)
+- [x] **TASK 9:** Rewrite the `capabilities.md` introduction (wave 7, generated)
   - **UPDATE:** `.bkit/templates/docs/capabilities.md`: opener line "Generated document."; **Fill these first:** `docs/deployments.md`, the solid-arrow source into `CAP` in `.bkit/core/.bkit/templates.md` § Project docs — adoption order; prerequisites (code exists, the graphify templates adopted per `.bkit/templates.md` § graphify — map); `pnpm bkit:graph:rollup` builds from the working tree and `pnpm bkit:graph:refresh` from the staged files in a throwaway checkout, and when to run each; what stays hand-maintained (the Overrides block, `scripts/graphify/bkit-graph-drift-rules.json`); the register row, whose Scope equals the capabilities Purpose line; completion checks including the comparison with `docs/components.md`
   - **UPDATE:** `.bkit/core/engine/install/project-docs.test.ts`: a capabilities case that asserts the `Generated document.` opener, the Fill these first line equal to the solid-arrow sources into `CAP`, the register row with its Scope equal to the Purpose line, and the **Completion checks** line
   - **READ:** `§ graphify — map` in `.bkit/core/.bkit/templates.md`: the adoption steps the prerequisites point at (line 668)
@@ -808,7 +810,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Add the `project-docs` setup tip
+- [x] **TASK 10:** Add the `project-docs` setup tip
   - **UPDATE:** `SETUP_TIPS` in `.bkit/core/engine/checks/tips/catalogue.ts`: new `project-docs` entry after `graphify`, `workflows: ["design", "plan", "build"]`, whose `fires` calls `detectProjectDocs` and is true when it returns `project-docs-missing` or `project-docs-unpopulated`; `advisories` names those two ids; `ask` and `steps` point at `.bkit/templates.md` § Project docs — adoption order
   - **UPDATE:** `SETUP_TIPS` in `.bkit/core/engine/checks/tips/catalogue.ts`: the `project-docs` entry's `caution` says in plain English that ignoring either the missing-doc or the unfilled-doc advisory also silences this tip and the other advisory (owner answer 1, 2026-11-14)
   - **UPDATE:** `.bkit/core/engine/checks/tips/catalogue.ts`: the header comment's text rule names `DETAILS.md` § Templates ready to adopt where it says "README"
@@ -834,7 +836,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Merge the empty-doc advisory into `project-docs-unpopulated` and point the project-doc advisories at the adoption order
+- [x] **TASK 11:** Merge the empty-doc advisory into `project-docs-unpopulated` and point the project-doc advisories at the adoption order
   - **UPDATE:** `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts`: a doc assessed as empty (the `assessed === "empty"` branch, line 538) goes on the `unpopulated` list; the `project-docs-empty` finding and its `action` text (lines 577-584) are removed; the `project-docs-unpopulated` `detect` text names empty docs as well as untouched starters
   - **UPDATE:** `detectProjectDocs` in `.bkit/core/engine/checks/after/tools.ts`: the `action` text of `project-docs-missing` and `project-docs-unpopulated` names `.bkit/templates.md` § Project docs — adoption order, keeping the inline fix and the `.bkit/templates/docs/`, `.agents/docs.md` and "equivalent" wording existing tests assert
   - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: in `distinguishes missing and empty project documentation from populated candidates`, the `project-docs-empty` assertion (line 507) moves to the `project-docs-unpopulated` id, keeping its `docs/testing.md`, `docs/setup.md` and not-`docs/security.md` checks
@@ -851,7 +853,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 12 start -->
 
-- [ ] **TASK 12:** Make the index equivalence match affirmative and end-bounded
+- [x] **TASK 12:** Make the index equivalence match affirmative and end-bounded
   - **UPDATE:** `listIndexedEquivalents` in `.bkit/core/engine/install/project-docs.ts`: the Scope regex matches only an affirmative `Equivalent to docs/{topic}.md` (no `not` / `non` directly before `equivalent`) whose path ends at a backtick, whitespace, punctuation or the end of the cell, so "Not equivalent to `docs/{topic}.md`", `docs/{topic}.mdx` and `docs/{topic}.md.bak` name no equivalent; same-basename rows match as today
   - **UPDATE:** `.bkit/core/engine/checks/after/tools.test.ts`: one `describe("detectProjectDocs")` case with no `docs/{topic}.md` and index rows whose Scope reads "Not equivalent to `docs/{topic}.md`" and names `docs/{topic}.mdx`, asserting `project-docs-missing` for the topic
   - **UPDATE:** `.bkit/core/engine/install/project-docs.test.ts`: one `describe("syncProjectDocs")` case with a present, unindexed `docs/{topic}.md` beside a "Not equivalent to `docs/{topic}.md`" row, asserting the topic's row is inserted into `.agents/docs.md`
@@ -866,7 +868,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 13 start -->
 
-- [ ] **TASK 13:** Mark adopted doc starters in the upgrade report
+- [x] **TASK 13:** Mark adopted doc starters in the upgrade report
   - **UPDATE:** `.bkit/core/engine/install/project-docs.ts`: new exported `adoptedProjectDocPath(root, topic)` (recommended path when a safe regular file through `inspectRepoFile`, else `findIndexedEquivalent(readProjectIndex(root) rows, topic, usable)` with an `isInTreePath` + regular-file `usable` check, else `null`; a missing or unreadable index yields only the recommended-path result)
   - **UPDATE:** `formatTemplateChanges` in `.bkit/core/engine/install/template-copies.ts`: required `cwd`; a changed `docs/{topic}.md` starter whose `adoptedProjectDocPath(cwd, topic)` is non-null, and a changed `docs/components.md` starter whose `docs/components.md` is a regular file in the repo (same-path check through `inspectRepoFile`), gets `— adopted at {path}, review your copy` on its `changed:` line, or `— {consequence}; adopted at {path}, review your copy` when a `TEMPLATE_CHANGE_CONSEQUENCES` note also applies; a root with no adopted copy → today's output; a missing or unreadable `.agents/docs.md` never throws
   - **UPDATE:** `.bkit/core/engine/install/template-copies.integration.test.ts`: the four existing `describe("formatTemplateChanges")` calls pass a temp root that holds no adopted copy, and keep their expected output
@@ -893,7 +895,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 14 start -->
 
-- [ ] **TASK 14:** Bring bkit's own docs and mirrors in line
+- [x] **TASK 14:** Bring bkit's own docs and mirrors in line
   - **UPDATE:** `docs/testing.md`: the ASCII lane graph in § CI test tiers (the bkit scaffold) becomes a Mermaid `flowchart LR`, with a sentence saying what the arrows mean; § Project documentation lifecycle coverage names the starter-shape, tip, equivalence and upgrade-report tests
   - **UPDATE:** `.agents/docs.md`: the `docs/deployments.md` row no longer says "promote after the capstone"; the Scope of the `docs/deployments.md`, `docs/data-schema.md`, `docs/testing.md` and `docs/security.md` rows equals the Purpose text of bkit's own matching doc (line 4 of each), as the issue says; bkit's own Purpose lines are not rewritten, and the other six rows already name the same items as their docs' Purpose lines
   - **UPDATE:** `.bkit/authoring.md`: refreshed from `.bkit/core/.bkit/authoring.md` with `pnpm tsx .bkit/core/engine/cli.ts upgrade`
@@ -914,7 +916,7 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 
 <!-- bkit:task 15 start -->
 
-- [ ] **TASK 15:** Guard the section names shipped files cite
+- [x] **TASK 15:** Guard the section names shipped files cite
   - **UPDATE:** `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`: one case that walks every file under `.bkit/core/` and `.bkit/templates/` except `*.test.ts`, `__fixtures__/`, `dist/` and `node_modules/`, finds each `{topic}.md § {heading}` citation for the twelve starter topics, and fails with `file:line` for each citation that matches no `##`, `###` or `####` heading of `.bkit/templates/docs/{topic}.md`
   - **UPDATE:** `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`: the case reads a citation with or without the `docs/` prefix, allows a backtick or a closing bracket between `.md` and `§`, and skips a citation whose heading starts with `{`
   - **UPDATE:** `.bkit/core/engine/audits/repo/shipped-docs-refs.test.ts`: a citation resolves when, with quotes and backticks removed and case ignored, a heading starts the cited text, or the cited text up to its first closing bracket, comma, semicolon, colon or full stop starts a heading, so the short forms `§ One run` and `§ Supply-Chain` resolve
@@ -938,6 +940,22 @@ Integration shape (advice only): one PR for all fifteen tasks is fine; Group 1 a
 <!-- bkit:task 15 end -->
 
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** A new labelled, chained or & edge in the adoption-order chart is silently dropped by adoptionArrows, and docPaths counts .bkit/templates/docs/x.md or docs/x.mdx as a prerequisite, so the chart and a starter's Fill these first line can disagree while the starter-shape tests stay green
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/project-docs.test.ts:281` · **Round:** 1
+  - **DONE WHEN:** adoptionArrows takes the chart text as a parameter and either reads every Mermaid edge form (edge labels -->|x|, chained edges, & groups) or throws on any arrow line it cannot parse, so no edge is dropped silently; docPaths matches only a whole docs/{topic}.md path (a leading boundary that is not / or a word character, and a trailing boundary that is not a word character or .).
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/project-docs.test.ts` `adoptionArrows reads labelled, chained and grouped edges` fails on `DATA -->|schema| DEP`, `A --> B --> C` and `A & B --> C` yielding no docs/deployments.md source, no B -> C edge and no A -> C edge
+    - `.bkit/core/engine/install/project-docs.test.ts` `docPaths ignores template paths and longer suffixes` fails on `docPaths("see .bkit/templates/docs/technology.md and docs/noise.mdx")` returning `["docs/noise.md", "docs/technology.md"]` instead of `[]`
+
+<!-- bkit:task 16 end -->
+<!-- bkit:group 6 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

@@ -13,7 +13,7 @@
 
 ## What each template is for
 
-The adoption order is the `bkit tips` order. The machine lock has no tip, so adopt it when test gates or local services need to run one at a time across checkouts. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
+The adoption order of the tool templates is the `bkit tips` order; for the project docs it is § Project docs — adoption order. The machine lock has no tip, so adopt it when test gates or local services need to run one at a time across checkouts. The health check has no tip either: the `bkit-stub-health` advisory raises it while your CI copy keeps that stub. The sections below give each template's install steps and traps.
 
 <!-- prettier-ignore -->
 | Template | What it's for | Skip it and |
@@ -666,7 +666,66 @@ Issues are the first input every workflow reads. There is one form per way work 
 
 ## Project documents — starters and the index
 
-The ten project docs (architecture, technology, security, data-schema, testing, deployments, observability, design, noise, setup) ship as starters in `.bkit/templates/docs/`. Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not.
+The ten project docs (architecture, technology, security, data-schema, testing, deployments, observability, design, noise, setup) ship as starters in `.bkit/templates/docs/`. Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not. Fill the starters in the order of § Project docs — adoption order.
+
+## Project docs — adoption order
+
+Fill the project docs in waves, because each doc reads facts the earlier ones record. Each starter's **Fill these first** line lists the docs in the **Fill these first** column below.
+
+<!-- prettier-ignore -->
+| Wave | Doc | Fill these first |
+| --- | --- | --- |
+| 1 | `docs/idea.md` | — |
+| 2 | `docs/components.md` | `docs/idea.md` |
+| 3 | `docs/technology.md` | `docs/components.md` |
+| 3 | `docs/design.md` | `docs/components.md` |
+| 4 | `docs/architecture.md` | `docs/technology.md` |
+| 4 | `docs/setup.md` | `docs/technology.md` |
+| 5 | `docs/security.md` | `docs/architecture.md` |
+| 5 | `docs/testing.md` | `docs/architecture.md` |
+| 5 | `docs/observability.md` | `docs/architecture.md` |
+| 6 | `docs/data-schema.md` | `docs/security.md` |
+| 6 | `docs/deployments.md` | `docs/testing.md`, `docs/observability.md` |
+| 6 | `docs/noise.md` | `docs/observability.md` |
+| 7 | `docs/capabilities.md` | `docs/deployments.md` |
+
+A solid arrow means the first doc must exist before the second is started. A dotted arrow means the second doc starts without the first, but one section of it is finished or checked against the first, so come back to it once the first exists.
+
+```mermaid
+flowchart LR
+    IDEA["idea.md"] --> COMP["components"]
+    COMP --> TECH["technology"]
+    COMP --> DES["design"]
+    TECH -.-> DES
+    TECH --> ARCH["architecture"]
+    TECH --> SET["setup"]
+    ARCH -.-> SET
+    SEC -.-> SET
+    ARCH --> SEC["security"]
+    ARCH --> TEST["testing"]
+    ARCH --> OBS["observability"]
+    SEC -.-> OBS
+    SEC --> DATA["data-schema"]
+    DATA -.-> SEC
+    TEST --> DEP["deployments"]
+    OBS --> DEP
+    OBS --> NOISE["noise"]
+    DATA -.-> DEP
+    DATA -.-> TEST
+    DEP --> CAP["capabilities"]
+```
+
+The dotted arrows:
+
+- **technology → design:** the colour and spacing variables table waits for technology to pick the styling tool. The rest of design does not.
+- **architecture → setup:** the local services section (database, queues) is filled once architecture names them.
+- **security → setup:** the environment variables table grows as security names secrets.
+- **security → observability:** the log format section is checked against security's list of personal data, so none of it gets logged.
+- **data-schema → testing:** the test data section (fixtures, seed, a fresh store per tier) is finished against the schema.
+- **data-schema → deployments:** the migrations-at-deploy-time section waits for the schema.
+- **data-schema → security:** the "Where stored" column of the PII table in `docs/security.md` is finished against `docs/data-schema.md`.
+
+`docs/idea.md` is the owner's free-form notes on the problem, the users and what the app must and must not do. It has no template, is not indexed in `.agents/docs.md`, and stays after `docs/components.md` exists.
 
 ## Component map — purpose and responsibilities
 
