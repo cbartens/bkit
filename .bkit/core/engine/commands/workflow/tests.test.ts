@@ -38,6 +38,7 @@ import {
 } from "./tests";
 import { parseJunit, reportFailures, type JunitCase } from "./junit";
 import { writeStepRow } from "./steps";
+import { gappedTasks } from "./tasks";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -3786,6 +3787,23 @@ describe("bkit tests red / green", () => {
     ).toEqual(["not-green:true"]);
     expect(report()).toContain("Verdict: CONCERNS");
     expect(report()).toContain(`TASK 1: \`${TEST}\` \`${NAME}\` — not-green — Fixable: true`);
+  });
+
+  it("green folds a multi-line failure message onto its gap line, so a ## line never ends the Gaps section", async () => {
+    writePlan([TASK_1, testTask(2, [[TEST, "second"]])]);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("second")));
+    expect((await red()).code).toBe(0);
+    vi.stubEnv(
+      "FAKE_JUNIT",
+      junit(failed(NAME, "expected:&#10;## Heading&#10;got nothing"), failed("second")),
+    );
+    const r = await green();
+    expect(r.json.gaps).toHaveLength(2);
+    const text = report();
+    expect(text.split("\n")).not.toContain("## Heading");
+    expect(text).toContain("expected: ## Heading got nothing — Fixable: true");
+    expect(gappedTasks(text)).toEqual([1, 2]);
   });
 
   it("green: lists each gap kind, with the runner output", async () => {

@@ -460,6 +460,30 @@ describe("bkit decisions compose", () => {
     expect(text).not.toContain("build verify: attempt");
   });
 
+  it("holistic limit pause prints the rounds run, never above max", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" }) +
+        "\n",
+    );
+    // `counters route ... :next` exits 1 with value = max + 1: the round the limit refused.
+    const { r, out } = await compose(
+      root,
+      logs,
+      ITEMS,
+      "--loop=holistic",
+      `--file=${status}`,
+      "--attempt=3",
+      "--max=2",
+    );
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("build holistic: attempt 2 of 2");
+    expect(text).not.toContain("attempt 3 of 2");
+  });
+
   it("prints the holistic gate's failing tests per round for the holistic loop", async () => {
     const { root, logs } = checkout();
     const status = path.join(logs, "status.jsonl");

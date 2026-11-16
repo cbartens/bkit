@@ -2573,6 +2573,25 @@ describe("build Decision Pause continue route", () => {
     expect(tick).toBeLessThan(record);
   });
 
+  it("the holistic continue tick runs without --group before the build-decision row is recorded", () => {
+    const lines = pause().split("\n");
+    const tick = lines.findIndex((l) => /"\{BKIT\}" tasks tick --plan="[^"]*" --decision=/.test(l));
+    const record = lines.findIndex((l) =>
+      l.includes("steps finish --workflow=build --step=build-decision"),
+    );
+    expect(tick, "no holistic tasks tick --decision line").toBeGreaterThanOrEqual(0);
+    expect(tick).toBeLessThan(record);
+    expect(lines.slice(Math.max(0, tick - 4), tick).join("\n")).toContain("From: holistic");
+  });
+
+  it("both VERIFY_GAPS lists title an item Task {N} for the decision tick", () => {
+    const text = pause();
+    expect(text).not.toContain("For the verify list, title each item");
+    expect(text).toMatch(
+      /For either `VERIFY_GAPS` list:\n\s+- Title each item `Task \{N\}` from its `TASK \{N\}` gap line/,
+    );
+  });
+
   it("a verify or holistic decision file records Source changed and a resume holds it", () => {
     const text = pause().replace(/\\\n\s*/g, " ");
     expect(text).toContain('--header="Source changed={SOURCE_CHANGED}"');

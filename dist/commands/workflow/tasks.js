@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
-import { parseDecisionItems } from "./open-decision.js";
+import { decisionHeader, parseDecisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
 import { NO_MARKERS_REASON, parsePlanBlocks, } from "./plan-blocks.js";
 import { positiveInt, str } from "./status.js";
@@ -75,21 +75,73 @@ function taskNumbers(values, flag) {
  * holds neither: a report with no Gaps section says nothing about which tasks are green.
  */
 export function gappedTasks(text) {
+    const json = jsonGaps(text);
+    if (json !== null)
+        return json
+            .map((g) => (typeof g === "object" && g !== null ? g.task : null))
+            .filter((t) => typeof t === "number");
+    const section = gapsSection(text);
+    return section === null ? null : [...section.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
+}
+/** The `gaps` array of a `--json` report, else null. */
+function jsonGaps(text) {
     const json = parseJson(text);
-    if (json.ok && typeof json.value === "object" && json.value !== null) {
-        const gaps = json.value.gaps;
-        if (Array.isArray(gaps))
-            return gaps
-                .map((g) => (typeof g === "object" && g !== null ? g.task : null))
-                .filter((t) => typeof t === "number");
-    }
+    if (!json.ok || typeof json.value !== "object" || json.value === null)
+        return null;
+    const gaps = json.value.gaps;
+    return Array.isArray(gaps) ? gaps : null;
+}
+/** A text report's `## Gaps` section, up to the next `## ` heading; null when it has none. */
+function gapsSection(text) {
     const start = text.search(/^## Gaps\b/m);
     if (start < 0)
         return null;
     const rest = text.slice(start).replace(/^## Gaps[^\n]*\n?/, "");
     const end = rest.search(/^## /m);
-    const section = end < 0 ? rest : rest.slice(0, end);
-    return [...section.matchAll(REPORT_GAP)].map((m) => Number(m[1]));
+    return end < 0 ? rest : rest.slice(0, end);
+}
+/**
+ * Why a text report's Gaps section cannot be trusted: its header's `Gaps: N` counts more gap
+ * lines (`- Task {N}` or `- Plan`) than the section holds, so a line inside a gap's detail
+ * cut the section short. Null when the counts agree, or for a JSON report or one with no
+ * `Gaps:` header.
+ */
+export function gapsShortfall(text) {
+    if (jsonGaps(text) !== null)
+        return null;
+    const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
+    const want = /^Gaps:[ \t]*([0-9]+)[ \t]*$/m.exec(header)?.[1];
+    const section = gapsSection(text);
+    if (want === undefined || section === null)
+        return null;
+    const read = [...section.matchAll(/^-\s+(?:Task\s+\d+|Plan)\s+`/gm)].length;
+    return read < Number(want)
+        ? `the header says Gaps: ${want} but the Gaps section holds ${read} gap line${read === 1 ? "" : "s"}`
+        : null;
+}
+/**
+ * The first header fact that stops `--decision` from ticking, or null: `From` is `verify` or
+ * `holistic`, no `Gate: FAIL` header, and a verify file's `Group` is `group`. Headers count
+ * only in the header block (`decisionHeader`).
+ */
+function decisionProblem(text, group) {
+    const header = decisionHeader(text);
+    const from = header.From;
+    if (from === undefined)
+        return "no From header";
+    if (from !== "verify" && from !== "holistic")
+        return `From is "${from}", not verify or holistic`;
+    if (/^FAIL\b/.test(header.Gate ?? ""))
+        return "Gate: FAIL header: the gate is red";
+    if (from === "holistic")
+        return null;
+    if (header.Group === undefined)
+        return "no Group header";
+    if (group === undefined)
+        return "missing required flag --group for a From: verify file";
+    if (header.Group !== String(group))
+        return `Group is "${header.Group}", not group ${group}`;
+    return null;
 }
 /** `task`'s heading line inside its block: its box and number, or null when the block holds none. */
 function headBox(lines, task) {
@@ -132,7 +184,7 @@ export const tasksCommand = {
     summary: "Tick a plan's task boxes, from the tasks a verify judged satisfied.",
     verbs: {
         tick: {
-            summary: "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, or a `--green` report with no Gaps section.",
+            summary: "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, a `--green` report with no Gaps section or fewer gap lines than its `Gaps:` header, or a `--decision` file that is not a verify or holistic pause of this group with a green gate.",
             use: "workflow",
             flags: [
                 {
@@ -144,8 +196,7 @@ export const tasksCommand = {
                 {
                     name: "group",
                     type: "string",
-                    required: true,
-                    help: "the task group whose tasks are candidates (positive integer)",
+                    help: "the task group whose tasks are candidates (positive integer); required, except with a `From: holistic` --decision alone, whose accepted tasks are ticked in their own groups",
                 },
                 {
                     name: "tasks",
@@ -156,24 +207,22 @@ export const tasksCommand = {
                 {
                     name: "decision",
                     type: "string",
-                    help: "a decision file: the task each item answered `Accept` or `Accept (assumed)` names in its `Task {N}` title is ticked; `Fix now` and undecided items tick nothing (one of --tasks / --green / --decision)",
+                    help: "a decision file with a `From: verify` (whose `Group` is --group) or `From: holistic` header and no `Gate: FAIL` header: the task each item answered `Accept` or `Accept (assumed)` names at the start of its title (`Task {N}`) is ticked; `Fix now` and undecided items tick nothing (one of --tasks / --green / --decision)",
                 },
                 {
                     name: "green",
                     type: "string",
-                    help: "a `bkit tests green` report: every task it gaps stays unticked (one of --tasks / --green)",
+                    help: "a `bkit tests green` report: every task it gaps stays unticked (one of --tasks / --green / --decision)",
                 },
             ],
             output: {
                 plan: "the plan file ticked, as given",
-                group: "the group whose tasks were candidates",
+                group: "the group whose tasks were candidates; null for a holistic --decision without --group",
                 ticked: "[task numbers] ticked by this call; a task already ticked is not repeated",
             },
             run: (ctx) => {
                 const planArg = String(ctx.flags.plan);
                 const group = positiveInt(ctx.flags.group, "group");
-                if (group === undefined)
-                    throw new CommandError(EXIT.USAGE, "missing required flag --group");
                 const tasksFlag = ctx.flags.tasks;
                 const greenArg = str(ctx.flags.green);
                 if (greenArg === "")
@@ -183,20 +232,23 @@ export const tasksCommand = {
                     throw new CommandError(EXIT.USAGE, "--decision must be non-empty");
                 if (tasksFlag === undefined && greenArg === undefined && decisionArg === undefined)
                     throw new CommandError(EXIT.USAGE, "give one of --tasks, --green and --decision");
-                const plan = readPlan(ctx.cwd, planArg);
-                const candidates = groupTasks(plan, planArg, group);
-                let named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
+                let decisionText;
                 if (decisionArg !== undefined) {
                     const decisionFile = path.resolve(ctx.cwd, decisionArg);
                     if (fs.statSync(decisionFile, { throwIfNoEntry: false })?.isFile() !== true)
                         throw new CommandError(EXIT.USAGE, `--decision ${decisionArg} does not exist`);
-                    const accepted = parseDecisionItems(fs.readFileSync(decisionFile, "utf-8"))
-                        .filter((it) => it.decision !== null && /^Accept\b/.test(it.decision))
-                        .map((it) => /\btask\s+(\d+)\b/i.exec(it.title))
-                        .filter((m) => m !== null)
-                        .map((m) => Number(m[1]));
-                    named = [...(named ?? []), ...accepted].filter((n) => candidates.some((t) => t.task === n));
+                    decisionText = fs.readFileSync(decisionFile, "utf-8");
                 }
+                // Only a holistic decision alone may leave out --group: its accepted tasks span groups.
+                const holisticOnly = decisionText !== undefined &&
+                    decisionHeader(decisionText).From === "holistic" &&
+                    tasksFlag === undefined &&
+                    greenArg === undefined;
+                if (group === undefined && !holisticOnly)
+                    throw new CommandError(EXIT.USAGE, "missing required flag --group");
+                const plan = readPlan(ctx.cwd, planArg);
+                const candidates = group === undefined ? plan.tasks : groupTasks(plan, planArg, group);
+                let named = tasksFlag === undefined ? undefined : taskNumbers(tasksFlag, "tasks");
                 for (const n of named ?? []) {
                     const task = plan.tasks.find((t) => t.task === n);
                     if (task === undefined)
@@ -204,14 +256,33 @@ export const tasksCommand = {
                     if (task.group !== group)
                         throw new CommandError(EXIT.USAGE, `TASK ${n} is in group ${task.group}, not group ${group}`);
                 }
+                if (decisionText !== undefined) {
+                    const problem = decisionProblem(decisionText, group);
+                    if (problem !== null)
+                        throw new CommandError(EXIT.USAGE, `--decision ${decisionArg}: ${problem}, so nothing is ticked`);
+                    // A title names its task only at its start (`Task {N}`): a gap that mentions a task elsewhere ticks nothing.
+                    const accepted = parseDecisionItems(decisionText)
+                        .filter((it) => it.decision !== null && /^Accept\b/.test(it.decision))
+                        .map((it) => /^task\s+(\d+)\b/i.exec(it.title.trim()))
+                        .filter((m) => m !== null)
+                        .map((m) => Number(m[1]));
+                    named = [
+                        ...(named ?? []),
+                        ...accepted.filter((n) => candidates.some((t) => t.task === n)),
+                    ];
+                }
                 const gapped = new Set();
                 if (greenArg !== undefined) {
                     const greenFile = path.resolve(ctx.cwd, greenArg);
                     if (fs.statSync(greenFile, { throwIfNoEntry: false })?.isFile() !== true)
                         throw new CommandError(EXIT.USAGE, `--green ${greenArg} does not exist`);
-                    const gaps = gappedTasks(fs.readFileSync(greenFile, "utf-8"));
+                    const greenText = fs.readFileSync(greenFile, "utf-8");
+                    const gaps = gappedTasks(greenText);
                     if (gaps === null)
                         throw new CommandError(EXIT.USAGE, `--green ${greenArg}: report has no Gaps section, so nothing is ticked`);
+                    const shortfall = gapsShortfall(greenText);
+                    if (shortfall !== null)
+                        throw new CommandError(EXIT.USAGE, `--green ${greenArg}: ${shortfall}, so nothing is ticked`);
                     for (const n of gaps)
                         gapped.add(n);
                 }
@@ -237,7 +308,7 @@ export const tasksCommand = {
                     ctx.log(`ticked TASK ${n}`);
                 ctx.emit({
                     plan: planArg,
-                    group,
+                    group: group ?? null,
                     ticked,
                 });
                 return EXIT.OK;

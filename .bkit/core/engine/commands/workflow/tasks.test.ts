@@ -357,6 +357,168 @@ describe("bkit tasks tick", () => {
     expect(read(plan)).toBe(text);
   });
 
+  it("tasks tick --green refuses a report whose gap lines are fewer than its Gaps header", async () => {
+    const text = planText(group(1, task(1), task(2), task(3)));
+    const plan = write("short-gaps.md", text);
+    const green = write(
+      "green-short.md",
+      [
+        "Enforced: true",
+        "Verdict: CONCERNS",
+        "Gaps: 2",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+        "- Task 1 `not-green` — not-green: expected:",
+        "## Heading",
+        "- Task 3 `not-green` — not-green: still red — Fixable: true — log: TASK 3: not-green",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("Gaps: 2");
+    expect(r.err).toContain("1 gap line");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision ticks nothing for a title that only mentions a task", async () => {
+    const text = planText(group(1, task(1), task(2)));
+    const plan = write("mention.md", text);
+    const decision = write(
+      "decision.md",
+      decisionFile(["No test covers the retry path that task 2 adds", "Accept — minor"]),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([]);
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision still refuses a --tasks number from another group", async () => {
+    const text = planText(group(1, task(1)), group(2, task(9)));
+    const plan = write("decision-other-group.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=9",
+      `--decision=${decision}`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("TASK 9 is in group 2, not group 1");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision still refuses an unknown --tasks number", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("decision-unknown.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run([
+      "tick",
+      `--plan=${plan}`,
+      "--group=1",
+      "--tasks=7",
+      `--decision=${decision}`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("has no TASK 7");
+    expect(read(plan)).toBe(text);
+  });
+
+  /** A decision file whose header block is `header`, with one accepted `Task 1 gap` item. */
+  const headed = (...header: string[]) =>
+    [
+      ...header,
+      "",
+      "**Q1 — Task 1 gap:** accept it?",
+      "Options: A) Accept / B) Fix now",
+      "Recommended: A) Accept — minor",
+      "Decision: Accept — minor",
+      "",
+    ].join("\n");
+
+  it.each([
+    ["no From header", ["Status: DECIDED", "Group: 1"], "no From header"],
+    [
+      "a From that is not verify or holistic",
+      ["Status: DECIDED", "From: challenge", "Group: 1"],
+      'From is "challenge", not verify or holistic',
+    ],
+    [
+      "a Gate: FAIL header",
+      ["Status: DECIDED", "From: verify", "Group: 1", "Gate: FAIL"],
+      "Gate: FAIL",
+    ],
+    [
+      "a verify Group that differs from --group",
+      ["Status: DECIDED", "From: verify", "Group: 2"],
+      'Group is "2", not group 1',
+    ],
+    ["a verify file with no Group header", ["Status: DECIDED", "From: verify"], "no Group header"],
+  ])("tick --decision refuses %s", async (_name, header, problem) => {
+    const text = planText(group(1, task(1)), group(2, task(2)));
+    const plan = write("refused.md", text);
+    const decision = write("decision.md", headed(...header));
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(problem);
+    expect(read(plan)).toBe(text);
+  });
+
+  it("tick --decision ticks a holistic file's accepted tasks across groups without --group", async () => {
+    const plan = write("holistic.md", planText(group(1, task(1), task(2)), group(2, task(3))));
+    const decision = write(
+      "decision.md",
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: holistic",
+        "Pause step: 10",
+        "",
+        "**Q1 — Task 1:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+        "**Q2 — Task 3:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept (assumed) — headless",
+        "",
+        "**Q3 — Cross-group wiring is missing:** accept it?",
+        "Options: A) Accept / B) Fix now",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 3]);
+    expect([tickOf(read(plan), 1), tickOf(read(plan), 2), tickOf(read(plan), 3)]).toEqual([
+      "x",
+      " ",
+      "x",
+    ]);
+    const again = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(again.code).toBe(0);
+    expect(again.json.ticked).toEqual([]);
+  });
+
+  it("tick --decision still needs --group for a verify file", async () => {
+    const text = planText(group(1, task(1)));
+    const plan = write("verify-no-group.md", text);
+    const decision = write("decision.md", decisionFile(["Task 1 gap", "Accept — minor"]));
+    const r = await run(["tick", `--plan=${plan}`, `--decision=${decision}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--group");
+    expect(read(plan)).toBe(text);
+  });
+
   it("gappedTasks still reads a report whose Gaps section is empty", async () => {
     const plan = write("empty-gaps.md", planText(group(1, task(1), task(2))));
     const green = write(

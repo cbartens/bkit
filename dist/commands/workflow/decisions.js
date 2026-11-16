@@ -299,7 +299,11 @@ export const decisionsCommand = {
                 },
                 { name: "file", type: "string", help: "status.jsonl, with --loop" },
                 { name: "group", type: "string", help: "with --loop=verify: the task group" },
-                { name: "attempt", type: "string", help: "with --loop: the attempt just failed" },
+                {
+                    name: "attempt",
+                    type: "string",
+                    help: "with --loop: the attempt just failed; one above --max (the round the limit refused) prints as --max",
+                },
                 { name: "max", type: "string", help: "with --loop: the point's maxAttempts" },
                 {
                     name: "base-check",
@@ -342,13 +346,16 @@ export const decisionsCommand = {
                     // A grouped gate counts only for a named group.
                     const gate = loopGateStep(loop, group) === undefined ? undefined : loop.gate;
                     const p = loopProgress(path.resolve(ctx.cwd, String(ctx.flags.file)), ctx.cwd, "build", loop.check, loop.fix, group, loop.sinceClean === true, gate);
-                    const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
                     const max = str(ctx.flags.max) ?? "?";
                     const changed = p.codeChanged === null ? "unknown" : p.codeChanged ? "yes" : "no";
                     loopRecommended = p.recommend === "stop" ? "Decide" : "Try again";
-                    const attemptNum = Number(attempt);
+                    const given = str(ctx.flags.attempt) ?? String(p.rounds.length);
+                    const attemptNum = Number(given);
                     const maxNum = Number(max);
                     const limitUsed = Number.isFinite(attemptNum) && Number.isFinite(maxNum) && attemptNum >= maxNum;
+                    // An attempt above max is the round the limit refused (`counters route ... :next`
+                    // exits 1 with max + 1), so the rounds run are max.
+                    const attempt = limitUsed && attemptNum > maxNum ? max : given;
                     const trendReason = p.trend === "unknown"
                         ? limitUsed
                             ? `the limit is used up and the counts cannot show whether the rounds helped (${p.trendLine})`

@@ -368,7 +368,7 @@ Tick a plan's task boxes, from the tasks a verify judged satisfied.
 <!-- prettier-ignore -->
 | Verb | Use | Flags | What it does |
 | --- | --- | --- | --- |
-| `tick` | workflow | **`--plan`** **`--group`** `--tasks` `--decision` `--green` | Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, or a `--green` report with no Gaps section. |
+| `tick` | workflow | **`--plan`** `--group` `--tasks` `--decision` `--green` | Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, a `--green` report with no Gaps section or fewer gap lines than its `Gaps:` header, or a `--decision` file that is not a verify or holistic pause of this group with a green gate. |
 | `open` | by hand | **`--plan`** **`--group`** **`--log`** | Print the group's tasks holding neither a `DONE` nor a `BLOCKED` line in the plan-execute log, and whether any is open; exit 0 (including none), 1 a plan with no task blocks, 2 a missing file or group. |
 | `currency` | by hand | **`--plan`** `--base` `--against` | Print each task whose CREATE / READ / UPDATE / DELETE paths or symbols moved between --base and --against, with its matched paths, needles and diff hunks (run logs under docs/plans/*/logs/ are left out); exit 0 (including no match), 1 a plan with no task blocks, 2 a bad plan. |
 

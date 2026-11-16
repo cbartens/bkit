@@ -25,6 +25,7 @@ import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } from "../../ledgers/status.js";
 import { classifyLockOutcome, CommandError, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, readLockStatus, runGit, wholeNumber, } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
 import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
@@ -1306,7 +1307,7 @@ function writeAuditReport(log, o) {
     if (o.gaps.length === 0)
         out.push("None.");
     for (const g of o.gaps)
-        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${g.detail} — Fixable: ${g.fixable} — log: ${g.logLine}`);
+        out.push(`- ${g.task === null ? "Plan" : `Task ${g.task}`} \`${g.kind}\` — ${oneLine(g.detail)} — Fixable: ${g.fixable} — log: ${g.logLine}`);
     if (o.exceptions.length > 0)
         out.push("", "## Test exceptions", "");
     for (const e of o.exceptions)
