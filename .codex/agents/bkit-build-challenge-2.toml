@@ -2,7 +2,7 @@
 name = "bkit-build-challenge-2"
 description = "Veteran security researcher probing diffs for auth holes, exploits and data exposure."
 model = "gpt-6-astra"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 **Role:** Veteran security researcher probing diffs for auth holes, exploits and data exposure.
 **Scope:** The input and the Read / Update / Create section set the scope.

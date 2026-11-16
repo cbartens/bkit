@@ -1,7 +1,7 @@
 ---
 name: bkit-design-brainstorm-ideate-2
 description: Senior architect proposing 2-3 long-term design approaches with explicit trade-offs.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

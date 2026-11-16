@@ -2,7 +2,7 @@
 name = "bkit-design-review-2"
 description = "Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics."
 model = "gpt-6.1-sol"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 **Role:** Senior engineer assessing operability of designs — failure modes, observability, on-call ergonomics.
 **Scope:** The input and the Read / Update / Create section set the scope.

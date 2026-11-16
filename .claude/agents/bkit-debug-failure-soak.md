@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-soak
 description: Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
-effort: high
+effort: xhigh
 model: claude-opus-5-5
 tools:
   - Read

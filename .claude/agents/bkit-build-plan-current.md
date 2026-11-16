@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
-effort: high
+effort: xhigh
 model: claude-opus-5-5
 tools:
   - Read

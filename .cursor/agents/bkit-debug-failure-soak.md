@@ -2,7 +2,7 @@
 name: bkit-debug-failure-soak
 description: Senior debug engineer soaking unknown-cause runtime failures — one accumulating-context instrument-and-fix step per iteration.
 model: cursor-grok-4.5-high
-effort: high
+effort: xhigh
 tools:
   - Read
   - Grep

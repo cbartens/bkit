@@ -2,7 +2,7 @@
 name = "bkit-ship-deferred-sweep"
 description = "Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work."
 model = "gpt-6-astra"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 **Role:** Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
 **Scope:** The input and the Read / Update / Create section set the scope.

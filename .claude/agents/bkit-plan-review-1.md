@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-review-1
 description: Senior reviewer prioritising plan tightness, task dependency order, and design-coverage.
-effort: high
+effort: xhigh
 model: claude-opus-5-5
 tools:
   - Read

@@ -2,7 +2,7 @@
 name: bkit-build-plan-convert
 description: Senior engineer turning an issue or a free-form plan into a plan in task-block form.
 model: gemini-4-argon
-effort: medium
+effort: high
 tools:
   - view_file
   - grep_search

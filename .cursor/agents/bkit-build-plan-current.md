@@ -2,7 +2,7 @@
 name: bkit-build-plan-current
 description: Senior reviewer judging whether changes landed since the plan was written leave it executable.
 model: cursor-grok-4.5-high
-effort: high
+effort: xhigh
 tools:
   - Read
   - Grep

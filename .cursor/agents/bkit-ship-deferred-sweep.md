@@ -2,7 +2,7 @@
 name: bkit-ship-deferred-sweep
 description: Senior reviewer gating ships on intended-vs-actual completeness and resurfacing declared deferred work.
 model: cursor-grok-4.5-high
-effort: high
+effort: xhigh
 tools:
   - Read
   - Grep

@@ -2,7 +2,7 @@
 name = "bkit-design-brainstorm-ideate-2"
 description = "Senior architect proposing 2-3 long-term design approaches with explicit trade-offs."
 model = "gpt-6.1-sol"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 developer_instructions = """
 **Role:** Senior architect proposing 2-3 long-term design approaches with explicit trade-offs.
 **Scope:** The input and the Read / Update / Create section set the scope.

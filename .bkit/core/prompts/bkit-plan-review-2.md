@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-review-2
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-effort: high
+effort: xhigh
 model: claude-opus-5-5
 tools:
   - Read

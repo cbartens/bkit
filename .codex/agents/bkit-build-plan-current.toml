@@ -2,7 +2,7 @@
 name = "bkit-build-plan-current"
 description = "Senior reviewer judging whether changes landed since the plan was written leave it executable."
 model = "gpt-6-astra"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 **Role:** Senior reviewer judging whether changes landed since the plan was written leave it executable.
 **Scope:** The input and the Read / Update / Create section set the scope.

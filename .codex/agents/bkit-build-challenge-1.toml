@@ -2,7 +2,7 @@
 name = "bkit-build-challenge-1"
 description = "Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths."
 model = "gpt-6-astra"
-model_reasoning_effort = "high"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 **Role:** Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 **Scope:** The input and the Read / Update / Create section set the scope.

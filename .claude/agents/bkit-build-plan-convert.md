@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-convert
 description: Senior engineer turning an issue or a free-form plan into a plan in task-block form.
-effort: medium
+effort: high
 model: claude-sonnet-5-5
 tools:
   - Read

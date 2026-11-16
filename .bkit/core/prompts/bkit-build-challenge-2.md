@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits and data exposure.
-effort: high
+effort: xhigh
 model: claude-opus-5-5
 tools:
   - Read
