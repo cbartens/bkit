@@ -237,10 +237,10 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   it("concurrency.group dispatch path keys on inputs.issue (bare issue number)", () => {
     const out = rawTemplate;
     // Dispatch surface: group expression must use inputs.issue so concurrent dispatched
-    // runs for the same issue cancel each other.
+    // runs for the same issue queue behind each other.
     expect(out).toMatch(/group:.*inputs\.issue/);
-    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-auto-"));
-    expect(groupLine).toBeDefined();
+    const groupLine = parseYaml(out).concurrency.group as string;
+    expect(groupLine).toContain("bkit-auto-");
     expect(groupLine).toContain("inputs.issue");
     // No invalid replace() call — remove() is not a GHA expression function.
     expect(groupLine).not.toContain("replace(");
@@ -249,12 +249,12 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   it("concurrency.group CI-completion path keys on head_branch (full slugged branch name)", () => {
     const out = rawTemplate;
     // CI-completion surface: group expression must use head_branch directly, so concurrent
-    // CI runs for the same branch (e.g. feat/141-cloud-app) cancel each other.
+    // CI routes for the same branch (e.g. feat/141-cloud-app) queue behind each other.
     // A real slugged FID like feat/141-cloud-app keys on the full branch — not a
     // stripped token (replace() cannot reduce '141-cloud-app' to '141').
     expect(out).toMatch(/group:.*github\.event\.workflow_run\.head_branch/);
-    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-auto-"));
-    expect(groupLine).toBeDefined();
+    const groupLine = parseYaml(out).concurrency.group as string;
+    expect(groupLine).toContain("bkit-auto-");
     expect(groupLine).toContain("github.event.workflow_run.head_branch");
     // No replace() — the prior STANDARD attempt's replace() was invalid for slugged FIDs.
     expect(groupLine).not.toContain("replace(");
@@ -272,6 +272,80 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     const stripped = ciBranch.replace("feat/", "");
     expect(stripped).toBe("141-cloud-app"); // NOT '141'
     expect(stripped).not.toBe("141");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A run that will do nothing must not share a group with a run that is working, and
+// no run in flight is ever cancelled. The workflow-level group repeats every
+// CI-driven condition of the `context` job `if`; anything failing them lands in a
+// `skip-<run_id>` group of its own.
+// ---------------------------------------------------------------------------
+
+/** Splits an expression on `&&` that sit outside any parentheses. */
+function splitTopLevelAnd(expr: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (let i = 0; i < expr.length; i += 1) {
+    const ch = expr[i];
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (depth === 0 && expr.startsWith("&&", i)) {
+      parts.push(current.trim());
+      current = "";
+      i += 1;
+    } else {
+      current += ch;
+    }
+  }
+  parts.push(current.trim());
+  return parts.filter((p) => p.length > 0);
+}
+
+const squash = (v: string) => v.replace(/\s+/g, " ").trim();
+
+describe("bkit-cloud.yml — a do-nothing run never shares a group with a working run", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..", "..", "..", "..");
+  const files = [
+    ".bkit/templates/.github/workflows/bkit-cloud.yml",
+    ".github/workflows/bkit-cloud.yml",
+  ];
+
+  describe.each(files)("%s", (file) => {
+    const doc = parseYaml(fs.readFileSync(path.join(pkgRoot, file), "utf-8")) as {
+      concurrency: { group: string; "cancel-in-progress": unknown };
+      jobs: Record<string, { if?: string; concurrency?: { "cancel-in-progress": unknown } }>;
+    };
+
+    /** The CI-driven conditions of the context job `if` (the dispatch arm removed). */
+    const ciConditions = (): string[] => {
+      const ifExpr = squash(doc.jobs.context.if ?? "");
+      const arm = /\|\|\s*\((.*)\)\s*$/.exec(ifExpr)?.[1];
+      expect(arm, "context `if` has a CI-driven arm after the dispatch arm").toBeDefined();
+      return splitTopLevelAnd(arm ?? "");
+    };
+
+    it("the context `if` has four CI-driven conditions", () => {
+      expect(ciConditions()).toHaveLength(4);
+    });
+
+    it("the workflow-level group repeats every CI-driven condition of the context `if`", () => {
+      const group = squash(doc.concurrency.group);
+      for (const condition of ciConditions()) {
+        expect(group, condition).toContain(condition);
+      }
+    });
+
+    it("the group falls back to skip-<run_id> for a run that does nothing", () => {
+      expect(squash(doc.concurrency.group)).toContain("format('skip-{0}', github.run_id)");
+    });
+
+    it("never cancels a run in flight (workflow level and Codex job)", () => {
+      expect(doc.concurrency["cancel-in-progress"]).toBe(false);
+      expect(doc.jobs.codex.concurrency?.["cancel-in-progress"]).toBe(false);
+    });
   });
 });
 
