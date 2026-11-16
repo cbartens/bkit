@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-15T20:25:01Z)_
+_(refreshed 2026-11-16T07:48:11Z)_
 
 ### Design
 
@@ -50,7 +50,6 @@ _(refreshed 2026-11-15T20:25:01Z)_
 | 894-show-progress-line | 894-show-progress-line | 1794294803514 |
 | 895-one-question-format | 895-one-question-format | 1794222208628 |
 | 902-show-every-choice | 902-show-every-choice | 1794355307817 |
-| 914-build-planned-test | 914-build-planned-test | 1794354847222 |
 
 ### Build
 
@@ -62,6 +61,7 @@ _(refreshed 2026-11-15T20:25:01Z)_
 | 864-move-project-docs | 864-move-project-docs | 1794355539739 |
 | 891-build-gate-stuck | 891-build-gate-stuck | 1794381380980 |
 | 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
+| 914-build-planned-test | 914-build-planned-test | 1794815291907 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
 
 ### Debug

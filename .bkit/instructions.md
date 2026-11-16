@@ -1155,7 +1155,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:458`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:459`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1252,7 +1252,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:458`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:459`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1674,7 +1674,7 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:105`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-build-plan-gaps-remediate:106`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -10239,7 +10239,7 @@ Record the reds, before any task code exists:
 **If** exit 3 → the repo declares no `bkit:test:file` script; test-first is not enforced → step 7.
 **If** exit 1 **and** `WRITE_RETRIED` is not held for `GROUP` → a planned test passes, is absent from its report, fails lint or is missing: `WRITE_RETRIED` = `GROUP`, `RED_REPORT` = `docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md` → step 3.
 **If** exit 1 → the gaps stand and the run goes on; `tests green` lists each as `unproven`, and the owner answers them once, at Step 15 → step 7.
-**If** exit 11 → the code step edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-tasks` again with `"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or log its task BLOCKED in '<reask.artifact>'. Do not redo other tasks."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+**If** exit 11 → the code step edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-tasks` again with ``"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or, when a correct code change forces the edit, keep it and append the line BLOCKED — TASK {N}: test `{file}` `{name}` — {why} to '<reask.artifact>', then append DONE — TASK {N} again. Do not redo other tasks."`` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 Read the group's open tasks:
 **If** `TASKS_RESUMED` is not held for `GROUP` **and** either `TASKS_VERDICT` = HANDOVER **or** `TASKS_HANDOVER` = true → the agent stopped at its turn cap. This is a handover, not a failed attempt:
 `TASKS_RESUMED` = `GROUP`.
@@ -10281,7 +10281,7 @@ Read status.jsonl and derive the next `STRATEGY`:
 **If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
 **If** exit 0, 1 or 3 → re-run Step 8: the next verify round judges the restored diff, and a test the restore left unproven waits for Step 15 like any other.
 Finish. The command records the header's `Strategy`:
-**If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with `"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Correct the Fixed count and verdict in your log to match."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
+**If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with ``"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or, when a correct code change forces the edit, keep it and append the line BLOCKED — Gap {N}: test `{file}` `{name}` — {why} to your log, then append DONE — Gap {N} again. Correct the Fixed count and verdict in your log to match."`` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 Check that the attempt changed source files, not only logs and ledgers:
 Strategy computed before invocation
 Verify round read back on resume
@@ -10324,9 +10324,9 @@ Tests executed
 Exhausted test loop asked in a session, or sent to the Failure Path
 Finish, then re-run Step 12:
 Strategy read before invocation
-Ask once about the planned tests that never failed before their code existed. **Skip if** a `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` file holds the line `Question: UNPROVEN`, because the owner already answered them this run → sub-step 2.
-**If** exit >= 2 → **Failure Path**. Hold `unproven` as `UNPROVEN_TESTS`.
-**If** `UNPROVEN_TESTS` is not empty → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `UNPROVEN` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
+Ask once about the planned tests a code step changed, then once about the planned tests that never failed before their code existed. **Skip if** `docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-*.md` files hold both the line `Question: CHANGED_TESTS` and the line `Question: UNPROVEN`, because the owner already answered both this run → sub-step 2.
+**If** exit >= 2 → **Failure Path**. Hold `changed` as `CHANGED_TESTS` and `unproven` as `UNPROVEN_TESTS`.
+**If** `UNPROVEN_TESTS` is not empty **and** no decision file holds the line `Question: UNPROVEN` → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `UNPROVEN` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
 **Else** → sub-step 2.
 Write `build-summary.md` from this run's status rows and the plan's tasks:
 **If** `PUBLISH` = false → sub-step 5.
@@ -10364,6 +10364,9 @@ Re-read the issue's labels after the push, for the kill-switch check:
 Labels re-read before the close commit
 Lock released
 PR created
+**If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept the change?`
+**If** `CHANGED_TESTS` is not empty **and** no decision file holds the line `Question: CHANGED_TESTS` → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `CHANGED_TESTS` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
+Changed planned tests asked once, or none left
 ```
 
 #### bkit-debug
@@ -11077,6 +11080,7 @@ Honour the brief's `Reuse Inventory rows` and `Architecture entries`:
 `PASS` = every pending task has a `DONE` log entry, and local lint and typecheck pass.
 `HANDOVER` = at least one pending task has neither a `DONE` nor a `BLOCKED` log entry, whether or not another task ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
 `FAIL` = every pending task has a `DONE` or `BLOCKED` log entry, and at least one of these holds: a task ends `BLOCKED` with no later `DONE`, **or** local lint or typecheck fails.
+**If** a correct code change forces an edit to a planned test (for example new setup lines, with the assertions unchanged) → keep the edit and finish the task's code first. Then append ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` (why the change is needed) and the task's `DONE` line, because `tasks open` counts any `BLOCKED` line as closed. Formatting a planned test file (for example `prettier --write`) counts as an edit. A `BLOCKED` line lets through only a change that adds lines to the test's own lines: a change that removes or rewrites any of the test's lines is refused, whatever the line says. The engine lets an adding change through, and the owner answers the change at the end of the build.
 ```
 
 #### bkit-build-plan-gaps-remediate
@@ -11105,6 +11109,7 @@ Fix those files in the same pass as the failure.
 **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
 Never end on `PASS` from targeted test runs alone.
 `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up.
+**If** your fix forces a planned test to change (new setup lines, say, with the assertions unchanged) → keep that change, and finish the fix's code first. Then append ``BLOCKED — Gap {N}: test `{file}` `{name}` — {why}`` (why the change is needed) and the gap's `DONE` line. Running a formatter such as `prettier --write` over a planned test file is a change too. Under a `BLOCKED` line the engine passes a fix that only adds lines to the test's own lines; a fix that removes or rewrites any of the test's lines is refused, whatever the line says. The owner answers it at the end of the build.
 ```
 
 #### bkit-build-plan-tests
@@ -11122,8 +11127,9 @@ Its `Derived Test Matrix rows` say what each test asserts.
 **If** the log already holds `WROTE` or `PASSES` for a test → skip that test.
 **If** a red report is supplied → it names the tests whose red the engine could not prove, each with the state it found (`vacuous`, `missing`, `no-report`, `lint`). Rewrite only those tests, as the state says: a `vacuous` test passed with nothing to test, so make it reach the planned behaviour; a `missing` or `no-report` test is not at the file and name the entry gives; a `lint` test fails `bkit:lint:file`.
 **If** the caller asks you to restore tests instead of supplying a brief (verify logged each one `test-loosened`) → for each test named:
-Read its `Updated tests` entry in the supplied green report. The entry's diff shows the test's own lines at `base` against the lines now.
-Put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+Read its `Updated tests` or `Changed by a code step` entry in the supplied green report. The entry's diff shows the test's own lines at its baseline against the lines now.
+**If** the entry is an `Updated tests` one → put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+**Else** (a `Changed by a code step` entry) → remove each added line that disables or loosens the test, so the restored test holds every baseline line of the entry's diff plus only the added lines that do not disable or loosen it.
 Keep the expectations the update added.
 Lint the file and run it, as for a test you write.
 Append ``WROTE — TASK {N}: `{file}` `{name}` `` with Bash `echo >>`.
@@ -11206,6 +11212,11 @@ Set `Verdict` from the `Fixable` values you decided, never from the report's `nu
 Put `Tasks` and `Loosened` in `judgments`, because the engine never derives them and the workflow reads them from the header.
 Put the `## Identified Gaps Log` section, with one `TASK {N}` line per gap, in `body`, because the remediate step reads it from the report.
 The engine never overrides a `Verdict` that depends on evidence: `CONCERNS` and the `Loosened` decision stay yours.
+`Changed by a code step` section → list each test and its reason in `Notes`; its entry carries the engine's line diff since its baseline, and you read the added lines of that diff the way the `Updated tests` rule reads an update.
+**If** the added lines only add setup or expectations → No gap, because the owner answers the change once, at the end of the build.
+**Else** → an added line disables or loosens the test (an early `return`, a skip, a comment pair around assertions, `expect.assertions(0)`, a reassignment of the value under test):
+**If** a supplied earlier verify report of the group already logged `test-loosened` for that test, **or** the test belongs to a task of an earlier group (the tests step cannot record a restore of it in this group) → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: false``, so the owner decides.
+**Else** → raise a `test-loosened` gap: ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: true``, and name the test on the header's `Loosened` line, which sends it back to the tests step to restore.
 ```
 
 #### bkit-debug-abort-handover
@@ -15276,7 +15287,7 @@ These are the unknowns and assumptions this plan relies on. An unresolved questi
 **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 **No gate weakened:** no gate was weakened.
 **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
-**Tests unchanged:** every planned test case matches the lines its red row recorded.
+**Tests unchanged:** every planned test case matches the lines its red row recorded, or a code step's `BLOCKED` line names the change for the owner.
 **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 [fit `audit-gate-2-verified` 0.81; keep: plan gates verify against the plan] **Gate 2 — Verified:** every box above is checked.
 **Verify test coverage against Derived Test Matrix:** each row's test is in one task's `DONE WHEN`.

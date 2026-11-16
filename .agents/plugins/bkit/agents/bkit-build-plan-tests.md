@@ -74,8 +74,9 @@ tools:
    - **If** the log already holds `WROTE` or `PASSES` for a test → skip that test.
 5. **If** a red report is supplied → it names the tests whose red the engine could not prove, each with the state it found (`vacuous`, `missing`, `no-report`, `lint`). Rewrite only those tests, as the state says: a `vacuous` test passed with nothing to test, so make it reach the planned behaviour; a `missing` or `no-report` test is not at the file and name the entry gives; a `lint` test fails `bkit:lint:file`.
    - **If** the caller asks you to restore tests instead of supplying a brief (verify logged each one `test-loosened`) → for each test named:
-     - Read its `Updated tests` entry in the supplied green report. The entry's diff shows the test's own lines at `base` against the lines now.
-     - Put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+     - Read its `Updated tests` or `Changed by a code step` entry in the supplied green report. The entry's diff shows the test's own lines at its baseline against the lines now.
+     - **If** the entry is an `Updated tests` one → put back every expectation the update removed or loosened, as it stood at `base` (`git show {base}:{file}`).
+     - **Else** (a `Changed by a code step` entry) → remove each added line that disables or loosens the test, so the restored test holds every baseline line of the entry's diff plus only the added lines that do not disable or loosen it.
      - Keep the expectations the update added.
      - Lint the file and run it, as for a test you write.
      - Append ``WROTE — TASK {N}: `{file}` `{name}` `` with Bash `echo >>`.

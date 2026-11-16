@@ -98,7 +98,14 @@ import {
   type TrackerOutcome,
 } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
-import { PLAN_TASKS_STEP, readTestFirst, runPlanPath, touchedTests } from "./tests.js";
+import {
+  blockedTests,
+  PLAN_TASKS_STEP,
+  readTestFirst,
+  runPlanPath,
+  touchedTests,
+  baselineDiff,
+} from "./tests.js";
 import { addAllButCopied } from "./worktrees.js";
 
 /**
@@ -638,6 +645,16 @@ function restoreIndex(snap: IndexSnapshot): string | null {
   return null;
 }
 
+/** The `--field` extras; `changedTests` is written by the planned-test lock alone. */
+function fieldExtras(specs: string[]): Record<string, unknown> {
+  if (specs.some((x) => x.startsWith("changedTests=")))
+    throw new CommandError(
+      EXIT.USAGE,
+      "--field cannot set changedTests; only the planned-test lock in `steps finish` writes it",
+    );
+  return Object.fromEntries(specs.map(extraField));
+}
+
 /**
  * Append one `step-done` row, then commit (parentSha first, the row, then the
  * commit — the order the fold's de-dup relies on). Returns the row and the new
@@ -1100,7 +1117,7 @@ async function finish(ctx: RunContext): Promise<number> {
   } else {
     attempt = nonNegativeInt(f.attempt, "attempt");
   }
-  const extras: Record<string, unknown> = Object.fromEntries(list(f.field).map(extraField));
+  const extras: Record<string, unknown> = fieldExtras(list(f.field));
   for (const spec of list(f.countField)) {
     const eq = spec.indexOf("=");
     if (eq <= 0)
@@ -1295,7 +1312,8 @@ async function finish(ctx: RunContext): Promise<number> {
   // ordinary code-step work the verifier reads in the diff. The holistic fix spans every group.
   if (
     workflow === "build" &&
-    (((step === PLAN_TASKS_STEP || step === PLAN_REMEDIATE_STEP) && group !== undefined) ||
+    (step === PLAN_TASKS_STEP ||
+      step === PLAN_REMEDIATE_STEP ||
       step === PLAN_REMEDIATE_HOLISTIC_STEP)
   ) {
     const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
@@ -1305,11 +1323,75 @@ async function finish(ctx: RunContext): Promise<number> {
         ? runPlanPath(path.resolve(ctx.cwd, file))
         : path.resolve(ctx.cwd, planArg);
     const plan = fs.existsSync(planFile) ? fs.readFileSync(planFile, "utf-8") : undefined;
-    const tests = touchedTests(top, file, workflow, group, plan);
+    const changed = touchedTests(top, file, workflow, plan);
+    // A BLOCKED line of the step's log naming a changed test lets it through (recorded on the
+    // row), unless an earlier record of that test already carries the line's reason.
+    const logRead = artifacts[0] ? readTextFile(path.resolve(ctx.cwd, artifacts[0])) : undefined;
+    const blocked = logRead?.ok ? blockedTests(logRead.text) : [];
+    const changedTests: Array<Record<string, unknown>> = [];
+    const tests: Array<{ test: string; name: string }> = [];
+    /** Why each refused test is refused, in step with `tests`. */
+    const why: Array<{ fromChange: boolean; removed: boolean; reused: string | null }> = [];
+    for (const c of changed) {
+      const last = c.name.split(">").pop()!.trim();
+      const naming = blocked.filter(
+        (b) => b.test === c.test && (b.name === c.name || b.name === last),
+      );
+      const line = naming.find((b) => !c.reasons.includes(b.reason));
+      const diff = line === undefined ? null : baselineDiff(top, c.text, c.test, c.name);
+      // A test gone from the file (or renamed) against a recorded baseline removes its lines.
+      const removes = diff === null ? c.text !== null : !diff.additive;
+      if (line === undefined || removes) {
+        tests.push({ test: c.test, name: c.name });
+        why.push({
+          fromChange: c.fromChange,
+          removed: line !== undefined,
+          reused: line === undefined ? (naming[0]?.reason ?? null) : null,
+        });
+      } else {
+        const after = git(top, ["hash-object", "-w", "--", c.test]);
+        changedTests.push({
+          task: c.task,
+          test: c.test,
+          testName: c.name,
+          block: c.block,
+          reason: line.reason,
+          blob: c.text,
+          ...(after === null ? {} : { after }),
+        });
+      }
+    }
+    if (tests.length === 0 && changedTests.length > 0) extras.changedTests = changedTests;
     if (tests.length > 0) {
       const touched = [...new Set(tests.map((t) => t.test))];
-      const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
-      const problem = `${named} differ${tests.length === 1 ? "s" : ""} from what the group's tests step recorded at its red: a code step never edits a planned test case — put ${tests.length === 1 ? "that test" : "those tests"} back as the tests step left ${tests.length === 1 ? "it" : "them"} (other edits to the file stay), or log the task BLOCKED naming the test and what it gets wrong (nothing written)`;
+      const nameOf = (t: { test: string; name: string }) => `\`${t.test}\` "${t.name}"`;
+      const named = tests.map(nameOf).join(", ");
+      const logLines = (list: typeof tests) =>
+        list.map((t) => `BLOCKED — TASK {N}: test \`${t.test}\` \`${t.name}\` — {why}`).join("; ");
+      const part = (fromChange: boolean) => {
+        const list = tests.filter((_, i) => why[i]!.fromChange === fromChange);
+        if (list.length === 0) return "";
+        const many = list.length > 1;
+        const subject = `${list.map(nameOf).join(", ")} differ${many ? "" : "s"} from`;
+        const them = many ? "those tests" : "that test";
+        const it = many ? "them" : "it";
+        return fromChange
+          ? `${subject} the change a code step already recorded for ${many ? "them" : "it"} (changedTests): put ${them} back as that recorded change left ${it}, or keep the edit and log one line per test in the step's log: ${logLines(list)}`
+          : `${subject} what the group's tests step recorded at its red: a code step never edits a planned test case — put ${them} back as the tests step left ${it} (other edits to the file stay), or keep the edit and log one line per test in the step's log: ${logLines(list)}`;
+      };
+      const notes: string[] = [];
+      for (const [i, t] of tests.entries()) {
+        const w = why[i]!;
+        if (w.removed)
+          notes.push(
+            `${nameOf(t)}: the engine refuses a BLOCKED-named change that removes a line of a planned test; it lets through only a change that adds lines, and verify reads every added line`,
+          );
+        if (w.reused !== null)
+          notes.push(
+            `${nameOf(t)}: the BLOCKED line's reason "${w.reused}" is already recorded for that test — log a new reason`,
+          );
+      }
+      const problem = `${[part(false), part(true)].filter(Boolean).join(" | ")}${notes.length ? ` (${notes.join("; ")})` : ""} (Gap {N} in a gaps fix) (nothing written)`;
       ctx.log(problem);
       recordTestLockFriction(top, step, named);
       ctx.emit({
@@ -1880,7 +1962,7 @@ export const stepsCommand: CommandSpec = {
             group,
             strategy,
             artifacts,
-            extras: Object.fromEntries(list(f.field).map(extraField)),
+            extras: fieldExtras(list(f.field)),
             parentSha: str(f.parentSha),
             commit: commit as "auto" | "none",
             message: str(f.message),
@@ -1970,7 +2052,7 @@ export const stepsCommand: CommandSpec = {
         {
           name: "plan",
           type: "string",
-          help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto)`,
+          help: `${PLAN_TESTS_STEP}: the plan file whose TEST FIRST lines bound the step's commit (required there with --commit=auto); the code steps: the plan whose TEST FIRST lines name the planned tests the lock checks (default: the plan beside the status file)`,
         },
         ...COMMIT_FLAGS.map((c) =>
           c.name === "message"
@@ -2064,7 +2146,7 @@ export const stepsCommand: CommandSpec = {
         [EXIT_OUTSIDE_DOCS]:
           "--docs-only and the step staged a file outside the artifact tree (nothing written)",
         [EXIT_TESTS_TOUCHED]:
-          "build plan-execute / plan-gaps-remediate: a planned test case of the group differs from the lines its tests step recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back or log the task BLOCKED; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
+          "build plan-execute / plan-gaps-remediate: a planned test case (of any group) differs from the lines recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back, or to keep the edit and log ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` (Gap {N} in a gaps fix) in the step's log, which lets that change through and records it in the row's `changedTests`; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
         [EXIT_LATER_ATTEMPT]:
           "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
         [EXIT_WORKFLOWS_CHANGED]:

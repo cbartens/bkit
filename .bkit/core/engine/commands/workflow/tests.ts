@@ -315,30 +315,147 @@ export interface TouchedTest {
   name: string;
 }
 
+/** A changed planned test, with what `finish` records when a BLOCKED line lets it through. */
+export interface TouchedDetail extends TouchedTest {
+  task: number;
+  /** The test's current block hash; null when no line names it. */
+  block: string | null;
+  /** The blob of the baseline's text (the red's blob, or a change record's `after`); null when unknown. */
+  text: string | null;
+  /** The blob of the first baseline of the chain (the red's, or the first change's `blob`). */
+  origin: string | null;
+  /** True when the baseline is a code step's `changedTests` record. */
+  fromChange: boolean;
+}
+
+/** The lock's baseline for one planned test: its latest red or recorded change. */
+export interface LockBaseline extends RedTest {
+  /** Every reason a code step's `changedTests` record carried for this test, in order. */
+  reasons: string[];
+  /** True when the newest record for this test is a code step's `changedTests` entry. */
+  fromChange: boolean;
+  /** The blob of the baseline's text; null when unknown. */
+  text: string | null;
+  /** The blob of the chain's first baseline (what `tests green` diffs against); null when unknown. */
+  origin: string | null;
+}
+
 /**
- * The planned tests of `group` (every group when undefined) a code step changed since their red: a test whose own lines
- * (`testBlock`) no longer hash to the recorded block. A row with no block (written before
- * per-test locking, or when no line carried the name) derives the block from the recorded
- * blob; when that holds no block either, the whole file's blob is compared. Other edits to a
- * test file are free. With `plan` (the plan's text), only records of tests a `TEST FIRST`
- * line still names are checked: a name the plan dropped locks nothing.
+ * The lock's baseline per planned test, from the status rows in order: every `build-tests-red`
+ * entry (a proven red is never replaced by an unproven result for the same lines) and every
+ * `changedTests` record of a code step; the latest per key wins. `planned` (the plan-named key
+ * set) limits the keys; null keeps them all.
+ */
+export function lockBaselines(
+  rows: Array<Record<string, unknown>>,
+  planned: Set<string> | null,
+): Map<string, LockBaseline> {
+  const out = new Map<string, LockBaseline>();
+  /** The newest blob any red recorded per test file (a later tests step's additions included). */
+  const newestBlob = new Map<string, string>();
+  for (const row of rows) {
+    if (row.type !== "step-done") continue;
+    if (row.step === RED_STEP && typeof row.group === "number") {
+      for (const t of redTestsOf(row)) {
+        if (t.blob !== null) newestBlob.set(t.test, t.blob);
+        const key = redKey(t.task, t.test, t.testName);
+        if (planned !== null && !planned.has(key)) continue;
+        const earlier = out.get(key);
+        const keepsProof =
+          earlier !== undefined &&
+          RED_PROVEN.has(earlier.state) &&
+          !RED_PROVEN.has(t.state) &&
+          typeof earlier.block === "string" &&
+          earlier.block === t.block;
+        if (!keepsProof)
+          out.set(key, {
+            ...t,
+            reasons: earlier?.reasons ?? [],
+            fromChange: false,
+            text: t.blob,
+            origin: t.blob,
+          });
+      }
+    }
+    if (CODE_STEPS.has(String(row.step)) && Array.isArray(row.changedTests)) {
+      for (const c of row.changedTests as Array<Record<string, unknown>>) {
+        if (typeof c.task !== "number" || typeof c.test !== "string") continue;
+        if (typeof c.testName !== "string") continue;
+        if (typeof c.reason !== "string" || c.reason === "") continue;
+        const key = redKey(c.task, c.test, c.testName);
+        if (planned !== null && !planned.has(key)) continue;
+        const earlier = out.get(key);
+        out.set(key, {
+          task: c.task,
+          test: c.test,
+          testName: c.testName,
+          state: "red",
+          blob: null,
+          block: typeof c.block === "string" ? c.block : null,
+          fromChange: true,
+          text: typeof c.after === "string" ? c.after : null,
+          origin: earlier?.origin ?? (typeof c.blob === "string" ? c.blob : null),
+          reasons: [
+            ...(earlier?.reasons ?? []),
+            ...(typeof c.reason === "string" ? [c.reason] : []),
+          ],
+        });
+      }
+    }
+  }
+  // A test no line names (block null) is locked by its whole file, against the file's newest red blob.
+  for (const b of out.values()) {
+    const blob = newestBlob.get(b.test);
+    if (b.fromChange || b.block !== null || blob === undefined || b.blob === null) continue;
+    b.blob = blob;
+    b.text = blob;
+    b.origin = blob;
+  }
+  return out;
+}
+
+/** The code steps whose `changedTests` records move the lock's baseline. */
+const CODE_STEPS = new Set([
+  "build-plan-tasks",
+  "build-plan-gaps-remediate",
+  "build-plan-gaps-remediate-holistic",
+]);
+
+/** The status rows of one workflow. */
+export const workflowRows = (file: string, workflow: string) =>
+  fs.existsSync(file)
+    ? (readStatusRows(file) as Array<Record<string, unknown>>).filter(
+        (r) => r.workflow === workflow,
+      )
+    : [];
+
+/** The key set of the tests a plan's `TEST FIRST` lines name (done tasks included), or null with no plan. */
+function plannedKeys(plan: string | undefined): Set<string> | null {
+  return plan === undefined
+    ? null
+    : new Set(
+        readTestFirst(plan).flatMap((s) =>
+          s.kind === "test" ? s.tests.map((t) => redKey(s.task, t.test, t.name)) : [],
+        ),
+      );
+}
+
+/**
+ * The planned tests (every group) a code step changed since their baseline (`lockBaselines`): a
+ * test whose own lines (`testBlock`) no longer hash to the recorded block. A record with no
+ * block (written before per-test locking, or when no line carried the name) derives the block
+ * from the recorded blob; when that holds no block either, the whole file's blob is compared.
+ * Other edits to a test file are free. With `plan` (the plan's text), only tests a `TEST FIRST`
+ * line still names are checked: a name the plan dropped locks nothing. Each result carries the
+ * test's task, its current block and the reasons already recorded, for `finish`.
  */
 export function touchedTests(
   top: string,
   file: string,
   workflow: string,
-  group: number | undefined,
   plan?: string,
-): TouchedTest[] {
-  const planned =
-    plan === undefined
-      ? null
-      : new Set(
-          readTestFirst(plan).flatMap((s) =>
-            s.kind === "test" ? s.tests.map((t) => redKey(s.task, t.test, t.name)) : [],
-          ),
-        );
-  const touched: TouchedTest[] = [];
+): Array<TouchedDetail & { reasons: string[] }> {
+  const touched: Array<TouchedDetail & { reasons: string[] }> = [];
   const texts = new Map<string, string | null>();
   const textOf = (test: string) => {
     if (!texts.has(test)) {
@@ -347,19 +464,51 @@ export function touchedTests(
     }
     return texts.get(test)!;
   };
-  for (const t of redEntries(file, workflow, group).values()) {
-    if (planned !== null && !planned.has(redKey(t.task, t.test, t.testName))) continue;
+  for (const t of lockBaselines(workflowRows(file, workflow), plannedKeys(plan)).values()) {
+    const now = blockHash(textOf(t.test), t.testName);
+    const hit = () =>
+      touched.push({
+        test: t.test,
+        name: t.testName,
+        task: t.task,
+        block: now,
+        reasons: t.reasons,
+        text: t.text,
+        origin: t.origin,
+        fromChange: t.fromChange,
+      });
     let block = t.block ?? null;
     if (block === null) block = blockHash(blobText(top, t.blob), t.testName);
     if (block === null) {
-      if (git(top, ["hash-object", "--", t.test]) !== t.blob)
-        touched.push({ test: t.test, name: t.testName });
+      if (t.blob === null && t.fromChange) {
+        if (now !== null && t.reasons.length > 0) hit();
+        continue;
+      }
+      if (git(top, ["hash-object", "--", t.test]) !== t.blob) hit();
       continue;
     }
-    if (blockHash(textOf(t.test), t.testName) !== block)
-      touched.push({ test: t.test, name: t.testName });
+    if (now !== block) hit();
   }
   return touched;
+}
+
+/**
+ * The line diff of the test's own lines from the baseline text `blob` to the file now, and
+ * whether it only adds lines; null when either side cannot be read.
+ */
+export function baselineDiff(
+  top: string,
+  blob: string | null,
+  test: string,
+  name: string,
+): { additive: boolean; diff: string } | null {
+  // A null blob is a red that recorded the file `missing`: every line of the test is added.
+  const was = blob === null ? "" : testBlock(blobText(top, blob), name);
+  const abs = path.join(top, test);
+  const now = fs.existsSync(abs) ? testBlock(fs.readFileSync(abs, "utf-8"), name) : null;
+  if (was === null || now === null) return null;
+  const d = lineDiff(was, now);
+  return { additive: d.removed === 0, diff: d.text };
 }
 
 /** The text a recorded blob holds, untrimmed; null when the object store lacks it. */
@@ -466,7 +615,7 @@ export function lineDiff(
   before: string,
   after: string,
 ): { text: string; removed: number; added: number } {
-  const a = before.split("\n");
+  const a = before === "" ? [] : before.split("\n");
   const b = after.split("\n");
   const lcs: number[][] = Array.from({ length: a.length + 1 }, () =>
     new Array<number>(b.length + 1).fill(0),
@@ -1337,6 +1486,17 @@ interface Unproven {
   detail: string;
 }
 
+/** A planned test a code step changed under a BLOCKED line: the owner answers it at the end of the build. */
+interface Changed {
+  task: number;
+  test: string;
+  name: string;
+  reason: string;
+  /** The test's own-line diff from its baseline; null when a side cannot be read. */
+  diff: string | null;
+  additive: boolean | null;
+}
+
 /**
  * An existing test the tests step changed: the verifier judges its diff since `base`.
  * `additive` = the test's own lines since `base` gained lines and lost none (null when
@@ -1383,6 +1543,20 @@ interface RedGap {
 interface PassesLine extends PlannedTest {
   task: number;
   reason: string;
+}
+
+/** A ``BLOCKED — {TASK N|Gap N}: test `{file}` `{name}` — {why}`` line of a code step's log. */
+export interface BlockedTest extends PlannedTest {
+  reason: string;
+}
+
+/** Every BLOCKED line of a code step's log that names a planned test, with its reason. */
+export function blockedTests(log: string): BlockedTest[] {
+  return [
+    ...log.matchAll(
+      /^BLOCKED\s*[—–-]+\s*(?:TASK|Gap)\s+\d+:\s*test\s+`([^`]+)`\s+`([^`]+)`\s*[—–-]+\s*(.+)$/gm,
+    ),
+  ].map((m) => ({ test: m[1]!.trim(), name: m[2]!.trim(), reason: m[3]!.trim() }));
 }
 
 /** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
@@ -1477,6 +1651,7 @@ function writeAuditReport(
     landed: Landed[];
     unproven: Unproven[];
     updated: Updated[];
+    changed: Changed[];
     outputs: Array<{ test: string; tail: string }>;
   },
 ): void {
@@ -1537,6 +1712,16 @@ function writeAuditReport(
     out.push(
       `- Task ${u.task} \`${u.test}\` "${u.name}" — ${u.detail}; the owner answers it at the end of the build`,
     );
+  if (o.changed.length > 0) out.push("", "## Changed by a code step", "");
+  for (const c of o.changed) {
+    out.push(
+      `- Task ${c.task} \`${c.test}\` "${c.name}" — a code step changed it under a BLOCKED line: ${c.reason}; the owner answers it at the end of the build`,
+    );
+    if (c.diff !== null) {
+      const fence = fenceFor(c.diff);
+      out.push("", `  ${fence}diff`, ...c.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
+    }
+  }
   for (const t of o.outputs) {
     const fence = fenceFor(t.tail);
     out.push("", `## Runner output — \`${t.test}\``, "", fence, t.tail, fence);
@@ -2035,7 +2220,7 @@ export const testsCommand: CommandSpec = {
         // retry, a handover or a task added to the group runs only what is left, and an edit
         // to another test of the same file costs no proof. A test whose lines could not be
         // found, and rows from before per-test locking, stand while the whole file is unchanged.
-        const proven = redEntries(status, workflow, group);
+        const proven = lockBaselines(workflowRows(status, workflow), null);
         const textOf = (test: string) => {
           const abs = path.join(top, test);
           return fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
@@ -2256,6 +2441,8 @@ export const testsCommand: CommandSpec = {
           "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no red is due for them",
         unproven:
           "[{task, test, name, detail}]: tests with no proven red (no build-tests-red row, or a state other than red, red-not-loaded, updated or passed-accepted) and no honoured TEST EXCEPTION; never a gap — the owner answers them once, at the end of the build",
+        changed:
+          "[{task, test, name, reason, diff, additive}]: plan-named tests (every group) a code step changed under a BLOCKED line naming them (the step's changedTests record), with the diff of the test's own lines since its baseline and whether it only adds lines; never a gap — the owner answers them once, at the end of the build",
         updated:
           "[{task, test, name, base, additive, diff}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; additive = the test's own lines since base gained lines and lost none (null when a side cannot be read), diff = their unified line diff; the verifier judges each diff — it may add expectations, never remove or loosen one",
         log: "where the report was written (as given)",
@@ -2289,6 +2476,20 @@ export const testsCommand: CommandSpec = {
           (resolveGate(top, [BKIT_TEST_FILE_SCRIPT]) === null
             ? `\`${BKIT_TEST_FILE_SCRIPT}\` is not declared in package.json`
             : undefined);
+        const changed: Changed[] = [
+          ...lockBaselines(workflowRows(statusFile(ctx), workflow), plannedKeys(planText)).values(),
+        ]
+          .filter((b) => b.fromChange && b.reasons.length > 0)
+          .map((b) => ({
+            task: b.task,
+            test: b.test,
+            name: b.testName,
+            reason: b.reasons.join("; "),
+            ...(() => {
+              const d = baselineDiff(top, b.origin, b.test, b.testName);
+              return { diff: d?.diff ?? null, additive: d?.additive ?? null };
+            })(),
+          }));
         const empty = {
           verdict: null,
           rows: [],
@@ -2297,6 +2498,7 @@ export const testsCommand: CommandSpec = {
           landed: [],
           unproven: [],
           updated: [],
+          changed,
           outputs: [],
         };
         if (reason !== undefined) {
@@ -2310,6 +2512,7 @@ export const testsCommand: CommandSpec = {
             alreadyLanded: [],
             unproven: [],
             updated: [],
+            changed,
             log: logArg,
           });
           ctx.log(`test-first not enforced: ${reason}`);
@@ -2476,6 +2679,7 @@ export const testsCommand: CommandSpec = {
           landed,
           unproven,
           updated,
+          changed,
           outputs,
         });
         ctx.emit({
@@ -2486,6 +2690,7 @@ export const testsCommand: CommandSpec = {
           alreadyLanded: landed,
           unproven,
           updated,
+          changed,
           log: logArg,
         });
         ctx.log(

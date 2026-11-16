@@ -94,6 +94,11 @@ autoCompactWindow: 300000
      - **If** the hit is a different thing with the same name → no gap.
      - **Else** → `Fixable: true`.
    - `Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
+   - `Changed by a code step` section → list each test and its reason in `Notes`; its entry carries the engine's line diff since its baseline, and you read the added lines of that diff the way the `Updated tests` rule reads an update.
+     - **If** the added lines only add setup or expectations → No gap, because the owner answers the change once, at the end of the build.
+     - **Else** → an added line disables or loosens the test (an early `return`, a skip, a comment pair around assertions, `expect.assertions(0)`, a reassignment of the value under test):
+       - **If** a supplied earlier verify report of the group already logged `test-loosened` for that test, **or** the test belongs to a task of an earlier group (the tests step cannot record a restore of it in this group) → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: false``, so the owner decides.
+       - **Else** → raise a `test-loosened` gap: ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: true``, and name the test on the header's `Loosened` line, which sends it back to the tests step to restore.
    - `Updated tests` section → each test is an existing test the tests step changed. Its entry carries the engine's line diff of the test's own lines since `base`, and says whether the change is additive (no line removed). Read that diff, and the supplied group diff when the entry says the lines could not be read:
      - **If** the update only adds expectations → no gap. An additive change is one unless an added line disables or overrides an earlier expectation (a skip, an early return, a reassignment).
      - **Else** → the update removes or loosens an expectation. The tests step restores it and keeps the additions, because no code step may rewrite a planned test:

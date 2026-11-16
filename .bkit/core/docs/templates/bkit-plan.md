@@ -331,7 +331,7 @@ Carry each required read and each doc update into the runbook task that needs it
 - [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 - [ ] **No gate weakened:** no gate was weakened.
 - [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
-- [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded.
+- [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded, or a code step's `BLOCKED` line names the change for the owner.
 - [ ] **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 - [ ] **Gate 2 — Verified:** every box above is checked.
 

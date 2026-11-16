@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { callWords, stepSections } from "../../checks/status-holes";
 import { COMMANDS } from "../../commands/registry";
 import { WORKFLOW_STEPS } from "../../commands/workflow/step-table";
+import { blockedTests } from "../../commands/workflow/tests";
 import { substituteWorkflow } from "../../render/trackers";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -2400,5 +2401,137 @@ describe("questions never re-run a check without a change", () => {
         `${name} offers an unexpected answer`,
       ).toEqual([]);
     }
+  });
+});
+
+describe("planned tests a code step changed", () => {
+  const prompt = (name: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "core", "prompts", `${name}.md`), "utf-8");
+  /** A BLOCKED test line form (`{N}`, `{file}`, `{name}`, `{why}`) filled in the way an agent fills it. */
+  const filled = (form: string) =>
+    form
+      .replaceAll("{N}", "1")
+      .replaceAll("{file}", "src/a.test.ts")
+      .replaceAll("{name}", "adds a row")
+      .replaceAll("{why}", "the new setup line");
+  const FORM = (kind: "TASK" | "Gap") =>
+    new RegExp(`BLOCKED — ${kind} \\{N\\}: test \`\\{file\\}\` \`\\{name\\}\` — \\{why\\}`);
+  /** The line holding the keep-and-log case (a correct code change forces a planned-test edit), with the lines under it. */
+  const keepCase = (text: string) => {
+    const lines = text.split("\n");
+    const at = lines.findIndex((l) => /\bkeep\b/i.test(l) && /\bforces?\b|\bforced\b/i.test(l));
+    expect(
+      at,
+      "no line says a code change that forces a planned-test edit keeps the edit",
+    ).toBeGreaterThanOrEqual(0);
+    return lines.slice(at, at + 5).join("\n");
+  };
+
+  it("an exit 11 re-ask offers the BLOCKED test line the engine reads", () => {
+    const reasks = workflow("build")
+      .split("\n")
+      .filter((l) => l.includes("**If** exit 11 →"))
+      .filter((l) => l.includes("planned test case"));
+    expect(reasks).toHaveLength(3);
+    const kinds = ["TASK", "Gap", "Gap"] as const;
+    reasks.forEach((line, i) => {
+      const kind = kinds[i]!;
+      const form = FORM(kind).exec(line.replaceAll("``", ""));
+      expect(form, `exit 11 re-ask ${i + 1} offers no ${kind} test line form`).not.toBeNull();
+      expect(blockedTests(filled(form![0]))).toEqual([
+        { test: "src/a.test.ts", name: "adds a row", reason: "the new setup line" },
+      ]);
+      // The agent appends its DONE line again after the BLOCKED one.
+      const after = line.slice(line.indexOf(form![0]) + form![0].length);
+      expect(after).toMatch(new RegExp(`DONE — ${kind} \\{N\\}`));
+      expect(after).toMatch(/again/);
+    });
+  });
+
+  it("Step 15 asks once about planned tests a code step changed, before the unproven ones", () => {
+    const step = stepBody(workflow("build"), /Step 15 — Summary/);
+    const skip = step.split("\n").find((l) => l.includes("**Skip if**"))!;
+    expect(skip).toContain("`Question: CHANGED_TESTS`");
+    expect(skip).toContain("`Question: UNPROVEN`");
+    expect(step).toMatch(/Hold `changed` as `CHANGED_TESTS`/);
+    const changedAt = step.indexOf("`PAUSE_QUESTION` = `CHANGED_TESTS`");
+    const unprovenAt = step.indexOf("`PAUSE_QUESTION` = `UNPROVEN`");
+    expect(changedAt).toBeGreaterThanOrEqual(0);
+    expect(unprovenAt).toBeGreaterThan(changedAt);
+    // A CHANGED_TESTS answer alone never skips `tests green`: the opening skip needs both answers.
+    expect(skip).toMatch(/both/i);
+  });
+
+  it("a changed-test item offers Accept or Stop, recommended Accept", () => {
+    const pause = section(workflow("build"), /Decision Pause/);
+    const rule = pause.split("\n").find((l) => l.includes("`PAUSE_QUESTION` = `CHANGED_TESTS`"));
+    expect(rule, "§ Decision Pause has no CHANGED_TESTS item rule").toBeDefined();
+    expect(rule).toContain('Options `["Accept", "Stop"]`');
+    expect(rule).toMatch(/recommended `Accept`/);
+  });
+
+  it("the execute prompt's BLOCKED test line is one the engine reads", () => {
+    const text = keepCase(prompt("bkit-build-plan-tasks"));
+    const form = FORM("TASK").exec(text.replaceAll("``", ""));
+    expect(form, "the keep-and-log case has no TASK test line form").not.toBeNull();
+    expect(blockedTests(filled(form![0]))).toHaveLength(1);
+    expect(text).toMatch(/DONE/);
+    expect(text).toMatch(/prettier/);
+  });
+
+  it("the remediate prompt's BLOCKED test line is one the engine reads", () => {
+    const whole = prompt("bkit-build-plan-gaps-remediate");
+    const text = keepCase(whole);
+    const form = FORM("Gap").exec(text.replaceAll("``", ""));
+    expect(form, "the keep-and-log case has no Gap test line form").not.toBeNull();
+    expect(blockedTests(filled(form![0]))).toHaveLength(1);
+    expect(text).toMatch(/DONE/);
+    expect(text).toMatch(/prettier/);
+    const log = whole.slice(whole.indexOf("## Remediation Log"));
+    expect(FORM("Gap").test(log.replaceAll("``", ""))).toBe(true);
+  });
+
+  it("a changed-test item shows the test's line diff since its baseline", () => {
+    const pause = section(workflow("build"), /Decision Pause/);
+    const rule = pause.split("\n").find((l) => l.includes("`PAUSE_QUESTION` = `CHANGED_TESTS`"));
+    expect(rule, "§ Decision Pause has no CHANGED_TESTS item rule").toBeDefined();
+    expect(rule).toMatch(/\bdiff\b/);
+    expect(rule).toMatch(/baseline/);
+  });
+
+  it("the code prompts say a BLOCKED line lets through only a change that adds lines", () => {
+    for (const name of ["bkit-build-plan-tasks", "bkit-build-plan-gaps-remediate"]) {
+      const text = keepCase(prompt(name));
+      expect(text, `${name}: no add-only guidance`).toMatch(/adds? lines|only adds|additive/i);
+      expect(text, `${name}: no refusal of removed lines`).toMatch(
+        /(removes?|rewrites?)[^.\n]*(planned test's lines|lines)[^.\n]*refused|refused[^.\n]*(removes?|rewrites?)/i,
+      );
+    }
+  });
+
+  it("the verify prompt notes a planned test a code step changed and raises no gap", () => {
+    const lines = prompt("bkit-build-plan-verify").split("\n");
+    const at = lines.findIndex((l) => l.includes("`Changed by a code step` section"));
+    expect(at, "no `Changed by a code step` section rule").toBeGreaterThanOrEqual(0);
+    const rule = lines.slice(at, at + 2).join("\n");
+    expect(rule).toContain("`Notes`");
+    expect(rule).toMatch(/No gap/);
+    expect(rule).not.toMatch(/append ``?TASK/);
+  });
+
+  it("the verify prompt reads a changed test's added lines for a skip, an early return or a reassignment", () => {
+    const lines = prompt("bkit-build-plan-verify").split("\n");
+    const at = lines.findIndex((l) => l.includes("`Changed by a code step` section"));
+    expect(at, "no `Changed by a code step` section rule").toBeGreaterThanOrEqual(0);
+    const rule = lines
+      .slice(at)
+      .join("\n")
+      .split(/\n {3}- `Updated tests`/)[0]!;
+    expect(rule).toMatch(/added lines?/);
+    expect(rule).toMatch(/\bdiff\b/);
+    expect(rule).toMatch(/early `?return/);
+    expect(rule).toMatch(/skip/);
+    expect(rule).toMatch(/reassign/);
+    expect(rule).toContain("test-loosened");
   });
 });

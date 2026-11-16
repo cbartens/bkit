@@ -2088,6 +2088,517 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(r.json.source).toEqual(["src/a.ts"]);
   });
 
+  /** The plan with group 1's task ticked (as Step 8's `tasks tick` leaves it) and a group 2 task after it. */
+  const TWO_GROUP_PLAN = [
+    PLAN.replace("- [ ] **TASK 1:**", "- [x] **TASK 1:**").trimEnd(),
+    "<!-- bkit:group 2 start -->",
+    "### GROUP 2: Others",
+    "<!-- bkit:task 2 start -->",
+    "- [ ] **TASK 2:** Add other",
+    "  - **CREATE:** `src/c.ts`: other",
+    "  - **DONE WHEN:** passes",
+    "  - **TEST FIRST:**",
+    "    - `src/c.test.ts` `does other` fails on the stub",
+    "<!-- bkit:task 2 end -->",
+    "<!-- bkit:group 2 end -->",
+    "",
+  ].join("\n");
+  const inGroup2 = (argv: string[]) => [
+    ...argv.map((a) => (a === "--group=1" ? "--group=2" : a)),
+    "--plan=plan.md",
+  ];
+
+  /** A repo whose group 1 red row stands, whose plan ticks group 1, and whose group 1 planned test is changed. */
+  function changedInOtherGroup() {
+    const cwd = planned();
+    write(cwd, "plan.md", TWO_GROUP_PLAN);
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd);
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(cwd, "src/c.ts", "export const other = 1;\n");
+    return cwd;
+  }
+
+  it("refuses the execute step when it changes another group's planned test, exit 11", async () => {
+    const cwd = changedInOtherGroup();
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("refuses the gaps-remediate step when it changes another group's planned test, exit 11", async () => {
+    const cwd = changedInOtherGroup();
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(REMEDIATE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  const blockedLine = (kind: "TASK" | "Gap", n: number, name: string, reason: string) =>
+    `BLOCKED — ${kind} ${n}: test \`${TEST.file}\` \`${name}\` — ${reason}\n`;
+  const appendTo = (cwd: string, rel: string, text: string) =>
+    fs.appendFileSync(path.join(cwd, rel), text);
+  const stepRows = (cwd: string, step: string) =>
+    fs
+      .readFileSync(path.join(cwd, STATUS), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.type === "step-done" && r.step === step);
+  /** The log of a later attempt: the first log's text, then `extra`. */
+  const copyLog = (cwd: string, from: string, to: string, extra = "") =>
+    write(cwd, to, fs.readFileSync(path.join(cwd, from), "utf-8") + extra);
+  const later = (argv: string[], from: string, to: string) => argv.map((a) => a.replace(from, to));
+  const textOfTest = (cwd: string) => fs.readFileSync(path.join(cwd, TEST.file), "utf-8");
+
+  /** The two-test file with `a` expectation lines added to the planned test and `b` to the other (changes that only add). */
+  const grown = (body: (p: string, o: string) => string, a: number, b: number) =>
+    body("1", "0")
+      .replace(
+        "    expect(addRow()).toBe(1);",
+        [
+          "    expect(addRow()).toBe(1);",
+          ...Array.from({ length: a }, (_, i) => `    expect(addRow()).toBeGreaterThan(${i});`),
+        ].join("\n"),
+      )
+      .replace(
+        "    expect(count()).toBe(0);",
+        [
+          "    expect(count()).toBe(0);",
+          ...Array.from({ length: b }, (_, i) => `    expect(count()).toBeGreaterThan(${i});`),
+        ].join("\n"),
+      );
+
+  it("lets a code step through when its log's BLOCKED line names the changed planned test, and records the change on its row", async () => {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      TEST.file,
+      body("1", "0").replace(
+        "  it('adds a row', () => {",
+        "  it('adds a row', () => {\n    setup();",
+      ),
+    );
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "new setup line"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([
+      {
+        task: 1,
+        test: TEST.file,
+        testName: TEST.name,
+        block: blockHash(textOfTest(cwd), TEST.name),
+        reason: "new setup line",
+        blob: expect.any(String),
+        after: expect.any(String),
+      },
+    ]);
+  });
+
+  it("lets a code step through when its BLOCKED line names the changed test by the last segment of its name", async () => {
+    const { cwd, body } = twoTests();
+    const status = path.join(cwd, STATUS);
+    fs.writeFileSync(
+      status,
+      fs
+        .readFileSync(status, "utf-8")
+        .replace(`"testName":"${TEST.name}"`, `"testName":"rows > ${TEST.name}"`),
+    );
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([
+      expect.objectContaining({ testName: `rows > ${TEST.name}`, reason: "needs a 2" }),
+    ]);
+  });
+
+  it("lets a gaps-remediate step through when its log's Gap BLOCKED line names the changed planned test", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/remediate-1-log.md", blockedLine("Gap", 1, TEST.name, "gap fix needs a 2"));
+    const r = await run(cwd, REMEDIATE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-gaps-remediate");
+    expect(row!.changedTests).toEqual([
+      expect.objectContaining({
+        test: TEST.file,
+        testName: TEST.name,
+        reason: "gap fix needs a 2",
+      }),
+    ]);
+  });
+
+  /** twoTests, plus a second planned test ("counts rows") recorded red at its committed lines. */
+  function withCountsRow() {
+    const fx = twoTests();
+    const text = fs.readFileSync(path.join(fx.cwd, TEST.file), "utf-8");
+    redRow(fx.cwd, {
+      attempt: 2,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(fx.cwd, TEST.file),
+          block: blockHash(text, "counts rows"),
+        },
+      ],
+    });
+    return fx;
+  }
+
+  it("records only the changed test when a BLOCKED line also names an unchanged one", async () => {
+    const { cwd, body } = withCountsRow();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, "counts rows", "thought it changed"),
+    );
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    expect(row!.changedTests).toEqual([expect.objectContaining({ testName: TEST.name })]);
+  });
+
+  it("refuses only the changed planned tests no BLOCKED line of the log names", async () => {
+    const { cwd, body } = withCountsRow();
+    write(cwd, TEST.file, grown(body, 1, 1));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 2, "counts rows", "needs a 3"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("the refusal names the BLOCKED line the engine reads", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 1));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.problem).toMatch(/BLOCKED — TASK [^:]+: test `src\/a\.test\.ts` `adds a row` — /);
+  });
+
+  it("the exit 11 help names the BLOCKED line that lets a change through", () => {
+    const codes = stepsCommand.verbs.finish!.exitCodes as Record<number, string>;
+    expect(codes[11]).toMatch(/BLOCKED — [^`]*test `/);
+  });
+
+  it("passes a later code step that leaves a BLOCKED change as it is", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toHaveLength(1);
+    write(cwd, "src/b.ts", "export const b = 2;\n");
+    const r = await run(cwd, REMEDIATE);
+    expect(r.code).toBe(0);
+  });
+
+  it("refuses a later code step that changes a BLOCKED change again", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toEqual([
+      expect.objectContaining({ testName: TEST.name }),
+    ]);
+    write(cwd, TEST.file, grown(body, 2, 0));
+    copyLog(cwd, "logs/execute-1-log.md", "logs/execute-2-log.md");
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("records the newer lines when a later code step re-changes a recorded test under a new BLOCKED line", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    write(cwd, TEST.file, grown(body, 2, 0));
+    copyLog(
+      cwd,
+      "logs/execute-1-log.md",
+      "logs/execute-2-log.md",
+      blockedLine("TASK", 1, TEST.name, "needs a 3 after all"),
+    );
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(0);
+    const rows = stepRows(cwd, "build-plan-tasks");
+    expect(rows.at(-1)!.changedTests).toEqual([
+      expect.objectContaining({
+        testName: TEST.name,
+        block: blockHash(textOfTest(cwd), TEST.name),
+        reason: "needs a 3 after all",
+      }),
+    ]);
+  });
+
+  it("uses a red the tests step recorded after a code step's change as the baseline", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, grown(body, 1, 0));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toEqual([
+      expect.objectContaining({ testName: TEST.name }),
+    ]);
+    // The tests step proves a newer red at other lines.
+    write(cwd, TEST.file, body("5", "0"));
+    redRow(cwd, {
+      attempt: 3,
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), TEST.name),
+        },
+      ],
+    });
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-2-log.md");
+    write(cwd, "src/b.ts", "export const b = 3;\n");
+    const same = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-2-log"));
+    expect(same.code).toBe(0);
+    write(cwd, TEST.file, body("6", "0"));
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-3-log.md");
+    const r = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-3-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  /** The planned test's lines with `extra` expectation lines added after its first expect (a change that only adds). */
+  const addsLines = (body: string, ...extra: string[]) =>
+    body.replace(
+      "    expect(addRow()).toBe(1);",
+      ["    expect(addRow()).toBe(1);", ...extra.map((e) => `    ${e}`)].join("\n"),
+    );
+
+  it("refuses a code step that writes a planned test whose red recorded its file missing, exit 11", async () => {
+    const cwd = planned();
+    git(cwd, "rm", "-q", TEST.file);
+    git(cwd, "commit", "-qm", "the test file is not written yet");
+    redRow(cwd, {
+      tests: [{ task: 1, test: TEST.file, testName: TEST.name, state: "missing", blob: null }],
+    });
+    write(cwd, TEST.file, "it('adds a row', () => expect(true).toBe(true));\n");
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the refusal of a restored BLOCKED change names the recorded change as the lines to put back", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a check"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    expect(stepRows(cwd, "build-plan-tasks")[0]!.changedTests).toHaveLength(1);
+    // A later remediate step puts the test back as the tests step wrote it.
+    write(cwd, TEST.file, body("1", "0"));
+    write(cwd, "src/b.ts", "export const b = 2;\n");
+    copyLog(cwd, "logs/remediate-1-log.md", "logs/remediate-2-log.md");
+    const r = await run(cwd, later(REMEDIATE, "remediate-1-log", "remediate-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).not.toContain("as the tests step left it");
+    expect(r.json.problem).not.toContain("recorded at its red");
+    expect(r.json.problem).toMatch(/recorded change|changedTests/);
+  });
+
+  it("the refusal of a re-change says the logged reason is already recorded", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "needs a 2"));
+    expect((await run(cwd, EXECUTE)).code).toBe(0);
+    write(
+      cwd,
+      TEST.file,
+      addsLines(
+        body("1", "0"),
+        "expect(addRow()).toBeDefined();",
+        "expect(addRow()).not.toBeNull();",
+      ),
+    );
+    copyLog(cwd, "logs/execute-1-log.md", "logs/execute-2-log.md");
+    const r = await run(cwd, later(EXECUTE, "execute-1-log", "execute-2-log"));
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toContain("needs a 2");
+    expect(r.json.problem).toMatch(/already recorded/);
+    expect(r.json.problem).toMatch(/new reason/);
+  });
+
+  it("refuses a code step whose BLOCKED-named change removes a line from a planned test, exit 11", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "the check is wrong"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toMatch(/refuses a BLOCKED-named change that removes a line/);
+    expect(r.json.problem).toMatch(
+      /the engine refuses a BLOCKED-named change that removes a line of a planned test/,
+    );
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("refuses a code step whose BLOCKED-named change renames a planned test away, exit 11", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace(TEST.name, "a renamed test"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "renamed it"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.problem).toMatch(/refuses a BLOCKED-named change that removes a line/);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("records the baseline blob on a BLOCKED-named change that only adds lines", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, addsLines(body("1", "0"), "expect(addRow()).toBeDefined();"));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "an added check"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(0);
+    const [row] = stepRows(cwd, "build-plan-tasks");
+    const [record] = row!.changedTests as Array<Record<string, unknown>>;
+    expect(typeof record!.blob).toBe("string");
+    const read = spawnSync("git", ["cat-file", "-p", record!.blob as string], {
+      cwd,
+      encoding: "utf-8",
+    });
+    expect(read.status).toBe(0);
+    expect(read.stdout).toContain("expect(addRow()).toBe(1);");
+  });
+
+  /** A plan whose group 1 and group 2 tasks both name tests in `TEST.file`. */
+  const SHARED_FILE_PLAN = TWO_GROUP_PLAN.replace(
+    "`src/c.test.ts` `does other`",
+    `\`${TEST.file}\` \`counts rows\``,
+  );
+  const PARAM_V1 = "it.each([1])('row %i', (n) => {\n  expect(addRow()).toBe(n);\n});\n";
+  const PARAM_V2 = `${PARAM_V1}\nit('counts rows', () => {\n  expect(count()).toBe(0);\n});\n`;
+
+  /** Group 1's test is parameterised (its name is in no line, so no block), and group 2's red row appended a test to the file. */
+  function laterTestsStepAppended() {
+    const cwd = planned();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    write(cwd, TEST.file, PARAM_V1);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "group 1 tests");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: null,
+        },
+      ],
+    });
+    write(cwd, TEST.file, PARAM_V2);
+    git(cwd, "commit", "-qam", "group 2 tests");
+    redRow(cwd, {
+      group: 2,
+      attempt: 1,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(PARAM_V2, "counts rows"),
+        },
+      ],
+    });
+    write(cwd, "src/c.ts", "export const other = 1;\n");
+    return cwd;
+  }
+
+  it("passes a group 2 code step when a later tests step added a test to a file whose group 1 planned test has no recorded block", async () => {
+    const cwd = laterTestsStepAppended();
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain("src/c.ts");
+  });
+
+  it("still refuses a group 2 code step that changes a file whose group 1 planned test has no recorded block, exit 11", async () => {
+    const cwd = laterTestsStepAppended();
+    write(cwd, TEST.file, PARAM_V2.replace("toBe(n)", "toBeDefined()"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, inGroup2(EXECUTE));
+    expect(r.code).toBe(11);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("a changedTests record on a non-code-step row does not move the lock's baseline", async () => {
+    const { cwd, body } = twoTests();
+    const weakened = body("1", "0").replace("    expect(addRow()).toBe(1);\n", "");
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-plan-verify",
+        status: "DONE",
+        at: "2026-11-01T06:00:00Z",
+        parentSha: git(cwd, "rev-parse", "HEAD"),
+        group: 1,
+        attempt: 1,
+        artifacts: ["logs/verify-1.md"],
+        changedTests: [
+          { task: 1, test: TEST.file, testName: TEST.name, block: blockHash(weakened, TEST.name) },
+        ],
+      })}\n`,
+    );
+    write(cwd, TEST.file, weakened);
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+  });
+
+  it("refuses a --field changedTests on a step finish", async () => {
+    const cwd = planned();
+    redRow(cwd);
+    write(cwd, "src/a.ts", "export const addRow = () => 1;\n");
+    const r = await run(cwd, [
+      ...EXECUTE,
+      `--field=changedTests=[{"task":1,"test":"${TEST.file}","testName":"${TEST.name}","reason":"x"}]`,
+    ]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("changedTests");
+    expect(stepRows(cwd, "build-plan-tasks")).toEqual([]);
+  });
+
+  it("the exit 11 refusal says verify reads a BLOCKED change's added lines", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/execute-1-log.md", blockedLine("TASK", 1, TEST.name, "the check is wrong"));
+    const r = await run(cwd, EXECUTE);
+    expect(r.code).toBe(11);
+    expect(r.json.problem).toMatch(/verify reads[^.]*added lines?/);
+    expect(r.json.problem).not.toMatch(/cannot remove or loosen/);
+  });
+
   it("exit codes list 11 as planned tests touched and 15 as source touched in the tests step", () => {
     const codes = stepsCommand.verbs.finish!.exitCodes as Record<number, string>;
     expect(codes[11]).toMatch(/planned test/);

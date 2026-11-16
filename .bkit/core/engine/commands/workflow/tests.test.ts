@@ -22,6 +22,7 @@ import { getCoreRoot } from "../../shared/package-roots";
 import { taskCapDefaultsNamed } from "../../checks/before/repo";
 import {
   blockHash,
+  blockedTests,
   checkPlanText,
   classifyLockExit,
   gateScope,
@@ -37,6 +38,7 @@ import {
   testsCommand,
 } from "./tests";
 import { countReportFailures, parseJunit, reportFailures, type JunitCase } from "./junit";
+import { writeStepRow } from "./steps";
 
 const dirs: string[] = [];
 const tmp = (prefix: string) => {
@@ -2449,6 +2451,30 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
   });
 });
 
+describe("blockedTests", () => {
+  it("reads the file, name and reason from a TASK or Gap BLOCKED test line", () => {
+    const log = [
+      "# Log",
+      "BLOCKED — TASK 2: test `src/a.test.ts` `adds a row` — new setup line",
+      "BLOCKED — Gap 3: test `src/b.test.ts` `suite > counts` — fixture moved",
+      "BLOCKED - TASK 4: test `src/c.test.ts` `plain hyphen` — x",
+    ].join("\n");
+    expect(blockedTests(log)).toEqual([
+      { test: "src/a.test.ts", name: "adds a row", reason: "new setup line" },
+      { test: "src/b.test.ts", name: "suite > counts", reason: "fixture moved" },
+      { test: "src/c.test.ts", name: "plain hyphen", reason: "x" },
+    ]);
+  });
+
+  it("ignores a BLOCKED line that names no test", () => {
+    const log = [
+      "BLOCKED — TASK 1: Add a row — the fixture cannot be built",
+      "BLOCKED — TASK 2: test `src/a.test.ts` `adds a row`",
+    ].join("\n");
+    expect(blockedTests(log)).toEqual([]);
+  });
+});
+
 describe("bkit tests red / green", () => {
   const STATUS = "logs/status.jsonl";
   const TEST = "src/clamp.test.ts";
@@ -2778,6 +2804,35 @@ describe("bkit tests red / green", () => {
     expect(states(third)).toEqual([`${NAME}:red`]);
   });
 
+  it("red keeps a test standing whose lines match a code step's recorded change", async () => {
+    const body = (n: number) =>
+      `it('${NAME}', () => {\n  expect(clamp(5, 1, 10)).toBe(${n});\n});\n`;
+    fs.writeFileSync(path.join(cwd, TEST), body(5));
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+    expect((await red()).code).toBe(0);
+    // A code step changed the test's lines under a BLOCKED line, and its row recorded them.
+    fs.writeFileSync(path.join(cwd, TEST), body(6));
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-plan-tasks",
+        status: "DONE",
+        group: 1,
+        attempt: 1,
+        changedTests: [
+          { task: 1, test: TEST, testName: NAME, block: blockHash(body(6), NAME), reason: "setup" },
+        ],
+      })}\n`,
+    );
+    const second = await red([], "logs/build-tests-red-1-2.md");
+    expect(second.code).toBe(0);
+    expect(second.json).toMatchObject({ attempt: 2, skipped: 1, gaps: [] });
+    expect(second.json.tests).toEqual([]);
+  });
+
   describe("per-test proof", () => {
     const body = (planned: string, other: string) =>
       [
@@ -2982,6 +3037,190 @@ describe("bkit tests red / green", () => {
     expect(kinds(r)).toEqual([]);
     expect(r.json.unproven).toEqual([expect.objectContaining({ task: 1, test: TEST, name: NAME })]);
     expect(r.json.unproven[0].detail).toContain("vacuous");
+  });
+
+  describe("tests a code step changed", () => {
+    const body = (n: number) =>
+      `it('${NAME}', () => {\n  expect(clamp(5, 1, 10)).toBe(${n});\n});\n`;
+    /** A `build-plan-tasks` row carrying `changedTests`, written by the row builder `steps finish` uses. */
+    const codeStepRow = (changed: Array<{ test: string; testName: string; reason: string }>) =>
+      writeStepRow(
+        cwd,
+        {
+          file: path.join(cwd, STATUS),
+          workflow: "build",
+          step: "build-plan-tasks",
+          group: 1,
+          attempt: 1,
+          artifacts: [],
+          extras: {
+            changedTests: changed.map((c) => ({
+              task: 1,
+              test: c.test,
+              testName: c.testName,
+              block: blockHash(fs.readFileSync(path.join(cwd, c.test), "utf-8"), c.testName),
+              reason: c.reason,
+            })),
+          },
+          commit: "none",
+        },
+        () => {},
+      );
+    /** The red body with one setup line added before its expectation: a change that only adds. */
+    const withSetup = (n: number) => body(n).replace("  expect(", "  setup();\n  expect(");
+    const provenRed = async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body(5));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+    };
+
+    it("green lists a planned test a code step changed under a BLOCKED line as changed, with its reason, never a gap", async () => {
+      await provenRed();
+      fs.writeFileSync(path.join(cwd, TEST), withSetup(5));
+      codeStepRow([{ test: TEST, testName: NAME, reason: "new setup line" }]);
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json.gaps).toEqual([]);
+      expect(r.json.changed).toEqual([
+        expect.objectContaining({ task: 1, test: TEST, name: NAME, reason: "new setup line" }),
+      ]);
+      expect(report()).toContain("## Changed by a code step");
+      expect(report()).toContain("new setup line");
+    });
+
+    it("green gives each changed test the line diff of its own lines since its baseline and whether it is additive", async () => {
+      await provenRed();
+      const baseline = fs.readFileSync(path.join(cwd, TEST), "utf-8");
+      const stored = spawnSync("git", ["hash-object", "-w", "--", TEST], {
+        cwd,
+        encoding: "utf-8",
+      }).stdout.trim();
+      const added = "  expect(clamp(5, 1, 10)).toBeGreaterThan(0);";
+      fs.writeFileSync(path.join(cwd, TEST), baseline.replace("});\n", `${added}\n});\n`));
+      writeStepRow(
+        cwd,
+        {
+          file: path.join(cwd, STATUS),
+          workflow: "build",
+          step: "build-plan-tasks",
+          group: 1,
+          attempt: 1,
+          artifacts: [],
+          extras: {
+            changedTests: [
+              {
+                task: 1,
+                test: TEST,
+                testName: NAME,
+                block: blockHash(fs.readFileSync(path.join(cwd, TEST), "utf-8"), NAME),
+                blob: stored,
+                reason: "an added check",
+              },
+            ],
+          },
+          commit: "none",
+        },
+        () => {},
+      );
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json.changed).toEqual([
+        expect.objectContaining({ test: TEST, name: NAME, additive: true }),
+      ]);
+      expect(r.json.changed[0].diff).toContain(`+${added}`);
+      expect(r.json.changed[0].diff).not.toMatch(/^-\s+expect/m);
+    });
+
+    it("green leaves a changed test the plan no longer names out of changed", async () => {
+      writePlan([TASK_1, testTask(2, [[OTHER, "third"]])]);
+      fs.writeFileSync(path.join(cwd, OTHER), "expect(clamp(0, 1, 10)).toBe(1);\n");
+      fs.writeFileSync(path.join(cwd, TEST), body(5));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME), failed("third")));
+      expect((await red()).code).toBe(0);
+      fs.writeFileSync(path.join(cwd, TEST), withSetup(5));
+      fs.appendFileSync(path.join(cwd, OTHER), "// setup\n");
+      codeStepRow([
+        { test: TEST, testName: NAME, reason: "kept" },
+        { test: OTHER, testName: "third", reason: "dropped from the plan" },
+      ]);
+      // The plan drops task 2: no TEST FIRST line names `third` any more.
+      writePlan([TASK_1]);
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.json.changed).toEqual([
+        expect.objectContaining({ task: 1, test: TEST, name: NAME, reason: "kept" }),
+      ]);
+      expect(report()).not.toContain("dropped from the plan");
+    });
+
+    it("green leaves a test out of changed when a later red replaced the code step's change", async () => {
+      await provenRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      codeStepRow([{ test: TEST, testName: NAME, reason: "stale reason" }]);
+      // The tests step rewrites the test again, so its red is a new baseline.
+      fs.writeFileSync(path.join(cwd, TEST), body(7));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.json.changed).toEqual([]);
+      expect(report()).not.toContain("stale reason");
+    });
+
+    it("green lists a changed test when test-first is not enforced", async () => {
+      checkout(scripts({ test: "x" }));
+      baseCommit();
+      fs.mkdirSync(path.join(cwd, "src"));
+      fs.mkdirSync(path.join(cwd, "logs"));
+      writePlan([TASK_1]);
+      fs.writeFileSync(path.join(cwd, TEST), withSetup(5));
+      codeStepRow([{ test: TEST, testName: NAME, reason: "new setup line" }]);
+      const r = await green();
+      expect(r.json).toMatchObject({ enforced: false });
+      expect(r.json.changed).toEqual([
+        expect.objectContaining({ task: 1, test: TEST, name: NAME, reason: "new setup line" }),
+      ]);
+      expect(report()).toContain("## Changed by a code step");
+      expect(report()).toContain("new setup line");
+    });
+
+    it("green gives a changed test whose red recorded its file missing every line of the test as added", async () => {
+      fs.rmSync(path.join(cwd, TEST));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      const missing = await red();
+      expect(missing.json.tests[0]).toMatchObject({ state: "missing", blob: null });
+      // The code agent writes the test whole.
+      fs.writeFileSync(path.join(cwd, TEST), body(5));
+      codeStepRow([{ test: TEST, testName: NAME, reason: "wrote the test file" }]);
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.json.changed).toEqual([
+        expect.objectContaining({ test: TEST, name: NAME, additive: true }),
+      ]);
+      expect(r.json.changed[0].diff).not.toBeNull();
+      expect(r.json.changed[0].diff).toContain("+  expect(clamp(5, 1, 10)).toBe(5);");
+    });
+
+    it("green prints an empty changed list and no Changed by a code step section when no code step changed a test", async () => {
+      await provenRed();
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await green();
+      expect(r.code).toBe(0);
+      expect(r.json.changed).toEqual([]);
+      expect(report()).not.toContain("Changed by a code step");
+    });
   });
 
   it("green: not enforced (exit 0, report says why) when the test-file script is undeclared", async () => {
