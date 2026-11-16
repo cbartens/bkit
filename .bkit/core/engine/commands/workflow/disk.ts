@@ -213,7 +213,8 @@ function touch(key: string, ...names: string[]): void {
   }
 }
 
-function pidAlive(pid: number): boolean {
+/** True while a process with this id exists, including one this user may not signal. */
+export function pidAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

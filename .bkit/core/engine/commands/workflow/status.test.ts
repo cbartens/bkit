@@ -418,6 +418,26 @@ describe("bkit status route", () => {
     expect(none.json.parentSha).toBeNull();
   });
 
+  it("prints the source of the step's last row in the active run, else null", async () => {
+    const file = log([
+      started("debug", "2026-10-01T00:00:00Z"),
+      done("debug", "debug-run-tests", "2026-10-01T00:01:00Z", {
+        verdict: "FAIL",
+        failures: 1,
+        source: "local",
+      }),
+      done("debug", "debug-run-tests", "2026-10-01T00:02:00Z", {
+        verdict: "FAIL",
+        failures: 1,
+        source: "ci",
+      }),
+    ]);
+    const r = await run([...base, `--file=${file}`, "--workflow=debug", "--step=debug-run-tests"]);
+    expect(r.json).toMatchObject({ verdict: "FAIL", source: "ci" });
+    const none = await run([...base, `--file=${file}`, "--workflow=debug"]);
+    expect(none.json.source).toBeNull();
+  });
+
   it("counts absent failures as 0 when a verdict is present", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z", { verdict: "CONCERNS" })]);
     expect(

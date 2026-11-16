@@ -8,7 +8,8 @@ import { gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { scriptCommand, testCommand } from "../../shared/package-manager.js";
-import { EXIT, git, outboxRoot, runGit } from "../lib.js";
+import { classifyLockOutcome, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, outboxRoot, readLockStatus, runGit, } from "../lib.js";
+import { pidAlive } from "../workflow/disk.js";
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -64,10 +65,20 @@ function cleanHead(cwd, tolerated = []) {
     const tree = git(cwd, ["rev-parse", "--verify", "HEAD^{tree}"]);
     return sha && tree ? { sha, tree } : null;
 }
+/** The recorded runner's process id of a `.running` attempt file; null when unreadable. */
+function attemptPid(file) {
+    const read = readJsonFile(file);
+    if (!read.ok || !read.value || typeof read.value !== "object")
+        return null;
+    const pid = read.value.pid;
+    return typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? pid : null;
+}
 /**
- * Run a gate through `run` and record its receipt: `.running` / `.failed` markers, the
- * before/after HEAD and fingerprint check, and the receipt write. Uncommitted paths in
- * `tolerated` do not block the receipt; a lock wait (`waited`, default never) leaves the receipt and markers as they were.
+ * Run a gate through `run` and record its receipt: the `.running` marker while it runs, a
+ * `.failed` marker when it fails, the before/after HEAD and fingerprint check, and the
+ * receipt write. An attempt on the same commit whose runner process is gone counts as a
+ * failed run and is cleared. Uncommitted paths in `tolerated` do not block the receipt; a
+ * lock wait (`waited`, default never) leaves the receipt and markers as they were.
  */
 export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => false) {
     const pkg = readPackageJson(cwd);
@@ -76,8 +87,6 @@ export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => fa
     const head = git(cwd, ["rev-parse", "--verify", "HEAD^{commit}"]);
     const file = head ? receiptPath(cwd, head) : null;
     const attempt = file && definition?.gate === gate ? path.join(`${file}.running`, randomUUID()) : null;
-    const priorReceipt = file && fs.existsSync(file) ? fs.readFileSync(file, "utf-8") : null;
-    const priorFailed = file && fs.existsSync(`${file}.failed`) ? fs.readFileSync(`${file}.failed`, "utf-8") : null;
     const fail = () => {
         if (!attempt || !file)
             return;
@@ -86,9 +95,16 @@ export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => fa
         fs.rmSync(file, { force: true });
     };
     if (attempt) {
-        fs.mkdirSync(path.dirname(attempt), { recursive: true });
+        const dir = path.dirname(attempt);
+        fs.mkdirSync(dir, { recursive: true });
+        for (const entry of fs.readdirSync(dir)) {
+            const pid = attemptPid(path.join(dir, entry));
+            if (pid === null || pidAlive(pid))
+                continue;
+            fs.rmSync(path.join(dir, entry), { force: true });
+            fail();
+        }
         fs.writeFileSync(attempt, JSON.stringify({ pid: process.pid, sha: head }) + "\n");
-        fail();
     }
     const finish = (code) => {
         if (attempt)
@@ -96,17 +112,8 @@ export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => fa
         return code;
     };
     const status = run();
-    if (waited(status)) {
-        if (attempt && file) {
-            if (priorReceipt !== null)
-                fs.writeFileSync(file, priorReceipt);
-            if (priorFailed !== null)
-                fs.writeFileSync(`${file}.failed`, priorFailed);
-            else
-                fs.rmSync(`${file}.failed`, { force: true });
-        }
+    if (waited(status))
         return finish(status);
-    }
     if (status !== 0 || !before || definition?.gate !== gate) {
         fail();
         return finish(status);
@@ -129,7 +136,11 @@ export function runWithReceipt(cwd, gate, tolerated, run, log, waited = () => fa
     }
     return finish(status);
 }
-/** Execute a consumer gate; only a successful deepest full gate on an unchanged clean tree earns proof. */
+/**
+ * Execute a consumer gate; only a successful deepest full gate on an unchanged clean tree earns
+ * proof. A tests-lock wait (the lock wrapper gave up, exit 75) leaves the receipt and its
+ * markers as they were, and its status file is handed on to a caller that asked for one.
+ */
 export function runPushGate(cwd, gate, log) {
     const pkg = readPackageJson(cwd);
     const script = pkg.ok ? scriptsOf(pkg.pkg)?.[gate] : null;
@@ -137,21 +148,32 @@ export function runPushGate(cwd, gate, log) {
         log(`package.json must declare a non-empty ${gate} script`);
         return EXIT.USAGE;
     }
+    const env = gitEnv();
+    const outerStatus = env[LOCK_STATUS_FILE_ENV];
+    const lock = { status: null };
     return runWithReceipt(cwd, gate, [], () => {
         const argv = testCommand(scriptCommand(gate));
         log(`running ${scriptCommand(gate).join(" ")}`);
+        const statusPath = lockStatusFile();
         const result = spawnSync(argv[0], argv.slice(1), {
             cwd,
-            env: gitEnv(),
+            env: {
+                ...env,
+                LOCAL_STACK_LOCK_WHO: env.LOCAL_STACK_LOCK_WHO || `bkit ci push-gate ${gate}`,
+                [LOCK_STATUS_FILE_ENV]: statusPath,
+            },
             stdio: ["ignore", 2, 2],
         });
         if (result.error)
             log(result.error.message);
+        if (outerStatus && fs.statSync(statusPath, { throwIfNoEntry: false })?.isFile())
+            fs.copyFileSync(statusPath, outerStatus);
+        lock.status = readLockStatus(statusPath);
         return result.error
             ? 127
             : (result.status ??
                 128 + ((result.signal ? os.constants.signals[result.signal] : undefined) ?? 1));
-    }, log);
+    }, log, (code) => classifyLockOutcome(code, lock.status) === "lock-wait");
 }
 /** Pending files survive interrupted runners; one read suffices to block earlier proof. */
 function pendingAttempt(file) {

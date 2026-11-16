@@ -175,12 +175,15 @@ function route(runs, workflow, step, group) {
         publishSource: null,
         debugAttempt: 0,
         parentSha: null,
+        source: null,
     };
     const problems = {};
     if (step !== undefined) {
         const last = activeDoneSteps(runs, workflow, { step, group }).at(-1);
         if (typeof last?.parentSha === "string")
             out.parentSha = last.parentSha;
+        if (typeof last?.source === "string")
+            out.source = last.source;
         if (!last) {
             problems.verdict = `no DONE ${step} row in the active ${workflow} run`;
             problems.failures = problems.verdict;
@@ -412,6 +415,7 @@ export const statusCommand = {
                 publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
                 cleanBase: "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else the feature's start commit; the feature's start commit also when that sha is not an ancestor of HEAD",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
+                source: "the `source` field of the step's last DONE row in the active run (debug-run-tests: local|ci), or null",
             },
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl missing, unreadable, or not valid NDJSON",

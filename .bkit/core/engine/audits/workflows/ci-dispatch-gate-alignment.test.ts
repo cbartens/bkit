@@ -137,9 +137,14 @@ describe.each([
 
   it("passes the held PR number, so a runtime without gh never needs it to find the PR", () => {
     // Without --pr, runs dispatch asks gh for the PR and exits 80 before it
-    // reads the turn loop's --poll-result, so every re-entry exits 80 again.
+    // resumes from the turn loop's saved polls, so every re-entry exits 80 again.
     const f = dispatchFences(md)[0]!;
     expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--pr="?\{PR_NUMBER\}"?/);
+  });
+
+  it("passes the run's invocation, without which runs dispatch refuses to start", () => {
+    const f = dispatchFences(md)[0]!;
+    expect(f).toMatch(/"\{BKIT\}" runs dispatch [^\n]*--invocation="\{INVOCATION\}"/);
   });
 
   it("names the status file and the step whose row records the ciDispatch verdict", () => {

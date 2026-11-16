@@ -49,7 +49,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path becomes it), checks artifacts and row, writes the row (ship: `--commit=none`, bookkeeping to `$BOOK_ROOT`), prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
 - **Resume:** After Step 2, unless Step 1 or 2 routed elsewhere, `"{BKIT}" status resume --workflow=ship --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`. For `number` from 3 through 10, return to Step 3 instead, which compares recorded feature coverage before reusing completed agents.
 - **Status:** `$BOOK_ROOT/.../status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-- **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 12 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+- **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Step 12 releases it via `bkit workflows close --flush --token=`, the **Failure Path** via `bkit workflows fail --token=`. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → `locks acquire` exits 8 and the run stops without the **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 - **Status branch:** From Step 2 all steps write `$BOOK_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (`{STATUS}`); `BOOK_ROOT` = `{WORKTREE_PATH}`. Stage path-scoped via `bkit ledgers commit`; NEVER stage all files (`-A`) or blanket `docs/`. One commit per flush block: Commit + Push Bookkeeping → `docs({FID}): ship bookkeeping bkit [skip ci]` → push `{SHIP_BRANCH}` (pre-merge: docs, logs, ledgers, skill removals); Close Workflow → `docs({FID}): ship DONE bkit [skip ci]`, **Failure Path** → `chore({FID}): ship FAILED bkit [skip ci]` → push `dev` from a throwaway `origin/dev` checkout; a refused close push → close PR.
 - **Worktrees:** **If** `runtimeWorktrees` = true (mint mode) → Step 2 `cd`s into `.worktrees/{FID}`. **Else** → adopt current branch in place, `WORKTREE_PATH=$REPO_ROOT`. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**; Step 12 ends in `{REPO_ROOT}`.
 - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_check_runs`, the check-run conclusions for the PR head; or `actions_list` runs for the head SHA), never `get_status`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
@@ -154,7 +154,10 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=ship --fid="{FID}"
    ```
-   Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
+   Route:
+   - **If** exit 0 → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
+   - **If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
+   - **Else** → **Failure Path**.
 7. Resolve `SHIP_BRANCH`, then create or resume the worktree, or adopt it in place (no rebase — Path A). This runs straight after the lock, so every later failure has a book to keep its record in. `--branch` = the branch the session prompt names, dropped when it names none:
    **If** `ISSUE_ID` empty → drop `--issue`.
    ```bash
@@ -490,7 +493,7 @@ Refresh `FEATURE_CODE_STATE` from `featureCodeState`; non-zero exit → **Failur
    ```
    Get the sweep's own invocation id from the engine and keep the printed `invocation` as `INVOCATION`. The invocation, its operations and their receipts are recorded in the book-root status file (`{STATUS}` under `$BOOK_ROOT`), so a resumed ship run reuses them:
    ```bash
-   "{BKIT}" status invocation --workflow=ship --step=ship-deferred-sweep --file="{STATUS}"
+   "{BKIT}" status invocation --workflow=ship --step=ship-deferred-sweep --file="{STATUS}" --agent=bkit-ship-deferred-sweep
    ```
    **Subagent:** Invoke `view_file` `.agents/plugins/bkit/agents/bkit-ship-deferred-sweep.md` using `view_file` tool:
    Context: You are a subagent in the Ship phase. Pre-merge completeness gate. FID: `{FID}`. Diff base: `origin/dev` — run `bkit branches scan-diff --disabled-tests --base=origin/dev`. Its ledger appends run under invocation `{INVOCATION}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
@@ -844,29 +847,45 @@ Asked from Step 9 or Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NE
 
 ## 🤖 Step 12 — Close Workflow
 
-1. Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing:
+1. Read the squash commit:
+   ```bash
+   "{BKIT}" prs probe --number="{PR_NUMBER}"
+   ```
+   Hold `mergeCommitOid` as `MERGE_SHA`. **If** exit 80 → read the PR via `pull_request_read` (`get`) and hold its merge commit SHA as `MERGE_SHA`. **If** `MERGE_SHA` empty → **Failure Path**.
+2. Wait until the CI run at the squash commit has finished, so the gate in sub-step 3 records a final verdict:
+   ```bash
+   WAIT_EXIT=0
+   "{BKIT}" runs wait --head="{MERGE_SHA}" --branch=dev --until=completed || WAIT_EXIT=$?
+   [ "$WAIT_EXIT" -le 1 ] || exit "$WAIT_EXIT"
+   ```
+   Route:
+   - **If** exit 0 → sub-step 3. The gate decides on what it finds, including a run that did not finish within the wait.
+   - **If** exit 81 → end turn, re-run this block.
+   - **If** exit 80 → sub-step 3.
+   - **Else** → **Failure Path**.
+3. Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing; it writes no row while the run is missing or still running:
    ```bash
    "{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"
    ```
    Route:
-   - **If** exit 0 → hold `head` as `SQUASH_SHA` → sub-step 2.
+   - **If** exit 0 → hold `head` as `SQUASH_SHA` → sub-step 4.
    - **If** exit 12 → the squash commit's CI is red. Hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
    - **Else** → **Failure Path**.
-2. Close the run. The block keeps the summary in the outbox, lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, and returns to `REPO_ROOT`. Guarded cleanup removes only a clean worktree and a local branch whose inspected content is landed, binding local deletion to the inspected tip. It preserves dirty or unlanded work and reports retained paths/refs. The remote feature branch is deleted only at its inspected landed tip and retained when origin refuses that conditional deletion; this does not block close-record landing or lock release. Repository-managed automatic branch deletion is a separate GitHub setting outside this cleanup guarantee:
+4. Close the run. The block keeps the summary in the outbox, lands `docs({FID}): ship DONE bkit [skip ci]` on `dev` (a refused push opens a `ship-close/{FID}` PR), releases the lock, and returns to `REPO_ROOT`. Guarded cleanup removes only a clean worktree and a local branch whose inspected content is landed, binding local deletion to the inspected tip. It preserves dirty or unlanded work and reports retained paths/refs. The remote feature branch is deleted only at its inspected landed tip and retained when origin refuses that conditional deletion; this does not block close-record landing or lock release. Repository-managed automatic branch deletion is a separate GitHub setting outside this cleanup guarantee:
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
    ```bash
    "{BKIT}" workflows close --workflow=ship --fid="{FID}" --month="{YYYYMM}" --file="{STATUS}" --pr-number="{PR_NUMBER}" --squash-sha="{SQUASH_SHA}" --owner-repo="{OWNER_REPO}" --outbox="{OUTBOX}" --flush --token="{LOCK_TOKEN}" --branch="{SHIP_BRANCH}" --number=12 --post --title="Close Workflow" --final-return --summary="docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md" --summary-missing="PR was already merged — no ship summary this run." --session-dir="{SESSION_DIR}"; rc=$?
    cd "{REPO_ROOT}"; exit $rc
    ```
    Hold `landed.via` as `CLOSE_VIA`, `finalReturn` as `FINAL_RETURN`.
-3. **Skip if** `ISSUE_ID` empty. Compute the label transition and board move:
+5. **Skip if** `ISSUE_ID` empty. Compute the label transition and board move:
    ```bash
    "{BKIT}" issues labels --write --phase=merged --board=review --issue="{ISSUE_ID}" --owner-repo="{OWNER_REPO}" {LABEL_FLAGS}
    ```
    Hold `labels` as `LABELS`, `trackerState` as `TRACKER_STATE`, `board` as `BOARD`, and hold `boardSkipped`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
-4. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP**.
-5. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
+6. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP**.
+7. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 
 ### 🔒 Gate 12 — Close Workflow
 
@@ -876,6 +895,7 @@ Asked from Step 9 or Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NE
 
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
 
+- [ ] Squash-merge CI waited for (`runs wait`)
 - [ ] Squash-merge CI capstone green (`runs gate`)
 - [ ] Close landed (`workflows close`)
 - [ ] Guarded cleanup and retained paths/refs reported, back in the repo root

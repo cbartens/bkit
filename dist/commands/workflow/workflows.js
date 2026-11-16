@@ -37,7 +37,7 @@ import { readIssueTracker } from "./fids.js";
 import { agentContextBlock, buildBlock, chatFingerprint, ciList, claudeTranscripts, hostChat, planBlock, planFiles, runChats, runLines, runStatusRows, stepsBlock, timeBlock, } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS } from "./summary.js";
 import { parsePlans, parseWorkstreams } from "./plans.js";
-import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, readRunsLenient, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
+import { EXIT_LOCK_BUSY, EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, readRunsLenient, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -1739,6 +1739,7 @@ export const workflowsCommand = {
             exitCodes: {
                 [EXIT_NO_STATUS]: "status.jsonl is not valid",
                 [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
+                [EXIT_LOCK_BUSY]: "without --lock-held: another run of the feature holds the lock and is still stepping",
                 [EXIT_LOCK_NOT_HELD]: "--lock-held: the lock is missing or belongs to another owner",
                 [EXIT_WRONG_BRANCH]: "--branch: the checkout is on another branch",
             },

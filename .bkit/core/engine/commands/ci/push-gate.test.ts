@@ -215,6 +215,94 @@ describe("verified incremental push gates", () => {
     expect(fs.readFileSync(receipt(cwd, code), "utf8")).toBe(before);
     expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(false);
   });
+  it("a gate that has not finished leaves no failed receipt", async () => {
+    const { cwd, code } = fixture("true");
+    expect((await gate(cwd)).status).toBe(0);
+    const seen: { failed: boolean; receipt: boolean }[] = [];
+    const status = runWithReceipt(
+      cwd,
+      UNIT,
+      [],
+      () => {
+        seen.push({
+          failed: fs.existsSync(`${receipt(cwd, code)}.failed`),
+          receipt: fs.existsSync(receipt(cwd, code)),
+        });
+        return 0;
+      },
+      () => undefined,
+    );
+    expect(status).toBe(0);
+    expect(seen).toEqual([{ failed: false, receipt: true }]);
+  });
+  it("the restore step leaves another worktree's .failed file alone", async () => {
+    const { cwd, code } = fixture("true");
+    expect((await gate(cwd)).status).toBe(0);
+    const status = runWithReceipt(
+      cwd,
+      UNIT,
+      [],
+      () => {
+        fs.writeFileSync(`${receipt(cwd, code)}.failed`, "other worktree\n");
+        fs.rmSync(receipt(cwd, code), { force: true });
+        return 75;
+      },
+      () => undefined,
+      (s) => s === 75,
+    );
+    expect(status).toBe(75);
+    expect(fs.readFileSync(`${receipt(cwd, code)}.failed`, "utf8")).toBe("other worktree\n");
+    expect(fs.existsSync(receipt(cwd, code))).toBe(false);
+  });
+  it("a pending attempt whose process is gone is not treated as running", async () => {
+    const { cwd, code } = fixture("true");
+    expect((await gate(cwd)).status).toBe(0);
+    const running = `${receipt(cwd, code)}.running`;
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid;
+    fs.mkdirSync(running, { recursive: true });
+    fs.writeFileSync(path.join(running, "dead"), JSON.stringify({ pid: dead, sha: code }) + "\n");
+    expect((await min(cwd, code, book(cwd))).status).toBe(1);
+    git(cwd, "reset", "-q", "--hard", code);
+    expect((await gate(cwd)).status).toBe(0);
+    expect(fs.existsSync(path.join(running, "dead"))).toBe(false);
+    expect((await min(cwd, code, book(cwd))).status).toBe(0);
+    git(cwd, "reset", "-q", "--hard", code);
+    fs.writeFileSync(
+      path.join(running, "live"),
+      JSON.stringify({ pid: process.pid, sha: code }) + "\n",
+    );
+    expect((await gate(cwd)).status).toBe(0);
+    expect(fs.existsSync(path.join(running, "live"))).toBe(true);
+    expect((await min(cwd, code, book(cwd))).status).toBe(1);
+  });
+  it("a tests-lock wait in the push gate leaves the receipt as it was and hands the status file on to its caller", async () => {
+    const { cwd, code } = fixture(
+      "node -e \"const fs=require('fs'); if(!fs.existsSync('.gate-ran')){fs.writeFileSync('.gate-ran','yes');process.exit(0)} if(!fs.existsSync('.gate-plain-75')) fs.writeFileSync(process.env.LOCAL_STACK_LOCK_STATUS_FILE,['lock=tests','outcome=gave-up','holder=other'].join(String.fromCharCode(10))); console.error('gate says 75'); process.exit(75)\"",
+    );
+    expect((await gate(cwd)).status).toBe(0);
+    const before = fs.readFileSync(receipt(cwd, code), "utf8");
+    const driver = path.join(cwd, ".git", "gate-driver.mts");
+    fs.writeFileSync(
+      driver,
+      `import {runPushGate} from ${JSON.stringify(path.join(__dirname, "push-gate.ts"))}; process.exit(runPushGate(process.cwd(), ${JSON.stringify(UNIT)}, ()=>{}));`,
+    );
+    const outer = path.join(cwd, ".git", "outer-lock-status");
+    const env = { ...process.env, LOCAL_STACK_LOCK_STATUS_FILE: outer };
+    const waited = spawnSync(requireTsx(), [driver], { cwd, encoding: "utf8", env });
+    expect(waited.status).toBe(75);
+    expect(waited.stderr).toContain("gate says 75");
+    expect(fs.readFileSync(outer, "utf8")).toContain("outcome=gave-up");
+    expect(fs.readFileSync(receipt(cwd, code), "utf8")).toBe(before);
+    expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(false);
+    fs.rmSync(outer);
+    write(cwd, ".gate-plain-75", "yes");
+    const failed = spawnSync(requireTsx(), [driver], { cwd, encoding: "utf8", env });
+    expect(failed.status).toBe(75);
+    expect(failed.stderr).toContain("gate says 75");
+    expect(fs.existsSync(outer)).toBe(false);
+    expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(true);
+    expect(fs.existsSync(receipt(cwd, code))).toBe(false);
+  });
   it("executes the full gate and carries its proof across bookkeeping and empty commits", async () => {
     const { cwd, code } = fixture();
     expect((await gate(cwd)).status).toBe(0);

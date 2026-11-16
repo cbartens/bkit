@@ -24,6 +24,8 @@ export const EXIT_SPLIT_BUCKET = 7;
 export const EXIT_NOT_OWNER = 4;
 /** Exit code: the lock file is still there after removing it. */
 export const EXIT_REMOVE_FAILED = 5;
+/** Exit code: another run of the feature holds the lock and is still stepping. */
+export const EXIT_LOCK_BUSY = 8;
 const KINDS = ["workflow"];
 // ---------------------------------------------------------------------------
 // Paths
@@ -178,7 +180,15 @@ function liveReason(root, month, fid, holder, now) {
     if (run?.status === "IN_PROGRESS" && lastAt) {
         const idle = Math.floor((now - Date.parse(lastAt)) / 1000);
         if (idle < WORKFLOW_LOCK_IDLE_S)
-            return { live: `idle ${idle}s` };
+            return {
+                live: {
+                    workflow: holder.workflow ?? null,
+                    since: holder.at ?? null,
+                    lastStepAt: lastAt,
+                    idleSeconds: idle,
+                    line: holder.line,
+                },
+            };
     }
     if (run === undefined)
         return { reason: "orphaned" };
@@ -221,7 +231,12 @@ export function workflowLockFresh(root, fid) {
         return stat !== undefined && (Date.now() - stat.mtimeMs) / 1000 < WORKFLOW_LOCK_IDLE_S;
     });
 }
-export function acquireWorkflowLock(opts) {
+const busyMessage = (fid, by) => `workflow already running for ${fid} (workflow=${by.workflow ?? "?"}, ${by.idleSeconds === null ? "just started" : `idle ${by.idleSeconds}s`})`;
+/**
+ * Take the feature's workflow lock, reclaiming an idle holder's. A holder still
+ * stepping keeps its lock, and the result names it in `heldBy`.
+ */
+export function tryAcquireWorkflowLock(opts) {
     const root = repoRoot(opts.cwd);
     const month = resolveMonth(root, opts.fid, opts.month);
     const file = workflowLockPath(root, month, opts.fid);
@@ -231,14 +246,33 @@ export function acquireWorkflowLock(opts) {
         return { path: file, month, token, reclaimed: null };
     const holder = readHolder(file) ?? { line: "" };
     const verdict = liveReason(root, month, opts.fid, holder, Date.now());
-    if ("live" in verdict) {
-        throw new CommandError(EXIT.NO, `workflow already running for ${opts.fid} (workflow=${holder.workflow ?? "?"}, ${verdict.live})`);
-    }
+    if ("live" in verdict)
+        return { path: file, month, heldBy: verdict.live };
     opts.log(`reclaiming ${verdict.reason} lock for ${opts.fid}: ${holder.line}`);
     fs.rmSync(file, { force: true });
-    if (!tryCreate(file, line))
-        throw new CommandError(EXIT.NO, `lock contended for ${opts.fid}`);
+    if (!tryCreate(file, line)) {
+        // Another acquirer took the lock between the removal and this create.
+        const winner = readHolder(file) ?? { line: "" };
+        return {
+            path: file,
+            month,
+            heldBy: {
+                workflow: winner.workflow ?? null,
+                since: winner.at ?? null,
+                lastStepAt: null,
+                idleSeconds: null,
+                line: winner.line,
+            },
+        };
+    }
     return { path: file, month, token, reclaimed: { holder: holder.line, reason: verdict.reason } };
+}
+/** {@link tryAcquireWorkflowLock}, refusing with {@link EXIT_LOCK_BUSY} when a live run holds the lock. */
+export function acquireWorkflowLock(opts) {
+    const lock = tryAcquireWorkflowLock(opts);
+    if ("heldBy" in lock)
+        throw new CommandError(EXIT_LOCK_BUSY, busyMessage(opts.fid, lock.heldBy));
+    return lock;
 }
 /**
  * Remove a lock this caller owns. Missing is fine (already released); another
@@ -287,29 +321,37 @@ export const locksCommand = {
     summary: "Acquire and release the per-feature workflow lock.",
     verbs: {
         acquire: {
-            summary: "Take the workflow lock, reclaiming a dead holder's.",
+            summary: "Take the workflow lock, reclaiming a dead holder's; a live holder exits 8 and prints heldBy.",
             use: "workflow",
             flags: [KIND_FLAG, LOCK_WORKFLOW_FLAG, FID_FLAG, MONTH_FLAG],
             output: {
                 kind: "workflow",
                 path: "absolute path of the lock file",
-                token: "this holder's token; pass it to release",
+                token: "this holder's token; pass it to release (null when busy)",
                 month: "the month bucket",
                 reclaimed: "{holder, reason: finished|stale|orphaned}; null when none",
+                heldBy: "{workflow, since, lastStepAt, idleSeconds, line} of the live run that keeps the lock; null when this call took it",
             },
             exitCodes: {
                 [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
+                [EXIT_LOCK_BUSY]: "another run of the feature holds the lock and stepped in the last 30 minutes; nothing was taken or changed",
             },
             run: (ctx) => {
                 const kind = kindOf(ctx);
-                const lock = acquireWorkflowLock({
+                const fid = String(ctx.flags.fid);
+                const lock = tryAcquireWorkflowLock({
                     cwd: ctx.cwd,
                     workflow: String(ctx.flags.workflow),
-                    fid: String(ctx.flags.fid),
+                    fid,
                     month: str(ctx.flags.month),
                     log: ctx.log,
                 });
-                ctx.emit({ kind, ...lock });
+                if ("heldBy" in lock) {
+                    ctx.emit({ kind, ...lock, token: null, reclaimed: null });
+                    ctx.log(busyMessage(fid, lock.heldBy));
+                    return EXIT_LOCK_BUSY;
+                }
+                ctx.emit({ kind, ...lock, heldBy: null });
                 return EXIT.OK;
             },
         },

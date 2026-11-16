@@ -620,7 +620,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 
 **Poll anchors the check namespace, not a lane name**: the capstone `bkit.testing.ciCapstone` minus its last `-segment` (`bkit-tests-check` → any check containing `bkit-tests`). Single-job anchor PROHIBITED. Alignment: `.bkit/core/engine/audits/workflows/ci-dispatch-gate-alignment.test.ts`; legacy scaffolds: `ci-legacy-scaffold-job-names` advisory.
 
-**Gate sites (2):** build Step 16; debug Step 11 sub-step 7 (PR-mode and LOCAL-mode). Ship out — Step 12 reads the squash commit's capstone with `bkit runs gate --head=<SQUASH_SHA> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
+**Gate sites (2):** build Step 16; debug Step 11 sub-step 7 (PR-mode and LOCAL-mode). Ship out — Step 12 waits for the squash commit's CI run with `bkit runs wait --head=<SQUASH_SHA> --branch=dev --until=completed`, then reads its capstone with `bkit runs gate --squash-of=<PR> --capstone-only`; CI-Dispatch there masks "essential tests skipped".
 
 **Open-PR pre-flight (build Step 16):** `bkit prs probe --base=dev` first; open PR → Failure Path (`feat/{FID} already has open PR #N to dev`). `bkit prs open` probes `--head` again before creating: exit 3 on an existing open PR (`--existing=fail`, the default), exit 5 on a `gh` error, never a blind create.
 
@@ -643,7 +643,7 @@ GitHub Actions suppresses `pull_request` + `push` when HEAD has `[skip ci]` or `
 | build / debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Pushed with `bkit branches push --require-ci`, which on an unshared feature branch first merges `origin/dev`'s `docs/` and ledger commits. Debug PR-mode: the push fires `pull_request` synchronize. Build: the push lands before the PR exists; `bkit prs open` then creates the PR, which fires `pull_request`. |
 | build `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
 | debug LOCAL-mode `create-pr` commit | `chore({FID}): create-pr` — loud; the CI-triggering HEAD in LOCAL mode, pushed with `bkit branches push --require-ci`. Build has no `create-pr` commit. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 12 then runs `bkit runs gate --head=<SQUASH_SHA> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Step 12 then waits for that commit's CI run to finish (`bkit runs wait --head=<SQUASH_SHA> --branch=dev --until=completed`), runs `bkit runs gate --squash-of=<PR> --capstone-only` (the capstone job's result alone; deploy and other jobs never fail the close) and records its run in the `ship-merge-ci` row, which is written only once the run has a final verdict. |
 
 All other docs-only intermediates (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) keep `bkit [skip ci]`. Only trailing `close-workflow` (build / debug; debug LOCAL mode: `create-pr`) + squash-merge subject (ship) are loud.
 

@@ -286,6 +286,8 @@ export type Step = {
   scope?: string;
   ciGeneration?: number;
   reproduced?: string;
+  /** Where a debug-run-tests verdict came from: `local` (a gate ran) or `ci` (selected CI evidence). */
+  source?: string;
 };
 
 /** Validate the bounded CI evidence variant without relaxing local exit codes. */

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runCommand } from "../lib";
-import { WORKFLOW_LOCK_IDLE_S, locksCommand, monthBuckets } from "./locks";
+import { EXIT_LOCK_BUSY, WORKFLOW_LOCK_IDLE_S, locksCommand, monthBuckets } from "./locks";
 import * as publicationLocks from "./locks";
 
 // Real git repos and worktrees per test; a busy machine needs more than the default 5s.
@@ -261,12 +261,28 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
 
   it("refuses while the holder's run stepped in the last 30 minutes", async () => {
     const cwd = repo();
-    writeStatus(cwd, M, [started("design", 40 * MIN), step("design", 5 * MIN)]);
+    const last = step("design", 5 * MIN);
+    writeStatus(cwd, M, [started("design", 40 * MIN), last]);
     const lock = writeLock(cwd, M, "2026-10-01T00:00:00Z design", 40 * 60);
     const r = await run(cwd, acquire());
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(EXIT_LOCK_BUSY);
     expect(r.err).toMatch(/already running .*workflow=design, idle \d+s/);
+    expect(r.json.token).toBeNull();
+    expect(r.json.heldBy).toMatchObject({
+      workflow: "design",
+      since: "2026-10-01T00:00:00Z",
+      lastStepAt: last.at,
+    });
+    expect(r.json.heldBy.idleSeconds).toBeGreaterThanOrEqual(5 * 60);
+    expect(r.json.heldBy.idleSeconds).toBeLessThan(WORKFLOW_LOCK_IDLE_S);
     expect(fs.readFileSync(lock, "utf-8")).toBe("2026-10-01T00:00:00Z design\n");
+  });
+
+  it("a taken lock prints heldBy null", async () => {
+    const cwd = repo();
+    const r = await run(cwd, acquire());
+    expect(r.code).toBe(0);
+    expect(r.json.heldBy).toBeNull();
   });
 
   it("reclaims an IN_PROGRESS run idle 30+ minutes", async () => {
@@ -335,7 +351,7 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
       step("design", 2 * MIN),
     ]);
     writeLock(cwd, M, "x design", WORKFLOW_LOCK_IDLE_S + 60);
-    expect((await run(cwd, acquire())).code).toBe(1);
+    expect((await run(cwd, acquire())).code).toBe(EXIT_LOCK_BUSY);
   });
 });
 

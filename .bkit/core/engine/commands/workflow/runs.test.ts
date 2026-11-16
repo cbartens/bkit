@@ -2166,6 +2166,48 @@ function fakeGhBin(replies: Record<string, string>) {
 const instant = async (ms: number) => ms;
 const noLog = () => undefined;
 
+/** Where a run's status log lives: the only place `status invocation` binds a run to. */
+const RUN_STATUS = "docs/plans/202611/logs/1-x/status.jsonl";
+
+/** Seed a build run's status log in `cwd` and issue an engine invocation bound to it. */
+async function issueInvocation(cwd: string) {
+  const status = path.join(cwd, RUN_STATUS);
+  fs.mkdirSync(path.dirname(status), { recursive: true });
+  fs.writeFileSync(
+    status,
+    `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
+  );
+  const out: string[] = [];
+  const code = await runCommand(
+    [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-close-workflow",
+      `--file=${RUN_STATUS}`,
+      "--host=claude",
+      "--configured-model=sonnet",
+      "--json",
+    ],
+    COMMANDS,
+    {
+      classicVerbs: new Set(["status"]),
+      cwd,
+      io: { stdout: (t) => out.push(t), stderr: () => {} },
+    },
+  );
+  expect(code).toBe(0);
+  const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+  return { status, id };
+}
+
+/** The saved-state options a dispatch gate resumes from. */
+const handoffAt = (status: string) => ({
+  statusPath: status,
+  operation: "ci-retrigger:test",
+  workflow: "build",
+});
+
 /** A fake sleep: the first `onTime` calls return on time, every later one overshoots by 6 s. */
 function sleepBlockedAfter(onTime: number) {
   let sleeps = 0;
@@ -2398,15 +2440,40 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     });
   }
 
-  const base = (cwd: string) => ({
+  /** The gate's options; its saved state lives beside the checkout, one file per repo. */
+  const base = (cwd: string, status = path.join(path.dirname(cwd), "status.jsonl")) => ({
     cwd,
     pr: "7",
     fid: "1-x",
     autoRouteSuffix: "",
     budgetS: 60,
     intervalS: 10,
-    retriggered: false,
+    handoff: handoffAt(status),
   });
+  /** The owner/repo the gate saved its target under (here derived from the local origin path). */
+  const savedRepo = (status: string) =>
+    fs
+      .readFileSync(status, "utf-8")
+      .split("\n")
+      .filter((l) => l.includes('"ci-handoff"'))
+      .map((l) => JSON.parse(l) as { target: { repo: string } })[0]?.target.repo;
+  /** What a turn loop records after a hand-off, through the real `runs handoff` command. */
+  const turnLoop = (
+    r: { cwd: string; status: string; id: string },
+    head: string,
+    result: string,
+    polls: number,
+  ) =>
+    cli(r.cwd, [
+      "handoff",
+      `--invocation=${r.id}`,
+      `--repo=${savedRepo(r.status)}`,
+      "--pr=7",
+      `--head=${head}`,
+      "--branch=feat/1-x",
+      `--result=${result}`,
+      `--polls=${polls}`,
+    ]);
   const quiet = { sleep: instant, log: noLog };
   const NONE = rollup("vercel");
   const FOUND = rollup("bkit-tests-unit");
@@ -2450,19 +2517,24 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     expect(logs.join("\n")).toContain("pre-push gate refused");
   });
 
-  it("a failed re-trigger push leaves no orphan commit behind", async () => {
+  it("a failed re-trigger push never piles up commits: the re-run pushes the same re-trigger commit", async () => {
     const { cwd, remoteHead } = closeRepo();
     failingPushHook(cwd);
-    const before = gitIn(cwd, "rev-parse", "HEAD");
+    const before = gitIn(cwd, "rev-list", "--count", "HEAD");
     const tip = remoteHead();
     const r = await ciDispatchGate(base(cwd), {
       gh: sequenceGh([NONE, NONE, NONE, NONE, NONE, NONE, FOUND]).gh,
       ...quiet,
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 6, ciDispatch: null });
-    // The commit never reached the remote: it is dropped, not left to pile up on a re-run.
-    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(before);
     expect(remoteHead()).toBe(tip);
+    const made = gitIn(cwd, "rev-parse", "HEAD");
+    // The saved checkpoint names the commit already made: the re-run pushes it, it makes no other.
+    fs.rmSync(path.join(cwd, ".git", "hooks", "pre-push"));
+    const again = await ciDispatchGate(base(cwd), { gh: sequenceGh([FOUND]).gh, ...quiet });
+    expect(again.ciDispatch).toMatchObject({ outcome: "self-healed", head: made, retrigger: true });
+    expect(Number(gitIn(cwd, "rev-list", "--count", "HEAD"))).toBe(Number(before) + 1);
+    expect(remoteHead()).toBe(made);
   });
 
   it("no-ci only when no CI workflow is declared; a declared one's silence is ci-declared-no-run", async () => {
@@ -2523,32 +2595,44 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     });
   });
 
-  it("a blocked sleep hands the poll to the agent (81); re-entry with the turn loop's result resumes", async () => {
+  /** A blocked first poll: the gate hands the poll to the agent (81) after one attempt. */
+  async function blockedFirstPoll() {
     const { cwd } = closeRepo();
-    const blocked = await ciDispatchGate(base(cwd), {
+    const { status, id } = await issueInvocation(cwd);
+    const blocked = await ciDispatchGate(base(cwd, status), {
       gh: sequenceGh([NONE]).gh,
       sleep: async (ms) => ms + 6000,
       log: noLog,
     });
     expect(blocked).toMatchObject({ phase: "poll", handoff: 81, ciDispatch: null, attempts: 1 });
+    return { cwd, status, id, head: blocked.head };
+  }
 
-    const found = await ciDispatchGate(
-      { ...base(cwd), supplied: { pollResult: "found", attempts: 4, allErrored: false } },
-      { gh: sequenceGh([fail]).gh, ...quiet },
-    );
-    expect(found.ciDispatch).toMatchObject({ outcome: "dispatched", attempts: 4 });
-
-    // A turn loop that saw no run goes on to the same self-heal, not straight to unresolved.
-    const none = await ciDispatchGate(
-      { ...base(cwd), supplied: { pollResult: "none", attempts: 6, allErrored: false } },
-      { gh: sequenceGh([FOUND]).gh, ...quiet },
-    );
-    expect(none.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true });
+  it("a blocked sleep hands the poll to the agent (81); the turn loop's recorded find resumes as dispatched", async () => {
+    const { cwd, status, id, head } = await blockedFirstPoll();
+    expect((await turnLoop({ cwd, status, id }, head, "pending", 1)).json).toMatchObject({
+      nextAction: "verdict",
+      outcome: "dispatched",
+    });
+    // gh only errors now: the verdict comes from the saved find, not from a new poll.
+    const found = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([fail]).gh, ...quiet });
+    expect(found.ciDispatch).toMatchObject({ outcome: "dispatched", attempts: 2 });
   });
 
-  it("a hand-off in the re-poll resumes with --retriggered and no second re-trigger commit", async () => {
+  it("a turn loop that saw no run goes on to the same self-heal, not straight to unresolved", async () => {
+    const { cwd, status, id, head } = await blockedFirstPoll();
+    expect((await turnLoop({ cwd, status, id }, head, "none", 5)).json).toMatchObject({
+      attempts: 6,
+      nextAction: "retrigger",
+    });
+    const none = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([FOUND]).gh, ...quiet });
+    expect(none.ciDispatch).toMatchObject({ outcome: "self-healed", retrigger: true, attempts: 7 });
+  });
+
+  it("a hand-off in the re-poll resumes from the saved receipt with no second re-trigger commit", async () => {
     const { cwd } = closeRepo();
-    const r = await ciDispatchGate(base(cwd), {
+    const { status, id } = await issueInvocation(cwd);
+    const r = await ciDispatchGate(base(cwd, status), {
       gh: sequenceGh([NONE]).gh,
       // The first poll's five sleeps return on time; the re-poll's first sleep is blocked.
       sleep: sleepBlockedAfter(5),
@@ -2556,17 +2640,14 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     });
     expect(r).toMatchObject({ phase: "repoll", handoff: 81, retrigger: true, attempts: 7 });
     const count = gitIn(cwd, "rev-list", "--count", "HEAD");
-    const again = await ciDispatchGate(
-      {
-        ...base(cwd),
-        retriggered: true,
-        supplied: { pollResult: "found", attempts: 9, allErrored: false },
-      },
-      { gh: sequenceGh([fail]).gh, ...quiet },
-    );
+    expect((await turnLoop({ cwd, status, id }, r.head, "pending", 1)).json).toMatchObject({
+      phase: "repoll",
+      outcome: "self-healed",
+    });
+    const again = await ciDispatchGate(base(cwd, status), { gh: sequenceGh([fail]).gh, ...quiet });
     expect(again.ciDispatch).toMatchObject({
       outcome: "self-healed",
-      attempts: 9,
+      attempts: 8,
       retrigger: true,
     });
     expect(gitIn(cwd, "rev-list", "--count", "HEAD")).toBe(count);
@@ -2583,8 +2664,9 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
 
   it("CLI: verdict JSON, body scan, exit codes", async () => {
     const { cwd } = closeRepo();
+    const { id } = await issueInvocation(cwd);
     fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
-    const r = await cli(cwd, ["dispatch", "--fid=1-x"]);
+    const r = await cli(cwd, ["dispatch", "--fid=1-x", `--invocation=${id}`]);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({
       ciDispatch: { outcome: "dispatched", attempts: 1, retrigger: false },
@@ -2594,15 +2676,23 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     });
 
     gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "squash subject\n\n* wip bkit [skip ci]");
-    const dirty = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7"]);
+    const dirty = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--invocation=${id}`]);
     expect(dirty.code).toBe(4);
     expect(dirty.json.scanResult).toBe("skip-token-found");
   });
 
   it("CLI: unresolved exits 1 with the verdict still on stdout; gh absent exits 80", async () => {
     const { cwd } = closeRepo();
+    const { id } = await issueInvocation(cwd);
     fakeGhBin({ "pr-view": "EXIT:1" });
-    const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--budget-s=1", "--interval-s=1"]);
+    const r = await cli(cwd, [
+      "dispatch",
+      "--fid=1-x",
+      "--pr=7",
+      "--budget-s=1",
+      "--interval-s=1",
+      `--invocation=${id}`,
+    ]);
     expect(r.code).toBe(1);
     expect(r.json.ciDispatch).toMatchObject({ outcome: "unresolved", reason: "gh-error" });
     expect(r.json.scanResult).toBeNull();
@@ -2611,16 +2701,32 @@ describe("bkit runs dispatch", { timeout: localLimit(20_000) }, () => {
     const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
     fs.symlinkSync(realGit, path.join(bin, "git"));
     env({ PATH: bin });
-    expect((await cli(cwd, ["dispatch", "--fid=1-x"])).code).toBe(80);
+    expect((await cli(cwd, ["dispatch", "--fid=1-x", `--invocation=${id}`])).code).toBe(80);
   });
 
-  it("CLI: --poll-result is validated, --attempts needs it", async () => {
+  it("CLI: dispatch without a run's invocation is refused, and nothing is polled or committed", async () => {
     const { cwd } = closeRepo();
-    expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--poll-result=maybe"])).code).toBe(
-      2,
-    );
-    expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", "--attempts=3"])).code).toBe(2);
+    const fake = fakeGhBin({ "pr-view": ROLLUP_FOUND });
+    const head = gitIn(cwd, "rev-parse", "HEAD");
+    const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7"]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("--invocation");
+    // No gh call at all: the calls log is never created.
+    expect(() => fake.calls()).toThrow();
+    expect(gitIn(cwd, "rev-parse", "HEAD")).toBe(head);
   });
+
+  it.each(["--poll-result=found", "--attempts=3", "--all-errored", "--retriggered"])(
+    "CLI: %s is not a dispatch flag: a turn loop records what it saw with runs handoff",
+    async (flag) => {
+      const { cwd } = closeRepo();
+      const { status, id } = await issueInvocation(cwd);
+      const before = fs.readFileSync(status, "utf-8");
+      const r = await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--invocation=${id}`, flag]);
+      expect(r.code).toBe(2);
+      expect(fs.readFileSync(status, "utf-8")).toBe(before);
+    },
+  );
 });
 
 describe(
@@ -2672,7 +2778,7 @@ describe(
       autoRouteSuffix: "",
       budgetS: 60,
       intervalS: 10,
-      retriggered: false,
+      handoff: handoffAt(path.join(path.dirname(cwd), "status.jsonl")),
     });
     const quiet = { sleep: instant, log: noLog };
     const NONE = rollup("vercel");
@@ -2701,7 +2807,8 @@ describe(
         "pr-list": "[]",
         "run-list": JSON.stringify([{ status: "queued", conclusion: "", headSha: sha }]),
       });
-      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+      const { id } = await issueInvocation(cwd);
+      const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`, `--invocation=${id}`]);
       expect(r.code).toBe(0);
       expect(r.json).toMatchObject({
         ciDispatch: { outcome: "dispatched", head: sha, retrigger: false },
@@ -2788,8 +2895,15 @@ describe(
       "dispatch --sha=%s is refused: the CI run is matched on the full 40-hex sha",
       async (sha) => {
         const { cwd } = devRepo({ record: true });
-        const r = await cli(cwd, ["dispatch", `--fid=${FID}`, `--sha=${sha}`]);
+        const { id } = await issueInvocation(cwd);
+        const r = await cli(cwd, [
+          "dispatch",
+          `--fid=${FID}`,
+          `--sha=${sha}`,
+          `--invocation=${id}`,
+        ]);
         expect(r.code).toBe(2);
+        expect(r.err).toContain("--sha must be the full 40-hex-digit commit sha");
       },
     );
   },
@@ -3016,6 +3130,20 @@ describe("bkit runs gate — PR heads, snapshot and audit rows", () => {
     expect(row).toMatchObject({ type: "ship-merge-ci", verdict: "FAIL" });
     expect(String(row.reason)).not.toBe("");
   });
+
+  it.each([
+    ["CI still running", "in-progress", 11],
+    ["no run yet", "no-run-at-this-head", 10],
+  ])(
+    "--capstone-only --record writes no ship-merge-ci row while %s: exit %s is not a verdict",
+    async (_why, sha, code) => {
+      prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: { oid: sha } }));
+      const file = statusFile();
+      const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`);
+      expect(r.code).toBe(code);
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    },
+  );
 
   it("an unreadable PR is an API error (20) with no head", async () => {
     prThenFixtureGh(null);
@@ -3573,7 +3701,8 @@ describe(
   "bkit runs dispatch — the verdict row and the close transport",
   { timeout: localLimit(20_000) },
   () => {
-    function pushedRepo() {
+    /** A pushed feature branch whose run's status log holds the run's invocation. */
+    async function pushedRepo() {
       const root = tmp();
       const remote = path.join(root, "remote.git");
       const cwd = path.join(root, "work");
@@ -3584,9 +3713,8 @@ describe(
       gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "chore(1-x): close-workflow");
       gitIn(cwd, "remote", "add", "origin", remote);
       gitIn(cwd, "push", "-q", "-u", "origin", "feat/1-x");
-      const file = path.join(cwd, "status.jsonl");
-      fs.writeFileSync(file, "");
-      return { cwd, file };
+      const { status: file, id } = await issueInvocation(cwd);
+      return { cwd, file, id };
     }
     const rowsOf = (file: string) =>
       fs
@@ -3595,9 +3723,12 @@ describe(
         .split("\n")
         .filter(Boolean)
         .map((l) => JSON.parse(l) as Record<string, unknown>);
+    /** The run's own rows, without the poll checkpoints the gate saves beside them. */
+    const stepRowsOf = (file: string) =>
+      rowsOf(file).filter((row) => ["step-done", "close-transport"].includes(String(row["type"])));
 
     it("writes the step's row with its ciDispatch verdict, then the close-transport row", async () => {
-      const { cwd, file } = pushedRepo();
+      const { cwd, file, id } = await pushedRepo();
       fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
       const r = await cli(cwd, [
         "dispatch",
@@ -3607,9 +3738,11 @@ describe(
         "--workflow=build",
         "--step=build-close-workflow",
         "--label=bkit:auto",
+        `--invocation=${id}`,
       ]);
       expect(r.code).toBe(0);
-      const rows = rowsOf(file);
+      const rows = stepRowsOf(file);
+      expect(rows).toHaveLength(2);
       expect(rows[0]).toMatchObject({
         type: "step-done",
         workflow: "build",
@@ -3627,7 +3760,7 @@ describe(
     /** The close's workflow-done row and its outcome row, as `bkit workflows close` leaves them. */
     function closedRun(cwd: string, file: string) {
       const sha = gitIn(cwd, "rev-parse", "HEAD");
-      fs.writeFileSync(
+      fs.appendFileSync(
         file,
         `${JSON.stringify({ type: "workflow-done", workflow: "build", at: new Date().toISOString(), parentSha: sha })}\n`,
       );
@@ -3643,22 +3776,23 @@ describe(
       ]);
       return { sha, stats: path.join(cwd, ".bkit", "stats.jsonl") };
     }
-    const dispatchClose = (cwd: string, file: string, ...extra: string[]) =>
-      cli(cwd, [
+    const dispatchClose = (repo: { cwd: string; file: string; id: string }, ...extra: string[]) =>
+      cli(repo.cwd, [
         "dispatch",
         "--fid=1-x",
         "--pr=7",
-        `--file=${file}`,
+        `--file=${repo.file}`,
         "--workflow=build",
         "--step=build-close-workflow",
+        `--invocation=${repo.id}`,
         ...extra,
       ]);
 
     it("--step=build-close-workflow appends a newer outcome row with the dispatch added to ci", async () => {
-      const { cwd, file } = pushedRepo();
-      const { sha, stats } = closedRun(cwd, file);
+      const repo = await pushedRepo();
+      const { sha, stats } = closedRun(repo.cwd, repo.file);
       fakeGhBin({ "pr-view": ROLLUP_FOUND, "pr-list": '[{"number":7}]' });
-      expect((await dispatchClose(cwd, file)).code).toBe(0);
+      expect((await dispatchClose(repo)).code).toBe(0);
       const [close, restated] = rowsOf(stats);
       expect(restated).toMatchObject({
         kind: "outcome",
@@ -3672,10 +3806,10 @@ describe(
     });
 
     it("--step=build-close-workflow with an unresolved dispatch restates the outcome as close-failed", async () => {
-      const { cwd, file } = pushedRepo();
-      const { stats } = closedRun(cwd, file);
+      const repo = await pushedRepo();
+      const { stats } = closedRun(repo.cwd, repo.file);
       fakeGhBin({ "pr-view": "EXIT:1" });
-      expect((await dispatchClose(cwd, file, "--budget-s=1", "--interval-s=1")).code).toBe(1);
+      expect((await dispatchClose(repo, "--budget-s=1", "--interval-s=1")).code).toBe(1);
       expect(rowsOf(stats).at(-1)).toMatchObject({
         ending: "close-failed",
         ci: [{ status: "unresolved", reason: "gh-error" }],
@@ -3683,15 +3817,22 @@ describe(
     });
 
     it("--file and --step go together", async () => {
-      const { cwd, file } = pushedRepo();
+      const { cwd, file, id } = await pushedRepo();
       fakeGhBin({ "pr-view": ROLLUP_FOUND });
-      expect((await cli(cwd, ["dispatch", "--fid=1-x", "--pr=7", `--file=${file}`])).code).toBe(2);
+      const r = await cli(cwd, [
+        "dispatch",
+        "--fid=1-x",
+        "--pr=7",
+        `--file=${file}`,
+        `--invocation=${id}`,
+      ]);
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("--file and --step go together");
     });
   },
 );
 
 describe("bkit runs handoff", { timeout: localLimit(30_000) }, () => {
-  const REL = "docs/plans/202611/logs/1-x/status.jsonl";
   const HEAD = "a".repeat(40);
   const OTHER_HEAD = "c".repeat(40);
   const NEW_HEAD = "b".repeat(40);
@@ -3707,39 +3848,13 @@ describe("bkit runs handoff", { timeout: localLimit(30_000) }, () => {
   async function handoffRepo(o: { ciFile?: boolean } = {}) {
     const cwd = tmp("bkit-handoff-");
     gitIn(cwd, "init", "-q", "-b", "feat/1-x");
-    const status = path.join(cwd, REL);
-    fs.mkdirSync(path.dirname(status), { recursive: true });
-    fs.writeFileSync(
-      status,
-      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T00:00:00Z" })}\n`,
-    );
     if (o.ciFile) {
       fs.mkdirSync(path.join(cwd, ".github/workflows"), { recursive: true });
       fs.writeFileSync(path.join(cwd, ".github/workflows/bkit-ci.yml"), "name: bkit-ci\n");
     }
     gitIn(cwd, "add", "-A");
-    gitIn(cwd, "commit", "-q", "-m", "init");
-    const out: string[] = [];
-    const code = await runCommand(
-      [
-        "status",
-        "invocation",
-        "--workflow=build",
-        "--step=build-close-workflow",
-        `--file=${REL}`,
-        "--host=claude",
-        "--configured-model=sonnet",
-        "--json",
-      ],
-      COMMANDS,
-      {
-        classicVerbs: new Set(["status"]),
-        cwd,
-        io: { stdout: (t) => out.push(t), stderr: () => {} },
-      },
-    );
-    expect(code).toBe(0);
-    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    gitIn(cwd, "commit", "-q", "--allow-empty", "-m", "init");
+    const { status, id } = await issueInvocation(cwd);
     return { cwd, status, id };
   }
 
@@ -3930,4 +4045,133 @@ describe("bkit runs handoff", { timeout: localLimit(30_000) }, () => {
       expect(bad.code).toBe(2);
     }
   });
+
+  /**
+   * One poll per phase on both sides, so the gate and the turn loop see the same evidence.
+   * `repoll` puts HEAD on a re-trigger commit whose receipt is already persisted.
+   */
+  async function parityRepo(o: { phase: "poll" | "repoll"; message: string; ciFile?: boolean }) {
+    const repo = await handoffRepo({ ciFile: o.ciFile });
+    const firstMessage = { poll: o.message, repoll: "chore(1-x): close-workflow" }[o.phase];
+    gitIn(repo.cwd, "commit", "-q", "--allow-empty", "-m", firstMessage);
+    const original = gitIn(repo.cwd, "rev-parse", "HEAD");
+    const extra = { poll: [], repoll: [o.message] }[o.phase];
+    for (const m of extra) gitIn(repo.cwd, "commit", "-q", "--allow-empty", "-m", m);
+    const head = gitIn(repo.cwd, "rev-parse", "HEAD");
+    const target = { ...TARGET, repo: "local/origin", head: original };
+    const receipt = {
+      state: "receipt-completed",
+      original,
+      commit: head,
+      ref: "refs/heads/feat/1-x",
+      remote: head,
+      receipt: "retrigger-1",
+    };
+    const seed = {
+      poll: [],
+      repoll: [
+        persisted("2026-11-01T00:01:00Z", {
+          phase: "repoll",
+          target,
+          observation: { result: "none", attempts: 1, errors: 0 },
+          retrigger: receipt,
+        }),
+      ],
+    }[o.phase];
+    persist(repo, seed);
+    return { ...repo, head };
+  }
+  const verdictOf = (v: { outcome?: unknown; reason?: unknown } | null | undefined) => ({
+    outcome: v?.outcome,
+    reason: v?.reason,
+  });
+
+  const CLEAN_RETRIGGER = "chore(1-x): re-trigger";
+  const SUPPRESSED_RETRIGGER = "chore(1-x): re-trigger [skip ci]";
+  it.each([
+    ["poll", "a run found", "chore(1-x): close-workflow", false, "found", "dispatched", undefined],
+    [
+      "poll",
+      "every poll errored",
+      "chore(1-x): close-workflow",
+      false,
+      "err",
+      "unresolved",
+      "gh-error",
+    ],
+    [
+      "poll",
+      "no run on a suppressed head",
+      "chore(1-x): close-workflow bkit [skip ci]",
+      false,
+      "none",
+      "unresolved",
+      "timeout-dirty",
+    ],
+    ["repoll", "a run found", CLEAN_RETRIGGER, false, "found", "self-healed", undefined],
+    ["repoll", "every re-poll errored", CLEAN_RETRIGGER, false, "err", "unresolved", "gh-error"],
+    ["repoll", "no run and no CI declared", CLEAN_RETRIGGER, false, "none", "no-ci", undefined],
+    [
+      "repoll",
+      "no run and CI declared",
+      CLEAN_RETRIGGER,
+      true,
+      "none",
+      "unresolved",
+      "ci-declared-no-run",
+    ],
+    [
+      "repoll",
+      "no run on a suppressed re-trigger",
+      SUPPRESSED_RETRIGGER,
+      false,
+      "none",
+      "unresolved",
+      "retrigger-suppressed",
+    ],
+    [
+      "repoll",
+      "a run found on a suppressed re-trigger",
+      SUPPRESSED_RETRIGGER,
+      false,
+      "found",
+      "unresolved",
+      "retrigger-suppressed",
+    ],
+  ] as const)(
+    "the gate and runs handoff reach the same verdict: %s, %s",
+    async (phase, _why, message, ciFile, seen, outcome, reason) => {
+      const replies = { found: rollup("bkit-tests-unit"), none: rollup("vercel"), err: fail };
+      const results = { found: "pending", none: "none", err: "provider-error" } as const;
+      const gateRepo = await parityRepo({ phase, message, ciFile });
+      const gate = await ciDispatchGate(
+        {
+          cwd: gateRepo.cwd,
+          pr: "7",
+          fid: "1-x",
+          autoRouteSuffix: "",
+          budgetS: 10,
+          intervalS: 10,
+          handoff: handoffAt(gateRepo.status),
+        },
+        { gh: sequenceGh([replies[seen]]).gh, sleep: instant, log: noLog },
+      );
+      const loopRepo = await parityRepo({ phase, message, ciFile });
+      const loop = await cli(loopRepo.cwd, [
+        "handoff",
+        `--invocation=${loopRepo.id}`,
+        "--repo=local/origin",
+        "--pr=7",
+        `--head=${loopRepo.head}`,
+        `--branch=${TARGET.branch}`,
+        "--budget-s=10",
+        "--interval-s=10",
+        `--result=${results[seen]}`,
+        "--polls=1",
+      ]);
+      expect(loop.code).toBe(0);
+      expect(verdictOf(gate.ciDispatch)).toEqual({ outcome, reason });
+      expect(verdictOf(loop.json)).toEqual({ outcome, reason });
+    },
+  );
 });

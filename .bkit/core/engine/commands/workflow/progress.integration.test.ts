@@ -406,6 +406,30 @@ describe("workflow progress command wiring", () => {
     expect(domainRows(contextCwd).filter((row) => row.step === "context-fetch")).toHaveLength(1);
 
     const dispatchCwd = repo();
+    const invocation = await run(dispatchCwd, [
+      "status",
+      "invocation",
+      "--workflow=build",
+      "--step=build-close-workflow",
+      `--file=${STATUS}`,
+      "--host=claude",
+      "--configured-model=sonnet",
+    ]);
+    expect(invocation.code).toBe(0);
+    const id = String(invocation.json.invocation);
+    // A turn loop saw six errored polls: the re-run decides from them and polls nothing.
+    const turns = await run(dispatchCwd, [
+      "runs",
+      "handoff",
+      `--invocation=${id}`,
+      "--repo=local/origin",
+      "--pr=7",
+      `--head=${git(dispatchCwd, "rev-parse", "HEAD")}`,
+      `--branch=feat/${FID}`,
+      "--result=provider-error",
+      "--polls=6",
+    ]);
+    expect(turns.json).toMatchObject({ nextAction: "verdict", reason: "gh-error" });
     const dispatch = await run(dispatchCwd, [
       "runs",
       "dispatch",
@@ -414,17 +438,18 @@ describe("workflow progress command wiring", () => {
       `--file=${STATUS}`,
       "--workflow=build",
       "--step=build-close-workflow",
-      "--poll-result=err",
-      "--attempts=6",
-      "--all-errored",
+      `--invocation=${id}`,
     ]);
     expect(dispatch.json.row).toMatchObject({ step: "build-close-workflow", status: "DONE" });
     expect
       .soft(dispatch.json.progressLine)
       .toBe("Progress: ██████████ 100% · Step 16/16 Close Workflow & Create PR");
     expect(dispatch.out).toHaveLength(1);
+    // The invocation receipt names the step too; only one completion row is written.
     expect(
-      domainRows(dispatchCwd).filter((row) => row.step === "build-close-workflow"),
+      domainRows(dispatchCwd)
+        .filter((row) => row.type === "step-done")
+        .filter((row) => row.step === "build-close-workflow"),
     ).toHaveLength(1);
 
     const closeCwd = repo("design");

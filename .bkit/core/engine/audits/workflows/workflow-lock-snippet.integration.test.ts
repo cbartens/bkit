@@ -174,6 +174,28 @@ describe("every phase takes its feature lock through bkit locks acquire", () => 
   });
 });
 
+describe("a start refused by a live lock stops without the Failure Path", () => {
+  // `locks acquire` exits 8 for a live holder; the other run is healthy, so this
+  // start writes no failed run, label or comment.
+  it.each(PHASES)("%s", (file) => {
+    const lines = fs.readFileSync(path.join(WORKFLOWS_DIR, file), "utf-8").split("\n");
+    const at = lines.findIndex((l) => l.includes('"{BKIT}" locks acquire --kind=workflow'));
+    expect(at).toBeGreaterThan(-1);
+    const route = lines.slice(at + 1, at + 7).map((l) => l.trim());
+    expect(route).toContain("Route:");
+    const busy = route.find((l) => l.startsWith("- **If** exit 8 →"));
+    expect(busy).toBeDefined();
+    expect(busy).toContain("`heldBy.workflow`");
+    expect(busy).toContain("`heldBy.since`");
+    expect(busy).toContain("→ **STOP**");
+    expect(busy).toContain("Run no **Failure Path**");
+    const ok = route.findIndex((l) => l.startsWith("- **If** exit 0 →"));
+    const bad = route.findIndex((l) => l === "- **Else** → **Failure Path**.");
+    expect(ok).toBeGreaterThan(-1);
+    expect(bad).toBeGreaterThan(route.indexOf(busy as string));
+  });
+});
+
 describe("no workflow guesses FID from a leftover lock or the newest bucket", () => {
   it.each(workflowFiles.map((f) => ({ file: path.basename(f), f })))("$file", ({ f }) => {
     const content = fs.readFileSync(f, "utf-8");

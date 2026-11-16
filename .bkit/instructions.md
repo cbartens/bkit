@@ -1155,11 +1155,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:459`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:462`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:225`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
@@ -1252,11 +1252,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:459`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:462`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:225`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1386,7 +1386,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:670`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1700,7 +1700,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:670`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -3115,7 +3115,20 @@ Continue from the interrupted sub-step only after the retry is verified.
 - carriers: workflow all except `bkit-auto`
 
 ```text
+**Locks:** Step 1 takes {{lock}} with `bkit locks acquire --kind=workflow` (hold `token`); {{release}}. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → `locks acquire` exits 8 and the run stops without the **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+```
+
+```retired
 **Locks:** Step 1 takes {{lock}} with `bkit locks acquire --kind=workflow` (hold `token`); {{release}}. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+```
+
+### workflow-lock-busy
+
+- workflow: where-used
+- carriers: workflow all except `bkit-auto`
+
+```text
+**If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
 ```
 
 ### workflow-status-branch
@@ -9737,7 +9750,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision, or a `DECIDED` / `ASSUMED` one no `build-decision` row names, as `openDecision`. |
 | **Plan** | Contract | build | The plan path, in task-block form, with the `bkit.workflows.tasks` group caps held at Step 1; one group per pass of the execute-verify loop; tasks tick `[x]` only in verify. |
 | **Status** | Contract | design, plan, build, debug, ship | `status.jsonl` = append-only NDJSON event log, folded to the run array; `step-done` carries `parentSha` captured at step start plus optional `verdict`, `failures`, `attempt`, `strategy`; build adds `group`, debug a `workflow-meta` `debugAttempt`. |
-| **Locks** | Contract | design, plan, build, debug, ship | Step 1 takes the per-feature `.lock` (`bkit locks acquire`); released at close and in Failure Path. Existing lock: holder `IN_PROGRESS` with a step <30min ago → **Failure Path**; any other holder's lock reclaimed. |
+| **Locks** | Contract | design, plan, build, debug, ship | Step 1 takes the per-feature `.lock` (`bkit locks acquire`); released at close and in Failure Path. Existing lock: holder `IN_PROGRESS` with a step <30min ago → `locks acquire` exits 8 and the run stops with no Failure Path (no label, comment or status row; tells the owner who holds the feature and since when); any other holder's lock reclaimed. |
 | **Status branch** | Contract | design, plan, build, debug, ship | status.jsonl committed per step on the feature branch (debug: adopted `{BRANCH}`; ship: `$BOOK_ROOT`, one commit per flush block), no mid-lifecycle pushes. |
 | **Worktrees** | Contract | design, plan, build, debug, ship | Mint mode → `.worktrees/{FID}`, else adopt the current branch in place (debug never creates a branch); cwd persists; `pwd` != `{WORKTREE_PATH}` → **Failure Path**. |
 | **Foreign path** | Contract | debug | Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run → **STOP** and write the `**Action needed — Foreign path:**` line (commit or revert the file, then say "continue"), recording the wait (`owner-pause`, `reason=foreign-path`) and the reply (`owner-answer`), never the **Failure Path**. |
@@ -9761,7 +9774,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | --- | --- |
 | **Re-runs follow answers** | build, debug, ship: after an owner answer or an automatic one (`ask: false`, headless), a check or test runs again only when the answer changes code (`Fix now`), asks for another round (`Try again`), or a red gate is still unsettled. Otherwise the workflow goes on. Build routes an all-`Accept` verify or holistic pause with no `Gate: FAIL` and no source change (the decision file header holds `Source changed: false`: the pause came from a verify or holistic check, not a fix round that edited source; a missing header keeps the re-run) to `continue`; debug's Loop Question and ship's Merge Question and Confirm Assumed Items offer no answer that re-runs a check without a change. `workflow-shape.test.ts` guards the debug and ship options. |
 | **Diff per reader** | build, debug, ship: Every agent that reads the run's diff gets `tmp/bkit-diff-{FID}.md`, written by `bkit context diff --reset-log` in the same sub-step, just before it: build Steps 10, 11 and the Failure Path; debug Step 10 and the Failure Path; ship Step 5 and the Failure Path. Build's group verify (Step 8) reads `build-diff-{GROUP}-{VERIFY_ATTEMPT}.md` instead: `bkit context diff --base=` the group's start commit (`status route --step=build-group-start --group=N` `parentSha`), so a group's review reads only that group's commits. Past 10000 lines the file is a per-file budget: line 1 says `partial diff coverage`, line 2 lists the files not shown whole, and the whole diff stays in `{OUTBOX}` (§ Context artifact clamping). Debug passes `{BASE_FLAG}` (`--base={startSha}` when the run has a start commit, else empty). Ship Step 5 and the ship Failure Path pass `--base=origin/dev`, so the sweep reads the PR's full merge diff. |
-| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused (`workflow already running for {FID}`) → Failure Path; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
+| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused with exit 8 (`workflow already running for {FID}`) and `heldBy` (`workflow`, `since`, `lastStepAt`, `idleSeconds`) → the run tells the owner the feature is busy and stops, with no Failure Path, label, comment or status row, because the other run is healthy and keeps its lock; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
 | **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: on Path B the Step 4 merge of `origin/dev` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
 | **Artifact tree** | A subagent's artifact is asserted under the working directory its dispatch supplied: `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
 | **Main-checkout staging** | Every `git add` and every `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the whole index, sweeping in work a user staged themselves. Worktree-phase `git add -A` is unrestricted, because that tree holds only this feature's work. |
@@ -10364,7 +10377,10 @@ Changed planned tests asked once, or none left
 - source: `.bkit/core/workflows/bkit-debug.md`
 
 ```text
-**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`.
+**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`. **If** `number` > 3 → run Step 2 sub-step 6 first, which reads Step 3's test round back.
+**Run only if** this is a resume that continues at Step 4 or later. Read Step 3's test round back, because Steps 4-11 route on its verdict and source and name their artifacts by its round:
+Hold `verdict` as `TEST_VERDICT` and `source` as `TEST_SOURCE`. **If** either block exits non-zero → **Failure Path**.
+Step 3 verdict, source and round restored when resuming past it
 `**Q1 — Branch:** {the missing or ambiguous branch the engine printed}. Which existing branch did you mean?`
 One option line per printed candidate (`Use branch {x} — debug adopts {x} and runs its tests there`), then `Name another branch — reply with its name` and `Stop — nothing changes; the run can be started again`, lettered in that order.
 `Recommended: none — only you know which branch you meant`.
@@ -10616,6 +10632,10 @@ Check the draft's groups and task blocks, and that every symbol it names exists:
 **If** this is the second exit 1 → **Failure Path**.
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
 Draft check passed or only formatting findings carried to review (`tests plan-check`)
+Check that every `key` on the draft's `**Ledger rows:**` line is on disk:
+**If** this is the second exit 11 → **Failure Path**, naming each `missing` key.
+[local-tests-first; existing-evidence-first] **If** exit 11 → invoke `@bkit-plan-generate` again with Context `"Fix only what '{OUTBOX}/plan-generate-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line. Invocation id: {INVOCATION}."` and the plan caps above, Read: `{OUTBOX}/plan-generate-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
+Draft ledger rows checked (`ledgers check`)
 `QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
 [deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
 Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
@@ -10625,6 +10645,9 @@ Check the reviewed plan's groups and task blocks, and that every symbol it names
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
 Review critiques present
 Reviewed plan checked (`tests plan-check`)
+Check that every `key` on the reviewed plan's `**Ledger rows:**` line is on disk:
+[local-tests-first; existing-evidence-first] **If** exit 11 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-update-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line; do not seed the file again."` and the plan caps above, Read: `{OUTBOX}/plan-update-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
+Reviewed plan ledger rows checked (`ledgers check`)
 Routed correctly
 **If** exit non-zero → **Failure Path**, naming each `missing` key.
 Write `plan-summary.md` from this run's status rows and the final plan:
@@ -10761,9 +10784,14 @@ Wait and reply recorded (`status row`)
 Used-up limit given one more allowance only on `Try again` (`counters grant`)
 Fast-forward local `dev` to `origin/dev`, then finish:
 Local `dev` synced (`branches sync-dev`)
-Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing:
+Read the squash commit:
+Hold `mergeCommitOid` as `MERGE_SHA`. **If** exit 80 → read the PR via `pull_request_read` (`get`) and hold its merge commit SHA as `MERGE_SHA`. **If** `MERGE_SHA` empty → **Failure Path**.
+Wait until the CI run at the squash commit has finished, so the gate in sub-step 3 records a final verdict:
+**If** exit 80 → sub-step 3.
+Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing; it writes no row while the run is missing or still running:
 **If** exit 12 → the squash commit's CI is red. Hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
+Squash-merge CI waited for (`runs wait`)
 Squash-merge CI capstone green (`runs gate`)
 Close landed (`workflows close`)
 **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 2 → Step 4 sub-step 2.

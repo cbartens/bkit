@@ -1136,7 +1136,6 @@ describe("persistent CI handoff on a real local remote", () => {
     autoRouteSuffix: "",
     budgetS: 60,
     intervalS: 10,
-    retriggered: false,
     handoff: { statusPath: r.status, operation: "handoff-1", ...handoff },
   });
   const handoffRows = (r: ReturnType<typeof remoteRepo>) =>

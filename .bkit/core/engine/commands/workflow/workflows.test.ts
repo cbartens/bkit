@@ -12,7 +12,7 @@ import { substituteWorkflow } from "../../render/trackers";
 import { runCommand } from "../lib";
 import { tipsText } from "../tips";
 import { newRecord, writeRecord } from "./ledgers";
-import { locksCommand } from "./locks";
+import { EXIT_LOCK_BUSY, locksCommand } from "./locks";
 import { chatFingerprint } from "./run-facts";
 import { workflowsCommand } from "./workflows";
 
@@ -430,7 +430,7 @@ describe("bkit workflows start", () => {
     write(cwd, `${REL}/status.jsonl`, log);
     write(cwd, `${REL}/.lock`, "2026-07-01T00:00:00Z design\n");
     const r = await run(cwd, wf("start", "build"));
-    expect(r.code).toBe(1);
+    expect(r.code).toBe(EXIT_LOCK_BUSY);
     expect(fs.readFileSync(statusOf(cwd), "utf-8")).toBe(log);
   });
 

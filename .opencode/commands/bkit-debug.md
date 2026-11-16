@@ -50,9 +50,9 @@ $ARGUMENTS
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-- **Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`.
+- **Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`. **If** `number` > 3 → run Step 2 sub-step 6 first, which reads Step 3's test round back.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `strategy` (`STANDARD|PIVOT|FINAL`); `debugAttempt` is carried by a `workflow-meta` event. **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
-- **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Close Workflow and Failure Path release it and exit non-zero while it is still present. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
+- **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Close Workflow and Failure Path release it and exit non-zero while it is still present. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → `locks acquire` exits 8 and the run stops without the **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 - **Status branch:** status.jsonl committed on the adopted branch `{BRANCH}` (`{STATUS}`, held from Step 2); per-step commits, no pushes.
 - **Worktrees:** Debug NEVER creates a branch. Step 2 resumes `.worktrees/{FID}`; **Else** → adopts an existing `feat/{FID}` (local or origin, not the session's own branch) into it when the runtime mints worktrees; **Else** → adopts the session's current branch in place (`worktreePath` = main checkout); no `-b`. `main` is the one ineligible branch. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
 - **Foreign path:** Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run; nothing written → **STOP**; write `**Action needed — Foreign path:** commit or revert {file}. Then say "continue".` with the named file, record the wait with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=foreign-path` → end turn; on the reply, record it first with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer` → re-run the block; NEVER the **Failure Path**. Line 1 of the final message = the no-issue warning, when one was emitted.
@@ -233,7 +233,10 @@ $ARGUMENTS
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=debug --fid={FID}
    ```
-   Hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
+   Route:
+   - **If** exit 0 → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
+   - **If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
+   - **Else** → **Failure Path**.
 6. **If** `BRANCH` = `dev` **or** `main` → `PUSH_MODE` = LOCAL → step 7. **Else** → find the open PR from `{BRANCH}` into any base:
    ```bash
    "{BKIT}" prs probe
@@ -352,12 +355,22 @@ $ARGUMENTS
    "{BKIT}" status meta --file="{STATUS}" --workflow=debug --debug-attempt=run --debug-mode={DEBUG_MODE} --push-mode={PUSH_MODE} >/dev/null || exit 1
    "{BKIT}" steps finish --file="{STATUS}" --workflow=debug --step=debug-worktree-setup --artifact=docs/plans/{YYYYMM}/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md --field=debugMode={DEBUG_MODE} --field=pushMode={PUSH_MODE} --message="chore({FID}): worktree-setup" --number=2 --post --title="Worktree Setup" --tree={BRANCH}
    ```
+6. **Run only if** this is a resume that continues at Step 4 or later. Read Step 3's test round back, because Steps 4-11 route on its verdict and source and name their artifacts by its round:
+   ```bash
+   "{BKIT}" counters derive --file="{STATUS}" --workflow=debug --step=debug-run-tests --position=current
+   ```
+   Hold `value` as `NORMAL_ATTEMPT`.
+   ```bash
+   "{BKIT}" status route --file="{STATUS}" --workflow=debug --step=debug-run-tests --require=verdict
+   ```
+   Hold `verdict` as `TEST_VERDICT` and `source` as `TEST_SOURCE`. **If** either block exits non-zero → **Failure Path**.
 
 ### 🔒 Gate 2 — Worktree Setup
 
 - [ ] Worktree ready
 - [ ] Runtime row written and asserted
 - [ ] Mechanical checks passed (`steps finish`)
+- [ ] Step 3 verdict, source and round restored when resuming past it
 
 ---
 
