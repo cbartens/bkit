@@ -62,12 +62,11 @@ function deny(reason) {
 
 /**
  * @param {string} cmd
- * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
- * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
+ * @param {{ cwd?: string, root?: string, dirs: string[] }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs, ctx, session) {
+function decideShell(cmd, ctx, session) {
   const c = String(cmd || "").trim();
-  const v = classifyShell(c, dirs, ctx);
+  const v = classifyShell(c, "codex", ctx);
   if (!v) return allow();
   const advice = composeAdvice(v, "codex", ADVICE_BUDGETS.codex, { command: c, ctx, session });
   acknowledgeSelected(advice.selected);
@@ -93,7 +92,7 @@ function bkitGuardrails(payload) {
   // Codex passes the command as a string, or as an argv array for some shells.
   const cmd = shellCommandText(input.command);
   if (typeof cmd !== "string") return null;
-  const decision = decideShell(cmd, hookDirs(payload), hookContext(payload), payload.session_id);
+  const decision = decideShell(cmd, hookContext(payload), payload.session_id);
   return decision.verdict === "allow" ? null : decision;
 }
 

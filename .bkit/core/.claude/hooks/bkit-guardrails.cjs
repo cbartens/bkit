@@ -61,15 +61,16 @@ function bkitGuardrails(payload) {
   const c = cmd.trim();
   if (!c) return null;
 
-  const cmds = shellCommands(c);
+  const ctx = hookContext(payload);
+  const st = newEvidence(ctx);
+  const cmds = shellCommands(c, st);
   const denied = denyRule(cmds);
   if (denied) {
     const refusal = composeAdvice({ tier: "deny", ...denied }, "claude", ADVICE_BUDGETS.claude);
     return { verdict: "deny", reason: refusal.text };
   }
-  const ctx = hookContext(payload);
-  const fetch = usesFetch(cmds) && !curlWgetHostAllowed(c, hookDirs(payload));
-  const edits = shellEditTargets(c, ctx);
+  const fetch = usesFetch(cmds) && !curlWgetHostAllowed(cmds, ctx.dirs);
+  const edits = shellEditTargets(cmds, st);
   const found = hasEditEvidence(edits);
   if (!fetch && !found) return null;
   const advice = composeAdvice(

@@ -99,7 +99,7 @@ function bkitGuardrails(payload) {
 
   const cmd = raw.trim();
   const ctx = hookContext(p);
-  const tier = classifyShell(cmd, hookDirs(p), ctx);
+  const tier = classifyShell(cmd, "antigravity", ctx);
   if (!tier) return null;
   const hold = tier.tier !== "deny" && tier.tier !== "ask" && tier.tier !== "secret";
   const advice = composeAdvice(tier, "antigravity", ADVICE_BUDGETS.antigravity, {

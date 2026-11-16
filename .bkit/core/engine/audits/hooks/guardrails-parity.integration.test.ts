@@ -7,6 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { writeNetworkAllowlist } from "../../install/network-allowlist";
@@ -409,16 +410,18 @@ describe("guardrails verdict parity — all five hosts", () => {
   });
 });
 
-describe("private-key shell reads — Codex denies a content read, the other hosts keep their verdict", () => {
-  // Cursor and Antigravity ask on a shell read of `*.pem`, `*.p12` or `id_rsa` (they can
-  // prompt); Claude Code and OpenCode leave shell reads to their permission tables. Codex
-  // cannot prompt: it denies a read of a private key's content and only advises otherwise.
+describe("private-key shell reads — Codex denies a content read, Cursor and Antigravity ask", () => {
+  // One key-file rule (`mayNameKeyFile`): Cursor and Antigravity ask on a shell command that
+  // names a key file (they can prompt); Claude Code and OpenCode leave shell reads to their
+  // permission tables. Codex cannot prompt: it denies a read of a private key's content and
+  // only advises otherwise.
   const asked: Hosts = { ...ALL("allow"), cursor: "ask", antigravity: "ask" };
   const deniedOnCodex = (others: Hosts): Hosts => ({ ...others, codex: "deny" });
   const contentReads: [string, Hosts][] = [
     ["cat ~/.ssh/id_rsa", deniedOnCodex(asked)],
-    ["cat ~/.ssh/id_ed25519", deniedOnCodex(ALL("allow"))],
-    ["cat ~/.ssh/id_ecdsa", deniedOnCodex(ALL("allow"))],
+    ["cat ~/.ssh/id_ed25519", deniedOnCodex(asked)],
+    ["cat ~/.ssh/id_ecdsa", deniedOnCodex(asked)],
+    ["cat keys/server.key", deniedOnCodex(asked)],
     ["cat certs/server.pem", deniedOnCodex(asked)],
     ["cat .env ~/.ssh/id_rsa", deniedOnCodex(asked)],
     ["sudo cat ~/.ssh/id_rsa", deniedOnCodex(asked)],
@@ -445,18 +448,18 @@ describe("private-key shell reads — Codex denies a content read, the other hos
     ["grep --regexp=. key.pem", deniedOnCodex(asked)],
     ["sed --expression=p key.pem", deniedOnCodex(asked)],
     ["rg --regexp=. key.pem", deniedOnCodex(asked)],
-    ["cat ~/.ssh/id_*", deniedOnCodex(ALL("allow"))],
-    ["cat ~/.ssh/*", deniedOnCodex(ALL("allow"))],
-    ["cat ~/.ssh/id_rsa*", deniedOnCodex(ALL("allow"))],
-    ["cat ~/.ssh/id_{rsa,dsa}", deniedOnCodex(ALL("allow"))],
-    ["cat ~/.ssh/id_rs?", deniedOnCodex(ALL("allow"))],
+    ["cat ~/.ssh/id_*", deniedOnCodex(asked)],
+    ["cat ~/.ssh/*", deniedOnCodex(asked)],
+    ["cat ~/.ssh/id_rsa*", deniedOnCodex(asked)],
+    ["cat ~/.ssh/id_{rsa,dsa}", deniedOnCodex(asked)],
+    ["cat ~/.ssh/id_rs?", deniedOnCodex(asked)],
     ["cat *.pem", deniedOnCodex(asked)],
   ];
   const notContentReads: [string, Hosts][] = [
     ["curl --cacert certs/ca.pem https://example.com", asked],
     ["openssl x509 -in cert.pem -noout -text", asked],
     ["ssh -i ~/.ssh/id_rsa host uptime", asked],
-    ["scp -i ~/.ssh/id_ed25519 a host:b", ALL("allow")],
+    ["scp -i ~/.ssh/id_ed25519 a host:b", asked],
     ["git rm --cached id_rsa", asked],
     ['git commit -m "id_rsa"', asked],
     ["openssl genrsa -out key.pem 2048", asked],
@@ -467,12 +470,17 @@ describe("private-key shell reads — Codex denies a content read, the other hos
     ["git add key.pem", asked],
     ["scp a.txt host:b", ALL("allow")],
     ["scp host:key.pem ./key.pem", asked],
+    // A search pattern and a `jq` / `yq` filter are not files, past option values too.
     ["grep -A 2 server.key nginx.conf", ALL("allow")],
     ['grep -m 1 "ssl.key" nginx.conf', ALL("allow")],
-    ["rg -l \"BEGIN\" --glob '*.key'", ALL("allow")],
-    // Antigravity delivers its shell-edit advice as a deny that an identical retry passes;
-    // that verdict is about the edit, not the key.
-    ["sed -i 's/a/b/' app.key", { ...ALL("allow"), antigravity: "deny" }],
+    ["jq .key data.json", ALL("allow")],
+    ["jq -e '.data.key' data.json", ALL("allow")],
+    ["yq .tls.key values.yaml", ALL("allow")],
+    ["jq .name server.key", asked],
+    // The ask tier goes by the names on the command line: an option value that names a key
+    // file asks too.
+    ["rg -l \"BEGIN\" --glob '*.key'", asked],
+    ["sed -i 's/a/b/' app.key", asked],
     ["openssl rsa -in key.pem -pubout", asked],
     ["openssl pkey -in key.pem -pubout", asked],
     ["openssl pkcs12 -in c.p12 -nokeys", asked],
@@ -499,6 +507,51 @@ describe("private-key shell reads — Codex denies a content read, the other hos
       });
     },
   );
+});
+
+type Classify = (command: string, host: string, ctx: unknown) => { tier: string } | null;
+
+/** `classifyShell` from the rendered Cursor hook's managed block, saved under a neutral name. */
+function loadClassifyShell(): Classify {
+  const src = fs.readFileSync(CURSOR, "utf-8");
+  const file = path.join(GENERATED, "shell-engine.cjs");
+  const block = src.slice(src.indexOf("// bkit:start"), src.indexOf("// bkit:end"));
+  fs.writeFileSync(file, `${block}\nmodule.exports = { classifyShell };\n`);
+  return (createRequire(file)(file) as { classifyShell: Classify }).classifyShell;
+}
+
+describe("classifyShell — the host is an argument, not the hook's file name", () => {
+  const classify = loadClassifyShell();
+  const ctx = { cwd: GENERATED, root: GENERATED, dirs: [GENERATED] };
+  const tiers = (command: string): Record<string, string | null> =>
+    Object.fromEntries(
+      ["codex", "cursor", "antigravity"].map((h) => [h, classify(command, h, ctx)?.tier ?? null]),
+    );
+
+  it.each(["cat ~/.ssh/id_ed25519", "cat ~/.ssh/id_ecdsa", "cat keys/server.key"])(
+    "`%s` is deny for codex and secret for cursor and antigravity",
+    (command) => {
+      expect({ command, tiers: tiers(command) }).toEqual({
+        command,
+        tiers: { codex: "deny", cursor: "secret", antigravity: "secret" },
+      });
+    },
+  );
+
+  it.each([
+    "curl --cacert certs/ca.pem https://example.com",
+    "openssl x509 -in cert.pem -noout -text",
+    "ssh -i ~/.ssh/id_rsa host uptime",
+  ])("`%s` is secret on every host, never deny", (command) => {
+    expect({ command, tiers: tiers(command) }).toEqual({
+      command,
+      tiers: { codex: "secret", cursor: "secret", antigravity: "secret" },
+    });
+  });
+
+  it("`bkit tests jump` is deny for codex and ask elsewhere", () => {
+    expect(tiers("bkit tests jump")).toEqual({ codex: "deny", cursor: "ask", antigravity: "ask" });
+  });
 });
 
 const ALL_ALLOW = { claude: "allow", codex: "allow", antigravity: "allow" };

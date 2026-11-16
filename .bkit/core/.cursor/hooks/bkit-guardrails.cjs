@@ -63,12 +63,11 @@ function deny(userMessage, agentMessage) {
 
 /**
  * @param {string} cmd
- * @param {string[]} dirs where to look for the network allowlist (`hookDirs`)
- * @param {{ cwd?: string, root?: string }} ctx the call's directories (`hookContext`)
+ * @param {{ cwd?: string, root?: string, dirs: string[] }} ctx the call's directories (`hookContext`)
  */
-function decideShell(cmd, dirs, ctx, session) {
+function decideShell(cmd, ctx, session) {
   const c = cmd.trim();
-  const v = classifyShell(c, dirs, ctx);
+  const v = classifyShell(c, "cursor", ctx);
   if (!v) return allow();
   const advice = composeAdvice(v, "cursor", ADVICE_BUDGETS.cursor, { command: c, ctx, session });
   acknowledgeSelected(advice.selected);
@@ -127,7 +126,6 @@ function bkitGuardrails(payload) {
   ) {
     return decideShell(
       payload.command,
-      hookDirs(payload),
       hookContext(payload),
       payload.session_id || payload.conversation_id,
     );

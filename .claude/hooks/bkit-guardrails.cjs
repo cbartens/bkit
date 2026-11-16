@@ -518,17 +518,69 @@ const CMD_WRAPPERS = new Set([
   "busybox",
 ]);
 
-/** Short options of each wrapper that take the next word as their argument. */
-const WRAPPER_OPTION_ARGS = {
-  xargs: new Set(["-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "-J"]),
-  sudo: new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "-r", "-t"]),
-  doas: new Set(["-u", "-C"]),
-  nice: new Set(["-n"]),
-  env: new Set(["-u", "-C", "-S"]),
-  timeout: new Set(["-k", "-s"]),
-  exec: new Set(["-a"]),
-  stdbuf: new Set(["-i", "-o", "-e"]),
+/** Per program (wrappers too): the short letters and long options whose value is the next word. */
+const VALUE_OPTIONS = {
+  grep: [
+    "ABCDdefm",
+    [
+      "--regexp",
+      "--file",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--max-count",
+      "--include",
+      "--exclude",
+      "--exclude-dir",
+      "--label",
+    ],
+  ],
+  rg: [
+    "ABCMTefgjmrt",
+    [
+      "--regexp",
+      "--file",
+      "--glob",
+      "--iglob",
+      "--type",
+      "--type-not",
+      "--max-count",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--replace",
+      "--max-depth",
+      "--threads",
+    ],
+  ],
+  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
+  sed: ["efl", ["--expression", "--file", "--line-length"]],
+  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
+  sort: ["kotST", ["--key", "--output", "--field-separator"]],
+  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
+  head: ["cn", ["--bytes", "--lines"]],
+  tail: ["cn", ["--bytes", "--lines"]],
+  scp: ["cFiJloPS", []],
+  rsync: ["e", ["--rsh"]],
+  xargs: ["InPLsdEaJ", []],
+  sudo: ["ughpCDRTUrt", []],
+  doas: ["uC", []],
+  nice: ["n", []],
+  env: ["uCS", []],
+  timeout: ["ks", []],
+  exec: ["a", []],
+  stdbuf: ["ioe", []],
 };
+VALUE_OPTIONS.egrep = VALUE_OPTIONS.fgrep = VALUE_OPTIONS.grep;
+
+/** Whether option word `w` takes the next word as its value by `spec`, a `VALUE_OPTIONS` row. */
+function takesValue(spec, w) {
+  if (!spec || w.includes("=")) return false;
+  if (w.startsWith("--")) return spec[1].includes(w);
+  // The first value letter of a cluster takes the rest of the word (`-uroot`), so the next
+  // word is its value only when that letter ends the cluster (`-Eu root`).
+  return [...w.slice(1)].findIndex((ch) => spec[0].includes(ch)) === w.length - 2;
+}
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
@@ -638,7 +690,7 @@ function heredocSubstitutions(body) {
  * subshell scopes it runs in, outermost first (a `cd` moves only its own scope). Text over
  * 256 KiB of UTF-8 is cut at the last whole character first. Quoted text and data heredoc
  * bodies are never commands. A text the parser cannot finish is judged on what was read.
- * `st` (`newEvidence`) collects the analysis limits reached.
+ * `st` (`newEvidence`) collects the analysis limits reached, the cut included.
  */
 function shellCommands(text, st = newEvidence()) {
   const out = [];
@@ -721,7 +773,9 @@ function shellCommands(text, st = newEvidence()) {
     }
     for (const script of scripts.filter(Boolean)) collect(script, depth + 1, scope);
   };
-  collect(cutUtf8(String(text), EVIDENCE_LIMITS.commandBytes), 0, []);
+  const cut = cutUtf8(String(text), EVIDENCE_LIMITS.commandBytes);
+  if (cut.length < String(text).length) evidenceLimit(st, "command-size", false);
+  collect(cut, 0, []);
   return out;
 }
 
@@ -757,13 +811,20 @@ const EVIDENCE_LIMITS = {
   deadlineMs: 200,
 };
 
-/** The call context a hook passes: effective directory and the workspace root. */
+/**
+ * The call context a hook passes: the effective directory, the workspace root, and `dirs`,
+ * the directories that locate the network allowlist, most authoritative first: the workspace
+ * roots (Cursor `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload
+ * adapter), the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd —
+ * which on Antigravity is the plugin dir, not the repo.
+ */
 function hookContext(payload) {
   const p = payload && typeof payload === "object" ? payload : {};
   const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
   const root = roots.find((r) => typeof r === "string" && r) || undefined;
   const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
-  return { cwd, root };
+  const dirs = [...roots, cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
+  return { cwd, root, dirs };
 }
 
 /** This process's own CPU time in ms; scheduler contention does not inflate it. */
@@ -1229,11 +1290,10 @@ function stripCommandPrefix(words) {
     // `function NAME` heads a definition; its body is the command.
     i += wrapper === "function" ? 2 : 1;
     if (!CMD_WRAPPERS.has(wrapper)) continue;
-    const withArg = WRAPPER_OPTION_ARGS[wrapper];
     while (i < words.length && words[i].startsWith("-") && words[i].length > 1) {
       const opt = words[i++];
       if (opt === "--") break;
-      if (withArg && withArg.has(opt)) i++;
+      if (takesValue(VALUE_OPTIONS[wrapper], opt)) i++;
     }
     if (wrapper === "timeout" && i < words.length) i++;
   }
@@ -1245,13 +1305,16 @@ function resolveCwd(cwd, dir) {
   return path.resolve(cwd, dir);
 }
 
-/** Positional operands of a simple tool: non-option words (everything after `--`). */
-function operands(args) {
+/**
+ * Positional operands of `args` (a command's words after its program): non-option words and
+ * everything after `--`, skipping the value of each option `spec` (`VALUE_OPTIONS`) names.
+ */
+function operands(args, spec) {
   const out = [];
-  let rest = false;
-  for (const a of args) {
-    if (rest || a === "-" || !a.startsWith("-")) out.push(a);
-    else if (a === "--") rest = true;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--") return out.concat(args.slice(i + 1));
+    if (args[i] === "-" || !args[i].startsWith("-")) out.push(args[i]);
+    else if (takesValue(spec, args[i])) i++;
   }
   return out;
 }
@@ -1312,8 +1375,9 @@ function perlFlag(a) {
     const c = a[k];
     if (c === "i") return "in-place";
     if (c === "e" || c === "E") return k === a.length - 1 ? "script+1" : "script";
-    // These take the rest of the cluster as their own argument.
-    if ("IMmFlx0".includes(c)) return null;
+    // `-l` / `-0` take only octal digits; the others take the rest of the cluster.
+    if (c === "l" || c === "0") k += a.slice(k + 1).match(/^[0-7]*/)[0].length;
+    else if ("IMmFx".includes(c)) return null;
   }
   return null;
 }
@@ -1438,7 +1502,7 @@ const KNOWN_WRITERS = {
   ruby: { form: "-i", force: true, read: (args) => inPlaceOperands(args, perlFlag) },
   awk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
   gawk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
-  tee: { form: "its file operands", force: false, read: operands },
+  tee: { form: "its file operands", force: false, read: (args) => operands(args) },
   cp: {
     form: "its last operand",
     force: false,
@@ -1525,7 +1589,7 @@ const LIMIT_REASONS = {
 
 /**
  * Edit evidence for a shell command: `{ targets, uncertain, limit }`. Each parsed command
- * (`shellCommands`) is matched against its redirects and `KNOWN_WRITERS`; nothing else counts.
+ * in `cmds` is matched against its redirects and `KNOWN_WRITERS`; nothing else counts.
  * `targets` are ordered unique paths (workspace-relative where inside it), `uncertain` lists
  * reason codes for writes whose targets cannot be named, and `limit` is the first analysis
  * limit reached (the targets found before it are kept). A literal `cd` moves the directory
@@ -1533,17 +1597,12 @@ const LIMIT_REASONS = {
  * writer returns empty `targets` and `uncertain` and a null `limit`.
  *
  * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
- * `ctx` is `{ cwd, root }` (`hookContext`).
+ * `st` is the `newEvidence(ctx)` state `shellCommands` filled while it parsed `cmds`.
  */
-function shellEditTargets(cmd, ctx) {
-  const st = newEvidence(ctx);
-  const text = String(cmd);
-  if (Buffer.byteLength(text, "utf8") > EVIDENCE_LIMITS.commandBytes) {
-    evidenceLimit(st, "command-size", false);
-  }
+function shellEditTargets(cmds, st) {
   // The directory of each scope: a scope starts in its parent's directory.
   const cwds = new Map();
-  for (const c of shellCommands(text, st)) {
+  for (const c of cmds) {
     if (evidenceExpired(st)) break;
     let cwd = st.baseCwd;
     for (const id of c.scope) {
@@ -1605,18 +1664,6 @@ function shellEditAdvisory(ev) {
 const NETWORK_ALLOWLIST_FILE = path.join(".bkit", "allowlist.json");
 
 /**
- * Directories a hook call names, most authoritative first: the workspace roots (Cursor
- * `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload adapter),
- * the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd — which on
- * Antigravity is the plugin dir, not the repo.
- */
-function hookDirs(payload) {
-  const p = payload && typeof payload === "object" ? payload : {};
-  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
-  return [...roots, p.cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
-}
-
-/**
  * The network allowlist file for a hook call: walking up from each of `dirs` in turn,
  * the first `.bkit/allowlist.json` found. A directory holding `.git` (the repo root)
  * ends that walk. null when none is found.
@@ -1639,7 +1686,7 @@ function findNetworkAllowlist(dirs) {
  * Hosts come from `.bkit/allowlist.json`, the one install-written artifact carrying the
  * resolved network allowlist (the shipped egress registry union the consumer's
  * `allowed-domains`); every host's hook reads it, found from the hook call's
- * directories (`hookDirs`). There is NO hardcoded fallback list: absent or unreadable,
+ * directories (`hookContext`). There is NO hardcoded fallback list: absent or unreadable,
  * this returns empty and every host is treated as unknown.
  */
 function loadNetworkAllowlistBases(dirs) {
@@ -1661,16 +1708,16 @@ function loadNetworkAllowlistBases(dirs) {
 }
 
 /**
- * Pull the HOST out of every `http(s)://…` URL in a command.
+ * The HOST of every `http(s)://…` URL in the words of the parsed curl / wget commands
+ * (`usesFetch`); a URL in another command or inside its quoted text is not fetched.
  *
  * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
  * `pkg.json`) is never read as a URL.
  */
-function extractUrlHosts(cmd) {
+function extractUrlHosts(cmds) {
   const hosts = [];
-  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
-  let m;
-  while ((m = re.exec(cmd)) !== null) {
+  const words = cmds.filter((c) => usesFetch([c])).flatMap((c) => c.words);
+  for (const m of words.join(" ").matchAll(/\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi)) {
     // Authority ends at the first /, ? or #.
     let authority = m[1].split(/[/?#]/)[0];
     // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
@@ -1690,22 +1737,22 @@ function hostMatchesBase(host, base) {
 }
 
 /**
- * True when EVERY URL in the command targets an allowlisted host.
+ * True when EVERY URL the parsed commands fetch targets an allowlisted host.
  *
- * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → false. `dirs` locate
- * the allowlist (`hookDirs`).
+ * Only each URL's host is consulted, never the rest of the command (query params,
+ * headers). No parseable URL, or any host off the list → false. `dirs` locate the
+ * allowlist (`hookContext`).
  */
-function curlWgetHostAllowed(cmd, dirs) {
-  const hosts = extractUrlHosts(cmd);
+function curlWgetHostAllowed(cmds, dirs) {
+  const hosts = extractUrlHosts(cmds);
   if (hosts.length === 0) return false;
   const bases = loadNetworkAllowlistBases(dirs);
   return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }
 
 // --- Shell deny tier: identical in every host's guardrails hook (bkit renders it from one
-// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns; needs
-// nothing else in scope.
+// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns, and
+// splits their words with `operands` from the same file.
 //
 // git commands are classified by their parsed words — subcommand, flag set (any order,
 // short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
@@ -1821,19 +1868,16 @@ function worldWritable(mode) {
   return mode.split(",").some((clause) => /^[ugoa]*[ao][ugoa]*[+=][rwxXst]*w/.test(clause));
 }
 
-/** An option word's short letters and long names, and the operands, of `words` after the program. */
+/** The short letters and long names of the options before `--`, and the operands, of `words`. */
 function optionsAndOperands(words) {
-  const short = new Set();
-  const long = new Set();
-  const operands = [];
-  let positionalOnly = false;
-  for (const w of words.slice(1)) {
-    if (positionalOnly || w === "-" || !w.startsWith("-")) operands.push(w);
-    else if (w === "--") positionalOnly = true;
-    else if (w.startsWith("--")) long.add(w.split("=")[0]);
-    else for (const ch of w.slice(1)) short.add(ch);
-  }
-  return { short, long, operands };
+  const args = words.slice(1);
+  const end = args.includes("--") ? args.indexOf("--") : args.length;
+  const opts = args.slice(0, end).filter((w) => w.length > 1 && w.startsWith("-"));
+  return {
+    short: new Set(opts.filter((w) => w[1] !== "-").flatMap((w) => [...w.slice(1)])),
+    long: new Set(opts.filter((w) => w[1] === "-").map((w) => w.split("=")[0])),
+    operands: operands(args),
+  };
 }
 
 /**
@@ -1889,15 +1933,16 @@ function bkitGuardrails(payload) {
   const c = cmd.trim();
   if (!c) return null;
 
-  const cmds = shellCommands(c);
+  const ctx = hookContext(payload);
+  const st = newEvidence(ctx);
+  const cmds = shellCommands(c, st);
   const denied = denyRule(cmds);
   if (denied) {
     const refusal = composeAdvice({ tier: "deny", ...denied }, "claude", ADVICE_BUDGETS.claude);
     return { verdict: "deny", reason: refusal.text };
   }
-  const ctx = hookContext(payload);
-  const fetch = usesFetch(cmds) && !curlWgetHostAllowed(c, hookDirs(payload));
-  const edits = shellEditTargets(c, ctx);
+  const fetch = usesFetch(cmds) && !curlWgetHostAllowed(cmds, ctx.dirs);
+  const edits = shellEditTargets(cmds, st);
   const found = hasEditEvidence(edits);
   if (!fetch && !found) return null;
   const advice = composeAdvice(

@@ -1,6 +1,6 @@
 // --- Shell deny tier: identical in every host's guardrails hook (bkit renders it from one
-// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns; needs
-// nothing else in scope.
+// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns, and
+// splits their words with `operands` from the same file.
 //
 // git commands are classified by their parsed words — subcommand, flag set (any order,
 // short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
@@ -116,19 +116,16 @@ function worldWritable(mode) {
   return mode.split(",").some((clause) => /^[ugoa]*[ao][ugoa]*[+=][rwxXst]*w/.test(clause));
 }
 
-/** An option word's short letters and long names, and the operands, of `words` after the program. */
+/** The short letters and long names of the options before `--`, and the operands, of `words`. */
 function optionsAndOperands(words) {
-  const short = new Set();
-  const long = new Set();
-  const operands = [];
-  let positionalOnly = false;
-  for (const w of words.slice(1)) {
-    if (positionalOnly || w === "-" || !w.startsWith("-")) operands.push(w);
-    else if (w === "--") positionalOnly = true;
-    else if (w.startsWith("--")) long.add(w.split("=")[0]);
-    else for (const ch of w.slice(1)) short.add(ch);
-  }
-  return { short, long, operands };
+  const args = words.slice(1);
+  const end = args.includes("--") ? args.indexOf("--") : args.length;
+  const opts = args.slice(0, end).filter((w) => w.length > 1 && w.startsWith("-"));
+  return {
+    short: new Set(opts.filter((w) => w[1] !== "-").flatMap((w) => [...w.slice(1)])),
+    long: new Set(opts.filter((w) => w[1] === "-").map((w) => w.split("=")[0])),
+    operands: operands(args),
+  };
 }
 
 /**

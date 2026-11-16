@@ -67,6 +67,9 @@ describe("cursor guardrails.cjs — shell", () => {
     ["nice -n 5 git push -f origin dev", "wrapper option with an argument"],
     ["env -u FOO git push -f origin dev", "env -u takes a variable name"],
     ["sudo -u root git push --force origin dev", "sudo -u takes a user; deny outranks sudo's ask"],
+    ["sudo -Eu root git push --force origin dev", "a value letter ending a cluster takes a user"],
+    ["sudo -uroot git push --force origin dev", "a user attached to -u takes no further word"],
+    ["timeout -k5s 30 git push --force origin dev", "a value attached to -k, then the duration"],
     ["stdbuf -oL git push --force origin dev", "stdbuf option with an attached value"],
     ["timeout -k 5 30 git push --force origin dev", "timeout option plus duration"],
     ["bash -c -- 'git push -f origin dev'", "-- between -c and the script"],
@@ -503,6 +506,22 @@ describe("cursor guardrails.cjs — shell reads of secret files", () => {
     ).toBe("ask");
   });
 
+  it("reads hosts from the words of the parsed curl or wget only", () => {
+    const quoted = 'curl -s https://api.github.com/x; echo "docs at https://example.invalid"';
+    expect(run({ command: quoted }).permission).toBe("allow");
+    expect(run({ command: "curl https://example.invalid/x" }).permission).toBe("ask");
+    for (const command of [
+      "curl -s https://api.github.com/x -- https://example.invalid/y",
+      "timeout 30 curl https://example.invalid/x",
+      "env -u FOO curl https://example.invalid/x",
+    ]) {
+      expect({ command, permission: run({ command }).permission }).toEqual({
+        command,
+        permission: "ask",
+      });
+    }
+  });
+
   it("allows subdomains of an allowlisted apex but not lookalikes", () => {
     expect(
       run({ command: "curl -sSfL https://raw.githubusercontent.com/o/r/main/x.sh" }).permission,
@@ -614,6 +633,8 @@ describe("cursor guardrails.cjs — shell edit advice for known writers", () => 
       },
       { command: "gsed -i s/a/b/ src/w-gsed.ts", targets: ["src/w-gsed.ts"] },
       { command: "perl -pi -e s/a/b/ src/w-perl.ts", targets: ["src/w-perl.ts"] },
+      { command: "perl -lpi -e s/a/b/ src/w-perl-l.ts", targets: ["src/w-perl-l.ts"] },
+      { command: "perl -0777pi -e s/a/b/ src/w-perl-0.ts", targets: ["src/w-perl-0.ts"] },
       { command: "ruby -i -pe '$_.upcase!' src/w-ruby.rb", targets: ["src/w-ruby.rb"] },
       { command: "awk -i inplace '{print}' src/w-awk.ts", targets: ["src/w-awk.ts"] },
       { command: "gawk -i inplace '{print}' src/w-gawk.ts", targets: ["src/w-gawk.ts"] },
@@ -911,7 +932,8 @@ describe("cursor guardrails.cjs — shell edit advice for known writers", () => 
         part,
         'const fs = require("node:fs");\nconst path = require("node:path");\n' +
           fs.readFileSync(path.resolve(".bkit/core/hooks/guardrails-shell.js"), "utf-8") +
-          "\nmodule.exports = { shellEditTargets };\n",
+          "\nmodule.exports = { shellEditTargets: (cmd, ctx) => {" +
+          " const st = newEvidence(ctx); return shellEditTargets(shellCommands(cmd, st), st); } };\n",
       );
       return (createRequire(import.meta.url)(part) as { shellEditTargets: never }).shellEditTargets;
     }

@@ -41,11 +41,6 @@ function programName(word) {
   return String(word || "").replace(/^.*\//, "");
 }
 
-/** The words after the program that are not options. */
-function operandsOf(words) {
-  return words.slice(1).filter((w) => !w.startsWith("-"));
-}
-
 /** Whether a parsed command runs `bkit tests jump` (also `pnpm bkit ...`, `node dist/cli.js ...`). */
 function isTestsJump(words) {
   return words.some(
@@ -66,7 +61,7 @@ function shellAskRule(c) {
   for (const priv of ["sudo", "doas"]) {
     if (c.program === priv || c.prefix.some((w) => programName(w) === priv)) return priv;
   }
-  const ops = operandsOf(c.words);
+  const ops = operands(c.words.slice(1));
   if (c.program === "brew" && ops[0] === "install") return "brew install";
   if (["pnpm", "npm", "bun"].includes(c.program) && ops[0] === "publish") return "package publish";
   if (c.program === "gh") {
@@ -75,17 +70,6 @@ function shellAskRule(c) {
   }
   return isTestsJump(c.words) ? "bkit tests jump" : null;
 }
-
-/** Whether this hook is the Codex one, which cannot prompt: its `.codex/hooks/` copy. */
-const CODEX_HOOK_RE = /[\\/]\.codex[\\/]hooks[\\/]|[\\/]codex\.cjs$/;
-const HOOK_FILE = typeof __filename === "string" ? __filename : "";
-// `__filename` is the real path; `process.argv[1]` is the path the hook was invoked by, which
-// keeps a symlinked `.codex` folder visible.
-const HOOK_INVOKED =
-  typeof process !== "undefined" && process.argv && typeof process.argv[1] === "string"
-    ? process.argv[1]
-    : "";
-const IS_CODEX_HOOK = CODEX_HOOK_RE.test(HOOK_FILE) || CODEX_HOOK_RE.test(HOOK_INVOKED);
 
 /** What makes one of the parsed commands ask-tier, else null. */
 function askRule(cmds) {
@@ -98,13 +82,13 @@ function askRule(cmds) {
 }
 
 /**
- * `"key"` for private-key material (`*.pem`, `*.p12`, `id_rsa`), `"env"` for an env /
- * secrets file (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
+ * `"key"` for a private-key file (`mayNameKeyFile`), `"env"` for an env / secrets file
+ * (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
  */
 function secretFileKind(filePath) {
   const p = String(filePath || "").replace(/\\/g, "/");
   if (!p) return null;
-  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) return "key";
+  if (mayNameKeyFile(p)) return "key";
   const base = p.split("/").pop() || p;
   if (base === ".env" || (/^\.env[.*]/.test(base) && base !== ".env.example")) return "env";
   return null;
@@ -135,6 +119,8 @@ const NON_READING_HEADS = new Set([
 const COPY_HEADS = new Set(["cp", "install", "rsync", "scp"]);
 /** Programs whose first positional is a search pattern unless `-e` / `-f` supplies one. */
 const PATTERN_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "ag"]);
+/** Programs whose first positional is a filter expression, never a file (`jq .key f.json`). */
+const FILTER_HEADS = new Set(["jq", "yq"]);
 
 /** Whether a grep / sed / awk invocation takes its pattern or script from an option. */
 function patternFromOption(words) {
@@ -144,8 +130,8 @@ function patternFromOption(words) {
 /**
  * The first secret file the parsed commands read (`cat .bkit/.env`, `grep KEY .env.local`,
  * `source .env`, `curl -d @.env ...`, `wc -l < .env`), else null. Not reads: a redirect
- * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), and
- * anything `NON_READING_HEADS` runs.
+ * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), a `jq` /
+ * `yq` filter, and anything `NON_READING_HEADS` runs.
  */
 function shellSecretRead(cmds) {
   for (const c of cmds) {
@@ -156,10 +142,14 @@ function shellSecretRead(cmds) {
     const positionals = words.flatMap((w, i) => (i > 0 && !w.startsWith("-") ? [i] : []));
     const skip = new Set();
     if (COPY_HEADS.has(head) && positionals.length > 1) skip.add(positionals.at(-1));
-    if (PATTERN_HEADS.has(head) && !patternFromOption(words)) skip.add(positionals[0]);
+    // The pattern or filter is the first operand, past option values (`grep -A 2 PATTERN`).
+    if (FILTER_HEADS.has(head) || (PATTERN_HEADS.has(head) && !patternFromOption(words))) {
+      skip.add(words.indexOf(operands(words.slice(1), VALUE_OPTIONS[head])[0], 1));
+    }
     for (let i = 1; i < words.length; i++) {
       if (skip.has(i)) continue;
-      for (const part of words[i].split(/[=:@,]/)) {
+      // Then the whole word: a `{a,b}` glob holds a comma.
+      for (const part of [...words[i].split(/[=:@,]/), words[i]]) {
         if (secretFileKind(part)) return part;
       }
     }
@@ -223,67 +213,6 @@ function mayNameKeyFile(word) {
   return /(?:^|\/)\.ssh\//.test(p) || !PLAIN_NAME_SAMPLES.some((n) => base.test(n));
 }
 
-/** Per program: the short letters and long options whose value is the next word. */
-const VALUE_OPTIONS = {
-  grep: [
-    "ABCDdefm",
-    [
-      "--regexp",
-      "--file",
-      "--after-context",
-      "--before-context",
-      "--context",
-      "--max-count",
-      "--include",
-      "--exclude",
-      "--exclude-dir",
-      "--label",
-    ],
-  ],
-  rg: [
-    "ABCMTefgjmrt",
-    [
-      "--regexp",
-      "--file",
-      "--glob",
-      "--iglob",
-      "--type",
-      "--type-not",
-      "--max-count",
-      "--after-context",
-      "--before-context",
-      "--context",
-      "--replace",
-      "--max-depth",
-      "--threads",
-    ],
-  ],
-  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
-  sed: ["efl", ["--expression", "--file", "--line-length"]],
-  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
-  sort: ["kotST", ["--key", "--output", "--field-separator"]],
-  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
-  head: ["cn", ["--bytes", "--lines"]],
-  tail: ["cn", ["--bytes", "--lines"]],
-  scp: ["cFiJloPS", []],
-  rsync: ["e", ["--rsh"]],
-};
-
-/** The operands of a parsed command: its words after the program, minus options and their values. */
-function operandsSkippingValues(words, program) {
-  const spec = VALUE_OPTIONS[program === "egrep" || program === "fgrep" ? "grep" : program];
-  const ops = [];
-  for (let i = 1; i < words.length; i++) {
-    const w = words[i];
-    if (w === "--") return ops.concat(words.slice(i + 1));
-    if (w === "-" || !w.startsWith("-")) ops.push(w);
-    else if (spec && !w.includes("=")) {
-      if (w.startsWith("--") ? spec[1].includes(w) : spec[0].includes(w.at(-1))) i++;
-    }
-  }
-  return ops;
-}
-
 /** Options that upload the file named by their value (`curl -T`, `wget --post-file`). */
 const UPLOAD_OPTIONS = new Set(["-T", "--upload-file", "--post-file", "--body-file"]);
 
@@ -305,7 +234,7 @@ function keySentBy(c) {
   }
   if (c.program !== "scp" && c.program !== "rsync") return null;
   const remote = (w) => /^[^/]*:/.test(w);
-  const ops = operandsSkippingValues(words, c.program);
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
   if (ops.length < 2 || !remote(ops.at(-1))) return null;
   return ops.slice(0, -1).find((w) => !remote(w) && mayNameKeyFile(w)) || null;
 }
@@ -355,7 +284,7 @@ function keyPrintedByReader(c) {
   }
   if (!CONTENT_READERS.has(c.program)) return null;
   if (c.program === "sed" && words.some((w) => /^-[a-zA-Z]*i|^--in-place/.test(w))) return null;
-  const ops = operandsSkippingValues(words, c.program);
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
   const scripted = PATTERN_HEADS.has(c.program) || c.program === "sed" || c.program === "awk";
   const files = scripted && !patternFromOption(words) ? ops.slice(1) : ops;
   return files.find(mayNameKeyFile) || null;
@@ -388,15 +317,16 @@ function privateKeyContentRead(cmds) {
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
  * An allowed fetch never hides an edit in the same command. `edits` is the evidence from
- * `shellEditTargets`. `dirs` locate the network allowlist (`hookDirs`); `ctx` is the call's
- * `{ cwd, root }` (`hookContext`) that edit targets resolve against.
+ * `shellEditTargets`. `host` is the hook's host (`codex` cannot prompt); `ctx` is the call's
+ * `{ cwd, root, dirs }` (`hookContext`).
  */
-function classifyShell(c, dirs, ctx) {
+function classifyShell(c, host, ctx) {
   if (!c) return null;
-  const cmds = shellCommands(c);
+  const st = newEvidence(ctx);
+  const cmds = shellCommands(c, st);
   const denied = denyRule(cmds);
   if (denied) return { tier: "deny", ...denied };
-  if (IS_CODEX_HOOK && testsJump(cmds)) {
+  if (host === "codex" && testsJump(cmds)) {
     return {
       tier: "deny",
       what: "bkit tests jump",
@@ -406,7 +336,7 @@ function classifyShell(c, dirs, ctx) {
   // Codex cannot prompt, so a command that exposes a private key's content (prints it or
   // sends it off the machine) is denied there whatever tier would win; a command that uses,
   // writes or only names a key file keeps the advisory.
-  const keyRead = IS_CODEX_HOOK ? privateKeyContentRead(cmds) : null;
+  const keyRead = host === "codex" ? privateKeyContentRead(cmds) : null;
   if (keyRead) {
     return {
       tier: "deny",
@@ -418,8 +348,8 @@ function classifyShell(c, dirs, ctx) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(cmds);
   if (secret) return { tier: "secret", path: secret };
-  const offList = usesFetch(cmds) && !curlWgetHostAllowed(c, dirs);
-  const edits = shellEditTargets(c, ctx);
+  const offList = usesFetch(cmds) && !curlWgetHostAllowed(cmds, ctx.dirs);
+  const edits = shellEditTargets(cmds, st);
   const found = hasEditEvidence(edits);
   if (offList) return found ? { tier: "fetch", edits } : { tier: "fetch" };
   return found ? { tier: "edit", edits } : null;

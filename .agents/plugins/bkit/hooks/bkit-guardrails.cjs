@@ -520,17 +520,69 @@ const CMD_WRAPPERS = new Set([
   "busybox",
 ]);
 
-/** Short options of each wrapper that take the next word as their argument. */
-const WRAPPER_OPTION_ARGS = {
-  xargs: new Set(["-I", "-n", "-P", "-L", "-s", "-d", "-E", "-a", "-J"]),
-  sudo: new Set(["-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "-r", "-t"]),
-  doas: new Set(["-u", "-C"]),
-  nice: new Set(["-n"]),
-  env: new Set(["-u", "-C", "-S"]),
-  timeout: new Set(["-k", "-s"]),
-  exec: new Set(["-a"]),
-  stdbuf: new Set(["-i", "-o", "-e"]),
+/** Per program (wrappers too): the short letters and long options whose value is the next word. */
+const VALUE_OPTIONS = {
+  grep: [
+    "ABCDdefm",
+    [
+      "--regexp",
+      "--file",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--max-count",
+      "--include",
+      "--exclude",
+      "--exclude-dir",
+      "--label",
+    ],
+  ],
+  rg: [
+    "ABCMTefgjmrt",
+    [
+      "--regexp",
+      "--file",
+      "--glob",
+      "--iglob",
+      "--type",
+      "--type-not",
+      "--max-count",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--replace",
+      "--max-depth",
+      "--threads",
+    ],
+  ],
+  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
+  sed: ["efl", ["--expression", "--file", "--line-length"]],
+  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
+  sort: ["kotST", ["--key", "--output", "--field-separator"]],
+  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
+  head: ["cn", ["--bytes", "--lines"]],
+  tail: ["cn", ["--bytes", "--lines"]],
+  scp: ["cFiJloPS", []],
+  rsync: ["e", ["--rsh"]],
+  xargs: ["InPLsdEaJ", []],
+  sudo: ["ughpCDRTUrt", []],
+  doas: ["uC", []],
+  nice: ["n", []],
+  env: ["uCS", []],
+  timeout: ["ks", []],
+  exec: ["a", []],
+  stdbuf: ["ioe", []],
 };
+VALUE_OPTIONS.egrep = VALUE_OPTIONS.fgrep = VALUE_OPTIONS.grep;
+
+/** Whether option word `w` takes the next word as its value by `spec`, a `VALUE_OPTIONS` row. */
+function takesValue(spec, w) {
+  if (!spec || w.includes("=")) return false;
+  if (w.startsWith("--")) return spec[1].includes(w);
+  // The first value letter of a cluster takes the rest of the word (`-uroot`), so the next
+  // word is its value only when that letter ends the cluster (`-Eu root`).
+  return [...w.slice(1)].findIndex((ch) => spec[0].includes(ch)) === w.length - 2;
+}
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 
@@ -640,7 +692,7 @@ function heredocSubstitutions(body) {
  * subshell scopes it runs in, outermost first (a `cd` moves only its own scope). Text over
  * 256 KiB of UTF-8 is cut at the last whole character first. Quoted text and data heredoc
  * bodies are never commands. A text the parser cannot finish is judged on what was read.
- * `st` (`newEvidence`) collects the analysis limits reached.
+ * `st` (`newEvidence`) collects the analysis limits reached, the cut included.
  */
 function shellCommands(text, st = newEvidence()) {
   const out = [];
@@ -723,7 +775,9 @@ function shellCommands(text, st = newEvidence()) {
     }
     for (const script of scripts.filter(Boolean)) collect(script, depth + 1, scope);
   };
-  collect(cutUtf8(String(text), EVIDENCE_LIMITS.commandBytes), 0, []);
+  const cut = cutUtf8(String(text), EVIDENCE_LIMITS.commandBytes);
+  if (cut.length < String(text).length) evidenceLimit(st, "command-size", false);
+  collect(cut, 0, []);
   return out;
 }
 
@@ -759,13 +813,20 @@ const EVIDENCE_LIMITS = {
   deadlineMs: 200,
 };
 
-/** The call context a hook passes: effective directory and the workspace root. */
+/**
+ * The call context a hook passes: the effective directory, the workspace root, and `dirs`,
+ * the directories that locate the network allowlist, most authoritative first: the workspace
+ * roots (Cursor `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload
+ * adapter), the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd —
+ * which on Antigravity is the plugin dir, not the repo.
+ */
 function hookContext(payload) {
   const p = payload && typeof payload === "object" ? payload : {};
   const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
   const root = roots.find((r) => typeof r === "string" && r) || undefined;
   const cwd = typeof p.cwd === "string" && p.cwd ? p.cwd : undefined;
-  return { cwd, root };
+  const dirs = [...roots, cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
+  return { cwd, root, dirs };
 }
 
 /** This process's own CPU time in ms; scheduler contention does not inflate it. */
@@ -1231,11 +1292,10 @@ function stripCommandPrefix(words) {
     // `function NAME` heads a definition; its body is the command.
     i += wrapper === "function" ? 2 : 1;
     if (!CMD_WRAPPERS.has(wrapper)) continue;
-    const withArg = WRAPPER_OPTION_ARGS[wrapper];
     while (i < words.length && words[i].startsWith("-") && words[i].length > 1) {
       const opt = words[i++];
       if (opt === "--") break;
-      if (withArg && withArg.has(opt)) i++;
+      if (takesValue(VALUE_OPTIONS[wrapper], opt)) i++;
     }
     if (wrapper === "timeout" && i < words.length) i++;
   }
@@ -1247,13 +1307,16 @@ function resolveCwd(cwd, dir) {
   return path.resolve(cwd, dir);
 }
 
-/** Positional operands of a simple tool: non-option words (everything after `--`). */
-function operands(args) {
+/**
+ * Positional operands of `args` (a command's words after its program): non-option words and
+ * everything after `--`, skipping the value of each option `spec` (`VALUE_OPTIONS`) names.
+ */
+function operands(args, spec) {
   const out = [];
-  let rest = false;
-  for (const a of args) {
-    if (rest || a === "-" || !a.startsWith("-")) out.push(a);
-    else if (a === "--") rest = true;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--") return out.concat(args.slice(i + 1));
+    if (args[i] === "-" || !args[i].startsWith("-")) out.push(args[i]);
+    else if (takesValue(spec, args[i])) i++;
   }
   return out;
 }
@@ -1314,8 +1377,9 @@ function perlFlag(a) {
     const c = a[k];
     if (c === "i") return "in-place";
     if (c === "e" || c === "E") return k === a.length - 1 ? "script+1" : "script";
-    // These take the rest of the cluster as their own argument.
-    if ("IMmFlx0".includes(c)) return null;
+    // `-l` / `-0` take only octal digits; the others take the rest of the cluster.
+    if (c === "l" || c === "0") k += a.slice(k + 1).match(/^[0-7]*/)[0].length;
+    else if ("IMmFx".includes(c)) return null;
   }
   return null;
 }
@@ -1440,7 +1504,7 @@ const KNOWN_WRITERS = {
   ruby: { form: "-i", force: true, read: (args) => inPlaceOperands(args, perlFlag) },
   awk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
   gawk: { form: "-i inplace", force: true, read: (args) => inPlaceOperands(args, awkFlag) },
-  tee: { form: "its file operands", force: false, read: operands },
+  tee: { form: "its file operands", force: false, read: (args) => operands(args) },
   cp: {
     form: "its last operand",
     force: false,
@@ -1527,7 +1591,7 @@ const LIMIT_REASONS = {
 
 /**
  * Edit evidence for a shell command: `{ targets, uncertain, limit }`. Each parsed command
- * (`shellCommands`) is matched against its redirects and `KNOWN_WRITERS`; nothing else counts.
+ * in `cmds` is matched against its redirects and `KNOWN_WRITERS`; nothing else counts.
  * `targets` are ordered unique paths (workspace-relative where inside it), `uncertain` lists
  * reason codes for writes whose targets cannot be named, and `limit` is the first analysis
  * limit reached (the targets found before it are kept). A literal `cd` moves the directory
@@ -1535,17 +1599,12 @@ const LIMIT_REASONS = {
  * writer returns empty `targets` and `uncertain` and a null `limit`.
  *
  * Quiet on `> /dev/null`, `>> "$GITHUB_ENV"`, `mktemp` handoff files and log capture.
- * `ctx` is `{ cwd, root }` (`hookContext`).
+ * `st` is the `newEvidence(ctx)` state `shellCommands` filled while it parsed `cmds`.
  */
-function shellEditTargets(cmd, ctx) {
-  const st = newEvidence(ctx);
-  const text = String(cmd);
-  if (Buffer.byteLength(text, "utf8") > EVIDENCE_LIMITS.commandBytes) {
-    evidenceLimit(st, "command-size", false);
-  }
+function shellEditTargets(cmds, st) {
   // The directory of each scope: a scope starts in its parent's directory.
   const cwds = new Map();
-  for (const c of shellCommands(text, st)) {
+  for (const c of cmds) {
     if (evidenceExpired(st)) break;
     let cwd = st.baseCwd;
     for (const id of c.scope) {
@@ -1607,18 +1666,6 @@ function shellEditAdvisory(ev) {
 const NETWORK_ALLOWLIST_FILE = path.join(".bkit", "allowlist.json");
 
 /**
- * Directories a hook call names, most authoritative first: the workspace roots (Cursor
- * `workspace_roots`; Antigravity `workspacePaths`, carried over by its payload adapter),
- * the payload `cwd` (Claude, Codex, Cursor), then the hook process's own cwd — which on
- * Antigravity is the plugin dir, not the repo.
- */
-function hookDirs(payload) {
-  const p = payload && typeof payload === "object" ? payload : {};
-  const roots = Array.isArray(p.workspace_roots) ? p.workspace_roots : [];
-  return [...roots, p.cwd, process.cwd()].filter((d) => typeof d === "string" && d !== "");
-}
-
-/**
  * The network allowlist file for a hook call: walking up from each of `dirs` in turn,
  * the first `.bkit/allowlist.json` found. A directory holding `.git` (the repo root)
  * ends that walk. null when none is found.
@@ -1641,7 +1688,7 @@ function findNetworkAllowlist(dirs) {
  * Hosts come from `.bkit/allowlist.json`, the one install-written artifact carrying the
  * resolved network allowlist (the shipped egress registry union the consumer's
  * `allowed-domains`); every host's hook reads it, found from the hook call's
- * directories (`hookDirs`). There is NO hardcoded fallback list: absent or unreadable,
+ * directories (`hookContext`). There is NO hardcoded fallback list: absent or unreadable,
  * this returns empty and every host is treated as unknown.
  */
 function loadNetworkAllowlistBases(dirs) {
@@ -1663,16 +1710,16 @@ function loadNetworkAllowlistBases(dirs) {
 }
 
 /**
- * Pull the HOST out of every `http(s)://…` URL in a command.
+ * The HOST of every `http(s)://…` URL in the words of the parsed curl / wget commands
+ * (`usesFetch`); a URL in another command or inside its quoted text is not fetched.
  *
  * Strict: only an explicit scheme counts; a scheme-less token (`./deploy.sh`,
  * `pkg.json`) is never read as a URL.
  */
-function extractUrlHosts(cmd) {
+function extractUrlHosts(cmds) {
   const hosts = [];
-  const re = /\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi;
-  let m;
-  while ((m = re.exec(cmd)) !== null) {
+  const words = cmds.filter((c) => usesFetch([c])).flatMap((c) => c.words);
+  for (const m of words.join(" ").matchAll(/\bhttps?:\/\/([^\s"'`\\|;&<>()]+)/gi)) {
     // Authority ends at the first /, ? or #.
     let authority = m[1].split(/[/?#]/)[0];
     // Strip userinfo — `https://github.com@evil.tld/` is a request to evil.tld.
@@ -1692,22 +1739,22 @@ function hostMatchesBase(host, base) {
 }
 
 /**
- * True when EVERY URL in the command targets an allowlisted host.
+ * True when EVERY URL the parsed commands fetch targets an allowlisted host.
  *
- * Only each URL's host is consulted, never the rest of the command string (query
- * params, headers). No parseable URL, or any host off the list → false. `dirs` locate
- * the allowlist (`hookDirs`).
+ * Only each URL's host is consulted, never the rest of the command (query params,
+ * headers). No parseable URL, or any host off the list → false. `dirs` locate the
+ * allowlist (`hookContext`).
  */
-function curlWgetHostAllowed(cmd, dirs) {
-  const hosts = extractUrlHosts(cmd);
+function curlWgetHostAllowed(cmds, dirs) {
+  const hosts = extractUrlHosts(cmds);
   if (hosts.length === 0) return false;
   const bases = loadNetworkAllowlistBases(dirs);
   return hosts.every((h) => [...bases].some((b) => hostMatchesBase(h, b)));
 }
 
 // --- Shell deny tier: identical in every host's guardrails hook (bkit renders it from one
-// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns; needs
-// nothing else in scope.
+// source). Reads the parsed commands `shellCommands` (`guardrails-shell.js`) returns, and
+// splits their words with `operands` from the same file.
 //
 // git commands are classified by their parsed words — subcommand, flag set (any order,
 // short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
@@ -1823,19 +1870,16 @@ function worldWritable(mode) {
   return mode.split(",").some((clause) => /^[ugoa]*[ao][ugoa]*[+=][rwxXst]*w/.test(clause));
 }
 
-/** An option word's short letters and long names, and the operands, of `words` after the program. */
+/** The short letters and long names of the options before `--`, and the operands, of `words`. */
 function optionsAndOperands(words) {
-  const short = new Set();
-  const long = new Set();
-  const operands = [];
-  let positionalOnly = false;
-  for (const w of words.slice(1)) {
-    if (positionalOnly || w === "-" || !w.startsWith("-")) operands.push(w);
-    else if (w === "--") positionalOnly = true;
-    else if (w.startsWith("--")) long.add(w.split("=")[0]);
-    else for (const ch of w.slice(1)) short.add(ch);
-  }
-  return { short, long, operands };
+  const args = words.slice(1);
+  const end = args.includes("--") ? args.indexOf("--") : args.length;
+  const opts = args.slice(0, end).filter((w) => w.length > 1 && w.startsWith("-"));
+  return {
+    short: new Set(opts.filter((w) => w[1] !== "-").flatMap((w) => [...w.slice(1)])),
+    long: new Set(opts.filter((w) => w[1] === "-").map((w) => w.split("=")[0])),
+    operands: operands(args),
+  };
 }
 
 /**
@@ -1919,11 +1963,6 @@ function programName(word) {
   return String(word || "").replace(/^.*\//, "");
 }
 
-/** The words after the program that are not options. */
-function operandsOf(words) {
-  return words.slice(1).filter((w) => !w.startsWith("-"));
-}
-
 /** Whether a parsed command runs `bkit tests jump` (also `pnpm bkit ...`, `node dist/cli.js ...`). */
 function isTestsJump(words) {
   return words.some(
@@ -1944,7 +1983,7 @@ function shellAskRule(c) {
   for (const priv of ["sudo", "doas"]) {
     if (c.program === priv || c.prefix.some((w) => programName(w) === priv)) return priv;
   }
-  const ops = operandsOf(c.words);
+  const ops = operands(c.words.slice(1));
   if (c.program === "brew" && ops[0] === "install") return "brew install";
   if (["pnpm", "npm", "bun"].includes(c.program) && ops[0] === "publish") return "package publish";
   if (c.program === "gh") {
@@ -1953,17 +1992,6 @@ function shellAskRule(c) {
   }
   return isTestsJump(c.words) ? "bkit tests jump" : null;
 }
-
-/** Whether this hook is the Codex one, which cannot prompt: its `.codex/hooks/` copy. */
-const CODEX_HOOK_RE = /[\\/]\.codex[\\/]hooks[\\/]|[\\/]codex\.cjs$/;
-const HOOK_FILE = typeof __filename === "string" ? __filename : "";
-// `__filename` is the real path; `process.argv[1]` is the path the hook was invoked by, which
-// keeps a symlinked `.codex` folder visible.
-const HOOK_INVOKED =
-  typeof process !== "undefined" && process.argv && typeof process.argv[1] === "string"
-    ? process.argv[1]
-    : "";
-const IS_CODEX_HOOK = CODEX_HOOK_RE.test(HOOK_FILE) || CODEX_HOOK_RE.test(HOOK_INVOKED);
 
 /** What makes one of the parsed commands ask-tier, else null. */
 function askRule(cmds) {
@@ -1976,13 +2004,13 @@ function askRule(cmds) {
 }
 
 /**
- * `"key"` for private-key material (`*.pem`, `*.p12`, `id_rsa`), `"env"` for an env /
- * secrets file (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
+ * `"key"` for a private-key file (`mayNameKeyFile`), `"env"` for an env / secrets file
+ * (`.env`, `.env.*` except `.env.example`), else null. `/` or `\` separated.
  */
 function secretFileKind(filePath) {
   const p = String(filePath || "").replace(/\\/g, "/");
   if (!p) return null;
-  if (/\.pem$/i.test(p) || /\.p12$/i.test(p) || /(^|\/)id_rsa$/i.test(p)) return "key";
+  if (mayNameKeyFile(p)) return "key";
   const base = p.split("/").pop() || p;
   if (base === ".env" || (/^\.env[.*]/.test(base) && base !== ".env.example")) return "env";
   return null;
@@ -2013,6 +2041,8 @@ const NON_READING_HEADS = new Set([
 const COPY_HEADS = new Set(["cp", "install", "rsync", "scp"]);
 /** Programs whose first positional is a search pattern unless `-e` / `-f` supplies one. */
 const PATTERN_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "ag"]);
+/** Programs whose first positional is a filter expression, never a file (`jq .key f.json`). */
+const FILTER_HEADS = new Set(["jq", "yq"]);
 
 /** Whether a grep / sed / awk invocation takes its pattern or script from an option. */
 function patternFromOption(words) {
@@ -2022,8 +2052,8 @@ function patternFromOption(words) {
 /**
  * The first secret file the parsed commands read (`cat .bkit/.env`, `grep KEY .env.local`,
  * `source .env`, `curl -d @.env ...`, `wc -l < .env`), else null. Not reads: a redirect
- * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), and
- * anything `NON_READING_HEADS` runs.
+ * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), a `jq` /
+ * `yq` filter, and anything `NON_READING_HEADS` runs.
  */
 function shellSecretRead(cmds) {
   for (const c of cmds) {
@@ -2034,10 +2064,14 @@ function shellSecretRead(cmds) {
     const positionals = words.flatMap((w, i) => (i > 0 && !w.startsWith("-") ? [i] : []));
     const skip = new Set();
     if (COPY_HEADS.has(head) && positionals.length > 1) skip.add(positionals.at(-1));
-    if (PATTERN_HEADS.has(head) && !patternFromOption(words)) skip.add(positionals[0]);
+    // The pattern or filter is the first operand, past option values (`grep -A 2 PATTERN`).
+    if (FILTER_HEADS.has(head) || (PATTERN_HEADS.has(head) && !patternFromOption(words))) {
+      skip.add(words.indexOf(operands(words.slice(1), VALUE_OPTIONS[head])[0], 1));
+    }
     for (let i = 1; i < words.length; i++) {
       if (skip.has(i)) continue;
-      for (const part of words[i].split(/[=:@,]/)) {
+      // Then the whole word: a `{a,b}` glob holds a comma.
+      for (const part of [...words[i].split(/[=:@,]/), words[i]]) {
         if (secretFileKind(part)) return part;
       }
     }
@@ -2101,67 +2135,6 @@ function mayNameKeyFile(word) {
   return /(?:^|\/)\.ssh\//.test(p) || !PLAIN_NAME_SAMPLES.some((n) => base.test(n));
 }
 
-/** Per program: the short letters and long options whose value is the next word. */
-const VALUE_OPTIONS = {
-  grep: [
-    "ABCDdefm",
-    [
-      "--regexp",
-      "--file",
-      "--after-context",
-      "--before-context",
-      "--context",
-      "--max-count",
-      "--include",
-      "--exclude",
-      "--exclude-dir",
-      "--label",
-    ],
-  ],
-  rg: [
-    "ABCMTefgjmrt",
-    [
-      "--regexp",
-      "--file",
-      "--glob",
-      "--iglob",
-      "--type",
-      "--type-not",
-      "--max-count",
-      "--after-context",
-      "--before-context",
-      "--context",
-      "--replace",
-      "--max-depth",
-      "--threads",
-    ],
-  ],
-  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
-  sed: ["efl", ["--expression", "--file", "--line-length"]],
-  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
-  sort: ["kotST", ["--key", "--output", "--field-separator"]],
-  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
-  head: ["cn", ["--bytes", "--lines"]],
-  tail: ["cn", ["--bytes", "--lines"]],
-  scp: ["cFiJloPS", []],
-  rsync: ["e", ["--rsh"]],
-};
-
-/** The operands of a parsed command: its words after the program, minus options and their values. */
-function operandsSkippingValues(words, program) {
-  const spec = VALUE_OPTIONS[program === "egrep" || program === "fgrep" ? "grep" : program];
-  const ops = [];
-  for (let i = 1; i < words.length; i++) {
-    const w = words[i];
-    if (w === "--") return ops.concat(words.slice(i + 1));
-    if (w === "-" || !w.startsWith("-")) ops.push(w);
-    else if (spec && !w.includes("=")) {
-      if (w.startsWith("--") ? spec[1].includes(w) : spec[0].includes(w.at(-1))) i++;
-    }
-  }
-  return ops;
-}
-
 /** Options that upload the file named by their value (`curl -T`, `wget --post-file`). */
 const UPLOAD_OPTIONS = new Set(["-T", "--upload-file", "--post-file", "--body-file"]);
 
@@ -2183,7 +2156,7 @@ function keySentBy(c) {
   }
   if (c.program !== "scp" && c.program !== "rsync") return null;
   const remote = (w) => /^[^/]*:/.test(w);
-  const ops = operandsSkippingValues(words, c.program);
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
   if (ops.length < 2 || !remote(ops.at(-1))) return null;
   return ops.slice(0, -1).find((w) => !remote(w) && mayNameKeyFile(w)) || null;
 }
@@ -2233,7 +2206,7 @@ function keyPrintedByReader(c) {
   }
   if (!CONTENT_READERS.has(c.program)) return null;
   if (c.program === "sed" && words.some((w) => /^-[a-zA-Z]*i|^--in-place/.test(w))) return null;
-  const ops = operandsSkippingValues(words, c.program);
+  const ops = operands(words.slice(1), VALUE_OPTIONS[c.program]);
   const scripted = PATTERN_HEADS.has(c.program) || c.program === "sed" || c.program === "awk";
   const files = scripted && !patternFromOption(words) ? ops.slice(1) : ops;
   return files.find(mayNameKeyFile) || null;
@@ -2266,15 +2239,16 @@ function privateKeyContentRead(cmds) {
  *   `{ tier: "edit", edits }`     — the shell used as an edit channel (advisory only);
  *   null                          — nothing to say.
  * An allowed fetch never hides an edit in the same command. `edits` is the evidence from
- * `shellEditTargets`. `dirs` locate the network allowlist (`hookDirs`); `ctx` is the call's
- * `{ cwd, root }` (`hookContext`) that edit targets resolve against.
+ * `shellEditTargets`. `host` is the hook's host (`codex` cannot prompt); `ctx` is the call's
+ * `{ cwd, root, dirs }` (`hookContext`).
  */
-function classifyShell(c, dirs, ctx) {
+function classifyShell(c, host, ctx) {
   if (!c) return null;
-  const cmds = shellCommands(c);
+  const st = newEvidence(ctx);
+  const cmds = shellCommands(c, st);
   const denied = denyRule(cmds);
   if (denied) return { tier: "deny", ...denied };
-  if (IS_CODEX_HOOK && testsJump(cmds)) {
+  if (host === "codex" && testsJump(cmds)) {
     return {
       tier: "deny",
       what: "bkit tests jump",
@@ -2284,7 +2258,7 @@ function classifyShell(c, dirs, ctx) {
   // Codex cannot prompt, so a command that exposes a private key's content (prints it or
   // sends it off the machine) is denied there whatever tier would win; a command that uses,
   // writes or only names a key file keeps the advisory.
-  const keyRead = IS_CODEX_HOOK ? privateKeyContentRead(cmds) : null;
+  const keyRead = host === "codex" ? privateKeyContentRead(cmds) : null;
   if (keyRead) {
     return {
       tier: "deny",
@@ -2296,21 +2270,21 @@ function classifyShell(c, dirs, ctx) {
   if (what) return { tier: "ask", what };
   const secret = shellSecretRead(cmds);
   if (secret) return { tier: "secret", path: secret };
-  const offList = usesFetch(cmds) && !curlWgetHostAllowed(c, dirs);
-  const edits = shellEditTargets(c, ctx);
+  const offList = usesFetch(cmds) && !curlWgetHostAllowed(cmds, ctx.dirs);
+  const edits = shellEditTargets(cmds, st);
   const found = hasEditEvidence(edits);
   if (offList) return found ? { tier: "fetch", edits } : { tier: "fetch" };
   return found ? { tier: "edit", edits } : null;
 }
 
 // --- Secret-file read tier: identical in the Cursor and Google Antigravity guardrails hooks
-// (bkit renders it from one source). Same policy as Claude's settings.json `Read(...)` deny /
-// ask rows and opencode's `permission.read` map; each host maps a tier to its own output
+// (bkit renders it from one source). Claude's settings.json `Read(...)` rows and opencode's
+// `permission.read` map list fewer key names; each host maps a tier to its own output
 // shape and wording. Needs `secretFileKind` from `guardrails-tiers.js` above it.
 
 /**
  * The read tier for a file path (`/` or `\` separated), first match wins:
- *   `{ tier: "deny", path }` — private-key material: `*.pem`, `*.p12`, `id_rsa`;
+ *   `{ tier: "deny", path }` — a private-key file (`mayNameKeyFile`);
  *   `{ tier: "ask", path }`  — an env / secrets file: `.env`, `.env.*` except `.env.example`;
  *   null                     — nothing to say.
  */
@@ -2467,7 +2441,7 @@ function bkitGuardrails(payload) {
 
   const cmd = raw.trim();
   const ctx = hookContext(p);
-  const tier = classifyShell(cmd, hookDirs(p), ctx);
+  const tier = classifyShell(cmd, "antigravity", ctx);
   if (!tier) return null;
   const hold = tier.tier !== "deny" && tier.tier !== "ask" && tier.tier !== "secret";
   const advice = composeAdvice(tier, "antigravity", ADVICE_BUDGETS.antigravity, {
