@@ -3385,6 +3385,162 @@ describe("bkit runs context", () => {
     expect((await context(cwd, "ship", "42")).code).toBe(8);
   });
 
+  type FakeRun = {
+    databaseId: number;
+    headSha: string;
+    status: string;
+    conclusion: string;
+    workflowName: string;
+    workflowFile: string;
+  };
+  const fakeRun = (over: Partial<FakeRun> & { databaseId: number }): FakeRun => ({
+    headSha: "sha12",
+    status: "completed",
+    conclusion: "success",
+    workflowName: "Tests",
+    workflowFile: "bkit-ci.yml",
+    ...over,
+  });
+
+  /**
+   * A `gh` whose `run list` applies the filters the real one applies (--branch, --commit,
+   * --workflow by file name or display name, --limit) and prints only the --json fields asked for.
+   */
+  function fakeCiGh(runs: FakeRun[]) {
+    const dir = tmp("bkit-fake-ci-gh-");
+    fs.writeFileSync(path.join(dir, "runs.json"), JSON.stringify(runs));
+    fs.writeFileSync(path.join(dir, "pr.json"), prJson());
+    fs.writeFileSync(
+      path.join(dir, "filter.js"),
+      [
+        'const fs = require("node:fs");',
+        "const argv = process.argv.slice(2);",
+        "const flag = (name) => { const i = argv.indexOf(name); return i < 0 ? undefined : argv[i + 1]; };",
+        `let runs = JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, "runs.json"))}, "utf8"));`,
+        'const commit = flag("--commit");',
+        'const workflow = flag("--workflow");',
+        "if (commit) runs = runs.filter((r) => r.headSha === commit);",
+        "if (workflow) runs = runs.filter((r) => r.workflowFile === workflow || r.workflowName === workflow);",
+        'const limit = Number(flag("--limit") ?? 20);',
+        'const fields = (flag("--json") ?? "").split(",");',
+        "const out = runs.slice(0, limit).map((r) => Object.fromEntries(fields.map((f) => [f, r[f]])));",
+        "process.stdout.write(JSON.stringify(out));",
+      ].join("\n"),
+    );
+    fs.writeFileSync(
+      path.join(dir, "gh"),
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$*" >> "${dir}/calls"`,
+        `case "$1 $2" in`,
+        `  "pr view") cat "${dir}/pr.json" ;;`,
+        `  "run list") exec node "${dir}/filter.js" "$@" ;;`,
+        "  *) exit 1 ;;",
+        "esac",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: undefined });
+    return {
+      runListArgs: () =>
+        fs
+          .readFileSync(path.join(dir, "calls"), "utf-8")
+          .split("\n")
+          .filter((l) => l.startsWith("run list")),
+    };
+  }
+  const declareCi = (cwd: string, file = "bkit-ci.yml") => {
+    fs.mkdirSync(path.join(cwd, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".github", "workflows", file), "name: Tests\n");
+  };
+  const scan = fakeRun({
+    databaseId: 300,
+    conclusion: "failure",
+    workflowName: "Security scan",
+    workflowFile: "scan.yml",
+  });
+
+  it("debug: a green test run beside a failed run of another workflow yields no run (8)", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(8);
+    expect(r.json.runId).toBeNull();
+    expect(r.err).toContain("bkit-ci.yml");
+    expect(r.err).toContain("sha12");
+  });
+
+  it("debug: the failed test run behind a newer run of another workflow is returned", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    const gh = fakeCiGh([
+      fakeRun({
+        databaseId: 400,
+        conclusion: "success",
+        workflowName: "Docs",
+        workflowFile: "docs.yml",
+      }),
+      fakeRun({ databaseId: 200, conclusion: "failure" }),
+      fakeRun({ databaseId: 100, conclusion: "success" }),
+    ]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("200");
+    expect(gh.runListArgs()[0]).toContain("--workflow bkit-ci.yml");
+  });
+
+  it.each(["failure", "timed_out", "startup_failure"])(
+    "debug: a %s test run is a failed run",
+    async (conclusion) => {
+      const cwd = autoRepo();
+      declareCi(cwd);
+      fakeCiGh([fakeRun({ databaseId: 7, conclusion })]);
+      expect((await context(cwd, "debug", "42")).json.runId).toBe("7");
+    },
+  );
+
+  it("debug: a test run still in progress or cancelled is not returned", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([
+      fakeRun({ databaseId: 9, status: "in_progress", conclusion: "" }),
+      fakeRun({ databaseId: 8, conclusion: "cancelled" }),
+    ]);
+    expect((await context(cwd, "debug", "42")).code).toBe(8);
+  });
+
+  it("ship: the test workflow's run is returned, not an unrelated workflow's run listed first", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    const gh = fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "success", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("200");
+    expect(gh.runListArgs()[0]).toContain("--workflow bkit-ci.yml");
+    expect(gh.runListArgs()[0]).toContain("--commit sha12");
+  });
+
+  it("ship: no run of the test workflow at the head exits 8 and names the workflow and commit", async () => {
+    const cwd = autoRepo();
+    declareCi(cwd);
+    fakeCiGh([scan]);
+    const r = await context(cwd, "ship", "42");
+    expect(r.code).toBe(8);
+    expect(r.err).toContain("bkit-ci.yml");
+    expect(r.err).toContain("sha12");
+  });
+
+  it("debug with no declared test workflow: a green run is not returned, a failed one is", async () => {
+    const cwd = autoRepo();
+    fakeCiGh([fakeRun({ databaseId: 200, conclusion: "success" })]);
+    expect((await context(cwd, "failure", "42")).code).toBe(8);
+    fakeCiGh([scan, fakeRun({ databaseId: 200, conclusion: "success" })]);
+    const r = await context(cwd, "failure", "42");
+    expect(r.code).toBe(0);
+    expect(r.json.runId).toBe("300");
+  });
+
   it("an unknown phase exits 3; gh needing auth exits 80", async () => {
     const cwd = autoRepo();
     expect((await context(cwd, "deploy", "1")).code).toBe(3);

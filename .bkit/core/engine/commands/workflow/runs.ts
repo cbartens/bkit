@@ -126,6 +126,9 @@ export function checkNamespace(capstoneJob: string): string {
   return i > 0 ? capstoneJob.slice(0, i) : capstoneJob;
 }
 
+/** The conclusions of a finished run or job that count as a failure. */
+const FAILED_CONCLUSIONS = ["failure", "timed_out", "startup_failure"];
+
 /** Whether `.github/workflows/<bkit.testing.ciWorkflow>` exists — the only honest ground for a `no-ci` pass. */
 export function ciDeclared(root: string): { declared: boolean; ciWorkflow: string; path: string } {
   const { ciWorkflow } = readBkitConfig(root);
@@ -417,10 +420,7 @@ function locateCi(ctx: RunContext): number {
         throw new CommandError(82, "PR lookup returned a run from another head");
     }
     validateRun(run);
-    if (
-      run.status !== "completed" ||
-      !["failure", "timed_out", "startup_failure"].includes(text(run.conclusion))
-    ) {
+    if (run.status !== "completed" || !FAILED_CONCLUSIONS.includes(text(run.conclusion))) {
       if (reference)
         throw new CommandError(
           82,
@@ -486,9 +486,7 @@ function locateCi(ctx: RunContext): number {
     text(obj(run.head_repository).full_name).toLowerCase() !== repo.toLowerCase()
   )
     throw new CommandError(82, "run attempt, repository or fork identity does not match");
-  const failedJobs = jobs.filter((job) =>
-    ["failure", "timed_out", "startup_failure"].includes(text(job.conclusion)),
-  );
+  const failedJobs = jobs.filter((job) => FAILED_CONCLUSIONS.includes(text(job.conclusion)));
   const mapped = failedJobs
     .filter((job) => job.name !== "bkit-tests-check")
     .map(
@@ -3000,7 +2998,7 @@ const PHASES: Record<string, { phase: string; mode: "CI" | "BRIEF" }> = {
 export const EXIT_UNKNOWN_PHASE = 3;
 /** Exit code (context): the CI PR is not OPEN. */
 export const EXIT_PR_NOT_OPEN = 7;
-/** Exit code (context): no CI run at the PR head. */
+/** Exit code (context): no matching CI run at the PR head (the test workflow's newest run, or its newest failed run for debug). */
 export const EXIT_NO_RUN_ID = 8;
 /** Exit code (context): no FID from the marker, the branch, or the slug. */
 export const EXIT_NO_FID = 9;
@@ -3092,22 +3090,34 @@ async function runContext(ctx: RunContext): Promise<number> {
     ctx.emit(out);
     return EXIT_PR_NOT_OPEN;
   }
+  const testWorkflow = ciDeclared(checkoutRoot(ctx.cwd));
+  const wantsFailed = chosen.phase === "debug";
   const runs = runGh(ctx.cwd, [
     "run",
     "list",
     "--branch",
     branch,
+    ...(testWorkflow.declared ? ["--workflow", testWorkflow.ciWorkflow] : []),
+    "--commit",
+    headSha,
     "--limit",
     "5",
     "--json",
-    "databaseId,headSha",
+    "databaseId,headSha,status,conclusion",
   ]);
   const run = arr(runs.ok ? jsonOrUndefined(runs.stdout) : undefined)
     .map(obj)
-    .find((r) => r.headSha === headSha);
+    .find(
+      (r) =>
+        r.headSha === headSha &&
+        (!wantsFailed ||
+          (r.status === "completed" && FAILED_CONCLUSIONS.includes(text(r.conclusion)))),
+    );
   out.runId = run?.databaseId === undefined ? null : String(run.databaseId);
   if (out.runId === null) {
-    ctx.log(`no CI run at ${headSha} on ${branch}`);
+    ctx.log(
+      `no ${wantsFailed ? "failed " : ""}CI run of ${testWorkflow.declared ? testWorkflow.ciWorkflow : "any workflow"} at ${headSha} on ${branch}`,
+    );
     ctx.emit(out);
     return EXIT_NO_RUN_ID;
   }
@@ -3666,12 +3676,14 @@ export const runsCommand: CommandSpec = {
         headSha: "the PR head (CI) or origin/dev (CI_DEV), else null",
         prUrl: "the PR URL (CI), else null",
         prState: "the PR state (CI), else null",
-        runId: "the CI run at the PR head (CI), else null",
+        runId:
+          "the CI run at the PR head (CI), else null: the newest run of the test workflow for ship, the newest failed run of it for debug",
       },
       exitCodes: {
         [EXIT_UNKNOWN_PHASE]: "the phase word is not one bkit dispatches",
         [EXIT_PR_NOT_OPEN]: "the PR is not OPEN",
-        [EXIT_NO_RUN_ID]: "no CI run at the PR head",
+        [EXIT_NO_RUN_ID]:
+          "no CI run at the PR head: no run of the test workflow (any workflow when none is declared), and for debug no failed one (failure, timed_out or startup_failure)",
         [EXIT_NO_FID]:
           "no valid FID or no issue (CI_DEV slug off the allowlist, no marker / feat/{FID} branch, or an issue-less FID: /bkit-auto runs issue-only)",
       },
