@@ -63,6 +63,12 @@ describe("cursor guardrails.cjs — shell", () => {
     ["git push -uf origin dev", "force letter inside a cluster"],
     ["cd repo && git push origin dev --force", "second segment of a list"],
     ["bash -c 'git push --force'", "script of a shell -c"],
+    ["timeout 30 git push --force origin dev", "timeout duration"],
+    ["nice -n 5 git push -f origin dev", "wrapper option with an argument"],
+    ["env -u FOO git push -f origin dev", "env -u takes a variable name"],
+    ["sudo -u root git push --force origin dev", "sudo -u takes a user; deny outranks sudo's ask"],
+    ["stdbuf -oL git push --force origin dev", "stdbuf option with an attached value"],
+    ["timeout -k 5 30 git push --force origin dev", "timeout option plus duration"],
   ])("denies a force-push hidden as `%s` (%s)", (command) => {
     expect(run({ command }).permission).toBe("deny");
   });
@@ -74,6 +80,8 @@ describe("cursor guardrails.cjs — shell", () => {
     ["git restore --staged --worktree .", "staged AND worktree restore"],
     ["git commit -nm wip", "-n inside a cluster with -m"],
     ["git merge --no-verify feat", "--no-verify on any subcommand"],
+    ["timeout 30 git reset --hard", "timeout duration"],
+    ["nice -n 5 git clean -fdx", "wrapper option with an argument"],
   ])("asks on `%s` (%s)", (command) => {
     expect(run({ command }).permission).toBe("ask");
   });
@@ -85,6 +93,9 @@ describe("cursor guardrails.cjs — shell", () => {
     ['echo "git reset --hard"', "a destructive command named, not run"],
     ["git checkout -b feat/x", "new branch"],
     ["git push --force-with-lease=feat:abc123 origin feat", "lease with an expected value"],
+    ["timeout 30 pnpm test", "wrapped harmless command"],
+    ["env -u FOO git push --force-with-lease origin feat/x", "wrapped lease push"],
+    ["nice -n 5 git status", "wrapped read-only git"],
   ])("allows `%s` (%s)", (command) => {
     expect(run({ command }).permission).toBe("allow");
   });

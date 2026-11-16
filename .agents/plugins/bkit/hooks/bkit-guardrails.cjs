@@ -465,6 +465,9 @@ const CMD_WRAPPERS = new Set([
   "exec",
   "xargs",
   "timeout",
+  "stdbuf",
+  "builtin",
+  "noglob",
 ]);
 
 /** Short options of each wrapper that take the next word as their argument. */
@@ -475,6 +478,7 @@ const WRAPPER_OPTION_ARGS = {
   env: new Set(["-u", "-C", "-S"]),
   timeout: new Set(["-k", "-s"]),
   exec: new Set(["-a"]),
+  stdbuf: new Set(["-i", "-o", "-e"]),
 };
 
 /** Split a command line into pipeline / list segments. */
@@ -523,16 +527,14 @@ function shellWords(seg) {
   return words;
 }
 
-/** The words a segment runs: subshell punctuation, `VAR=val` and wrappers skipped. */
+/**
+ * The words a segment runs: subshell punctuation stripped, then `VAR=val` assignments,
+ * wrapper names, wrapper options and the arguments they take (`timeout 30`, `nice -n 5`,
+ * `env -u FOO`) skipped, so the first word is the real program.
+ */
 function commandWords(seg) {
   const words = shellWords(seg.replace(/^(?:\$\(|[({`!\s])+/, "").replace(/[)}`\s]+$/, ""));
-  let i = 0;
-  while (
-    i < words.length &&
-    (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || CMD_WRAPPERS.has(words[i]))
-  )
-    i++;
-  return words.slice(i);
+  return stripCommandPrefix(words).words;
 }
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
@@ -1041,7 +1043,11 @@ const KEYWORD_PREFIX = new Set([
   "time",
 ]);
 
-/** Strip assignments, wrappers and reserved words ahead of the real program. */
+/**
+ * Strip assignments, wrappers (with their options, the arguments those options take and
+ * the `timeout` duration) and reserved words ahead of the real program. `viaXargs` is true
+ * when `xargs` was among the wrappers.
+ */
 function stripCommandPrefix(words) {
   let i = 0;
   let viaXargs = false;
