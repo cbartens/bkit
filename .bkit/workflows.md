@@ -1421,7 +1421,7 @@ The phase label is kept through Close. The tracker state (GitHub `open`, Linear 
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `bkit:auto` | Human (via tracker UI) at issue creation | Opt-in gate for `/bkit-auto` CI-mode (ship / debug) dispatch. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
+| `bkit:auto` | Human (via tracker UI) at issue creation | Opt-in gate for `/bkit-auto` CI-mode (ship / debug) dispatch: the `bkit_gate` job in `bkit-cloud.yml` starts no agent when it is absent. No workflow removes it; build and debug re-read it after their push and stop nothing. |
 | `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared by every phase start (`--phase=*` implies `--failed=off`), including `/bkit-debug` Step 1 and `/bkit-ship` Step 12 `bkit:merged`. |
 
 ### Tracker-specific state

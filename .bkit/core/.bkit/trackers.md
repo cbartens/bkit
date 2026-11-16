@@ -118,7 +118,7 @@ This renders `N. <body>` when a tracker is wired, and `N. _No tracker connected,
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add / update item | no-op (state carries) | no-op (status carries) | skip |
 | `comment-post-step` | engine-owned routine progress; create-only fallback | `add_issue_comment` | `save_comment` without `id` | `addOrEditJiraIssueComment` without `commentId` | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | JQL `linkedIssues(KEY, "is blocked by") AND statusCategory != Done` | skip |
-| `kill-switch-check` | Terminate if `bkit:auto` absent; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
+| `kill-switch-check` | Re-read the labels after the push (build Step 16, debug Step 11); the run is already finished, so an absent `bkit:auto` stops nothing; skipped when `ISSUE_ID` empty | label check | label check | label check | inactive |
 | `pr-body-metadata` | Parse PR-body issue / FID marker; FID-only marker (no issue) → `issueId: null`, `/bkit-auto` fails closed | `pull_request_read` + parse | same (GitHub PR) | same (GitHub PR) | FID-only, no fail-closed |
 | `pr-body-marker` | Literal PR-body marker line; no issue → `<!-- bkit:fid={FID} -->` alone | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 

@@ -367,7 +367,7 @@ GitHub dispatch uses the Cursor Automations "Pull request label changed" trigger
 
 **Trigger flow:**
 
-1. `bkit-build` writes `bkit:auto` as a static PR label (the opt-in marker). The matching GitHub issue must also carry `bkit:auto`, which is the runtime kill switch: remove it to stop dispatch.
+1. `bkit-build` writes `bkit:auto` as a static PR label (the opt-in marker). The matching GitHub issue must also carry `bkit:auto`. `.cursor/hooks/bkit-preflight.sh` checks it when a background session starts and blocks that session when the label is absent. Removing the label later does not stop a session that is already running.
 2. The workflow adds the phase label (`bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`) to the PR. Cursor reads the label for workflow dispatch.
 3. Cursor Automations fires on "Pull request label changed" → spawns a Background Agent session against the repo. The Automation's prompt must contain `bkit-auto`, because `AGENTS.md` routes only a `bkit-{command}` prompt, and `.bkit/router.md` reads the phase from the issue's labels.
 4. `sessionStart` fires `bkit-preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent.
@@ -394,13 +394,25 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same p
 
 ## Session guard per tracker
 
-`.cursor/hooks/bkit-preflight.sh` (Cursor background sessions) and `.claude/hooks/bkit-preflight.sh` (Claude sessions that carry `GITHUB_ISSUE_ID`) share one tracker part, `preflight-tracker.sh`. It stops the session when the issue lost `bkit:auto` or is finished, judged by the tracker's state category (the `terminal` fact of `bkit issues fetch`), not by a state name:
+`.cursor/hooks/bkit-preflight.sh` (Cursor background sessions) and `.claude/hooks/bkit-preflight.sh` (Claude sessions that carry `GITHUB_ISSUE_ID`) share one tracker part, `preflight-tracker.sh`. It checks once, at session start, whether the issue lost `bkit:auto` or is finished, judged by the tracker's state category (the `terminal` fact of `bkit issues fetch`), not by a state name. On Cursor a failed check blocks the session (`failClosed` in `.cursor/hooks.json`). On Claude a SessionStart hook cannot block, so the hook prints a HARD STOP instruction into the agent's context and the agent decides whether to obey:
 
 - **GitHub:** the issue's labels and open / closed state.
 - **Linear:** the issue's labels and state type (`completed` or `canceled` is finished). Needs `BKIT_LINEAR_API_KEY`.
 - **Jira:** the issue's labels and status category (`Done` is finished). Needs `BKIT_JIRA_API_KEY`. On Cursor, the guard hard-stops when the `bkit` binary is not present at `sessionStart`.
 
 A session that carries no issue id is unguarded: the guard prints a line saying so and exits 0. Codex Cloud tasks are unguarded, because hooks there are unproven (§ Codex Cloud → Hooks in cloud tasks).
+
+**What removing `bkit:auto` stops:**
+
+| Place                                                  | Effect                                                                                                                |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `bkit_gate` job in `.github/workflows/bkit-cloud.yml`  | Stops. It reads the labels before an agent job starts and starts nothing when `bkit:auto` is absent (`label-absent`). |
+| Session-start hook (`.cursor/hooks/bkit-preflight.sh`) | Cursor background sessions: blocks the session at start.                                                              |
+| Session-start hook (`.claude/hooks/bkit-preflight.sh`) | Advises only: the agent is told to stop and can ignore it.                                                            |
+| Build Step 16 and debug Step 11, last sub-step         | Stops nothing: the label is re-read after the push, when the run is finished.                                         |
+| `/bkit-auto`                                           | Never reads the label.                                                                                                |
+
+A run that is already working keeps going when the label is removed.
 
 ## Not yet verified live
 
@@ -609,7 +621,7 @@ The slash command takes two args: `$CI_STATUS` in `success|failure|pass|fail` (n
 1. With a PR-number arg, it reads `gh pr view $ARG` for `headRefName`, `headRefOid`, `state`, and refuses non-open PRs. With a slug arg, it skips the PR lookup entirely.
 2. It extracts `{FID}` from the head branch (`feat/{FID}` convention). With a slug arg, `{ARG}` is the `{FID}`, allowlist-asserted before use. On the `dev` surface the workflow recovers it from the squash-merge commit scope (`feat({FID}): …`, tracker-agnostic), and falls back to the linked PR body's `bkit:fid=` marker. If either path fails → no-op, no dispatch.
 3. Stale-run guard. Pre-merge, it compares the latest CI run's `headSha` against the PR's current `headRefOid`. Post-merge on `dev`, it compares the most recently completed `dev` CI run's `headSha` against the triggering run's head SHA. A `git rev-parse origin/dev` comparison would mismatch on every legitimate dispatch, because ship's terminal close commit lands on `dev` while that CI run is still going. Close commits carry `[skip ci]`, so they never trigger CI and never become that most-recent-completed head. An empty run list fails open (dispatches).
-4. Opt-in gate: it refuses dispatch unless the linked tracker issue (GitHub, Linear or Jira) carries the `bkit:auto` label.
+4. Opt-in gate: not checked in this file. The `bkit_gate` job in `bkit-cloud.yml` reads the `bkit:auto` label of the linked tracker issue (GitHub, Linear or Jira) before the router job starts, and starts nothing when it is absent.
 5. It appends a `bkit-auto → /bkit-{ship,debug}` line to the issue / PR comment thread.
 6. It invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) through the `Skill` / `Task` tool. The dispatched skill owns the session lifecycle from there.
 
