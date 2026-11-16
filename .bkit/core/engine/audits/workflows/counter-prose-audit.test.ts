@@ -607,6 +607,7 @@ const COUNTER_STEP_MAP: Record<string, string[]> = {
   "build-group-gate": ["build-plan-verify"],
   "build-plan-verify-holistic": ["build-plan-verify-holistic"],
   "build-plan-gaps-remediate-holistic": ["build-plan-verify-holistic"],
+  "build-holistic-gate": ["build-plan-verify-holistic"],
   "build-plan-convert": ["build-plan-convert"],
   "build-challenge": ["build-challenge"],
   "build-decision": ["build-decision"],

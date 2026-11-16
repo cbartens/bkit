@@ -42,23 +42,17 @@ export function runToLog(argv, cwd, log, env) {
         return res.status;
     return 128 + ((res.signal ? os.constants.signals[res.signal] : undefined) ?? 1);
 }
-/** Failing plus erroring cases across every `*.xml` under `dir`; null when there is no report. */
-function failingCases(dir) {
+/**
+ * The failing plus erroring cases across every `*.xml` under `dir`: `[]` for reports with
+ * none, null when there is no report.
+ */
+export function reportFailures(dir) {
     const xml = fs.readdirSync(dir, { recursive: true }).filter((f) => f.endsWith(".xml") && fs.statSync(path.join(dir, f)).isFile());
     if (xml.length === 0)
         return null;
     return xml
         .flatMap((f) => parseJunit(fs.readFileSync(path.join(dir, f), "utf-8")))
         .filter((c) => c.state === "failure" || c.state === "error");
-}
-/** The failing plus erroring cases of every `*.xml` under `dir`; null with none. */
-export function reportFailures(dir) {
-    const failing = failingCases(dir);
-    return failing === null || failing.length === 0 ? null : failing;
-}
-/** The number of failing plus erroring cases across every `*.xml` under `dir`; null when there is no report. */
-export function countReportFailures(dir) {
-    return failingCases(dir)?.length ?? null;
 }
 const XML_ENTITIES = {
     amp: "&",

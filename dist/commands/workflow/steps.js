@@ -22,6 +22,7 @@ import { CommandError, EXIT, git, isSharedBranch, parseJson, repoRoot, runGit, }
 import { activeRunStart, savedPointLimit } from "./counters.js";
 import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
 import { planFiles } from "./run-facts.js";
+import { skipProblem } from "./open-decision.js";
 import { mergeFindings, parseFindings, renderFindingsLog, structuredFindings, } from "./challenge.js";
 import { fidProblem, normaliseFid, readIssueTracker } from "./fids.js";
 import { auditEntries, auditFindingsLine, auditLedgerRows, auditTotals, buildComment, parseAuditResult, } from "./issues.js";
@@ -302,6 +303,7 @@ export const ROW_FIELDS = {
     "build/build-group-gate": ["attempt", "scope"],
     "build/build-plan-gaps-remediate": ["attempt", "strategy"],
     "build/build-plan-verify-holistic": ["attempt"],
+    "build/build-holistic-gate": ["attempt", "scope"],
     "build/build-plan-gaps-remediate-holistic": ["attempt", "strategy"],
     "build/build-challenge": ["attempt"],
     "build/build-decision": ["attempt"],
@@ -845,6 +847,22 @@ const titleCase = (key) => key.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c
 /** `<attempt>` filled in, once the attempt is known. */
 const fill = (s, attempt) => attempt === undefined ? s : s.split(ATTEMPT_TOKEN).join(String(attempt));
 const list = (v) => v ?? [];
+/**
+ * A build decision row may say `route=continue` only when `bkit decisions skip` would pass
+ * its decision file (the step's first artifact): the same `skipProblem` rule, read here.
+ */
+function continueCheck(cwd, decisionFile) {
+    const check = "route=continue";
+    if (decisionFile === undefined)
+        return { check, ok: false, detail: "no decision file: pass it as the first --artifact" };
+    const read = readTextFile(path.resolve(cwd, decisionFile));
+    if (!read.ok)
+        return { check, ok: false, detail: `${decisionFile} is missing or unreadable` };
+    const problem = skipProblem(read.text);
+    return problem === null
+        ? { check, ok: true, detail: `${decisionFile} passes decisions skip` }
+        : { check, ok: false, detail: `${decisionFile}: ${problem}` };
+}
 async function finish(ctx) {
     const f = ctx.flags;
     const file = statusFile(ctx);
@@ -1029,6 +1047,8 @@ async function finish(ctx) {
     });
     if (missing.length)
         pre.push({ check: "status row", ok: false, detail: `row would miss ${missing.join(", ")}` });
+    if (workflow === "build" && step === "build-decision" && extras.route === "continue")
+        pre.push(continueCheck(ctx.cwd, artifacts[0]));
     if (pre.some((c) => !c.ok)) {
         for (const c of pre.filter((x) => !x.ok))
             ctx.log(`${c.check}: ${c.detail}`);

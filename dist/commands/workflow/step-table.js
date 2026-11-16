@@ -72,15 +72,20 @@ export const WORKFLOW_STEPS = {
             title: "Plan Gaps Remediate",
             resumeAt: "build-plan-verify",
         },
-        // Holistic verify passes on to the challenge; its gaps loop back through its fix to it.
+        // Holistic verify never passes on alone: its gate runs after every verdict, so a run
+        // stopped between the two runs the round again. Step 10 again.
         {
             step: "build-plan-verify-holistic",
             number: 10,
             title: "Plan Verify Holistic",
-            resumeOnVerdict: {
-                CONCERNS: "build-plan-verify-holistic",
-                FAIL: "build-plan-verify-holistic",
-            },
+            resumeAt: "build-plan-verify-holistic",
+        },
+        // The holistic gate routes with its verify: Step 10 again.
+        {
+            step: "build-holistic-gate",
+            number: 10,
+            title: "Plan Verify Holistic",
+            resumeAt: "build-plan-verify-holistic",
         },
         {
             step: "build-plan-gaps-remediate-holistic",
@@ -198,6 +203,7 @@ export const DECISION_ROUTES = {
                 "build-plan-verify": "build-plan-gaps-remediate",
                 "build-group-gate": "build-plan-gaps-remediate",
                 "build-plan-verify-holistic": "build-plan-gaps-remediate-holistic",
+                "build-holistic-gate": "build-plan-gaps-remediate-holistic",
                 "build-plan-gaps-remediate-holistic": "build-plan-gaps-remediate-holistic",
                 "build-run-tests": "build-failure-diagnose",
             },
@@ -208,6 +214,7 @@ export const DECISION_ROUTES = {
                 "build-group-gate": "build-plan-tasks",
                 "build-plan-gaps-remediate": "build-plan-tasks",
                 "build-plan-verify-holistic": "build-challenge",
+                "build-holistic-gate": "build-challenge",
                 "build-plan-gaps-remediate-holistic": "build-challenge",
             },
         },

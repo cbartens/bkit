@@ -47,6 +47,7 @@ import { activeRunStart, savedPointLimit } from "./counters.js";
 import type { AskPoint } from "../../shared/settings.js";
 import { isResumable, runProgress, WORKFLOW_STEPS } from "./step-table.js";
 import { planFiles } from "./run-facts.js";
+import { skipProblem } from "./open-decision.js";
 import {
   mergeFindings,
   parseFindings,
@@ -415,6 +416,7 @@ export const ROW_FIELDS: Record<string, readonly RowField[]> = {
   "build/build-group-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate": ["attempt", "strategy"],
   "build/build-plan-verify-holistic": ["attempt"],
+  "build/build-holistic-gate": ["attempt", "scope"],
   "build/build-plan-gaps-remediate-holistic": ["attempt", "strategy"],
   "build/build-challenge": ["attempt"],
   "build/build-decision": ["attempt"],
@@ -1095,6 +1097,22 @@ const fill = (s: string, attempt: number | undefined) =>
 
 const list = (v: FlagValue) => (v as string[] | undefined) ?? [];
 
+/**
+ * A build decision row may say `route=continue` only when `bkit decisions skip` would pass
+ * its decision file (the step's first artifact): the same `skipProblem` rule, read here.
+ */
+function continueCheck(cwd: string, decisionFile: string | undefined): Check {
+  const check = "route=continue";
+  if (decisionFile === undefined)
+    return { check, ok: false, detail: "no decision file: pass it as the first --artifact" };
+  const read = readTextFile(path.resolve(cwd, decisionFile));
+  if (!read.ok) return { check, ok: false, detail: `${decisionFile} is missing or unreadable` };
+  const problem = skipProblem(read.text);
+  return problem === null
+    ? { check, ok: true, detail: `${decisionFile} passes decisions skip` }
+    : { check, ok: false, detail: `${decisionFile}: ${problem}` };
+}
+
 async function finish(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
   const file = statusFile(ctx);
@@ -1297,6 +1315,8 @@ async function finish(ctx: RunContext): Promise<number> {
   });
   if (missing.length)
     pre.push({ check: "status row", ok: false, detail: `row would miss ${missing.join(", ")}` });
+  if (workflow === "build" && step === "build-decision" && extras.route === "continue")
+    pre.push(continueCheck(ctx.cwd, artifacts[0]));
   if (pre.some((c) => !c.ok)) {
     for (const c of pre.filter((x) => !x.ok)) ctx.log(`${c.check}: ${c.detail}`);
     ctx.emit({ pass: false, checks: pre });

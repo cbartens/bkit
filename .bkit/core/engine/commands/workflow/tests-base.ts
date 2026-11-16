@@ -20,7 +20,7 @@ import { readPackageJson } from "../../shared/package-json.js";
 import { withCleanup } from "../ci/ci.js";
 import { dropLandTree } from "../land.js";
 import { CommandError, EXIT, git, mainCheckoutRoot, runGh, runGit, type VerbSpec } from "../lib.js";
-import { reportFailures, runTestFile, countReportFailures, type JunitCase } from "./junit.js";
+import { reportFailures, runTestFile, type JunitCase } from "./junit.js";
 import { latestRuntimeRow } from "./runtime.js";
 import { resolveOwnerRepo } from "./repo.js";
 import { copyListed, devBase, install } from "./worktrees.js";
@@ -188,9 +188,8 @@ export const testsBaseVerb: VerbSpec = {
       });
 
     const reports = `${log}.reports`;
-    const count = fs.existsSync(reports) ? countReportFailures(reports) : null;
-    if (count === null) return unknown("no JUnit report", null);
-    const failures = reportFailures(reports) ?? [];
+    const failures = fs.existsSync(reports) ? reportFailures(reports) : null;
+    if (failures === null) return unknown("no JUnit report", null);
     if (failures.length === 0) return finish({ ...noCases(), base: null, source: null, cases: [] });
 
     const tracked = (git(top, ["ls-files", "-z"]) ?? "").split("\0").filter(Boolean);

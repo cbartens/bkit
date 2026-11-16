@@ -1,4 +1,5 @@
-// bkit decisions compose|apply|pending — the build's decision files, from question to ship.
+// bkit decisions compose|apply|skip|pending — the build's decision files, from question to ship.
+// `open-decision.ts` reads them; `skip` applies its `skipProblem` rule.
 //
 // A decision file (`docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{N}.md`) holds header
 // lines, an optional progress block, then one item per question:
@@ -24,124 +25,34 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { readJsonFile } from "../../shared/json.js";
+import { readJsonFile, readTextFile } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
 import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
 import { loopProgress } from "./counters.js";
 import { appendLedgerRows } from "./ledgers.js";
+import { LOOPS, loopGateStep } from "./loops.js";
+import {
+  ITEM_SPLIT,
+  letterAt,
+  parseDecisionItems,
+  skipProblem,
+  undecidedBesidesLoop,
+  type DecisionItem,
+} from "./open-decision.js";
 import { classifyAt } from "./runtime.js";
 import { positiveInt, str } from "./status.js";
-
-/** One question of a decision file. */
-export interface DecisionItem {
-  n: number;
-  title: string;
-  /** The item's whole text, from its `**Q{n}` line to the next item. */
-  text: string;
-  options: string[];
-  /** The recommended option; null for a hard blocker. */
-  recommended: string | null;
-  reason: string;
-  /** The `Decision:` line's text, a lettered answer read as its option (`optionAnswer`). */
-  decision: string | null;
-  /** The plan task on the `Fix task:` line, else null. */
-  fixTask: number | null;
-  assumed: boolean;
-  rejected: boolean;
-  deferred: boolean;
-}
 
 /** Exit code: `apply --by=headless` left hard blockers (no recommendation) for the owner. */
 export const EXIT_HARD_BLOCKERS = 4;
 
-const ITEM_SPLIT = /^(?=\*\*Q\d+ — )/m;
-const lineOf = (text: string, key: string): string | null =>
-  new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
-
 /** Options one item may hold: one per letter, `A` to `Z`. */
 const MAX_OPTIONS = 26;
-/** `A`, `B`, … for option index `i`. */
-const letterAt = (i: number): string => String.fromCharCode(65 + i);
-/** An option entry's leading letter (`A) `) dropped, so a parsed name stays bare. */
-const bareName = (s: string): string => s.replace(/^[A-Z]\)[ \t]*/, "");
-/** A reply opening on an option letter: `B`, `B)`, `B — …`, `B) {option} …`, `B {option} …`. */
-const LETTER_REPLY = /^([A-Za-z])(?:\)|(?=[ \t—:,.-]|$))[ \t]*(?:[—:,.-][ \t]*)?/;
-
-/**
- * An answer read as the option it names. A leading letter of `options` (either case, with or
- * without `)`) becomes the option it labels: `B`, `B) Reject` and `B — too risky` read as
- * `Reject`, `Reject` and `Reject — too risky`. Any other answer is returned unchanged; with
- * no options known, only a leading `A) ` is dropped.
- */
-export function optionAnswer(answer: string, options: string[]): string {
-  if (options.length === 0) return bareName(answer);
-  const m = LETTER_REPLY.exec(answer);
-  const name = m === null ? undefined : options[m[1]!.toUpperCase().charCodeAt(0) - 65];
-  if (m === null || name === undefined) return answer;
-  const rest = answer.slice(m[0].length);
-  if (rest.toLowerCase().startsWith(name.toLowerCase())) return name + rest.slice(name.length);
-  if (rest === "") return name;
-  return /[)—:,.-]/.test(m[0]) ? `${name} — ${rest}` : answer;
-}
 /** The option list as it is written: `A) {A} / B) {B}`. */
 const letteredOptions = (options: string[]): string =>
   options.map((o, i) => `${letterAt(i)}) ${o}`).join(" / ");
 /** The letter `name` holds in `options`, or null when it is not one of them. */
 const letterOf = (options: string[], name: string): string | null =>
   options.includes(name) ? letterAt(options.indexOf(name)) : null;
-
-/** A `Fix task:` value as a positive integer, else null. */
-const fixTaskOf = (v: string | null): number | null =>
-  v !== null && /^[1-9][0-9]*$/.test(v) ? Number(v) : null;
-
-/** The `Key: value` lines before the file's first blank line. */
-export function decisionHeader(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of text.split("\n")) {
-    if (line.trim() === "" || line.startsWith("**Q")) break;
-    const m = /^([A-Za-z][\w ]*):[ \t]*(.*?)[ \t]*$/.exec(line);
-    if (m !== null && !(m[1]! in out)) out[m[1]!] = m[2]!;
-  }
-  return out;
-}
-
-/** The items of a decision file's text, in file order. */
-export function parseDecisionItems(text: string): DecisionItem[] {
-  return text
-    .split(ITEM_SPLIT)
-    .slice(1)
-    .map((part) => {
-      const head = /^\*\*Q(\d+) — (.+?):\*\*/.exec(part);
-      const rec = lineOf(part, "Recommended");
-      const [option, ...why] = (rec ?? "").split(" — ");
-      const none = /^No recommendation\b/m.test(part) || /^none$/i.test((option ?? "").trim());
-      const perLine = [...part.matchAll(/^[A-Z]\)[ \t]+(.+?)[ \t]*$/gm)].map((m) =>
-        (m[1] ?? "").split(" — ")[0]!.trim(),
-      );
-      const options =
-        perLine.length > 0
-          ? perLine.filter(Boolean)
-          : (lineOf(part, "Options") ?? "")
-              .split(" / ")
-              .map((o) => bareName(o.trim()))
-              .filter(Boolean);
-      const answer = lineOf(part, "Decision");
-      const decision = answer === null ? null : optionAnswer(answer, options);
-      return {
-        n: Number(head?.[1] ?? 0),
-        title: head?.[2] ?? "",
-        text: part.trimEnd(),
-        options,
-        recommended: none || rec === null ? null : bareName((option ?? "").trim()),
-        reason: why.join(" — ").trim(),
-        decision,
-        fixTask: fixTaskOf(lineOf(part, "Fix task")),
-        assumed: decision !== null && /^Accept \(assumed\)/.test(decision),
-        rejected: lineOf(part, "Rejected") !== null,
-        deferred: lineOf(part, "Deferred") !== null,
-      };
-    });
-}
 
 /** `Status:` set to `status`. */
 const withStatus = (text: string, status: string) =>
@@ -205,33 +116,6 @@ interface ComposeItem {
   /** Set for a hard blocker: why no agent can settle it. No recommendation is written. */
   noRecommendation?: string;
 }
-
-const LOOPS: Record<
-  string,
-  { title: string; check: string; fix: string; point: string; sinceClean?: true; gate?: string }
-> = {
-  verify: {
-    title: "Verify",
-    check: "build-plan-verify",
-    fix: "build-plan-gaps-remediate",
-    point: "verify",
-    gate: "build-group-gate",
-  },
-  // The whole-feature check reopens after each clean round, so its loop starts there. Its allowance is `build.holistic`.
-  holistic: {
-    title: "Holistic verify",
-    check: "build-plan-verify-holistic",
-    fix: "build-plan-gaps-remediate-holistic",
-    point: "holistic",
-    sinceClean: true,
-  },
-  tests: {
-    title: "Tests",
-    check: "build-run-tests",
-    fix: "build-failure-diagnose",
-    point: "tests",
-  },
-};
 
 interface BaseCheck {
   verdict: "all" | "some" | "none" | "unknown";
@@ -522,15 +406,18 @@ export const decisionsCommand: CommandSpec = {
             throw new CommandError(EXIT.USAGE, "--loop must be verify, holistic or tests");
           if (ctx.flags.file === undefined)
             throw new CommandError(EXIT.USAGE, "--loop needs --file");
+          const group = positiveInt(ctx.flags.group, "group");
+          // A grouped gate counts only for a named group.
+          const gate = loopGateStep(loop, group) === undefined ? undefined : loop.gate;
           const p = loopProgress(
             path.resolve(ctx.cwd, String(ctx.flags.file)),
             ctx.cwd,
             "build",
             loop.check,
             loop.fix,
-            positiveInt(ctx.flags.group, "group"),
+            group,
             loop.sinceClean === true,
-            loop.gate,
+            gate,
           );
           const attempt = str(ctx.flags.attempt) ?? String(p.rounds.length);
           const max = str(ctx.flags.max) ?? "?";
@@ -581,7 +468,7 @@ export const decisionsCommand: CommandSpec = {
             `Problems after each round: ${p.counts || "none recorded"}`,
             ...(p.gateCounts === undefined
               ? []
-              : [`Group gate failures after each round: ${p.gateCounts}`]),
+              : [`${loop.gateTitle ?? "Gate"} failures after each round: ${p.gateCounts}`]),
             `Code changed: ${changed}`,
             `Strategy: ${p.lastStrategy ?? "none"} → next ${p.nextStrategy}${p.finalSpent ? " (FINAL already used)" : ""}`,
             `Minutes per round: ${p.minutesPerRound ?? "unknown"}`,
@@ -684,14 +571,7 @@ export const decisionsCommand: CommandSpec = {
           const status = /^Status:[ \t]*(\S+)/m.exec(text)?.[1] ?? "OPEN";
           if (status !== "OPEN")
             throw new CommandError(EXIT.USAGE, `${name} is Status: ${status}, not OPEN`);
-          const head = text.split(ITEM_SPLIT, 1)[0] ?? "";
-          const hasLoop = /^## Progress$/m.test(head);
-          const undecided = parseDecisionItems(text)
-            .filter(
-              (i) =>
-                (hasLoop ? i.n !== 1 : true) && i.decision === null && !i.rejected && !i.deferred,
-            )
-            .map((i) => `Q${i.n}`);
+          const { hasLoop, undecided } = undecidedBesidesLoop(text);
           if (!hasLoop)
             throw new CommandError(
               EXIT.USAGE,
@@ -750,6 +630,26 @@ export const decisionsCommand: CommandSpec = {
         fs.writeFileSync(file, out, "utf-8");
         ctx.emit({ status: /^Status:[ \t]*(\S+)/m.exec(out)?.[1] ?? "OPEN", decisionKey });
         return EXIT.OK;
+      },
+    },
+    skip: {
+      summary:
+        "Whether a settled verify or holistic pause may route continue: exit 0 and route=continue when all five conditions hold, else exit 1 naming the first fact that fails.",
+      use: "workflow",
+      flags: [{ name: "file", type: "string", required: true, help: "the decision file" }],
+      output: {
+        route: "continue when every condition holds, else null",
+        problem:
+          "null, or the first fact that fails: From not verify or holistic, an item not Accept or Accept (assumed), the loop question not Decide, a Gate: FAIL header, or a Source changed header missing or not false",
+      },
+      run: (ctx) => {
+        const file = path.resolve(ctx.cwd, String(ctx.flags.file));
+        const read = readTextFile(file);
+        if (!read.ok) throw new CommandError(EXIT.USAGE, `${file} is missing or unreadable`);
+        const problem = skipProblem(read.text);
+        if (problem !== null) ctx.log(`${path.basename(file)}: ${problem}`);
+        ctx.emit({ route: problem === null ? "continue" : null, problem });
+        return problem === null ? EXIT.OK : EXIT.NO;
       },
     },
     pending: {

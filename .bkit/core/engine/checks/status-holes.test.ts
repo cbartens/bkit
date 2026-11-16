@@ -232,6 +232,28 @@ describe("source derivation", () => {
     ]);
   });
 
+  it("leaves a fix agent's gate label out of the universe when its gate step is named", () => {
+    const fakeMd = [
+      "## 🧠 Step 1 — Gate",
+      "```bash",
+      '"{BKIT}" tests run --step=build-holistic-gate',
+      '"{BKIT}" steps finish --step=build-holistic-gate',
+      "```",
+      'Context: `"{BKIT}" tests run --since-pass-of=build-holistic-gate,build-holistic-gate-fix --step=build-holistic-gate-fix`',
+    ].join("\n");
+    expect(deriveContract(fakeMd, "build").universe).toEqual(["build-holistic-gate"]);
+  });
+
+  it("keeps a key that ends in -fix when no step names its stem", () => {
+    const fakeMd = [
+      "## 🧠 Step 1 — Fix",
+      "```bash",
+      '"{BKIT}" steps finish --step=build-quick-fix',
+      "```",
+    ].join("\n");
+    expect(deriveContract(fakeMd, "build").universe).toEqual(["build-quick-fix"]);
+  });
+
   it("flags a status write that lives outside any numbered step (orphanSteps)", () => {
     const fakeMd = [
       "## 🧠 Step 1 — Start",

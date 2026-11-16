@@ -815,13 +815,46 @@ describe("bkit counters progress", () => {
     expect(r.json).toMatchObject({
       counts: "5 → 2",
       lastStrategy: "STANDARD",
-      nextStrategy: "PIVOT",
+      nextStrategy: "STANDARD",
       finalSpent: false,
       minutesPerRound: 20,
       trend: "closing",
       recommend: "try-again",
     });
     expect(r.json.rounds).toHaveLength(2);
+  });
+
+  it("loop progress prints the same nextStrategy as status route", async () => {
+    const gate = (at: string, attempt: number, failedTests: string[]) => ({
+      type: "test-run",
+      workflow: "build",
+      step: "build-group-gate-1",
+      at,
+      attempt,
+      verdict: "FAIL",
+      failures: failedTests.length,
+      failedTests,
+    });
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      verify("2026-10-01T00:10:00Z", 5, "a", { attempt: 1 }),
+      gate("2026-10-01T00:11:00Z", 1, ["t1"]),
+      fix("2026-10-01T00:20:00Z", "STANDARD"),
+      verify("2026-10-01T00:30:00Z", 2, "b", { attempt: 2 }),
+      gate("2026-10-01T00:31:00Z", 2, ["t2"]),
+    ]);
+    const route = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate",
+      "--group=1",
+    ]);
+    const r = await progress(file);
+    expect(r.code).toBe(0);
+    expect(route.json.nextStrategy).toBe("STANDARD");
+    expect(r.json.nextStrategy).toBe(route.json.nextStrategy);
   });
 
   it("reports the same count as stuck and a rising count as worse", async () => {
@@ -841,7 +874,7 @@ describe("bkit counters progress", () => {
     expect((await progress(rose)).json).toMatchObject({
       trend: "worse",
       recommend: "stop",
-      nextStrategy: "FINAL",
+      nextStrategy: "STANDARD",
       finalSpent: true,
     });
   });
@@ -1203,6 +1236,69 @@ describe("loopProgress with a gate", () => {
     const r = progress(file);
     expect(r.json.gateCounts).toBe("0 → 3");
     expect(r.json.counts).toBe("0 → 3");
+  });
+});
+
+describe("loopProgress with the holistic gate", () => {
+  const holistic = (at: string, attempt: number, verdict: string, failures: number) =>
+    done("build", "build-plan-verify-holistic", at, {
+      verdict,
+      failures,
+      attempt,
+      parentSha: `sha${attempt}`,
+    });
+  const gate = (at: string, attempt: number, verdict: string, failures: number) => ({
+    type: "test-run",
+    workflow: "build",
+    at,
+    step: "build-holistic-gate",
+    attempt,
+    run: 1,
+    verdict,
+    exitCode: verdict === "FAIL" ? 1 : 0,
+    failures,
+    scope: "gate",
+    log: "x.log",
+  });
+  const progress = (file: string) =>
+    loopProgress(
+      file,
+      path.dirname(file),
+      "build",
+      "build-plan-verify-holistic",
+      "build-plan-gaps-remediate-holistic",
+      undefined,
+      true,
+      "build-holistic-gate",
+    );
+
+  it("holistic loop progress adds the holistic gate's failing tests to each round", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:10:00Z", 1, "FAIL", 2),
+      gate("2026-10-01T00:11:00Z", 1, "FAIL", 3),
+      holistic("2026-10-01T00:30:00Z", 2, "FAIL", 1),
+      gate("2026-10-01T00:31:00Z", 2, "FAIL", 3),
+    ]);
+    const p = progress(file);
+    expect(p.counts).toBe("5 → 4");
+    expect(p.gateCounts).toBe("3 → 3");
+    expect(p.rounds.map((r) => r.gateFailures)).toEqual([3, 3]);
+  });
+
+  it("a clean holistic verify whose gate is red stays a round of the open loop", () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      holistic("2026-10-01T00:05:00Z", 1, "PASS", 0),
+      gate("2026-10-01T00:06:00Z", 1, "PASS", 0),
+      holistic("2026-10-01T00:10:00Z", 2, "PASS", 0),
+      gate("2026-10-01T00:11:00Z", 2, "FAIL", 3),
+      holistic("2026-10-01T00:30:00Z", 3, "PASS", 0),
+      gate("2026-10-01T00:31:00Z", 3, "FAIL", 2),
+    ]);
+    const p = progress(file);
+    expect(p.rounds.map((r) => r.attempt)).toEqual([2, 3]);
+    expect(p.counts).toBe("3 → 2");
   });
 });
 

@@ -80,6 +80,7 @@ tools:
      - **If** yes → state what new evidence makes it work this time.
      - Take a different angle, and do not repeat an earlier attempt word for word.
    - `FINAL` → Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
+   - **If** Context names `Repeat tests` → apply `PIVOT` or `FINAL` only to the failures of the tests it names, and give every other failure the `STANDARD` treatment.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this diagnosis; they override the strategy's default angle.
 6. Read the historical gotchas:
    - Fold `docs/knowledge.jsonl` ledger by `key`, highest `ts` wins → read only the winning rows where `status` is `ACTIVE` or absent; the engine does the fold, so run `bkit ledgers query --ledger=knowledge --status=ACTIVE` and follow `nextCursor` until it is null, then route on `coverage.status`: `missing` = the ledger has no rows, `partial` = use the rows and report the diagnosed lines, `unreadable` = stop and report.
@@ -146,7 +147,7 @@ Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 ## Prior Attempts Reviewed
 
-[Under `PIVOT` or `FINAL`: what was tried and why it failed. **If** `STANDARD` → `None`. Initially set to `PENDING`.]
+[Under `PIVOT` or `FINAL`: the tests `Repeat tests` names, then what was tried for them and why it failed. **If** `STANDARD` → `None`. Initially set to `PENDING`.]
 
 ## Prior Knowledge
 

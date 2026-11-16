@@ -128,6 +128,7 @@ import {
   resolveMonth,
   workflowLockPath,
 } from "./locks.js";
+import { openDecision } from "./open-decision.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -246,76 +247,6 @@ export function recordChat(file: string, workflow: string, env: NodeJS.ProcessEn
   fs.appendFileSync(file, appendLine(row));
 }
 
-/** An OPEN Decision Pause file of the current run, as `workflows start` prints it. */
-export interface OpenDecision {
-  file: string;
-  decision: number;
-  question: string | null;
-  from: string | null;
-  pauseStep: number | null;
-  group: number | null;
-  verifyAttempt: number | null;
-  testAttempt: number | null;
-  plan: string | null;
-  gate: string | null;
-  sourceChanged: string | null;
-  status: string;
-}
-
-/**
- * The highest-numbered `{workflow}-decision-{run}-{N}.md` in `logDir` whose header holds
- * `Status: OPEN`, or a `DECIDED` / `ASSUMED` file that none of the run's `{workflow}-decision`
- * rows names (a pause stopped after its answers were written, before the step finished), or
- * null. Only the given run's files count, so an earlier run's pause never resurfaces.
- * `file` is relative to `tree`; `finished` lists the paths the run's decision rows name.
- */
-export function openDecision(
-  logDir: string,
-  tree: string,
-  workflow: string,
-  run: number,
-  finished: readonly string[] = [],
-): OpenDecision | null {
-  if (!fs.existsSync(logDir)) return null;
-  const name = new RegExp(`^${workflow}-decision-${run}-([0-9]+)\\.md$`);
-  const found = fs
-    .readdirSync(logDir)
-    .map((f) => ({ f, m: name.exec(f) }))
-    .filter((x): x is { f: string; m: RegExpExecArray } => x.m !== null)
-    .map(({ f, m }) => ({ f, n: Number(m[1]) }))
-    .sort((a, b) => b.n - a.n);
-  for (const { f, n } of found) {
-    const text = fs.readFileSync(path.join(logDir, f), "utf-8");
-    const field = (key: string) =>
-      new RegExp(`^${key}:[ \\t]*(.+?)[ \\t]*$`, "m").exec(text)?.[1] ?? null;
-    const status = field("Status");
-    const rel = path.relative(tree, path.join(logDir, f));
-    const unfinished = (status === "DECIDED" || status === "ASSUMED") && !finished.includes(rel);
-    if (status !== "OPEN" && !unfinished) continue;
-    // `Gate:` counts only in the header block (the lines before the first blank line).
-    const header = text.split(/\r?\n[ \t]*\r?\n/, 1)[0] ?? "";
-    const gate = /^Gate:[ \t]*(.+?)[ \t]*$/m.exec(header)?.[1] ?? null;
-    const num = (key: string) => {
-      const v = field(key);
-      return v !== null && /^[0-9]+$/.test(v) ? Number(v) : null;
-    };
-    return {
-      file: rel,
-      decision: n,
-      question: field("Question"),
-      from: field("From"),
-      pauseStep: num("Pause step"),
-      group: num("Group"),
-      verifyAttempt: num("Verify attempt"),
-      testAttempt: num("Test attempt"),
-      plan: field("Plan"),
-      gate,
-      sourceChanged: field("Source changed"),
-      status: status ?? "OPEN",
-    };
-  }
-  return null;
-}
 const logDirRel = (month: string, fid: string) => path.join("docs", "plans", month, "logs", fid);
 const list = (v: FlagValue) => (v as string[] | undefined) ?? [];
 

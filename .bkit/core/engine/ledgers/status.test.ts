@@ -15,6 +15,7 @@ import {
   ledgerOperation,
   recordAction,
   recordLedgerOperation,
+  testRunProblem,
   validateCiSelection,
   ciSelectionIdentity,
   ciHandoffIdentity,
@@ -94,6 +95,66 @@ describe("CI evidence selection contract", () => {
     expect(validateCiSelection({ ...selection, failedJobCount: 1.5 })).toBe(false);
     expect(ciSelectionIdentity({ ...selection, failedJobCount: 2 })).toBe(
       ciSelectionIdentity(selection),
+    );
+  });
+
+  it("validates failedJobs as an array of job names outside the identity", () => {
+    const selection = {
+      mode: "ci" as const,
+      provider: "github" as const,
+      repo: "example/example",
+      runId: "123",
+      runAttempt: 2,
+      runUrl: "https://github.com/example/example/actions/runs/123/attempts/2",
+      workflowId: "456",
+      workflowPath: ".github/workflows/consumer-ci.yml",
+      headBranch: "fix/ci",
+      headSha: "a".repeat(40),
+      conclusion: "failure" as const,
+      redTiers: ["integration" as const],
+      failedJobCount: 1,
+      via: "prompt-run",
+    };
+    expect(validateCiSelection({ ...selection, failedJobs: ["bkit-tests-unit"] })).toBe(true);
+    expect(validateCiSelection({ ...selection, failedJobs: [] })).toBe(true);
+    expect(validateCiSelection({ ...selection, failedJobs: "bkit-tests-unit" })).toBe(false);
+    expect(validateCiSelection({ ...selection, failedJobs: [1] })).toBe(false);
+    expect(validateCiSelection({ ...selection, failedJobs: [""] })).toBe(false);
+    expect(ciSelectionIdentity({ ...selection, failedJobs: ["bkit-tests-unit"] })).toBe(
+      ciSelectionIdentity(selection),
+    );
+  });
+});
+
+describe("testRunProblem", () => {
+  const local = {
+    type: "test-run",
+    workflow: "build",
+    step: "build-group-gate-1",
+    verdict: "FAIL",
+    exitCode: 1,
+    failures: 2,
+    source: "local",
+  };
+
+  it("testRunProblem rejects a tested value that is not a full commit sha", () => {
+    expect(testRunProblem({ ...local, tested: "a".repeat(40) })).toBeNull();
+    expect(testRunProblem({ ...local, tested: "b".repeat(64) })).toBeNull();
+    expect(testRunProblem(local)).toBeNull();
+    expect(testRunProblem({ ...local, tested: "abc1234" })).toContain("tested");
+    expect(testRunProblem({ ...local, tested: "HEAD" })).toContain("tested");
+    expect(testRunProblem({ ...local, tested: "A".repeat(40) })).toContain("tested");
+    expect(testRunProblem({ ...local, tested: 7 })).toContain("tested");
+  });
+
+  it("testRunProblem rejects a failedTests that is not an array of strings", () => {
+    expect(testRunProblem({ ...local, failedTests: ["a.test.ts > adds", "b"] })).toBeNull();
+    expect(testRunProblem({ ...local, failedTests: ["a"], failedTestsTruncated: true })).toBeNull();
+    expect(testRunProblem({ ...local, failedTests: "a.test.ts > adds" })).toContain("failedTests");
+    expect(testRunProblem({ ...local, failedTests: ["a", 1] })).toContain("failedTests");
+    expect(testRunProblem({ ...local, failedTests: [""] })).toContain("failedTests");
+    expect(testRunProblem({ ...local, failedTests: ["a"], failedTestsTruncated: "yes" })).toContain(
+      "failedTestsTruncated",
     );
   });
 });

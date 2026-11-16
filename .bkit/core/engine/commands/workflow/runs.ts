@@ -487,12 +487,12 @@ function locateCi(ctx: RunContext): number {
   )
     throw new CommandError(82, "run attempt, repository or fork identity does not match");
   const failedJobs = jobs.filter((job) => FAILED_CONCLUSIONS.includes(text(job.conclusion)));
-  const mapped = failedJobs
-    .filter((job) => job.name !== "bkit-tests-check")
-    .map(
-      (job) =>
-        /^bkit-tests-(static|unit|integration|e2e|live|migration)$/.exec(text(job.name))?.[1],
-    );
+  const failedNames = failedJobs
+    .map((job) => text(job.name))
+    .filter((name) => name !== "bkit-tests-check");
+  const mapped = failedNames.map(
+    (name) => /^bkit-tests-(static|unit|integration|e2e|live|migration)$/.exec(name)?.[1],
+  );
   const tiers: CiTier[] = mapped.some((tier) => tier === undefined)
     ? []
     : CI_TIERS.filter((tier) => mapped.includes(tier));
@@ -509,7 +509,12 @@ function locateCi(ctx: RunContext): number {
     headSha: text(run.head_sha),
     conclusion: text(run.conclusion) as Extract<CiSelection, { mode: "ci" }>["conclusion"],
     redTiers: tiers,
-    ...(failedJobs.length > 0 ? { failedJobCount: Math.max(1, mapped.length) } : {}),
+    ...(failedJobs.length > 0
+      ? {
+          failedJobCount: Math.max(1, mapped.length),
+          failedJobs: [...new Set(failedNames)].sort(),
+        }
+      : {}),
     via,
   };
   if (

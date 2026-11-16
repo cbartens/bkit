@@ -79,7 +79,7 @@ Not scanned; run the rollup with `--reachability`.
 
 ## Import-time side effects
 
-15 module-scope side effects in 6 of 124 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
+15 module-scope side effects in 6 of 126 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
 
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
@@ -164,15 +164,15 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>261 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1902 symbols · 55 files"]
+    n_bkit_core_engine_commands["commands<br/>1927 symbols · 57 files"]
     n_bkit_core_engine_install["install<br/>364 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|469| n_bkit_core_engine_ledgers
-  n_bkit_core_engine_commands -->|429| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|471| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|186| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|147| n_bkit_core_engine_shared
@@ -312,13 +312,15 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_completeness["completeness<br/>4 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_context["context<br/>91 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_counters["counters<br/>30 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_decisions["decisions<br/>34 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_decisions["decisions<br/>25 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_disk["disk<br/>56 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_fids["fids<br/>58 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_issues["issues<br/>61 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_junit["junit<br/>16 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_junit["junit<br/>14 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>124 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_locks["locks<br/>40 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_loops["loops<br/>7 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_open_decision["open-decision<br/>17 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_plan_blocks["plan-blocks<br/>34 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_plans["plans<br/>15 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_prs["prs<br/>56 symbols · 1 files"]
@@ -327,17 +329,17 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_run_facts["run-facts<br/>29 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runs["runs<br/>88 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runtime["runtime<br/>20 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_status["status<br/>40 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_status["status<br/>39 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_step_table["step-table<br/>15 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_steps["steps<br/>77 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_steps["steps<br/>78 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_summary["summary<br/>33 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_summary_findings["summary-findings<br/>7 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tasks["tasks<br/>11 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_tests["tests<br/>107 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_tests["tests<br/>114 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tests_base["tests-base<br/>14 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_tests_changed["tests-changed<br/>5 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_tests_changed["tests-changed<br/>11 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tracker["tracker<br/>94 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_workflows["workflows<br/>87 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_workflows["workflows<br/>85 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_worktrees["worktrees<br/>65 symbols · 1 files"]
       end
     end
@@ -387,16 +389,17 @@ flowchart LR
   n_bkit_core_engine_commands_ci_ci -->|38| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_steps -->|37| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_issues -->|32| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_workflows -->|31| n_bkit_core_engine_commands_workflow_run_facts
   n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_status
+  n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_run_facts
   n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_tracker
-  n_bkit_core_engine_commands_workflow_status -->|29| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_runs -->|28| n_bkit_core_engine_ledgers_status
-  n_bkit_core_engine_commands_workflow_status -->|28| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_status -->|28| n_bkit_core_engine_ledgers_status
+  n_bkit_core_engine_commands_workflow_status -->|27| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_counters -->|26| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_workflows -->|26| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_steps -->|25| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_context -->|24| n_bkit_core_engine_commands_lib
-  n_bkit_core_engine_commands_workflow_counters -->|24| n_bkit_core_engine_commands_workflow_status
+  n_bkit_core_engine_commands_workflow_counters -->|24| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_ledgers -->|24| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_workflows -->|24| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_commands_workflow_worktrees -->|24| n_bkit_core_engine_commands_workflow_ledgers
@@ -406,7 +409,6 @@ flowchart LR
   n_bkit_core_engine_checks_after_tools -->|22| n_bkit_core_engine_install_project_docs
   n_bkit_core_engine_tools_instructions -->|22| n_bkit_core_engine_tools_instructions_sources
   n_bkit_core_engine_checks_after_index -->|21| n_bkit_core_engine_checks_after_ci_yml
-  n_bkit_core_engine_commands_workflow_counters -->|21| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_ci_push_gate -->|20| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_branches -->|20| n_bkit_core_engine_commands_land
   n_bkit_core_engine_commands_workflow_branches -->|19| n_bkit_core_engine_commands_workflow_status
@@ -423,6 +425,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_counters -->|17| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_runs -->|17| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_tests -->|17| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_tests_changed -->|17| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_ledgers_journal -->|17| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_branches -->|16| n_bkit_core_engine_commands_workflow_ledgers
   n_bkit_core_engine_commands_workflow_roadmap -->|16| n_bkit_core_engine_commands_lib
@@ -438,6 +441,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_roadmap -->|15| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_commands_workflow_runs -->|15| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_steps -->|15| n_bkit_core_engine_commands_workflow_issues
+  n_bkit_core_engine_commands_workflow_tests -->|15| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_install_modules_core -->|15| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_install_modules_opencode -->|15| n_bkit_core_engine_install_write
   n_bkit_core_engine_checks_after_managed -->|14| n_bkit_core_engine_install_managed_block
@@ -446,7 +450,6 @@ flowchart LR
   n_bkit_core_engine_commands_install_upgrade -->|14| n_bkit_core_engine_install_version_file
   n_bkit_core_engine_commands_workflow_branches -->|14| n_bkit_core_engine_commands_workflow_prs
   n_bkit_core_engine_commands_workflow_summary_findings -->|14| n_bkit_core_engine_commands_workflow_challenge
-  n_bkit_core_engine_commands_workflow_tests -->|14| n_bkit_core_engine_commands_workflow_status
   nscripts_harvest -->|14| n_bkit_core_engine_ledgers_telemetry
   n_bkit_core_engine_checks_after_index -->|13| n_bkit_core_engine_checks_after_tools
   n_bkit_core_engine_checks_before_index -->|13| n_bkit_core_engine_checks_before_files
@@ -461,6 +464,7 @@ flowchart LR
   n_bkit_core_engine_commands_install_upgrade -->|12| n_bkit_core_engine_render_models
   n_bkit_core_engine_commands_setup_setup -->|12| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_context -->|12| n_bkit_core_engine_commands_workflow_plan_blocks
+  n_bkit_core_engine_commands_workflow_decisions -->|12| n_bkit_core_engine_commands_workflow_open_decision
   n_bkit_core_engine_commands_workflow_repo -->|12| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_steps -->|12| n_bkit_core_engine_commands_workflow_tests
   n_bkit_core_engine_commands_workflow_steps -->|12| n_bkit_core_engine_commands_workflow_ledgers
@@ -469,7 +473,7 @@ flowchart LR
   n_bkit_core_engine_commands_install_uninstall -->|11| n_bkit_core_engine_install_write
   n_bkit_core_engine_commands_workflow_locks -->|11| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_runs -->|11| n_bkit_core_engine_commands_workflow_tracker
-  n_bkit_core_engine_commands_workflow_tests_changed -->|11| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_tests -->|11| n_bkit_core_engine_commands_workflow_tests_changed
   n_bkit_core_engine_commands_workflow_worktrees -->|11| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_render_models
   n_bkit_core_engine_install_modules_opencode -->|11| n_bkit_core_engine_shared_package_roots
@@ -523,6 +527,7 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_challenge -->|8| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_context -->|8| n_bkit_core_engine_commands_workflow_tests
   n_bkit_core_engine_commands_workflow_ledgers -->|8| n_bkit_core_engine_shared_json
+  n_bkit_core_engine_commands_workflow_steps -->|8| n_bkit_core_engine_shared_json
   n_bkit_core_engine_commands_workflow_tests -->|8| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_workflows -->|8| n_bkit_core_engine_commands_workflow_worktrees
   n_bkit_core_engine_install_modules_antigravity -->|8| n_bkit_core_engine_install_write
@@ -550,10 +555,10 @@ flowchart LR
   n_bkit_core_engine_commands_stats -->|7| n_bkit_core_engine_commands_analysis
   n_bkit_core_engine_commands_workflow_branches -->|7| n_bkit_core_engine_shared_package_manager
   n_bkit_core_engine_commands_workflow_branches -->|7| n_bkit_core_engine_commands_workflow_locks
+  n_bkit_core_engine_commands_workflow_counters -->|7| n_bkit_core_engine_commands_workflow_loops
   n_bkit_core_engine_commands_workflow_disk -->|7| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_plans -->|7| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_status -->|7| n_bkit_core_engine_ledgers_journal
-  n_bkit_core_engine_commands_workflow_steps -->|7| n_bkit_core_engine_shared_json
   n_bkit_core_engine_commands_workflow_steps -->|7| n_bkit_core_engine_commands_workflow_fids
   n_bkit_core_engine_commands_workflow_steps -->|7| n_bkit_core_engine_commands_workflow_locks
   n_bkit_core_engine_commands_workflow_steps -->|7| n_bkit_core_engine_ledgers_journal
@@ -595,7 +600,6 @@ flowchart LR
   n_bkit_core_engine_install_cloud_env -->|6| n_bkit_core_engine_install_placeholders
   n_bkit_core_engine_install_modules_antigravity -->|6| n_bkit_core_engine_render_hosts
   n_bkit_core_engine_install_modules_opencode -->|6| n_bkit_core_engine_shared_json
-  n_bkit_core_engine_commands_workflow_tests_base -->|6| n_bkit_core_engine_commands_workflow_junit
   n_bkit_core_engine_checks_tips_catalogue -->|6| n_bkit_core_engine_checks_before_env
   n_bkit_core_engine_commands_workflow_tests -->|6| n_bkit_core_engine_commands_workflow_junit
   style gncustom_health_checks fill:#8250df0a,stroke:#8250df,stroke-width:2px
@@ -665,6 +669,8 @@ flowchart LR
   style n_bkit_core_engine_commands_workflow_junit stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_commands_workflow_ledgers stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_commands_workflow_locks stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_commands_workflow_loops stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
+  style n_bkit_core_engine_commands_workflow_open_decision stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_commands_workflow_plan_blocks stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_commands_workflow_plans stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
   style n_bkit_core_engine_commands_workflow_prs stroke:#1a7f37,stroke-width:2px,fill:#1a7f3714
@@ -788,7 +794,7 @@ flowchart LR
   linkStyle 78 stroke:#59636e,stroke-width:6px
   linkStyle 79 stroke:#59636e,stroke-width:6px
   linkStyle 80 stroke:#59636e,stroke-width:6px
-  linkStyle 81 stroke:#59636eb3,stroke-width:3px
+  linkStyle 81 stroke:#59636e,stroke-width:6px
   linkStyle 82 stroke:#59636eb3,stroke-width:3px
   linkStyle 83 stroke:#59636eb3,stroke-width:3px
   linkStyle 84 stroke:#59636eb3,stroke-width:3px
@@ -859,9 +865,9 @@ flowchart LR
   linkStyle 149 stroke:#59636eb3,stroke-width:3px
   linkStyle 150 stroke:#59636eb3,stroke-width:3px
   linkStyle 151 stroke:#59636eb3,stroke-width:3px
-  linkStyle 152 stroke:#59636e80,stroke-width:2px
-  linkStyle 153 stroke:#59636e80,stroke-width:2px
-  linkStyle 154 stroke:#59636e80,stroke-width:2px
+  linkStyle 152 stroke:#59636eb3,stroke-width:3px
+  linkStyle 153 stroke:#59636eb3,stroke-width:3px
+  linkStyle 154 stroke:#59636eb3,stroke-width:3px
   linkStyle 155 stroke:#59636e80,stroke-width:2px
   linkStyle 156 stroke:#59636e80,stroke-width:2px
   linkStyle 157 stroke:#59636e80,stroke-width:2px
@@ -929,4 +935,6 @@ flowchart LR
   linkStyle 219 stroke:#59636e80,stroke-width:2px
   linkStyle 220 stroke:#59636e80,stroke-width:2px
   linkStyle 221 stroke:#59636e80,stroke-width:2px
+  linkStyle 222 stroke:#59636e80,stroke-width:2px
+  linkStyle 223 stroke:#59636e80,stroke-width:2px
 ```

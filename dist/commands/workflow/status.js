@@ -6,9 +6,10 @@ import { BKIT_DEBUG_GATES } from "../../install/manifest.js";
 import { appendFrictionRow, journalEnabled, pauseFrictionRow } from "../../ledgers/journal.js";
 import { resolveGitSha } from "../../ledgers/telemetry.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastCleanRound, lastDoneStepAllRuns, lastRun, nextStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, validateCiSelection, ciSelectionIdentity, allRunsDoneSteps, appendLine, fold, lastDoneStepAllRuns, lastRun, repeatStrategy, runNumber, runOrStepField, statusTimestamp, } from "../../ledgers/status.js";
 import { CommandError, EXIT, git, parseJson, resolveActiveRun, statusLocation, worktreeFingerprint, writeInvocation, } from "../lib.js";
-import { featureBase } from "./feature-base.js";
+import { fixTestStep, gatedCheckStep } from "./loops.js";
+import { gateRerun, openDecision } from "./open-decision.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 // ---------------------------------------------------------------------------
 // Shared with counters / steps
@@ -153,22 +154,13 @@ const ROUTE_FIELDS = [
 ];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
-/**
- * The commit a repeat check tests from: the step's last clean round's `parentSha`, else
- * the feature base, which is also the answer when that sha is not an ancestor of HEAD.
- */
-function cleanBase(cwd, clean) {
-    const sha = clean?.parentSha;
-    if (typeof sha !== "string" || sha === "")
-        return featureBase(cwd);
-    return git(cwd, ["merge-base", "--is-ancestor", sha, "HEAD"]) === null ? featureBase(cwd) : sha;
-}
-function route(runs, workflow, step, group) {
+function route(runs, rows, workflow, step, group) {
     const out = {
         verdict: null,
         failures: null,
         strategy: null,
         nextStrategy: null,
+        repeatTests: [],
         debugMode: null,
         pushMode: null,
         publish: null,
@@ -206,7 +198,17 @@ function route(runs, workflow, step, group) {
         const prior = lastDoneStepAllRuns(runs, workflow, { step, group })?.strategy;
         if (prior === undefined || STRATEGIES.includes(prior)) {
             out.strategy = prior ?? null;
-            out.nextStrategy = nextStrategy(prior);
+            // The next label comes from the tests failing now, not from the previous label.
+            const testStep = fixTestStep(step, group);
+            const check = gatedCheckStep(step);
+            const current = check === undefined
+                ? undefined
+                : activeDoneSteps(runs, workflow, { step: check, group }).length;
+            const next = testStep === undefined
+                ? { strategy: "STANDARD", repeatTests: [] }
+                : repeatStrategy(rows, workflow, testStep, current);
+            out.nextStrategy = next.strategy;
+            out.repeatTests = next.repeatTests;
         }
         else {
             problems.strategy = `${step} strategy "${String(prior)}" is not STANDARD|PIVOT|FINAL`;
@@ -365,7 +367,7 @@ export const statusCommand = {
             },
         },
         route: {
-            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, cleanBase (the step's last clean commit, else the feature's start commit); with --prompt-file, debug's start decisions.",
+            summary: "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, nextStrategy and repeatTests (the next fix round's label, from the tests failing again); with --prompt-file, debug's start decisions.",
             use: "workflow",
             flags: [
                 { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
@@ -405,7 +407,8 @@ export const statusCommand = {
                 ciReproduced: "whether the active generation has DONE reproduction with YES",
                 failures: "its failures (absent on PASS|CONCERNS = 0, absent on FAIL = null: count unknown), or null",
                 strategy: "the step's last strategy across ALL runs, or null",
-                nextStrategy: "next rung: STANDARD, PIVOT, FINAL (null without --step)",
+                nextStrategy: "the next fix round's label, from the tests failing now on the fix step's test step: STANDARD when none failed in an earlier attempt, PIVOT when one did in 1, FINAL in 2 or more (null without --step)",
+                repeatTests: "the tests failing now that also failed in an earlier attempt, across every run (empty without --step)",
                 debugMode: "NORMAL|SOAK of the active run, or null; with --prompt-file, the mode this invocation runs in (SOAK on [soak] in the prompt, an open run already in SOAK, or bkit.workflows.debug.fix.maxAttempts fix rounds already run across every debug run; else NORMAL)",
                 pushMode: "PR|LOCAL of the active run, or null",
                 debugAttempt: "debugAttempt of the active run (0 when unset); with --prompt-file, this invocation's run number (a resume keeps its number)",
@@ -413,7 +416,6 @@ export const statusCommand = {
                 gates: "with --prompt-file: the gates to try, deepest first; [live=off] in the prompt drops the live gate",
                 publish: "with --workflow=build and --prompt-file: whether the build publishes (a publish=true|false token, else publish.local on LOCAL or publish.remote elsewhere; a non-LOCAL false resolves true), else null",
                 publishSource: "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
-                cleanBase: "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else the feature's start commit; the feature's start commit also when that sha is not an ancestor of HEAD",
                 parentSha: "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
                 source: "the `source` field of the step's last DONE row in the active run (debug-run-tests: local|ci), or null",
             },
@@ -454,9 +456,9 @@ export const statusCommand = {
                         throw new CommandError(EXIT.USAGE, `--prompt-file ${abs} does not exist`);
                     promptText = fs.readFileSync(abs, "utf-8");
                 }
-                const runs = promptFile !== undefined && !fs.existsSync(file) ? [] : readRuns(file);
-                const { out, problems } = route(runs, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
-                out.cleanBase = cleanBase(ctx.cwd, step === undefined ? undefined : lastCleanRound(runs, String(ctx.flags.workflow), step));
+                const statusRows = promptFile !== undefined && !fs.existsSync(file) ? [] : readStatusRows(file);
+                const runs = fold(statusRows);
+                const { out, problems } = route(runs, statusRows, String(ctx.flags.workflow), step, positiveInt(ctx.flags.group, "group"));
                 if (promptFile !== undefined) {
                     const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
                     const config = readBkitConfig(root);
@@ -465,8 +467,7 @@ export const statusCommand = {
                         delete problems.debugMode;
                     }
                     else {
-                        const rows = fs.existsSync(file) ? readStatusRows(file) : [];
-                        Object.assign(out, publishRoute(rows, promptText, config.buildPublish));
+                        Object.assign(out, publishRoute(statusRows, promptText, config.buildPublish));
                         delete problems.publish;
                     }
                 }
@@ -676,7 +677,7 @@ export const statusCommand = {
             },
         },
         resume: {
-            summary: "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside.",
+            summary: "The step a stopped run continues at: after its last DONE step, setup steps and retired rows aside; gateRerun and rerunFrom say whether an open red-gate pause re-runs its gate first, and which.",
             use: "by-hand",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl; a missing file is a run with no rows" },
@@ -691,6 +692,8 @@ export const statusCommand = {
                 active: "whether the latest run is this workflow, still IN_PROGRESS",
                 challengeRound: "build: the round Step 11's challenge runs as (1 up to bkit.workflows.build.challenge.maxAttempts), from the build-challenge rows' round field; null for other workflows",
                 challengeDone: "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
+                gateRerun: "true when the active run's open decision file (as `workflows start` prints it in openDecision) has a Gate: FAIL header, Status: OPEN, From verify, holistic or tests, and the loop question as its only undecided question: re-run that gate instead of asking again; else false",
+                rerunFrom: "verify | holistic | tests: the open decision file's From header, the check whose gate re-runs; null when gateRerun is false",
             },
             exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
             run: (ctx) => {
@@ -700,8 +703,17 @@ export const statusCommand = {
                 const file = statusFile(ctx);
                 const root = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
                 const challengeMax = readBkitConfig(root).asks["build.challenge"].max;
+                const runs = fs.existsSync(file) ? readRuns(file) : [];
+                const point = resumePoint(runs, workflow, challengeMax);
+                const current = point.active ? lastRun(runs, workflow) : undefined;
+                const open = current === undefined
+                    ? null
+                    : openDecision(path.dirname(file), root, workflow, runNumber(runs, workflow), current.steps
+                        .filter((s) => s.step === `${workflow}-decision`)
+                        .flatMap((s) => s.artifacts));
                 ctx.emit({
-                    ...resumePoint(fs.existsSync(file) ? readRuns(file) : [], workflow, challengeMax),
+                    ...point,
+                    ...gateRerun(open, open === null ? "" : fs.readFileSync(path.resolve(root, open.file), "utf-8")),
                 });
                 return EXIT.OK;
             },

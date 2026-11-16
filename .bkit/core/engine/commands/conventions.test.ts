@@ -172,6 +172,10 @@ const HELPER_SOURCES = new Set([
   path.join("commands", "workflow", "test-blocks.ts"),
   // The commit a feature's work starts after and its diff range, read by `context diff`, `challenge`, `branches` and `status`.
   path.join("commands", "workflow", "feature-base.ts"),
+  // The build fix loops and each one's test step, read by `decisions`, `status` and `counters`.
+  path.join("commands", "workflow", "loops.ts"),
+  // The decision-file readers and the skip and gate re-run rules, read by `decisions`, `status`, `steps` and `tasks`.
+  path.join("commands", "workflow", "open-decision.ts"),
   // The `tests changed` verb, registered on `bkit tests` in tests.ts.
   path.join("commands", "workflow", "tests-changed.ts"),
   // The `tests jump` verb, registered on `bkit tests` in tests.ts.

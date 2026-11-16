@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { countReportFailures, logEnv, parseJunit, reportFailures } from "./junit";
+import { logEnv, parseJunit, reportFailures } from "./junit";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -38,20 +38,19 @@ describe("parseJunit", () => {
   });
 });
 
-describe("countReportFailures", () => {
-  it("counts failures and errors, 0 for a clean report and null with no report", () => {
+describe("reportFailures", () => {
+  it("lists failures and errors, [] for a clean report and null with no report", () => {
     const dir = tmp();
-    expect(countReportFailures(dir)).toBeNull();
-    fs.writeFileSync(path.join(dir, "ok.xml"), report('<testcase name="a"/>'));
-    expect(countReportFailures(dir)).toBe(0);
     expect(reportFailures(dir)).toBeNull();
+    fs.writeFileSync(path.join(dir, "ok.xml"), report('<testcase name="a"/>'));
+    expect(reportFailures(dir)).toEqual([]);
     fs.writeFileSync(
       path.join(dir, "bad.xml"),
       report(
         '<testcase name="b"><failure message="x"/></testcase><testcase name="c"><error/></testcase>',
       ),
     );
-    expect(countReportFailures(dir)).toBe(2);
+    expect(reportFailures(dir)?.length).toBe(2);
     expect(reportFailures(dir)?.map((c) => c.name)).toEqual(["b", "c"]);
   });
 });

@@ -41,6 +41,8 @@ export type CiSelection =
       redTiers: CiTier[];
       /** Failed jobs of the selected run, the capstone left out (1 when only it failed). */
       failedJobCount?: number;
+      /** Names of the selected run's failed jobs, sorted, the capstone left out (`[]` when only it failed). */
+      failedJobs?: string[];
       via: string;
     };
 
@@ -81,6 +83,9 @@ export function validateCiSelection(value: unknown): value is CiSelection {
     v.redTiers.every((tier) => CI_TIERS.some((known) => known === tier)) &&
     (v.failedJobCount === undefined ||
       (Number.isSafeInteger(v.failedJobCount) && Number(v.failedJobCount) > 0)) &&
+    (v.failedJobs === undefined ||
+      (Array.isArray(v.failedJobs) &&
+        v.failedJobs.every((name) => typeof name === "string" && name.length > 0))) &&
     typeof v.via === "string" &&
     v.via.trim().length > 0
   );
@@ -295,7 +300,16 @@ export function testRunProblem(value: unknown): string | null {
   if (!value || typeof value !== "object") return "test-run must be an object";
   const r = value as Record<string, unknown>;
   const positive = (v: unknown) => Number.isSafeInteger(v) && Number(v) > 0;
+  if (
+    r.failedTests !== undefined &&
+    (!Array.isArray(r.failedTests) ||
+      !r.failedTests.every((name) => typeof name === "string" && name !== ""))
+  )
+    return "failedTests must be an array of non-empty strings";
+  if (r.failedTestsTruncated !== undefined && typeof r.failedTestsTruncated !== "boolean")
+    return "failedTestsTruncated must be a boolean";
   if (r.source === "ci") {
+    if (r.tested !== undefined) return "a CI evidence round records no tested snapshot";
     if (
       r.workflow !== "debug" ||
       r.step !== "debug-run-tests" ||
@@ -328,6 +342,8 @@ export function testRunProblem(value: unknown): string | null {
     return "local exitCode must be a non-negative integer";
   if (r.failures !== null && (!Number.isSafeInteger(r.failures) || Number(r.failures) < 0))
     return "invalid failure count";
+  if (r.tested !== undefined && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(String(r.tested)))
+    return "tested must be a full commit sha";
   return null;
 }
 
@@ -538,23 +554,29 @@ export function activeDoneSteps(runs: WorkflowRun[], workflow: string, f: StepFi
 export const cleanRound = (s: Step) =>
   s.status === "DONE" && (s.verdict === "PASS" || (s.verdict === "CONCERNS" && s.failures === 0));
 
-/** The active run's last clean round of `step` (`cleanRound`); undefined when none ran. */
-export function lastCleanRound(runs: WorkflowRun[], workflow: string, step: string) {
+/** The active run's last clean round of `step` (`isClean`, by default `cleanRound`); undefined when none ran. */
+export function lastCleanRound(
+  runs: WorkflowRun[],
+  workflow: string,
+  step: string,
+  isClean: (s: Step) => boolean = cleanRound,
+) {
   return lastRun(runs, workflow)
-    ?.steps.filter((s) => s.step === step && cleanRound(s))
+    ?.steps.filter((s) => s.step === step && isClean(s))
     .at(-1);
 }
 
-/** `activeDoneSteps` after `clean`'s last clean round: the rounds of the loop still open. */
+/** `activeDoneSteps` after `clean`'s last clean round (`isClean`): the rounds of the loop still open. */
 export function activeDoneStepsSinceClean(
   runs: WorkflowRun[],
   workflow: string,
   f: StepFilter,
   clean: string,
+  isClean: (s: Step) => boolean = cleanRound,
 ): Step[] {
   const run = lastRun(runs, workflow);
   if (!run) return [];
-  const last = lastCleanRound(runs, workflow, clean);
+  const last = lastCleanRound(runs, workflow, clean, isClean);
   return run.steps
     .slice(last === undefined ? 0 : run.steps.indexOf(last) + 1)
     .filter((s) => matches(s, f));
@@ -968,8 +990,48 @@ export function appendHeld(
 
 export type Strategy = NonNullable<Step["strategy"]>;
 
-/** Next rung: none -> STANDARD -> PIVOT -> FINAL, and FINAL stays FINAL. */
-export function nextStrategy(prior: Strategy | undefined): Strategy {
-  if (prior === undefined) return "STANDARD";
-  return prior === "STANDARD" ? "PIVOT" : "FINAL";
+/**
+ * The next fix round's label, from the tests failing now. Reads the `test-run` rows of one
+ * test step across every run of the workflow; the latest row's `failedTests` are the tests
+ * failing now. For each, it counts the distinct earlier attempts (run and attempt) whose rows
+ * list it; re-runs under one attempt count once, and a row without `failedTests` lists none.
+ * Rows with no `attempt` share one key per run, so they count as one attempt.
+ * The highest count gives the label: 0 `STANDARD`, 1 `PIVOT`, 2 or more `FINAL`.
+ * `repeatTests` holds the tests with a count of 1 or more, in the latest row's order.
+ *
+ * `current` is the attempt the fix round follows, for a test step that does not run on every
+ * round (a group gate runs only after a passing verify). A latest row from an older run or
+ * another attempt says nothing about the tests failing now: `STANDARD`, no `repeatTests`.
+ */
+export function repeatStrategy(
+  rows: readonly StatusRow[],
+  workflow: string,
+  step: string,
+  current?: number,
+): { strategy: Strategy; repeatTests: string[] } {
+  let run = 0;
+  const attempts: { key: string; run: number; attempt: unknown; tests: readonly string[] }[] = [];
+  for (const r of rows) {
+    if (r.type === "workflow-started" && r.workflow === workflow) run += 1;
+    if (r.type !== "test-run" || r.step !== step) continue;
+    if (r.workflow !== undefined && r.workflow !== workflow) continue;
+    const tests = Array.isArray(r.failedTests)
+      ? r.failedTests.filter((t): t is string => typeof t === "string")
+      : [];
+    attempts.push({ key: `${run}:${String(r.attempt)}`, run, attempt: r.attempt, tests });
+  }
+  const latest = attempts.at(-1);
+  if (latest === undefined) return { strategy: "STANDARD", repeatTests: [] };
+  if (current !== undefined && (latest.run !== run || Number(latest.attempt) !== current))
+    return { strategy: "STANDARD", repeatTests: [] };
+  const earlier = attempts.filter((a) => a.key !== latest.key);
+  let highest = 0;
+  const repeatTests: string[] = [];
+  for (const name of new Set(latest.tests)) {
+    const count = new Set(earlier.filter((a) => a.tests.includes(name)).map((a) => a.key)).size;
+    if (count > 0) repeatTests.push(name);
+    highest = Math.max(highest, count);
+  }
+  const strategy = highest === 0 ? "STANDARD" : highest === 1 ? "PIVOT" : "FINAL";
+  return { strategy, repeatTests };
 }

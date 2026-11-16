@@ -75,7 +75,7 @@ autoCompactWindow: 300000
    - **If** a brief has a `Deviations` section → judge the tasks it names as the owner's instructions there direct.
    - Check that every task field and gate maps to real changes in the codebase.
    - Find missing components, skipped steps and unimplemented edge cases.
-   - A failing test that the group gate (`bkit:gate:static-unit`, run on the files changed since the group started) runs is not a gap, unless a task's `DONE WHEN` or `TEST FIRST` names that test: the workflow routes the gate's result itself. After the last group there is no group gate, so Step 12's final run and the holistic verify cover a failing test.
+   - A failing test that the group gate (`bkit:gate:static-unit`, run on the files changed since the group started) runs is not a gap, unless a task's `DONE WHEN` or `TEST FIRST` names that test: the workflow routes the gate's result itself. After the last group there is no group gate, so the holistic gate and Step 12's final run cover a failing test.
 7. **If** `Mode` = `Holistic`:
    - Run the same task and gate check across every group of the plan.
    - Check the integration between groups:
@@ -83,9 +83,7 @@ autoCompactWindow: 300000
      - The API contracts match.
      - Shared state is consistent.
      - Cross-domain boundaries are respected.
-   - Run `bkit tests changed --base={Test base} --fallback=bkit:gate:static-unit`. Your Context names `Test base`: the commit the last clean holistic check tested up to, or the feature's start commit for the first check.
-     - **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
-   - Log each integration gap and each failing test as one gap: append `INTEGRATION: {what does not work together, naming the groups or tasks} — Fixable: true|false` with Bash `echo >>`, and describe it under `Integration Gaps`.
+   - Log each integration gap as one gap: append `INTEGRATION: {what does not work together, naming the groups or tasks} — Fixable: true|false` with Bash `echo >>`, and describe it under `Integration Gaps`.
      - `Fixable: false` only when closing the gap needs a choice the plan does not make; the owner then decides. Every other gap is `Fixable: true`, because the holistic fix round closes it.
      - **If** a supplied decision record accepts the gap → no gap. Name the record in `Notes`.
 8. **If** a test-first audit report is supplied (its header has `Enforced`, `Verdict` and `Gaps`) → decide each of its gaps. A gap's `fixable` stands unless it is `null`. Decide each `null` one from the diff it names:

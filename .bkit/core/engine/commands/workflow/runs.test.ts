@@ -585,6 +585,29 @@ describe("bkit runs locate", () => {
     expect(f.selected()).toMatchObject({ mode: "ci", failedJobCount: 2 });
   });
 
+  it("a CI selection keeps the failed job names, capstone left out", async () => {
+    const f = locateFixture();
+    f.data.jobs = [
+      { id: 1, name: "bkit-tests-unit", status: "completed", conclusion: "failure" },
+      { id: 2, name: "consumer-e2e", status: "completed", conclusion: "timed_out" },
+      { id: 3, name: "bkit-tests-static", status: "completed", conclusion: "success" },
+      { id: 4, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await f.locate()).code).toBe(0);
+    expect(f.selected()).toMatchObject({
+      mode: "ci",
+      failedJobCount: 2,
+      failedJobs: ["bkit-tests-unit", "consumer-e2e"],
+    });
+    const only = locateFixture();
+    only.data.jobs = [
+      { id: 1, name: "bkit-tests-unit", status: "completed", conclusion: "success" },
+      { id: 2, name: "bkit-tests-check", status: "completed", conclusion: "failure" },
+    ];
+    expect((await only.locate()).code).toBe(0);
+    expect(only.selected()).toMatchObject({ failedJobCount: 1, failedJobs: [] });
+  });
+
   it("counts the capstone job when it is the only failed job", async () => {
     const f = locateFixture();
     f.data.jobs = [

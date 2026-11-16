@@ -51,8 +51,11 @@ export function runToLog(
   return 128 + ((res.signal ? os.constants.signals[res.signal] : undefined) ?? 1);
 }
 
-/** Failing plus erroring cases across every `*.xml` under `dir`; null when there is no report. */
-function failingCases(dir: string): JunitCase[] | null {
+/**
+ * The failing plus erroring cases across every `*.xml` under `dir`: `[]` for reports with
+ * none, null when there is no report.
+ */
+export function reportFailures(dir: string): JunitCase[] | null {
   const xml = (fs.readdirSync(dir, { recursive: true }) as string[]).filter(
     (f) => f.endsWith(".xml") && fs.statSync(path.join(dir, f)).isFile(),
   );
@@ -60,17 +63,6 @@ function failingCases(dir: string): JunitCase[] | null {
   return xml
     .flatMap((f) => parseJunit(fs.readFileSync(path.join(dir, f), "utf-8")))
     .filter((c) => c.state === "failure" || c.state === "error");
-}
-
-/** The failing plus erroring cases of every `*.xml` under `dir`; null with none. */
-export function reportFailures(dir: string): JunitCase[] | null {
-  const failing = failingCases(dir);
-  return failing === null || failing.length === 0 ? null : failing;
-}
-
-/** The number of failing plus erroring cases across every `*.xml` under `dir`; null when there is no report. */
-export function countReportFailures(dir: string): number | null {
-  return failingCases(dir)?.length ?? null;
 }
 
 export type CaseState = "passed" | "failure" | "error" | "skipped";

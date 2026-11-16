@@ -17,7 +17,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { tasksCommand } from "./tasks";
+import { gappedTasks, tasksCommand } from "./tasks";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -342,6 +342,40 @@ describe("bkit tasks tick", () => {
     expect(r.json.ticked).toEqual([7, 8]);
     expect(tickOf(read(plan), 7)).toBe("x");
     expect(tickOf(read(plan), 9)).toBe(" ");
+  });
+
+  it("tasks tick --green refuses a report with no Gaps heading", async () => {
+    const text = planText(group(1, task(1), task(2)));
+    const plan = write("no-gaps-heading.md", text);
+    const green = write(
+      "green-no-gaps.md",
+      ["Enforced: true", "Verdict: PASS", "Gaps: 0", "", "<!-- verdict:end -->", ""].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("report has no Gaps section");
+    expect(read(plan)).toBe(text);
+  });
+
+  it("gappedTasks still reads a report whose Gaps section is empty", async () => {
+    const plan = write("empty-gaps.md", planText(group(1, task(1), task(2))));
+    const green = write(
+      "green-empty-gaps.md",
+      [
+        "Enforced: true",
+        "Verdict: PASS",
+        "Gaps: 0",
+        "",
+        "<!-- verdict:end -->",
+        "",
+        "## Gaps",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--green=${green}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1, 2]);
+    expect(gappedTasks(read(green))).toEqual([]);
   });
 
   it("tick is idempotent on an already-ticked task", async () => {

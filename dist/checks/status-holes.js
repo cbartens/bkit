@@ -250,9 +250,12 @@ function stepWrites(text) {
     });
     return [...new Set(found)];
 }
-const stepKeys = (text) => [
-    ...new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1])),
-];
+// `{key}-fix` beside `{key}` is the label a fix agent's gate run puts on its test-run rows
+// (`build-holistic-gate-fix`), not a row key: no step writes a step row under it.
+const stepKeys = (text) => {
+    const keys = new Set([...text.matchAll(STEP_KEY_RE)].filter((m) => !m[2]).map((m) => m[1]));
+    return [...keys].filter((k) => !(k.endsWith("-fix") && keys.has(k.slice(0, -"-fix".length))));
+};
 /** A step is conditional under a column-0 marker line anywhere in its section, or a `(Path X only)` heading. */
 export function isConditionalSection(body) {
     const lines = body.split("\n");

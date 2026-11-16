@@ -71,7 +71,7 @@ developer_instructions = """
 2. Read every supplied input once at the start, and work from what it says, not from session memory.
 3. Read `.agents/docs.md`, and load the docs it lists for this task, also `docs/architecture.md` and `docs/testing.md` when they are present (warn and continue if any is missing). If the index or a listed doc is missing, empty or still the starter, warn and continue; never skip it silently.
 4. Read the inputs, and find where to resume:
-   - **If** Context `Mode` = `Holistic` → read the holistic verify report and every log. Each line of its `Identified Gaps Log` is one gap. Read the plan's task block of each task a gap names; no group gate log is supplied.
+   - **If** Context `Mode` = `Holistic` → read the holistic verify report and every log. Each line of its `Identified Gaps Log` is one gap. Read the plan's task block of each task a gap names, and the holistic gate log when one is supplied. Each failure in the holistic gate log is one gap.
    - **Else** → read the group's briefs (their task blocks), the plan gaps, the group gate log when one is supplied, and every log. Each failure in the group gate log is one gap. In the logs, `DONE` = done and `BLOCKED` = blocked.
    - Resume at the first gap that is not `DONE`.
    - **If** Context `Scope` = `fixable only` → skip each gap logged `— Fixable: false`, and write no log line for it.
@@ -81,6 +81,7 @@ developer_instructions = """
    - `STANDARD` → fix the current gaps, each with a targeted change.
    - `PIVOT` → identify why each earlier attempt failed. Try a different approach from the earlier attempts, and do not repeat one.
    - `FINAL` → run `pnpm bkit:deps:outdated`. Diagnose again: check that this is the right problem, whether the plan is flawed and whether the root cause lies upstream, and compare the result with each earlier attempt.
+   - **If** Context names `Repeat tests` → apply `PIVOT` or `FINAL` only to the gaps of the tests it names, and give every other gap the `STANDARD` treatment.
    - All strategies: do not edit, rename, move or delete a planned `TEST FIRST` test, and NEVER touch a `TEST EXCEPTION` field. Only the tests step rewrites a planned test. Other tests in the same file are yours to change: the engine locks each planned test case, not its file, and `steps finish` exit 11 names the planned test you edited.
    - **If** your fix forces a planned test to change (new setup lines, say, with the assertions unchanged) → keep that change, and finish the fix's code first. Then append ``BLOCKED — Gap {N}: test `{file}` `{name}` — {why}`` (why the change is needed) and the gap's `DONE` line. Running a formatter such as `prettier --write` over a planned test file is a change too. Under a `BLOCKED` line the engine passes a fix that only adds lines to the test's own lines; a fix that removes or rewrites any of the test's lines is refused, whatever the line says. The owner answers it at the end of the build.
    - **If** a decision record is supplied → follow the owner's words on its `Decision:` lines in this round; they override the strategy's default angle. `Decision: Accept (assumed)` and `Decision: Fix now — recommended; applied without asking` are not the owner's words: an assumed accept is settled for this build (leave it), an unasked `Fix now` takes the recommendation.
@@ -91,14 +92,14 @@ developer_instructions = """
    - Append the gap's `DONE` or `BLOCKED` line before you take the next gap.
 8. **If** `package.json` declares a `bkit:generate` script → run `pnpm bkit:generate` once, after your last code edit. It rewrites the generated files and saved baselines from your code, so the caller commits them with it.
    - **If** it exits non-zero → append `BLOCKED — bkit:generate: {first error line}` with Bash `echo >>`. The verdict is then `FAIL`, whatever the tasks and tests show.
-9. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate → run that command after the fixes, and again after each further fix, until it exits 0:
-   - **If** the group gate exits 81 → another run holds the machine-wide tests lock: run the same command again. Count the wait as no gap and no reason to edit code.
+9. Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass. **If** Context names a group gate or a holistic gate → run that command after the fixes, and again after each further fix, until it exits 0:
+   - **If** the group gate or the holistic gate exits 81 → another run holds the machine-wide tests lock: run the same command again. Count the wait as no gap and no reason to edit code.
    - **If** `bkit tests changed` exits 81 → another run holds the machine-wide tests lock: run the command again. A wait is not a failure or a reason to edit code.
    - The gate stops at its first failing stage, so treat each new failure that a later run shows as another gap of this round.
    - Before you fix a failure, search for every other test and source file built on the same failing assumption.
    - Fix those files in the same pass as the failure.
-   - **If** the gate exits 0 → append `DONE — Group gate: exit 0 ({log path})`.
-   - **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}`.
+   - **If** the gate exits 0 → append `DONE — Group gate: exit 0 ({log path})` for a group gate, or `DONE — Holistic gate: exit 0 ({log path})` for a holistic gate.
+   - **If** it cannot reach exit 0 → append `BLOCKED — Group gate: {reason}` for a group gate, or `BLOCKED — Holistic gate: {reason}` for a holistic gate.
    - Never end on `PASS` from targeted test runs alone.
 10. Set `Strategy` in **Create** with `Edit` to the `Strategy` value from Context. The caller records the header's `Strategy` on the step's row, and refuses the row without one.
 
@@ -107,7 +108,7 @@ developer_instructions = """
 11. **If** the remediations are verified (their tests pass) **and** the work found gotchas → append one row per gotcha to `docs/knowledge.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom), reusing the `key` of any existing entry for the same item.
 12. Set `Fixed` via `Edit` = the count of `DONE — Gap` lines in **Create**, then set `Verdict` in **Create** with `Edit`:
     - `bkit steps finish` derives the attempt number and records `Strategy` and the summed `Failures` on the step's row. Write no attempt number, timestamp, invocation id or model name into the log or the header.
-    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate the log holds `DONE — Group gate: exit 0`, no test passed only on a rerun, and no warning needs a follow-up.
+    - `PASS` = every in-scope gap has a `DONE` line across the logs, the local tests pass, when Context names a group gate or a holistic gate the log holds its `DONE — Group gate: exit 0` or `DONE — Holistic gate: exit 0` line, no test passed only on a rerun, and no warning needs a follow-up.
     - `FAIL` = `Strategy` is missing, **or** you cannot remediate, **or** any in-scope gap ends `BLOCKED` with no later `DONE`, **or** the last local test run fails. A flake that still fails on its last run counts here.
     - `CONCERNS` = no `FAIL` condition holds, but a test passed only on a rerun with no code change (a flake), **or** a warning that does not block needs a follow-up.
 
@@ -124,7 +125,7 @@ Fixed: <integer >= 0>
 
 ## Remediation Log
 
-[An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`. A planned test your code change forced you to edit is ``BLOCKED — Gap {N}: test `{file}` `{name}` — {why}``. A failed generate run is `BLOCKED — bkit:generate: {first error line}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
+[An append-only flat log with one line per entry, in the order the events happened, so `DONE` and `BLOCKED` lines mix. A gap's entry is `DONE — Gap {N}: {name / description} — {outcome} ({path or commit ref})` or `BLOCKED — Gap {N}: {name / description} — {reason}`. The group gate's entry is `DONE — Group gate: exit 0 ({log path})` or `BLOCKED — Group gate: {reason}`, and the holistic gate's is `DONE — Holistic gate: exit 0 ({log path})` or `BLOCKED — Holistic gate: {reason}`. A planned test your code change forced you to edit is ``BLOCKED — Gap {N}: test `{file}` `{name}` — {why}``. A failed generate run is `BLOCKED — bkit:generate: {first error line}`. Empty in the stub, and filled by appending with Bash `echo >>` as the work goes.]
 ```
 
 > ⛔ **STOP** once every in-scope gap is logged `DONE` or `BLOCKED` and `Verdict` is set. NEVER push, and do not expand scope.

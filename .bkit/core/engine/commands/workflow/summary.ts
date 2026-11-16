@@ -5,7 +5,7 @@
 
 import { coversList, type Plan, type Workstream } from "./plans.js";
 import { issueIdOf, type FidTracker } from "./fids.js";
-import { decisionHeader, parseDecisionItems } from "./decisions.js";
+import { decisionHeader, parseDecisionItems } from "./open-decision.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
@@ -90,6 +90,7 @@ const WHOLE_RUN = new Set(["build-plan-verify-holistic", "build-run-tests"]);
 const RESOLVED_BY_RUN: Readonly<Record<string, readonly string[]>> = {
   "build/build-plan-verify": ["build-plan-verify-holistic"],
   "build/build-group-gate": ["build-run-tests"],
+  "build/build-holistic-gate": ["build-run-tests"],
 };
 
 const RUN_TESTS = new Set(["build-run-tests", "debug-run-tests"]);
@@ -304,10 +305,36 @@ function stepGroups(rows: Row[]): StepGroup[] {
 
 const lastOf = (g: StepGroup) => g.rows.at(-1)!;
 
-/** Steps of a task group that a verify pause's answer settles when they ended FAIL. */
-const PAUSE_SETTLES = ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"];
-/** The whole-run steps an all-Accept holistic pause settles. */
-const HOLISTIC_PAUSE_SETTLES = ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"];
+/** How a build pause, by its `From` header, settles the failed rows before it. */
+interface PauseRule {
+  /** The loop question's title; every other item is a gap. */
+  loop: string;
+  /** The steps the pause settles when their last row before it ended FAIL. */
+  settles: readonly string[];
+  /** Settles the rows of the task group its `Group` header names, not the whole run's. */
+  grouped: boolean;
+  /** A `Fix now` gap settles once its `Fix task` is verified after the pause. */
+  fixNow: boolean;
+  /** The loop question, when asked, must be answered `Decide`; else any answer will do. */
+  loopDecide: boolean;
+}
+
+const PAUSE_RULES: Readonly<Record<string, PauseRule>> = {
+  verify: {
+    loop: "Verify",
+    settles: ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"],
+    grouped: true,
+    fixNow: true,
+    loopDecide: false,
+  },
+  holistic: {
+    loop: "Holistic verify",
+    settles: ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"],
+    grouped: false,
+    fixNow: false,
+    loopDecide: true,
+  },
+};
 
 /** A level-2 section whose heading matches `title`, minus the template's non-content subsections. */
 function planSection(text: string, title: RegExp): string | undefined {
@@ -373,92 +400,75 @@ export function buildSummary(input: SummaryInput): Summary {
       );
     }
 
-  // A verify pause answered in full settles its group's failed rows from before the pause:
-  // each `Fix now` item names a task verified after the pause, or every item is `Accept`.
+  // One rule for every verify and holistic pause (PAUSE_RULES): a pause answered in full
+  // settles the failed rows before it. Every gap is `Accept`, or (verify) a `Fix now` whose
+  // task was verified after the pause. An all-Accept pause whose `Source changed` header is
+  // present and not `false` settles nothing: source changed after the check the answers judged.
+  // The latest qualifying pause per task group (verify) or per run (holistic) settles.
   const pauseSettled = new Set<string>();
   if (workflow === "build") {
-    const latest = new Map<number, { index: number; rel: string; how: string }>();
+    const latest = new Map<
+      string,
+      { rule: PauseRule; group: number | undefined; index: number; rel: string; how: string }
+    >();
     input.rows.forEach((row, index) => {
       if (row.type !== "step-done" || row.step !== "build-decision") return;
       for (const rel of artifactsOf(row)) {
         const text = read(rel);
         if (text === null) continue;
         const header = decisionHeader(text);
+        const rule = PAUSE_RULES[header.From ?? ""];
+        if (rule === undefined) continue;
         const group = /^[0-9]+$/.test(header.Group ?? "") ? Number(header.Group) : undefined;
-        if (header.From !== "verify" || group === undefined) continue;
-        const gaps = parseDecisionItems(text);
-        if (gaps.length === 0 || gaps.some((i) => i.decision === null)) continue;
-        const asks = gaps.filter((i) => i.title !== "Verify");
-        const fixes = asks.filter((i) => /^Fix now\b/.test(i.decision ?? ""));
-        if (asks.length === 0) continue;
+        if (rule.grouped && group === undefined) continue;
+        const items = parseDecisionItems(text);
+        const gaps = items.filter((i) => i.title !== rule.loop);
+        const loop = items.filter((i) => i.title === rule.loop);
+        if (gaps.length === 0) continue;
+        const loopAnswered = (d: string | null) =>
+          rule.loopDecide ? /^Decide\b/.test(d ?? "") : d !== null;
+        if (!loop.every((i) => loopAnswered(i.decision))) continue;
+        const fixes = rule.fixNow ? gaps.filter((i) => /^Fix now\b/.test(i.decision ?? "")) : [];
+        if (!gaps.every((i) => fixes.includes(i) || /^Accept\b/.test(i.decision ?? ""))) continue;
+        let how = "every item accepted";
         if (fixes.length === 0) {
-          if (!asks.every((i) => /^Accept\b/.test(i.decision ?? ""))) continue;
-          latest.set(group, { index, rel, how: "every item accepted" });
-          continue;
+          const source = header["Source changed"];
+          if (source !== undefined && source !== "false") continue;
+        } else {
+          const fixTasks = fixes.map((i) => tasks.find((t) => t.task === i.fixTask));
+          if (fixTasks.some((t) => t === undefined || !taskVerified(input, t, index))) continue;
+          how = `task ${fixes.map((i) => i.fixTask).join(", ")} verified`;
         }
-        if (!asks.every((i) => fixes.includes(i) || /^Accept\b/.test(i.decision ?? ""))) continue;
-        const fixTasks = fixes.map((i) => tasks.find((t) => t.task === i.fixTask));
-        if (fixTasks.some((t) => t === undefined || !taskVerified(input, t, index))) continue;
-        latest.set(group, {
-          index,
-          rel,
-          how: `task ${fixes.map((i) => i.fixTask).join(", ")} verified`,
-        });
+        const scope = rule.grouped ? `${header.From}#${group}` : String(header.From);
+        latest.set(scope, { rule, group: rule.grouped ? group : undefined, index, rel, how });
       }
     });
-    for (const [group, pause] of latest)
-      for (const step of PAUSE_SETTLES) {
+    // Verify pauses list first, then holistic: the order the findings read in.
+    const pauses = Object.values(PAUSE_RULES).flatMap((rule) =>
+      [...latest.values()].filter((p) => p.rule === rule),
+    );
+    for (const pause of pauses)
+      for (const step of pause.rule.settles) {
         const rows = input.rows
           .map((row, index) => ({ row, index }))
           .filter(
             ({ row, index }) =>
               row.type === "step-done" &&
               row.step === step &&
-              taskGroupOf(row) === group &&
+              (pause.group === undefined || taskGroupOf(row) === pause.group) &&
               index < pause.index,
           );
         if (rows.at(-1)?.row.verdict !== "FAIL") continue;
+        const label = pause.group === undefined ? step : `${step} (group ${pause.group})`;
         resolvedFindings.push(
-          `${step} (group ${group}) FAIL, resolved by the Decision Pause (\`${pause.rel}\`), ${pause.how}`,
+          `${label} FAIL, resolved by the Decision Pause (\`${pause.rel}\`), ${pause.how}`,
         );
-        const key = `${step}#${group}`;
-        const g = groups.find((x) => x.key === key);
-        if (g !== undefined && lastOf(g).index < pause.index) pauseSettled.add(key);
-      }
-
-    // A holistic pause with every item accepted settles the whole-run FAIL rows before it.
-    let holistic: { index: number; rel: string } | undefined;
-    input.rows.forEach((row, index) => {
-      if (row.type !== "step-done" || row.step !== "build-decision") return;
-      for (const rel of artifactsOf(row)) {
-        const text = read(rel);
-        if (text === null || decisionHeader(text).From !== "holistic") continue;
-        const items = parseDecisionItems(text);
-        const gaps = items.filter((i) => i.title !== "Holistic verify");
-        const loop = items.filter((i) => i.title === "Holistic verify");
-        if (gaps.length === 0) continue;
-        if (!gaps.every((i) => /^Accept\b/.test(i.decision ?? ""))) continue;
-        if (!loop.every((i) => /^Decide\b/.test(i.decision ?? ""))) continue;
-        holistic = { index, rel };
-      }
-    });
-    if (holistic !== undefined) {
-      const pause = holistic;
-      for (const step of HOLISTIC_PAUSE_SETTLES) {
-        const rows = input.rows
-          .map((row, index) => ({ row, index }))
-          .filter(
-            ({ row, index }) =>
-              row.type === "step-done" && row.step === step && index < pause.index,
-          );
-        if (rows.at(-1)?.row.verdict !== "FAIL") continue;
-        resolvedFindings.push(
-          `${step} FAIL, resolved by the Decision Pause (\`${pause.rel}\`), every item accepted`,
-        );
-        const g = groups.find((x) => x.step === step);
+        const g =
+          pause.group === undefined
+            ? groups.find((x) => x.step === step)
+            : groups.find((x) => x.key === `${step}#${pause.group}`);
         if (g !== undefined && lastOf(g).index < pause.index) pauseSettled.add(g.key);
       }
-    }
   }
 
   for (const g of groups) {

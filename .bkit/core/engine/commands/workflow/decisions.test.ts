@@ -7,12 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
 import { COMMANDS } from "../registry";
-import {
-  applyRecommendations,
-  decisionHeader,
-  EXIT_HARD_BLOCKERS,
-  parseDecisionItems,
-} from "./decisions";
+import { applyRecommendations, EXIT_HARD_BLOCKERS } from "./decisions";
+import { decisionHeader, parseDecisionItems } from "./open-decision";
 
 const dirs: string[] = [];
 const runtimeBefore = process.env.BKIT_RUNTIME;
@@ -462,6 +458,51 @@ describe("bkit decisions compose", () => {
     const text = fs.readFileSync(out, "utf-8");
     expect(text).toContain("build holistic: attempt 2 of 2");
     expect(text).not.toContain("build verify: attempt");
+  });
+
+  it("prints the holistic gate's failing tests per round for the holistic loop", async () => {
+    const { root, logs } = checkout();
+    const status = path.join(logs, "status.jsonl");
+    const verifyRow = (at: string, attempt: number) => ({
+      type: "step-done",
+      workflow: "build",
+      step: "build-plan-verify-holistic",
+      status: "DONE",
+      at,
+      attempt,
+      verdict: "PASS",
+      failures: 0,
+    });
+    const gateRow = (at: string, attempt: number) => ({
+      type: "test-run",
+      workflow: "build",
+      at,
+      step: "build-holistic-gate",
+      attempt,
+      run: 1,
+      verdict: "FAIL",
+      exitCode: 1,
+      failures: 3,
+      scope: "gate",
+      log: "x.log",
+    });
+    fs.writeFileSync(
+      status,
+      [
+        { type: "workflow-started", workflow: "build", at: "2026-10-01T00:00:00Z" },
+        verifyRow("2026-10-01T00:10:00Z", 1),
+        gateRow("2026-10-01T00:11:00Z", 1),
+        verifyRow("2026-10-01T00:30:00Z", 2),
+        gateRow("2026-10-01T00:31:00Z", 2),
+      ]
+        .map((x) => JSON.stringify(x))
+        .join("\n") + "\n",
+    );
+    const { r, out } = await compose(root, logs, ITEMS, "--loop=holistic", `--file=${status}`);
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain("Holistic gate failures after each round: 3 → 3");
+    expect(text).toContain("Problems after each round: 3 → 3");
   });
 
   it("prints the group gate's failing tests per round for the verify loop", async () => {
@@ -1063,6 +1104,104 @@ describe("bkit decisions apply --by=rerun", () => {
     expect(r.err).not.toContain("--by must be headless or owner");
     expect(fs.readFileSync(out, "utf-8")).toBe(before);
     expect(fs.readFileSync(out, "utf-8")).toMatch(/^Status: OPEN$/m);
+  });
+});
+
+describe("bkit decisions skip", () => {
+  /** A settled verify pause: the loop question and two gap items, each answer as given. */
+  const pause = (o: { headers?: string[]; loop?: string; answers?: [string, string] }) =>
+    [
+      ...(o.headers ?? ["Status: DECIDED", "From: verify", "Group: 1", "Source changed: false"]),
+      "",
+      "build verify: attempt 3 of 3",
+      "",
+      "## Progress",
+      "",
+      "Problems after each round: 3 → 2",
+      "",
+      "**Q1 — Verify loop:** decide the items below instead of another round? 3 → 2",
+      "A) Try again — another fix round runs",
+      "B) Decide — the questions below are asked instead of another round",
+      "Recommended: B) Decide — another round is unlikely to close the remaining items",
+      `Decision: ${o.loop ?? "B"}`,
+      "",
+      "**Q2 — Task 3 [src/a.ts:10]:** MEDIUM: the retry has no cap. Accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — the caller already caps it",
+      `Decision: ${(o.answers ?? [])[0] ?? "Accept — the caller caps it"}`,
+      "",
+      "**Q3 — Task 4 [src/b.ts:2]:** LOW: a name is unclear. Accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — cosmetic",
+      `Decision: ${(o.answers ?? [])[1] ?? "Accept (assumed) — cosmetic (no owner, LOCAL, 2026-11-17)"}`,
+      "",
+    ].join("\n");
+  const skip = async (text: string) => {
+    const { root, logs } = checkout();
+    const file = path.join(logs, "build-decision-1-1.md");
+    fs.writeFileSync(file, text);
+    return run(["decisions", "skip", `--file=${file}`], root);
+  };
+
+  it("decisions skip exits 0 when all five conditions hold", async () => {
+    const r = await skip(pause({}));
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ route: "continue", problem: null });
+  });
+
+  it("decisions skip exits 1 and names the fact for a Gate: FAIL header", async () => {
+    const r = await skip(
+      pause({
+        headers: ["Status: DECIDED", "From: verify", "Gate: FAIL", "Source changed: false"],
+      }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.json.route).toBeNull();
+    expect(r.json.problem).toContain("Gate: FAIL");
+    expect(r.err).toContain("Gate: FAIL");
+  });
+
+  it("decisions skip exits 1 when the Source changed header is missing", async () => {
+    const r = await skip(pause({ headers: ["Status: DECIDED", "From: holistic"] }));
+    expect(r.code).toBe(1);
+    expect(r.json.route).toBeNull();
+    expect(r.json.problem).toContain("Source changed");
+  });
+
+  it("decisions skip exits 1 when an item is not Accept", async () => {
+    const r = await skip(pause({ answers: ["Accept — fine", "Fix now — add a test"] }));
+    expect(r.code).toBe(1);
+    expect(r.json.route).toBeNull();
+    expect(r.json.problem).toContain("Q3");
+    expect(r.json.problem).toContain("Fix now");
+  });
+
+  it("decisions skip exits 1 when the loop question is not Decide", async () => {
+    const r = await skip(pause({ loop: "A" }));
+    expect(r.code).toBe(1);
+    expect(r.json.route).toBeNull();
+    expect(r.json.problem).toContain("Q1");
+    expect(r.json.problem).toContain("Try again");
+  });
+
+  it("decisions skip exits 1 for a pause that is not from verify or holistic", async () => {
+    const r = await skip(
+      pause({ headers: ["Status: DECIDED", "From: challenge", "Source changed: false"] }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.json.problem).toContain("From");
+  });
+
+  it("decisions skip exits 2 for a missing file", async () => {
+    const { root, logs } = checkout();
+    const r = await run(
+      ["decisions", "skip", `--file=${path.join(logs, "build-decision-1-9.md")}`],
+      root,
+    );
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("build-decision-1-9.md");
   });
 });
 

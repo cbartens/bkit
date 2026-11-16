@@ -471,7 +471,7 @@ describe("bkit status route", () => {
     expect(r.err).toContain("no DONE s row in the active build run");
   });
 
-  it("reads strategy across ALL runs and gives the next rung", async () => {
+  it("reads strategy across ALL runs; the previous label does not move the next one", async () => {
     const file = log([
       started("build", "2026-10-01T00:00:00Z"),
       done("build", "s", "2026-10-01T00:01:00Z", { strategy: "STANDARD" }),
@@ -479,10 +479,10 @@ describe("bkit status route", () => {
       started("build", "2026-10-01T00:03:00Z"),
     ]);
     const r = await run([...base, `--file=${file}`, "--workflow=build", "--step=s"]);
-    expect(r.json).toMatchObject({ strategy: "STANDARD", nextStrategy: "PIVOT" });
+    expect(r.json).toMatchObject({ strategy: "STANDARD", nextStrategy: "STANDARD" });
   });
 
-  it("starts the ladder at STANDARD when no strategy is recorded", async () => {
+  it("gives STANDARD when no strategy is recorded", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z")]);
     expect(
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json.nextStrategy,
@@ -571,15 +571,15 @@ describe("bkit status route", () => {
     expect((await run([...base, `--file=${file}`, "--workflow=debug"])).json.debugMode).toBeNull();
   });
 
-  it.each([
-    ["PIVOT", "FINAL"],
-    ["FINAL", "FINAL"],
-  ])("climbs the ladder: %s -> %s", async (prior, next) => {
-    const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: prior })]);
-    expect(
-      (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json,
-    ).toMatchObject({ strategy: prior, nextStrategy: next });
-  });
+  it.each(["PIVOT", "FINAL"])(
+    "a previous %s label alone gives STANDARD: no failing test repeats",
+    async (prior) => {
+      const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: prior })]);
+      expect(
+        (await run([...base, `--file=${file}`, "--workflow=build", "--step=s"])).json,
+      ).toMatchObject({ strategy: prior, nextStrategy: "STANDARD", repeatTests: [] });
+    },
+  );
 
   it("fails a --require'd strategy outside the ladder", async () => {
     const file = log([done("build", "s", "2026-10-01T00:01:00Z", { strategy: "YOLO" })]);
@@ -620,7 +620,7 @@ describe("bkit status route", () => {
     ]);
     const q = async (...f: string[]) =>
       (await run([...base, `--file=${file}`, "--workflow=build", "--step=s", ...f])).json;
-    expect(await q("--group=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "FINAL" });
+    expect(await q("--group=1")).toMatchObject({ strategy: "PIVOT", nextStrategy: "STANDARD" });
     expect(await q("--group=2")).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
     expect(await q()).toMatchObject({ strategy: null, nextStrategy: "STANDARD" });
   });
@@ -639,133 +639,316 @@ describe("bkit status route", () => {
   });
 });
 
-describe("bkit status route holistic cleanBase", () => {
-  const STEP = "build-plan-verify-holistic";
-  const git = (cwd: string, ...args: string[]) => {
-    const r = spawnSync(
-      "git",
-      [
-        "-c",
-        "user.name=t",
-        "-c",
-        "user.email=t@example.com",
-        "-c",
-        "commit.gpgsign=false",
-        ...args,
-      ],
-      { cwd, encoding: "utf-8" },
+describe("bkit status route fix label from repeated failing tests", () => {
+  const testRun = (
+    workflow: string,
+    step: string,
+    at: string,
+    attempt: number,
+    failedTests?: string[],
+  ) => ({
+    type: "test-run",
+    workflow,
+    step,
+    at,
+    attempt,
+    verdict: failedTests === undefined || failedTests.length > 0 ? "FAIL" : "PASS",
+    failures: failedTests?.length ?? 1,
+    ...(failedTests === undefined ? {} : { failedTests }),
+  });
+  const holistic = (file: string) =>
+    run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate-holistic",
+    ]);
+  const fixRow = (at: string, strategy: string, extra: Record<string, unknown> = {}) =>
+    done("build", "build-plan-gaps-remediate-holistic", at, { strategy, ...extra });
+  /** `n` check rounds of the active run: the gate's newest row counts only at attempt `n`. */
+  const checks = (n: number, step = "build-plan-verify-holistic", group?: number) =>
+    Array.from({ length: n }, (_, i) =>
+      done("build", step, `2026-10-01T00:00:${10 + i}Z`, {
+        verdict: "PASS",
+        ...(group === undefined ? {} : { group }),
+      }),
     );
-    return r.stdout.trim();
+
+  it("nextStrategy is STANDARD when no failing test failed in an earlier attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["b"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({
+      strategy: "STANDARD",
+      nextStrategy: "STANDARD",
+      repeatTests: [],
+    });
+  });
+
+  it("nextStrategy is STANDARD for a round with no failing tests after an earlier PIVOT round", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a"]),
+      fixRow("2026-10-01T00:03:00Z", "PIVOT"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 3, []),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ strategy: "PIVOT", nextStrategy: "STANDARD", repeatTests: [] });
+  });
+
+  it("nextStrategy is PIVOT when a failing test failed in one earlier attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("nextStrategy is FINAL when a failing test failed in two earlier attempts", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 3, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "FINAL", repeatTests: ["a"] });
+  });
+
+  it("repeats count distinct earlier attempts, not re-runs under one attempt", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:03:00Z", "PIVOT"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 2, ["a"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:05:00Z", 2, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("repeats read the rows of earlier runs of the workflow", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(1),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      { type: "workflow-failed", workflow: "build", at: "2026-10-01T00:02:00Z" },
+      started("build", "2026-10-01T00:03:00Z"),
+      done("build", "build-plan-verify-holistic", "2026-10-01T00:03:30Z", { verdict: "PASS" }),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:04:00Z", 1, ["a"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("a row without failedTests counts as no repeat", async () => {
+    const earlier = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2, ["a"]),
+    ]);
+    const latest = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      fixRow("2026-10-01T00:02:00Z", "STANDARD"),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:03:00Z", 2),
+    ]);
+    for (const file of [earlier, latest]) {
+      const r = await holistic(file);
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+    }
+  });
+
+  it("a group's repeats read only that group's gate rows", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2, "build-plan-verify", 1),
+      ...checks(2, "build-plan-verify", 2),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:02:00Z", 2, ["a"]),
+      done("build", "build-plan-gaps-remediate", "2026-10-01T00:03:00Z", {
+        group: 2,
+        strategy: "STANDARD",
+      }),
+      testRun("build", "build-group-gate-2", "2026-10-01T00:04:00Z", 2, ["a"]),
+    ]);
+    const at = async (group: string) =>
+      (
+        await run([
+          "status",
+          "route",
+          `--file=${file}`,
+          "--workflow=build",
+          "--step=build-plan-gaps-remediate",
+          group,
+        ])
+      ).json;
+    expect(await at("--group=2")).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+    expect(await at("--group=1")).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["a"] });
+  });
+
+  it("route prints repeatTests with the repeated tests only", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(2),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["b", "x"]),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:02:00Z", 2, ["a", "b", "c", "x"]),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "PIVOT", repeatTests: ["b", "x"] });
+  });
+
+  it("a group gate row from an older attempt gives STANDARD and no repeat tests", async () => {
+    // Attempt 3's verify found gaps, so no gate ran: attempt 2's failing tests are not failing now.
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(3, "build-plan-verify", 1),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:01:00Z", 1, ["a"]),
+      testRun("build", "build-group-gate-1", "2026-10-01T00:02:00Z", 2, ["a"]),
+    ]);
+    const r = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=build",
+      "--step=build-plan-gaps-remediate",
+      "--group=1",
+    ]);
+    expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+  });
+
+  it("a gate row from an earlier run gives STANDARD when the active run has no gate row", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      ...checks(1),
+      testRun("build", "build-holistic-gate", "2026-10-01T00:01:00Z", 1, ["a"]),
+      { type: "workflow-failed", workflow: "build", at: "2026-10-01T00:02:00Z" },
+      started("build", "2026-10-01T00:03:00Z"),
+      done("build", "build-plan-verify-holistic", "2026-10-01T00:04:00Z", { verdict: "FAIL" }),
+    ]);
+    const r = await holistic(file);
+    expect(r.json).toMatchObject({ nextStrategy: "STANDARD", repeatTests: [] });
+  });
+});
+
+describe("bkit status resume gate re-run", () => {
+  /** A red-gate pause file: the loop question, then one item per `[title, answer]`. */
+  const pauseFile = (o: {
+    status?: string;
+    from?: string;
+    items?: Array<[string, string | null]>;
+  }) =>
+    [
+      `Status: ${o.status ?? "OPEN"}`,
+      `From: ${o.from ?? "verify"}`,
+      "Group: 1",
+      "Gate: FAIL",
+      "",
+      "build verify: attempt 3 of 3",
+      "",
+      "## Progress",
+      "",
+      "**Q1 — Verify loop:** another fix round?",
+      "A) Try again — another fix round runs",
+      "B) Stop — the run ends here",
+      "Recommended: A) Try again — the last round made progress",
+      "",
+      ...(o.items ?? []).flatMap(([title, answer], i) => [
+        `**Q${i + 2} — ${title}:** accept it?`,
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — minor",
+        ...(answer === null ? [] : [`Decision: ${answer}`]),
+        "",
+      ]),
+    ].join("\n");
+  /** An active build run stopped inside the pause `text` (decision 1 of run 1). */
+  const stopped = (text: string, rows: object[] = []) => {
+    const file = log([
+      started("build", "2026-11-01T00:00:00Z"),
+      done("build", "build-plan-verify", "2026-11-01T00:10:00Z", { group: 1, verdict: "PASS" }),
+      ...rows,
+    ]);
+    fs.writeFileSync(path.join(path.dirname(file), "build-decision-1-1.md"), text);
+    return file;
   };
-  /** A repo with commits c1 < c2 on dev, plus `side`, a commit not on dev. */
-  function repo() {
-    const root = tmp();
-    git(root, "init", "-q", "-b", "dev");
-    git(root, "commit", "-q", "--allow-empty", "-m", "c1");
-    const c1 = git(root, "rev-parse", "HEAD");
-    git(root, "commit", "-q", "--allow-empty", "-m", "c2");
-    const c2 = git(root, "rev-parse", "HEAD");
-    git(root, "checkout", "-q", "-b", "other", c1);
-    git(root, "commit", "-q", "--allow-empty", "-m", "side");
-    const side = git(root, "rev-parse", "HEAD");
-    git(root, "checkout", "-q", "dev");
-    return { root, c1, c2, side };
-  }
-  const holistic = (at: string, parentSha: string, verdict: string, failures: number) =>
-    done("build", STEP, at, { parentSha, verdict, failures });
-  const cleanBase = async (rows: object[], cwd: string) => {
-    const r = await run(
-      ["status", "route", `--file=${log(rows)}`, "--workflow=build", `--step=${STEP}`],
-      cwd,
-    );
+  const resume = (file: string) => run(["status", "resume", "--workflow=build", `--file=${file}`]);
+
+  it("status resume prints gateRerun true for an open red-gate pause with only the loop question undecided", async () => {
+    const r = await resume(stopped(pauseFile({ items: [["Task 3 gap", "Accept — minor"]] })));
     expect(r.code).toBe(0);
-    return r.json.cleanBase;
-  };
-
-  it("last clean holistic base is the newest zero-failure row", async () => {
-    const { root, c1, c2 } = repo();
-    expect(
-      await cleanBase(
-        [
-          started("build", "2026-10-01T00:00:00Z"),
-          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
-          holistic("2026-10-01T00:02:00Z", c2, "CONCERNS", 0),
-        ],
-        root,
-      ),
-    ).toBe(c2);
+    expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "verify" });
   });
 
-  it("a holistic row with gaps does not move the base", async () => {
-    const { root, c1, c2 } = repo();
-    expect(
-      await cleanBase(
-        [
-          started("build", "2026-10-01T00:00:00Z"),
-          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
-          holistic("2026-10-01T00:02:00Z", c2, "FAIL", 2),
-        ],
-        root,
-      ),
-    ).toBe(c1);
+  it("status resume prints gateRerun false when another question is undecided", async () => {
+    const r = await resume(stopped(pauseFile({ items: [["Task 3 gap", null]] })));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: false, rerunFrom: null });
   });
 
-  it("holistic base falls back to origin/dev with no clean row", async () => {
-    const { root, c1 } = repo();
-    expect(
-      await cleanBase(
-        [started("build", "2026-10-01T00:00:00Z"), holistic("2026-10-01T00:01:00Z", c1, "FAIL", 1)],
-        root,
-      ),
-    ).toBe("origin/dev");
-    expect(await cleanBase([started("build", "2026-10-01T00:00:00Z")], root)).toBe("origin/dev");
+  it("status resume prints gateRerun false for a closed pause", async () => {
+    const closed = pauseFile({ status: "DECIDED" }).replace(
+      "Recommended: A) Try again — the last round made progress",
+      "Recommended: A) Try again — the last round made progress\nDecision: A",
+    );
+    const r = await resume(stopped(closed));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: false, rerunFrom: null });
   });
 
-  it("cleanBase with no clean round returns the feature base, not origin/dev", async () => {
-    const { root, c1, c2 } = repo();
-    git(root, "update-ref", "refs/remotes/origin/dev", c1);
-    git(root, "checkout", "-q", "-b", "feat/1-x", "dev");
-    git(root, "commit", "-q", "--allow-empty", "-m", "feat work");
-    const base = await cleanBase([started("build", "2026-10-01T00:00:00Z")], root);
-    expect(base).toBe(c2);
-    expect(base).not.toBe("origin/dev");
+  it("status resume prints rerunFrom holistic for a red holistic pause", async () => {
+    const r = await resume(stopped(pauseFile({ from: "holistic" })));
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ gateRerun: true, rerunFrom: "holistic" });
   });
 
-  it("a clean holistic row from an earlier run does not set the base", async () => {
-    const { root, c1 } = repo();
-    expect(
-      await cleanBase(
-        [
-          started("build", "2026-10-01T00:00:00Z"),
-          holistic("2026-10-01T00:01:00Z", c1, "PASS", 0),
-          { type: "workflow-done", workflow: "build", at: "2026-10-01T00:02:00Z" },
-          started("build", "2026-10-02T00:00:00Z"),
-        ],
-        root,
-      ),
-    ).toBe("origin/dev");
+  it("status resume prints gateRerun false with no active run", async () => {
+    const file = log([]);
+    fs.writeFileSync(path.join(path.dirname(file), "build-decision-1-1.md"), pauseFile({}));
+    const r = await resume(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ active: false, gateRerun: false, rerunFrom: null });
   });
+});
 
-  it("holistic base falls back to origin/dev when the clean sha is no longer an ancestor of HEAD", async () => {
-    const { root, side } = repo();
-    expect(
-      await cleanBase(
-        [
-          started("build", "2026-10-01T00:00:00Z"),
-          holistic("2026-10-01T00:01:00Z", side, "PASS", 0),
-        ],
-        root,
-      ),
-    ).toBe("origin/dev");
-    expect(
-      await cleanBase(
-        [
-          started("build", "2026-10-01T00:00:00Z"),
-          holistic("2026-10-01T00:01:00Z", "f".repeat(40), "PASS", 0),
-        ],
-        root,
-      ),
-    ).toBe("origin/dev");
+describe("bkit status route step fields", () => {
+  it("status route no longer prints cleanBase", async () => {
+    const r = await run([
+      "status",
+      "route",
+      `--file=${log([
+        started("build", "2026-10-01T00:00:00Z"),
+        done("build", "build-plan-verify-holistic", "2026-10-01T00:01:00Z", {
+          parentSha: "a".repeat(40),
+          verdict: "PASS",
+          failures: 0,
+        }),
+      ])}`,
+      "--workflow=build",
+      "--step=build-plan-verify-holistic",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ verdict: "PASS", parentSha: "a".repeat(40) });
+    expect(r.json).not.toHaveProperty("cleanBase");
   });
 });
 

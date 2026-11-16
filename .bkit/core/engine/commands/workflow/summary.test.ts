@@ -597,6 +597,44 @@ describe("buildSummary", () => {
     ).toContain("build-plan-gaps-remediate-holistic FAIL");
   });
 
+  describe("a red holistic gate", () => {
+    const row = (step: string, verdict: string, attempt = 1) => ({
+      type: "step-done",
+      step,
+      verdict,
+      attempt,
+    });
+
+    it("a red holistic gate is resolved by a later passing Step 12 run", () => {
+      const s = buildSummary(
+        input({
+          rows: [
+            row("build-plan-verify-holistic", "PASS"),
+            row("build-holistic-gate", "FAIL"),
+            row("build-run-tests", "PASS"),
+          ],
+        }),
+      );
+      expect(s.reasons).not.toContain("build-holistic-gate FAIL");
+      expect(s.markdown).toContain("build-holistic-gate FAIL, resolved by build-run-tests");
+      expect(s.verdict).toBe("PASS");
+    });
+
+    it("a red holistic gate with no later passing Step 12 run stays a finding", () => {
+      const s = buildSummary(
+        input({
+          rows: [
+            row("build-plan-verify-holistic", "PASS"),
+            row("build-run-tests", "PASS"),
+            row("build-holistic-gate", "FAIL", 2),
+          ],
+        }),
+      );
+      expect(s.reasons).toContain("build-holistic-gate FAIL");
+      expect(s.verdict).toBe("FAIL");
+    });
+  });
+
   describe("a holistic pause", () => {
     const DEC = "log/build-decision-1-1.md";
     const row = (step: string, verdict: string, extra: object = {}) => ({
@@ -684,6 +722,29 @@ describe("buildSummary", () => {
       expect(s.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
       expect(s.markdown).not.toContain("every item accepted");
       expect(s.verdict).toBe("FAIL");
+    });
+
+    it("a holistic pause settled by an accepted pause resolves the whole-run failed rows before it", () => {
+      const withSource = (value: string) =>
+        pause("Accept — minor", "Accept (assumed) — headless").replace(
+          "Pause step: 10",
+          `Pause step: 10\nSource changed: ${value}`,
+        );
+      const settled = run(withSource("false"));
+      const resolved = settled.markdown.split("## Resolved Findings")[1]!.split("## ")[0]!;
+      for (const step of ["build-plan-verify-holistic", "build-plan-gaps-remediate-holistic"]) {
+        expect(settled.reasons).not.toContain(`${step} FAIL`);
+        expect(resolved).toContain(
+          `${step} FAIL, resolved by the Decision Pause (\`${DEC}\`), every item accepted`,
+        );
+      }
+      expect(settled.verdict).not.toBe("FAIL");
+      // Source edited after the holistic verify the items were judged on: nothing is settled.
+      const changed = run(withSource("true"));
+      expect(changed.reasons).toContain("build-plan-verify-holistic FAIL");
+      expect(changed.reasons).toContain("build-plan-gaps-remediate-holistic FAIL");
+      expect(changed.markdown).not.toContain("resolved by the Decision Pause");
+      expect(changed.verdict).toBe("FAIL");
     });
   });
 
@@ -1931,6 +1992,37 @@ describe("buildSummary", () => {
         decision,
       );
       expect(later.reasons).toContain("build-plan-verify (group 9) FAIL");
+    });
+
+    it("a verify pause settled by an accepted pause resolves the same failed rows as the two blocks it replaces", () => {
+      const withSource = (value: string) =>
+        pauseFile({ gaps: [ACCEPT, ACCEPT] }).replace(
+          "Verify attempt: 2",
+          `Verify attempt: 2\nSource changed: ${value}`,
+        );
+      const rows = [...failRows(), decisionRow()];
+      const resolvedOf = (s: ReturnType<typeof buildSummary>) =>
+        s.markdown.split("## Resolved Findings")[1]!.split("## ")[0]!;
+      const settled = summary(rows, withSource("false"));
+      for (const reason of FAIL_REASONS) expect(settled.reasons).not.toContain(reason);
+      for (const name of ["build-plan-tasks", "build-plan-verify", "build-plan-gaps-remediate"])
+        expect(resolvedOf(settled)).toContain(
+          `${name} (group 9) FAIL, resolved by the Decision Pause (\`${DEC}\`), every item accepted`,
+        );
+      // Source edited after the verify the items were judged on: the pause settles nothing.
+      const changed = summary(rows, withSource("true"));
+      expectKept(changed);
+      expect(changed.markdown).not.toContain("resolved by the Decision Pause");
+      // A Fix now pause is settled by its verified task, whatever the header says.
+      const fixed = summary(
+        rowsOf(),
+        pauseFile({ gaps: [ACCEPT, FIX42] }).replace(
+          "Verify attempt: 2",
+          "Verify attempt: 2\nSource changed: true",
+        ),
+      );
+      for (const reason of FAIL_REASONS) expect(fixed.reasons).not.toContain(reason);
+      expect(resolvedOf(fixed)).toContain("task 42 verified");
     });
   });
 });

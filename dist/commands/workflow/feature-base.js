@@ -1,7 +1,7 @@
 // The commit a feature's own work starts after, and the diff range measured from it.
 // Kept apart from context.ts and status.ts so both can import it without an import cycle.
 import { git } from "../lib.js";
-const ORIGIN_DEV = "origin/dev";
+export const ORIGIN_DEV = "origin/dev";
 /**
  * The commit the feature's own work starts after: the later of HEAD's meeting points with
  * `origin/dev` and with local `dev`. Neither later than the other (origin/dev was merged

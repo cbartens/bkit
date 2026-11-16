@@ -36,7 +36,7 @@ import {
   testSpan,
   testsCommand,
 } from "./tests";
-import { countReportFailures, parseJunit, reportFailures, type JunitCase } from "./junit";
+import { parseJunit, reportFailures, type JunitCase } from "./junit";
 import { writeStepRow } from "./steps";
 
 const dirs: string[] = [];
@@ -237,6 +237,39 @@ describe("CI evidence test rounds", () => {
       .split("\n")
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(rows.find((row) => row.type === "test-run")).toMatchObject({ failures: 2 });
+  });
+
+  it("a CI evidence test-run row lists each failed job as job:{name}", async () => {
+    const f = ciRoundFixture();
+    const named = {
+      ...f.selection,
+      failedJobCount: 2,
+      failedJobs: ["bkit-tests-unit", "bkit-tests-integration"],
+    };
+    fs.writeFileSync(
+      f.file,
+      [
+        { type: "workflow-started", workflow: "debug", at: "2026-10-01T00:00:00Z" },
+        {
+          type: "workflow-meta",
+          workflow: "debug",
+          at: "2026-10-01T00:00:01Z",
+          ciSelection: named,
+          ciGeneration: 2,
+        },
+      ]
+        .map((row) => JSON.stringify(row))
+        .join("\n") + "\n",
+    );
+    const result = await run(f.args);
+    expect(result.code).toBe(1);
+    expect(result.json.row).toMatchObject({
+      source: "ci",
+      failures: 2,
+      failedTests: ["job:bkit-tests-integration", "job:bkit-tests-unit"],
+    });
+    expect(result.json.row).not.toHaveProperty("tested");
+    expect(result.json.row).not.toHaveProperty("failedTestsTruncated");
   });
 
   it("runs local gates only after current-generation remediation or soak", async () => {
@@ -675,6 +708,85 @@ describe("bkit tests run --file", () => {
     expect(runs[2]).not.toHaveProperty("attempt");
   });
 
+  it("tests run --file records the tested snapshot on its test-run row", async () => {
+    startRun();
+    fs.writeFileSync(path.join(cwd, "src.ts"), "export const s = 1;\n");
+    const r = await run(ARGS);
+    expect(r.code).toBe(0);
+    const tested = String(rowsOf().find((row) => row.type === "test-run")!.tested);
+    expect(tested).toMatch(/^[0-9a-f]{40}$/);
+    const show = spawnSync("git", ["-C", cwd, "show", `${tested}:src.ts`], { encoding: "utf-8" });
+    expect(show.stdout).toBe("export const s = 1;\n");
+    expect(spawnSync("git", ["-C", cwd, "status", "--porcelain"]).stdout.toString()).toContain(
+      "?? src.ts",
+    );
+  });
+
+  const report = (...cases: string[]) =>
+    `<?xml version="1.0"?><testsuites><testsuite name="s">${cases.join("")}</testsuite></testsuites>`;
+
+  it("a FAIL test-run row records each failing case as file and name", async () => {
+    startRun();
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv(
+      "FAKE_REPORT_A",
+      report(
+        '<testcase file="src/z.test.ts" classname="z" name="adds a row"><failure message="x"/></testcase>',
+        '<testcase classname="Suite" name="crashes"><error message="y"/></testcase>',
+        '<testcase file="src/z.test.ts" name="passes"/>',
+        '<testcase name="bare"><failure/></testcase>',
+      ),
+    );
+    vi.stubEnv(
+      "FAKE_REPORT_B",
+      report('<testcase file="src/z.test.ts" name="adds a row"><failure/></testcase>'),
+    );
+    const r = await run(ARGS);
+    expect(r.code).toBe(1);
+    const row = rowsOf().find((x) => x.type === "test-run")!;
+    expect(row).toMatchObject({
+      verdict: "FAIL",
+      failures: 4,
+      failedTests: ["Suite > crashes", "bare", "src/z.test.ts > adds a row"],
+    });
+    expect(row).not.toHaveProperty("failedTestsTruncated");
+  });
+
+  it("a PASS test-run row records no failed tests", async () => {
+    startRun();
+    vi.stubEnv("FAKE_REPORT_A", report('<testcase name="ok"/>'));
+    expect((await run(ARGS)).code).toBe(0);
+    vi.stubEnv("FAKE_EXIT", "1");
+    vi.stubEnv("FAKE_REPORT_A", "");
+    expect((await run(ARGS)).code).toBe(1);
+    vi.stubEnv("FAKE_EXIT", "127");
+    vi.stubEnv("FAKE_REPORT_A", report('<testcase name="x"><failure/></testcase>'));
+    expect((await run(ARGS)).code).toBe(4);
+    const runs = rowsOf().filter((x) => x.type === "test-run");
+    expect(runs.map((x) => x.verdict)).toEqual(["PASS", "FAIL", null]);
+    expect(runs.map((x) => "failedTests" in x)).toEqual([false, false, false]);
+  });
+
+  it("failedTests keeps at most 100 sorted names and sets failedTestsTruncated", async () => {
+    startRun();
+    vi.stubEnv("FAKE_EXIT", "1");
+    const names = Array.from({ length: 105 }, (_, i) => `t${String(104 - i).padStart(3, "0")}`);
+    vi.stubEnv(
+      "FAKE_REPORT_A",
+      report(...names.map((n) => `<testcase file="f.test.ts" name="${n}"><failure/></testcase>`)),
+    );
+    expect((await run(ARGS)).code).toBe(1);
+    const row = rowsOf().find((x) => x.type === "test-run")!;
+    expect(row.failures).toBe(105);
+    expect(row.failedTests).toEqual(
+      [...names]
+        .sort()
+        .slice(0, 100)
+        .map((n) => `f.test.ts > ${n}`),
+    );
+    expect(row.failedTestsTruncated).toBe(true);
+  });
+
   it("without --file no row is written and the output carries row null", async () => {
     const r = await run(BUILD);
     expect(r.code).toBe(0);
@@ -820,6 +932,129 @@ describe("bkit tests run --changed-since", () => {
   );
 
   it(
+    "the nothing-to-run row records the tested snapshot",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(argsLog)).toBe(false);
+      const tested = String(rows()[0]!.tested);
+      expect(tested).toMatch(/^[0-9a-f]{40}$/);
+      expect(gitIn("rev-parse", `${tested}^{tree}`)).toBe(gitIn("rev-parse", "HEAD^{tree}"));
+    },
+    timeout,
+  );
+
+  const sincePass = (since: string, step = "build-group-gate-1") => [
+    `--gate=${SHALLOW}`,
+    "--log=logs/test.md",
+    `--file=${STATUS}`,
+    "--workflow=build",
+    `--step=${step}`,
+    `--changed-since=${since}`,
+    "--since-pass-of=build-group-gate-1,build-group-gate-1-fix",
+  ];
+  /** The files the fake runner got on its last call, the script name left out. */
+  const lastHanded = () =>
+    fs.readFileSync(argsLog, "utf-8").trim().split("\n").at(-1)!.split(" ").slice(1);
+
+  it(
+    "--since-pass-of tests only the files that differ from the newest passing run's snapshot",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      const first = await run(sincePass(base));
+      expect(first.code).toBe(0);
+      expect(lastHanded()).toEqual(["src/committed.ts", "src/loose.ts"]);
+      const again = await run(sincePass(base));
+      expect(again.code).toBe(0);
+      expect(again.json.scope).toContain("(0 changed files)");
+      expect(again.err).toContain("nothing to run");
+      fs.writeFileSync(path.join(cwd, "src/loose.ts"), "export const b = 3;\n");
+      const edited = await run(sincePass(base, "build-group-gate-1-fix"));
+      expect(edited.code).toBe(0);
+      expect(edited.json.scope).toContain("(1 changed file)");
+      expect(lastHanded()).toEqual(["src/loose.ts"]);
+      expect(edited.err).toContain(String(rows()[1]!.tested));
+    },
+    timeout,
+  );
+
+  it(
+    "--since-pass-of skips failing runs and steps it does not name",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      expect((await run(sincePass(base))).code).toBe(0);
+      const write = (rel: string) => {
+        fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
+        fs.writeFileSync(path.join(cwd, rel), `export const v = "${rel}";\n`);
+      };
+      write("src/a.ts");
+      vi.stubEnv("FAKE_EXIT", "1");
+      expect((await run(sincePass(base))).code).toBe(1);
+      vi.stubEnv("FAKE_EXIT", "0");
+      write("src/b.ts");
+      expect((await run(sincePass(base, "build-group-gate-2"))).code).toBe(0);
+      write("src/c.ts");
+      const r = await run(sincePass(base));
+      expect(r.code).toBe(0);
+      expect(lastHanded()).toEqual(["src/a.ts", "src/b.ts", "src/c.ts"]);
+      expect(r.err).toContain(String(rows()[0]!.tested));
+    },
+    timeout,
+  );
+
+  it(
+    "--since-pass-of falls back to --changed-since with no passing run",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      vi.stubEnv("FAKE_EXIT", "1");
+      expect((await run(sincePass(base))).code).toBe(1);
+      vi.stubEnv("FAKE_EXIT", "0");
+      const r = await run(sincePass(base));
+      expect(r.code).toBe(0);
+      expect(lastHanded()).toEqual(["src/committed.ts", "src/loose.ts"]);
+      expect(r.err).toContain("no passing run of build-group-gate-1, build-group-gate-1-fix");
+      expect(r.err).toContain(`--changed-since ${base}`);
+    },
+    timeout,
+  );
+
+  it(
+    "--since-pass-of falls back to --changed-since when the snapshot is gone",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      changeTwoFiles();
+      const gone = "f".repeat(40);
+      fs.appendFileSync(
+        path.join(cwd, STATUS),
+        `${JSON.stringify({ type: "test-run", workflow: "build", at: "2026-11-01T00:00:00Z", step: "build-group-gate-1", run: 1, verdict: "PASS", exitCode: 0, failures: 0, scope: "x", log: "logs/test.md", source: "local", tested: gone })}\n`,
+      );
+      const r = await run(sincePass(base));
+      expect(r.code).toBe(0);
+      expect(lastHanded()).toEqual(["src/committed.ts", "src/loose.ts"]);
+      expect(r.err).toContain(gone);
+      expect(r.err).toContain(`--changed-since ${base}`);
+    },
+    timeout,
+  );
+
+  it(
+    "--since-pass-of needs --file, --workflow and --changed-since",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      const without = (flag: string) => sincePass(base).filter((arg) => !arg.startsWith(flag));
+      const codes = await Promise.all(
+        ["--file=", "--changed-since="].map(async (flag) => (await run(without(flag))).code),
+      );
+      expect(codes).toEqual([2, 2]);
+      expect(fs.existsSync(argsLog)).toBe(false);
+    },
+    timeout,
+  );
+
+  it(
     "changed-since counts failures from the changed gate's JUnit reports",
     async () => {
       repo({ [SHALLOW]: "x", [CHANGED]: "z" });
@@ -849,6 +1084,108 @@ describe("bkit tests run --changed-since", () => {
       expect(r.err).not.toContain("unknown flag");
       expect(fs.existsSync(argsLog)).toBe(false);
       expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
+      expect(rows()).toEqual([]);
+    },
+    timeout,
+  );
+
+  /** Commit `files` on top of the repo and return the new commit, the base later runs measure from. */
+  const commitFiles = (files: Record<string, string>) => {
+    for (const [rel, body] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(cwd, rel)), { recursive: true });
+      fs.writeFileSync(path.join(cwd, rel), body);
+    }
+    gitIn("add", "-A");
+    gitIn("commit", "-q", "-m", "files");
+    base = gitIn("rev-parse", "HEAD");
+    return base;
+  };
+
+  it(
+    "a change that only deletes a file runs the gate on the files that mention it",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      commitFiles({
+        "src/widget.ts": "export const w = 1;\n",
+        "src/user.ts": 'import { w } from "./widget";\n',
+        "src/other.ts": "export const o = 2;\n",
+      });
+      fs.rmSync(path.join(cwd, "src/widget.ts"));
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", gate: CHANGED });
+      expect(fs.readFileSync(argsLog, "utf-8").trim().split(" ")).toEqual([CHANGED, "src/user.ts"]);
+      expect(r.err).not.toContain("nothing to run");
+      expect(r.json.scope).toContain("(1 changed file)");
+    },
+    timeout,
+  );
+
+  it(
+    "a deleted file that no file mentions passes and the log says so",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      commitFiles({ "src/lonely.ts": "export const l = 1;\n" });
+      fs.rmSync(path.join(cwd, "src/lonely.ts"));
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(argsLog)).toBe(false);
+      expect(r.err).toContain("src/lonely.ts");
+      expect(r.err).toContain("no file mentions it");
+      expect(rows()).toEqual([expect.objectContaining({ verdict: "PASS", exitCode: 0 })]);
+    },
+    timeout,
+  );
+
+  it(
+    "a failed importer search runs the whole check",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      commitFiles({
+        "src/widget.ts": "export const w = 1;\n",
+        "src/user.ts": 'import { w } from "./widget";\n',
+      });
+      // The deleted file's own blob: the run's snapshot never writes it back.
+      const blob = gitIn("rev-parse", `${base}:src/widget.ts`);
+      fs.rmSync(path.join(cwd, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+      fs.rmSync(path.join(cwd, "src/widget.ts"));
+      const r = await run(args(base));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", gate: SHALLOW, scope: gateScope(SHALLOW) });
+      expect(fs.readFileSync(argsLog, "utf-8").trim()).toBe(SHALLOW);
+      expect(r.err).toContain("src/widget.ts");
+      expect(r.err).toContain(`running the whole ${SHALLOW}`);
+    },
+    timeout,
+  );
+
+  it(
+    "--changed-since=feature-base starts at the feature's start commit",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      commitFiles({ "src/before.ts": "export const b = 0;\n" });
+      gitIn("update-ref", "refs/remotes/origin/dev", base);
+      changeTwoFiles();
+      const r = await run(args("feature-base"));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ verdict: "PASS", gate: CHANGED });
+      expect(fs.readFileSync(argsLog, "utf-8").trim().split(" ")).toEqual([
+        CHANGED,
+        "src/committed.ts",
+        "src/loose.ts",
+      ]);
+    },
+    timeout,
+  );
+
+  it(
+    "--changed-since=feature-base with no origin/dev meeting point measures from origin/dev and says so",
+    async () => {
+      repo({ [SHALLOW]: "x", [CHANGED]: "z" });
+      const r = await run(args("feature-base"));
+      expect(r.code).toBe(2);
+      expect(r.err).toContain("feature base");
+      expect(r.err).toContain("origin/dev");
       expect(rows()).toEqual([]);
     },
     timeout,
@@ -1142,7 +1479,7 @@ describe("parseJunit", () => {
 });
 
 describe("reportFailures", () => {
-  it("returns the failing and erroring cases of every report, or null with none", () => {
+  it("returns the failing and erroring cases of every report, [] for clean reports, or null with none", () => {
     const dir = tmp("bkit-report-failures-");
     expect(reportFailures(dir)).toBeNull();
     fs.mkdirSync(path.join(dir, "sub"));
@@ -1156,10 +1493,10 @@ describe("reportFailures", () => {
       ["bad one", "failure"],
       ["boom", "error"],
     ]);
-    expect(countReportFailures(dir)).toBe(2);
+    expect(found?.length).toBe(2);
     const clean = tmp("bkit-report-clean-");
     fs.writeFileSync(path.join(clean, "c.xml"), junit(passed("ok")));
-    expect(reportFailures(clean)).toBeNull();
+    expect(reportFailures(clean)).toEqual([]);
   });
 });
 

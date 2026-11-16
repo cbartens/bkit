@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, type CommandSpec, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
-import { parseDecisionItems } from "./decisions.js";
+import { parseDecisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
 import {
   NO_MARKERS_REASON,
@@ -96,9 +96,10 @@ function taskNumbers(values: readonly string[], flag: string): number[] {
 
 /**
  * The task numbers a `bkit tests green` report gaps: the `- Task {N} \`{kind}\`` lines of
- * its `## Gaps` section, or the `gaps` array of its `--json` payload.
+ * its `## Gaps` section, or the `gaps` array of its `--json` payload. Null when the report
+ * holds neither: a report with no Gaps section says nothing about which tasks are green.
  */
-export function gappedTasks(text: string): number[] {
+export function gappedTasks(text: string): number[] | null {
   const json = parseJson(text);
   if (json.ok && typeof json.value === "object" && json.value !== null) {
     const gaps = (json.value as { gaps?: unknown }).gaps;
@@ -108,7 +109,7 @@ export function gappedTasks(text: string): number[] {
         .filter((t): t is number => typeof t === "number");
   }
   const start = text.search(/^## Gaps\b/m);
-  if (start < 0) return [];
+  if (start < 0) return null;
   const rest = text.slice(start).replace(/^## Gaps[^\n]*\n?/, "");
   const end = rest.search(/^## /m);
   const section = end < 0 ? rest : rest.slice(0, end);
@@ -158,7 +159,7 @@ export const tasksCommand: CommandSpec = {
   verbs: {
     tick: {
       summary:
-        "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+        "Tick the named tasks of one task group, less those a `tests green` report gaps; exit 0 ticked (including none), 1 a plan with no task blocks, 2 a bad flag value or plan, or a `--green` report with no Gaps section.",
       use: "workflow",
       flags: [
         {
@@ -237,7 +238,13 @@ export const tasksCommand: CommandSpec = {
           const greenFile = path.resolve(ctx.cwd, greenArg);
           if (fs.statSync(greenFile, { throwIfNoEntry: false })?.isFile() !== true)
             throw new CommandError(EXIT.USAGE, `--green ${greenArg} does not exist`);
-          for (const n of gappedTasks(fs.readFileSync(greenFile, "utf-8"))) gapped.add(n);
+          const gaps = gappedTasks(fs.readFileSync(greenFile, "utf-8"));
+          if (gaps === null)
+            throw new CommandError(
+              EXIT.USAGE,
+              `--green ${greenArg}: report has no Gaps section, so nothing is ticked`,
+            );
+          for (const n of gaps) gapped.add(n);
         }
         const wanted = named ?? candidates.map((t) => t.task);
         const lines = plan.text.split(/\r?\n/);

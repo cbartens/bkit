@@ -8,7 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BKIT_GATE_CHANGED_SCRIPT } from "../../install/manifest";
 import { runCommand } from "../lib";
 import { PACKAGE_RUNNER } from "../../shared/package-manager";
-import { changedFiles } from "./tests-changed";
+import {
+  changedBetween,
+  changedFiles,
+  deletedFiles,
+  importersOf,
+  snapshotTree,
+} from "./tests-changed";
 import { testsCommand } from "./tests";
 
 const dirs: string[] = [];
@@ -115,6 +121,148 @@ describe("changedFiles", () => {
     write("src/later.ts");
     expect(changedFiles(cwd, base)).toEqual(["src/a.ts", "src/later.ts"]);
     expect(changedFiles(cwd, git("rev-parse", "HEAD"))).toEqual(["src/later.ts"]);
+  });
+});
+
+describe("snapshotTree / changedBetween", () => {
+  it("the tested snapshot holds uncommitted and untracked files", () => {
+    checkout({});
+    const head = git("rev-parse", "HEAD");
+    write("src/a.ts", "changed\n");
+    write("src/new.ts", "new\n");
+    write("ignored/out.ts");
+    fs.rmSync(path.join(cwd, "src/b.ts"));
+    const sha = snapshotTree(cwd);
+    expect(sha).toMatch(/^[0-9a-f]{40}$/);
+    expect(git("cat-file", "-t", sha!)).toBe("commit");
+    expect(git("rev-parse", `${sha!}^`)).toBe(head);
+    expect(git("ls-tree", "-r", "--name-only", sha!).split("\n")).toEqual([
+      ".gitignore",
+      "package.json",
+      "src/a.ts",
+      "src/new.ts",
+    ]);
+    expect(git("show", `${sha!}:src/a.ts`)).toBe("changed");
+  });
+
+  it("snapshotting leaves the index and working tree as they were", () => {
+    checkout({});
+    write("src/a.ts", "changed\n");
+    write("src/staged.ts");
+    git("add", "src/staged.ts");
+    write("src/new.ts");
+    const before = {
+      status: git("status", "--porcelain=v1", "-uall"),
+      cached: git("diff", "--cached", "--name-status"),
+      refs: git("for-each-ref"),
+      head: git("rev-parse", "HEAD"),
+      stash: git("stash", "list"),
+    };
+    expect(snapshotTree(cwd)).toMatch(/^[0-9a-f]{40}$/);
+    expect({
+      status: git("status", "--porcelain=v1", "-uall"),
+      cached: git("diff", "--cached", "--name-status"),
+      refs: git("for-each-ref"),
+      head: git("rev-parse", "HEAD"),
+      stash: git("stash", "list"),
+    }).toEqual(before);
+  });
+
+  it("a checkout with no commit yet snapshots with no parent", () => {
+    cwd = tmp("bkit-tests-changed-empty-");
+    git("init", "-q");
+    write("src/a.ts");
+    const sha = snapshotTree(cwd);
+    expect(git("cat-file", "-t", sha!)).toBe("commit");
+    expect(git("rev-list", "--parents", "-n", "1", sha!)).toBe(sha);
+  });
+
+  it("changedBetween lists the existing files that differ from a snapshot, and the deleted ones apart", () => {
+    checkout({});
+    write("src/a.ts", "changed\n");
+    const snap = snapshotTree(cwd)!;
+    expect(changedBetween(cwd, snap)).toEqual({ files: [], deleted: [] });
+    write("src/a.ts", "changed again\n");
+    write("src/new.ts");
+    fs.rmSync(path.join(cwd, "src/b.ts"));
+    expect(changedBetween(cwd, snap)).toEqual({
+      files: ["src/a.ts", "src/new.ts"],
+      deleted: ["src/b.ts"],
+    });
+  });
+
+  it("changedBetween is null when the snapshot is gone", () => {
+    checkout({});
+    expect(changedBetween(cwd, "f".repeat(40))).toBeNull();
+  });
+});
+
+describe("deletedFiles", () => {
+  it("deletedFiles lists a file removed since the base", () => {
+    const base = checkout({});
+    write("src/gone.ts");
+    write("src/back.ts");
+    commit("more");
+    const start = git("rev-parse", "HEAD");
+    fs.rmSync(path.join(cwd, "src/a.ts"));
+    fs.rmSync(path.join(cwd, "src/back.ts"));
+    commit("drop a and back");
+    write("src/back.ts", "restored\n");
+    fs.rmSync(path.join(cwd, "src/b.ts"));
+    expect(deletedFiles(cwd, start)).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(deletedFiles(cwd, base)).toEqual(["src/a.ts", "src/b.ts"]);
+  });
+});
+
+describe("importersOf", () => {
+  it("importersOf lists the unchanged files that mention a deleted file's name", () => {
+    checkout({});
+    write("src/widget.ts", "export const w = 1;\n");
+    write("src/user.ts", 'import { w } from "./widget";\n');
+    write("docs/notes.md", "see widget for details\n");
+    write("src/other.ts", "export const o = 2;\n");
+    const base = commit("widget");
+    fs.rmSync(path.join(cwd, "src/widget.ts"));
+    fs.rmSync(path.join(cwd, "src/a.ts"));
+    expect(importersOf(cwd, base, ["src/widget.ts", "src/lonely.ts"])).toEqual(
+      new Map([
+        ["src/widget.ts", ["docs/notes.md", "src/user.ts"]],
+        ["src/lonely.ts", []],
+      ]),
+    );
+  });
+
+  it("importersOf leaves out a file that no longer exists", () => {
+    checkout({});
+    write("src/widget.ts", "export const w = 1;\n");
+    write("src/user.ts", 'import { w } from "./widget";\n');
+    const base = commit("widget");
+    fs.rmSync(path.join(cwd, "src/widget.ts"));
+    fs.rmSync(path.join(cwd, "src/user.ts"));
+    expect(importersOf(cwd, base, ["src/widget.ts"])).toEqual(new Map([["src/widget.ts", []]]));
+  });
+
+  it("importersOf returns null when the base tree cannot be searched", () => {
+    checkout({});
+    write("src/widget.ts", "export const w = 1;\n");
+    write("src/user.ts", 'import { w } from "./widget";\n');
+    const base = commit("widget");
+    const blob = git("rev-parse", `${base}:src/user.ts`);
+    fs.rmSync(path.join(cwd, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+    fs.rmSync(path.join(cwd, "src/widget.ts"));
+    expect(importersOf(cwd, base, ["src/widget.ts"])).toBeNull();
+    expect(importersOf(cwd, "0".repeat(40), ["src/widget.ts"])).toBeNull();
+  });
+
+  it("importersOf returns null when a blob is unreadable even though another file matched", () => {
+    checkout({});
+    write("src/widget.ts", "export const w = 1;\n");
+    write("src/user.ts", 'import { w } from "./widget";\n');
+    const base = commit("widget");
+    const blob = git("rev-parse", `${base}:src/widget.ts`);
+    fs.rmSync(path.join(cwd, ".git/objects", blob.slice(0, 2), blob.slice(2)));
+    fs.rmSync(path.join(cwd, "src/widget.ts"));
+    expect(importersOf(cwd, base, ["src/widget.ts"])).toBeNull();
   });
 });
 

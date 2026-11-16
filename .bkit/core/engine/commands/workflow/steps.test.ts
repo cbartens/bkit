@@ -928,6 +928,33 @@ describe("bkit steps gate checks attempt / strategy / scope where the step write
     expect(ok.code).toBe(0);
   });
 
+  it("steps finish records attempt and scope on a build-holistic-gate row", async () => {
+    const cwd = repo();
+    const finish = (...extra: string[]) =>
+      run(cwd, [
+        "steps",
+        "finish",
+        "--file=logs/status.jsonl",
+        "--workflow=build",
+        "--step=build-holistic-gate",
+        "--verdict=FAIL",
+        "--attempt=2",
+        "--commit=none",
+        ...extra,
+      ]);
+    const unscoped = await finish();
+    expect(unscoped.code).not.toBe(0);
+    expect(`${unscoped.err} ${JSON.stringify(unscoped.json)}`).toContain("row would miss scope");
+    const r = await finish("--scope=pnpm bkit:gate:changed");
+    expect(r.code).toBe(0);
+    expect(r.json.row).toMatchObject({
+      step: "build-holistic-gate",
+      attempt: 2,
+      scope: "pnpm bkit:gate:changed",
+    });
+    expect(r.json.progressLine).toContain("Plan Verify Holistic");
+  });
+
   it("names every missing field at once", async () => {
     const r = await rowThenGate("build", "build-failure-remediate", []);
     expect(r.err).toContain("row is missing attempt, strategy");
@@ -1013,6 +1040,43 @@ describe("bkit steps finish", () => {
     const events = fs.readFileSync(path.join(cwd, "logs/status.jsonl"), "utf-8");
     expect(events).toContain('"location":"a.ts:10"');
     expect(events).toContain('"severity":"CRITICAL"');
+  });
+
+  it("steps finish refuses route=continue that decisions skip would refuse", async () => {
+    const cwd = repo();
+    const pause = (gate: string[]) =>
+      [
+        "Status: DECIDED",
+        "From: verify",
+        "Group: 1",
+        ...gate,
+        "Source changed: false",
+        "",
+        "**Q1 — Task 3 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted",
+        "B) Fix now — a fix task is added to the plan",
+        "Recommended: A) Accept — minor",
+        "Decision: Accept — minor",
+        "",
+      ].join("\n");
+    write(cwd, "logs/build-decision-1-1.md", pause(["Gate: FAIL"]));
+    write(cwd, "logs/build-decision-1-2.md", pause([]));
+    const finishDecision = (n: number) =>
+      run(cwd, [
+        ...FINISH,
+        "--step=build-decision",
+        `--attempt=${n}`,
+        `--artifact=logs/build-decision-1-${n}.md`,
+        "--field=route=continue",
+        "--commit=none",
+      ]);
+    const refused = await finishDecision(1);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("Gate: FAIL");
+    expect(fs.existsSync(path.join(cwd, "logs/status.jsonl"))).toBe(false);
+    const clean = await finishDecision(2);
+    expect(clean.code).toBe(0);
+    expect(clean.json.row).toMatchObject({ step: "build-decision", route: "continue" });
   });
 
   it("reads the agent's header, derives the attempt, writes and commits the row, prints the comment", async () => {

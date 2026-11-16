@@ -31,12 +31,13 @@ import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
-import { REPORT_ENV, countReportFailures, runTestFile, runToLog } from "./junit.js";
+import { REPORT_ENV, reportFailures, runTestFile, runToLog } from "./junit.js";
 import { appendRecord, clampFile } from "./context.js";
 import { minPushPathspecs } from "../ci/ci.js";
 import { requiredPushGate, runWithReceipt } from "../ci/push-gate.js";
 import { testsBaseVerb } from "./tests-base.js";
-import { changedFiles, declares, testsChangedVerb } from "./tests-changed.js";
+import { changedBetween, changedFiles, commitExists, declares, snapshotTree, deletedFiles, importersOf, testsChangedVerb, } from "./tests-changed.js";
+import { ORIGIN_DEV, featureBase } from "./feature-base.js";
 import { testsJumpVerb } from "./tests-jump.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
@@ -69,6 +70,64 @@ export function resolveGate(dir, candidates) {
         return typeof body === "string" && body.trim() !== "";
     }) ?? null);
 }
+/** The `--changed-since` word that names the feature's start commit. */
+export const FEATURE_BASE_WORD = "feature-base";
+/**
+ * `--changed-since` as a commit name: `feature-base` resolves through `featureBase`, which
+ * falls back to the name `origin/dev` when it cannot work out the feature's start commit.
+ */
+function sinceBase(top, raw, log) {
+    if (raw !== FEATURE_BASE_WORD)
+        return raw;
+    const base = featureBase(top, log);
+    if (base === ORIGIN_DEV)
+        log(`feature base: no meeting point with ${ORIGIN_DEV} — measuring from ${ORIGIN_DEV}`);
+    else
+        log(`feature base: ${base}`);
+    return base;
+}
+/**
+ * The files `bkit:gate:changed` gets for a run measured from `base`: the changed files plus
+ * the files that still mention a deleted one, sorted, with the deleted files. Null when the
+ * search for those files fails: the caller runs the whole check, never a pass.
+ */
+function changedScope(top, base, candidates, log, diff = {
+    files: changedFiles(top, base),
+    deleted: deletedFiles(top, base),
+}) {
+    const { files: changed, deleted } = diff;
+    const importers = importersOf(top, base, deleted);
+    if (importers === null) {
+        log(`could not search ${base} for the files that mention the deleted ${deleted.join(" ")} — running the whole ${resolveGate(top, candidates) ?? "--gate"}`);
+        return null;
+    }
+    for (const [file, hits] of importers)
+        log(hits.length === 0
+            ? `deleted ${file}: no file mentions it`
+            : `deleted ${file}: checking the ${hits.length} file(s) that mention it`);
+    return { files: [...new Set([...changed, ...[...importers.values()].flat()])].sort(), deleted };
+}
+/**
+ * The `tested` snapshot of the newest PASS test-run row of `steps` in `workflow` whose
+ * commit still exists, or null; each snapshot gone from the object store is logged.
+ */
+function newestPass(top, file, workflow, steps, log) {
+    const passes = readStatusRows(file).filter((r) => r.type === TEST_RUN_ROW &&
+        r.workflow === workflow &&
+        typeof r.step === "string" &&
+        steps.includes(r.step) &&
+        r.verdict === "PASS" &&
+        typeof r.tested === "string");
+    for (const row of passes.reverse()) {
+        const sha = String(row.tested);
+        if (commitExists(top, sha)) {
+            log(`testing the files changed since run ${String(row.run)} of ${String(row.step)} passed (snapshot ${sha})`);
+            return sha;
+        }
+        log(`the snapshot ${sha} of run ${String(row.run)} of ${String(row.step)} is gone`);
+    }
+    return null;
+}
 /** The scope string the status rows record: the package runner plus the script name. */
 export const gateScope = (gate) => scriptCommand(gate).join(" ");
 /** `{log}.reports`, emptied: a previous attempt's reports never count toward this one. */
@@ -83,6 +142,25 @@ const tailLines = (file, n) => fs
     .replace(/\r?\n$/, "")
     .split(/\r?\n/)
     .slice(-n);
+/** The most failing-test names one `test-run` row keeps. */
+export const FAILED_TESTS_CAP = 100;
+/** A failing JUnit case as a `failedTests` name: `{file ?? classname} > {name}`, or the name alone. */
+export const caseLabel = (c) => {
+    const where = c.file ?? c.classname;
+    return where === null || where === "" ? c.name : `${where} > ${c.name}`;
+};
+/**
+ * The `failedTests` row fields for `names`: unique, sorted, at most `FAILED_TESTS_CAP`, with
+ * `failedTestsTruncated` when cut; none when `names` is empty.
+ */
+export function failedTestsField(names) {
+    const unique = [...new Set(names.filter((n) => n !== ""))].sort();
+    if (unique.length === 0)
+        return {};
+    return unique.length > FAILED_TESTS_CAP
+        ? { failedTests: unique.slice(0, FAILED_TESTS_CAP), failedTestsTruncated: true }
+        : { failedTests: unique };
+}
 /**
  * Append one `test-run` row to `file`. `run` numbers this step's test-run rows in the
  * workflow's active run (since its last workflow-started row), this one included, so a
@@ -113,6 +191,9 @@ function appendTestRun(file, r) {
         log: r.log,
         ...(r.artifact === undefined ? {} : { artifact: r.artifact }),
         ...(r.source === undefined ? {} : { source: r.source }),
+        ...(typeof r.tested === "string" ? { tested: r.tested } : {}),
+        ...(r.failedTests === undefined ? {} : { failedTests: r.failedTests }),
+        ...(r.failedTestsTruncated === undefined ? {} : { failedTestsTruncated: true }),
         ...r.evidence,
     };
     const problem = testRunProblem(row);
@@ -1330,7 +1411,12 @@ export const testsCommand = {
                 {
                     name: "changed-since",
                     type: "string",
-                    help: `commit the work began on: run \`${BKIT_GATE_CHANGED_SCRIPT}\` on the files changed since it (uncommitted and committed), recording the file count as the scope; undeclared → the --gate runs whole`,
+                    help: `commit the work began on, or \`${FEATURE_BASE_WORD}\` for the feature's start commit (\`origin/dev\` when it cannot be worked out): run \`${BKIT_GATE_CHANGED_SCRIPT}\` on the files changed since it (uncommitted and committed) plus the files that mention a deleted one, recording the file count as the scope; a failed search for those files, or an undeclared \`${BKIT_GATE_CHANGED_SCRIPT}\` → the --gate runs whole`,
+                },
+                {
+                    name: "since-pass-of",
+                    type: "string",
+                    help: `step[,step...]: measure from the \`tested\` snapshot of the newest PASS test-run row of these steps in --workflow whose snapshot still exists; with none, from --changed-since; needs --file, --workflow and --changed-since`,
                 },
                 { name: "ci-run", type: "string", help: "selected GitHub evidence run ID" },
                 { name: "ci-url", type: "string", help: "selected GitHub evidence attempt URL" },
@@ -1355,7 +1441,7 @@ export const testsCommand = {
                 logBytes: "size of the saved output",
                 artifact: "--artifact as given, else null",
                 clamp: "the artifact's clamp record (raw = the log, source = scope), else null",
-                row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?}; run = this step's test-run rows in the workflow's active run, this one included), else null; a tests-lock wait writes no row`,
+                row: `the ${TEST_RUN_ROW} row appended to --file ({type, workflow, at, step, attempt?, run, verdict, exitCode, failures, scope, log, artifact?, source, tested?, failedTests?, failedTestsTruncated?}; run = this step's test-run rows in the workflow's active run, this one included; tested = on a local row, the commit (no ref) holding the tree the gate ran on, left off when git cannot build it; failedTests = on a FAIL, each failing case as \`{file or classname} > {name}\` (a CI evidence round: \`job:{name}\` per failed job), unique, sorted, at most ${FAILED_TESTS_CAP}, failedTestsTruncated true when cut), else null; a tests-lock wait writes no row`,
                 lockHolder: "tests-lock holder when the wait gave up, else null",
             },
             textOmit: ["clamp", "row"],
@@ -1453,6 +1539,7 @@ export const testsCommand = {
                             log: logArg,
                             artifact,
                             evidence,
+                            ...failedTestsField((selection.failedJobs ?? []).map((job) => `job:${job}`)),
                         });
                         ctx.emit({
                             source: "ci",
@@ -1478,12 +1565,47 @@ export const testsCommand = {
                 // Gates are declared and run at the top of the checkout being tested (the
                 // feature worktree), wherever in it the caller happens to stand.
                 const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
-                const sinceRaw = str(ctx.flags.changedSince);
+                const passSteps = str(ctx.flags.sincePassOf)
+                    ?.split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                if (passSteps !== undefined &&
+                    (status === undefined || ctx.flags.changedSince === undefined || passSteps.length === 0))
+                    throw new CommandError(EXIT.USAGE, "--since-pass-of needs one or more steps, --file, --workflow and --changed-since");
+                const sinceRaw = sinceBase(top, str(ctx.flags.changedSince), ctx.log);
                 if (sinceRaw !== undefined &&
                     git(top, ["rev-parse", "-q", "--verify", `${sinceRaw}^{commit}`]) === null)
                     throw new CommandError(EXIT.USAGE, `--changed-since ${sinceRaw} names no commit`);
-                const useChanged = sinceRaw !== undefined && declares(top, BKIT_GATE_CHANGED_SCRIPT);
-                const changed = useChanged ? changedFiles(top, sinceRaw) : [];
+                // The tree this run tests, taken before the gate starts.
+                const tested = status === undefined ? null : snapshotTree(top);
+                if (status !== undefined && tested === null)
+                    ctx.log("could not snapshot the working tree — the test-run row records no tested");
+                // With --since-pass-of: the files that differ from the newest passing run's snapshot.
+                const passDiff = () => {
+                    if (passSteps === undefined)
+                        return null;
+                    const pass = newestPass(top, status, workflow, passSteps, ctx.log);
+                    if (pass === null) {
+                        ctx.log(`no passing run of ${passSteps.join(", ")} to measure from — testing from --changed-since ${sinceRaw}`);
+                        return null;
+                    }
+                    const diff = changedBetween(top, pass, tested);
+                    if (diff === null) {
+                        ctx.log(`could not list the files changed since the passing run at ${pass} — testing from --changed-since ${sinceRaw}`);
+                        return null;
+                    }
+                    return { base: pass, ...diff };
+                };
+                let scoped = null;
+                if (sinceRaw !== undefined && declares(top, BKIT_GATE_CHANGED_SCRIPT)) {
+                    const fromPass = passDiff();
+                    scoped =
+                        fromPass === null
+                            ? changedScope(top, sinceRaw, candidates, ctx.log)
+                            : changedScope(top, fromPass.base, candidates, ctx.log, fromPass);
+                }
+                const useChanged = scoped !== null;
+                const changed = scoped?.files ?? [];
                 const gate = useChanged ? BKIT_GATE_CHANGED_SCRIPT : resolveGate(top, candidates);
                 if (gate === null) {
                     const read = readPackageJson(top);
@@ -1496,8 +1618,10 @@ export const testsCommand = {
                     ? `${gateScope(gate)} (${changed.length} changed file${changed.length === 1 ? "" : "s"})`
                     : gateScope(gate);
                 const log = path.resolve(ctx.cwd, logArg);
-                if (useChanged && changed.length === 0) {
-                    ctx.log(`no files changed since ${sinceRaw} — nothing to run`);
+                if (scoped !== null && changed.length === 0) {
+                    ctx.log(scoped.deleted.length === 0
+                        ? `no files changed since ${sinceRaw} — nothing to run`
+                        : `only deleted files that no file mentions changed since ${sinceRaw} — nothing to run`);
                     const row = status === undefined
                         ? null
                         : appendTestRun(status, {
@@ -1511,6 +1635,7 @@ export const testsCommand = {
                             log: logArg,
                             artifact: undefined,
                             source: "local",
+                            tested,
                         });
                     ctx.emit({
                         source: "local",
@@ -1564,7 +1689,8 @@ export const testsCommand = {
                     ctx.log(line);
                 const couldNotRun = lockExit === "could-not-run" || COULD_NOT_RUN_EXIT_CODES.has(exitCode);
                 const verdict = couldNotRun || lockWait ? null : exitCode === 0 ? "PASS" : "FAIL";
-                const counted = lockExit === "gate" ? countReportFailures(reports) : null;
+                const failing = lockExit === "gate" ? reportFailures(reports) : null;
+                const counted = failing?.length ?? null;
                 if (counted === null && lockExit === "gate")
                     ctx.log(NO_REPORT_HINT);
                 else if (verdict === "FAIL" && counted === 0)
@@ -1607,6 +1733,8 @@ export const testsCommand = {
                         log: logArg,
                         artifact,
                         source: "local",
+                        tested,
+                        ...failedTestsField(verdict === "FAIL" ? (failing ?? []).map(caseLabel) : []),
                     });
                 ctx.emit({
                     source: "local",

@@ -19,6 +19,7 @@ import {
   LOCK_STATUS_FILE_ENV,
   lockStatusFile,
   readLockStatus,
+  runGit,
   wholeNumber,
   type VerbSpec,
 } from "../lib.js";
@@ -34,19 +35,133 @@ const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
 const EXIT_COULD_NOT_RUN = 4;
 
+/** The NUL-separated paths `git <args>` prints in `top`; none when it fails. */
+const gitPaths = (top: string, args: string[]) =>
+  (git(top, args) ?? "").split("\0").filter(Boolean);
+
 /**
  * Files changed since `base`, repo-relative and sorted: uncommitted (staged or not),
- * untracked and not ignored, plus every file a commit after `base` touched. A file
- * missing from the working tree (deleted) is left out: there is nothing to check.
+ * untracked and not ignored, plus every file a commit after `base` touched. Existing
+ * files only: a deleted file is a change `deletedFiles` lists, and `importersOf` turns
+ * into the files that still mention it.
  */
 export function changedFiles(top: string, base: string): string[] {
-  const list = (args: string[]) => (git(top, args) ?? "").split("\0").filter(Boolean);
   const all = new Set([
-    ...list(["diff", "--name-only", "--no-renames", "-z", "HEAD"]),
-    ...list(["ls-files", "--others", "--exclude-standard", "-z"]),
-    ...list(["diff", "--name-only", "--no-renames", "-z", `${base}...HEAD`]),
+    ...gitPaths(top, ["diff", "--name-only", "--no-renames", "-z", "HEAD"]),
+    ...gitPaths(top, ["ls-files", "--others", "--exclude-standard", "-z"]),
+    ...gitPaths(top, ["diff", "--name-only", "--no-renames", "-z", `${base}...HEAD`]),
   ]);
   return [...all].filter((f) => fs.existsSync(path.join(top, f))).sort();
+}
+
+/**
+ * A commit holding the working tree as it is now: tracked files as edited, untracked files
+ * that are not ignored, deleted files gone; its parent is HEAD (none before the first
+ * commit). It is built in a copy of the index, so no ref, the index and the working tree
+ * stay as they were; no ref points at it, and `git gc` prunes it once unreachable objects
+ * expire. Null when git cannot build it.
+ */
+export function snapshotTree(top: string): string | null {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-snapshot-"));
+  try {
+    const index = path.join(dir, "index");
+    const real = git(top, ["rev-parse", "--path-format=absolute", "--git-path", "index"]);
+    // The real index's stat data lets `git add -A` skip unchanged files instead of hashing them.
+    if (real !== null && fs.existsSync(real)) fs.copyFileSync(real, index);
+    const env = { GIT_INDEX_FILE: index };
+    if (!runGit(top, ["add", "-A"], env).ok) return null;
+    const tree = runGit(top, ["write-tree"], env);
+    if (!tree.ok) return null;
+    const head = git(top, ["rev-parse", "-q", "--verify", "HEAD^{commit}"]);
+    const commit = runGit(top, [
+      "-c",
+      "user.name=bkit",
+      "-c",
+      "user.email=bkit@localhost",
+      "commit-tree",
+      "--no-gpg-sign",
+      tree.stdout,
+      ...(head === null ? [] : ["-p", head]),
+      "-m",
+      "bkit tested snapshot",
+    ]);
+    return commit.ok ? commit.stdout : null;
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Whether `sha` names a commit the object store still holds. */
+export const commitExists = (top: string, sha: string) =>
+  git(top, ["cat-file", "-e", `${sha}^{commit}`]) !== null;
+
+/**
+ * The files that differ between snapshot `from` and the working tree now (`now`, else a
+ * fresh `snapshotTree`), sorted: `files` the ones that exist now, `deleted` the ones that do
+ * not. Null when `from` is gone from the object store or the tree cannot be snapshotted.
+ */
+export function changedBetween(
+  top: string,
+  from: string,
+  now: string | null = snapshotTree(top),
+): { files: string[]; deleted: string[] } | null {
+  if (now === null || !commitExists(top, from)) return null;
+  const listed = runGit(top, ["diff", "--name-only", "--no-renames", "-z", from, now]);
+  if (!listed.ok) return null;
+  const all = listed.stdout.split("\0").filter(Boolean).sort();
+  const exists = (f: string) => fs.existsSync(path.join(top, f));
+  return { files: all.filter(exists), deleted: all.filter((f) => !exists(f)) };
+}
+
+/**
+ * Files removed since `base`, repo-relative and sorted: deleted in the working tree or
+ * the index, or by a commit after `base`, and missing from the working tree now.
+ */
+export function deletedFiles(top: string, base: string): string[] {
+  const all = new Set([
+    ...gitPaths(top, ["diff", "--name-only", "--no-renames", "--diff-filter=D", "-z", "HEAD"]),
+    ...gitPaths(top, [
+      "diff",
+      "--name-only",
+      "--no-renames",
+      "--diff-filter=D",
+      "-z",
+      `${base}...HEAD`,
+    ]),
+  ]);
+  return [...all].filter((f) => !fs.existsSync(path.join(top, f))).sort();
+}
+
+/**
+ * For each deleted file, the files of the `base` tree that mention its name without the
+ * extension (`git grep -l -F`) and still exist, sorted; a file nothing mentions maps to
+ * `[]`. Null when a search fails (`base` names no tree, or the tree cannot be read):
+ * the caller cannot tell which tests the deletion touches.
+ */
+export function importersOf(
+  top: string,
+  base: string,
+  deleted: readonly string[],
+): Map<string, string[]> | null {
+  const found = new Map<string, string[]>();
+  for (const file of deleted) {
+    const name = path.basename(file, path.extname(file));
+    const res = runGit(top, ["grep", "-l", "-z", "-F", "-e", name, base, "--"]);
+    // Exit 1 with nothing on stderr is "no match". Any stderr fails the search: git grep
+    // exits 0 when it found a match even though it could not read another blob.
+    if (res.stderr !== "") return null;
+    const prefix = `${base}:`;
+    found.set(
+      file,
+      res.stdout
+        .split("\0")
+        .filter(Boolean)
+        .map((hit) => (hit.startsWith(prefix) ? hit.slice(prefix.length) : hit))
+        .filter((hit) => !deleted.includes(hit) && fs.existsSync(path.join(top, hit)))
+        .sort(),
+    );
+  }
+  return found;
 }
 
 /** Whether `dir/package.json` declares `name` as a non-empty script. */

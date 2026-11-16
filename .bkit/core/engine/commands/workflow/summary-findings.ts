@@ -7,7 +7,7 @@ import {
 } from "./challenge.js";
 import type { PlanTaskBlock } from "./plan-blocks.js";
 import type { SummaryInput } from "./summary.js";
-import { parseDecisionItems } from "./decisions.js";
+import { parseDecisionItems } from "./open-decision.js";
 
 type Row = Record<string, unknown>;
 type Task = PlanTaskBlock & { path: string };

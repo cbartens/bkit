@@ -10,9 +10,10 @@
 //            0 is a legal answer (that step simply has not run).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { activeDoneSteps, activeDoneStepsSinceClean, allRunsDoneSteps, appendLine, CORRECTION_CANDIDATE_ROW, lastDoneStepAllRuns, nextStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
+import { activeDoneSteps, activeDoneStepsSinceClean, allRunsDoneSteps, appendLine, cleanRound, CORRECTION_CANDIDATE_ROW, lastDoneStepAllRuns, repeatStrategy, runNumber, statusTimestamp, } from "../../ledgers/status.js";
 import { ASK_POINTS, readBkitConfig, } from "../../shared/settings.js";
 import { oneLine } from "../../shared/text.js";
+import { fixTestStep, gatedCheckStep } from "./loops.js";
 import { headlessRun } from "./runtime.js";
 import { CommandError, EXIT, git, runGit, wholeNumber, } from "../lib.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, positiveInt, readRuns, readStatusRows, statusFile, str, } from "./status.js";
@@ -250,19 +251,21 @@ function gateFailuresOf(file, workflow, step, attempt) {
 /**
  * A fix loop's progress in the active run: `check` counts problems, `fix` fixes them. With
  * `sinceClean`, only the rounds after `check`'s last clean round: a loop that reopens. With
- * `gate` (a step prefix, e.g. `build-group-gate`) and a group, each round also counts the
- * failing tests of the latest same-attempt `{gate}-{group}` test-run row: 0 with no row, and
- * unknown (null) when that row's count is null or the row is red with 0 counted failures.
+ * `gate` (a step prefix, e.g. `build-group-gate`), each round also counts the failing tests
+ * of the latest same-attempt test-run row of `{gate}-{group}`, or of `{gate}` with no group:
+ * 0 with no row, and unknown (null) when that row's count is null or the row is red with 0
+ * counted failures. A round is clean only when its gate also counted 0.
  */
 export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean = false, gate) {
     const runs = readRuns(file);
+    const gateStep = gate === undefined || group === undefined ? gate : `${gate}-${group}`;
+    const gateOf = (r) => gateStep === undefined ? undefined : gateFailuresOf(file, workflow, gateStep, r.attempt);
+    const clean = (r) => cleanRound(r) && (gateStep === undefined || gateOf(r) === 0);
     const done = (step) => sinceClean
-        ? activeDoneStepsSinceClean(runs, workflow, { step, group }, check)
+        ? activeDoneStepsSinceClean(runs, workflow, { step, group }, check, clean)
         : activeDoneSteps(runs, workflow, { step, group });
     const checked = done(check);
-    const gateFailures = checked.map((r) => gate === undefined || group === undefined
-        ? undefined
-        : gateFailuresOf(file, workflow, `${gate}-${group}`, r.attempt));
+    const gateFailures = checked.map(gateOf);
     const rounds = checked.map((r, i) => {
         const g = gateFailures[i];
         if (g === undefined)
@@ -290,7 +293,16 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
         else if (diff.stderr === "")
             codeChanged = true;
     }
-    const ladder = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
+    const prior = lastDoneStepAllRuns(runs, workflow, { step: fix, group })?.strategy;
+    // The same label `status route` gives the fix step: from the tests failing now.
+    const testStep = fixTestStep(fix, group);
+    const gated = gatedCheckStep(fix);
+    const current = gated === undefined
+        ? undefined
+        : activeDoneSteps(runs, workflow, { step: gated, group }).length;
+    const next = testStep === undefined
+        ? "STANDARD"
+        : repeatStrategy(readStatusRows(file), workflow, testStep, current).strategy;
     const sameScope = first !== undefined && last !== undefined && first !== last;
     const differentScopes = rounds.length >= 2 && !sameScope;
     const trend = rounds.length < 2
@@ -331,7 +343,7 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
             at: r.at,
         })),
         counts: rounds.map((r) => (r.failures === undefined ? "?" : String(r.failures))).join(" → "),
-        ...(gate === undefined || group === undefined
+        ...(gateStep === undefined
             ? {}
             : {
                 gateCounts: gateFailures
@@ -340,8 +352,8 @@ export function loopProgress(file, cwd, workflow, check, fix, group, sinceClean 
             }),
         codeChanged,
         lastStrategy: fixes.at(-1)?.strategy ?? null,
-        nextStrategy: nextStrategy(ladder),
-        finalSpent: fixes.some((r) => r.strategy === "FINAL") || ladder === "FINAL",
+        nextStrategy: next,
+        finalSpent: fixes.some((r) => r.strategy === "FINAL") || prior === "FINAL",
         minutesPerRound: span === null || Number.isNaN(span) ? null : Math.round(span),
         trend,
         trendLine,

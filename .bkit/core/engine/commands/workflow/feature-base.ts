@@ -3,7 +3,7 @@
 
 import { git } from "../lib.js";
 
-const ORIGIN_DEV = "origin/dev";
+export const ORIGIN_DEV = "origin/dev";
 
 /**
  * The commit the feature's own work starts after: the later of HEAD's meeting points with

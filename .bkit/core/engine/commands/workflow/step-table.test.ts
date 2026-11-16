@@ -320,17 +320,21 @@ describe("bkit status resume", () => {
     });
   });
 
-  it.each([
-    ["PASS", { step: "build-challenge", number: 11 }],
-    ["CONCERNS", { step: "build-plan-verify-holistic", number: 10 }],
-    ["FAIL", { step: "build-plan-verify-holistic", number: 10 }],
-  ])("a holistic verify %s row resumes at %o", async (verdict, expected) => {
-    const file = log([...setUp("build"), done("build", "build-plan-verify-holistic", { verdict })]);
-    expect((await resume("build", file)).json).toMatchObject({
-      ...expected,
-      after: "build-plan-verify-holistic",
-    });
-  });
+  // The holistic gate runs after every verify verdict, so no verify row resumes past it.
+  it.each(["PASS", "CONCERNS", "FAIL"])(
+    "a holistic verify %s row with no gate row resumes at Plan Verify Holistic",
+    async (verdict) => {
+      const file = log([
+        ...setUp("build"),
+        done("build", "build-plan-verify-holistic", { verdict }),
+      ]);
+      expect((await resume("build", file)).json).toMatchObject({
+        step: "build-plan-verify-holistic",
+        number: 10,
+        after: "build-plan-verify-holistic",
+      });
+    },
+  );
 
   it("a holistic gaps fix resumes at the holistic verify that judges it", async () => {
     const file = log([
@@ -375,6 +379,50 @@ describe("bkit status resume", () => {
         after: "build-decision",
       });
     }
+  });
+
+  it("a run stopped after a build-holistic-gate row resumes at Plan Verify Holistic", async () => {
+    for (const verdict of ["PASS", "FAIL"]) {
+      const file = log([
+        ...setUp("build"),
+        done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+        done("build", "build-holistic-gate", { verdict }),
+      ]);
+      expect((await resume("build", file)).json, verdict).toMatchObject({
+        step: "build-plan-verify-holistic",
+        number: 10,
+        title: "Plan Verify Holistic",
+        after: "build-holistic-gate",
+      });
+    }
+  });
+
+  it("retry after a holistic gate pause goes to the holistic fix round", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+      done("build", "build-holistic-gate", { verdict: "FAIL" }),
+      done("build", "build-decision", { route: "retry" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-plan-gaps-remediate-holistic",
+      number: 10,
+      after: "build-decision",
+    });
+  });
+
+  it("continue after a holistic gate pause goes to Build Challenge", async () => {
+    const file = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify-holistic", { verdict: "PASS" }),
+      done("build", "build-holistic-gate", { verdict: "FAIL" }),
+      done("build", "build-decision", { route: "continue" }),
+    ]);
+    expect((await resume("build", file)).json).toMatchObject({
+      step: "build-challenge",
+      number: 11,
+      after: "build-decision",
+    });
   });
 
   it("a continue decision after a group verify resumes at Plan Execute", async () => {
