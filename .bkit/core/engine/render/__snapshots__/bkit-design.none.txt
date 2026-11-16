@@ -429,15 +429,11 @@ _No tracker connected, skip step._
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
    The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
-3. Finish, then push with exactly one command:
+3. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --post --title=Summary --link-ref=dev --comment-body
    ```
-   ```bash
-   "{BKIT}" branches push --mode=feature
-   ```
 4. Route — first match wins:
-   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
    - **Else** → **Failure Path**.
 
@@ -447,7 +443,6 @@ _No tracker connected, skip step._
 - [ ] `workflows summary` printed a verdict
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Failing summary displayed
-- [ ] Summary commit pushed
 
 ---
 
@@ -485,9 +480,14 @@ _No tracker connected, skip step._
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+   - Work in the main checkout `{REPO_ROOT}` for every command of this round, because after `branches land` the design run's `{STATUS}` can sit in the removed worktree. Check that local `dev` holds the run's status log:
+     ```bash
+     cd "{REPO_ROOT}" && test -f docs/plans/{YYYYMM}/logs/{FID}/status.jsonl
+     ```
+     **If** exit != 0 → tell the user that local `dev` does not hold the landed design run (`branches land` logged why it did not fast-forward), and record nothing from this round.
    - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
      ```bash
-     "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{STATUS}"
+     cd "{REPO_ROOT}" && "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      ```
    - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
@@ -498,7 +498,7 @@ _No tracker connected, skip step._
      Read: `{OUTBOX}/design-answers.md`.
      Update: `docs/plans/{YYYYMM}/{FID}-design.md`.
      **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
-   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
 
 ### 🔒 Gate 12 — Close Workflow
 

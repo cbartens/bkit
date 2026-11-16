@@ -147,14 +147,18 @@ $ARGUMENTS
      "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=loop >/dev/null || exit 1
      ```
 5. Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
-   Then push the record and release the lock. NEVER run `workflows fail`:
+   Then push the record to the remote, never to a branch that has an open PR:
    ```bash
    "{BKIT}" workflows handover --post --workflow=debug --fid={FID} --month={YYYYMM} --push --worktree="{WORKTREE_PATH}"
+   ```
+   Route — first match wins:
+   - **If** exit 0, 9, 10, 11 **or** 80 → take the route **Failure Path** step 5 gives that exit, with exit 9 and exit 11 taking the exit 10 route, and continue at step 6 in place of its step 6.
+   - **If** the handover exits non-zero → **Failure Path**.
+6. Release this run's lock. NEVER run `workflows fail`:
+   ```bash
    "{BKIT}" locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN} >/dev/null || exit 1
    ```
-   Route:
-   - **If** the handover exits non-zero → **Failure Path**.
-   - **Else** → **STOP**, no further downstream steps.
+   **STOP**, no further downstream steps.
 
 ### 🔒 Gate — Loop Question
 

@@ -620,9 +620,14 @@ description: "Design Feature — Autonomous design phase"
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
 7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
+   - Work in the main checkout `{REPO_ROOT}` for every command of this round, because after `branches land` the design run's `{STATUS}` can sit in the removed worktree. Check that local `dev` holds the run's status log:
+     ```bash
+     cd "{REPO_ROOT}" && test -f docs/plans/{YYYYMM}/logs/{FID}/status.jsonl
+     ```
+     **If** exit != 0 → tell the user that local `dev` does not hold the landed design run (`branches land` logged why it did not fast-forward), and record nothing from this round.
    - Obtain the round's invocation id and keep the printed `invocation` as `INVOCATION`:
      ```bash
-     "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{STATUS}"
+     cd "{REPO_ROOT}" && "{BKIT}" status invocation --workflow=design --step=design-close-workflow --file="{REPO_ROOT}/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
      ```
    - For each answer that settles an architecture / technology decision, append one `docs/decisions.jsonl` row with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom). Pass `--invocation="{INVOCATION}"` with a fresh `--operation` per append, and retry a lost response with the same `--operation` (`receipt.replayed: true` = the row is already on disk). The engine fills `by` from the invocation, so write no `by.step`. Set `rationale` = `answered by owner: {human's answer}`.
      - **If** the decision is already on disk → reuse its `key`.
@@ -633,11 +638,11 @@ description: "Design Feature — Autonomous design phase"
      Read: `{OUTBOX}/design-answers.md`.
      Update: `docs/plans/{YYYYMM}/{FID}-design.md`.
      **If** `Verdict` = FAIL → tell the user which answer stays unapplied, never the **Failure Path**.
-   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+   - Commit `docs/plans/{YYYYMM}/{FID}-design.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
    <!-- bkit:tracker true start -->
    - **Skip if** `ISSUE_ID` empty. Comment — this round's answers:
      ```bash
-     "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=design --step-number=12 --step-title="Owner Answers" --body-file="{OUTBOX}/design-answers.md" --session-dir="{SESSION_DIR}"
+     cd "{REPO_ROOT}" && "{BKIT}" issues comment --post --issue="{ISSUE_ID}" --workflow=design --step-number=12 --step-title="Owner Answers" --body-file="{OUTBOX}/design-answers.md" --session-dir="{SESSION_DIR}"
      ```
    <!-- bkit:tracker true end -->
 

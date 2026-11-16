@@ -7222,6 +7222,24 @@ Set `by.step` = `{{workflow}}-close-workflow`, and `rationale` = `answered by ow
 `rationale` = `answered by owner: {human's answer}`;
 ```
 
+### workflow-owner-answers-main-checkout
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+Work in the main checkout `{REPO_ROOT}` for every command of this round, because after `branches land` the {{workflow}} run's `{STATUS}` can sit in the removed worktree. Check that local `dev` holds the run's status log:
+```
+
+### workflow-owner-answers-not-landed
+
+- workflow: where-used
+- carriers: workflow `bkit-design`, `bkit-plan`
+
+```text
+**If** exit != 0 → tell the user that local `dev` does not hold the landed {{workflow}} run (`branches land` logged why it did not fast-forward), and record nothing from this round.
+```
+
 ### workflow-owner-answers-invocation
 
 - workflow: where-used
@@ -7295,6 +7313,10 @@ Write `{OUTBOX}/{{workflow}}-answers.md`: the `## Owner answers` heading, then p
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
+Commit `docs/plans/{YYYYMM}/{FID}-{{workflow}}.md`, `docs/plans/{YYYYMM}/logs/{FID}/{{workflow}}-answers-{RUN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
+```
+
+```retired
 Commit `docs/plans/{YYYYMM}/{FID}-{{workflow}}.md`, `docs/plans/{YYYYMM}/logs/{FID}/{{workflow}}-answers-{RUN}.md` and, when a row was written, `docs/decisions.jsonl` on `dev`, those files only, with the message `docs({FID}): owner answers bkit [skip ci]`. NEVER push.
 ```
 
@@ -10380,6 +10402,7 @@ Record the reply before anything else:
 **If** the answer is `Try again` → return to the calling step.
 **If** the answer is `Stop` → step 5.
 Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
+**If** exit 0, 9, 10, 11 **or** 80 → take the route **Failure Path** step 5 gives that exit, with exit 9 and exit 11 taking the exit 10 route, and continue at step 6 in place of its step 6.
 Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`), or the soak limit used up
 Used-up soak given its allowance on `Try again` (`counters grant`)
 Wait and reply recorded (`owner-pause`, `owner-answer`)
