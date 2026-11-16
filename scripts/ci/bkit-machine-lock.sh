@@ -15,7 +15,18 @@
 #   bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command> [args…]
 # run ["<who>"] [--lock <name>] -- <command> exits with the command's status:
 # 2 usage, 73 the lock could not be taken, 75 the wait gave up.
+# With LOCAL_STACK_LOCK_STATUS_FILE set, a 73 or 75 also writes that file (a temp file beside it,
+# then a rename) as three LF-ended lines: lock=<name>, outcome=refused or outcome=gave-up, and
+# holder=<each holder's "who — checkout (pid N, since HH:MM:SS)" note, joined by "; ">. Read the
+# outcome from this file and the exit code, never from the printed lines. run unsets the variable
+# for its command, so a nested wrapper never writes the file.
 # The run name defaults to LOCAL_STACK_LOCK_WHO, npm_lifecycle_event, then run.
+#   bash scripts/ci/bkit-machine-lock.sh slots    # prints "slots=N workers=N" for this run, exit 0
+#   bash scripts/ci/bkit-machine-lock.sh queue [--lock <name>]
+#     prints one "<who> — <checkout>" line per waiting run and held place, in queue order, exit 0
+#   bash scripts/ci/bkit-machine-lock.sh jump [--lock <name>] <who> [<checkout>]
+#     moves that run to the front: exit 0 printing its line, 1 none matches, 3 several match
+#     (printing them); queue and jump default to the tests lock.
 # TERM, INT and HUP defer cancellation until the foreground command ends, keeping
 # its lock held throughout; the wrapper then returns the signal's exit status.
 #
@@ -27,17 +38,24 @@
 #
 # Take locks in this order: tests, other named locks, then the unnamed stack lock.
 # A child reuses only the named or unnamed lock its live parent holds.
-# The tests slots default to 2 with 8 or more cores, else 1; BKIT_TEST_SLOTS (whole number >= 1) overrides. Taking tests
-# exports BKIT_TEST_WORKERS=max(1, floor(cores / slots) - 1) for the runner to use.
+# The tests slots default, for a local run only, to 2 with 8 or more cores, else 1; any other
+# runtime defaults to 1. A run is not local when BKIT_RUNTIME is set to anything but LOCAL; with
+# BKIT_RUNTIME unset, when .bkit/.runtime-cursor exists in the main checkout or CLAUDE_CODE_REMOTE
+# is set to anything but empty, false, FALSE, False, 0, no or NO. BKIT_TEST_SLOTS (whole number
+# >= 1) overrides. Taking tests exports BKIT_TEST_WORKERS=max(1, floor(cores / slots) - 1) for the
+# runner to use.
 # LOCAL_STACK_LOCK_WAIT_S caps the wait; otherwise it is 60s without a TTY, 3600s
 # with a TTY. Named releases save each checkout's held seconds in <name>.last.
 # Waiting notes name every holder, that checkout's last run and the run's place in line.
 # CI=true / CI=1 is a no-op.
 # Waiters are served in the order they started waiting: each keeps a ticket in a <name>.queue/
-# folder beside its lock file, flock-held while it waits, and only the first live ticket tries
-# the lock. A ticket of a dead waiter is skipped and removed. A waiter that gives up leaves its
+# folder beside its lock file, flock-held while it waits. The ticket's first line is
+# "<who> — <checkout>" and its second line slots=N, the slots the waiter asks for. A waiter may take
+# slot k only while no live ticket ahead of it asks for k or more slots, so equal asks keep arrival
+# order and a 1-slot waiter ahead never blocks slot 2; a ticket with no slots= line asks for every
+# slot. A ticket of a dead waiter is skipped and removed. A waiter that gives up leaves its
 # ticket as <ticket>.held for 120s, so the same run asking again keeps its place in line.
-# A <ms>.jump marker in the queue (written by bkit tests jump) moves the waiter whose line it names to
+# A <ms>.jump marker in the queue (written by jump) moves the waiter whose line it names to
 # the front, newest marker first; the holder keeps the lock. The waiter's own markers go when it takes the lock.
 # A Perl flock holder exits within a second of its caller; killed callers leave no stale lock.
 # Requires Bash 3.2+ and /usr/bin/perl.
@@ -46,6 +64,7 @@ _LOCAL_STACK_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _LOCAL_STACK_LOCK_ROOT="$(git -C "$_LOCAL_STACK_LOCK_DIR" rev-parse --show-toplevel 2>/dev/null || echo "$_LOCAL_STACK_LOCK_DIR")"
 LOCAL_STACK_LOCK_PID="${LOCAL_STACK_LOCK_PID:-}"
 _LOCAL_STACK_LOCK_EXIT=73
+_LOCAL_STACK_LOCK_HOLDER=""
 
 # The stack's name: BKIT_LOCAL_STACK, else the main checkout's folder name, the same from every
 # worktree. Characters outside A-Z a-z 0-9 . _ - become _.
@@ -104,25 +123,41 @@ _local_stack_lock_cores() {
   case "$_lsl_cores" in *[!0-9]*|""|0) _lsl_cores=1 ;; esac
 }
 
+# Whether this run is local, read in the order bkit's runtime detection reads it: a set
+# BKIT_RUNTIME decides alone; else the Cursor marker in the main checkout means not local; else
+# CLAUDE_CODE_REMOTE set to anything but an empty or false value means not local.
+_local_stack_lock_local() {
+  local _lsl_common
+  if [ -n "${BKIT_RUNTIME:-}" ]; then
+    if [ "$BKIT_RUNTIME" = LOCAL ]; then return 0; fi
+    return 1
+  fi
+  _lsl_common="$(git -C "$PWD" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _lsl_common=""
+  if [ -n "$_lsl_common" ] && [ -e "$(dirname "$_lsl_common")/.bkit/.runtime-cursor" ]; then
+    return 1
+  fi
+  case "${CLAUDE_CODE_REMOTE:-}" in
+    ""|false|FALSE|False|0|no|NO) return 0 ;;
+  esac
+  return 1
+}
+
 _local_stack_lock_slots() {
   local _lsl_default=1
-  [ "$_lsl_cores" -ge 8 ] && _lsl_default=2
-  if [ "${BKIT_TEST_SLOTS+x}" != x ]; then
-    _lsl_slots="$_lsl_default"
-    return 0
+  if [ "${BKIT_TEST_SLOTS+x}" = x ]; then
+    _lsl_slots="$BKIT_TEST_SLOTS"
+    case "$_lsl_slots" in
+      *[!0-9]*|"") _lsl_slots=0 ;;
+      *) _lsl_slots=$((10#$_lsl_slots)) ;;
+    esac
+    if [ "$_lsl_slots" -ge 1 ]; then return 0; fi
   fi
-  _lsl_slots="$BKIT_TEST_SLOTS"
-  case "$_lsl_slots" in
-    *[!0-9]*|"") _lsl_slots=0 ;;
-    *) _lsl_slots=$((10#$_lsl_slots)) ;;
-  esac
-  if [ "$_lsl_slots" -lt 1 ]; then
-    if [ "${_LOCAL_STACK_LOCK_SLOTS_NOTED:-}" != 1 ]; then
-      echo "[machine-lock] invalid BKIT_TEST_SLOTS; using $_lsl_default slot(s)" >&2
-      _LOCAL_STACK_LOCK_SLOTS_NOTED=1
-    fi
-    _lsl_slots="$_lsl_default"
+  if [ "$_lsl_cores" -ge 8 ] && _local_stack_lock_local; then _lsl_default=2; fi
+  if [ "${BKIT_TEST_SLOTS+x}" = x ] && [ "${_LOCAL_STACK_LOCK_SLOTS_NOTED:-}" != 1 ]; then
+    echo "[machine-lock] invalid BKIT_TEST_SLOTS; using $_lsl_default slot(s)" >&2
+    _LOCAL_STACK_LOCK_SLOTS_NOTED=1
   fi
+  _lsl_slots="$_lsl_default"
 }
 
 _local_stack_lock_workers() {
@@ -147,66 +182,11 @@ _local_stack_lock_vars() {
   fi
 }
 
-_local_stack_lock() {
-  local _lsl_mode="$1" _lsl_who="$2" _lsl_name="${3:-}"
-  local _lsl_pid_var _lsl_owner_var _lsl_name_var _lsl_owner _lsl_existing
-  local _lsl_file _lsl_label _lsl_fifo _lsl_pid _lsl_reply _lsl_checkout
-  local _lsl_slots=1 _lsl_cores=1 _lsl_wait _lsl_var _lsl_held_name _lsl_held_name_var
-  _LOCAL_STACK_LOCK_EXIT=73
-  _local_stack_lock_vars "$_lsl_name"
-  _lsl_owner="${!_lsl_owner_var:-}"
-  _lsl_existing="${!_lsl_pid_var:-}"
-  if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then return 0; fi
-  if [ "$_lsl_name" = tests ]; then
-    _local_stack_lock_cores
-    _local_stack_lock_slots
-    _local_stack_lock_workers
-  fi
-  if [ -n "$_lsl_owner" ] && kill -0 "$_lsl_owner" 2>/dev/null; then return 0; fi
-  if [ -n "$_lsl_existing" ] && kill -0 "$_lsl_existing" 2>/dev/null; then return 0; fi
-  if [ -n "$_lsl_name" ]; then
-    for _lsl_var in ${!LOCAL_STACK_LOCK_OWNER*}; do
-      _lsl_owner="${!_lsl_var:-}"
-      [ -n "$_lsl_owner" ] && kill -0 "$_lsl_owner" 2>/dev/null || continue
-      if [ "$_lsl_var" = LOCAL_STACK_LOCK_OWNER ] || [ "$_lsl_name" = tests ]; then
-        _lsl_held_name_var="${_lsl_var/OWNER/NAME}"
-        _lsl_held_name="${!_lsl_held_name_var:-the unnamed stack lock}"
-        echo "[machine-lock] ❌ cannot take $_lsl_name while holding $_lsl_held_name: lock order is tests, other named locks, then the unnamed stack lock" >&2
-        return 1
-      fi
-    done
-  fi
-  if [ "${LOCAL_STACK_LOCK_WAIT_S+x}" = x ]; then
-    _lsl_wait="$LOCAL_STACK_LOCK_WAIT_S"
-  elif [ -t 0 ]; then
-    _lsl_wait=3600
-  else
-    _lsl_wait=60
-  fi
-
-  if ! _lsl_file="$(local_stack_lock_file "$_lsl_name")"; then
-    echo "[machine-lock] ❌ cannot name the local stack: run inside a git checkout, or set BKIT_LOCAL_STACK" >&2
-    return 1
-  fi
-  _lsl_label="the local stack $(basename "$_lsl_file" .lock)"
-  _lsl_checkout="$_LOCAL_STACK_LOCK_ROOT"
-  if [ -n "$_lsl_name" ]; then
-    _lsl_label="$_lsl_name"
-    _lsl_checkout="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
-  fi
-  if [ ! -x /usr/bin/perl ]; then
-    echo "[machine-lock] ❌ could not take the lock for $_lsl_label: /usr/bin/perl not found" >&2
-    return 1
-  fi
-  if ! mkdir -p "$(dirname "$_lsl_file")"; then
-    echo "[machine-lock] ❌ could not take the lock for $_lsl_label: cannot create $(dirname "$_lsl_file")" >&2
-    return 1
-  fi
-  _lsl_fifo="$(mktemp -u "${TMPDIR:-/tmp}/local-stack-lock.XXXXXX")"
-  mkfifo "$_lsl_fifo" || return 1
-
-  # The holder answers on the fifo once: ok, busy <holder>, timeout <holder> or error <why>.
-  /usr/bin/perl -e '
+# The perl helper every lock take starts in the background, and the queue and jump subcommands
+# run on their own. It execs, so a background helper is the perl process itself and its parent is
+# the caller it watches.
+_local_stack_lock_helper() {
+  exec /usr/bin/perl -e '
     use strict;
     use Fcntl qw(:flock);
     use File::Glob qw(bsd_glob);
@@ -217,8 +197,6 @@ _local_stack_lock() {
     # subreaper) at once, while `kill 0` would still find it until whoever started it reaps it.
     my $parent = getppid();
     my $caller_alive = sub { getppid() == $parent };
-    open(my $out, ">", $fifo) or exit 1;
-    $out->autoflush(1);
     my $stem = $file; $stem =~ s/\.lock$//;
     my $history = "$stem.last";
     my $holder = sub {
@@ -257,10 +235,15 @@ _local_stack_lock() {
       my $suffix = ($n % 100 >= 11 && $n % 100 <= 13) ? "th" : (qw(th st nd rd th th th th th th))[$n % 10];
       return "$n$suffix";
     };
-    # Live tickets sorted by arrival, except that a ticket whose line a <ms>.jump marker names goes
-    # first (newest marker first); dead tickets (flock can be taken), held places older than 120s and
-    # markers naming no live ticket or held place are removed; every other name is left alone.
-    # Returns (our place, live tickets).
+    # Live tickets and held places sorted by arrival, except that an entry whose line a <ms>.jump
+    # marker names goes first (newest marker first); dead tickets (flock can be taken), held places
+    # older than 120s and markers naming no live ticket or held place are removed; every other name
+    # is left alone. Each entry is [seconds, microseconds, pid, ours, line, slots asked, held].
+    # Keeps the sorted entries in @order and returns (our place, live tickets, the most slots a
+    # live ticket ahead of ours asks for, 0 with none ahead). A ticket with no slots= line asks for
+    # every slot.
+    my $every = 1e9;
+    my @order;
     my $first_line = sub {
       my $path = shift;
       open(my $fh, "<", $path) or return undef;
@@ -271,22 +254,30 @@ _local_stack_lock() {
     };
     my $scan = sub {
       my (@live, @markers, %known);
-      opendir(my $dir, $queue) or return (0, 0);
+      @order = ();
+      opendir(my $dir, $queue) or return (0, 0, 0);
       for my $entry (readdir $dir) {
         if ($entry =~ /^(\d+)\.(\d{6})-(\d+)$/) {
-          if (defined $ticket && $entry eq (split m{/}, $ticket)[-1]) { push @live, [$1, $2, $3, 1, $first_line->("$queue/$entry")]; next }
+          my ($s, $us, $pid) = ($1, $2, $3);
+          if (defined $ticket && $entry eq (split m{/}, $ticket)[-1]) { push @live, [$s, $us, $pid, 1, $first_line->("$queue/$entry"), $slots, 0]; next }
           if (open(my $t, "<", "$queue/$entry")) {
             if (flock($t, LOCK_EX | LOCK_NB)) { unlink "$queue/$entry" } else {
               my $first = <$t>;
+              my $second = <$t>;
               if (defined $first) { chomp $first }
-              push @live, [$1, $2, $3, 0, $first];
+              my $asks = defined $second && $second =~ /^slots=([1-9]\d*)$/ ? $1 : $every;
+              push @live, [$s, $us, $pid, 0, $first, $asks, 0];
             }
             close $t;
           }
-        } elsif ($entry =~ /^\d+\.\d{6}-\d+\.held$/) {
+        } elsif ($entry =~ /^(\d+)\.(\d{6})-(\d+)\.held$/) {
+          my ($s, $us, $pid) = ($1, $2, $3);
           my $mtime = (stat "$queue/$entry")[9];
           if (defined $mtime && time - $mtime > 120) { unlink "$queue/$entry" }
-          else { my $first = $first_line->("$queue/$entry"); $known{$first} = 1 if defined $first }
+          else {
+            my $first = $first_line->("$queue/$entry");
+            if (defined $first) { $known{$first} = 1; push @live, [$s, $us, $pid, 0, $first, 0, 1] }
+          }
         } elsif ($entry =~ /^(\d+)\.jump$/) {
           push @markers, [$1, $entry, $first_line->("$queue/$entry")];
         }
@@ -305,10 +296,41 @@ _local_stack_lock() {
           || (defined $fa ? $fb <=> $fa : 0)
           || $a->[0] <=> $b->[0] || $a->[1] <=> $b->[1] || $a->[2] <=> $b->[2]
       } @live;
-      my $place = 0;
-      for my $i (0 .. $#live) { $place = $i + 1 if $live[$i][3] }
-      return ($place, scalar @live);
+      @order = @live;
+      my ($place, $count, $ahead) = (0, 0, 0);
+      for my $e (@live) {
+        next if $e->[6];
+        $count++;
+        if ($e->[3]) { $place = $count }
+        elsif (!$place && $e->[5] > $ahead) { $ahead = $e->[5] }
+      }
+      return ($place, $count, $ahead);
     };
+    # queue prints the line of each live ticket and held place in queue order. jump writes a
+    # <ms>.jump marker naming the one line of run $who (and checkout $checkout, when given): exit 0
+    # printing that line, 1 when none matches, 3 when several do (printing them).
+    if ($mode eq "queue" || $mode eq "jump") {
+      $scan->();
+      my (@lines, %seen);
+      for my $e (@order) { push @lines, $e->[4] if defined $e->[4] && !$seen{$e->[4]}++ }
+      if ($mode eq "queue") { print "$_\n" for @lines; exit 0 }
+      my @matches = grep { index($_, "$who — ") == 0 && ($checkout eq "" || $_ eq "$who — $checkout") } @lines;
+      exit 1 unless @matches;
+      if (@matches > 1) { print "$_\n" for @matches; exit 3 }
+      my $temp = "$queue/.jump.$$.tmp";
+      my $marker = "$queue/" . int(Time::HiRes::time() * 1000) . ".jump";
+      my $m;
+      unless (open($m, ">", $temp) && print($m "$matches[0]\n") && close($m) && rename($temp, $marker)) {
+        my $why = $!;
+        unlink $temp;
+        print STDERR "[machine-lock] ❌ cannot write a jump marker in $queue: $why\n";
+        exit 73;
+      }
+      print "$matches[0]\n";
+      exit 0;
+    }
+    open(my $out, ">", $fifo) or exit 1;
+    $out->autoflush(1);
     if ($mode ne "try") {
       unless (mkdir($queue) || -d $queue) { print $out "error cannot create $queue: $!\n"; exit 1 }
       my $line = "$who — $checkout";
@@ -334,7 +356,8 @@ _local_stack_lock() {
       open($ticket_fh, ">", $temp) or do { print $out "error cannot write a ticket in $queue: $!\n"; exit 1 };
       flock($ticket_fh, LOCK_EX);
       $ticket_fh->autoflush(1);
-      print $ticket_fh "$line\n";
+      # The second line is the slots this run asks for; readers of the first line ignore it.
+      print $ticket_fh "$line\nslots=$slots\n";
       my $name_of_ticket = "$time-$$";
       unless (rename($temp, "$queue/$name_of_ticket")) {
         my $why = $!;
@@ -349,17 +372,18 @@ _local_stack_lock() {
     my $start = time;
     my $next_note = 0;
     while (1) {
-      my ($place, $waiting) = $scan->();
+      my ($place, $waiting, $ahead) = $scan->();
       if ($mode eq "try") {
         if ($waiting) { print $out "busy " . $holder->() . "; $waiting waiting in line\n"; exit 0 }
       }
-      if ($mode eq "try" || $place <= 1) {
-        for my $slot (1 .. $slots) {
-          my $candidate = $slot == 1 ? $file : "$stem.$slot.lock";
-          open(my $next, ">>", $candidate) or do { print $out "error cannot open $candidate: $!\n"; exit 1 };
-          if (flock($next, LOCK_EX | LOCK_NB)) { $lock = $next; $held_file = $candidate; last }
-          close $next;
-        }
+      # A waiter may take slot k only while no live ticket ahead of it asks for k or more slots,
+      # so a 1-slot waiter ahead never blocks slot 2 and equal asks keep arrival order.
+      my $first_slot = $mode eq "try" ? 1 : $ahead + 1;
+      for my $slot ($first_slot .. $slots) {
+        my $candidate = $slot == 1 ? $file : "$stem.$slot.lock";
+        open(my $next, ">>", $candidate) or do { print $out "error cannot open $candidate: $!\n"; exit 1 };
+        if (flock($next, LOCK_EX | LOCK_NB)) { $lock = $next; $held_file = $candidate; last }
+        close $next;
       }
       last if defined $lock;
       exit 0 unless $caller_alive->();
@@ -422,7 +446,71 @@ _local_stack_lock() {
       } else { print STDERR "[machine-lock] could not lock $history for held-time history: $!\n" }
     }
     unlink "$held_file.holder";
-  ' "$_lsl_file" "$$" "$_lsl_who" "$_lsl_checkout" "$_lsl_fifo" "$_lsl_wait" "$_lsl_mode" "$_lsl_label" "$_lsl_slots" "$_lsl_name" </dev/null >/dev/null &
+  ' "$@"
+}
+
+_local_stack_lock() {
+  local _lsl_mode="$1" _lsl_who="$2" _lsl_name="${3:-}"
+  local _lsl_pid_var _lsl_owner_var _lsl_name_var _lsl_owner _lsl_existing
+  local _lsl_file _lsl_label _lsl_fifo _lsl_pid _lsl_reply _lsl_checkout
+  local _lsl_slots=1 _lsl_cores=1 _lsl_wait _lsl_var _lsl_held_name _lsl_held_name_var
+  _LOCAL_STACK_LOCK_EXIT=73
+  _LOCAL_STACK_LOCK_HOLDER=""
+  _local_stack_lock_vars "$_lsl_name"
+  _lsl_owner="${!_lsl_owner_var:-}"
+  _lsl_existing="${!_lsl_pid_var:-}"
+  if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ]; then return 0; fi
+  if [ "$_lsl_name" = tests ]; then
+    _local_stack_lock_cores
+    _local_stack_lock_slots
+    _local_stack_lock_workers
+  fi
+  if [ -n "$_lsl_owner" ] && kill -0 "$_lsl_owner" 2>/dev/null; then return 0; fi
+  if [ -n "$_lsl_existing" ] && kill -0 "$_lsl_existing" 2>/dev/null; then return 0; fi
+  if [ -n "$_lsl_name" ]; then
+    for _lsl_var in ${!LOCAL_STACK_LOCK_OWNER*}; do
+      _lsl_owner="${!_lsl_var:-}"
+      [ -n "$_lsl_owner" ] && kill -0 "$_lsl_owner" 2>/dev/null || continue
+      if [ "$_lsl_var" = LOCAL_STACK_LOCK_OWNER ] || [ "$_lsl_name" = tests ]; then
+        _lsl_held_name_var="${_lsl_var/OWNER/NAME}"
+        _lsl_held_name="${!_lsl_held_name_var:-the unnamed stack lock}"
+        echo "[machine-lock] ❌ cannot take $_lsl_name while holding $_lsl_held_name: lock order is tests, other named locks, then the unnamed stack lock" >&2
+        return 1
+      fi
+    done
+  fi
+  if [ "${LOCAL_STACK_LOCK_WAIT_S+x}" = x ]; then
+    _lsl_wait="$LOCAL_STACK_LOCK_WAIT_S"
+  elif [ -t 0 ]; then
+    _lsl_wait=3600
+  else
+    _lsl_wait=60
+  fi
+
+  if ! _lsl_file="$(local_stack_lock_file "$_lsl_name")"; then
+    echo "[machine-lock] ❌ cannot name the local stack: run inside a git checkout, or set BKIT_LOCAL_STACK" >&2
+    return 1
+  fi
+  _lsl_label="the local stack $(basename "$_lsl_file" .lock)"
+  _lsl_checkout="$_LOCAL_STACK_LOCK_ROOT"
+  if [ -n "$_lsl_name" ]; then
+    _lsl_label="$_lsl_name"
+    _lsl_checkout="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
+  fi
+  if [ ! -x /usr/bin/perl ]; then
+    echo "[machine-lock] ❌ could not take the lock for $_lsl_label: /usr/bin/perl not found" >&2
+    return 1
+  fi
+  if ! mkdir -p "$(dirname "$_lsl_file")"; then
+    echo "[machine-lock] ❌ could not take the lock for $_lsl_label: cannot create $(dirname "$_lsl_file")" >&2
+    return 1
+  fi
+  _lsl_fifo="$(mktemp -u "${TMPDIR:-/tmp}/local-stack-lock.XXXXXX")"
+  mkfifo "$_lsl_fifo" || return 1
+
+  # The holder answers on the fifo once: ok, busy <holder>, timeout <holder> or error <why>.
+  _local_stack_lock_helper \
+    "$_lsl_file" "$$" "$_lsl_who" "$_lsl_checkout" "$_lsl_fifo" "$_lsl_wait" "$_lsl_mode" "$_lsl_label" "$_lsl_slots" "$_lsl_name" </dev/null >/dev/null &
   _lsl_pid=$!
   # The fifo is opened read-write, so the read never blocks on a holder that died before it
   # answered (a failed fork under load, a killed perl): the loop stops once it is gone.
@@ -455,10 +543,12 @@ _local_stack_lock() {
       ;;
     busy\ *)
       _LOCAL_STACK_LOCK_EXIT=75
+      _LOCAL_STACK_LOCK_HOLDER="${_lsl_reply#busy }"
       echo "[machine-lock] $_lsl_label is in use by ${_lsl_reply#busy }" >&2
       ;;
     timeout\ *)
       _LOCAL_STACK_LOCK_EXIT=75
+      _LOCAL_STACK_LOCK_HOLDER="${_lsl_reply#timeout }"
       echo "[machine-lock] ❌ $_lsl_who gave up after ${_lsl_wait}s waiting for $_lsl_label, in use by ${_lsl_reply#timeout }" >&2
       echo "[machine-lock]    Let that run finish, or stop it. LOCAL_STACK_LOCK_WAIT_S sets how long to wait." >&2
       ;;
@@ -493,12 +583,51 @@ release_local_stack_lock() {
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   _lsl_run_usage() {
     echo 'usage: bash scripts/ci/bkit-machine-lock.sh run ["<who>"] [--lock <name>] -- <command> [args…]' >&2
+    echo '       bash scripts/ci/bkit-machine-lock.sh slots' >&2
+    echo '       bash scripts/ci/bkit-machine-lock.sh queue [--lock <name>]' >&2
+    echo '       bash scripts/ci/bkit-machine-lock.sh jump [--lock <name>] <who> [<checkout>]' >&2
     exit 2
   }
-  [ "${1:-}" = run ] || _lsl_run_usage
+  case "${1:-}" in
+    run) ;;
+    queue|jump)
+      _lsl_sub="$1"
+      _lsl_sub_name=tests
+      shift
+      if [ "${1:-}" = --lock ]; then
+        [ -n "${2:-}" ] || _lsl_run_usage
+        _lsl_sub_name="$2"
+        shift 2
+      fi
+      if [ "$_lsl_sub" = queue ]; then
+        [ "$#" -eq 0 ] || _lsl_run_usage
+      else
+        [ -n "${1:-}" ] && [ "$#" -le 2 ] || _lsl_run_usage
+      fi
+      if [ ! -x /usr/bin/perl ]; then
+        echo "[machine-lock] ❌ cannot read the $_lsl_sub_name queue: /usr/bin/perl not found" >&2
+        exit 73
+      fi
+      _lsl_sub_file="$(local_stack_lock_file "$_lsl_sub_name")" || exit 73
+      _local_stack_lock_helper \
+        "$_lsl_sub_file" "" "${1:-}" "${2:-}" "" 0 "$_lsl_sub" "$_lsl_sub_name" 1 "$_lsl_sub_name" </dev/null
+      ;;
+    slots)
+      [ "$#" -eq 1 ] || _lsl_run_usage
+      _local_stack_lock_cores
+      _local_stack_lock_slots
+      _local_stack_lock_workers
+      printf 'slots=%s workers=%s\n' "$_lsl_slots" "$BKIT_TEST_WORKERS"
+      exit 0
+      ;;
+    *) _lsl_run_usage ;;
+  esac
   shift
   _lsl_run_who="${LOCAL_STACK_LOCK_WHO:-${npm_lifecycle_event:-run}}"
   _lsl_run_name=""
+  _lsl_run_status_file="${LOCAL_STACK_LOCK_STATUS_FILE:-}"
+  # The file belongs to this wrapper only: a nested wrapper for another lock never writes it.
+  unset LOCAL_STACK_LOCK_STATUS_FILE
   case "${1:-}" in
     --lock|--) ;;
     "") _lsl_run_usage ;;
@@ -512,7 +641,28 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   [ "${1:-}" = -- ] || _lsl_run_usage
   shift
   [ "$#" -gt 0 ] || _lsl_run_usage
-  take_local_stack_lock "$_lsl_run_who" "$_lsl_run_name" || exit "$_LOCAL_STACK_LOCK_EXIT"
+  # Three LF-ended lines, written beside the file and renamed into place, so a reader never
+  # sees half a file.
+  _lsl_run_write_status() {
+    local _lsl_holds="$_LOCAL_STACK_LOCK_HOLDER" _lsl_tmp
+    [ -n "$_lsl_run_status_file" ] || return 0
+    [ -n "$_lsl_holds" ] || _lsl_holds="$(local_stack_lock_holder "$_lsl_run_name" 2>/dev/null)"
+    _lsl_holds="${_lsl_holds//$'\n'/; }"
+    _lsl_tmp="$_lsl_run_status_file.$$.tmp"
+    if { printf 'lock=%s\noutcome=%s\nholder=%s\n' "$_lsl_run_name" "$1" "$_lsl_holds" >"$_lsl_tmp"; } 2>/dev/null &&
+      mv -f "$_lsl_tmp" "$_lsl_run_status_file" 2>/dev/null; then
+      return 0
+    fi
+    rm -f "$_lsl_tmp"
+    echo "[machine-lock] could not write the status file $_lsl_run_status_file" >&2
+  }
+  if ! take_local_stack_lock "$_lsl_run_who" "$_lsl_run_name"; then
+    case "$_LOCAL_STACK_LOCK_EXIT" in
+      75) _lsl_run_write_status gave-up ;;
+      73) _lsl_run_write_status refused ;;
+    esac
+    exit "$_LOCAL_STACK_LOCK_EXIT"
+  fi
   _lsl_run_signal_status=0
   _lsl_run_cancel() {
     _lsl_run_signal_status="$1"

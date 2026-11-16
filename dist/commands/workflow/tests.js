@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } from "../../ledgers/status.js";
-import { classifyLockExit, CommandError, EXIT, git, runGit, testsLockHolder, wholeNumber, } from "../lib.js";
+import { classifyLockOutcome, CommandError, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, readLockStatus, runGit, wholeNumber, } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand } from "../../shared/package-manager.js";
@@ -48,7 +48,6 @@ export const EXIT_ARTIFACT_STEP = 5;
 export const TEST_RUN_ROW = "test-run";
 /** The env var naming the folder every runner a gate calls writes its JUnit XML into. */
 export const REPORT_DIR_ENV = "BKIT_TEST_REPORT_DIR";
-export { classifyLockExit } from "../lib.js";
 const NO_REPORT_HINT = `no JUnit report in $${REPORT_DIR_ENV} — failures unknown; turn on each test runner's JUnit ` +
     `reporter in the gate and point its output into $${REPORT_DIR_ENV} ` +
     "(.bkit/workflows.md § Local gate scripts)";
@@ -1280,7 +1279,7 @@ export const testsCommand = {
         changed: testsChangedVerb,
         jump: testsJumpVerb,
         run: {
-            summary: "Run the first declared --gate, or with --changed-since only the files changed since that commit, and with --file append a test-run status row for the run; exit 0 PASS (also when nothing changed), 1 FAIL, 4 could not run, 81 tests lock held.",
+            summary: "Run the first declared --gate, or with --changed-since only the files changed since that commit, and with --file append a test-run status row for the run; exit 0 PASS (also when nothing changed), 1 FAIL, 4 could not run, 81 tests lock held (read from the lock status file, never from the exit code alone).",
             use: "by-hand",
             flags: [
                 {
@@ -1534,24 +1533,28 @@ export const testsCommand = {
                 ctx.log(`running ${scope} — full output in ${logArg}`);
                 const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
                 const who = ["bkit tests run", gate, fid, step].filter(Boolean).join(" ");
-                const runGate = () => runToLog(useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate), top, log, {
-                    [REPORT_DIR_ENV]: reports,
-                    LOCAL_STACK_LOCK_WAIT_S: String(waitS),
-                    LOCAL_STACK_LOCK_WHO: who,
-                });
+                // The gate's tests-lock status, read once right after the gate runs.
+                const lock = { status: null };
+                const runGate = () => {
+                    const statusPath = lockStatusFile();
+                    const code = runToLog(useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate), top, log, {
+                        [REPORT_DIR_ENV]: reports,
+                        LOCAL_STACK_LOCK_WAIT_S: String(waitS),
+                        LOCAL_STACK_LOCK_WHO: who,
+                        [LOCK_STATUS_FILE_ENV]: statusPath,
+                    });
+                    lock.status = readLockStatus(statusPath);
+                    return code;
+                };
                 // The required full gate leaves a push receipt, so the branch's first push
                 // reuses it; bookkeeping paths may be uncommitted, as every engine call writes one.
                 const exitCode = sinceRaw === undefined && gate === requiredPushGate(top)
-                    ? runWithReceipt(top, gate, minPushPathspecs(readBkitConfig(top)), runGate, ctx.log, (code) => classifyLockExit({
-                        exitCode: code,
-                        log: fs.readFileSync(log, "utf-8"),
-                        who,
-                    }) === "lock-wait")
+                    ? runWithReceipt(top, gate, minPushPathspecs(readBkitConfig(top)), runGate, ctx.log, (code) => classifyLockOutcome(code, lock.status) === "lock-wait")
                     : runGate();
                 const logText = fs.readFileSync(log, "utf-8");
-                const lockExit = classifyLockExit({ exitCode, log: logText, who });
+                const lockExit = classifyLockOutcome(exitCode, lock.status);
                 const lockWait = lockExit === "lock-wait";
-                const lockHolder = lockWait ? testsLockHolder(logText, who) : null;
+                const lockHolder = lockWait ? (lock.status?.holder ?? null) : null;
                 const lines = lockExit === "gate"
                     ? Number(tailRaw) > 0
                         ? tailLines(log, Number(tailRaw))

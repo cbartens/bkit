@@ -30,7 +30,8 @@ const STATIC = "bkit:gate:static";
 /**
  * A committed checkout declaring `scripts`, with `src/a.ts` and `src/b.ts` tracked, and a
  * fake package runner on PATH that writes each argument it got, one per line, to
- * $FAKE_ARGS, then exits FAKE_EXIT.
+ * $FAKE_ARGS, then exits FAKE_EXIT. With FAKE_LOCK_GIVEUP it writes a tests-lock give-up to
+ * $LOCAL_STACK_LOCK_STATUS_FILE and exits 75.
  */
 let cwd: string;
 let argsFile: string;
@@ -59,7 +60,9 @@ beforeEach(() => {
   argsFile = path.join(bin, "args");
   fs.writeFileSync(
     path.join(bin, PACKAGE_RUNNER),
-    '#!/bin/sh\nfor a in "$@"; do echo "$a" >> "$FAKE_ARGS"; done\necho "ran $1"\nexit "${FAKE_EXIT:-0}"\n',
+    '#!/bin/sh\nfor a in "$@"; do echo "$a" >> "$FAKE_ARGS"; done\necho "ran $1"\n' +
+      'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] a reworded line the engine never reads"; printf "lock=tests\\noutcome=gave-up\\nholder=another agent — /tmp/holder (pid 123, since 12:00:00)\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 75; fi\n' +
+      'exit "${FAKE_EXIT:-0}"\n',
     { mode: 0o755 },
   );
   vi.stubEnv("FAKE_ARGS", argsFile);
@@ -207,6 +210,31 @@ describe("tests changed", () => {
     const r = await changed([]);
     expect(r.code).toBe(4);
     expect(r.json).toMatchObject({ verdict: null, exitCode: 127 });
+  });
+
+  it("changed-since exits 81 with the holder read from the status file", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    write("src/a.ts", "changed\n");
+    const temp = tmp("bkit-tests-changed-temp-");
+    vi.stubEnv("TMPDIR", temp);
+    vi.stubEnv("FAKE_LOCK_GIVEUP", "1");
+    const r = await changed(["--lock-wait-s=0"]);
+    expect(r.code).toBe(81);
+    expect(r.json).toMatchObject({
+      verdict: null,
+      exitCode: 75,
+      lockHolder: "another agent — /tmp/holder (pid 123, since 12:00:00)",
+    });
+    expect(fs.readdirSync(temp)).toEqual([]);
+  });
+
+  it("exits 1 when the gate exits 75 and writes no status file", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    write("src/a.ts", "changed\n");
+    vi.stubEnv("FAKE_EXIT", "75");
+    const r = await changed([]);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ verdict: "FAIL", exitCode: 75, lockHolder: null });
   });
 
   it("refuses a --base that names no commit", async () => {

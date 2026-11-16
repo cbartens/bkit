@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import setup from "../../../../../vitest.test-lock";
+import setup, { testWorkers } from "../../../../../vitest.test-lock";
 import { tierTimeouts } from "../../../../../vitest.timeout-budget";
 
 const BUDGET = tierTimeouts(true);
@@ -69,28 +69,73 @@ function independentEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
-async function holder(pathPrefix = "") {
-  const env = independentEnv();
-  env.PATH = pathPrefix + path.delimiter + (env.PATH ?? "");
-  const child = spawn(
-    "bash",
-    [SCRIPT, "run", "wrapped gate holder", "--lock", "tests", "--", "sleep", "30"],
-    { env, stdio: "ignore", detached: true },
-  );
+function startHolder(label = "wrapped gate holder", command = ["sleep", "30"]) {
+  const child = spawn("bash", [SCRIPT, "run", label, "--lock", "tests", "--", ...command], {
+    env: independentEnv(),
+    stdio: "ignore",
+    detached: true,
+  });
   children.push(child);
   const done = new Promise<void>((resolve) => child.on("exit", () => resolve()));
+  return { child, done };
+}
+
+/** The tests slot whose holder file names `label`, or undefined while none does. */
+function slotHeldBy(label: string): string | undefined {
+  const dir = path.dirname(holderFile);
+  if (!fs.existsSync(dir)) return undefined;
+  return fs
+    .readdirSync(dir)
+    .filter((name) => /^tests(\.[0-9]+)?\.lock\.holder$/.test(name))
+    .find((name) => fs.readFileSync(path.join(dir, name), "utf-8").includes(label));
+}
+
+async function untilHeld(child: ChildProcess, label: string): Promise<string> {
   const until = Date.now() + BUDGET.hookTimeout;
   while (Date.now() < until) {
-    if (
-      fs.existsSync(holderFile) &&
-      fs.readFileSync(holderFile, "utf-8").includes("wrapped gate holder")
-    )
-      return { child, done };
+    const slot = slotHeldBy(label);
+    if (slot) return slot;
     if (child.exitCode !== null || child.signalCode !== null)
-      throw new Error("wrapped holder exited before acquiring");
+      throw new Error(`${label} exited before acquiring`);
     await delay(20);
   }
-  throw new Error("wrapped holder did not acquire the tests lock");
+  throw new Error(`${label} did not acquire a tests slot`);
+}
+
+async function holder(label = "wrapped gate holder") {
+  const started = startHolder(label);
+  const slot = await untilHeld(started.child, label);
+  return { ...started, slot };
+}
+
+/** Answer the script's core probe with 10 cores, leave the slots unset and the run local. */
+function tenLocalCores(): void {
+  const bin = path.join(tmp, "core-probe-10");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(
+    path.join(bin, "getconf"),
+    '#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "10\\n"\n',
+    { mode: 0o755 },
+  );
+  vi.stubEnv("PATH", prependPath(bin));
+  vi.stubEnv("BKIT_RUNTIME", "LOCAL");
+  delete process.env.BKIT_TEST_SLOTS;
+}
+
+/** Start the global setup and report whether it has settled yet. */
+function startSetup() {
+  const state = { settled: false };
+  const pending = Promise.resolve(setup(PROJECT)).then(
+    (value) => {
+      state.settled = true;
+      return { value, error: null };
+    },
+    (error: unknown) => {
+      state.settled = true;
+      return { value: undefined, error };
+    },
+  );
+  return { state, pending };
 }
 
 function probe() {
@@ -106,6 +151,22 @@ function probe() {
 }
 
 describe("raw Vitest global setup against wrapped gates", () => {
+  it("testWorkers finds the lock script when the process starts in a subfolder", () => {
+    const config = path.resolve("vitest.test-lock.ts");
+    const res = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "-e",
+        `import(${JSON.stringify(config)}).then((m) => console.log(JSON.stringify(m.testWorkers())))`,
+      ],
+      { cwd: path.resolve("scripts"), encoding: "utf8" },
+    );
+    expect(res.stderr).toBe("");
+    expect(JSON.parse(res.stdout)).toEqual({ maxWorkers: expect.any(Number) });
+  });
+
   it("the global setup waits for a held tests lock and takes it once the holder ends", async () => {
     const held = await holder();
     let settled = false;
@@ -138,36 +199,59 @@ describe("raw Vitest global setup against wrapped gates", () => {
     expect(probe().status).toBe(75);
   });
 
-  it("with slots unset on 10 cores, the global setup waits for a held tests lock", async () => {
-    const bin = path.join(tmp, "core-probe-10");
-    fs.mkdirSync(bin);
-    fs.writeFileSync(
-      path.join(bin, "getconf"),
-      '#!/bin/sh\n[ "$1" = _NPROCESSORS_ONLN ] || exit 1\nprintf "10\\n"\n',
-      { mode: 0o755 },
-    );
-    vi.stubEnv("PATH", prependPath(bin));
-    delete process.env.BKIT_TEST_SLOTS;
-    const held = await holder(bin);
-    let settled = false;
-    const pending = Promise.resolve(setup(PROJECT)).then(
-      (value) => {
-        settled = true;
-        return { value, error: null };
-      },
-      (error: unknown) => {
-        settled = true;
-        return { value: undefined, error };
-      },
-    );
-    await delay(200);
-    const settledWhileHeld = settled;
-    stopHolder(held.child);
-    await held.done;
-    const acquired = await pending;
+  it("with slots unset on 10 cores, the global setup takes tests.2.lock beside a tests.lock holder", async () => {
+    tenLocalCores();
+    const held = await holder();
+    expect(held.slot).toBe("tests.lock.holder");
+    const acquired = await startSetup().pending;
     teardown = acquired.value;
-    expect(settledWhileHeld).toBe(false);
     expect(acquired.error).toBeNull();
+    expect(typeof teardown).toBe("function");
+    expect(slotHeldBy("vitest all")).toBe("tests.2.lock.holder");
+    expect(held.child.exitCode).toBeNull();
+  });
+
+  it("with slots unset on 10 cores, the global setup waits only while both slots are held", async () => {
+    tenLocalCores();
+    const first = await holder("first gate holder");
+    const second = await holder("second gate holder");
+    expect([first.slot, second.slot].sort()).toEqual(["tests.2.lock.holder", "tests.lock.holder"]);
+    const started = startSetup();
+    await delay(200);
+    const settledWhileBothHeld = started.state.settled;
+    stopHolder(second.child);
+    await second.done;
+    const acquired = await started.pending;
+    teardown = acquired.value;
+    expect(settledWhileBothHeld).toBe(false);
+    expect(acquired.error).toBeNull();
+    expect(slotHeldBy("vitest all")).toBe(second.slot);
+    expect(first.child.exitCode).toBeNull();
+  });
+
+  it("a gate and a plain vitest global setup started together on 10 cores both hold a slot with four workers each", async () => {
+    tenLocalCores();
+    const gateWorkers = path.join(tmp, "gate-workers");
+    const gate = startHolder("wrapped gate holder", [
+      "sh",
+      "-c",
+      'printf "%s\\n" "$BKIT_TEST_WORKERS" > "$1"; exec sleep 30',
+      "gate",
+      gateWorkers,
+    ]);
+    // The gate takes its slot first, so a setup that asks for a single slot would wait on it.
+    const gateSlot = await untilHeld(gate.child, "wrapped gate holder");
+    const acquired = await startSetup().pending;
+    teardown = acquired.value;
+    expect(acquired.error).toBeNull();
+    const setupSlot = slotHeldBy("vitest all");
+    expect([gateSlot, setupSlot].sort()).toEqual(["tests.2.lock.holder", "tests.lock.holder"]);
+    expect(testWorkers()).toEqual({ maxWorkers: 4 });
+    await vi.waitFor(() => expect(fs.readFileSync(gateWorkers, "utf-8").trim()).toBe("4"), {
+      timeout: BUDGET.hookTimeout,
+      interval: 20,
+    });
+    expect(gate.child.exitCode).toBeNull();
   });
 
   it("the global setup throws naming the holder when the wait gives up", async () => {

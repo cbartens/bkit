@@ -236,6 +236,40 @@ describe("machine-lock copy migration", () => {
     }
   });
 
+  it("an edited machine-lock copy without LOCAL_STACK_LOCK_STATUS_FILE is left in place with a warning", () => {
+    const custom = Buffer.concat([shipped, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      const status = lines.filter((l) => l.includes("LOCAL_STACK_LOCK_STATUS_FILE"));
+      expect(status).toHaveLength(1);
+      expect(status[0]).toContain(template);
+      expect(status[0]).toContain("by hand");
+      expect(status[0]).toContain("gate failure (exit 1) instead of exit 81");
+      // The copy lacks the queue too, so the arrival-order warning is printed as well.
+      expect(lines.filter((l) => l.includes("out of arrival order"))).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("an edited machine-lock copy that names LOCAL_STACK_LOCK_STATUS_FILE gets no status-file warning", () => {
+    const custom = Buffer.concat([currentLock, Buffer.from("\n# consumer customization\n")]);
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      expect(lines.filter((l) => l.includes(lock))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("leaves a symlinked machine-lock copy unchanged and reports the template to merge by hand", () => {
     fs.mkdirSync("owned", { recursive: true });
     const target = path.resolve("owned/bkit-machine-lock.sh");

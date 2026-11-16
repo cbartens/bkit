@@ -28,20 +28,22 @@ import {
 } from "../../ledgers/status.js";
 import {
   bodySkipToken,
-  classifyLockExit,
+  classifyLockOutcome,
   CommandError,
   DEV,
   EXIT,
   ghUnavailable,
   git,
   isSharedBranch,
+  LOCK_STATUS_FILE_ENV,
+  lockStatusFile,
   OUTPUT_LIMIT,
   parseJson,
+  readLockStatus,
   repoRoot,
   runGh,
   runGit,
   SKIP_CI_TOKEN,
-  testsLockHolder,
   wholeNumber,
   type CommandSpec,
   type RunContext,
@@ -888,22 +890,21 @@ export interface PushOutcome {
   };
 }
 
-/** Git collapses a failing pre-push hook's status; classify its exact tests-lock markers. */
+/** Git collapses a failing pre-push hook's status, so the hook's tests-lock status file alone decides. */
 function runPush(cwd: string, args: string[], branch: string) {
   const who = `bkit branches push ${branch}`;
   const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
+  const statusPath = lockStatusFile();
   const res = runGit(cwd, args, {
     LOCAL_STACK_LOCK_WAIT_S: String(wait),
     LOCAL_STACK_LOCK_WHO: who,
+    [LOCK_STATUS_FILE_ENV]: statusPath,
   });
-  const log = [res.stdout, res.stderr].filter(Boolean).join("\n");
-  const lockHolder = res.ok ? null : testsLockHolder(log, who);
-  const outcome = res.ok
-    ? "gate"
-    : classifyLockExit({ exitCode: lockHolder === null ? 73 : 75, log, who });
+  const status = readLockStatus(statusPath);
+  const outcome = res.ok ? "gate" : classifyLockOutcome(null, status);
   return {
     ...res,
-    lockHolder,
+    lockHolder: outcome === "lock-wait" ? (status?.holder ?? null) : null,
     lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
   };
 }
@@ -3601,7 +3602,7 @@ export const branchesCommand: CommandSpec = {
     },
     push: {
       summary:
-        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; 81 tests lock held.",
+        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run.",
       use: "workflow",
       flags: [
         {

@@ -63,10 +63,16 @@ function track(command: string, args: string[], opts: SpawnOptions): Piped {
   return child;
 }
 
-/** The test's own lock folder; CI, an inherited owner and a stack name are cleared so the lock really runs. */
+/**
+ * The test's own lock folder; CI, an inherited owner, a stack name and the runtime markers are
+ * cleared so the lock really runs, as a local run, unless the caller sets them.
+ */
 function envFor(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, XDG_CACHE_HOME: cache };
   delete env.CI;
+  delete env.BKIT_RUNTIME;
+  delete env.CLAUDE_CODE_REMOTE;
+  delete env.LOCAL_STACK_LOCK_STATUS_FILE;
   for (const key of Object.keys(env)) {
     if (key.startsWith("LOCAL_STACK_LOCK_OWNER") || key.startsWith("LOCAL_STACK_LOCK_PID")) {
       delete env[key];
@@ -1154,6 +1160,181 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
   });
 });
 
+// ---- run reports a give-up or a refusal in LOCAL_STACK_LOCK_STATUS_FILE ----
+
+/** The lines of a status file, after checking it ends in one LF and holds no CR. */
+function statusOf(file: string): string[] {
+  const text = fs.readFileSync(file, "utf-8");
+  expect(text.endsWith("\n")).toBe(true);
+  expect(text).not.toContain("\r");
+  return text.slice(0, -1).split("\n");
+}
+
+describe("machine lock status file", { timeout: BUDGET.testTimeout }, () => {
+  it("run on a give-up writes lock, outcome and holder to the status file and exits 75", async () => {
+    const status = path.join(tmp, "status");
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const holder = holdNamed("status holder", "tests", env);
+    await holder.locked;
+    const waiting = commandRun(["status waiter", "--lock", "tests", "--", "echo", "entered"], {
+      ...env,
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(waiting.status, waiting.stderr).toBe(75);
+    expect(waiting.stdout).not.toContain("entered");
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=gave-up");
+    expect(lines[2]!.startsWith(`holder=status holder — ${CHECKOUT} (pid `), lines[2]).toBe(true);
+    expect(fs.readdirSync(tmp).filter((name) => name.startsWith("status."))).toEqual([]);
+  });
+
+  it("run on a refusal writes outcome refused to the status file and exits 73", () => {
+    const status = path.join(tmp, "status");
+    const notDirectory = path.join(tmp, "cache-is-a-file");
+    fs.writeFileSync(notDirectory, "this blocks mkdir");
+    const refused = commandRun(["refused gate", "--lock", "tests", "--", "echo", "entered"], {
+      ...envFor({ XDG_CACHE_HOME: notDirectory }),
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(refused.status, refused.stderr).toBe(73);
+    expect(refused.stdout).not.toContain("entered");
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=refused");
+    expect(lines[2]!.startsWith("holder=")).toBe(true);
+    // A command that takes the lock and exits 75 itself leaves no status file.
+    const own = path.join(tmp, "own-status");
+    const ran = commandRun(["own exit", "--lock", "tests", "--", "bash", "-c", "exit 75"], {
+      ...envFor(),
+      LOCAL_STACK_LOCK_STATUS_FILE: own,
+    });
+    expect(ran.status, ran.stderr).toBe(75);
+    expect(fs.existsSync(own)).toBe(false);
+  });
+
+  it("a nested run never writes the outer status file", async () => {
+    const status = path.join(tmp, "status");
+    const env = envFor({ LOCAL_STACK_LOCK_WAIT_S: "0" });
+    const other = holdNamed("other holder", "other", env);
+    await other.locked;
+    const outer = commandRun(
+      [
+        "outer gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        'printf "inner sees %s\\n" "${LOCAL_STACK_LOCK_STATUS_FILE-nothing}"; bash "$1" run inner --lock other -- echo entered',
+        "outer",
+        SCRIPT,
+      ],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+    );
+    expect(outer.status, outer.stderr).toBe(75);
+    expect(outer.stdout).toContain("inner sees nothing");
+    expect(outer.stdout).not.toContain("entered");
+    expect(outer.stderr).toContain("other holder");
+    expect(fs.existsSync(status)).toBe(false);
+  });
+});
+
+// ---- the slot default is the core-count rule for local runs only; `slots` prints it ----
+
+/** The BKIT_TEST_WORKERS a tests-lock run exports under `env`. */
+function workersUnder(env: NodeJS.ProcessEnv, script = SCRIPT, cwd = process.cwd()): string {
+  const result = commandRun(
+    ["workers", "--lock", "tests", "--", "bash", "-c", 'printf "%s" "$BKIT_TEST_WORKERS"'],
+    env,
+    script,
+    cwd,
+  );
+  expect(result.status, result.stderr).toBe(0);
+  return result.stdout;
+}
+
+describe("machine lock runtime slots", { timeout: BUDGET.testTimeout }, () => {
+  it("CLAUDE_CODE_REMOTE=true on 10 cores with slots unset gives one slot and nine workers", async () => {
+    for (const flag of ["true", "TRUE", "True", "1", "yes", "YES"]) {
+      expect(workersUnder(coresEnv(10, { CLAUDE_CODE_REMOTE: flag })), flag).toBe("9");
+    }
+    for (const flag of ["", "false", "0", "no"]) {
+      expect(workersUnder(coresEnv(10, { CLAUDE_CODE_REMOTE: flag })), flag).toBe("4");
+    }
+    const env = coresEnv(10, { CLAUDE_CODE_REMOTE: "true", LOCAL_STACK_LOCK_WAIT_S: "1" });
+    const first = slotHolder("cloud slot", env);
+    await waitForOutput(first, "acquired");
+    const second = commandRun(["second", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(second.status).toBe(75);
+    expect(second.stdout).not.toContain("entered");
+    expect(second.stderr).toContain("cloud slot");
+  });
+
+  it("the Cursor marker in the main checkout gives one slot from a linked worktree", () => {
+    const main = checkout("cursor-main");
+    git(main.root, ["add", "-A"]);
+    git(main.root, ["commit", "-q", "-m", "init"]);
+    const linked = path.join(tmp, "cursor-linked");
+    git(main.root, ["worktree", "add", "-q", linked]);
+    const script = path.join(linked, "scripts", "ci", "bkit-machine-lock.sh");
+    expect(workersUnder(coresEnv(10), script, linked)).toBe("4");
+    fs.mkdirSync(path.join(main.root, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(main.root, ".bkit", ".runtime-cursor"), "");
+    expect(workersUnder(coresEnv(10), script, linked)).toBe("9");
+    expect(workersUnder(coresEnv(10), script, main.root)).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "LOCAL" }), script, linked)).toBe("4");
+  });
+
+  it("BKIT_RUNTIME=LOCAL beats CLAUDE_CODE_REMOTE, and an invalid BKIT_RUNTIME gives one slot", () => {
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "LOCAL", CLAUDE_CODE_REMOTE: "true" }))).toBe(
+      "4",
+    );
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "not-a-runtime" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "local" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "CLOUD_CLAUDE" }))).toBe("9");
+    expect(workersUnder(coresEnv(10, { BKIT_RUNTIME: "" }))).toBe("4");
+  });
+
+  it("BKIT_TEST_SLOTS=2 overrides the cloud default", async () => {
+    const env = coresEnv(10, {
+      CLAUDE_CODE_REMOTE: "true",
+      BKIT_TEST_SLOTS: "2",
+      LOCAL_STACK_LOCK_WAIT_S: "1",
+    });
+    expect(workersUnder(env)).toBe("4");
+    const first = slotHolder("cloud first", env);
+    await waitForOutput(first, "acquired");
+    const second = slotHolder("cloud second", env);
+    await waitForOutput(second, "acquired");
+    const third = commandRun(["third", "--lock", "tests", "--", "echo", "entered"], env);
+    expect(third.status).toBe(75);
+    expect(third.stderr).toContain("cloud first");
+    expect(third.stderr).toContain("cloud second");
+  });
+
+  it("the slots subcommand prints slots and workers for the same cores and env as run", () => {
+    const cases: [NodeJS.ProcessEnv, number][] = [
+      [coresEnv(10), 2],
+      [coresEnv(8), 2],
+      [coresEnv(7), 1],
+      [coresEnv(null), 1],
+      [coresEnv(10, { CLAUDE_CODE_REMOTE: "true" }), 1],
+      [coresEnv(10, { BKIT_TEST_SLOTS: "3" }), 3],
+      [coresEnv(10, { BKIT_TEST_SLOTS: "garbage" }), 2],
+    ];
+    for (const [env, slots] of cases) {
+      const printed = spawnSync("bash", [SCRIPT, "slots"], { env, encoding: "utf-8" });
+      expect(printed.status, printed.stderr).toBe(0);
+      expect(printed.stdout).toBe(`slots=${slots} workers=${workersUnder(env)}\n`);
+    }
+  });
+});
+
 // ---- waiters are served in the order they started waiting ----
 
 const TICKET_NAME = /^\d+\.\d{6}-(\d+)$/;
@@ -1743,5 +1924,138 @@ describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
     expect(await done, stderr).toBe(0);
     expect(stderr).not.toContain("stopped before it answered");
     expect(readLines(order)).toEqual(["w1"]);
+  });
+
+  it("a one-slot waiter at the head does not block a two-slot waiter while slot 2 is free", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(two, "tests", "slot-one-holder");
+    expect(fs.existsSync(path.join(cache, "bkit", "machine-lock", "tests.lock.holder"))).toBe(true);
+    const narrow = await queuedWaiter("narrow", waitEnv({ BKIT_TEST_SLOTS: "1" }), order, "tests");
+    const wide = wrapped(
+      "wide",
+      { ...two, LOCAL_STACK_LOCK_WAIT_S: "5" },
+      `echo wide >> "${order}"`,
+      {
+        lock: "tests",
+      },
+    );
+    const wideResult = await wide.done;
+    expect(wideResult.status, wideResult.stderr).toBe(0);
+    expect(readLines(order)).toEqual(["wide"]);
+    holder.release();
+    await expectAllExit([narrow]);
+    expect(readLines(order)).toEqual(["wide", "narrow"]);
+  });
+
+  it("two-slot waiters take a free slot in arrival order", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const slotA = await queueHolder(two, "tests", "slot-a");
+    const slotB = await queueHolder(two, "tests", "slot-b");
+    const gate = (who: string) =>
+      `echo ${who} >> "${order}"; while [ ! -f "${tmp}/done-${who}" ]; do sleep 0.05; done`;
+    const narrow = await queuedWaiter(
+      "narrow",
+      waitEnv({ BKIT_TEST_SLOTS: "1" }),
+      order,
+      "tests",
+      gate("narrow"),
+    );
+    const w1 = await queuedWaiter("w1", two, order, "tests", gate("w1"));
+    const w2 = await queuedWaiter("w2", two, order, "tests", gate("w2"));
+    slotB.release();
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["w1"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1"]);
+    slotA.release();
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "narrow"]);
+    await delay(500);
+    expect(readLines(order)).toEqual(["w1", "narrow"]);
+    fs.writeFileSync(path.join(tmp, "done-w1"), "");
+    await expect
+      .poll(() => readLines(order), { timeout: BUDGET.hookTimeout })
+      .toEqual(["w1", "narrow", "w2"]);
+    fs.writeFileSync(path.join(tmp, "done-narrow"), "");
+    fs.writeFileSync(path.join(tmp, "done-w2"), "");
+    await expectAllExit([narrow, w1, w2]);
+  });
+
+  it("a ticket with no slot count blocks every slot behind it", async () => {
+    const two = waitEnv({ BKIT_TEST_SLOTS: "2" });
+    const order = path.join(tmp, "order");
+    const queue = queueOf("tests");
+    const holder = await queueHolder(two, "tests", "slot-one-holder");
+    fs.mkdirSync(queue, { recursive: true });
+    // A live ticket in the shape an older copy writes: one line, flock-held, first in line.
+    const old = running(
+      `exec /usr/bin/perl -e 'use Fcntl qw(:flock); $| = 1; my $q = shift; open(my $f, ">", "$q/.old.tmp") or die; flock($f, LOCK_EX) or die; $f->autoflush(1); print $f "old copy — /old/checkout\\n"; rename("$q/.old.tmp", "$q/0.000001-$$") or die; print "planted\\n"; sleep 60' "${queue}"`,
+      two,
+    );
+    await waitForOutput(old, "planted");
+    const wide = wrapped("wide", two, `echo wide >> "${order}"`, { lock: "tests" });
+    await waitForTicket(queue, "wide");
+    await delay(800);
+    expect(readLines(order)).toEqual([]);
+    old.child.kill("SIGKILL");
+    await expect.poll(() => readLines(order), { timeout: BUDGET.hookTimeout }).toEqual(["wide"]);
+    const result = await wide.done;
+    expect(result.status, result.stderr).toBe(0);
+    expect(ticketsIn(queue)).toEqual([]);
+    holder.release();
+  });
+
+  it("the queue subcommand lists live tickets and held places as who and checkout lines", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    const listQueue = () => spawnSync("bash", [SCRIPT, "queue"], { env, encoding: "utf-8" });
+    const empty = listQueue();
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(empty.stdout).toBe("");
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const w1 = await queuedWaiter("w1", env, order, "tests");
+    const x = await queuedWaiter("x", { ...env, LOCAL_STACK_LOCK_WAIT_S: "2" }, order, "tests");
+    const w2 = await queuedWaiter("w2", env, order, "tests");
+    expect((await x.done).status).toBe(75);
+    await waitForHeldPlace(queue, "x");
+    plantJump(queue, "w2");
+    const listed = listQueue();
+    expect(listed.status, listed.stderr).toBe(0);
+    expect(listed.stdout).toBe(
+      [`w2 — ${CHECKOUT}`, `w1 — ${CHECKOUT}`, `x — ${CHECKOUT}`].join("\n") + "\n",
+    );
+    holder.release();
+    await expectAllExit([w1, w2]);
+    expect(readLines(order)).toEqual(["w2", "w1"]);
+  });
+
+  it("the jump subcommand moves a ticket to the front and exits non-zero for an unknown who", async () => {
+    const env = waitEnv();
+    const queue = queueOf("tests");
+    const jump = (...args: string[]) =>
+      spawnSync("bash", [SCRIPT, "jump", ...args], { env, encoding: "utf-8" });
+    const order = path.join(tmp, "order");
+    const holder = await queueHolder(env, "tests");
+    const waiters = [];
+    for (const who of ["w1", "w2", "w3"]) {
+      waiters.push(await queuedWaiter(who, env, order, "tests"));
+    }
+    const unknown = jump("nobody");
+    expect(unknown.status).not.toBe(0);
+    expect(unknown.status).not.toBe(2);
+    expect(unknown.stdout).toBe("");
+    const wrongCheckout = jump("w3", "/not/this/checkout");
+    expect(wrongCheckout.status).not.toBe(0);
+    expect(fs.readdirSync(queue).filter((name) => name.endsWith(".jump"))).toEqual([]);
+    const jumped = jump("w3", CHECKOUT);
+    expect(jumped.status, jumped.stderr).toBe(0);
+    expect(jumped.stdout).toBe(`w3 — ${CHECKOUT}\n`);
+    expect(fs.readdirSync(queue).filter((name) => /^\d+\.jump$/.test(name))).toHaveLength(1);
+    holder.release();
+    await expectAllExit(waiters);
+    expect(readLines(order)).toEqual(["w3", "w1", "w2"]);
   });
 });

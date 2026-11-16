@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
-import { spawn } from "node:child_process";
+import * as path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
 import { Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 
 interface TestLockInput {
   filters: readonly string[];
@@ -26,13 +28,50 @@ export function testLockDecision({ filters, env, exists, alive, watch }: TestLoc
   return { take: true, reason: "heavy" };
 }
 
-/** Apply the worker budget supplied by a tests-lock holder. */
-export function testWorkers(env: NodeJS.ProcessEnv = process.env): { maxWorkers?: number } {
-  const value = env.BKIT_TEST_WORKERS ?? "";
-  const workers = Number(value);
-  return /^[0-9]+$/.test(value) && Number.isSafeInteger(workers) && workers >= 1
-    ? { maxWorkers: workers }
-    : {};
+/** The lock script beside this file, so a run started from a subfolder finds it too. */
+const LOCK_SCRIPT = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "scripts/ci/bkit-machine-lock.sh",
+);
+
+/** Run the lock script's `slots` subcommand under `env` and return what it prints. */
+function readLockSlots(env: NodeJS.ProcessEnv): string {
+  const result = spawnSync("bash", [LOCK_SCRIPT, "slots"], { env, encoding: "utf8" });
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(
+      `${LOCK_SCRIPT} slots exited ${result.status ?? result.signal}: ${result.stderr}`,
+    );
+  return result.stdout;
+}
+
+function wholeNumber(value: string | undefined): number | undefined {
+  const parsed = Number(value);
+  return value !== undefined &&
+    /^[0-9]+$/.test(value) &&
+    Number.isSafeInteger(parsed) &&
+    parsed >= 1
+    ? parsed
+    : undefined;
+}
+
+/**
+ * Size Vitest's worker pool: an inherited BKIT_TEST_WORKERS (set by a tests-lock holder) wins,
+ * CI=true / CI=1 sets no limit, and otherwise the lock script's `slots` output decides, so a
+ * plain run takes the same share as the slot its global setup then asks for.
+ */
+export function testWorkers(
+  env: NodeJS.ProcessEnv = process.env,
+  readSlots: (env: NodeJS.ProcessEnv) => string = readLockSlots,
+): { maxWorkers?: number } {
+  const inherited = wholeNumber(env.BKIT_TEST_WORKERS);
+  if (inherited !== undefined) return { maxWorkers: inherited };
+  if (env.CI === "true" || env.CI === "1") return {};
+  const output = readSlots(env);
+  const workers = wholeNumber(/^slots=[0-9]+ workers=([0-9]+)$/m.exec(output)?.[1]);
+  if (workers === undefined)
+    throw new Error(`${LOCK_SCRIPT} slots printed no worker count: ${JSON.stringify(output)}`);
+  return { maxWorkers: workers };
 }
 
 interface LockProject {
@@ -71,7 +110,7 @@ export default async function setup(
   const child = spawn(
     "bash",
     [
-      "scripts/ci/bkit-machine-lock.sh",
+      LOCK_SCRIPT,
       "run",
       `vitest ${filters.length > 0 ? filters.join(" ") : "all"}`,
       "--lock",
@@ -82,10 +121,9 @@ export default async function setup(
       'printf "locked %s\\n" "$LOCAL_STACK_LOCK_OWNER_tests"; exec cat <&3 >/dev/null',
     ],
     {
+      // The child inherits this environment, so it asks for the slot count that testWorkers
+      // read from the same script when Vitest sized its pool: either free slot fits that pool.
       stdio: ["inherit", "pipe", "pipe", "pipe"],
-      // Vitest fixed its worker count before this lock was taken, so a second slot would
-      // run cores - 1 workers beside another holder; queue behind it unless the owner chose.
-      env: { ...process.env, BKIT_TEST_SLOTS: process.env.BKIT_TEST_SLOTS ?? "1" },
     },
   );
   let stderr = "";

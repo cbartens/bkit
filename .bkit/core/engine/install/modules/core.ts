@@ -813,22 +813,24 @@ function migrateSlopTypeSuppression(dryRun: boolean, ws: WriteSet, logPrefix: st
   console.log(`${logPrefix} ${tag}core: ${file} — slop plugin updated`);
 }
 
-// sha256 of every released scripts/ci/bkit-machine-lock.sh text without the arrival-order queue (6.1.0, 6.1.1).
+// sha256 of every released scripts/ci/bkit-machine-lock.sh text older than the current template (6.1.0, 6.1.1).
 const SHIPPED_MACHINE_LOCK_HASHES: readonly string[] = [
   "63ee5873795fd06b60e1f13c238c9e3c44d9f6dc76a50fe271793de6ad284e87",
 ];
 
-// Migration (6.1.0-6.1.x installs, docs/migrations.md): replace an unedited adopted machine-lock
-// copy with the queued template; warn about an edited copy that still lacks the queue.
+// Migration (6.1.0-6.2.x installs, docs/migrations.md): replace an unedited adopted machine-lock
+// copy with the current template; warn about an edited copy that lacks the queue or never writes
+// the status file.
 function migrateMachineLockCopy(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
   const file = path.join("scripts", "ci", "bkit-machine-lock.sh");
   const stat = fs.lstatSync(file, { throwIfNoEntry: false });
   if (!stat) return;
   const tag = dryRun ? "[dry-run] " : "";
   const templatePath = ".bkit/templates/scripts/ci/bkit-machine-lock.sh";
-  const manual = (reason: string): void => {
+  const outOfOrder = "waiting runs take the lock out of arrival order";
+  const manual = (reason: string, until = outOfOrder): void => {
     console.warn(
-      `${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge ${templatePath} by hand, until then waiting runs take the lock out of arrival order`,
+      `${logPrefix} ${tag}core: ${file} left unchanged (${reason}); merge ${templatePath} by hand, until then ${until}`,
     );
   };
   if (linkedPath(file) || !stat.isFile()) {
@@ -843,13 +845,16 @@ function migrateMachineLockCopy(dryRun: boolean, ws: WriteSet, logPrefix: string
   if (SHIPPED_MACHINE_LOCK_HASHES.includes(sha256(current))) {
     if (!dryRun) fs.writeFileSync(file, template);
     ws.writes.push({ path: file, action: "update", unhashed: true });
-    console.log(
-      `${logPrefix} ${tag}core: ${file} — machine lock now serves waiting runs in arrival order`,
-    );
+    console.log(`${logPrefix} ${tag}core: ${file} — machine lock updated to the current template`);
     return;
   }
-  if (!current.toString("utf8").includes(".queue"))
-    manual("the copy differs from the shipped version");
+  const text = current.toString("utf8");
+  if (!text.includes(".queue")) manual("the copy differs from the shipped version");
+  if (!text.includes("LOCAL_STACK_LOCK_STATUS_FILE"))
+    manual(
+      "the copy never writes LOCAL_STACK_LOCK_STATUS_FILE",
+      "a lock wait that gives up reads as a gate failure (exit 1) instead of exit 81",
+    );
 }
 
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.

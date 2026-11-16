@@ -12,9 +12,12 @@ import {
   NoWriteRejection,
   SKIP_CI_TOKEN,
   UncertainEffect,
+  classifyLockOutcome,
   commandHelp,
   ghUnavailable,
+  lockStatusFile,
   parseFlags,
+  readLockStatus,
   repoRoot,
   resolveActiveRun,
   runCommand,
@@ -1082,5 +1085,56 @@ describe("bounded correction eligibility", () => {
     expect(masked.code).toBe(EXIT.USAGE);
     expect(errorOf(masked.out)).toMatchObject({ effects: "none", correctable: true });
     expect(masked.err).toContain("row 2 has no summary");
+  });
+});
+
+describe("tests-lock status file", () => {
+  const holder =
+    "bkit tests run bkit:gate:static-unit — /tmp/holder (pid 123, since 12:00:00), last run took 1m2s";
+  const write = (file: string, body: string) => {
+    fs.writeFileSync(file, body);
+    return file;
+  };
+
+  it("a lock wait is read from the status file and a reworded script sentence changes nothing", () => {
+    const file = lockStatusFile();
+    expect(path.dirname(file)).toBe(os.tmpdir());
+    expect(fs.existsSync(file)).toBe(false);
+    expect(lockStatusFile()).not.toBe(file);
+    write(file, `lock=tests\noutcome=gave-up\nholder=${holder}\n`);
+    const status = readLockStatus(file);
+    expect(status).toEqual({ lock: "tests", outcome: "gave-up", holder });
+    expect(fs.existsSync(file)).toBe(false);
+    expect(classifyLockOutcome(75, status)).toBe("lock-wait");
+    expect(classifyLockOutcome(null, status)).toBe("lock-wait");
+    expect(classifyLockOutcome(1, status)).toBe("gate");
+    const refused = readLockStatus(write(file, "lock=tests\noutcome=refused\nholder=\n"));
+    expect(refused).toEqual({ lock: "tests", outcome: "refused", holder: "" });
+    expect(classifyLockOutcome(73, refused)).toBe("could-not-run");
+    expect(classifyLockOutcome(null, refused)).toBe("could-not-run");
+    expect(classifyLockOutcome(75, refused)).toBe("gate");
+  });
+
+  it("a status file for another lock or an empty one reads as a gate result", () => {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-status-")));
+    try {
+      const other = readLockStatus(
+        write(path.join(dir, "other"), `lock=database\noutcome=gave-up\nholder=${holder}\n`),
+      );
+      expect(other).toMatchObject({ lock: "database", outcome: "gave-up" });
+      expect(classifyLockOutcome(75, other)).toBe("gate");
+      const otherRefused = readLockStatus(
+        write(path.join(dir, "other-refused"), "lock=database\noutcome=refused\nholder=\n"),
+      );
+      expect(classifyLockOutcome(73, otherRefused)).toBe("gate");
+      expect(readLockStatus(write(path.join(dir, "empty"), ""))).toBeNull();
+      expect(readLockStatus(path.join(dir, "absent"))).toBeNull();
+      fs.mkdirSync(path.join(dir, "folder"));
+      expect(readLockStatus(path.join(dir, "folder"))).toBeNull();
+      for (const code of [75, 73, 1, 0]) expect(classifyLockOutcome(code, null)).toBe("gate");
+      expect(classifyLockOutcome(null, null)).toBe("gate");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

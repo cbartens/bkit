@@ -327,6 +327,13 @@ ChatGPT → **Settings > Codex Cloud > Environments** → **Create environment**
 - **Network secrets** (Key / Value / **Allowed domains**): Programs see a placeholder. The proxy substitutes the real value only on requests to allowed domains, during setup and tasks. This fits a token used only in HTTP headers to known hosts, and breaks any token a program reads directly (`gh auth login --with-token`).
 - **Personal vault** shares a secret across **All environments** or **Selected environments**, for a token several repos reuse.
 
+## Test slots
+
+The tests lock treats a Codex Cloud task as a local run, because no runtime marker names it, so a VM with 8 or more vCPUs gets 2 slots at half width each.
+
+- **If** the VM has 8 or more vCPUs → add `BKIT_TEST_SLOTS=1` to **Environment variables**, which gives one slot at full width.
+- **Else** (the standard 2- and 4-vCPU VMs) → add nothing.
+
 ## Hooks in cloud tasks
 
 Repo skills (`.agents/skills/bkit-*`, `$bkit-design`) load in cloud tasks. Codex's cloud docs do not say whether `.codex/hooks.json` runs there, so GateGuard, ReadGuard, guardrails and the rules advisory are unproven in cloud tasks. Review cloud diffs as unguarded. Locally they fire only once the `.codex/` layer is trusted (`.bkit/providers.md` § Codex CLI — three deviations).

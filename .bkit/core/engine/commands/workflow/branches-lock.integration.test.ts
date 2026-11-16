@@ -127,26 +127,50 @@ function push(extra: Record<string, string>) {
   };
 }
 
+/** Replace the pre-push hook's body. */
+function hookBody(body: string): void {
+  fs.writeFileSync(env.BKIT_FAKE_TOOL_SCRIPT!, body);
+}
+
 describe("branches push through a real pre-push lock", () => {
-  it("branches push exits 81 naming the holder when the pre-push hook's gate gave up on the tests lock", async () => {
+  it("branches push exits 81 from the status file when git collapses the hook status", async () => {
     const holder = await hold();
+    // The wrapper's printed lines go nowhere: only the status file can name the holder.
+    hookBody(
+      "exec bash scripts/ci/bkit-machine-lock.sh run --lock tests -- node hook-gate.mjs 2>/dev/null\n",
+    );
     const result = push({
       BKIT_LOCK_WAIT_S: "0",
       LOCAL_STACK_LOCK_WAIT_S: "0",
       BKIT_TEST_SLOTS: "1",
     });
     expect(result.status, result.stderr).toBe(81);
+    expect(result.stderr).not.toContain("gave up after");
     expect(result.json).toMatchObject({
       pushed: false,
       ref: null,
-      lockHolder: expect.stringContaining("external push holder"),
+      lockHolder: expect.stringMatching(/^external push holder — /),
     });
-    expect(result.stderr).toContain("external push holder");
     expect(holder.exitCode).toBeNull();
     expect(
       git("--git-dir", origin, "show-ref", "--verify", "--quiet", `refs/heads/${BRANCH}`).status,
     ).toBe(1);
     expect(fs.existsSync(path.join(tmp, "hook-env.json"))).toBe(false);
+  });
+
+  it("branches push with a failing hook and an empty status file is a push failure", () => {
+    // The hook prints the wrapper's give-up sentence word for word, but its status file is empty.
+    hookBody(
+      'if [ -n "${LOCAL_STACK_LOCK_STATUS_FILE:-}" ]; then : > "$LOCAL_STACK_LOCK_STATUS_FILE"; fi\n' +
+        `echo "[machine-lock] ❌ bkit branches push ${BRANCH} gave up after 0s waiting for tests, in use by a printed holder" >&2\n` +
+        "exit 75\n",
+    );
+    const result = push({ BKIT_LOCK_WAIT_S: "0" });
+    expect(result.status, result.stderr).toBe(8);
+    expect(result.json).toMatchObject({ pushed: false, lockHolder: null });
+    expect(
+      git("--git-dir", origin, "show-ref", "--verify", "--quiet", `refs/heads/${BRANCH}`).status,
+    ).toBe(1);
   });
 
   it("branches push passes LOCAL_STACK_LOCK_WAIT_S and LOCAL_STACK_LOCK_WHO to git push", () => {

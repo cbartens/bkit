@@ -346,8 +346,15 @@ describe("tests lock through a consumer's wrapped gate", () => {
     expect(events()[0]!.at).toBeGreaterThanOrEqual(releasedAt);
   });
 
-  it("tests run exits 81 naming the holder when the lock stays held past --lock-wait-s", async () => {
+  it("a real lock wait through bkit tests run exits 81 and names the holder", async () => {
     await hold();
+    // The wrapper's printed lines go nowhere: only the status file can name the holder.
+    const pkgFile = path.join(cwd, "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, "utf-8")) as {
+      scripts: Record<string, string>;
+    };
+    pkg.scripts[GATE] = `${pkg.scripts[GATE]} 2>/dev/null`;
+    fs.writeFileSync(pkgFile, JSON.stringify(pkg));
     const result = execute([
       ...runArgs(),
       "--lock-wait-s=1",
@@ -356,11 +363,13 @@ describe("tests lock through a consumer's wrapped gate", () => {
       "--step=gate",
     ]);
     expect(result.status, result.stderr).toBe(81);
+    expect(result.stderr).not.toContain("gave up after");
     expect(output(result)).toMatchObject({
-      lockHolder: expect.stringContaining("external holder"),
+      lockHolder: expect.stringMatching(
+        /^external holder — .+ \(pid [1-9][0-9]*, since [0-9]{2}:[0-9]{2}:[0-9]{2}\)/,
+      ),
       artifact: null,
     });
-    expect(result.stderr).toContain("external holder");
     expect(fs.existsSync(path.join(cwd, "logs/artifact.md"))).toBe(false);
     expect(events()).toEqual([]);
   });
@@ -548,12 +557,13 @@ describe("bkit tests jump", () => {
     const holder = await hold();
     fs.mkdirSync(queueDir(), { recursive: true });
     const shared = "shared gate run";
+    // Held places: the lock script drops a ticket file no live waiter locks.
     fs.writeFileSync(
-      path.join(queueDir(), `${Date.now()}.000001-${process.pid}`),
+      path.join(queueDir(), `${Date.now()}.000001-${process.pid}.held`),
       `${shared} — /checkouts/one\n`,
     );
     fs.writeFileSync(
-      path.join(queueDir(), `${Date.now()}.000002-${holder.child.pid}`),
+      path.join(queueDir(), `${Date.now()}.000002-${holder.child.pid}.held`),
       `${shared} — /checkouts/two\n`,
     );
     const jump = execute(["jump", shared]);

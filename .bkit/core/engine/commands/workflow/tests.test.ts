@@ -24,7 +24,6 @@ import {
   blockHash,
   blockedTests,
   checkPlanText,
-  classifyLockExit,
   gateScope,
   judgeGreen,
   judgeRed,
@@ -56,8 +55,9 @@ const scripts = (s: Record<string, string>) => JSON.stringify({ scripts: s });
  * the script it was asked for on stdout and stderr, writes FAKE_JUNIT to
  * $BKIT_TEST_REPORT when both are set, writes FAKE_REPORT_A / FAKE_REPORT_B into
  * $BKIT_TEST_REPORT_DIR (B one folder down), prints FAKE_LINES numbered lines,
- * then exits FAKE_EXIT. It appends its arguments to FAKE_ARGS_LOG when set, and with FAKE_LOCK_GIVEUP
- * prints the tests-lock give-up line for $LOCAL_STACK_LOCK_WHO and exits 75. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
+ * then exits FAKE_EXIT. It appends its arguments to FAKE_ARGS_LOG when set. With FAKE_LOCK_GIVEUP it
+ * writes a tests-lock give-up to $LOCAL_STACK_LOCK_STATUS_FILE and exits 75; with FAKE_LOCK_REFUSED it
+ * writes a tests-lock refusal there and exits 73. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
  */
 let cwd: string;
 let bin: string;
@@ -73,7 +73,8 @@ beforeEach(() => {
     '#!/bin/sh\necho "out: $1 in $(pwd)"\necho "err: $1" >&2\necho "arg: $2"\n' +
       'printf "wait=%s who=%s\\n" "$LOCAL_STACK_LOCK_WAIT_S" "$LOCAL_STACK_LOCK_WHO"\n' +
       'if [ -n "$FAKE_ARGS_LOG" ]; then echo "$*" >> "$FAKE_ARGS_LOG"; fi\n' +
-      'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] ❌ $LOCAL_STACK_LOCK_WHO gave up after 0s waiting for tests, in use by another agent — /tmp/holder (pid 123, since 12:00:00), no earlier run"; exit 75; fi\n' +
+      'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] a reworded line the engine never reads"; printf "lock=tests\\noutcome=gave-up\\nholder=another agent — /tmp/holder (pid 123, since 12:00:00)\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 75; fi\n' +
+      'if [ -n "$FAKE_LOCK_REFUSED" ]; then printf "lock=tests\\noutcome=refused\\nholder=\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 73; fi\n' +
       'if [ "$1" = "bkit:lint:file" ]; then exit "${FAKE_LINT_EXIT:-0}"; fi\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
       'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
@@ -327,44 +328,19 @@ describe("resolveGate", () => {
 });
 
 describe("bkit tests run", () => {
-  it("a 75 exit is a lock wait only when the log's give-up line names the tests lock and this run", () => {
-    const who = "bkit tests run bkit:gate:static-unit";
-    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for tests, in use by another agent — /tmp/checkout (pid 123, since 12:00:00), no earlier run\n`;
-    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("lock-wait");
-    expect(classifyLockExit({ exitCode: 75, log, who: who + " other" })).toBe("gate");
-    expect(classifyLockExit({ exitCode: 1, log, who })).toBe("gate");
-    expect(classifyLockExit({ exitCode: 75, log: "tests failed", who })).toBe("gate");
+  it("a gate exiting 75 with no status file is a gate failure, not a lock wait", async () => {
+    vi.stubEnv("FAKE_EXIT", "75");
+    const r = await run(BUILD);
+    expect(r.code).toBe(1);
+    expect(r.json).toMatchObject({ verdict: "FAIL", exitCode: 75, lockHolder: null });
   });
 
-  it("a gate whose nested lock gives up (exit 75, give-up line for another lock) is never exit 81", () => {
-    const who = "bkit tests run bkit:gate:static-unit";
-    const log = `[machine-lock] ❌ ${who} gave up after 0s waiting for database, in use by another agent — /tmp/tests (pid 123, since 12:00:00), no earlier run\n`;
-    expect(classifyLockExit({ exitCode: 75, log, who })).toBe("gate");
-  });
-
-  it("a 73 exit with a machine-lock refusal line (lock dir or perl) is could-not-run, exit 4", () => {
-    const who = "bkit tests run bkit:gate:static-unit";
-    expect(
-      classifyLockExit({
-        exitCode: 73,
-        log: "[machine-lock] ❌ could not take the lock for tests: cannot create /tmp/cache/bkit/machine-lock\n",
-        who,
-      }),
-    ).toBe("could-not-run");
-    expect(
-      classifyLockExit({
-        exitCode: 73,
-        log: "[machine-lock] ❌ could not take the lock for tests: /usr/bin/perl not found\n",
-        who,
-      }),
-    ).toBe("could-not-run");
-    expect(
-      classifyLockExit({
-        exitCode: 73,
-        log: "[machine-lock] ❌ cannot take tests while holding database: lock order is tests, other named locks, then the unnamed stack lock\n",
-        who,
-      }),
-    ).toBe("could-not-run");
+  it("a tests-lock refusal in the status file exits 4 with no verdict", async () => {
+    vi.stubEnv("FAKE_LOCK_REFUSED", "1");
+    const r = await run(BUILD);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ verdict: null, exitCode: 73, lockHolder: null });
+    expect(r.err).toContain("tests lock refused");
   });
 
   it("tests run with a --lock-wait-s that is not a whole number exits 2 and runs no gate", async () => {
@@ -391,13 +367,6 @@ describe("bkit tests run", () => {
     expect(invalid.code).toBe(2);
     expect(invalid.err).toContain("BKIT_LOCK_WAIT_S");
     expect(fs.existsSync(path.join(cwd, "logs/test.md"))).toBe(false);
-  });
-
-  it("a 73 exit with a refusal line for another lock is the gate's own FAIL, never exit 4", () => {
-    const who = "bkit tests run bkit:gate:static-unit";
-    const log =
-      "[machine-lock] ❌ could not take the lock for database: cannot create /tmp/tests/cache\n";
-    expect(classifyLockExit({ exitCode: 73, log, who })).toBe("gate");
   });
 
   it("PASS: runs the gate through the package runner, saves stdout and stderr to the log", async () => {
@@ -1034,13 +1003,23 @@ describe("bkit tests run — push-gate receipt", () => {
   );
 
   it(
-    "a tests-lock wait records no receipt and the re-run after the lock frees does",
+    "a gate that gave up on the tests lock exits 81 from the status file and records no receipt",
     async () => {
       repo();
       const sha = head();
+      const temp = tmp("bkit-tests-temp-");
+      vi.stubEnv("TMPDIR", temp);
       vi.stubEnv("FAKE_LOCK_GIVEUP", "1");
       const waited = await run([...gateArgs(DEEP), "--lock-wait-s=0"]);
       expect(waited.code).toBe(81);
+      expect(fs.readdirSync(temp)).toEqual([]);
+      expect(waited.json).toMatchObject({
+        verdict: null,
+        exitCode: 75,
+        row: null,
+        lockHolder: "another agent — /tmp/holder (pid 123, since 12:00:00)",
+      });
+      expect(waited.err).toContain("[machine-lock] a reworded line the engine never reads");
       expect(fs.existsSync(receipt(sha))).toBe(false);
       expect(fs.existsSync(`${receipt(sha)}.failed`)).toBe(false);
       vi.stubEnv("FAKE_LOCK_GIVEUP", "");

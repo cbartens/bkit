@@ -8,7 +8,7 @@
 // output keys and exit codes in its spec; `--help` and the convention test both read
 // that spec, so the help text cannot drift from what the command accepts.
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -113,25 +113,56 @@ export const wholeNumber = (v, flag, fallback, min = 0) => {
     }
     return Number(s);
 };
-/** The holder named by this run when its tests-lock wait gave up. */
-export function testsLockHolder(log, who) {
-    const prefix = `[machine-lock] ❌ ${who} gave up after `;
-    for (const line of log.split(/\r?\n/)) {
-        if (!line.startsWith(prefix))
-            continue;
-        const holder = /^\d+s waiting for tests, in use by (.+)$/.exec(line.slice(prefix.length));
-        if (holder)
-            return holder[1];
-    }
-    return null;
+/** The env var naming the file the machine-lock `run` wrapper writes its give-up or refusal to. */
+export const LOCK_STATUS_FILE_ENV = "LOCAL_STACK_LOCK_STATUS_FILE";
+/** A fresh status file path for one gate run, in the OS temp folder; the file is not created. */
+export function lockStatusFile() {
+    return path.join(os.tmpdir(), `bkit-lock-status-${process.pid}-${randomUUID()}`);
 }
-/** Classify only a tests-lock outcome, leaving gate and nested-lock failures intact. */
-export function classifyLockExit({ exitCode, log, who, }) {
-    const lines = log.split(/\r?\n/);
-    if (exitCode === 75 && testsLockHolder(log, who) !== null)
+/**
+ * Read and delete a status file. Null when it is absent, empty, not a regular file or
+ * unreadable: the wrapper took its lock, or it never wrote the file.
+ */
+export function readLockStatus(file) {
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (stat === undefined || !stat.isFile())
+        return null;
+    let text;
+    try {
+        text = fs.readFileSync(file, "utf-8");
+    }
+    catch (err) {
+        const code = err.code;
+        if (code !== "EACCES" && code !== "EPERM")
+            throw err;
+        return null;
+    }
+    finally {
+        fs.rmSync(file, { force: true });
+    }
+    const fields = new Map();
+    for (const line of text.split("\n")) {
+        const eq = line.indexOf("=");
+        if (eq > 0)
+            fields.set(line.slice(0, eq), line.slice(eq + 1));
+    }
+    const lock = fields.get("lock");
+    const outcome = fields.get("outcome");
+    if (lock === undefined || outcome === undefined)
+        return null;
+    return { lock, outcome, holder: fields.get("holder") ?? "" };
+}
+/**
+ * Classify a wrapped gate's result from its exit code and the status file only. `exitCode`
+ * is null when a caller in between (git running a pre-push hook) collapsed the status, so
+ * the file alone decides. Anything but a tests-lock give-up or refusal is the gate's own.
+ */
+export function classifyLockOutcome(exitCode, status) {
+    if (status === null || status.lock !== "tests")
+        return "gate";
+    if (status.outcome === "gave-up" && (exitCode === null || exitCode === 75))
         return "lock-wait";
-    if (exitCode === 73 &&
-        lines.some((line) => /^\[machine-lock\] ❌ (?:could not take the lock for tests:|cannot take tests while holding )/.test(line)))
+    if (status.outcome === "refused" && (exitCode === null || exitCode === 73))
         return "could-not-run";
     return "gate";
 }

@@ -9,7 +9,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { BKIT_GATE_CHANGED_SCRIPT } from "../../install/manifest.js";
-import { classifyLockExit, CommandError, EXIT, git, testsLockHolder, wholeNumber, } from "../lib.js";
+import { classifyLockOutcome, CommandError, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, readLockStatus, wholeNumber, } from "../lib.js";
 import { readPackageJson } from "../../shared/package-json.js";
 import { COULD_NOT_RUN_EXIT_CODES, scriptCommand, testCommand, } from "../../shared/package-manager.js";
 /** Exit code: neither `bkit:gate:changed` nor the --fallback gate is declared. */
@@ -74,7 +74,7 @@ function runLogged(argv, cwd, log, env) {
     }
 }
 export const testsChangedVerb = {
-    summary: `Check only the files changed since --base: run \`${BKIT_GATE_CHANGED_SCRIPT}\` with them as arguments, else the --fallback gate; exit 0 PASS or nothing changed, 1 FAIL, 4 could not run, 81 tests lock held.`,
+    summary: `Check only the files changed since --base: run \`${BKIT_GATE_CHANGED_SCRIPT}\` with them as arguments, else the --fallback gate; exit 0 PASS or nothing changed, 1 FAIL, 4 could not run, 81 tests lock held (read from the lock status file, never from the exit code alone).`,
     use: "by-hand",
     flags: [
         {
@@ -148,20 +148,18 @@ export const testsChangedVerb = {
         const scope = scriptCommand(gate).join(" ");
         ctx.log(`running ${scope}`);
         const who = `bkit tests changed ${gate}`;
-        const lines = [];
-        const exitCode = runLogged(argv, top, (line) => {
-            lines.push(line);
-            ctx.log(line);
-        }, {
+        const statusPath = lockStatusFile();
+        const exitCode = runLogged(argv, top, (line) => ctx.log(line), {
             LOCAL_STACK_LOCK_WAIT_S: String(waitS),
             LOCAL_STACK_LOCK_WHO: who,
+            [LOCK_STATUS_FILE_ENV]: statusPath,
         });
-        const log = lines.join("\n");
-        const lockExit = classifyLockExit({ exitCode, log, who });
+        const lockStatus = readLockStatus(statusPath);
+        const lockExit = classifyLockOutcome(exitCode, lockStatus);
         const couldNotRun = lockExit === "could-not-run" || COULD_NOT_RUN_EXIT_CODES.has(exitCode);
         const lockWait = lockExit === "lock-wait";
         const verdict = couldNotRun || lockWait ? null : exitCode === 0 ? "PASS" : "FAIL";
-        const lockHolder = lockWait ? testsLockHolder(log, who) : null;
+        const lockHolder = lockWait ? (lockStatus?.holder ?? null) : null;
         ctx.emit({ files, gate, scope, exitCode, verdict, lockHolder });
         if (lockWait)
             return EXIT.AGENT_WAIT;
