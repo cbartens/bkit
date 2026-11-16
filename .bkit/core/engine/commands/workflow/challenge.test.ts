@@ -565,6 +565,43 @@ describe("bkit challenge merge", () => {
     ]);
   });
 
+  it("acceptedLocations reads a lettered decision in a per-line file as Accept", () => {
+    const opts = [
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+    ];
+    write(
+      `${LOG}/build-decision-1-1.md`,
+      [
+        "Status: DECIDED",
+        "Question: CHALLENGE",
+        "",
+        "**Q1 — Null deref in `src/a.ts:10`:** the handler reads a missing field.",
+        ...opts,
+        "Recommended: A) Accept — guarded upstream",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: A) Accept — fine by me",
+        "",
+        "**Q2 — Retry loop in `src/b.ts:4`:** spins forever.",
+        ...opts,
+        "Recommended: B) Fix now — real bug",
+        "Default if unanswered: the run waits for you; taken as B when nobody can be asked",
+        "Decision: B",
+        "",
+        "**Q3 — Stale cache in `src/c.ts:7`:** serves old data.",
+        ...opts,
+        "Recommended: B) Fix now — real bug",
+        "Default if unanswered: the run waits for you; taken as B when nobody can be asked",
+        "Decision: A",
+        "",
+      ].join("\n"),
+    );
+    expect([...acceptedLocations(path.join(cwd, LOG), cwd)].sort()).toEqual([
+      "src/a.ts:10",
+      "src/c.ts:7",
+    ]);
+  });
+
   it("deferred counts the rows written", async () => {
     write(PLAN, plan(2));
     write(R1, report({ sev: "LOW", loc: "src/c.ts:1" }));

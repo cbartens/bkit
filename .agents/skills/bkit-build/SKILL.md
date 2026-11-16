@@ -119,23 +119,23 @@ description: "Build Feature — Autonomous implementation"
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-decision --position=next
    ```
    Hold `value` as `DECISION`.
-2. Write `{OUTBOX}/decision-items.json` = one JSON object per item, in item order — `{"title", "question", "options", "recommended", "reason"}`, or a hard blocker `{"title", "question", "options", "noRecommendation"}` (why no agent can settle it); never a recommendation on a hard blocker. Per `question`: word each so "yes" accepts the recommendation. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Items:
+2. Write `{OUTBOX}/decision-items.json` = one JSON object per item, in item order — `{"title", "question", "options", "recommended", "reason"}`, or a hard blocker `{"title", "question", "options", "noRecommendation"}` (why no agent can settle it); never a recommendation on a hard blocker. Each option is `{"name", "effect"}`: `name` is the bare option name and `effect` says what happens if the owner picks it. The default effects are `Accept` = `the item is recorded as accepted and the build moves on`, `Fix now` = `one more fix round runs before the build moves on` and `Stop` = `Stop — the run ends here with a handover; the next run resumes here`, each sharpened to the item when that helps. Per `question`: word each so "yes" accepts the recommendation. State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier. Items:
    - **If** `PAUSE_QUESTION` = `VERIFY_GAPS` **and** `PAUSE_STEP` = 10 → write one item per `Identified Gaps Log` line of `build-plan-verify-holistic-{RUN}-{HOLISTIC_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-holistic-{RUN}-*-log.md` when it has one.
    - **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
    - For the verify list, title each item `Task {N}` from its `TASK {N}` gap line, so a decision tick finds the task. A gap with no task number gets its description as the title.
    - For either `VERIFY_GAPS` list:
-     - A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-     - Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
+     - A fixable gap → options `Accept` and `Fix now`, with a recommendation per item.
+     - Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `Accept`, `Fix now` and `Stop`.
      - A group-gate failure is never an item: no item option can settle it, and the loop question carries it.
    - **If** `PAUSE_QUESTION` = `CHALLENGE`:
      - **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
      - **Else** → write one item per task of `CHALLENGE_TASKS` whose block in the plan says `**Fixable:** false`, at any severity.
      - Title each item with its task number, when it has one, followed by its `Location` in brackets.
-     - **If** the item is `**Fixable:** false` → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
-     - **Else** → options `["Accept", "Fix now"]`, with a recommendation per finding.
+     - **If** the item is `**Fixable:** false` → a hard blocker with options `Accept`, `Fix now` and `Stop`.
+     - **Else** → options `Accept` and `Fix now`, with a recommendation per finding.
    - **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items: a failing suite test is never an item, and the loop question carries it.
-   - **If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept the change?`
-   - **If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+   - **If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept the change?`
+   - **If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
 
    Check a red gate against the base commit, the commit the branch started from. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`, else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
 
@@ -174,10 +174,10 @@ description: "Build Feature — Autonomous implementation"
    - **If** exit 4 → step 4, asking only the printed `hardBlockers` questions.
    - **Else** → **Failure Path**.
 4. Ask the owner in this session; NEVER hand questions or acceptances to subagents:
-   - One message = the attempt line and `## Progress` block (loop questions only), then each `Q{n}` question still without a `Decision:` line, each with its lettered `Options:` and `Recommended:` / `No recommendation` lines, then the file's last line; plain text, not through a host question tool.
+   - One message = the attempt line and `## Progress` block (loop questions only), then each `Q{n}` question still without a `Decision:` line, each with its option lines, its `Recommended:` line (`Recommended: none — {why}` on a hard blocker) and its `Default if unanswered:` line, then the file's last line; plain text, not through a host question tool.
    - Offer only the file's options for each question; NEVER add an `Accept` or any other option the file does not list.
    - Look up facts in the repo, docs and tools, and never ask the owner for them.
-   - Decide nothing on the owner's behalf. "yes" takes every recommendation; it never answers a `No recommendation` question. Narrate `Decision pause {DECISION}: {count} question(s)` → record the wait → end turn → wait for answers:
+   - Decide nothing on the owner's behalf. Reply with a letter per question, or "yes" to take every recommendation. "yes" never answers a `Recommended: none — {why}` question. Show the `Or say "one by one" and I'll ask them one at a time.` line only when the message asks 3 or more questions (after a headless apply it asks only the `hardBlockers` subset). **If** the owner replies "one by one" → ask each unanswered question in its own message, per § Human questions. Narrate `Decision pause {DECISION}: {count} question(s)` → record the wait → end turn → wait for answers:
      ```bash
      "{BKIT}" status row --file="{STATUS}" --workflow=build --type=owner-pause --field=reason=decision >/dev/null || exit 1
      ```
@@ -344,7 +344,7 @@ description: "Build Feature — Autonomous implementation"
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   **If** exit 8 → ask the owner in this session, plain text, not through a host question tool, in one message with no tests or edits: `**Q1 — Issue:** the prompt names more than one issue. Which one did you mean?`, then one option line per issue `fids parse` printed under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, lettered in that order, then `Recommended: none — only you know which issue you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, then the line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On a pick, write the issue reference with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; on `Stop` → **STOP**; never the **Failure Path**.
    Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
@@ -353,7 +353,7 @@ description: "Build Feature — Autonomous implementation"
    Route:
    - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; NEVER create a tracker issue.
-   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **If** exit 3 → **Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" re-run this block; never the **Failure Path**.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
@@ -376,7 +376,7 @@ description: "Build Feature — Autonomous implementation"
    Route:
    - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   - **If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
    - **Else** → **Failure Path**.
 6. Acquire concurrency lock:
    ```bash

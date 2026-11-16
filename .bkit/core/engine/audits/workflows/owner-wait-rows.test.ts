@@ -22,8 +22,14 @@ const workflows = fs
   .sort()
   .map((name) => ({ name, content: fs.readFileSync(path.join(WORKFLOWS_DIR, name), "utf-8") }));
 
+const PRE_STATUS_WAIT = "end turn → wait for the answer; no status file yet";
+
 const waits = (content: string) =>
-  content.split("\n").filter((l) => /end turn → wait for (answers|the answer)/.test(l));
+  content
+    .split("\n")
+    .filter(
+      (l) => /end turn → wait for (answers|the answer)/.test(l) && !l.includes(PRE_STATUS_WAIT),
+    );
 
 describe("every owner wait writes owner-pause and owner-answer", () => {
   it("finds the owner waits (not vacuous)", () => {
@@ -57,4 +63,30 @@ describe("every owner wait writes owner-pause and owner-answer", () => {
       );
     });
   }
+});
+
+describe("a wait before the run's status file exists", () => {
+  it("a pre-status wait sits before workflows start and names no owner-pause row", () => {
+    const lines = workflows.find((w) => w.name === "bkit-debug.md")!.content.split("\n");
+    const waitAt = lines.findIndex((l) => l.includes(PRE_STATUS_WAIT));
+    expect(waitAt, "no pre-status wait found in bkit-debug.md").toBeGreaterThanOrEqual(0);
+    const startAt = lines.findIndex((l) => l.includes('"{BKIT}" workflows start'));
+    expect(startAt).toBeGreaterThan(waitAt);
+    expect(lines[waitAt]).not.toContain("owner-pause");
+  });
+
+  it("every pre-status wait in every workflow sits before workflows start and names no owner-pause row", () => {
+    const preStatusWaits = workflows.flatMap(({ name, content }) => {
+      const lines = content.split("\n");
+      const startAt = lines.findIndex((l) => l.includes('"{BKIT}" workflows start'));
+      return lines
+        .map((line, i) => ({ where: `${name}:${i + 1}`, line, at: i, startAt }))
+        .filter((w) => w.line.includes(PRE_STATUS_WAIT));
+    });
+    expect(preStatusWaits.length, "no pre-status wait found").toBeGreaterThan(0);
+    for (const w of preStatusWaits) {
+      expect(w.startAt, `${w.where} does not sit before workflows start`).toBeGreaterThan(w.at);
+      expect(w.line, w.where).not.toContain("owner-pause");
+    }
+  });
 });

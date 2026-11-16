@@ -1824,7 +1824,7 @@ describe("issue-less runs", () => {
       const recover = trackerBlocks(step1)
         .filter((b) => b.kind === "true")
         .map((b) => step1.slice(b.start, b.end + 1).join("\n"))
-        .filter((t) => t.includes("fids parse"));
+        .filter((t) => t.includes("fids parse --branch"));
       expect(recover, name).toHaveLength(1);
       const t = recover[0]!;
       expect(t).toContain('"{BKIT}" fids parse --branch="feat/{FID}"');
@@ -1833,10 +1833,10 @@ describe("issue-less runs", () => {
       expect(t).toContain("→ as exit 0 with `issueId` null");
       expect(t).toContain("NEVER create a tracker issue");
       expect(t.indexOf("fids parse")).toBeLessThan(t.indexOf("no-issue warning"));
-      // A branch suffix that is not a slug stops the run before anything starts.
+      // A branch suffix that is not a slug asks the owner to rename it before anything starts.
       const stop = t.split("\n").find((l) => l.includes("**If** exit 3"));
-      expect(stop, name).toContain("**STOP**");
-      expect(stop).toContain("rename `BRANCH` to `feat/{lowercase-slug}` or name an issue");
+      expect(stop, name).toContain("**Action needed — Branch name:**");
+      expect(stop).toContain("rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue");
       expect(stop).toContain("never the **Failure Path**");
       // The route ends in a Failure Path for any other exit.
       expect(t).toContain("**Else** → **Failure Path**");
@@ -2112,7 +2112,7 @@ describe("debug on dev", () => {
     const line = debug.split("\n").find((l) => l.includes("**Foreign path:**"));
     expect(line, "no Foreign path line").toBeDefined();
     expect(line).toContain("**STOP**");
-    expect(line).toContain("ask the human");
+    expect(line).toContain("**Action needed — Foreign path:**");
     expect(line).not.toMatch(/→ \*\*Failure Path\*\*/);
   });
 });
@@ -2183,11 +2183,14 @@ describe("fix loops ask only when the last round made no progress", () => {
   it("debug Loop Question states the engine's trend line, never a fixed claim", () => {
     const loop = section(workflow("debug"), /Loop Question/);
     expect(loop).toContain("`trendLine` as `LOOP_TREND_LINE`");
-    expect(loop).not.toContain("left no fewer failures");
     const questions = loop.split("\n").filter((l) => l.includes("**Q1 — "));
     expect(questions.length).toBeGreaterThanOrEqual(4);
-    for (const q of questions) expect(q, q).toContain("{LOOP_TREND_LINE}");
+    for (const q of questions) {
+      expect(q, q).toContain("{LOOP_TREND_LINE}");
+      expect(q, q).not.toContain("left no fewer failures");
+    }
     expect(loop).toMatch(/taken without asking \([^\n]*\{LOOP_TREND_LINE\}/);
+    expect(loop).not.toContain("left no fewer failures");
   });
 
   it("debug Loop Question at the used-up soak limit states the trend line", () => {
@@ -2195,7 +2198,7 @@ describe("fix loops ask only when the last round made no progress", () => {
     expect(loop).toMatch(
       /`LOOP_LIMIT` = true.*\*\*Q1 — Soak:\*\* The soak attempts are used up[^\n]*\{LOOP_TREND_LINE\}/,
     );
-    expect(loop).toContain("`Recommended: A) Stop`");
+    expect(loop).toContain("`Recommended: A) Stop — the attempts set aside for this are used up`");
   });
 
   it("ship asks the Merge Question only when the merge attempts are used up", () => {
@@ -2425,12 +2428,11 @@ describe("questions never re-run a check without a change", () => {
   it("debug and ship questions offer no answer that re-runs a check without a change", () => {
     const allowed = new Set(["Stop", "Try again", "Confirm", "Reject"]);
     for (const name of ["debug", "ship"]) {
-      const offered = [...workflow(name).matchAll(/Options: ([^`\n]*)/g)].flatMap((m) =>
-        String(m[1])
-          .split(" / ")
-          .map((o) => o.replace(/^[A-Z]\) /, "").trim()),
+      // Each option of a mid-run question sits on its own line: `{L}) {name} — {effect}`.
+      const offered = [...workflow(name).matchAll(/^[ \t]*[A-Z]\) ([^\n]+?) — /gm)].map((m) =>
+        String(m[1]).trim(),
       );
-      expect(offered.length, `${name} has no Options lines`).toBeGreaterThan(0);
+      expect(offered.length, `${name} has no option lines`).toBeGreaterThan(0);
       expect(
         offered.filter((o) => !allowed.has(o)),
         `${name} offers an unexpected answer`,
@@ -2501,7 +2503,7 @@ describe("planned tests a code step changed", () => {
     const pause = section(workflow("build"), /Decision Pause/);
     const rule = pause.split("\n").find((l) => l.includes("`PAUSE_QUESTION` = `CHANGED_TESTS`"));
     expect(rule, "§ Decision Pause has no CHANGED_TESTS item rule").toBeDefined();
-    expect(rule).toContain('Options `["Accept", "Stop"]`');
+    expect(rule).toContain("Options `Accept` and `Stop`");
     expect(rule).toMatch(/recommended `Accept`/);
   });
 

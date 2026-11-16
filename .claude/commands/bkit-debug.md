@@ -52,7 +52,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - **Locks:** Step 1 takes `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` with `bkit locks acquire --kind=workflow` (hold `token`); Close Workflow and Failure Path release it and exit non-zero while it is still present. **If** existing lock — its owning workflow's folded status.jsonl decides: `IN_PROGRESS` and last step <30min idle → **Failure Path**; any other holder (`DONE`, `FAILED`, `IN_PROGRESS` idle >=30min, no run) → reclaimed.
 - **Status branch:** status.jsonl committed on the adopted branch `{BRANCH}` (`{STATUS}`, held from Step 2); per-step commits, no pushes.
 - **Worktrees:** Debug NEVER creates a branch. Step 2 resumes `.worktrees/{FID}`; **Else** → adopts an existing `feat/{FID}` (local or origin, not the session's own branch) into it when the runtime mints worktrees; **Else** → adopts the session's current branch in place (`worktreePath` = main checkout); no `-b`. `main` is the one ineligible branch. cwd persists across subsequent Bash calls. **If** steps ever find `pwd` != `{WORKTREE_PATH}` → **Failure Path**.
-- **Foreign path:** Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run; nothing written → **STOP**; ask the human to commit or revert the named file, record the wait with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=foreign-path` → end turn; on the reply, record it first with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer` → re-run the block; NEVER the **Failure Path**. Line 1 of the final message = the no-issue warning, when one was emitted.
+- **Foreign path:** Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run; nothing written → **STOP**; write `**Action needed — Foreign path:** commit or revert {file}. Then say "continue".` with the named file, record the wait with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=foreign-path` → end turn; on the reply, record it first with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer` → re-run the block; NEVER the **Failure Path**. Line 1 of the final message = the no-issue warning, when one was emitted.
 - **gh MCP fallback:** `gh` primary for PR / CI / merge surface. **If** a command exits 80, **or** `runtimeGithubCli` = false in the `runtime-resolved` row of `{STATUS}` → use mapped MCP tool (needs `actions` toolset in `.mcp.json`): `bkit prs open` / `bkit branches land` stage `open` → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body`, byte-for-byte; `bkit prs probe --number` → `pull_request_read` (`get`, minimal fields); `bkit prs probe --head` / `bkit workflows handover --push` → `list_pull_requests`; `bkit prs merge` / `bkit branches land` stage `merge` → `merge_pull_request` (printed skip-token-free `subject` as `commit_message`, empty body; `--match-head` SHA as `sha`); `bkit prs verbose-ci` → `update_pull_request`; `bkit prs update-branch --number` → `update_pull_request_branch`; `bkit prs checks --number` → `pull_request_read` (`get_check_runs`, the check-run conclusions for the PR head; or `actions_list` runs for the head SHA), never `get_status`; `bkit runs wait` / `bkit runs dispatch` / `bkit runs revalidate` / `bkit runs gate` → `actions_list`; `gh run view {id} --json jobs` → `actions_get`; `gh run view --log-failed` → `get_job_logs` (`failed_only=true`). Max 1 transition per run, recorded as a `transport-fallback` row via `bkit prs transport-row --file={STATUS} --kind=fallback --from=<gh command> --to=<MCP tool> --reason=<why> --asserted-by=<re-read>` — **Skip if** `{STATUS}` not set. Tracker reads and writes go through `bkit` verbs; the tracker MCP ONLY when a verb prints `tracker.done: false` or exits 80.
 
 
@@ -115,15 +115,23 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    **If** exit non-zero → **Failure Path**.
    Hold `trend` as `LOOP_TREND`, `counts` as `LOOP_COUNTS` and `trendLine` as `LOOP_TREND_LINE`.
    **If** `LOOP_LIMIT` is not held **and** `LOOP_TREND` != `stuck` **and** `LOOP_TREND` != `worse` → narrate `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}, taken without asking ({LOOP_TREND_LINE})` → return to the calling step.
-3. Ask the owner in this session; plain text, not through a host question tool. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. One message:
+3. Ask the owner in this session; plain text, not through a host question tool. State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier. One message:
    - `debug {LOOP_POINT}: attempt {LOOP_ATTEMPT} of {LOOP_MAX}`, then `Failures per test round: {LOOP_COUNTS}`, then the newest diagnosis (`debug-failure-diagnose-*.md`) or soak log (`debug-failure-soak-*-log.md`) in one line each.
    - The question — first match wins:
      - **If** `LOOP_LIMIT` = true → `**Q1 — Soak:** The soak attempts are used up. {LOOP_TREND_LINE} Stop here instead of trying one more set of attempts?`.
      - **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
      - **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up. {LOOP_TREND_LINE} Stop here instead of starting soak (a slower, step-by-step investigation)?`.
      - **Else** → `**Q1 — Soak:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
-   - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop`.
-   - The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
+   - The two answers, one per line:
+     ```text
+     A) Stop — the run ends here with a handover; the next run resumes here
+     B) Try again — one more attempt runs
+     ```
+   - The recommendation, first match wins:
+     - **If** `LOOP_LIMIT` = true → `Recommended: A) Stop — the attempts set aside for this are used up`.
+     - **Else** → `Recommended: A) Stop — the attempts so far have not brought the failures down through a code change`.
+   - `Default if unanswered: the run waits for you`.
+   - The line `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
      Record the wait → end turn → wait for the answer:
    ```bash
    "{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=loop >/dev/null || exit 1
@@ -178,13 +186,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   **If** exit 8 → ask the owner in this session, plain text, not through a host question tool, in one message with no tests or edits: `**Q1 — Issue:** the prompt names more than one issue. Which one did you mean?`, then one option line per issue `fids parse` printed under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, lettered in that order, then `Recommended: none — only you know which issue you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, then the line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On a pick, write the issue reference with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; on `Stop` → **STOP**; never the **Failure Path**.
    Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    Parse an explicitly named existing branch before adoption:
    ```bash
    "{BKIT}" branches parse --workflow=debug --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   Hold `branch` as `NAMED_BRANCH`; `{BRANCH_FLAG}` = `--branch="{NAMED_BRANCH}"` when non-null, else empty. Exit 3 or 8 → **STOP** with the missing or ambiguous branch and ask the owner to name one existing branch; no tests or edits.
+   Hold `branch` as `NAMED_BRANCH`; `{BRANCH_FLAG}` = `--branch="{NAMED_BRANCH}"` when non-null, else empty. **If** exit 3 or 8 → ask the owner in this session; plain text, not through a host question tool. One message, no tests or edits:
+   - `**Q1 — Branch:** {the missing or ambiguous branch the engine printed}. Which existing branch did you mean?`
+   - One option line per printed candidate (`Use branch {x} — debug adopts {x} and runs its tests there`), then `Name another branch — reply with its name` and `Stop — nothing changes; the run can be started again`, lettered in that order.
+   - `Recommended: none — only you know which branch you meant`.
+   - `Default if unanswered: the run waits for you; the run stops when nobody can be asked`.
+   - The line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.`
+   - Write no status row (none exists yet); end turn → wait for the answer; no status file yet.
+   - On the reply, write `branch={x}` with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `branches parse` on it with `--prompt-file="{SESSION_DIR}/owner-answer.md"`.
+   - A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
+   - **If** the answer is `Stop` → **STOP**, no further downstream steps; never the **Failure Path**.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
    "{BKIT}" fids parse --branch="feat/{FID}"
@@ -192,7 +209,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Route:
    - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; NEVER create a tracker issue.
-   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **If** exit 3 → **Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" re-run this block; never the **Failure Path**.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
@@ -207,7 +224,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Route:
    - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   - **If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
    - **Else** → **Failure Path**.
 5. Acquire concurrency lock:
    ```bash
@@ -306,7 +323,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** exit 0 → hold `runId` as `CI_RUN_ID`, `runUrl` as `CI_RUN_URL`, `runAttempt` as `CI_RUN_ATTEMPT`, `workflowId` as `CI_WORKFLOW_ID`, `workflowPath` as `CI_WORKFLOW_PATH`, `headSha` as `CI_HEAD_SHA`.
    - **If** exit 1 → the validated selection explicitly chooses local discovery or proves no red run; clear the held CI identity.
    - **If** exit 80 → use the existing mapped metadata/jobs read fallback, retaining the printed request identity, exact repository, attempt, workflow and commit. Write its normalized `request`, `run`, complete `jobs` and `complete: true` to `{OUTBOX}/ci-evidence.json`; rerun the same `runs locate` command with `--evidence-file="{OUTBOX}/ci-evidence.json"`. Record the transport with `prs transport-row`. Never substitute local discovery for unavailable reads.
-   - **If** exit 8 or 82 → record `status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=decision`, release the workflow lock, and **STOP**, naming the ambiguous references, branch conflict or unavailable evidence and its reference. Record `owner-answer` before retrying after an owner reply.
+   - **If** exit 8 or 82 → ask the owner in this session; plain text, not through a host question tool. One message, `**Q1 — CI run:**` with the engine's message carried word for word (it names the ambiguous references, the branch conflict such as `Supply branch={x} in its checkout`, or the unavailable evidence and its reference):
+     - One option line per printed candidate reference: `A) Use {reference} — debug reads that run's failures instead of running the tests itself`. Exit 82 with no candidate lists none.
+     - Then `Use local discovery — debug runs the tests itself instead of reading CI` and `Stop — the run ends here with a handover; the next run resumes here`, lettered after the candidates.
+     - `Recommended: none — only you know which run you meant`.
+     - `Default if unanswered: the run waits for you; the run stops when nobody can be asked`.
+     - The line `Reply with a letter per question. "stop" ends here with a handover; the next run resumes here.`
+     - Record the wait with `status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=decision` → end turn → wait for the answer. The workflow lock stays held while the owner answers.
+     - Record `status row --file="{STATUS}" --workflow=debug --type=owner-answer` first. A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
+     - **If** the answer is `Stop` → release the workflow lock (`locks release --kind=workflow --workflow=debug --fid={FID} --month={YYYYMM} --token={LOCK_TOKEN}`) → **STOP**, no further downstream steps.
+     - **If** the answer is `Use local discovery` → treat the run as exit 1: local discovery, no CI identity.
+     - **Else** the answer names a reference → write it with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `runs locate` with `--prompt-file="{SESSION_DIR}/owner-answer.md"`, the other flags as above → route the new exit code again.
    - **Else**, or fallback still unavailable → **Failure Path** with the unresolved evidence reference.
      Persist only the validated file, then rederive gates and current-generation state:
    ```bash

@@ -102,10 +102,12 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 > These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 
 - **Assumption:** [what the plan takes as given] → [what breaks if it is wrong]
-- **Open Question:** [the decision needed] → [who resolves it, and how]
-  - **Options:** A) [option] — [trade-off] · B) [option] — [trade-off] · C) [option] — [trade-off, optional]
-  - **Recommended:** A) [option] — [why, in one line]
-  - **Default if unanswered:** [what the agent proceeds with]
+- **Q{n} — [title]:** [the decision needed, in plain English] → [who resolves it, and how]
+  - A) [option] — [trade-off]
+  - B) [option] — [trade-off]
+  - C) [option] — [trade-off] (optional)
+  - Recommended: A) [option] — [why]
+  - Default if unanswered: [the plan assumes A | the plan stops at Gate 1 until you answer]
 
 ### 👤 ✅ Human Confirmation
 

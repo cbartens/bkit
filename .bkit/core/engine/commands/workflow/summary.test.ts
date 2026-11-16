@@ -1291,6 +1291,43 @@ describe("buildSummary", () => {
     );
   });
 
+  it("buildSummary reads a lettered decision in a per-line file as Accept", () => {
+    const decision = [
+      "Status: ASSUMED",
+      "**Q1 — Gap:** accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — minor",
+      "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+      "Decision: A",
+      "",
+      "**Q2 — Other gap:** accept it?",
+      "A) Accept — the item is recorded as accepted",
+      "B) Fix now — a fix task is added to the plan",
+      "Recommended: A) Accept — minor",
+      "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+      "Decision: A) Accept (assumed) — minor (ask:false, LOCAL, 2026-10-28)",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "build-decision",
+            attempt: 1,
+            artifacts: ["log/build-decision-1-1.md"],
+          },
+        ],
+        decisionFiles: ["log/build-decision-1-1.md"],
+        read: reader({ "log/build-decision-1-1.md": decision }),
+      }),
+    );
+    expect(s.markdown).toContain("1 item(s) accepted at the Decision Pause");
+    expect(s.markdown).toContain("1 item(s) accepted without the owner");
+    expect(s.markdown).toContain("- Accepted: log/build-decision-1-1.md: Decision: Accept");
+  });
+
   it("reads pretty-printed and one-line warning records from a jsonl fence", () => {
     const pretty = JSON.stringify(
       {

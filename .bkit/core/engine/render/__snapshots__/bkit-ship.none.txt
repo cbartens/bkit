@@ -120,7 +120,7 @@ _No tracker connected, skip step._
    Route:
    - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   - **If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
    - **Else** → **Failure Path**.
 5. Detect the runtime:
    ```bash
@@ -303,9 +303,12 @@ _No tracker connected, skip step._
    - **If** `ASSUMED_COUNT` = 0 → return to Step 2.
    - **If** `RUNTIME_HEADLESS` = true → step 4, since there is no one to ask.
    - **Else** → step 2.
-2. Ask the owner in this session. Write in plain text, not through a host question tool. NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Send one message:
-   - For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`.
-   - End the message with the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.`
+2. Ask the owner in this session. Write in plain text, not through a host question tool. NEVER hand the questions to subagents. State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier. Send one message:
+   - For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then the option lines, each on its own line:
+     A) Confirm — the accept is recorded as yours, as a decision row
+     B) Reject — the item is written as a needs-decision deferral
+   - Then `Recommended: none — only you can accept it`, then `Default if unanswered: written as a needs-decision deferral`.
+   - End the message with the line `Reply with a letter per question. Ship merges either way; anything you do not confirm is written as a needs-decision deferral.`
 
    Then record the wait → end turn → wait for answers:
 
@@ -733,8 +736,13 @@ Asked from Step 9 or Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NE
 
 1. Ask the human in this session, in plain text, in one message:
    - `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** The merge attempts are used up ({the last refusal or failure in one line}). Stop here instead of trying one more set of attempts?`
-   - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
-   - End the message with the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
+   - The merge options:
+     ```text
+     A) Stop — the run ends here with a handover; the next run resumes here
+     B) Try again — one more set of merge attempts runs
+     ```
+   - Then `Recommended: A) Stop — {reason}`, then `Default if unanswered: the run waits for you`.
+   - End the message with the line `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
 
    Record the wait → end turn → wait for the answer:
 

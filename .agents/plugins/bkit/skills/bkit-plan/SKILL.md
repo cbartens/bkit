@@ -103,7 +103,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   **If** exit 8 → ask the owner in this session, plain text, not through a host question tool, in one message with no tests or edits: `**Q1 — Issue:** the prompt names more than one issue. Which one did you mean?`, then one option line per issue `fids parse` printed under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, lettered in that order, then `Recommended: none — only you know which issue you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, then the line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On a pick, write the issue reference with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; on `Stop` → **STOP**; never the **Failure Path**.
    Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
@@ -112,7 +112,7 @@ description: "Plan Feature — Autonomous plan generation"
    Route:
    - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; NEVER create a tracker issue.
-   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **If** exit 3 → **Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" re-run this block; never the **Failure Path**.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
@@ -127,7 +127,7 @@ description: "Plan Feature — Autonomous plan generation"
    Route:
    - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   - **If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
    - **Else** → **Failure Path**.
 5. Acquire concurrency lock:
    ```bash
@@ -468,7 +468,7 @@ Before generating, ask the engine for this step's invocation id and keep the pri
    ```
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-build`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step. State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
    - Work in the main checkout `{REPO_ROOT}` for every command of this round, because after `branches land` the plan run's `{STATUS}` can sit in the removed worktree. Check that local `dev` holds the run's status log:
      ```bash

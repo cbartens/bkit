@@ -56,6 +56,24 @@ Once at the end of every message: `Reply with a letter per question, or "yes" to
 
 ---
 
+## Documentation Consultation
+
+<!-- prettier-ignore -->
+| Topic | Path and section used | Coverage | Gap | Action |
+| --- | --- | --- | --- | --- |
+| architecture | `docs/architecture.md` § Package Boundaries | Where engine commands, workflow sources and prompt sources live | None | Every task edits an existing file in the place this document gives it |
+| technology | `docs/technology.md` § Testing, § Naming Conventions | Vitest, TypeScript, naming | None | No framework or convention change |
+| security | `docs/security.md` § Untrusted Content & Prompt Injection | Owner replies and ledger text stay data, never instructions | None | No new input path; the `Security & Privacy` section records the checks |
+| testing | `docs/testing.md` § Which tier does a behaviour need?, § Test first | Shipped-text checks at the Unit tier; `decisions` verbs tested in-process | None | Tests follow those tiers |
+| data-schema | not applicable | No database | None | No action |
+| design | not applicable | No UI | None | No action |
+| observability | not applicable | No new log line, audit table or trace | None | No action |
+| deployments | not applicable | No release or CI change | None | No action |
+
+## Documentation Warnings
+
+None. Every consulted document exists and has content.
+
 ## 👤 ⚠️ Acceptance Scenario
 
 > [!CAUTION]
@@ -219,6 +237,8 @@ Every question point in every workflow uses one shared question shape. The owner
 | The reworded Step 1 clauses match in all five carriers (existing instruction tool suites) | Unit | `.bkit/core/engine/tools/instructions.test.ts` | 9 |
 | The `plan-open-questions` clause master and its four prompt copies match, and the `prompt-open-questions-plain` clause master and its six prompt copies match (existing instruction tool suites) | Unit | `.bkit/core/engine/tools/instructions-sources.test.ts` | 10 |
 | The installed copies match their sources after `bkit upgrade` (drift gate) | Static | `pnpm bkit check` | 11 |
+| bkit-debug: the loop question's recommendation reason matches its trigger | Unit | `.bkit/core/engine/audits/workflows/question-option-format.test.ts` | 12 |
+| debug Loop Question states the engine's trend line, never a fixed claim | Unit | `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` | 12 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -346,7 +366,7 @@ Checked against `docs/security.md` § Untrusted Content & Prompt Injection and �
 - [ ] **User Context:** every file the runbook names was opened in this session and is writable in the worktree `/Users/christian/Documents/GitHub/bkit/.worktrees/895-one-question-format`. The owner answered Q1-Q5 (`docs/plans/202611/logs/895-one-question-format/plan-answers-1.md`), so no information is missing.
 - [ ] **Project Context:** read `docs/decisions.jsonl` `design-grill-step` (host question tool caps at 4 questions of 4 options and exists only in Claude), `891-resume-reruns-a-red-gate-pause` (#891 touches `decisions apply`); `docs/knowledge.jsonl` `instructions-store-clause-text-and-local-entries-need-hand-edits` and `renumbering-a-workflow-leaves-instructions-md-local-entries-stale` (every edited standing line needs its `.bkit/instructions.md` local entry edited by hand; `pnpm instructions:sync` does not drop stale entries); `docs/deferrals.jsonl` rows from #703 on `question-option-format.test.ts` and `decisions.ts` (the closed `703-standardise-question-option-challenge-low-bkit-core-engine-commands-workflow-decisions-ts-52` is the 26-option cap Task 2 keeps pinned); `docs/knowledge.jsonl` `kn-43-prettier-blank-lines-around-bkit-tracker-markers-and-e`, `wording-retired-prefix-of-new-text-and-loose-list-items` and `tracker-true-block-between-group-and-false-block-breaks-none-render` (the tracker-rendered list items Tasks 5-9 edit).
 - [ ] **Testing & Quality:** shipped-text checks stay in `.bkit/core/engine/audits/workflows/` at the Unit tier; the `decisions` verbs are tested in-process against a temporary git checkout with no mocks (`docs/testing.md` § Stack, § Tiers). No E2E or `@live` tier applies: bkit has no deployed surface.
-- [ ] **Prerequisite Plans:** None must be built first. Sequencing advice: #891's plan (`docs/plans/202611/891-build-gate-stuck-plan.md`) edits the same `decisions compose` and Decision Pause text; building this plan after #891 merges, on a branch rebased onto `dev`, avoids a three-way edit of `itemLines` and the loop question (A6).
+- [ ] **Prerequisite Plans:** #891 must merge first: the issue carries a `bkit:blocked-by` block listing #891 (comment of 2026-11-10), so `/bkit-build` stops at Step 1 while #891 is open. Reason: #891's plan (`docs/plans/202611/891-build-gate-stuck-plan.md`) edits the same `decisions compose` and Decision Pause text; building this plan after #891 merges, on a branch rebased onto `dev`, avoids a three-way edit of `itemLines` and the loop question (A6).
 
 ### Conditional
 
@@ -657,7 +677,7 @@ Code-only — `git revert` sufficient, with the decision-file caveat above.
 
 ## Agent Execution Runbook
 
-Build order: the engine first (Group 1), so the build workflow text never names an items shape `compose` refuses; then the one definition and the reply-line clauses (Group 2), so every carrier edit lands on clauses that already hold the new wording; then each workflow's question points (Group 3); then the Step 1 stops, the open-question writers and the installed copies (Group 4).
+Build order: the engine first (Group 1), so the build workflow text never names an items shape `compose` refuses; then the one definition and the reply-line clauses (Group 2), so every carrier edit lands on clauses that already hold the new wording; then each workflow's question points (Group 3); then the debug Loop Question's recommendation reason (Group 4); then the Step 1 stops, the open-question writers and the installed copies (Group 5).
 
 Every task that edits a list item in a tracker-rendered region keeps no blank line inside the item, then checks `pnpm prettier --check` on the edited workflow source and the `No tracker connected` line count of each regenerated `*.none.txt` against the count before the edit (`docs/knowledge.jsonl` `kn-43-prettier-blank-lines-around-bkit-tracker-markers-and-e`, `wording-retired-prefix-of-new-text-and-loose-list-items`, `tracker-true-block-between-group-and-false-block-breaks-none-render`).
 
@@ -671,7 +691,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Read one option per line and `Recommended: none` in `parseDecisionItems`, keeping the old `Options:` line
+- [x] **TASK 1:** Read one option per line and `Recommended: none` in `parseDecisionItems`, keeping the old `Options:` line
   - **UPDATE:** `parseDecisionItems` in `.bkit/core/engine/commands/workflow/decisions.ts`: options from the item's `{L}) {name} — {effect}` lines, each name being the text before the first `—`; **If** the item has no option line → split its `Options:` line on `/` as today
   - **UPDATE:** `parseDecisionItems` in `.bkit/core/engine/commands/workflow/decisions.ts`: `Recommended: none — {why}` → `recommended` null and `reason` = `{why}`; `No recommendation — {why}` still reads as null
   - **UPDATE:** `.bkit/core/engine/commands/workflow/decisions.ts`: the file header comment shows the new item layout and says the old `Options:` line is still read
@@ -699,7 +719,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Write the shared shape with `decisions compose`, from options that each carry an `effect`
+- [x] **TASK 2:** Write the shared shape with `decisions compose`, from options that each carry an `effect`
   - **UPDATE:** `ComposeItem` in `.bkit/core/engine/commands/workflow/decisions.ts`: `options` is an array of `{name, effect}`
   - **UPDATE:** `composeItems` in `.bkit/core/engine/commands/workflow/decisions.ts`: a bare-string fixed name (`Accept`, `Fix now`, `Stop`, `Try again`, `Decide`) becomes `{name, effect}` with that name's default effect (Architecture); any other bare string, or an object missing `name` or `effect`, exits 2 naming the item and the option's letter; a `name` containing `—` exits 2; the 26-option cap (`MAX_OPTIONS`) stays; `recommended` is checked against the names
   - **UPDATE:** `itemLines` in `.bkit/core/engine/commands/workflow/decisions.ts`: the `**Q{n}**` line, one `{L}) {name} — {effect}` line per option, `Recommended: {L}) {name} — {reason}` or `Recommended: none — {why}`, then `Default if unanswered: the run waits for you; taken as {L} when nobody can be asked` (a hard blocker: `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, because a headless hard blocker goes to the Failure Path, `.bkit/core/workflows/bkit-build.md:174`)
@@ -732,7 +752,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Define the shared question shape once in `.bkit/authoring.md` § Human questions, and point § Question layout at it
+- [x] **TASK 3:** Define the shared question shape once in `.bkit/authoring.md` § Human questions, and point § Question layout at it
   - **UPDATE:** `.bkit/core/.bkit/authoring.md`: § Human questions states, one bullet each, who asks and how (orchestrator only, plain text, never a subagent or a host question tool, at every point); the shape; the plain-English rule `Say what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.`; the closed `Default if unanswered:` set (`the run waits for you`, `taken as A when nobody can be asked`, `the run stops when nobody can be asked`, `the plan assumes A`, `the plan stops at Gate 1 until you answer`, `the design assumes A`, `written as a needs-decision deferral`) and the `; ` join (Q1); the dropped "yes" half at a point that never has a recommendation (Q2); the one mid-run `Stop` wording `Stop — the run ends here with a handover; the next run resumes here`, and the Step 1 `Stop — nothing changes; the run can be started again`; `Recommended: none — {why}` and that "yes" never answers it; the reply line and the "one by one" line from 3 questions on, with the point-true "stop" sentence (Q2); the "one by one" route, which counts as the one turn or pause it replaces and follows the count of questions asked in the message; the `**Action needed — {title}:** {what to do}. Then say "continue".` line; no status rows before a status file exists, with the fixed wait wording `end turn → wait for the answer; no status file yet`; the build verify-gap and debug Loop Question examples in the new shape
   - **UPDATE:** `.bkit/core/.bkit/workflows.md`: the `**Question layout**` bullet under `/bkit-build` § Ask points keeps the attempt line, the option names and the `optionAnswer` sentence, and points to `.bkit/authoring.md` § Human questions instead of restating `Options: A) … / B) …` and the old reply line
   - **UPDATE:** `.bkit/core/engine/audits/workflows/question-option-format.test.ts`: `optionLists` and `scanCounts` also count per-line option blocks, so `counts the option lines found per directory` holds while the text moves over; `RECOMMENDED_LETTER` accepts `none — `; `layoutBullet` and `the canonical layout letters every option and recommendation` read § Human questions; the seven tests below
@@ -751,7 +771,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Put the reply line's wording and the widened plain-English rule into their clauses before any carrier edit
+- [x] **TASK 4:** Put the reply line's wording and the widened plain-English rule into their clauses before any carrier edit
   - **UPDATE:** `.bkit/instructions.md`: § Clauses — add `workflow-question-reply-line` (workflow, where-used; carriers `bkit-build`, `bkit-debug`, `bkit-ship`) with the text `Reply with a letter per question, or "yes" to take every recommendation.`, and fold `workflow-yes-takes-all` into it (its text `"yes" takes every recommendation.` in the new clause's `retired`, the old entry removed)
   - **UPDATE:** `.bkit/instructions.md`: § Clauses — reword `workflow-stop-writes-handover` to `"stop" ends here with a handover; the next run resumes here.`, with both its current text (`"stop" writes a handover; the run can be resumed.`) and the previous wording (`"stop" ends here with a handover; the run can be resumed.`) in `retired`; neither retired text is a prefix of the new text, because each one differs from it before its end (`docs/knowledge.jsonl` `wording-retired-prefix-of-new-text-and-loose-list-items`)
   - **UPDATE:** `.bkit/instructions.md`: § Clauses — reword `workflow-question-plain` to `State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.`, with its current text (`State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.`) in `retired`; the old text is not a prefix of the new text, because the two differ at "decide and" / "decide," (`docs/knowledge.jsonl` `wording-retired-prefix-of-new-text-and-loose-list-items`)
@@ -787,7 +807,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Put the build's Decision Pause (#5) in the shared shape
+- [x] **TASK 5:** Put the build's Decision Pause (#5) in the shared shape
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Decision Pause step 2 writes `decision-items.json` options as `{"name", "effect"}` objects, with the default effects for `Accept`, `Fix now` and `Stop` (Architecture; `Stop` reads `Stop — the run ends here with a handover; the next run resumes here`) and leave to sharpen an effect to the item
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Decision Pause step 4 shows each unanswered item's option lines, its `Recommended:` line and its `Default if unanswered:` line, then the reply line; "yes" never answers a `Recommended: none` question; a "one by one" reply asks each unanswered question in its own message, per § Human questions
   - **UPDATE:** `.bkit/core/workflows/bkit-build.md`: § Decision Pause step 4 shows the "one by one" line only when the message asks 3 or more questions, because after a headless apply it asks only the `hardBlockers` subset (`:175`)
@@ -808,7 +828,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** Put debug's Loop Question (#6), branch check (#7) and CI-run lookup (#8) in the shared shape, and give the foreign-path stop (#9) the `Action needed` line
+- [x] **TASK 6:** Put debug's Loop Question (#6), branch check (#7) and CI-run lookup (#8) in the shared shape, and give the foreign-path stop (#9) the `Action needed` line
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: § Loop Question step 3 writes `A) Stop — the run ends here with a handover; the next run resumes here` and `B) Try again — …` lines, `Default if unanswered: the run waits for you` and the shared reply line
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: § Loop Question step 3's recommendation follows the question's first-match branch: **If** `LOOP_LIMIT` = true → `Recommended: A) Stop — the attempts set aside for this are used up`; every other branch → `Recommended: A) Stop — the last attempt left no fewer failures`
   - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: § Step 1 sub-step 2, `branches parse` exit 3 or 8 → `**Q1 — Branch:**` with one option per candidate, `Name another branch` and `Stop — nothing changes; the run can be started again`, `Recommended: none — only you know which branch you meant`, `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, and the reply line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` (Architecture); the answer goes to `{SESSION_DIR}/owner-answer.md` (written with the file-write tool) and `branches parse` re-runs on it (Q3); no status rows (A5); the wait reads `end turn → wait for the answer; no status file yet`
@@ -844,7 +864,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Put ship's Confirm Assumed Items (#10) and Merge Question (#11) in the shared shape
+- [x] **TASK 7:** Put ship's Confirm Assumed Items (#10) and Merge Question (#11) in the shared shape
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: § Confirm Assumed Items step 2 writes `A) Confirm — …` and `B) Reject — …` lines, `Recommended: none — only you can accept it`, `Default if unanswered: written as a needs-decision deferral`, and the #10 reply line (Q2); the `Confirm` / `Reject` / `**Else** → ask again` routes of step 3 stay as they are
   - **UPDATE:** `.bkit/core/workflows/bkit-ship.md`: § Merge Question step 1 writes `A) Stop — the run ends here with a handover; the next run resumes here` and `B) Try again — …` lines, `Recommended: A) Stop — {reason}`, `Default if unanswered: the run waits for you` and the shared reply line (its two sentences already from Task 4's clauses)
   - **UPDATE:** `.bkit/instructions.md`: § Local Instructions `bkit-ship` entries for every edited standing line
@@ -864,7 +884,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Put the design grill (#1), draft scenario (#2) and the design and plan one-by-one pass (#3, #4) in the shared shape, and add `bkit-design` to the reply-line clause
+- [x] **TASK 8:** Put the design grill (#1), draft scenario (#2) and the design and plan one-by-one pass (#3, #4) in the shared shape, and add `bkit-design` to the reply-line clause
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: § Step 3 sub-step 2 writes each grill question with option lines, `Recommended: A) {answer} — {why}` and `Default if unanswered: the design assumes A`; the turn's message ends with the reply line whose second sentence is the grill's "stop" sentence (Q2), plus the "one by one" line from 3 questions on
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: § Step 3 states that a "one by one" round counts as the single grill turn it replaces against `GRILL_TURNS` (`:252`, `:286`, `:300`)
   - **UPDATE:** `.bkit/core/workflows/bkit-design.md`: § Step 3 sub-step 4 asks the draft question with `A) Yes — the draft becomes the design's starting point`, `B) No — the draft is revised from your reply before the design starts`, `Recommended: A) Yes — {why}` and `Default if unanswered: the design assumes A`
@@ -891,11 +911,35 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:group 4 start -->
 
-### TASK GROUP 4: Step 1 stops, open questions one option per line, and the installed copies
+### TASK GROUP 4: The debug Loop Question's recommendation agrees with its trend line
+
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** Give the debug Loop Question's non-limit recommendation a reason that holds on every trend that reaches the question
+  - **UPDATE:** `.bkit/core/workflows/bkit-debug.md`: § Loop Question step 3's recommendation, first match wins: **If** `LOOP_LIMIT` = true → `Recommended: A) Stop — the attempts set aside for this are used up` (unchanged); **Else** → `Recommended: A) Stop — the attempts so far have not brought the failures down through a code change`. The **Else** branch is reached only on the `stuck` trend (the count did not fall, or it fell with no source code change) and the `worse` trend, and this reason is true on all three
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/question-option-format.test.ts`: `bkit-debug: the loop question's recommendation reason matches its trigger` expects the new **Else** reason and that the Loop Question holds no `left no fewer failures`
+  - **UPDATE:** `.bkit/core/engine/audits/workflows/workflow-shape.test.ts`: `debug Loop Question states the engine's trend line, never a fixed claim` checks the whole Loop Question section for `left no fewer failures` again, not only its `**Q1 — ` lines (`:2145-2151`)
+  - **UPDATE:** `.bkit/instructions.md`: § Local Instructions `bkit-debug` entry for the edited recommendation line, when one carries it
+  - **UPDATE:** `.bkit/core/engine/render/__snapshots__/bkit-debug.none.txt`: regenerated with `-u`, its diff matching the source edit
+  - **READ:** `loopTrend` in `.bkit/core/engine/commands/workflow/counters.ts`: `stuck` covers both an unchanged count and a fall with no code change, and the trend lines at `:465-480` word each case
+  - **READ:** `docs/plans/202611/logs/895-one-question-format/build-decision-1-3.md`: the owner's decision on this gap
+  - **DEPENDS ON:** 6
+  - **DONE WHEN:** the two tests below pass; `pnpm vitest run .bkit/core/engine/audits/workflows/ .bkit/core/engine/render/trackers.test.ts .bkit/core/engine/tools/` passes; `pnpm prettier --check .bkit/core/workflows/bkit-debug.md` passes; `grep -c 'left no fewer failures' .bkit/core/workflows/bkit-debug.md` prints 0
+  - **TEST FIRST:**
+    - `.bkit/core/engine/audits/workflows/question-option-format.test.ts` `bkit-debug: the loop question's recommendation reason matches its trigger` fails on the **Else** recommendation still saying "the last attempt left no fewer failures", which is false when the count fell with no code change
+    - `.bkit/core/engine/audits/workflows/workflow-shape.test.ts` `debug Loop Question states the engine's trend line, never a fixed claim` fails on the Loop Question section still holding the fixed "left no fewer failures" claim on its recommendation line
+
+<!-- bkit:task 12 end -->
+
+<!-- bkit:group 4 end -->
+
+<!-- bkit:group 5 start -->
+
+### TASK GROUP 5: Step 1 stops, open questions one option per line, and the installed copies
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Put the five workflows' Step 1 issue-and-branch stops in the shared shape (Q5, option A)
+- [x] **TASK 9:** Put the five workflows' Step 1 issue-and-branch stops in the shared shape (Q5, option A)
   - **UPDATE:** `.bkit/instructions.md`: § Clauses `workflow-issue-id-parse-ambiguous` (exit 8) → `**Q1 — Issue:**` with one option per issue `fids parse` prints under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, `Recommended: none — only you know which issue you meant`, `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, and the reply line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` (Q2); on a pick, write the issue reference to `{SESSION_DIR}/owner-answer.md` with the file-write tool and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; old text in `retired`
   - **UPDATE:** `.bkit/instructions.md`: § Clauses `workflow-issue-id-parse-slug` (exit 3) → ``**Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue".``; on "continue" the block re-runs; old text in `retired`
   - **UPDATE:** `.bkit/instructions.md`: § Clauses `workflow-fid-bare-number` (exit 9) → ``**Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue".``; the named reference goes to `{SESSION_DIR}/owner-answer.md` and the block re-runs on it; old text in `retired`
@@ -921,7 +965,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Write plan and design open questions one option per line, in plain English
+- [x] **TASK 10:** Write plan and design open questions one option per line, in plain English
   - **UPDATE:** `.bkit/instructions.md`: § Clauses `plan-open-questions` asks for one lettered option per line (`A) {option} — {trade-off}`), then `Recommended`, then `Default if unanswered:` from the closed set (`the plan assumes A`, or `the plan stops at Gate 1 until you answer` when no assumption is safe); the old text moves to `retired`; `pnpm instructions:sync` rewrites it into `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check` and `bkit-plan-update`
   - **UPDATE:** `.bkit/instructions.md`: § Clauses — add `prompt-open-questions-plain` (prompt, where-used; carriers `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`, `bkit-design-generate`, `bkit-design-update`) with the text `Write each open question, what each option does and the reason for the recommendation in plain English, before naming any file, test or identifier.`; add the entry first, place the six carrier lines below, run the no-flag check, then `pnpm instructions:sync`
   - **UPDATE:** `.bkit/core/prompts/bkit-plan-generate.md`: the line right after the `plan-open-questions` clause carries `prompt-open-questions-plain`
@@ -955,7 +999,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 11 start -->
 
-- [ ] **TASK 11:** Re-render the installed copies, the build output and the graph register
+- [x] **TASK 11:** Re-render the installed copies, the build output and the graph register
   - **UPDATE:** `.bkit/authoring.md`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`, along with every other host mirror of the edited sources (`.cursor/`, `.opencode/`, `.codex/`, `.agents/`)
   - **UPDATE:** `.bkit/workflows.md`: re-rendered by the same upgrade
   - **UPDATE:** `.bkit/prompts.md`: re-rendered by the same upgrade
@@ -972,7 +1016,7 @@ Integration shape (advice only): one PR for all eleven tasks is fine. Building a
 
 <!-- bkit:task 11 end -->
 
-<!-- bkit:group 4 end -->
+<!-- bkit:group 5 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 

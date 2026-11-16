@@ -200,6 +200,37 @@ describe("bkit tasks tick", () => {
     ]);
   });
 
+  it("tick --decision reads a per-line decision file with a lettered answer", async () => {
+    const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
+    const decision = write(
+      "decision.md",
+      [
+        "Status: DECIDED",
+        "Question: VERIFY_GAPS",
+        "From: verify",
+        "Group: 1",
+        "",
+        "**Q1 — Task 1 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted and the build moves on",
+        "B) Fix now — one more fix round runs before the build moves on",
+        "Recommended: A) Accept — minor",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: A",
+        "",
+        "**Q2 — Task 2 gap:** accept it?",
+        "A) Accept — the item is recorded as accepted and the build moves on",
+        "B) Fix now — one more fix round runs before the build moves on",
+        "Recommended: A) Accept — minor",
+        "Default if unanswered: the run waits for you; taken as A when nobody can be asked",
+        "Decision: B",
+        "",
+      ].join("\n"),
+    );
+    const r = await run(["tick", `--plan=${plan}`, "--group=1", `--decision=${decision}`]);
+    expect(r.code).toBe(0);
+    expect(r.json.ticked).toEqual([1]);
+  });
+
   it("tick marks only the named tasks", async () => {
     const plan = write("plan.md", planText(group(1, task(1), task(2), task(3))));
     const r = await run(["tick", `--plan=${plan}`, "--group=1", "--tasks=2"]);

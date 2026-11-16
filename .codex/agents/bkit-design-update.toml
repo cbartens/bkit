@@ -62,7 +62,8 @@ developer_instructions = """
    - Revise every statement the answer overrides to what the answer says.
    - Questions and regions no answer touches stay verbatim.
 9. Shape the open questions:
-   - **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
+   - **If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options, one lettered option per line (`A) {option} — {trade-off}`), a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
+   - Write each open question, what each option does and the reason for the recommendation in plain English, before naming any file, test or identifier.
    - Questions in regions no finding touches stay verbatim.
 10. Set `Verdict` in **Create** with `Edit`:
     - `PASS` = every `CRITICAL` item applied, and no `OPTIONAL` item skipped. A `CRITICAL` item that lost a conflict to stricter wording counts as applied.

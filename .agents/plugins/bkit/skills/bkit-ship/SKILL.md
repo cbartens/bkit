@@ -119,7 +119,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    "{BKIT}" fids parse --prompt-file="{SESSION_DIR}/prompt.md"
    ```
-   **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   **If** exit 8 → ask the owner in this session, plain text, not through a host question tool, in one message with no tests or edits: `**Q1 — Issue:** the prompt names more than one issue. Which one did you mean?`, then one option line per issue `fids parse` printed under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, lettered in that order, then `Recommended: none — only you know which issue you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, then the line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On a pick, write the issue reference with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; on `Stop` → **STOP**; never the **Failure Path**.
    Hold `fidNamed` as `FID_NAMED`. Hold `issue` as `ISSUE_ID`, `ref` as `REF`.
    **If** `ISSUE_ID` empty → recover `ISSUE_ID` from the branch, `{FID}` = `FID_NAMED`, else the `BRANCH` suffix; `FID_NAMED` null and `BRANCH` != `feat/{FID}` → as exit 0 with `issueId` null:
    ```bash
@@ -128,7 +128,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Route:
    - **If** exit 0 and `issueId` non-null → hold `issueId` as `ISSUE_ID`.
    - **If** exit 0 and `issueId` null → set `ISSUE_ID=""` → emit the no-issue warning once `FID` is held → continue; NEVER create a tracker issue.
-   - **If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+   - **If** exit 3 → **Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" re-run this block; never the **Failure Path**.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty (`STATE`, `LABELS` empty; input artifact built from session prompt alone). Read the issue into `{SESSION_DIR}`:
    ```bash
@@ -143,7 +143,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Route:
    - **If** exit 0 → hold `fid` as `FID`; one `FID` for all artifacts.
    - **If** exit 4 → **Failure Path** listing `fids` (name the `FID` in the session prompt to pick one).
-   - **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
+   - **If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
    - **Else** → **Failure Path**.
 5. Detect the runtime:
    ```bash
@@ -339,9 +339,12 @@ description: "Ship Feature — Autonomous merge and archive"
    - **If** `ASSUMED_COUNT` = 0 → return to Step 2.
    - **If** `RUNTIME_HEADLESS` = true → step 4, since there is no one to ask.
    - **Else** → step 2.
-2. Ask the owner in this session. Write in plain text, not through a host question tool. NEVER hand the questions to subagents. State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier. Send one message:
-   - For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`.
-   - End the message with the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.`
+2. Ask the owner in this session. Write in plain text, not through a host question tool. NEVER hand the questions to subagents. State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier. Send one message:
+   - For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then the option lines, each on its own line:
+     A) Confirm — the accept is recorded as yours, as a decision row
+     B) Reject — the item is written as a needs-decision deferral
+   - Then `Recommended: none — only you can accept it`, then `Default if unanswered: written as a needs-decision deferral`.
+   - End the message with the line `Reply with a letter per question. Ship merges either way; anything you do not confirm is written as a needs-decision deferral.`
 
    Then record the wait → end turn → wait for answers:
 
@@ -774,8 +777,13 @@ Asked from Step 9 or Step 10 when `ship.merge.maxAttempts` is used up (`LIMIT_NE
 
 1. Ask the human in this session, in plain text, in one message:
    - `ship merge: attempt {MERGE_ROUNDS} of {MERGE_MAX}`, then `**Q1 — Merge:** The merge attempts are used up ({the last refusal or failure in one line}). Stop here instead of trying one more set of attempts?`
-   - `Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
-   - End the message with the line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
+   - The merge options:
+     ```text
+     A) Stop — the run ends here with a handover; the next run resumes here
+     B) Try again — one more set of merge attempts runs
+     ```
+   - Then `Recommended: A) Stop — {reason}`, then `Default if unanswered: the run waits for you`.
+   - End the message with the line `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
 
    Record the wait → end turn → wait for the answer:
 

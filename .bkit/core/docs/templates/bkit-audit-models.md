@@ -116,7 +116,7 @@ A config id looks the same on the day it is delisted as on the day it was chosen
     - (3) Import the registry, delete hardcoded lists, and apply the list and per-task config.
     - (4) Run the eval audit's check before the list is treated as mergeable; do not change model, sampling and fallback behaviour in one unmeasured step.
     - (5) Watch with a named revert (the current lists, by commit) and per-signal thresholds (format-error rate, fallback-fire count, task success). Cost per job belongs to `bkit-audit-cost`.
-  - **If** a decision is open → write one `Proposal` question with `Options: A) … / B) …` and a `Recommended: A) … — {reason}` naming the chosen letter, plus what would settle it.
+  - **If** a decision is open → write one `Proposal` question with one lettered option per line (`A) {option} — {what happens}`), then `Recommended: A) … — {reason}` naming the chosen letter and `Default if unanswered:`, plus what would settle it.
   - Route each finding:
     - a defect or filter-fail id → the proposed list
     - a missing routing param → per-task config

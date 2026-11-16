@@ -1140,7 +1140,7 @@ describe("issue-less workflow clauses", () => {
     expect(none).toContain("NEVER create a tracker issue");
     expect(none).not.toContain("STOP");
     const slug = clause("workflow-issue-id-parse-slug").texts[0];
-    expect(slug).toContain("**STOP**");
+    expect(slug).toContain("**Action needed — Branch name:**");
     expect(slug).toContain("exit 3");
     expect(slug).toContain("rename `BRANCH`");
     expect(slug).toContain("never the **Failure Path**");

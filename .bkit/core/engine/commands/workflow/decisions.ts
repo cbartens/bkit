@@ -4,10 +4,15 @@
 // lines, an optional progress block, then one item per question:
 //
 //   **Q{n} — {title}:** {question}
-//   Options: A) {A} / B) {B}
-//   Recommended: A) {A} — {reason}       (a hard blocker: `No recommendation — {why}`)
+//   A) {name} — {what happens if it is picked}
+//   B) {name} — {what happens if it is picked}
+//   Recommended: A) {name} — {reason}    (a hard blocker: `Recommended: none — {why}`)
+//   Default if unanswered: {what happens}
 //   Decision: {answer} — {words}         (once decided)
 //   Fix task: {N}                        (a `Fix now` item: the plan task that carries its fix)
+//
+// The old layout is still read: one `Options: A) {A} / B) {B}` line in place of the option lines,
+// and `No recommendation — {why}` in place of `Recommended: none — {why}`.
 //
 // `apply --by=headless` takes each recommendation when nobody can or should be asked: an
 // `Accept` is written `Accept (assumed)` and the file says `Status: ASSUMED`. It never writes a
@@ -107,12 +112,18 @@ export function parseDecisionItems(text: string): DecisionItem[] {
     .map((part) => {
       const head = /^\*\*Q(\d+) — (.+?):\*\*/.exec(part);
       const rec = lineOf(part, "Recommended");
-      const none = /^No recommendation\b/m.test(part);
       const [option, ...why] = (rec ?? "").split(" — ");
-      const options = (lineOf(part, "Options") ?? "")
-        .split(" / ")
-        .map((o) => bareName(o.trim()))
-        .filter(Boolean);
+      const none = /^No recommendation\b/m.test(part) || /^none$/i.test((option ?? "").trim());
+      const perLine = [...part.matchAll(/^[A-Z]\)[ \t]+(.+?)[ \t]*$/gm)].map((m) =>
+        (m[1] ?? "").split(" — ")[0]!.trim(),
+      );
+      const options =
+        perLine.length > 0
+          ? perLine.filter(Boolean)
+          : (lineOf(part, "Options") ?? "")
+              .split(" / ")
+              .map((o) => bareName(o.trim()))
+              .filter(Boolean);
       const answer = lineOf(part, "Decision");
       const decision = answer === null ? null : optionAnswer(answer, options);
       return {
@@ -179,10 +190,15 @@ const slug = (s: string) =>
 // compose
 // ---------------------------------------------------------------------------
 
+interface ComposeOption {
+  name: string;
+  effect: string;
+}
+
 interface ComposeItem {
   title: string;
   question: string;
-  options: string[];
+  options: ComposeOption[];
   recommended?: string;
   reason?: string;
   /** Set for a hard blocker: why no agent can settle it. No recommendation is written. */
@@ -271,18 +287,54 @@ function readBaseCheck(file: string): BaseCheck {
   };
 }
 
+/** The effect a bare fixed option name gets. */
+const FIXED_EFFECTS: Record<string, string> = {
+  Accept: "the item is recorded as accepted and the build moves on",
+  "Fix now": "one more fix round runs before the build moves on",
+  Stop: "the run ends here with a handover; the next run resumes here",
+  "Try again": "one more fix round runs",
+  Decide: "the questions below are asked instead of another round",
+};
+
 function composeItems(raw: unknown): ComposeItem[] {
   if (!Array.isArray(raw)) throw new CommandError(EXIT.USAGE, "--items must hold a JSON array");
   return raw.map((r, i) => {
     const o = (r ?? {}) as Record<string, unknown>;
     const s = (k: string) =>
       typeof o[k] === "string" ? (o[k] as string).replace(/[\r\n]+/g, " ").trim() : "";
-    const options = Array.isArray(o.options) ? o.options.filter((x) => typeof x === "string") : [];
-    if (s("title") === "" || s("question") === "" || options.length === 0)
+    const rawOptions: unknown[] = Array.isArray(o.options) ? o.options : [];
+    if (s("title") === "" || s("question") === "" || rawOptions.length === 0)
       throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
-    if (options.length > MAX_OPTIONS)
+    if (rawOptions.length > MAX_OPTIONS)
       throw new CommandError(EXIT.USAGE, `item ${i + 1}: at most ${MAX_OPTIONS} options (A-Z)`);
-    if (s("noRecommendation") === "" && !options.includes(s("recommended")))
+    const options: ComposeOption[] = rawOptions.map((x, k) => {
+      const bad = () =>
+        new CommandError(
+          EXIT.USAGE,
+          `item ${i + 1} (Q${i + 1}): option ${letterAt(k)} needs a name and an effect`,
+        );
+      let name: string;
+      let effect: string;
+      if (typeof x === "string") {
+        name = x.trim();
+        const fixed = FIXED_EFFECTS[name];
+        if (fixed === undefined) throw bad();
+        effect = fixed;
+      } else {
+        const ob = (x ?? {}) as Record<string, unknown>;
+        if (typeof ob.name !== "string" || typeof ob.effect !== "string") throw bad();
+        name = ob.name.replace(/[\r\n]+/g, " ").trim();
+        effect = ob.effect.replace(/[\r\n]+/g, " ").trim();
+        if (name === "" || effect === "") throw bad();
+      }
+      if (name.includes("—"))
+        throw new CommandError(
+          EXIT.USAGE,
+          `item ${i + 1} (Q${i + 1}): option name "${name}" must not contain a dash (—); put it in the effect`,
+        );
+      return { name, effect };
+    });
+    if (s("noRecommendation") === "" && !options.some((x) => x.name === s("recommended")))
       throw new CommandError(
         EXIT.USAGE,
         `item ${i + 1}: recommended must be one of its options, or set noRecommendation`,
@@ -290,7 +342,7 @@ function composeItems(raw: unknown): ComposeItem[] {
     return {
       title: s("title"),
       question: s("question"),
-      options: options as string[],
+      options,
       recommended: s("recommended"),
       reason: s("reason"),
       noRecommendation: s("noRecommendation"),
@@ -300,15 +352,21 @@ function composeItems(raw: unknown): ComposeItem[] {
 
 const itemLines = (n: number, it: ComposeItem): string[] => {
   const rec = it.recommended ?? "";
-  const letter = letterOf(it.options, rec);
+  const names = it.options.map((o) => o.name);
+  const letter = letterOf(names, rec);
   return [
     `**Q${n} — ${it.title}:** ${it.question}`,
-    `Options: ${letteredOptions(it.options)}`,
+    ...it.options.map((o, i) => `${letterAt(i)}) ${o.name} — ${o.effect}`),
     it.noRecommendation
-      ? `No recommendation — ${it.noRecommendation}`
+      ? `Recommended: none — ${it.noRecommendation}`
       : `Recommended: ${letter === null ? rec : `${letter}) ${rec}`} — ${it.reason || "the orchestrator's call"}`,
+    it.noRecommendation || letter === null
+      ? "Default if unanswered: the run waits for you; the run stops when nobody can be asked"
+      : `Default if unanswered: the run waits for you; taken as ${letter} when nobody can be asked`,
   ];
 };
+
+const fixed = (name: string): ComposeOption => ({ name, effect: FIXED_EFFECTS[name]! });
 
 // ---------------------------------------------------------------------------
 // apply
@@ -417,7 +475,7 @@ export const decisionsCommand: CommandSpec = {
         {
           name: "items",
           type: "string",
-          help: "JSON file: [{title, question, options, recommended, reason} | {…, noRecommendation}]",
+          help: "JSON file: [{title, question, options: [{name, effect}], recommended, reason} | {…, noRecommendation}]",
         },
         {
           name: "loop",
@@ -536,7 +594,10 @@ export const decisionsCommand: CommandSpec = {
                 loopRecommended === "Try again"
                   ? `another fix round? ${p.trendLine}`
                   : `decide the items below instead of another round? ${p.trendLine}`,
-              options: items.length > 0 ? ["Try again", "Decide"] : ["Try again", "Stop"],
+              options:
+                items.length > 0
+                  ? [fixed("Try again"), fixed("Decide")]
+                  : [fixed("Try again"), fixed("Stop")],
               recommended:
                 items.length > 0 || loopRecommended === "Try again" ? loopRecommended : "Stop",
               reason,
@@ -547,10 +608,12 @@ export const decisionsCommand: CommandSpec = {
         }
         const first = loopName === undefined ? 1 : 2;
         items.forEach((it, i) => lines.push(...itemLines(first + i, it), ""));
+        const questionCount = items.length + (loopName === undefined ? 0 : 1);
         lines.push(
-          'Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.',
-          "",
+          'Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.',
         );
+        if (questionCount >= 3) lines.push('Or say "one by one" and I\'ll ask them one at a time.');
+        lines.push("");
         fs.mkdirSync(path.dirname(out), { recursive: true });
         fs.writeFileSync(out, lines.join("\n"), "utf-8");
         ctx.emit({

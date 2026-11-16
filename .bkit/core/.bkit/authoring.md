@@ -654,17 +654,26 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
     - [ ] Each unconfirmed item deferred (`decisions pending --defer`)
     ```
 
-- **Human questions:** Only the orchestrator asks the owner, in the session, with every question of the round in one plain-text message, never through a subagent or a host question tool.
+- **Human questions:** Only the orchestrator asks the owner, in the session, in plain text, never through a subagent or a host question tool, at every question point.
   - Why: The owner answers a whole round at once and may answer with one word, so "yes" must safely take the recommendations and a letter must map to exactly one option. Recording the wait and the reply lets a resumed run see where it stopped.
   - Each question takes this shape:
     ```markdown
-    **Q{n} — {title}:** {the question, worded so that "yes" accepts the recommendation}
-    Options: A) {option} / B) {option}
-    Recommended: A) {option}
+    **Q{n} — {title}:** {what you are deciding, in plain English, worded so "yes" takes the recommendation}
+    A) {option} — {what happens if you pick it}
+    B) {option} — {what happens if you pick it}
+    Recommended: A) {option} — {why}
+    Default if unanswered: {what happens}
     ```
-  - A question no agent can settle (a hard blocker) has `No recommendation` in place of the `Recommended:` line.
-  - Number questions from `Q1`, and letter options `A)`, `B)`, `C)` in order.
-  - Say what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
+  - Number questions from `Q1`, and letter options `A)`, `B)`, `C)` in order, one option per line.
+  - Say what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.
+  - `Default if unanswered:` takes one phrase from this closed set, and joins two with `; `: `the run waits for you`, `taken as A when nobody can be asked`, `the run stops when nobody can be asked`, `the plan assumes A`, `the plan stops at Gate 1 until you answer`, `the design assumes A`, `written as a needs-decision deferral`.
+  - A point that never has a recommendation drops the "yes" half of the question and of the reply line.
+  - A question no agent can settle (a hard blocker) has `Recommended: none — {why}` in place of a recommendation, and "yes" never answers it.
+  - The stop option reads `Stop — the run ends here with a handover; the next run resumes here` mid-run, and `Stop — nothing changes; the run can be started again` at Step 1.
+  - End each message once with the reply line, naming what "stop" does at that point: `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
+  - When a round has 3 or more questions, add `Or say "one by one" and I'll ask them one at a time.` The "one by one" route counts as the one turn or pause it replaces, and follows the count of questions asked in the message.
+  - A step that needs an action, not a decision, writes `**Action needed — {title}:** {what to do}. Then say "continue".`
+  - Before a status file exists, write no status rows. Wait with `end turn → wait for the answer; no status file yet`.
   - Look facts up in the repo, docs and tools. Ask the owner only for decisions.
   - Run each round in this order:
     1. Narrate the round.
@@ -672,11 +681,21 @@ This section applies to `.bkit/core/workflows/*.md`. § Prompts and Workflows ap
     3. End the turn.
     4. When the reply arrives, record it with `bkit status row --type=owner-answer` before doing anything else.
   - Before the branches of a step that routes on the answer, say that a reply naming a letter (`B`, `B)` or `B) {option}`) means the option that letter labels.
-  - Example (`bkit-debug.md` § Loop Question): "yes" stops the loop, which is the recommendation. The question already gives the reason, so the `Recommended:` line needs none.
+  - Example (`bkit-debug.md` § Loop Question): the count did not fall.
     ```markdown
     **Q1 — Fix:** The count did not fall between the first and the last round (4 → 4). Stop here instead of trying again?
-    Options: A) Stop / B) Try again
-    Recommended: A) Stop
+    A) Stop — the run ends here with a handover; the next run resumes here
+    B) Try again — another round runs with the same limit
+    Recommended: A) Stop — another round is unlikely to change a count that stayed at 4
+    Default if unanswered: the run waits for you
+    ```
+  - Example (`bkit-build.md` § Verify gap): a task fails its check.
+    ```markdown
+    **Q1 — Gap:** Task 3 still fails its check after the fix. Accept it as it is?
+    A) Accept — the task is logged as accepted and the build continues
+    B) Fix now — the fix runs again before the build continues
+    Recommended: B) Fix now — the failing check is in code this plan changed
+    Default if unanswered: taken as A when nobody can be asked
     ```
   - Example (`bkit-design.md` § Step 3 — Grill): the shape for a round of several questions.
 

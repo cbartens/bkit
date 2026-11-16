@@ -144,7 +144,9 @@ tools:
 
 ## Risks & Open Questions
 
-[Unknowns, dependencies and assumptions, as plain bullets. Every open question must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output: a question with no options or recommendation is incomplete, so resolve it or drop it. Initially set to `PENDING`.]
+[Unknowns, dependencies and assumptions, as plain bullets. Every open question must carry 2-3 concrete options, one lettered option per line (`A) {option} — {trade-off}`), a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output: a question with no options or recommendation is incomplete, so resolve it or drop it. Initially set to `PENDING`.]
 ```
+
+Write each open question, what each option does and the reason for the recommendation in plain English, before naming any file, test or identifier.
 
 > ⛔ **STOP** once the design is written. Do not write plans or code.

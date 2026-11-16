@@ -1386,7 +1386,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:664`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1700,7 +1700,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:664`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -4011,12 +4011,22 @@ Record `partial diff coverage` in the verdict.
 - carriers: prompt `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
-**Open questions:** Each open question gives 2-3 options with their trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter and the default if unanswered; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
+**Open questions:** Each open question gives 2-3 options, one lettered option per line (`A) {option} — {trade-off}`), then a `Recommended` naming the chosen letter with its reason and a `Default if unanswered` (`the plan assumes A`, or `the plan stops at Gate 1 until you answer` when no assumption is safe); the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
 ```
 
 ```retired
+**Open questions:** Each open question gives 2-3 options with their trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter and the default if unanswered; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
 **Open questions:** Each open question gives 2-3 options with their trade-offs, a recommendation and the default if unanswered; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
 **Open questions:** Each open question gives 2-3 options with their trade-offs, a recommendation and the default if unanswered, so the human can decide from the page alone; the design's options and recommendation carry forward where it already answered. Each assumption names what breaks if it is wrong.
+```
+
+### prompt-open-questions-plain
+
+- prompt: where-used
+- carriers: prompt `bkit-design-generate`, `bkit-design-update`, `bkit-plan-generate`, `bkit-plan-review-1`, `bkit-plan-scope-check`, `bkit-plan-update`
+
+```text
+Write each open question, what each option does and the reason for the recommendation in plain English, before naming any file, test or identifier.
 ```
 
 ### plan-out-of-scope
@@ -5873,22 +5883,31 @@ NEVER run `workflows fail`:
 never `workflows fail`:
 ```
 
-### workflow-yes-takes-all
+### workflow-question-reply-line
 
 - workflow: where-used
-- carriers: workflow `bkit-build`, `bkit-debug`, `bkit-ship`
+- carriers: workflow all except `bkit-auto`, `bkit-plan`
 
 ```text
+Reply with a letter per question, or "yes" to take every recommendation.
+```
+
+```retired
 "yes" takes every recommendation.
 ```
 
 ### workflow-stop-writes-handover
 
-- workflow: where-used
+- workflow: repeatable
 - carriers: workflow `bkit-debug`, `bkit-ship`
 
 ```text
+"stop" ends here with a handover; the next run resumes here.
+```
+
+```retired
 "stop" writes a handover; the run can be resumed.
+"stop" ends here with a handover; the run can be resumed.
 ```
 
 ### workflow-record-reply
@@ -6041,10 +6060,11 @@ Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
 - carriers: workflow all except `bkit-auto`
 
 ```text
-**If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
+**If** exit 3 → **Action needed — Branch name:** rename `BRANCH` to `feat/{lowercase-slug}`, or name an issue. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" re-run this block; never the **Failure Path**.
 ```
 
 ```retired
+**If** exit 3 → **STOP**; tell the user to rename `BRANCH` to `feat/{lowercase-slug}` or name an issue; never the **Failure Path**.
 **If** exit 3 → **STOP**, telling the user `BRANCH` is not a lowercase slug: rename it to `feat/{lowercase-slug}` or name an issue in the session prompt; nothing started, never the Failure Path.
 ```
 
@@ -6054,6 +6074,10 @@ Hold `issue` as `{ISSUE_ID}`, `ref` as `{REF}`.
 - carriers: workflow all except `bkit-auto`
 
 ```text
+**If** exit 8 → ask the owner in this session, plain text, not through a host question tool, in one message with no tests or edits: `**Q1 — Issue:** the prompt names more than one issue. Which one did you mean?`, then one option line per issue `fids parse` printed under `ambiguous` (`Use {issue} — the run works on {issue}`) and `Stop — nothing changes; the run can be started again`, lettered in that order, then `Recommended: none — only you know which issue you meant` and `Default if unanswered: the run waits for you; the run stops when nobody can be asked`, then the line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.` Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On a pick, write the issue reference with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"`; on `Stop` → **STOP**; never the **Failure Path**.
+```
+
+```retired
 **If** exit 8 → **STOP**; tell the user the prompt names more than one issue (`ambiguous`) and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
 ```
 
@@ -6245,6 +6269,10 @@ Write the input file — session prompt, issue text, plan (when present):
 - carriers: workflow all except `bkit-auto`
 
 ```text
+**If** exit 9 → **Action needed — Issue reference:** name the issue as `#N`, its key or its URL. Then say "continue". Write no status row (none exists yet); end turn → wait for the answer; no status file yet. On "continue" write the named reference with the file-write tool to `{SESSION_DIR}/owner-answer.md`, re-run `fids parse --prompt-file="{SESSION_DIR}/owner-answer.md"` and this block on it; never the **Failure Path**.
+```
+
+```retired
 **If** exit 9 → **STOP**; tell the user the prompt holds only a bare number and to name the issue as `#N`, its key or its URL; never the **Failure Path**.
 ```
 
@@ -7133,15 +7161,19 @@ word each so "yes" accepts the recommendation.
 ### workflow-question-plain
 
 - workflow: where-used
-- carriers: workflow all except `bkit-auto`, `bkit-plan`
+- carriers: workflow all except `bkit-auto`
 
 ```text
+State what the owner must decide, what each option does and the reason for the recommendation, in plain English, before naming any file, test or identifier.
+```
+
+```retired
 State what the owner must decide and what each option does, in plain English, before naming any file, test or identifier.
 ```
 
 ### workflow-plain-text-questions
 
-- workflow: where-used
+- workflow: repeatable
 - carriers: workflow all except `bkit-auto`, `bkit-plan`
 
 ```text
@@ -7199,10 +7231,11 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-**If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
+**If** user requests the open questions one by one → ask each `Open Questions` item on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
 ```
 
 ```retired
+**If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Outstanding Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
@@ -9750,7 +9783,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **Locks** | Contract | design, plan, build, debug, ship | Step 1 takes the per-feature `.lock` (`bkit locks acquire`); released at close and in Failure Path. Existing lock: holder `IN_PROGRESS` with a step <30min ago → **Failure Path**; any other holder's lock reclaimed. |
 | **Status branch** | Contract | design, plan, build, debug, ship | status.jsonl committed per step on the feature branch (debug: adopted `{BRANCH}`; ship: `$BOOK_ROOT`, one commit per flush block), no mid-lifecycle pushes. |
 | **Worktrees** | Contract | design, plan, build, debug, ship | Mint mode → `.worktrees/{FID}`, else adopt the current branch in place (debug never creates a branch); cwd persists; `pwd` != `{WORKTREE_PATH}` → **Failure Path**. |
-| **Foreign path** | Contract | debug | Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run → **STOP** and ask the human to commit or revert it, recording the wait (`owner-pause`, `reason=foreign-path`) and the reply (`owner-answer`), never the **Failure Path**. |
+| **Foreign path** | Contract | debug | Exit 10 from `steps finish` or `workflows close` on `dev` = a file the run commits was modified before the run → **STOP** and write the `**Action needed — Foreign path:**` line (commit or revert the file, then say "continue"), recording the wait (`owner-pause`, `reason=foreign-path`) and the reply (`owner-answer`), never the **Failure Path**. |
 | **gh MCP fallback** | Contract | design, plan, build, debug, ship | `gh` primary for PR / CI / merge; exit 80 or `runtimeGithubCli` = false → mapped MCP tool, recorded with `bkit prs transport-row`; tracker reads and writes go through `bkit` verbs. One identical line in all five. |
 | **External tools** | Contract | auto | `gh` reads the PR and its CI run inside `bkit runs context`; exit 80 → **Failure Path**; tracker reads and writes go through `bkit` verbs, the tracker MCP only on `tracker.done` = false or exit 80. |
 | **Tracker** / **Labels** / **Comments** | Contract | all 6, once per tracker block | `bkit` verbs read and write the tracker; its MCP tools only when a verb exits 80 or prints `done` = false; writes best-effort, retry once after 5s. Phase labels mutually exclusive; a phase start drops `next:*` and `bkit:failed`; `bkit:auto`, `bkit:failed` additive (§ Tracker Integration); `bkit issues labels --write` writes each transition, the **Labels** line names the MCP fallback call. A step's `bkit` block posts its `comment` with `--post` before its gate and prints `tracker`; `tracker.done` = false → the tracker MCP posts it. Every gate includes `Issue comment attempted (Step N section)` without listing it; never edit prior content (§ Comment Lifecycle). |
@@ -10062,17 +10095,17 @@ Derive the decision number:
 **If** `PAUSE_QUESTION` = `VERIFY_GAPS` → write one item per `Identified Gaps Log` line of `build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`. Add the gap's last `BLOCKED` reason from `build-plan-gaps-remediate-{GROUP}-*-log.md` when it has one.
 For the verify list, title each item `Task {N}` from its `TASK {N}` gap line, so a decision tick finds the task. A gap with no task number gets its description as the title.
 For either `VERIFY_GAPS` list:
-A fixable gap → options `["Accept", "Fix now"]`, with a recommendation per item.
-Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
+A fixable gap → options `Accept` and `Fix now`, with a recommendation per item.
+Any unfixable gap (`no-test-first`, `test-first-malformed`, `test-first-unread`, `exception-refused`, `test-loosened`, or a holistic gap, logged `Fixable: false`) → a hard blocker with options `Accept`, `Fix now` and `Stop`.
 A group-gate failure is never an item: no item option can settle it, and the loop question carries it.
 **If** `PAUSE_QUESTION` = `CHALLENGE`:
 **If** `CHALLENGE_OVERFLOW` is set → the merge wrote nothing to the plan. Write one item per `Location` of each `CRITICAL`, `HIGH` or `MEDIUM` finding in the merged reports: `build-challenge-2.md`, plus `build-challenge-1.md` when the change is large.
 **Else** → write one item per task of `CHALLENGE_TASKS` whose block in the plan says `**Fixable:** false`, at any severity.
 Title each item with its task number, when it has one, followed by its `Location` in brackets.
-**If** the item is `**Fixable:** false` → a hard blocker with options `["Accept", "Fix now", "Stop"]`.
-**Else** → options `["Accept", "Fix now"]`, with a recommendation per finding.
+**If** the item is `**Fixable:** false` → a hard blocker with options `Accept`, `Fix now` and `Stop`.
+**Else** → options `Accept` and `Fix now`, with a recommendation per finding.
 **If** `PAUSE_QUESTION` = `TESTS_LOOP` → write no items: a failing suite test is never an item, and the loop question carries it.
-**If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
+**If** `PAUSE_QUESTION` = `UNPROVEN` → write one item per entry of `UNPROVEN_TESTS`, titled with its task number and test name. Each item is a planned test that never failed before its code existed, so nothing shows it can catch the bug it was written for. Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept it? You write the reason, and it is recorded as your TEST EXCEPTION.`
 Check a red gate against the base commit, the commit the branch started from. **If** `PAUSE_QUESTION` = `TESTS_LOOP` **or** `GATE_VERDICT` = FAIL → `GATE_LOG` = `{OUTBOX}/run-tests-{TEST_ATTEMPT}.log` for `TESTS_LOOP`, else `{OUTBOX}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.log`:
 `{LOOP_FLAGS}` = `--loop=tests --attempt={TEST_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_QUESTION` = `TESTS_LOOP`; `--loop=verify --group={GROUP} --attempt={VERIFY_ATTEMPT} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `verify`; `--loop=holistic --attempt={HOLISTIC_ROUNDS} --max={PAUSE_MAX}` when `PAUSE_LOOP` = `holistic`; empty otherwise.
 `{HEADER_FLAGS}` = `--header=Question={PAUSE_QUESTION} --header=From={verify|holistic|challenge|tests|summary} --header="Pause step={PAUSE_STEP}" --header="Plan=docs/plans/{YYYYMM}/{FID}-plan.md"`.
@@ -10364,7 +10397,7 @@ Re-read the issue's labels after the push, for the kill-switch check:
 Labels re-read before the close commit
 Lock released
 PR created
-**If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `["Accept", "Stop"]`, recommended `Accept`. Its question ends `Accept the change?`
+**If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept the change?`
 **If** `CHANGED_TESTS` is not empty **and** no decision file holds the line `Question: CHANGED_TESTS` → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `CHANGED_TESTS` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
 Changed planned tests asked once, or none left
 ```
@@ -10375,11 +10408,23 @@ Changed planned tests asked once, or none left
 
 ```text
 **Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`.
-Hold `branch` as `NAMED_BRANCH`; `{BRANCH_FLAG}` = `--branch="{NAMED_BRANCH}"` when non-null, else empty. Exit 3 or 8 → **STOP** with the missing or ambiguous branch and ask the owner to name one existing branch; no tests or edits.
+`**Q1 — Branch:** {the missing or ambiguous branch the engine printed}. Which existing branch did you mean?`
+One option line per printed candidate (`Use branch {x} — debug adopts {x} and runs its tests there`), then `Name another branch — reply with its name` and `Stop — nothing changes; the run can be started again`, lettered in that order.
+`Recommended: none — only you know which branch you meant`.
+`Default if unanswered: the run waits for you; the run stops when nobody can be asked`.
+The line `Reply with a letter per question. "stop" ends here; nothing has changed yet, so the run can be started again.`
+Write no status row (none exists yet); end turn → wait for the answer; no status file yet.
+On the reply, write `branch={x}` with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `branches parse` on it with `--prompt-file="{SESSION_DIR}/owner-answer.md"`.
 Resolve evidence before any downstream resume. `{CI_SELECTION_FILE}` = `{OUTBOX}/ci-selection.json`, outside the disposable session directory. Read the old generation before changing metadata:
 **If** exit 1 → the validated selection explicitly chooses local discovery or proves no red run; clear the held CI identity.
 **If** exit 80 → use the existing mapped metadata/jobs read fallback, retaining the printed request identity, exact repository, attempt, workflow and commit. Write its normalized `request`, `run`, complete `jobs` and `complete: true` to `{OUTBOX}/ci-evidence.json`; rerun the same `runs locate` command with `--evidence-file="{OUTBOX}/ci-evidence.json"`. Record the transport with `prs transport-row`. Never substitute local discovery for unavailable reads.
-**If** exit 8 or 82 → record `status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=decision`, release the workflow lock, and **STOP**, naming the ambiguous references, branch conflict or unavailable evidence and its reference. Record `owner-answer` before retrying after an owner reply.
+One option line per printed candidate reference: `A) Use {reference} — debug reads that run's failures instead of running the tests itself`. Exit 82 with no candidate lists none.
+Then `Use local discovery — debug runs the tests itself instead of reading CI` and `Stop — the run ends here with a handover; the next run resumes here`, lettered after the candidates.
+`Recommended: none — only you know which run you meant`.
+`Default if unanswered: the run waits for you; the run stops when nobody can be asked`.
+Record the wait with `status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=decision` → end turn → wait for the answer. The workflow lock stays held while the owner answers.
+**If** the answer is `Use local discovery` → treat the run as exit 1: local discovery, no CI identity.
+**Else** the answer names a reference → write it with the file-write tool to `{SESSION_DIR}/owner-answer.md` and re-run `runs locate` with `--prompt-file="{SESSION_DIR}/owner-answer.md"`, the other flags as above → route the new exit code again.
 **Else**, or fallback still unavailable → **Failure Path** with the unresolved evidence reference.
 With selected CI, adapt legacy blocks only in this temporary script to honor all selection pins and emit the identity receipt plus complete nonempty logs. A mapped fallback writes normalized metadata/job/log evidence through the same `context fetch` validator. Require `outcome: checked` for the selected CI block collected in this generation; unchecked, skipped, missing, partial or mismatched CI evidence → **Failure Path** before diagnosis. Older context artifacts cannot satisfy this check.
 **If** CI is selected **and** `REPRO` = true **and** `CI_REPRODUCED` != true → Step 5 once for this generation, including a CI evidence FAIL.
@@ -10397,8 +10442,12 @@ Read the loop's progress:
 **If** `LOOP_POINT` = `fix` → `**Q1 — Fix:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
 **If** `LOOP_POINT` = `soak` **and** `{LOOP_ATTEMPT}` = 1 → `**Q1 — Soak:** The fix attempts are used up. {LOOP_TREND_LINE} Stop here instead of starting soak (a slower, step-by-step investigation)?`.
 **Else** → `**Q1 — Soak:** {LOOP_TREND_LINE} Stop here instead of trying again?`.
-`Options: A) Stop / B) Try again`, then `Recommended: A) Stop`.
-The line `Reply per question. "yes" takes every recommendation. "stop" writes a handover; the run can be resumed.`
+The two answers, one per line:
+The recommendation, first match wins:
+**If** `LOOP_LIMIT` = true → `Recommended: A) Stop — the attempts set aside for this are used up`.
+**Else** → `Recommended: A) Stop — the attempts so far have not brought the failures down through a code change`.
+`Default if unanswered: the run waits for you`.
+The line `Reply with a letter per question, or "yes" to take every recommendation. "stop" ends here with a handover; the next run resumes here.`
 Record the wait → end turn → wait for the answer:
 Record the reply before anything else:
 **If** the answer is `Try again` **and** `LOOP_LIMIT` = true → give soak one more full allowance, clear `LOOP_LIMIT` → return to the calling step:
@@ -10536,7 +10585,7 @@ Ask only what they leave open, or what the issue text has changed since.
 Map the open decisions as a tree: each decision branches into the decisions that depend on it. The frontier is every unsettled decision whose prerequisites are settled.
 Ask the whole frontier as one turn, in one message. A question that depends on another in the same turn waits for a later turn.
 For each question:
-Write `**Q{n} — {title}:** {question}` and its options lettered `A)`, `B)`, `C)`, then `Recommended: A) {answer}` on its own line.
+Write `**Q{n} — {title}:** {question}`, then one option per line, lettered `A)`, `B)`, `C)` (`A) {option} — {what happens if you pick it}`), then `Recommended: A) {answer} — {why}` and `Default if unanswered: the design assumes A`, each on its own line.
 Narrate `design grill: turn {k} of {GRILL_TURNS}` → record the wait → end turn → wait for answers:
 **If** the human says stop → write the draft scenario per step 4 without asking → step 5.
 **If** frontier empty **or** `GRILL_TURNS` - 1 turns asked → step 4.
@@ -10548,7 +10597,7 @@ Draft the acceptance scenario from the whole context: `docs/plans/{YYYYMM}/logs/
 `Process Sketch` — 3-7 `WHEN X → THEN Y` lines with the same examples: outcomes, not implementation steps.
 Show the whole draft.
 Then ask one question per item the draft inferred instead of taking it from the context or an answer, in the step 2 format, with the recommended answer = as drafted.
-Ask last: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with `Options: A) yes / B) no` and `Recommended: A) yes`.
+Ask last: `**Q{n} — Draft acceptance scenario:** accept the draft with the answers above as the design's starting point?` with the option lines `A) Yes — the draft becomes the design's starting point` and `B) No — the draft is revised from your reply before the design starts`, then `Recommended: A) Yes — {why}` and `Default if unanswered: the design assumes A`.
 Narrate `design grill: turn {k} of {GRILL_TURNS} — draft acceptance scenario` → record the wait (step 2 block with `reason=draft`) → end turn → wait for answers.
 Record each reply per step 2.
 Fold the answers into the draft. Route:
@@ -10684,8 +10733,9 @@ Entry head read, PR CI checked
 List the build's assumed Accepts nobody has confirmed, and read the runtime:
 **If** `ASSUMED_COUNT` = 0 → return to Step 2.
 **If** `RUNTIME_HEADLESS` = true → step 4, since there is no one to ask.
-For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then `Options: A) Confirm / B) Reject`, then `No recommendation — only you can accept it`.
-End the message with the line `Reply per question. Ship merges either way; anything not confirmed is written as a needs-decision deferral.`
+For each entry of `ASSUMED_ITEMS`, in order, numbered from 1: `**Q{n} — {title}:** accepted without you during build ({reason}). Confirm it?`, then the option lines, each on its own line:
+Then `Recommended: none — only you can accept it`, then `Default if unanswered: written as a needs-decision deferral`.
+End the message with the line `Reply with a letter per question. Ship merges either way; anything you do not confirm is written as a needs-decision deferral.`
 Then record the wait → end turn → wait for answers:
 Record each reply before anything else, then write each answer. `{FILE}` and `{Q}` = the entry's `file` and `q`. "yes" answers no question here:
 **If** the answer is `Confirm` → write it:
@@ -10747,7 +10797,8 @@ Used-up merge step sent to the **Merge Question** in a session, or to the Failur
 A red CI run regenerated only when every failed step is a generated file (`branches regenerate`)
 PR merge attempted (`prs merge`)
 Ask the human in this session, in plain text, in one message:
-`Options: A) Stop / B) Try again`, then `Recommended: A) Stop — {reason}`.
+The merge options:
+Then `Recommended: A) Stop — {reason}`, then `Default if unanswered: the run waits for you`.
 Asked only in a session with `ship.merge.ask` = true
 Wait and reply recorded (`status row`)
 Used-up limit given one more allowance only on `Try again` (`counters grant`)
@@ -11514,7 +11565,7 @@ Whether the alert threshold is tuned, or the alert pages on transient blips.
 Check `Risks & Open Questions`:
 Cross-check that it covers the enumerated failure modes.
 Each gap → an `OPTIONAL` or `CRITICAL` finding by `severity`.
-[recommend-do-not-decide] Each open question lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → an `OPTIONAL` finding naming the missing parts.
+[recommend-do-not-decide] Each open question lacking lettered options (`A)`, `B)`, `C)`), a lettered `Recommended` or a `Default if unanswered` → an `OPTIONAL` finding naming the missing parts. Options that share one line instead of one option per line count as missing parts.
 Surface explicitly each new on-call burden the design adds: a dashboard, an alert or a runbook. It is not a blocker. List it under `Operational Dependencies`.
 `CONCERNS` = operable with caveats: the observability or runbook gaps are addressable.
 `FAIL` = not operable in the current monitoring or on-call stack, and the design does not proceed.
@@ -11562,7 +11613,7 @@ Revise every design element its `Design Impact` names as invalidated, to what th
 Record its `Unsettled` claims as open questions under `Risks & Open Questions`.
 Remove the answered question from `Risks & Open Questions`.
 **If** the answer carries `Decision: {key}` → add a `Decisions` item that states the decision and cites that `key`.
-**If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options with trade-offs as the lettered `Options: A) {option} — {trade-off} · B) …`, a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
+**If** applied findings add or reword open questions under `Risks & Open Questions` → each must carry 2-3 concrete options, one lettered option per line (`A) {option} — {trade-off}`), a `Recommended` naming the chosen letter with a one-line rationale, and a `Default if unanswered`. A bare question is not acceptable output.
 ```
 
 #### bkit-plan-generate
@@ -14391,7 +14442,7 @@ Give the apply order; the report does not apply it.
 (3) Import the registry, delete hardcoded lists, and apply the list and per-task config.
 (4) Run the eval audit's check before the list is treated as mergeable; do not change model, sampling and fallback behaviour in one unmeasured step.
 (5) Watch with a named revert (the current lists, by commit) and per-signal thresholds (format-error rate, fallback-fire count, task success). Cost per job belongs to `bkit-audit-cost`.
-**If** a decision is open → write one `Proposal` question with `Options: A) … / B) …` and a `Recommended: A) … — {reason}` naming the chosen letter, plus what would settle it.
+**If** a decision is open → write one `Proposal` question with one lettered option per line (`A) {option} — {what happens}`), then `Recommended: A) … — {reason}` naming the chosen letter and `Default if unanswered:`, plus what would settle it.
 Route each finding:
 a defect or filter-fail id → the proposed list
 a missing routing param → per-task config
@@ -15223,10 +15274,12 @@ User [does X] → System [responds with Y]
 **Breaking Changes confirmed:** I have reviewed every breaking change and naming decision above.
 These are the unknowns and assumptions this plan relies on. An unresolved question is a risk, and a wrong assumption breaks what follows. **If** there are none → write `None`.
 **Assumption:** [what the plan takes as given] → [what breaks if it is wrong]
-**Open Question:** [the decision needed] → [who resolves it, and how]
-**Options:** A) [option] — [trade-off] · B) [option] — [trade-off] · C) [option] — [trade-off, optional]
-**Recommended:** A) [option] — [why, in one line]
-**Default if unanswered:** [what the agent proceeds with]
+**Q{n} — [title]:** [the decision needed, in plain English] → [who resolves it, and how]
+A) [option] — [trade-off]
+B) [option] — [trade-off]
+C) [option] — [trade-off] (optional)
+Recommended: A) [option] — [why]
+Default if unanswered: [the plan assumes A | the plan stops at Gate 1 until you answer]
 **Open Questions & Assumptions confirmed:** I have resolved or explicitly accepted every open question and assumption above.
 [Each excluded item, marked `Exempt`. **If** none → `None`. Initially set to `PENDING`.]
 [The candidates that overlap this plan's surfaces. **If** none → `None`. Initially set to `PENDING`.]
