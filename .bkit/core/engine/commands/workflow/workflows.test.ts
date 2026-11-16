@@ -3106,6 +3106,41 @@ describe("bkit workflows input", () => {
     const cwd = repo();
     expect((await run(cwd, input("design"))).code).toBe(13);
   });
+
+  const GRILL = "# Grill\n\n## Grill decisions\n\n- Ship it behind a flag.\n";
+  const occurrences = (text: string, part: string) => text.split(part).length - 1;
+
+  it("a rebuilt design input keeps the owner-interview record appended after the first build", async () => {
+    const cwd = withIssue();
+    const rel = `${REL}/design-input-2.md`;
+    await run(cwd, input("design", ...ISSUE));
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    fs.appendFileSync(path.join(cwd, rel), `\n${GRILL}`);
+    const r = await run(cwd, input("design", ...ISSUE));
+    const text = fs.readFileSync(path.join(cwd, rel), "utf-8");
+    expect(text.endsWith(`\n\n${GRILL}`)).toBe(true);
+    expect(occurrences(text, "## Grill decisions")).toBe(1);
+    expect(r.json).toMatchObject({ path: rel, bytes: Buffer.byteLength(text) });
+  });
+
+  it("a grill file that was never appended is appended once, after a blank line", async () => {
+    const cwd = withIssue();
+    const rel = `${REL}/design-input-2.md`;
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    const r = await run(cwd, input("design"));
+    const text = fs.readFileSync(path.join(cwd, rel), "utf-8");
+    expect(text).toBe(`${PROMPT}\n${GRILL}`);
+    expect(r.json).toMatchObject({ bytes: Buffer.byteLength(text) });
+  });
+
+  it("a workflow with no grill file writes exactly the sections", async () => {
+    const cwd = withIssue();
+    write(cwd, `${REL}/design-grill-2.md`, GRILL);
+    const r = await run(cwd, input("plan"));
+    const text = fs.readFileSync(path.join(cwd, REL, "plan-input-2.md"), "utf-8");
+    expect(text).toBe(PROMPT);
+    expect(r.json).toMatchObject({ bytes: Buffer.byteLength(PROMPT) });
+  });
 });
 
 /** What `bkit tips --workflow=build` prints, under its heading; nothing when no tip fires. */

@@ -2055,8 +2055,12 @@ function inputVerb(ctx: RunContext): number {
     const text = inputText(ctx.cwd, audit, "audit");
     sections.push([`Audit Report — ${audit} — ${fileDate(ctx.cwd, audit)}`, text]);
   }
-  const body = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
   const abs = path.join(path.dirname(status), `${workflow}-input-${run}.md`);
+  const grill = path.join(path.dirname(status), `${workflow}-grill-${run}.md`);
+  const sectionText = sections.map(([h, text]) => `## ${h}\n\n${text}\n`).join("\n");
+  const body = fs.existsSync(grill)
+    ? `${sectionText}\n${fs.readFileSync(grill, "utf-8")}`
+    : sectionText;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, body);
   ctx.emit({
@@ -2580,7 +2584,7 @@ export const workflowsCommand: CommandSpec = {
     },
     input: {
       summary:
-        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated.",
+        "Write logs/{FID}/{workflow}-input-{run}.md: the session prompt, the issue description and each human comment, then the plan, design and audit reports, each section dated. An existing {workflow}-grill-{run}.md in the same folder is appended at the end.",
       use: "workflow",
       flags: [
         WORKFLOW_FLAG,
