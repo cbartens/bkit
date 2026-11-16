@@ -2059,3 +2059,306 @@ describe("machine lock waiting order", { timeout: BUDGET.testTimeout }, () => {
     expect(readLines(order)).toEqual(["w3", "w1", "w2"]);
   });
 });
+
+// ---- run stops a command that holds its lock past LOCAL_STACK_LOCK_HOLD_S ----
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+function readPid(file: string): number {
+  return Number(fs.readFileSync(file, "utf-8").trim());
+}
+
+/** The test's env with a hold limit of `holdS` seconds and a 1 s grace period. */
+function holdEnv(holdS: string, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return envFor({ LOCAL_STACK_LOCK_HOLD_S: holdS, LOCAL_STACK_LOCK_HOLD_GRACE_S: "1", ...extra });
+}
+
+/** Proves the tests lock is free: a run with no wait budget starts and finishes. */
+function expectTestsLockFree(env: NodeJS.ProcessEnv): void {
+  const probe = commandRun(["probe", "--lock", "tests", "--", "echo", "probe-ran"], {
+    ...env,
+    LOCAL_STACK_LOCK_WAIT_S: "0",
+  });
+  expect(probe.status, probe.stderr).toBe(0);
+  expect(probe.stdout).toContain("probe-ran");
+}
+
+/** A PATH whose first `ps` rejects lstart and exits 1, as a BusyBox ps does. */
+function pathWithFailingPs(): string {
+  const fakeBin = path.join(tmp, "fake-ps-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(
+    path.join(fakeBin, "ps"),
+    '#!/bin/sh\necho "ps: unrecognized option: lstart" >&2\nexit 1\n',
+    { mode: 0o755 },
+  );
+  return [fakeBin, process.env.PATH].join(":");
+}
+
+/** The hold-limit arguments (limit, grace) of the watcher a run with `env` starts, read by its command. */
+function watcherLimits(env: NodeJS.ProcessEnv): Result & { limits: string | undefined } {
+  const r = commandRun(
+    [
+      "limit probe",
+      "--lock",
+      "tests",
+      "--",
+      "bash",
+      "-c",
+      "ps -A -o ppid= -o args= | awk -v p=\"$PPID\" '$1 == p'",
+    ],
+    env,
+  );
+  return { ...r, limits: / (\d+) (\d+) \d+ \d+\s*$/m.exec(r.stdout)?.slice(1, 3).join(" ") };
+}
+
+describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
+  it("run stops a command that outlives LOCAL_STACK_LOCK_HOLD_S, exits 124, and names the holder, time held and limit", () => {
+    const env = holdEnv("1");
+    const pidFile = path.join(tmp, "cmd.pid");
+    const r = commandRun(
+      [
+        "hung gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `echo $$ > "${pidFile}"; exec sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.ms).toBeLessThan(20_000);
+    expect(r.stderr).toContain(`hung gate — ${CHECKOUT} (pid `);
+    expect(r.stderr).toMatch(
+      /reached the LOCAL_STACK_LOCK_HOLD_S limit of 1s on the tests lock \(held [1-9]\d*s\)/,
+    );
+    expect(r.stderr).not.toContain("ps with lstart is not available");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("only the tests lock has a hold limit: a named or unnamed lock outlives LOCAL_STACK_LOCK_HOLD_S", () => {
+    const env = holdEnv("1");
+    const named = commandRun(["long other", "--lock", "other", "--", "sleep", "2"], env);
+    expect(named.status, named.stderr).toBe(0);
+    expect(named.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+    const unnamed = commandRun(["long stack", "--", "sleep", "2"], env);
+    expect(unnamed.status, unnamed.stderr).toBe(0);
+    expect(unnamed.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+  });
+
+  it("without a ps that prints lstart, one note says the limit stops only the command, and the command is still stopped", () => {
+    const pidFile = path.join(tmp, "no-ps.pid");
+    const env = holdEnv("1", { PATH: pathWithFailingPs() });
+    const r = commandRun(
+      [
+        "no-ps gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `echo $$ > "${pidFile}"; exec sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.stderr.split("ps with lstart is not available").length - 1, r.stderr).toBe(1);
+    expect(r.stderr).toContain(
+      "can stop only the command itself, not the processes started under it",
+    );
+    expect(r.stderr).not.toContain("unrecognized option");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("a run waiting for the tests lock starts once the over-limit holder is stopped", async () => {
+    const env = holdEnv("2");
+    const holder = running(
+      `bash "${SCRIPT}" run "over-limit holder" --lock tests -- sleep 120`,
+      env,
+    );
+    await waitForHolder(
+      path.join(cache, "bkit", "machine-lock", "tests.lock.holder"),
+      "over-limit holder",
+      holder.child,
+    );
+    const waiter = commandRun(["late waiter", "--lock", "tests", "--", "echo", "waiter-ran"], {
+      ...env,
+      LOCAL_STACK_LOCK_HOLD_S: "",
+      LOCAL_STACK_LOCK_WAIT_S: "30",
+    });
+    expect(waiter.status, waiter.stderr).toBe(0);
+    expect(waiter.stdout).toContain("waiter-ran");
+    expect(waiter.ms).toBeLessThan(15_000);
+    expect((await holder.done).status).toBe(124);
+  });
+
+  it("a command that ignores TERM is killed after the grace period and the lock is freed", () => {
+    const env = holdEnv("1");
+    const pidFile = path.join(tmp, "stubborn.pid");
+    const r = commandRun(
+      [
+        "stubborn gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `trap '' TERM; echo $$ > "${pidFile}"; while :; do sleep 0.2; done`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.ms).toBeGreaterThanOrEqual(2_000);
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("grandchildren of the command are stopped with it, and the wrapper's own caller is not signalled", () => {
+    const env = holdEnv("1");
+    const grandchild = path.join(tmp, "grandchild.pid");
+    const signalled = path.join(tmp, "caller-signalled");
+    const traps = ["TERM", "INT", "HUP"]
+      .map((sig) => `trap 'echo ${sig} >> "${signalled}"' ${sig}`)
+      .join("; ");
+    const caller = spawnSync(
+      "bash",
+      [
+        "-c",
+        `${traps}; bash "${SCRIPT}" run "tree gate" --lock tests -- bash -c 'sleep 300 & echo $! > "${grandchild}"; wait'; echo "caller-alive:$?"`,
+      ],
+      { env, encoding: "utf-8", timeout: BUDGET.testTimeout },
+    );
+    expect(caller.status, caller.stderr).toBe(0);
+    expect(caller.stdout).toContain("caller-alive:124");
+    expect(pidAlive(readPid(grandchild))).toBe(false);
+    expect(fs.existsSync(signalled), "the wrapper's caller was signalled").toBe(false);
+  });
+
+  it("a grandchild whose parent exited is stopped with the command at the hold limit", () => {
+    // The parent lives 3 s, so the watcher (polling every second) records the grandchild first,
+    // and the 5 s limit fires after the parent has exited.
+    const env = holdEnv("5");
+    const grandchild = path.join(tmp, "orphan.pid");
+    const r = commandRun(
+      [
+        "orphan gate",
+        "--lock",
+        "tests",
+        "--",
+        "bash",
+        "-c",
+        `( sleep 300 & echo $! > "${grandchild}"; sleep 3 ) & sleep 120`,
+      ],
+      env,
+    );
+    expect(r.status, r.stderr).toBe(124);
+    const orphan = readPid(grandchild);
+    expect(orphan).toBeGreaterThan(1);
+    expect(pidAlive(orphan), "the re-parented grandchild survived the hold-limit stop").toBe(false);
+  });
+
+  it("a nested run reusing its parent's lock starts no hold timer of its own", () => {
+    const inner = `LOCAL_STACK_LOCK_HOLD_S=1 bash "${SCRIPT}" run inner --lock tests -- bash -c 'sleep 3; echo inner-done'`;
+    const r = commandRun(["outer", "--lock", "tests", "--", "bash", "-c", inner], holdEnv("60"));
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("inner-done");
+    expect(r.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S limit");
+  });
+
+  it("an unset or invalid LOCAL_STACK_LOCK_HOLD_S uses 3600 s, and an invalid value says so once", () => {
+    const unset = watcherLimits(envFor());
+    expect(unset.status, unset.stderr).toBe(0);
+    expect(unset.limits, unset.stdout).toBe("3600 10");
+    expect(unset.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S");
+    for (const bad of ["abc", "0", "-5", "1.5"]) {
+      const r = watcherLimits(envFor({ LOCAL_STACK_LOCK_HOLD_S: bad }));
+      expect(r.status, `${bad}: ${r.stderr}`).toBe(0);
+      expect(r.limits, `${bad}: ${r.stdout}`).toBe("3600 10");
+      expect(r.stderr.split("LOCAL_STACK_LOCK_HOLD_S").length - 1, `${bad}: ${r.stderr}`).toBe(1);
+      expect(r.stderr).toContain(`invalid LOCAL_STACK_LOCK_HOLD_S "${bad}"; using 3600`);
+    }
+  });
+
+  it("a command that finishes before the limit keeps its own exit status", () => {
+    const env = holdEnv("30");
+    const failing = commandRun(
+      ["quick gate", "--lock", "tests", "--", "bash", "-c", "exit 7"],
+      env,
+    );
+    expect(failing.status, failing.stderr).toBe(7);
+    expect(failing.ms).toBeLessThan(10_000);
+    const passing = commandRun(["quick gate", "--lock", "tests", "--", "echo", "fine"], env);
+    expect(passing.status, passing.stderr).toBe(0);
+    expect(passing.stdout).toBe("fine\n");
+    expect(passing.stderr).toBe("");
+    const nearLimit = commandRun(
+      ["near gate", "--lock", "tests", "--", "bash", "-c", "sleep 0.5; exit 3"],
+      holdEnv("3"),
+    );
+    expect(nearLimit.status, nearLimit.stderr).toBe(3);
+    expectTestsLockFree(env);
+  });
+
+  it("with CI=true a run takes no lock and has no hold limit", () => {
+    const r = commandRun(
+      ["ci gate", "--lock", "tests", "--", "bash", "-c", "sleep 2; echo ci-done"],
+      holdEnv("1", { CI: "true" }),
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("ci-done");
+  });
+
+  it("a TERM to the wrapper is passed on to the command, and the wrapper exits 143 and frees the lock", async () => {
+    const env = holdEnv("60");
+    const pidFile = path.join(tmp, "fwd.pid");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "term gate" --lock tests -- bash -c 'echo $$ > "${pidFile}"; exec sleep 120'`,
+      env,
+    );
+    await expect.poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout }).toBe(true);
+    wrapper.child.kill("SIGTERM");
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(143);
+    expect(done.stderr).toContain("passed TERM on to term gate");
+    expect(pidAlive(readPid(pidFile))).toBe(false);
+    expectTestsLockFree(env);
+  });
+
+  it("a TERM during the hold-limit grace period lets the stop finish and the exit stays 124", async () => {
+    const env = holdEnv("1", { LOCAL_STACK_LOCK_HOLD_GRACE_S: "5" });
+    const termed = path.join(tmp, "termed");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "grace gate" --lock tests -- bash -c 'trap "echo > \\"${termed}\\"; sleep 1; exit 0" TERM; while :; do sleep 0.1; done'`,
+      env,
+    );
+    await expect.poll(() => fs.existsSync(termed), { timeout: BUDGET.hookTimeout }).toBe(true);
+    wrapper.child.kill("SIGTERM");
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(124);
+    expect(done.stderr).toContain("LOCAL_STACK_LOCK_HOLD_S limit of 1s");
+    expect(done.stderr).not.toContain("passed TERM on");
+  });
+
+  it("a run holding its own lock passes its stdin to the command", () => {
+    const r = spawnSync("bash", [SCRIPT, "run", "stdin gate", "--lock", "tests", "--", "cat"], {
+      env: holdEnv("60"),
+      input: "from the caller\n",
+      encoding: "utf-8",
+      timeout: BUDGET.testTimeout,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toBe("from the caller\n");
+  });
+});

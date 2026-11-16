@@ -14,7 +14,17 @@
 # package.json: wrap test gates with
 #   bash scripts/ci/bkit-machine-lock.sh run --lock tests -- <gate command> [args…]
 # run ["<who>"] [--lock <name>] -- <command> exits with the command's status:
-# 2 usage, 73 the lock could not be taken, 75 the wait gave up.
+# 2 usage, 73 the lock could not be taken, 75 the wait gave up, 124 the hold limit stopped it.
+# A run that took the tests lock holds it at most LOCAL_STACK_LOCK_HOLD_S seconds (whole number
+# >= 1, default 3600; an invalid value falls back with one note). At the limit it sends TERM to the
+# command and every process started under it, KILL to those still running after
+# LOCAL_STACK_LOCK_HOLD_GRACE_S seconds (default 10), frees the lock, prints a [machine-lock]
+# line naming the holder, the time held and the limit, and exits 124. Other locks, a run that
+# reuses its live parent's lock, and CI have no limit. Under the limit the command must be a
+# program on PATH; wrap shell code in sh -c '…'. The processes under the command are found with
+# ps (procps on Linux); without a ps that prints lstart, one note says the limit stops only the
+# command itself. A process whose parent exits within a second of starting it may survive the
+# stop; it does not hold the lock, but it may keep the caller's output pipe open.
 # With LOCAL_STACK_LOCK_STATUS_FILE set, a 73 or 75 also writes that file (a temp file beside it,
 # then a rename) as three LF-ended lines: lock=<name>, outcome=refused or outcome=gave-up, and
 # holder=<each holder's "who — checkout (pid N, since HH:MM:SS)" note, joined by "; ">. Read the
@@ -27,8 +37,10 @@
 #   bash scripts/ci/bkit-machine-lock.sh jump [--lock <name>] <who> [<checkout>]
 #     moves that run to the front: exit 0 printing its line, 1 none matches, 3 several match
 #     (printing them); queue and jump default to the tests lock.
-# TERM, INT and HUP defer cancellation until the foreground command ends, keeping
-# its lock held throughout; the wrapper then returns the signal's exit status.
+# TERM, INT and HUP that reach a run holding its own tests lock are passed on to the command (INT
+# only when the run does not have the terminal, since Ctrl-C reaches the command directly); the
+# lock stays held until the command ends, and the wrapper then returns the signal's exit status.
+# Any other run defers them until its command ends.
 #
 # Named locks live in ${XDG_CACHE_HOME:-$HOME/.cache}/bkit/machine-lock/ with no
 # repository prefix. The unnamed stack lock keeps its local-stack-lock/ path and
@@ -663,18 +675,161 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
     esac
     exit "$_LOCAL_STACK_LOCK_EXIT"
   fi
+  _lsl_run_started=$SECONDS
   _lsl_run_signal_status=0
+  _lsl_run_hold_hit=0
+  _lsl_run_cmd_pid=""
+  # With a background command (a run holding its own tests lock), TERM, INT and HUP are passed on to it;
+  # INT is not when this run has the terminal, since Ctrl-C reaches the command directly. A
+  # signal during a hold-limit stop is not passed on.
   _lsl_run_cancel() {
-    _lsl_run_signal_status="$1"
-    echo "[machine-lock] cancellation requested; waiting for $_lsl_run_who to finish before releasing its lock" >&2
+    _lsl_run_signal_status="$2"
+    if [ -z "$_lsl_run_cmd_pid" ]; then
+      echo "[machine-lock] cancellation requested; waiting for $_lsl_run_who to finish before releasing its lock" >&2
+      return 0
+    fi
+    [ "$_lsl_run_hold_hit" -eq 0 ] || return 0
+    if [ "$1" = INT ] && /usr/bin/perl -e 'use POSIX (); open(my $t, "<", "/dev/tty") or exit 1; exit(POSIX::tcgetpgrp(fileno $t) == getpgrp() ? 0 : 1)' 2>/dev/null; then
+      return 0
+    fi
+    kill -"$1" "$_lsl_run_cmd_pid" 2>/dev/null || true
+    echo "[machine-lock] passed $1 on to $_lsl_run_who; waiting for it to finish before releasing its lock" >&2
   }
-  # Bash runs these traps after its foreground command ends. Keeping this owner
-  # alive also keeps the Perl holder alive while that command finishes naturally.
-  trap '_lsl_run_cancel 143' TERM
-  trap '_lsl_run_cancel 130' INT
-  trap '_lsl_run_cancel 129' HUP
-  "$@"
-  _lsl_run_status=$?
+  _local_stack_lock_vars "$_lsl_run_name"
+  if [ "$_lsl_run_name" != tests ] || [ "${!_lsl_owner_var:-}" != "$$" ]; then
+    # Another lock, or no lock taken here (CI, or a live parent's lock reused): no hold limit.
+    # Bash runs these traps after its foreground command ends.
+    trap '_lsl_run_cancel TERM 143' TERM
+    trap '_lsl_run_cancel INT 130' INT
+    trap '_lsl_run_cancel HUP 129' HUP
+    "$@"
+    _lsl_run_status=$?
+    release_local_stack_lock "$_lsl_run_name"
+    [ "$_lsl_run_signal_status" -eq 0 ] || _lsl_run_status="$_lsl_run_signal_status"
+    exit "$_lsl_run_status"
+  fi
+  # A whole number >= min, else the default with one note.
+  _lsl_run_seconds() {
+    _lsl_run_value="$3"
+    case "${!1:-}" in
+      "") return 0 ;;
+      *[!0-9]*) ;;
+      *) if [ "$((10#${!1}))" -ge "$2" ]; then _lsl_run_value="$((10#${!1}))"; return 0; fi ;;
+    esac
+    echo "[machine-lock] invalid $1 \"${!1}\"; using $3" >&2
+  }
+  _lsl_run_seconds LOCAL_STACK_LOCK_HOLD_S 1 3600
+  _lsl_run_limit="$_lsl_run_value"
+  _lsl_run_seconds LOCAL_STACK_LOCK_HOLD_GRACE_S 0 10
+  _lsl_run_grace="$_lsl_run_value"
+  # Signals ignored on entry stay ignored for the command; a background command would otherwise
+  # start with INT and QUIT ignored.
+  _lsl_run_ignored="$(/usr/bin/perl -e 'print join(" ", grep { ($SIG{$_} || "") eq "IGNORE" } qw(INT QUIT))')"
+  trap '_lsl_run_cancel TERM 143' TERM
+  trap '_lsl_run_cancel INT 130' INT
+  trap '_lsl_run_cancel HUP 129' HUP
+  trap '_lsl_run_hold_hit=1' USR1
+  # The command stays in the caller's process group and keeps the caller's stdin, so it reads the
+  # terminal and gets Ctrl-C as a foreground command would.
+  /usr/bin/perl -e '
+    my %keep = map { $_ => 1 } split " ", shift @ARGV;
+    for my $sig (qw(INT QUIT)) { $SIG{$sig} = "DEFAULT" unless $keep{$sig} }
+    exec { $ARGV[0] } @ARGV;
+    print STDERR "[machine-lock] cannot run $ARGV[0]: $! (a shell function or builtin cannot be run; wrap it in sh -c)\n";
+    exit($!{ENOENT} ? 127 : 126);
+  ' "$_lsl_run_ignored" "$@" <&0 &
+  _lsl_run_cmd_pid=$!
+  # The watcher records the command's descendants every second, so a grandchild whose parent
+  # exited (re-parented away from the command) is still known. At the limit it sends USR1 to the
+  # wrapper, then TERM to every recorded process still running and KILL to those left after the
+  # grace period. It never signals the wrapper or its caller: only the command and processes
+  # started under it are recorded, each with its start time, so a reused pid is never signalled.
+  # It uses the first ps on PATH, else /bin/ps; when that ps cannot list the command with its
+  # start time (no procps, or a BusyBox ps without lstart), it notes once that only the command
+  # itself can be stopped.
+  /usr/bin/perl -e '
+    use Time::HiRes qw(time sleep);
+    my ($limit, $grace, $root, $wrapper) = @ARGV;
+    $SIG{$_} = "IGNORE" for qw(INT QUIT HUP TERM);
+    $ENV{LC_ALL} = "C";
+    my ($ps_bin) = grep { -f $_ && -x _ } map { ($_ eq "" ? "." : $_) . "/ps" } split(/:/, $ENV{PATH} // "", -1);
+    $ps_bin //= "/bin/ps";
+    my $table = sub {
+      my $pid = open(my $ps, "-|") // return undef;
+      if (!$pid) {
+        open(STDERR, ">", "/dev/null");
+        exec { $ps_bin } $ps_bin, "-A", "-o", "pid=", "-o", "ppid=", "-o", "stat=", "-o", "lstart=";
+        exit 127;
+      }
+      my %t;
+      while (my $row = <$ps>) {
+        next unless $row =~ /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*\S)/;
+        $t{$1} = [$2, $4] unless substr($3, 0, 1) eq "Z";
+      }
+      close $ps or return undef;
+      return \%t;
+    };
+    my %tracked = ($root => undef);
+    my $first = $table->();
+    my $tree = $first && exists $first->{$root};
+    print STDERR "[machine-lock] ps with lstart is not available (procps on Linux), so the LOCAL_STACK_LOCK_HOLD_S limit can stop only the command itself, not the processes started under it\n" unless $tree;
+    my $refresh = sub {
+      if (!$tree) { delete @tracked{grep { !kill(0, $_) } keys %tracked}; return }
+      my $t = $table->() or return;
+      for my $pid (keys %tracked) {
+        my $row = $t->{$pid};
+        if (!$row || (defined $tracked{$pid} && $row->[1] ne $tracked{$pid})) { delete $tracked{$pid} }
+        else { $tracked{$pid} = $row->[1] }
+      }
+      my $added = 1;
+      while ($added) {
+        $added = 0;
+        for my $pid (keys %$t) {
+          next if exists $tracked{$pid} || $pid == $wrapper || $pid == $$ || !exists $tracked{$t->{$pid}[0]};
+          $tracked{$pid} = $t->{$pid}[1];
+          $added = 1;
+        }
+      }
+    };
+    my $end = time + $limit;
+    while (time < $end) {
+      exit 0 if getppid() != $wrapper;
+      $refresh->();
+      my $left = $end - time;
+      sleep($left < 1 ? ($left > 0 ? $left : 0) : 1);
+    }
+    $refresh->();
+    exit 0 unless exists $tracked{$root} && kill(0, $root);
+    kill "USR1", $wrapper;
+    # Each process gets one TERM, so a second one never cuts short its own shutdown.
+    my %termed;
+    my $term = sub { for my $pid (grep { !$termed{$_}++ } keys %tracked) { kill "TERM", $pid } };
+    $term->();
+    my $kill_at = time + $grace;
+    while (%tracked && time < $kill_at) { sleep 0.1; $refresh->(); $term->() }
+    for (1 .. 20) { last unless %tracked; kill "KILL", keys %tracked; sleep 0.1; $refresh->() }
+  ' "$_lsl_run_limit" "$_lsl_run_grace" "$_lsl_run_cmd_pid" "$$" </dev/null >/dev/null &
+  _lsl_run_watch_pid=$!
+  while :; do
+    # Quiet: bash would otherwise print a "Killed" job notice for a stopped command.
+    wait "$_lsl_run_cmd_pid" 2>/dev/null
+    _lsl_run_status=$?
+    # A trapped signal ends wait early with a status above 128 while the command still runs.
+    if [ "$_lsl_run_status" -gt 128 ] && kill -0 "$_lsl_run_cmd_pid" 2>/dev/null; then continue; fi
+    break
+  done
+  if [ "$_lsl_run_hold_hit" -eq 1 ]; then
+    while kill -0 "$_lsl_run_watch_pid" 2>/dev/null; do wait "$_lsl_run_watch_pid" 2>/dev/null; done
+    _lsl_run_note="$(local_stack_lock_holder "$_lsl_run_name" | grep -F "(pid $$, " | head -n 1)"
+    release_local_stack_lock "$_lsl_run_name"
+    # SECONDS counts whole seconds, so the time held never prints below the limit it reached.
+    _lsl_run_held=$((SECONDS - _lsl_run_started))
+    [ "$_lsl_run_held" -ge "$_lsl_run_limit" ] || _lsl_run_held="$_lsl_run_limit"
+    echo "[machine-lock] ❌ ${_lsl_run_note:-$_lsl_run_who} reached the LOCAL_STACK_LOCK_HOLD_S limit of ${_lsl_run_limit}s on the tests lock (held ${_lsl_run_held}s); stopped the command and freed the lock" >&2
+    exit 124
+  fi
+  kill -KILL "$_lsl_run_watch_pid" 2>/dev/null || true
+  wait "$_lsl_run_watch_pid" 2>/dev/null || true
   release_local_stack_lock "$_lsl_run_name"
   [ "$_lsl_run_signal_status" -eq 0 ] || _lsl_run_status="$_lsl_run_signal_status"
   exit "$_lsl_run_status"

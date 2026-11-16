@@ -270,6 +270,27 @@ describe("machine-lock copy migration", () => {
     }
   });
 
+  it("an edited machine-lock copy without LOCAL_STACK_LOCK_HOLD_S is left in place with one hold-limit warning", () => {
+    const custom = Buffer.from(
+      currentLock.toString("utf8").replaceAll("LOCAL_STACK_LOCK_HOLD_S", "CONSUMER_LIMIT") +
+        "\n# consumer customization\n",
+    );
+    seed(custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrate().writes).toEqual([]);
+      expect(fs.readFileSync(lock)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(lock));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("no LOCAL_STACK_LOCK_HOLD_S hold limit");
+      expect(lines[0]).toContain(template);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("a hung run holds the tests lock until someone stops it by hand");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("leaves a symlinked machine-lock copy unchanged and reports the template to merge by hand", () => {
     fs.mkdirSync("owned", { recursive: true });
     const target = path.resolve("owned/bkit-machine-lock.sh");

@@ -163,9 +163,20 @@ export default async function setup(
       );
     }),
   ]);
+  let tearingDown = false;
+  // `exit` fires when the wrapper itself ends (its hold limit, or a kill); `close` would also wait
+  // for any process still holding its stderr pipe.
+  child.once("exit", (code, signal) => {
+    if (tearingDown) return;
+    process.stderr.write(
+      `\nVitest tests lock holder exited before the run finished (${code ?? signal}); the tests lock is free, so the run stops here: ${stderr}\n`,
+    );
+    process.exit(1);
+  });
   const previousOwner = process.env.LOCAL_STACK_LOCK_OWNER_tests;
   process.env.LOCAL_STACK_LOCK_OWNER_tests = owner;
   return async () => {
+    tearingDown = true;
     keepalive.end();
     const { code, signal, error } = await exited;
     if (process.env.LOCAL_STACK_LOCK_OWNER_tests === owner) {

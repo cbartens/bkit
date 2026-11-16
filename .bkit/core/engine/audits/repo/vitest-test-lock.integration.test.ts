@@ -150,7 +150,51 @@ function probe() {
   );
 }
 
+/**
+ * Runs the global setup in a node process of its own that then idles like a long test run, so a
+ * setup that ends the run does not end this one. Resolves with its exit, or "still running" after
+ * 15 s.
+ */
+async function idleRunAfterSetup(env: NodeJS.ProcessEnv) {
+  const script = path.join(tmp, "idle-run.mjs");
+  fs.writeFileSync(
+    script,
+    `const { default: setup } = await import(${JSON.stringify(path.resolve("vitest.test-lock.ts"))});
+await setup(${JSON.stringify(PROJECT)});
+console.log("locked");
+setInterval(() => undefined, 1000);
+`,
+  );
+  const child = spawn(process.execPath, ["--import", "tsx", script], {
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
+  });
+  children.push(child);
+  const output = { stdout: "", stderr: "" };
+  child.stdout.on("data", (data: Buffer) => (output.stdout += data.toString()));
+  child.stderr.on("data", (data: Buffer) => (output.stderr += data.toString()));
+  const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) =>
+    child.on("exit", (code, signal) => resolve({ code, signal })),
+  );
+  const outcome = await Promise.race([exited, delay(15_000).then(() => "still running" as const)]);
+  return { outcome, output };
+}
+
 describe("raw Vitest global setup against wrapped gates", () => {
+  it("the global setup fails the Vitest run at once when its lock holder exits before teardown", async () => {
+    const { outcome, output } = await idleRunAfterSetup({
+      ...independentEnv(),
+      LOCAL_STACK_LOCK_HOLD_S: "1",
+      LOCAL_STACK_LOCK_HOLD_GRACE_S: "1",
+    });
+    expect(output.stdout, output.stderr).toContain("locked");
+    expect(outcome, output.stderr).toEqual({ code: 1, signal: null });
+    expect(output.stderr).toMatch(/tests lock holder exited before the run finished \(124\)/);
+    expect(output.stderr).toContain("LOCAL_STACK_LOCK_HOLD_S limit of 1s");
+    expect(probe().status).toBe(0);
+  });
+
   it("testWorkers finds the lock script when the process starts in a subfolder", () => {
     const config = path.resolve("vitest.test-lock.ts");
     const res = spawnSync(

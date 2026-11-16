@@ -694,8 +694,8 @@ const SHIPPED_MACHINE_LOCK_HASHES = [
     "63ee5873795fd06b60e1f13c238c9e3c44d9f6dc76a50fe271793de6ad284e87",
 ];
 // Migration (6.1.0-6.2.x installs, docs/migrations.md): replace an unedited adopted machine-lock
-// copy with the current template; warn about an edited copy that lacks the queue or never writes
-// the status file.
+// copy with the current template; warn about an edited copy that lacks the queue, never writes
+// the status file or has no hold limit.
 function migrateMachineLockCopy(dryRun, ws, logPrefix) {
     const file = path.join("scripts", "ci", "bkit-machine-lock.sh");
     const stat = fs.lstatSync(file, { throwIfNoEntry: false });
@@ -727,6 +727,8 @@ function migrateMachineLockCopy(dryRun, ws, logPrefix) {
         manual("the copy differs from the shipped version");
     if (!text.includes("LOCAL_STACK_LOCK_STATUS_FILE"))
         manual("the copy never writes LOCAL_STACK_LOCK_STATUS_FILE", "a lock wait that gives up reads as a gate failure (exit 1) instead of exit 81");
+    if (!text.includes("LOCAL_STACK_LOCK_HOLD_S"))
+        manual("the copy has no LOCAL_STACK_LOCK_HOLD_S hold limit", "a hung run holds the tests lock until someone stops it by hand");
 }
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.
 function otherWorkflows(skip) {
