@@ -45,12 +45,17 @@ import {
 } from "../lib.js";
 import { ensureDiskSpace } from "./disk.js";
 import {
+  RUN_COMMITS_ROW,
   listRecords,
   newRecord,
   readRecord,
+  readRunCommits,
   removeRecord,
+  runCommitsIn,
   withSetupGuard,
   writeRecord,
+  type RunCommits,
+  type SharedCheckoutRecord,
 } from "./ledgers.js";
 import { workflowLockFresh, workflowLockLive } from "./locks.js";
 import { detect } from "./runtime.js";
@@ -135,10 +140,68 @@ function fetchBranch(cwd: string, branch: string): void {
 }
 
 /**
+ * `fresh` with the start, commits and pushed list of a `run-commits` row laid over it:
+ * the record a Stop removed. A commit that is not an ancestor of HEAD is dropped, and a
+ * row start that is not a commit leaves the fresh one.
+ */
+function rebuildFromRow(
+  root: string,
+  fresh: SharedCheckoutRecord,
+  row: RunCommits | null,
+): SharedCheckoutRecord {
+  if (row === null) return fresh;
+  const onBranch = (sha: string) => runGit(root, ["merge-base", "--is-ancestor", sha, "HEAD"]).ok;
+  const isCommit = (sha: string) =>
+    runGit(root, ["rev-parse", "-q", "--verify", `${sha}^{commit}`]).ok;
+  const commits = row.commits.filter(onBranch);
+  return {
+    ...fresh,
+    startSha: row.startSha !== "" && isCommit(row.startSha) ? row.startSha : fresh.startSha,
+    commits,
+    pushed: row.pushed.filter((sha) => commits.includes(sha)),
+  };
+}
+
+/** The status rows that open or close a run. */
+const RUN_BOUNDARY: ReadonlySet<string> = new Set([
+  "workflow-started",
+  "workflow-done",
+  "workflow-failed",
+]);
+
+/**
+ * The newest `run-commits` row of `workflow` in the copy of the status log on
+ * `origin/dev`. A landed handover takes the row's line back out of the checkout, so the
+ * landed copy is the one that holds it. That copy holds only the lines landings carried,
+ * so the run counts as open when no row that opens or closes a run follows the row.
+ * Null when the copy is missing or cannot be read, or the row is absent or followed by
+ * such a row. A failed fetch reads the copy this clone last saw.
+ */
+function landedRunCommits(root: string, statusFile: string, workflow: string): RunCommits | null {
+  runGit(root, ["fetch", "-q", "origin", `+refs/heads/${DEV}:refs/remotes/origin/${DEV}`]);
+  const rel = path.relative(root, statusFile).split(path.sep).join("/");
+  const landed = runGit(root, ["show", `refs/remotes/origin/${DEV}:${rel}`]);
+  if (!landed.ok) return null;
+  const types = landed.stdout.split("\n").flatMap((line) => {
+    const parsed = parseJson(line);
+    const row = parsed.ok ? (parsed.value as Record<string, unknown> | null) : null;
+    return row !== null && typeof row === "object" && row["workflow"] === workflow
+      ? [String(row["type"])]
+      : [];
+  });
+  const at = types.lastIndexOf(RUN_COMMITS_ROW);
+  if (at < 0 || types.slice(at + 1).some((type) => RUN_BOUNDARY.has(type))) return null;
+  return runCommitsIn(landed.stdout, workflow);
+}
+
+/**
  * The shared-checkout record for an in-place run on `dev`. Another feature's
  * record with a live workflow lock means that run owns the checkout; one
  * without is left over and removed. The same feature with an open run in
- * `{logDir}/status.jsonl` is a resume and keeps its record; a new run rewrites it.
+ * `{logDir}/status.jsonl` is a resume and keeps its record. A run with no record
+ * takes the start, commits and pushed list of its `run-commits` row: the row in
+ * `{logDir}/status.jsonl` of an open run, else the row on `origin/dev` while that log
+ * shows no closed run after it.
  */
 function openSharedRecord(root: string, fid: string, workflow: string, logDir: string) {
   const busy = (other: string) =>
@@ -157,13 +220,17 @@ function openSharedRecord(root: string, fid: string, workflow: string, logDir: s
     }
     const existing = readRecord(root, fid);
     const statusFile = path.join(logDir, "status.jsonl");
-    const open =
-      fs.existsSync(statusFile) &&
-      lastRun(readRuns(statusFile), workflow)?.status === "IN_PROGRESS";
+    const last = fs.existsSync(statusFile) ? lastRun(readRuns(statusFile), workflow) : undefined;
+    const open = last?.status === "IN_PROGRESS";
     if (existing !== null && existing.branch === DEV && open) return existing;
     const fresh = newRecord(root, fid, DEV);
-    writeRecord(root, fresh);
-    return fresh;
+    // A closed run in the checkout's log ended the run the landed row belongs to.
+    const row =
+      (open ? readRunCommits(statusFile, workflow) : null) ??
+      (open || last === undefined ? landedRunCommits(root, statusFile, workflow) : null);
+    const rebuilt = rebuildFromRow(root, fresh, row);
+    writeRecord(root, rebuilt);
+    return rebuilt;
   });
   if (guarded === null) throw busy("another run");
   return guarded.value;

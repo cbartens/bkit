@@ -238,6 +238,17 @@ describe("runStatusRows / stepsBlock / ciList", () => {
     expect(stepsBlock(journaled)).toEqual(stepsBlock(plain));
   });
 
+  it("leaves a run's step minutes unchanged when a run-commits row lands between step rows", () => {
+    const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
+    const stopped = [
+      started(0),
+      step(1, "build-a"),
+      journalRow({ type: "run-commits", at: at(3), startSha: "a", commits: [], pushed: [] }),
+      step(4, "build-b"),
+    ];
+    expect(stepsBlock(stopped)).toEqual(stepsBlock(plain));
+  });
+
   it("starts a step clock at the previous step row, not at an invocation row", () => {
     const plain = [started(0), step(1, "build-a"), step(4, "build-b")];
     const issued = [

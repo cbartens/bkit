@@ -365,6 +365,145 @@ describe("bkit worktrees setup — debug in place on dev shares the checkout", (
     expect(fs.readFileSync(recordFile(cwd), "utf-8")).toBe(first);
   });
 
+  describe("a resume with no record rebuilds it from the run-commits row", () => {
+    const statusFile = (cwd: string) =>
+      path.join(cwd, "docs", "plans", MONTH, "logs", FID, "status.jsonl");
+    const commit = (cwd: string, message: string) => {
+      git(cwd, "commit", "-q", "--allow-empty", "-m", message);
+      return git(cwd, "rev-parse", "HEAD");
+    };
+    const appendRow = (cwd: string, row: Record<string, unknown>) =>
+      fs.appendFileSync(
+        statusFile(cwd),
+        `${JSON.stringify({ type: "run-commits", workflow: "debug", at: new Date().toISOString(), ...row })}\n`,
+      );
+
+    /** An open run whose record was removed by a Stop, leaving two commits made by the run. */
+    async function stopped() {
+      const cwd = shared();
+      await setup(cwd, "debug");
+      await liveRun(cwd, FID);
+      const startSha = record(cwd).startSha as string;
+      const first = commit(cwd, "fix part one");
+      const second = commit(cwd, "fix part two");
+      fs.rmSync(recordFile(cwd));
+      return { cwd, startSha, first, second };
+    }
+
+    it("restores the commits, the pushed list and startSha of the newest row", async () => {
+      const { cwd, startSha, first, second } = await stopped();
+      appendRow(cwd, { startSha, commits: [first], pushed: [] });
+      appendRow(cwd, { startSha, commits: [first, second], pushed: [first] });
+      const r = await setup(cwd, "debug");
+      expect(r.code).toBe(0);
+      expect(record(cwd)).toMatchObject({
+        startSha,
+        commits: [first, second],
+        pushed: [first],
+      });
+      expect(r.json.startSha).toBe(startSha);
+    });
+
+    it("drops a commit id that is not on the branch", async () => {
+      const { cwd, startSha, first } = await stopped();
+      const stray = git(cwd, "commit-tree", "HEAD^{tree}", "-m", "never on dev");
+      const missing = "0123456789abcdef0123456789abcdef01234567";
+      appendRow(cwd, { startSha, commits: [first, stray, missing], pushed: [stray] });
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd).commits).toEqual([first]);
+      expect(record(cwd).pushed ?? []).toEqual([]);
+    });
+
+    it("keeps the fresh startSha when the row's startSha is not a commit", async () => {
+      const { cwd, first } = await stopped();
+      appendRow(cwd, {
+        startSha: "0123456789abcdef0123456789abcdef01234567",
+        commits: [first],
+        pushed: [],
+      });
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd).startSha).toBe(git(cwd, "rev-parse", "HEAD"));
+      expect(record(cwd).commits).toEqual([first]);
+    });
+
+    it("writes an empty commit list when the run has no run-commits row", async () => {
+      const { cwd } = await stopped();
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd)).toMatchObject({ startSha: git(cwd, "rev-parse", "HEAD"), commits: [] });
+    });
+
+    it("ignores a row from before the open run started", async () => {
+      const { cwd, startSha, first } = await stopped();
+      const rows = fs.readFileSync(statusFile(cwd), "utf-8");
+      fs.writeFileSync(statusFile(cwd), "");
+      appendRow(cwd, { startSha, commits: [first], pushed: [] });
+      fs.appendFileSync(statusFile(cwd), rows);
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd).commits).toEqual([]);
+    });
+
+    /**
+     * What a landed Stop leaves: the status log, plus `extra` rows, is a commit on
+     * origin/dev that local dev does not hold, and the checkout has lost the log.
+     */
+    function landed(cwd: string, extra: Record<string, unknown>[] = []) {
+      const rel = path.relative(cwd, statusFile(cwd));
+      const clone = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-wt-land-")));
+      dirs.push(clone);
+      git(cwd, "clone", "-q", git(cwd, "remote", "get-url", "origin"), clone);
+      fs.mkdirSync(path.dirname(path.join(clone, rel)), { recursive: true });
+      fs.copyFileSync(statusFile(cwd), path.join(clone, rel));
+      for (const row of extra) {
+        fs.appendFileSync(path.join(clone, rel), `${JSON.stringify(row)}\n`);
+      }
+      git(clone, "add", "--", rel);
+      git(clone, "commit", "-q", "-m", "chore: debug handover");
+      git(clone, "push", "-q", "origin", "HEAD:dev");
+      fs.rmSync(statusFile(cwd));
+    }
+
+    it("restores the commits from the row on origin/dev when the handover landed", async () => {
+      const { cwd, startSha, first, second } = await stopped();
+      appendRow(cwd, { startSha, commits: [first, second], pushed: [] });
+      landed(cwd);
+      const r = await setup(cwd, "debug");
+      expect(r.code).toBe(0);
+      expect(record(cwd)).toMatchObject({ startSha, commits: [first, second], pushed: [] });
+    });
+
+    it("restores the commits when origin/dev holds only the lines the checkout lacks", async () => {
+      const { cwd, startSha, first, second } = await stopped();
+      const own = fs.readFileSync(statusFile(cwd), "utf-8");
+      fs.writeFileSync(statusFile(cwd), "");
+      appendRow(cwd, { startSha, commits: [first, second], pushed: [] });
+      landed(cwd);
+      fs.writeFileSync(statusFile(cwd), own);
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd)).toMatchObject({ startSha, commits: [first, second] });
+    });
+
+    it("ignores the row on origin/dev when the checkout's log shows the run closed", async () => {
+      const { cwd, startSha, first } = await stopped();
+      const own = fs.readFileSync(statusFile(cwd), "utf-8");
+      appendRow(cwd, { startSha, commits: [first], pushed: [] });
+      landed(cwd);
+      const done = { type: "workflow-done", workflow: "debug", at: new Date(Date.now() + 1000) };
+      fs.writeFileSync(statusFile(cwd), `${own}${JSON.stringify(done)}\n`);
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd).commits).toEqual([]);
+    });
+
+    it("ignores the row on origin/dev when the run there is closed", async () => {
+      const { cwd, startSha, first } = await stopped();
+      appendRow(cwd, { startSha, commits: [first], pushed: [] });
+      landed(cwd, [
+        { type: "workflow-done", workflow: "debug", at: new Date(Date.now() + 1000).toISOString() },
+      ]);
+      expect((await setup(cwd, "debug")).code).toBe(0);
+      expect(record(cwd).commits).toEqual([]);
+    });
+  });
+
   it("setup refuses with EXIT_SHARED_BUSY when another FID has a record and a live lock", async () => {
     const cwd = shared();
     writeRecord(cwd, newRecord(cwd, OTHER, "dev"));

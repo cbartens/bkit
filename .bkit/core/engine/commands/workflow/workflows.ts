@@ -88,6 +88,7 @@ import {
 import {
   EXIT_EMPTY,
   activeRecord,
+  appendRunCommits,
   commitBookkeeping,
   ownPathCommit,
   ownSet,
@@ -120,6 +121,7 @@ import {
   acquireWorkflowLock,
   owns,
   readHolder,
+  readRunsLenient,
   releaseLock,
   resolveMonth,
   workflowLockPath,
@@ -917,6 +919,16 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
   }
   let handed: { sha: string; carried: Carried } | undefined;
   const rec = shared && (push || flush) ? activeRecord(tree, fid) : null;
+  // A run that stays open keeps its commit list in its status log: the record goes below,
+  // and the row lands with the handover.
+  const statusAbs = path.join(tree, statusRelPath(month, fid));
+  if (
+    rec !== null &&
+    fs.existsSync(statusAbs) &&
+    lastRun(readRunsLenient(statusAbs), workflow)?.status === "IN_PROGRESS"
+  ) {
+    appendRunCommits(statusAbs, workflow, rec);
+  }
   if (push && shared) {
     const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
     if (r.sha !== undefined && r.carried !== undefined) handed = { sha: r.sha, carried: r.carried };

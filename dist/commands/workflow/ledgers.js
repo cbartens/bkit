@@ -269,6 +269,57 @@ export function removeRecord(cwd, fid) {
     fs.rmSync(file, { force: true });
     return true;
 }
+/** The status row type that carries a run's commit list across the removal of its record. */
+export const RUN_COMMITS_ROW = "run-commits";
+/** Append a `run-commits` row for `rec` to the status log `file`. */
+export function appendRunCommits(file, workflow, rec) {
+    fs.appendFileSync(file, appendLine({
+        type: RUN_COMMITS_ROW,
+        workflow,
+        at: statusTimestamp(),
+        startSha: rec.startSha,
+        commits: rec.commits,
+        pushed: rec.pushed ?? [],
+    }));
+}
+/**
+ * The newest `run-commits` row of `workflow`'s open run in the status log `file`. Null
+ * when the log or the row is missing.
+ */
+export function readRunCommits(file, workflow) {
+    if (!fs.existsSync(file))
+        return null;
+    return runCommitsIn(fs.readFileSync(file, "utf-8"), workflow);
+}
+/**
+ * The newest `run-commits` row of `workflow` in the status log `text`, among the rows after
+ * the last `workflow-started` row of that workflow, in file order. Null when there is none;
+ * a line that is not a JSON object is skipped.
+ */
+export function runCommitsIn(text, workflow) {
+    const rows = text
+        .split("\n")
+        .flatMap((line) => {
+        const parsed = parseJson(line);
+        return parsed.ok && parsed.value !== null && typeof parsed.value === "object"
+            ? [parsed.value]
+            : [];
+    })
+        .filter((row) => row["workflow"] === workflow);
+    const opened = rows.map((row) => row["type"]).lastIndexOf("workflow-started");
+    const row = rows
+        .slice(opened + 1)
+        .filter((r) => r["type"] === RUN_COMMITS_ROW)
+        .at(-1);
+    if (row === undefined)
+        return null;
+    const ids = (v) => Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+    return {
+        startSha: typeof row["startSha"] === "string" ? row["startSha"] : "",
+        commits: ids(row["commits"]),
+        pushed: ids(row["pushed"]),
+    };
+}
 /** The FID's record, only while its branch is still the one checked out. */
 export function activeRecord(cwd, fid) {
     const rec = readRecord(cwd, fid);

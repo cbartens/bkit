@@ -32,12 +32,12 @@ import { fetchDev, landDir, pushToDev } from "../land.js";
 import { CommandError, DEV, EXIT, git, isSharedBranch, parseJson, repoRoot, runGh, runGit, statusLocation, statusRelPath, } from "../lib.js";
 import { anchorBkitStatus, pushBranch, readAnchor, stampAnchor } from "./branches.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX, buildComment, issueParts, parseComments, sortOldestFirst, trackerState, transitionLabels, } from "./issues.js";
-import { EXIT_EMPTY, activeRecord, commitBookkeeping, ownPathCommit, ownSet, removeRecord, appendLedgerRows, runRows, unionLedgers, } from "./ledgers.js";
+import { EXIT_EMPTY, activeRecord, appendRunCommits, commitBookkeeping, ownPathCommit, ownSet, removeRecord, appendLedgerRows, runRows, unionLedgers, } from "./ledgers.js";
 import { readIssueTracker } from "./fids.js";
 import { agentContextBlock, buildBlock, chatFingerprint, ciList, claudeTranscripts, hostChat, planBlock, planFiles, runChats, runLines, runStatusRows, stepsBlock, timeBlock, } from "./run-facts.js";
 import { buildSummary, refOf, SUMMARY_WORKFLOWS } from "./summary.js";
 import { parsePlans, parseWorkstreams } from "./plans.js";
-import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
+import { EXIT_REMOVE_FAILED, EXIT_SPLIT_BUCKET, acquireWorkflowLock, owns, readHolder, readRunsLenient, releaseLock, resolveMonth, workflowLockPath, } from "./locks.js";
 import { highestVersion } from "./plan-versions.js";
 import { mergePr, probePr } from "./prs.js";
 import { FEATURE_STATUS } from "./roadmap.js";
@@ -697,6 +697,14 @@ async function handoverVerb(ctx) {
     }
     let handed;
     const rec = shared && (push || flush) ? activeRecord(tree, fid) : null;
+    // A run that stays open keeps its commit list in its status log: the record goes below,
+    // and the row lands with the handover.
+    const statusAbs = path.join(tree, statusRelPath(month, fid));
+    if (rec !== null &&
+        fs.existsSync(statusAbs) &&
+        lastRun(readRunsLenient(statusAbs), workflow)?.status === "IN_PROGRESS") {
+        appendRunCommits(statusAbs, workflow, rec);
+    }
     if (push && shared) {
         const r = await landFailedRecord(ctx, { workflow, fid, month, book: tree, shared });
         if (r.sha !== undefined && r.carried !== undefined)

@@ -399,6 +399,70 @@ export function removeRecord(cwd: string, fid: string): boolean {
   return true;
 }
 
+/** The status row type that carries a run's commit list across the removal of its record. */
+export const RUN_COMMITS_ROW = "run-commits";
+
+/** What a `run-commits` row holds: the record fields a resumed run rebuilds its record from. */
+export interface RunCommits {
+  startSha: string;
+  commits: string[];
+  pushed: string[];
+}
+
+/** Append a `run-commits` row for `rec` to the status log `file`. */
+export function appendRunCommits(file: string, workflow: string, rec: SharedCheckoutRecord): void {
+  fs.appendFileSync(
+    file,
+    appendLine({
+      type: RUN_COMMITS_ROW,
+      workflow,
+      at: statusTimestamp(),
+      startSha: rec.startSha,
+      commits: rec.commits,
+      pushed: rec.pushed ?? [],
+    }),
+  );
+}
+
+/**
+ * The newest `run-commits` row of `workflow`'s open run in the status log `file`. Null
+ * when the log or the row is missing.
+ */
+export function readRunCommits(file: string, workflow: string): RunCommits | null {
+  if (!fs.existsSync(file)) return null;
+  return runCommitsIn(fs.readFileSync(file, "utf-8"), workflow);
+}
+
+/**
+ * The newest `run-commits` row of `workflow` in the status log `text`, among the rows after
+ * the last `workflow-started` row of that workflow, in file order. Null when there is none;
+ * a line that is not a JSON object is skipped.
+ */
+export function runCommitsIn(text: string, workflow: string): RunCommits | null {
+  const rows = text
+    .split("\n")
+    .flatMap((line) => {
+      const parsed = parseJson(line);
+      return parsed.ok && parsed.value !== null && typeof parsed.value === "object"
+        ? [parsed.value as Record<string, unknown>]
+        : [];
+    })
+    .filter((row) => row["workflow"] === workflow);
+  const opened = rows.map((row) => row["type"]).lastIndexOf("workflow-started");
+  const row = rows
+    .slice(opened + 1)
+    .filter((r) => r["type"] === RUN_COMMITS_ROW)
+    .at(-1);
+  if (row === undefined) return null;
+  const ids = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return {
+    startSha: typeof row["startSha"] === "string" ? row["startSha"] : "",
+    commits: ids(row["commits"]),
+    pushed: ids(row["pushed"]),
+  };
+}
+
 /** The FID's record, only while its branch is still the one checked out. */
 export function activeRecord(cwd: string, fid: string): SharedCheckoutRecord | null {
   const rec = readRecord(cwd, fid);

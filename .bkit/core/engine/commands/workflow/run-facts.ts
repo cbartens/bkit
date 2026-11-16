@@ -344,6 +344,7 @@ export const MARK_ROWS: ReadonlySet<string> = new Set([
   "completeness",
   "invocation",
   "ci-handoff",
+  "run-commits",
   "correction-rejected",
   "correction-candidate",
   "correction-succeeded",

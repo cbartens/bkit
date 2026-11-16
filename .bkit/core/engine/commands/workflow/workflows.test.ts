@@ -2902,6 +2902,73 @@ describe("bkit workflows close / handover — a debug run in place on dev that s
     expect(rec.commits.at(-1)).toBe(git(cwd, "rev-parse", "HEAD"));
   });
 
+  describe("handover --push lists the run's commits in a run-commits row", () => {
+    /** `shared()` pushed to a bare origin, then two commits the run made and its record listing them. */
+    function made() {
+      const cwd = shared();
+      const remote = fs.realpathSync(
+        fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-remote-")),
+      );
+      dirs.push(remote);
+      git(remote, "init", "-q", "--bare");
+      git(cwd, "remote", "set-url", "origin", remote);
+      git(cwd, "push", "-q", "origin", "dev");
+      const start = JSON.parse(fs.readFileSync(recordAt(cwd), "utf-8")) as { startSha: string };
+      git(cwd, "commit", "-q", "--allow-empty", "-m", "fix one");
+      const first = git(cwd, "rev-parse", "HEAD");
+      git(cwd, "commit", "-q", "--allow-empty", "-m", "fix two");
+      const second = git(cwd, "rev-parse", "HEAD");
+      const rec = JSON.parse(fs.readFileSync(recordAt(cwd), "utf-8")) as Record<string, unknown>;
+      fs.writeFileSync(recordAt(cwd), JSON.stringify({ ...rec, commits: [first, second] }));
+      return { cwd, remote, startSha: start.startSha, first, second };
+    }
+    const runCommitRows = (remote: string) =>
+      git(remote, "show", `dev:${REL}/status.jsonl`)
+        .split("\n")
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Record<string, unknown>)
+        .filter((r) => r.type === "run-commits");
+
+    it("an IN_PROGRESS run gets one row with the record's commits and startSha, landed with the handover", async () => {
+      const { cwd, remote, startSha, first, second } = made();
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([
+        {
+          type: "run-commits",
+          workflow: "debug",
+          at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/),
+          startSha,
+          commits: [first, second],
+          pushed: [],
+        },
+      ]);
+      expect(fs.existsSync(recordAt(cwd))).toBe(false);
+    });
+
+    it("a FAILED run gets no row", async () => {
+      const { cwd, remote } = made();
+      fs.appendFileSync(
+        statusOf(cwd),
+        jsonl([{ type: "workflow-failed", workflow: "debug", at: new Date().toISOString() }]),
+      );
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([]);
+    });
+
+    it("a DONE run gets no row", async () => {
+      const { cwd, remote } = made();
+      fs.appendFileSync(
+        statusOf(cwd),
+        jsonl([{ type: "workflow-done", workflow: "debug", at: new Date().toISOString() }]),
+      );
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push"));
+      expect(r.code).toBe(0);
+      expect(runCommitRows(remote)).toEqual([]);
+    });
+  });
+
   it("failed handover from dev removes the record and keeps recorded paths", async () => {
     const cwd = repo();
     const remote = fs.realpathSync(
