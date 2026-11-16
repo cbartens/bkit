@@ -75,14 +75,11 @@ concurrency:
   # The CI-completion route arm repeats the four conditions of the `context` job `if`
   # (same repository, success or failure conclusion, the `bkit [auto route]` marker, not
   # a green run on dev). A run that fails any of them does nothing, so it gets a group
-  # of its own and never queues behind, or displaces, a run that is working. A real
-  # route that arrives while a run of its group is in flight waits and starts after it.
-  # GitHub keeps at most one pending run per group and drops an older pending one when
-  # a newer one arrives; the ctx step stale-run guard handles a queued run whose head
-  # is outdated by the time it starts. The dispatch and CI-completion keys never match
-  # for one FID, so a dispatched build and the auto-ship it triggers do not share a
-  # group; the stale-run guard and the per-feature workflow lock
-  # (`bkit locks acquire`, `logs/{FID}/.lock`) handle that race.
+  # of its own and never queues behind, or displaces, a run that is working. The
+  # dispatch and CI-completion keys never match for one FID, so a dispatched build and
+  # the auto-ship it triggers do not share a group; the stale-run guard and the
+  # per-feature workflow lock (`bkit locks acquire`, `logs/{FID}/.lock`) handle that
+  # race.
   group: >-
     bkit-auto-${{ inputs.issue
       || (github.event.workflow_run.head_repository.full_name == github.repository
@@ -91,13 +88,17 @@ concurrency:
           && !(github.event.workflow_run.head_branch == 'dev' && github.event.workflow_run.conclusion == 'success')
           && github.event.workflow_run.head_branch)
       || format('skip-{0}', github.run_id) }}
-  # Never cancel a run in flight: a cancel mid-run leaves a half-written status.jsonl
-  # or a held worktree lock. `bkit-auto-dev` is ONE group shared by ALL FIDs
-  # (concurrency.group resolves from the trigger payload, before the ctx step derives
-  # the FID): if two DIFFERENT FIDs' dev CI runs fail near-simultaneously, the older
-  # pending run can be dropped. The ctx step's stale-run guard then writes a
-  # `dev-dispatch-dropped` row to the job summary + a `::warning::`.
-  cancel-in-progress: false
+  # A newer run of a group replaces the one in flight (latest wins), so one branch
+  # never has two runs working, and pushing, at once. dev queues in place of
+  # cancelling: GitHub keeps at most one pending run per group and drops an older
+  # pending one when a newer one arrives, and the queued run re-checks staleness and
+  # the dispatch cap at its ctx step when it starts. `bkit-auto-dev` is ONE group
+  # shared by ALL FIDs (concurrency.group resolves from the trigger payload, before
+  # the ctx step derives the FID): if two DIFFERENT FIDs' dev CI runs fail
+  # near-simultaneously, the older pending run can be dropped. The ctx step's
+  # stale-run guard then writes a `dev-dispatch-dropped` row to the job summary + a
+  # `::warning::`.
+  cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -850,10 +851,10 @@ jobs:
       actions: read
     # One run per FID; the `-codex` suffix keeps it apart from the workflow-level lane.
     # This job runs only after the `context` job passed, so the key needs no skip
-    # fallback. A run in flight is never cancelled; a newer one waits.
+    # fallback. A newer run replaces the one in flight, except on dev, where it waits.
     concurrency:
       group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}-codex
-      cancel-in-progress: false
+      cancel-in-progress: ${{ github.event.workflow_run.head_branch != 'dev' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

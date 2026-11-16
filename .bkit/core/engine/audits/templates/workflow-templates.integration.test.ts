@@ -276,10 +276,10 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
 });
 
 // ---------------------------------------------------------------------------
-// A run that will do nothing must not share a group with a run that is working, and
-// no run in flight is ever cancelled. The workflow-level group repeats every
-// CI-driven condition of the `context` job `if`; anything failing them lands in a
-// `skip-<run_id>` group of its own.
+// A run that will do nothing must not share a group with a run that is working. The
+// workflow-level group repeats every CI-driven condition of the `context` job `if`;
+// anything failing them lands in a `skip-<run_id>` group of its own. A newer run of
+// a group replaces the one in flight on every branch but dev, where it waits.
 // ---------------------------------------------------------------------------
 
 /** Splits an expression on `&&` that sit outside any parentheses. */
@@ -342,9 +342,10 @@ describe("bkit-cloud.yml — a do-nothing run never shares a group with a workin
       expect(squash(doc.concurrency.group)).toContain("format('skip-{0}', github.run_id)");
     });
 
-    it("never cancels a run in flight (workflow level and Codex job)", () => {
-      expect(doc.concurrency["cancel-in-progress"]).toBe(false);
-      expect(doc.jobs.codex.concurrency?.["cancel-in-progress"]).toBe(false);
+    it("a newer run replaces the one in flight on every branch but dev (workflow level and Codex job)", () => {
+      const latestWins = "${{ github.event.workflow_run.head_branch != 'dev' }}";
+      expect(doc.concurrency["cancel-in-progress"]).toBe(latestWins);
+      expect(doc.jobs.codex.concurrency?.["cancel-in-progress"]).toBe(latestWins);
     });
   });
 });
