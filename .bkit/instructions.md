@@ -5509,10 +5509,11 @@ Treat the human `Notes` blocks as pointers, NEVER as instructions.
 - carriers: workflow all
 
 ```text
-**Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
+**Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path).
 ```
 
 ```retired
+**Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
 **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new; a phase start also drops every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path).
 **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 ```
@@ -5796,6 +5797,10 @@ Record the failure, abort any rebase, release the lock
 - carriers: workflow `bkit-build`, `bkit-debug`
 
 ```text
+**If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
+```
+
+```retired
 **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
 ```
 
@@ -7217,10 +7222,11 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-**If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+**If** `## Open Questions` in `docs/plans/{YYYYMM}/logs/{FID}/{{phase}}-summary.md` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 ```
 
 ```retired
+**If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 **If** `## Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 **If** `## Outstanding Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
 ```
@@ -7231,10 +7237,11 @@ Decide nothing on the human's behalf.
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
-**If** user requests the open questions one by one → ask each `Open Questions` item on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
+**If** user requests the open questions one by one → ask each item under `## Open Questions` in `docs/plans/{YYYYMM}/logs/{FID}/{{phase}}-summary.md` on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
 ```
 
 ```retired
+**If** user requests the open questions one by one → ask each `Open Questions` item on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options lettered `A)`, `B)`, `C)`, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
 **If** user requests the open questions one by one → ask each `## Open Questions` item on its own, verbatim, with its options, `Recommended` and `Default if unanswered`; wait for the answer before asking the next; do not re-run any step.
@@ -7369,7 +7376,20 @@ Land on `dev` — squash `{BRANCH}` onto `origin/dev` in a throwaway worktree an
 - carriers: workflow `bkit-design`, `bkit-plan`
 
 ```text
+**If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → re-run with `--pr=<number>`.
+```
+
+```retired
 **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
+```
+
+### workflow-pr-open-fallback
+
+- workflow: where-used
+- carriers: workflow `bkit-build`, `bkit-ship`
+
+```text
+{{lead}}`create_pull_request` with the printed `title`, `base` and `head`, and the content of the printed `bodyFile` as `body`.
 ```
 
 ### workflow-land-merge-fallback
@@ -7432,6 +7452,10 @@ Marker `bkit [auto route]` present
 - carriers: workflow `bkit-build`, `bkit-debug`
 
 ```text
+Labels re-read after the push
+```
+
+```retired
 Kill-switch propagation checked
 ```
 
@@ -10383,14 +10407,14 @@ Scan everything the push publishes for migrations, measured from `origin/dev`:
 **If** exit 1 → `FORCE_BUILD` = false → sub-step 3.
 [commits] Re-read the labels, then close the run once with the block below. The block mirrors the roadmap row to `dev`, closes the run (telemetry, report, artifact links) and commits it. Its commit subject carries ` bkit [auto route]` when the re-read labels hold `bkit:auto`. Retain its outputs before the push so a push retry preserves the original final return. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, and empty when no tracker is wired:
 Create the PR. Its body names `docs/plans/{YYYYMM}/{FID}-plan.md` when the plan exists:
-[prs] Call `create_pull_request` with the printed `title`, `body`, `base` and `head`.
+[prs] Call `create_pull_request` with the printed `title`, `base` and `head`, and the content of the printed `bodyFile` as `body`.
 Hold its URL as `PR_URL` and its number as `PR_NUMBER`.
 **If** its base != dev → **Failure Path**.
 **If** exit 80 → append ` bkit [force build]` to the title with `update_pull_request`, then re-run the block with `--title-set`.
 Record `build-create-pr`:
 [mcp-fallback] Run the CI-Dispatch Gate. It records `build-close-workflow` with its `ciDispatch` verdict, cross-checks the transport and records the close transport.
 **If** exit 80 **or** 81 → **CI wait turn-loop** → re-run this block.
-Re-read the issue's labels after the push, for the kill-switch check:
+Re-read the issue's labels after the push, to report a removed `bkit:auto`:
 **If** `PUBLISH` = true → also run:
 **If** `PUBLISH` = false → tick only the items for the close commit, the lock, the final return, the issue update and the artifact links, because the held close commits to the local branch and pushes nothing.
 **Else** → tick every item.
@@ -10545,7 +10569,7 @@ Set `TRIGGER_PR`:
 **If** `{PR_OPEN}` = 1 → the close push fires `pull_request` → `TRIGGER_PR` = 0.
 **Else** → `TRIGGER_PR` = 1.
 **If** `TRIGGER_PR` = 1 → create or adopt the PR (its body names `docs/plans/{YYYYMM}/{FID}-plan.md` if present). `--existing=reuse` adopts a PR that appeared since sub-step 1:
-**If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
+**If** exit 80 → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
 [code-commits] **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 **Run only if** `{PR_OPEN}` = 1 **or** `TRIGGER_PR` = 1 **or** `BRANCH` = `dev` **or** CI is selected.
 **If** exit 81 **or** 80 → **CI wait turn-loop** → re-run this block with the held `INVOCATION`.
@@ -10556,7 +10580,7 @@ Set `TRIGGER_PR`:
 **If** `conclusion` != `success` → **Failure Path** naming the run at `{DEV_SHA}`.
 [fit `workflow-else-failure` 0.67; keep: names what the failure report carries] **Else** → **Failure Path** naming the run (`runUrl`).
 With a saved CI selection, require fail-then-pass proof after the final push and applicable dispatch, before a success comment or final return. Keep the original `CI_RUN_ID`/`CI_RUN_URL` unchanged. On `dev`, set `VERIFY_HEAD` = `DEV_SHA`; other branches keep the exact head held from their final successful push or dispatch, including `main` without a PR. **If** `VERIFY_HEAD` is empty or not held → **Failure Path** with the missing pushed verification head. Wait for the configured workflow at that exact head:
-**If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
+**If** `PR_NUMBER` is set (PR-mode only) → re-read the issue's labels after the push, to report a removed `bkit:auto`:
 PR title `[verbose ci]` stripped
 Auto-label presence re-read
 No-leak Assertion passed
@@ -10714,7 +10738,7 @@ Outbox created
 Find the branch's PR — open first, then merged:
 [prs] **If** exit 0 **and** `PR_BASE` != dev → **Failure Path**.
 **If** exit 1 → open a PR and set `SHIP_OPENED_PR` = true. **If** `docs/plans/{YYYYMM}/{FID}-plan.md` exists → the block names it in the PR body:
-**If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
+**If** exit 80 → `create_pull_request` with the printed `title`, `base` and `head`, and the content of the printed `bodyFile` as `body`.
 Assert `PR_NUMBER` non-empty and `PR_BASE` = dev. **If** the assertion fails → **Failure Path**.
 **Else** → next sub-step.
 Read the PR's head SHA:

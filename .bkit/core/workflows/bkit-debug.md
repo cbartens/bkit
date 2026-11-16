@@ -57,21 +57,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 <!-- bkit:tracker github start -->
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
-- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
+- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
 - **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
 - **Tracker:** Linear — `bkit` verbs read and write it; MCP server `linear` (`.mcp.json` `mcpServers.linear`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_issue_label`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; `save_*` writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue. `save_issue` ALWAYS includes `id` and is all-or-nothing (one state or label name the team lacks rejects the whole call) → labels and state in separate calls, labels first; create each printed `add` entry first via `save_issue_label({ name })` (`already exists` = done). `Could not find state` / `Could not find label` → log `Unapplied: <state|label> "<name>" not in team`, no retry, continue.
-- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
+- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__linear__save_issue_label({ name })` per printed `add` entry → `mcp__linear__save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })` → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "{TRACKER_STATE}" })`.
 - **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 
 <!-- bkit:tracker linear end -->
 <!-- bkit:tracker jira start -->
 
 - **Tracker:** Jira — `bkit` verbs read and write it over the same Rovo MCP endpoint; MCP server `jira` (`.mcp.json` `mcpServers.jira`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__jira__getJiraIssue`, `mcp__jira__editJiraIssue`, `mcp__jira__transitionJiraIssue`, `mcp__jira__addOrEditJiraIssueComment`, `mcp__jira__searchJiraIssuesUsingJql`, `mcp__jira__executeRead`; every call passes `cloudId: "{TRACKER_SITE}"`. Assert `{ISSUE_ID}` / `{TRACKER_SITE}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue. `getJiraIssue` ALWAYS passes `view: "evidence"` (other views omit labels). `editJiraIssue` `fields.labels` replaces the whole set → pass full printed `LABELS`; labels and status in separate calls, labels first; NEVER pass `fields` / `update` to `transitionJiraIssue`. Status change: `executeRead({ name: "listJiraIssueTransitions", inputs: { issueIdOrKey } })` → transition whose `to.name` = target status → `transitionJiraIssue({ issueIdOrKey, transitionId })`; none → log `Unapplied: status "<name>" not reachable`, no retry, continue. Comment reads: `executeRead({ name: "listJiraIssueComments", inputs: { issueIdOrKey, maxResults: 100, startAt } })`, oldest first, raise `startAt` while `isLast` is false; page with `appliedContentFormat` = `html` → re-read it one comment per call (`maxResults: 1`).
-- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
+- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", fields: { labels: [{LABELS}] } })` → move status to `{TRACKER_STATE}` (**Tracker** status change).
 - **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof. Fallback body over 32,767 characters → post as consecutive comments split at line breaks, in order (the engine splits its own posts the same way).
 
 <!-- bkit:tracker jira end -->
@@ -118,7 +118,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
+   - **If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
 6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `debug-summary.md` content verbatim.<!-- bkit:tracker true start --> Line 1 of the final message = the no-issue warning, when one was emitted.<!-- bkit:tracker true end -->
 
@@ -751,6 +751,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty. `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
    <!-- bkit:tracker true start -->
 
+   **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
+
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
    ```bash
@@ -758,7 +760,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 
    Hold `state` as `STATE`, `labels` as `LABELS`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
-   **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
    <!-- bkit:tracker true end -->
 
    ```bash
@@ -815,7 +816,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
    Route:
    - **If** exit 0 → hold `number` as `PR_NUMBER` and `url` as `PR_URL` (the created or the adopted PR).
-   - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
+   - **If** exit 80 → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
    - **Else** → **Failure Path**.
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry<!-- bkit:tracker true start -->, empty when `ISSUE_ID` is empty<!-- bkit:tracker true end -->:
 
@@ -905,7 +906,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Hold `trackerState` as `TRACKER_STATE` and `board` as `BOARD`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
    <!-- bkit:tracker true end -->
-9. **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
+9. **If** `PR_NUMBER` is set (PR-mode only) → re-read the issue's labels after the push, to report a removed `bkit:auto`:
    <!-- bkit:tracker true start -->
 
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
@@ -918,7 +919,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker true end -->
    <!-- bkit:tracker true start -->
 
-   **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
+   **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → the run ends as it would anyway, because its push is done → add the line `Label bkit:auto removed during this run: the cloud gate starts no new run on this issue until it is added back` after `{FINAL_RETURN}` in the final message.
    <!-- bkit:tracker true end -->
 
 10. <!-- bkit:tracker true start -->
@@ -957,7 +958,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Marker `bkit [auto route]` present
 - [ ] Issue update attempted
-- [ ] Kill-switch propagation checked
+- [ ] Labels re-read after the push
 - [ ] Artifact link list and telemetry report posted
 
 <!-- bkit:tracker true end -->

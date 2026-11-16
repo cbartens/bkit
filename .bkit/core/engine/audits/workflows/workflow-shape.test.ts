@@ -338,6 +338,19 @@ describe("Failure Path", () => {
     },
   );
 
+  it.each(["build", "debug"])(
+    "%s prints the not-pushed line for every handover exit that pushed nothing (9, 10, 11)",
+    (name) => {
+      const routes = section(workflow(name), /Failure Path/)
+        .split("\n")
+        .filter((l) => l.includes("`Record not pushed:"));
+      expect(routes, name).toHaveLength(1);
+      expect(routes[0]!.trim()).toMatch(
+        /^- \*\*If\*\* exit 9, 10 \*\*or\*\* 11 → the record did not reach the remote:/,
+      );
+    },
+  );
+
   it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
     const build = workflow("build");
     for (const part of [section(build, /Failure Path/), section(build, /Decision Pause/)]) {
@@ -1503,6 +1516,27 @@ describe("design and plan close", () => {
       expect(text).not.toContain("Skipped: comments did not parse.");
     },
   );
+
+  it.each(["design", "plan"])("%s close names the file that holds the open questions", (name) => {
+    const lines = section(workflow(name), /Close Workflow/).split("\n");
+    const file = `\`## Open Questions\` in \`docs/plans/{YYYYMM}/logs/{FID}/${name}-summary.md\``;
+    const offer = lines.filter((l) => l.includes("open questions one by one"));
+    expect(offer, name).toHaveLength(2);
+    for (const l of offer) expect(l, name).toContain(file);
+  });
+});
+
+describe("PR fallback", () => {
+  it.each(ALL)("%s: every create_pull_request step passes the printed bodyFile", (name) => {
+    const lines = workflow(name)
+      .split("\n")
+      .filter((l) => l.includes("`create_pull_request`"))
+      .filter((l) => l.includes("printed"));
+    for (const l of lines) {
+      expect(l, name).toContain("the content of the printed `bodyFile` as `body`");
+      expect(l, name).not.toMatch(/printed `title`(?: \/|,) `body`/);
+    }
+  });
 });
 
 describe("highest-version lookups", () => {
@@ -1910,7 +1944,7 @@ describe("issue-less runs", () => {
     const items = workflow(name)
       .split("\n")
       .filter((l) =>
-        /^- \[ \] (?:Issue update attempted|Artifact link list|Blocker check attempted|Kill-switch propagation|Auto-label presence|Marker `bkit \[auto route\]`)/.test(
+        /^- \[ \] (?:Issue update attempted|Artifact link list|Blocker check attempted|Labels re-read after the push|Auto-label presence|Marker `bkit \[auto route\]`)/.test(
           l,
         ),
       );
@@ -1935,14 +1969,34 @@ describe("issue-less runs", () => {
     }
   });
 
-  it("build 16.9 and debug 11.9 kill-switch checks skip when ISSUE_ID is empty", () => {
+  it.each(PHASES)("%s: the no-issue warning flag sits outside every issue-only span", (name) => {
+    const lines = workflow(name).split("\n");
+    const blocks = trackerBlocks(lines);
+    const at = lines
+      .map((l, i) => [l, i] as const)
+      .filter(([l]) => l.includes("the no-issue warning was emitted → add `--warning="))
+      .map(([, i]) => i);
+    expect(at.length, name).toBeGreaterThan(0);
+    for (const i of at) {
+      const block = innermostBlock(blocks, i);
+      expect(block, `${name}:${i + 1}`).toBeDefined();
+      expect(
+        lines.slice(block!.start, i).some((l) => l.includes(SKIP_NO_ISSUE)),
+        `${name}:${i + 1}: the warning flag follows a Skip if ISSUE_ID empty line`,
+      ).toBe(false);
+    }
+  });
+
+  it("build 16.9 and debug 11.9 post-push label re-reads skip when ISSUE_ID is empty", () => {
     for (const [name, step] of [
       ["build", /Step 16 — Close Workflow/],
       ["debug", /Step 11 — Close Workflow/],
     ] as const) {
       const lines = section(workflow(name), step).split("\n");
-      const at = lines.findIndex((l) => /^9\. .*(?:post-push|kill-switch)/i.test(l));
-      expect(at, `${name}: kill-switch sub-step 9`).toBeGreaterThanOrEqual(0);
+      const at = lines.findIndex((l) =>
+        /^9\. .*re-read the issue's labels after the push/i.test(l),
+      );
+      expect(at, `${name}: post-push label re-read sub-step 9`).toBeGreaterThanOrEqual(0);
       const [from, to] = itemRange(lines, at);
       const blocks = blocksWithin(lines, from, to);
       expect(blocks.length, name).toBeGreaterThan(0);
@@ -1952,6 +2006,22 @@ describe("issue-less runs", () => {
           `${name} sub-step 9: ${b.kind} block at line ${b.start + 1} has no Skip if ISSUE_ID empty`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("build 16.9 and debug 11.9 report a removed bkit:auto and stop nothing", () => {
+    for (const [name, step] of [
+      ["build", /Step 16 — Close Workflow/],
+      ["debug", /Step 11 — Close Workflow/],
+    ] as const) {
+      const lines = section(workflow(name), step).split("\n");
+      const at = lines.findIndex((l) => /^9\. /.test(l));
+      const [from, to] = itemRange(lines, at);
+      const item = lines.slice(from, to).join("\n");
+      expect(item, name).not.toMatch(/terminate|kill switch active/i);
+      expect(item, name).toContain(
+        "**If** `bkit:auto` not in `LABELS` → the run ends as it would anyway, because its push is done → add the line `Label bkit:auto removed during this run: the cloud gate starts no new run on this issue until it is added back` after `{FINAL_RETURN}` in the final message.",
+      );
     }
   });
 

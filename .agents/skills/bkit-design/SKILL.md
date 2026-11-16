@@ -56,7 +56,7 @@ description: "Design Feature — Autonomous design phase"
 
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
-- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
+- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
 - **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 
 
@@ -525,7 +525,7 @@ description: "Design Feature — Autonomous design phase"
 
 1. Promote the final design to the canonical bucket (anchor stamped, a superseded design archived), then close the run and commit:
    **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
-   **If** `Open Questions` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
+   **If** `## Open Questions` in `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md` lists any question → add `--suggest="Want me to ask you the open questions one by one, with my recommendation for each? Then write 'yes, ask me one by one'."`.
    ```bash
    "{BKIT}" workflows promote --workflow=design --fid={FID} --month={YYYYMM} --file="{STATUS}" || exit 1
    "{BKIT}" workflows close --workflow=design --fid={FID} --month={YYYYMM} --record-step --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/design-summary.md" --session-dir="{SESSION_DIR}"
@@ -537,7 +537,7 @@ description: "Design Feature — Autonomous design phase"
    ```
    Route:
    - **If** exit 0 → hold `canonicalRef` as `CANONICAL_REF`.
-   - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `body` / `base` / `head` → re-run with `--pr=<number>`.
+   - **If** exit 80 at `stage` = open → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → re-run with `--pr=<number>`.
    - **If** exit 80 at `stage` = merge → `pull_request_read` (`get`) and assert `base.ref` = `dev`; mismatch → **Failure Path** with nothing merged; then `merge_pull_request` with the printed `subject`, empty body → re-run with `--pr={prNumber} --merged-sha=<merge commit>`.
    - **Else** → **Failure Path**.
 3. **Skip if** `ISSUE_ID` empty:
@@ -552,7 +552,7 @@ description: "Design Feature — Autonomous design phase"
    ```
 5. Final return: display `{FINAL_RETURN}` verbatim as the final message to the user; do not summarise or trim; do not auto-invoke. **HARD STOP** — do not invoke `/bkit-plan`.
 6. **If** user requests plain English explanation → restate the summary in plain English; name terms and say what they mean; identifiers stay verbatim; plainness lives in sentences, not nouns; do not re-run any step.
-7. **If** user requests the open questions one by one → ask each `Open Questions` item on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
+7. **If** user requests the open questions one by one → ask each item under `## Open Questions` in `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md` on its own, in the shared question shape, in plain text, not through a host question tool, keeping its options, `Recommended` and `Default if unanswered` as written; wait for the answer before asking the next; do not re-run any step.
 8. **If** the user answers one or more `Open Questions` items (in the one-by-one pass, once its last question is answered, or in any chat message) → record the round in this order:
    - Work in the main checkout `{REPO_ROOT}` for every command of this round, because after `branches land` the design run's `{STATUS}` can sit in the removed worktree. Check that local `dev` holds the run's status log:
      ```bash

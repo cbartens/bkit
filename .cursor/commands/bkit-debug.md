@@ -56,7 +56,7 @@ Debug Feature — Autonomous diagnosis and remediation
 
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
-- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
+- **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
 - **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 
 
@@ -98,7 +98,7 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
+   - **If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
 6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `debug-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
@@ -694,6 +694,8 @@ Debug Feature — Autonomous diagnosis and remediation
    A feature branch then releases the lock and pushes with the HEAD-Subject Assertion. On `dev`, the run pushes its own commits and keeps the lock until sub-step 7 gates its CI run.
    `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry when `{PR_OPEN}` = 1 (the subject carries ` bkit [auto route]` on `bkit:auto`), else empty. `{PR_OPEN}` = 0 adds ` bkit [verbose ci]`:
 
+   **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
+
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
    ```bash
@@ -701,7 +703,6 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
 
    Hold `state` as `STATE`, `labels` as `LABELS`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
-   **If** the no-issue warning was emitted → add `--warning="<that warning>"`.
 
    ```bash
    PR_OPEN="{PR_OPEN}"
@@ -757,7 +758,7 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
    Route:
    - **If** exit 0 → hold `number` as `PR_NUMBER` and `url` as `PR_URL` (the created or the adopted PR).
-   - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
+   - **If** exit 80 → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
    - **Else** → **Failure Path**.
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry, empty when `ISSUE_ID` is empty:
 
@@ -845,7 +846,7 @@ Debug Feature — Autonomous diagnosis and remediation
    ```
    Hold `trackerState` as `TRACKER_STATE` and `board` as `BOARD`.
    **If** `tracker.done` = false **or** `boardWrite.done` = false → apply the printed `labels` / `trackerState` / `board` via the tracker MCP (**Labels** fallback).
-9. **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
+9. **If** `PR_NUMBER` is set (PR-mode only) → re-read the issue's labels after the push, to report a removed `bkit:auto`:
 
    **Skip if** `ISSUE_ID` empty. Re-read the issue:
 
@@ -855,7 +856,7 @@ Debug Feature — Autonomous diagnosis and remediation
 
    Hold `state` as `STATE`, `labels` as `LABELS`. **If** exit 80 → read them via the tracker MCP (**Tracker**).
 
-   **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
+   **Skip if** `ISSUE_ID` empty. After reading issue (`issue-read`): **If** `bkit:auto` not in `LABELS` → the run ends as it would anyway, because its push is done → add the line `Label bkit:auto removed during this run: the cloud gate starts no new run on this issue until it is added back` after `{FINAL_RETURN}` in the final message.
 
 10. **Skip if** `ISSUE_ID` empty. Comment — `{PR_LINKS}` = `--pr-number={PR_NUMBER} --pr-url="{PR_URL}"` when `TRIGGER_PR` = 1, plus `--run-id={VERIFY_RUN_ID}` when known, else empty. With selected CI, `{CI_PROOF_FIELDS}` = `--field="Original failure={CI_RUN_URL}" --field="Verification={VERIFY_RUN_URL}"`, else empty; artifact links and telemetry report written by sub-step 2:
     ```bash
@@ -888,6 +889,6 @@ Debug Feature — Autonomous diagnosis and remediation
 
 - [ ] Marker `bkit [auto route]` present
 - [ ] Issue update attempted
-- [ ] Kill-switch propagation checked
+- [ ] Labels re-read after the push
 - [ ] Artifact link list and telemetry report posted
 

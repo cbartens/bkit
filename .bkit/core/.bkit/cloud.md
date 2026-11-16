@@ -410,7 +410,7 @@ A session that carries no issue id is unguarded: the guard prints a line saying 
 | `bkit_gate` job in `.github/workflows/bkit-cloud.yml` | Stops. It reads the labels before an agent job starts and starts nothing when `bkit:auto` is absent (`label-absent`). |
 | Session-start hook (`.cursor/hooks/bkit-preflight.sh`) | Cursor background sessions: blocks the session at start. |
 | Session-start hook (`.claude/hooks/bkit-preflight.sh`) | Advises only: the agent is told to stop and can ignore it. |
-| Build Step 16 and debug Step 11, last sub-step | Stops nothing: the label is re-read after the push, when the run is finished. |
+| Build Step 16 and debug Step 11, last sub-step | Stops nothing: the label is re-read after the push, when the run is finished, and the final message says the label was removed. |
 | `/bkit-auto` | Never reads the label. |
 
 A run that is already working keeps going when the label is removed.

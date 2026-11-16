@@ -91,7 +91,7 @@ _No tracker connected, skip step._
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
+   - **If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
    - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 6.
 6. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `debug-summary.md` content verbatim.
 
@@ -707,7 +707,7 @@ _No tracker connected, skip step._
    ```
    Route:
    - **If** exit 0 → hold `number` as `PR_NUMBER` and `url` as `PR_URL` (the created or the adopted PR).
-   - **If** exit 80 → `create_pull_request` with the printed `title` / `body` / `base` / `head` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
+   - **If** exit 80 → `create_pull_request` with the printed `title` / `base` / `head` and the content of the printed `bodyFile` as `body` → hold its number as `PR_NUMBER` and its URL as `PR_URL`.
    - **Else** → **Failure Path**.
 6. **If** `TRIGGER_PR` = 1 → commit and push the CI-triggering head. `{LABEL_FLAGS}` = one `--label=<name>` per re-read `LABELS` entry:
 
@@ -790,7 +790,7 @@ _No tracker connected, skip step._
    - **Else**, including a red, skipped, cancelled, absent or unavailable verification → **Failure Path**, naming the original and verifying evidence. A green configured workflow alone does not resolve a different selected workflow.
 
 8.
-9. **If** `PR_NUMBER` is set (PR-mode only) → re-read issue labels → check kill-switch:
+9. **If** `PR_NUMBER` is set (PR-mode only) → re-read the issue's labels after the push, to report a removed `bkit:auto`:
 
 10.
 11. Final return: display `{FINAL_RETURN}` verbatim. With selected CI, append `Original failure: {CI_RUN_URL} (run {CI_RUN_ID}). Verification: {VERIFY_RUN_URL} (run {VERIFY_RUN_ID}).` after the successful pushed-head checks. Do not auto-invoke.

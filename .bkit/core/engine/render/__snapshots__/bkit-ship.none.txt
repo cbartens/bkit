@@ -233,7 +233,7 @@ _No tracker connected, skip step._
      Route:
      - **If** exit 81 → end turn, re-run this block.
      - **If** exit 0 → continue with the next instruction.
-     - **If** exit 80 → `create_pull_request` with the printed `title`, `body`, `base` and `head`.
+     - **If** exit 80 → `create_pull_request` with the printed `title`, `base` and `head`, and the content of the printed `bodyFile` as `body`.
      - **Else** → **Failure Path**.
 
      Re-run the `bkit prs probe` above.
