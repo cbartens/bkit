@@ -38,7 +38,8 @@
       "source": "vercel-labs/skills",
       "sourceType": "github",
       "skillPath": "skills/find-skills/SKILL.md",
-      "computedHash": ""
+      "computedHash": "7bc223e2aafbdbf6e50ea243ba6ef67fe432bb069ab439fea0390795dac0bf7f",
+      "commit": "50894c1d98bc45ca1ab127213e59d6525065b5e7"
     },
     "finishing-a-development-branch": {
       "source": "obra/superpowers",

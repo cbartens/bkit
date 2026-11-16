@@ -1269,8 +1269,9 @@ describe(".husky/pre-push min push", () => {
 // ---------------------------------------------------------------------------
 // .husky/pre-push direnv — the logged inner run goes through `direnv exec .` when the repo
 // has an `.envrc`, `direnv` is on PATH and CI is unset; an untrusted `.envrc` blocks first.
-// Stub `direnv` records its argv, fails every call when `untrusted` exists, and otherwise
-// runs the command after `exec .` with GATE_VAR set; stub `pnpm` records the GATE_VAR it sees.
+// Stub `direnv` records its argv, fails every call when `untrusted` exists (the blocked
+// message) or `broken` exists (a load error of a trusted file), and otherwise runs the command
+// after `exec .` with GATE_VAR set; stub `pnpm` records the GATE_VAR it sees.
 // ---------------------------------------------------------------------------
 
 describe(".husky/pre-push direnv", () => {
@@ -1292,7 +1293,7 @@ describe(".husky/pre-push direnv", () => {
     );
     fs.writeFileSync(
       path.join(tmp, "bin", "direnv"),
-      `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nif [ -e "${tmp}/untrusted" ]; then echo "direnv: error .envrc is blocked" >&2; exit 1; fi\nshift 2\nGATE_VAR=from-envrc exec "$@"\n`,
+      `#!/bin/sh\necho "$*" >> "${tmp}/direnv.log"\nif [ -e "${tmp}/untrusted" ]; then echo "direnv: error ${tmp}/.envrc is blocked. Run \\\`direnv allow\\\` to approve its content" >&2; exit 1; fi\nif [ -e "${tmp}/broken" ]; then echo "direnv: error ${tmp}/.envrc:1: ENVRC-LOAD-FAILURE" >&2; exit 1; fi\nshift 2\nGATE_VAR=from-envrc exec "$@"\n`,
       { mode: 0o755 },
     );
   });
@@ -1325,14 +1326,23 @@ describe(".husky/pre-push direnv", () => {
     opts: {
       envrc?: boolean;
       untrusted?: boolean;
+      broken?: boolean;
       ci?: boolean;
       noDirenv?: boolean;
       extraEnv?: Record<string, string>;
     } = {},
   ) => {
-    const { envrc = true, untrusted = false, ci = false, noDirenv = false, extraEnv = {} } = opts;
+    const {
+      envrc = true,
+      untrusted = false,
+      broken = false,
+      ci = false,
+      noDirenv = false,
+      extraEnv = {},
+    } = opts;
     if (envrc) fs.writeFileSync(path.join(tmp, ".envrc"), "export GATE_VAR=from-envrc\n");
     if (untrusted) fs.writeFileSync(path.join(tmp, "untrusted"), "");
+    if (broken) fs.writeFileSync(path.join(tmp, "broken"), "");
     const env = { ...process.env };
     delete env.BKIT_PRE_PUSH_LOGGED;
     delete env.CI;
@@ -1390,6 +1400,32 @@ describe(".husky/pre-push direnv", () => {
         r.calls.some((c) => c.includes("push-gate")),
         hook,
       ).toBe(false);
+    }
+  });
+
+  it('trusted .envrc that fails to load prints the cause, not "not trusted"', () => {
+    for (const hook of HOOKS) {
+      fs.rmSync(path.join(tmp, "calls.log"), { force: true });
+      const r = runHook(hook, UPDATE, { broken: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain("ENVRC-LOAD-FAILURE");
+      expect(r.stderr, hook).toMatch(/\.envrc failed to load/);
+      expect(r.stderr, hook).not.toContain("not trusted");
+      expect(r.stderr, hook).not.toContain("direnv allow .");
+      expect(
+        r.calls.some((c) => c.includes("bkit check")),
+        hook,
+      ).toBe(false);
+    }
+  });
+
+  it("untrusted .envrc still prints the direnv allow line", () => {
+    for (const hook of HOOKS) {
+      const r = runHook(hook, UPDATE, { untrusted: true });
+      expect(r.status, hook).toBe(1);
+      expect(r.stderr, hook).toContain(".envrc is not trusted");
+      expect(r.stderr, hook).toContain("direnv allow .");
+      expect(r.stderr, hook).toContain("is blocked");
     }
   });
 

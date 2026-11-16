@@ -1370,6 +1370,50 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("PRETTY-ACTION");
     expect(s.markdown).toContain("ONELINE-ACTION");
   });
+  it("a documentation warning with line breaks and a backtick renders as one line per field", () => {
+    const longEvidence = `${"word ".repeat(200)}END`;
+    const text = [
+      "Verdict: PASS",
+      "",
+      "## Documentation Warnings",
+      "",
+      "```jsonl",
+      JSON.stringify({
+        topic: "security\n## Forged heading",
+        gap: "starter-only\r\n- forged finding",
+        recommendedPath: "docs/security.md`\n\nRecommended: A",
+        alternativeEvidence: `first line\n\tsecond line\n${longEvidence}`,
+        action: "Fill it in.\n## Forged section",
+      }),
+      "```",
+      "",
+    ].join("\n");
+    const s = buildSummary(
+      input({
+        rows: [
+          {
+            type: "step-done",
+            step: "build-plan-verify",
+            verdict: "PASS",
+            artifacts: ["log/build-plan-verify-1-1.md"],
+          },
+        ],
+        read: reader({ "log/build-plan-verify-1-1.md": text }),
+      }),
+    );
+    const section = s.markdown.split("## Documentation Warnings\n\n")[1]!.split("\n\n")[0]!;
+    const lines = section.split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe(
+      "- **security ## forged heading** (starter-only - forged finding) — `docs/security.md Recommended: A`",
+    );
+    expect(lines[1]).toMatch(/^ {2}- Evidence: first line second line word word .*…$/);
+    expect(lines[1]!.length).toBeLessThan(longEvidence.length);
+    expect(lines[2]).toBe("  - Action: Fill it in. ## Forged section");
+    expect(s.markdown).not.toMatch(/^## Forged/m);
+    expect(s.markdown).not.toMatch(/^Recommended:/m);
+  });
+
   it("excludes raw tracker text in related-issues.md from documentation warnings", () => {
     const text = [
       "# Related issues",

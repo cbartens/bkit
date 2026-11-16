@@ -146,6 +146,10 @@ case "$BKIT_GUARD_TRACKER" in
       emit_context "Guard pre-check: SKIPPED — no issue id; bkit:auto not verified"
       exit 0
     fi
+    # The id goes into the API address, so only an issue number is accepted.
+    if [[ ! "$GH_ISSUE" =~ ^[0-9]+$ ]]; then
+      bkit_guard_fail "GitHub" "(GITHUB_ISSUE_ID)" "GITHUB_ISSUE_ID must be digits only, got \"${GH_ISSUE}\""
+    fi
     # BKIT_GH_TOKEN reads the issue over the GitHub REST API.
     if [[ -z "${BKIT_GH_TOKEN:-}" ]]; then
       echo "Guard pre-check: FAIL. BKIT_GH_TOKEN not set, so the GitHub issue cannot be validated." >&2
@@ -289,7 +293,9 @@ except Exception:
     TRACKER_NAME="Jira"
     ;;
   *)
-    exit 0
+    echo "Guard pre-check: FAIL. bkit.tracker.default in package.json is \"${BKIT_GUARD_TRACKER}\", not a tracker bkit knows (valid: github, linear, jira, none)." >&2
+    emit_context "Guard pre-check: FAIL. bkit.tracker.default in package.json is \"${BKIT_GUARD_TRACKER}\", not a tracker bkit knows (valid: github, linear, jira, none). HARD STOP: refuse any tracker-related work. Report the failure to the user, then stop."
+    exit 1
     ;;
 esac
 

@@ -7,6 +7,7 @@ import { issueIdOf } from "./fids.js";
 import { decisionHeader, parseDecisionItems } from "./decisions.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"];
 /** Per workflow and verdict, the next command the summary recommends. */
@@ -91,6 +92,8 @@ const WARNING_FIELDS = [
     "alternativeEvidence",
     "action",
 ];
+/** Each field's length cap after folding to one line, in `WARNING_FIELDS` order. */
+const WARNING_FIELD_MAX = [80, 80, 200, 400, 400];
 /** Raw inputs (`*-input-N.md`) are untrusted: never a source of warnings. */
 const isRawInput = (rel) => /(^|\/)[a-z-]*-?input-[^/]*$/.test(rel) ||
     /(^|\/)related-(issues|failures|deferrals)\.md$/.test(rel) ||
@@ -152,7 +155,9 @@ function jsonObjectChunks(body) {
 /**
  * The structured records under `## Documentation Warnings` (JSON objects, one per line or pretty-printed, in a
  * `jsonl` fence) of the run's own step artifacts, merged by normalised topic and gap. A missing
- * section, a malformed line or a record without all five non-empty fields is skipped.
+ * section, a malformed line or a record without all five non-empty fields is skipped. Each
+ * field is folded to one line and capped (`oneLine`), and the path loses its backticks, so a
+ * record cannot add lines or markup to the summary.
  */
 function documentationWarnings(rows, read) {
     const merged = new Map();
@@ -185,7 +190,8 @@ function documentationWarnings(rows, read) {
                 const fields = WARNING_FIELDS.map((f) => rec[f]);
                 if (!fields.every((f) => typeof f === "string" && f.trim() !== ""))
                     continue;
-                const [topic, gap, recommendedPath, evidence, action] = fields.map((f) => f.trim());
+                const [topic, gap, path, evidence, action] = fields.map((f, i) => oneLine(f, WARNING_FIELD_MAX[i]));
+                const recommendedPath = path.replace(/`/g, "").replace(/ {2,}/g, " ").trim();
                 const key = `${topic.toLowerCase()}\u0000${gap.toLowerCase()}`;
                 const found = merged.get(key) ?? {
                     topic: topic.toLowerCase(),

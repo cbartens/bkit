@@ -164,6 +164,8 @@ export interface BkitConfig {
   depUpdater: DepUpdater | "none" | null;
   /** `bkit.tracker.default` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   issueTrackerExplicit: boolean;
+  /** `bkit.tracker.default` as written when it is set but names no tracker bkit knows; else null. */
+  issueTrackerUnknown: string | null;
   /** `bkit.cloud.agent` is set, so `none` is a choice; absent or `""` (what install seeds) = undecided. */
   cloudAgentsExplicit: boolean;
 }
@@ -220,6 +222,7 @@ export const CONFIG_DEFAULTS: Readonly<BkitConfig> = {
   buildPublish: { remote: true, local: true },
   depUpdater: null,
   issueTrackerExplicit: false,
+  issueTrackerUnknown: null,
   cloudAgentsExplicit: false,
 };
 
@@ -415,6 +418,12 @@ export function readBkitConfig(root: string): BkitConfig {
     buildPublish: buildPublish(record(workflows.build).publish),
     depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
     issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+    issueTrackerUnknown:
+      tracker.default !== undefined &&
+      tracker.default !== "" &&
+      parseIssueTracker(tracker.default) === null
+        ? String(tracker.default)
+        : null,
     cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
   };
 }

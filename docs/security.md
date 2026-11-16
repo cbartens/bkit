@@ -61,7 +61,7 @@ Prose never substitutes for token scope.
 
 Only explicit session or exact-run ownership authorizes editing an engine progress comment. Session directories must resolve inside the repository's Git-common session directory. Another active run, a human comment or provider-returned text cannot grant ownership. Remote text is used only to recognize an owned delivery; replacement bodies come from locally cached source reports.
 
-`bkit issues comment` refuses a call with no workflow-run proof, so an ad-hoc agent cannot post a comment that carries the `bkit:generated` marker (`.bkit/workflows.md` § Comment Lifecycle).
+`bkit issues comment` refuses a call with no workflow-run proof, which stops an agent from posting a comment that carries the `bkit:generated` marker by accident (`.bkit/workflows.md` § Comment Lifecycle). It is not a boundary: any local caller can supply one of the accepted proofs, and a session proof names a folder that need not exist any more, so the marker says nothing about who posted the comment.
 
 Optional progress and invocation files stay under Git-common `bkit-outbox`, outside committed content, with private file permissions. Missing or invalid ownership evidence causes a new comment. MCP fallback is create-only and publishes the existing fallback file verbatim. Reporting diagnostics exclude report bodies, credentials and personal data; see `observability.md` § Tracker reporting diagnostics.
 

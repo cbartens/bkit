@@ -270,6 +270,15 @@ function curlStub(body: string, exit = 0): string {
   return `${bin}${path.delimiter}${process.env.PATH ?? ""}`;
 }
 
+/** A `curl` stub that only records it was called: its PATH and the marker file it touches. */
+function curlRecorder(): { pathVar: string; marker: string } {
+  const bin = fs.mkdtempSync(path.join(GENERATED, "curl-rec-"));
+  const marker = path.join(bin, "called");
+  fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\ntouch '${marker}'\nexit 0\n`);
+  fs.chmodSync(path.join(bin, "curl"), 0o755);
+  return { pathVar: `${bin}${path.delimiter}${process.env.PATH ?? ""}`, marker };
+}
+
 const githubIssue = (state: string, labels: string[]) =>
   JSON.stringify({ state, labels: labels.map((name) => ({ name })) });
 
@@ -356,6 +365,36 @@ describe("preflight-tracker.sh — GitHub tracker", () => {
       expect(context).toMatch(reason);
     },
   );
+
+  it("a GITHUB_ISSUE_ID that is not digits stops the session before any API call", () => {
+    const { pathVar: stub, marker } = curlRecorder();
+    const result = runPreflight(
+      CURSOR_HOOK,
+      { BKIT_GH_TOKEN: "ghp_x", GITHUB_ISSUE_ID: "../../other/repo/issues/1" },
+      BACKGROUND,
+      { cwd: fixtureRepo("github"), path: stub },
+    );
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain("GITHUB_ISSUE_ID");
+    expect(context).toMatch(/digits/i);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+});
+
+describe("preflight-tracker.sh — unknown tracker name", () => {
+  it("a mistyped bkit.tracker.default stops the session naming the value and the valid names", () => {
+    const result = runPreflight(CURSOR_HOOK, { GITHUB_ISSUE_ID: "12" }, BACKGROUND, {
+      cwd: fixtureRepo("GitHub"),
+    });
+    expect(result.status).toBe(1);
+    const context = onlyDocument(result.stdout);
+    expect(context).toContain("HARD STOP");
+    expect(context).toContain('"GitHub"');
+    expect(context).toContain("github, linear, jira, none");
+    expect(result.stderr).toContain('"GitHub"');
+  });
 });
 
 describe("preflight-tracker.sh — Linear tracker by state category", () => {

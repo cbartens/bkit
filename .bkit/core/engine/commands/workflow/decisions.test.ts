@@ -127,6 +127,28 @@ describe("bkit decisions compose", () => {
     expect(text).not.toContain("Options:");
   });
 
+  it("composeItems still folds line breaks to one space", async () => {
+    const { root, logs } = checkout();
+    const folded = {
+      ...ITEMS[0],
+      title: "Task 3\r\n[src/a.ts:10]",
+      question: "MEDIUM: the retry\n\nhas no cap. Accept it?",
+      options: [
+        { name: "Accept", effect: "the item is\nrecorded as accepted" },
+        { name: "Fix\nnow", effect: "a fix task is added to the plan" },
+      ],
+      recommended: "Accept",
+    };
+    const { r, out } = await compose(root, logs, [folded]);
+    expect(r.code).toBe(0);
+    const text = fs.readFileSync(out, "utf-8");
+    expect(text).toContain(
+      "**Q1 — Task 3 [src/a.ts:10]:** MEDIUM: the retry has no cap. Accept it?\n",
+    );
+    expect(text).toContain("A) Accept — the item is recorded as accepted\n");
+    expect(text).toContain("B) Fix now — a fix task is added to the plan\n");
+  });
+
   it("refuses an item whose recommendation is not one of its options", async () => {
     const { root, logs } = checkout();
     const bad = [{ ...ITEMS[0], recommended: "Maybe" }];

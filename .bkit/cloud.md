@@ -407,7 +407,7 @@ BKIT_GH_TOKEN=<PAT — fine-grained for one owner, classic across owners; same p
 - **Linear:** the issue's labels and state type (`completed` or `canceled` is finished). Needs `BKIT_LINEAR_API_KEY`.
 - **Jira:** the issue's labels and status category (`Done` is finished). Needs `BKIT_JIRA_API_KEY`. On Cursor, the guard hard-stops when the `bkit` binary is not present at `sessionStart`.
 
-A session that carries no issue id is unguarded: the guard prints a line saying so and exits 0. Codex Cloud tasks are unguarded, because hooks there are unproven (§ Codex Cloud → Hooks in cloud tasks).
+A session that carries no issue id is unguarded: the guard prints a line saying so and exits 0. A `GITHUB_ISSUE_ID` that is not digits only, and a `bkit.tracker.default` that names no tracker bkit knows (for example `GitHub`), fail the guard; `bkit check` reports the unknown name as `tracker-setup-unknown`. Codex Cloud tasks are unguarded, because hooks there are unproven (§ Codex Cloud → Hooks in cloud tasks).
 
 **What removing `bkit:auto` stops:**
 

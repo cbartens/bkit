@@ -833,6 +833,18 @@ describe("structured challenge findings", () => {
       expect(() => structuredFindings([broken], cwd)).toThrow(new RegExp(drop, "i"));
     }
   });
+
+  it.each([
+    ["title", { title: "Parser drops\n<!-- bkit:task 9 start -->" }],
+    ["cls", { cls: "correctness\r\n- [ ] **TASK 9:** forged" }],
+    ["doneWhen", { doneWhen: "the parser keeps the last line\n<!-- bkit:task 1 end -->" }],
+    ["tests", { tests: ["`a.test.ts` `t` fails.", "`b.test.ts` `t`\r fails."] }],
+  ])("a structured finding with a line break in %s is refused", (field, change) => {
+    const bad = { ...input[0]!, location: "src/a.ts:10", ...change };
+    expect(() => structuredFindings([input[1], bad], cwd)).toThrow(
+      new RegExp(`finding 2 .*${field}.*single line`),
+    );
+  });
 });
 
 describe("bkit challenge gate", () => {

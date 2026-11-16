@@ -77,6 +77,7 @@ export const CONFIG_DEFAULTS = {
     buildPublish: { remote: true, local: true },
     depUpdater: null,
     issueTrackerExplicit: false,
+    issueTrackerUnknown: null,
     cloudAgentsExplicit: false,
 };
 const nonEmptyString = (v) => typeof v === "string" && v.trim() !== "";
@@ -258,6 +259,11 @@ export function readBkitConfig(root) {
         buildPublish: buildPublish(record(workflows.build).publish),
         depUpdater: parseDepUpdater(record(bkit.dependencies).updater),
         issueTrackerExplicit: tracker.default !== undefined && tracker.default !== "",
+        issueTrackerUnknown: tracker.default !== undefined &&
+            tracker.default !== "" &&
+            parseIssueTracker(tracker.default) === null
+            ? String(tracker.default)
+            : null,
         cloudAgentsExplicit: cloud.agent !== undefined && cloud.agent !== "",
     };
 }

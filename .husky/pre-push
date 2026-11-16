@@ -26,7 +26,8 @@ set -e
 # and the hook exits with the inner run's code. Output goes to stderr, where git sends a
 # hook's output anyway. When the repo has an `.envrc`, `direnv` is on PATH and CI is unset, the
 # inner run goes through `direnv exec .`, so the gate sees the repo's variables whatever shell
-# pushed; an untrusted `.envrc` blocks first with the `direnv allow .` fix. The keys in `.bkit/.env` are unset for the gate. `git push --no-verify`, and a checkout without husky installed (a
+# pushed; an `.envrc` that fails to load blocks first with direnv's own output, plus the
+# `direnv allow .` fix when direnv reports it untrusted. The keys in `.bkit/.env` are unset for the gate. `git push --no-verify`, and a checkout without husky installed (a
 # linked worktree), run no hook and write no log.
 if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
   PRE_PUSH_LOG=tmp/pre-push.log
@@ -36,10 +37,18 @@ if [ -z "${BKIT_PRE_PUSH_LOGGED:-}" ]; then
     echo "[pre-push] log: $PRE_PUSH_LOG"
     pre_push_rc=0
     if [ -f .envrc ] && [ -z "${CI:-}" ] && command -v direnv > /dev/null 2>&1; then
-      if direnv exec . true < /dev/null 2>&1; then
+      if direnv_probe=$(direnv exec . true < /dev/null 2>&1); then
         BKIT_PRE_PUSH_LOGGED=1 FORCE_COLOR=1 direnv exec . sh "$0" "$@" 2>&1 || pre_push_rc=$?
       else
-        echo "[pre-push] .envrc is not trusted: run \`direnv allow .\` in this folder, then push again."
+        printf '%s\n' "$direnv_probe"
+        case "$direnv_probe" in
+          *" is blocked"* | *" not allowed"*)
+            echo "[pre-push] .envrc is not trusted: run \`direnv allow .\` in this folder, then push again."
+            ;;
+          *)
+            echo "[pre-push] .envrc failed to load (direnv output above): fix it, then push again."
+            ;;
+        esac
         pre_push_rc=1
       fi
     else

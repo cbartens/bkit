@@ -30,6 +30,7 @@ import {
   type AskPoint,
   type AskSetting,
 } from "../../shared/settings.js";
+import { oneLine } from "../../shared/text.js";
 import { headlessRun } from "./runtime.js";
 import {
   CommandError,
@@ -53,6 +54,10 @@ import {
   statusFile,
   str,
 } from "./status.js";
+
+/** A round's free-text scope for the owner's loop question: one line, so it cannot add lines to it. */
+const scopeText = (scope: unknown): string =>
+  typeof scope === "string" && oneLine(scope) !== "" ? oneLine(scope, 120) : "unscoped";
 
 /** An ask point by name (`build.verify`); an unknown name is a usage error. */
 export function askPoint(name: string): AskPoint {
@@ -442,7 +447,7 @@ export function loopProgress(
   let trendLine: string;
   if (trend === "first-round") trendLine = "This was the first round, so there is no trend yet.";
   else if (differentScopes)
-    trendLine = `The rounds ran different tests (${rounds[0]?.scope ?? "unscoped"}, then ${last?.scope ?? "unscoped"}), so their counts cannot be compared.`;
+    trendLine = `The rounds ran different tests (${scopeText(rounds[0]?.scope)}, then ${scopeText(last?.scope)}), so their counts cannot be compared.`;
   else if (trend === "unknown")
     trendLine = `A round recorded no count (${rounds.map(countOf).join(" → ")}), so progress cannot be judged.`;
   else if (trend === "closing")

@@ -552,6 +552,21 @@ describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
     expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
   });
 
+  it.each(["GitHub", "asana"])(
+    "reports an unknown bkit.tracker.default %s as a blocker naming the value and the valid names",
+    (value) => {
+      fs.writeFileSync(
+        path.join(tmpDir, "package.json"),
+        JSON.stringify({ name: "x", bkit: { tracker: { default: value } } }),
+      );
+      const result = buildTrackerSetupAdvisory(tmpDir);
+      expect(result?.id).toBe("tracker-setup-unknown");
+      expect(result?.severity).toBe("blocker");
+      expect(result?.detect).toContain(`"${value}"`);
+      expect(result?.action).toContain("github, linear, jira, none");
+    },
+  );
+
   it.each([
     ["github", "BKIT_GH_TOKEN"],
     ["linear", "BKIT_LINEAR_API_KEY"],

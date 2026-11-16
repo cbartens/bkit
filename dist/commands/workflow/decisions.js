@@ -23,6 +23,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readJsonFile } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { CommandError, EXIT, git } from "../lib.js";
 import { loopProgress } from "./counters.js";
 import { appendLedgerRows } from "./ledgers.js";
@@ -234,7 +235,7 @@ function composeItems(raw) {
         throw new CommandError(EXIT.USAGE, "--items must hold a JSON array");
     return raw.map((r, i) => {
         const o = (r ?? {});
-        const s = (k) => typeof o[k] === "string" ? o[k].replace(/[\r\n]+/g, " ").trim() : "";
+        const s = (k) => (typeof o[k] === "string" ? oneLine(o[k]) : "");
         const rawOptions = Array.isArray(o.options) ? o.options : [];
         if (s("title") === "" || s("question") === "" || rawOptions.length === 0)
             throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
@@ -255,8 +256,8 @@ function composeItems(raw) {
                 const ob = (x ?? {});
                 if (typeof ob.name !== "string" || typeof ob.effect !== "string")
                     throw bad();
-                name = ob.name.replace(/[\r\n]+/g, " ").trim();
-                effect = ob.effect.replace(/[\r\n]+/g, " ").trim();
+                name = oneLine(ob.name);
+                effect = oneLine(ob.effect);
                 if (name === "" || effect === "")
                     throw bad();
             }

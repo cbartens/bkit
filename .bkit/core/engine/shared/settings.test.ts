@@ -86,7 +86,16 @@ describe("readBkitConfig", () => {
   it("reads an unsupported tracker.default as the default", () => {
     const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: "asana" } } })));
     expect(cfg.issueTracker).toBe(CONFIG_DEFAULTS.issueTracker);
+    expect(cfg.issueTrackerUnknown).toBe("asana");
   });
+
+  it.each([undefined, "", "github", "none"])(
+    "records no unknown tracker for tracker.default %s",
+    (tracker) => {
+      const cfg = readBkitConfig(root(JSON.stringify({ bkit: { tracker: { default: tracker } } })));
+      expect(cfg.issueTrackerUnknown).toBeNull();
+    },
+  );
 
   it("reads the per-moment tracker states, defaulting each missing or blank one", () => {
     const cfg = readBkitConfig(

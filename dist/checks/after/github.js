@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
+import { ISSUE_TRACKERS } from "../../install/manifest.js";
 import { MCP_TOOLSETS_HEADER, parseToolsets } from "../../install/write.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readBkitConfig } from "../../shared/settings.js";
@@ -66,6 +67,7 @@ export function detectActionsWritePermissions() {
  * - `github`  → GitHub tracker: the GitHub MCP server authenticates with `BKIT_GH_TOKEN`; `gh` uses `gh auth login`.
  * - `linear`  → existing Linear setup message (BKIT_LINEAR_API_KEY + LINEAR_ISSUE_ID).
  * - `jira`    → admin switch, BKIT_JIRA_API_KEY and `bkit.tracker.jira` in package.json.
+ * - unknown   → blocker naming the value and the valid names (the tracker guard fails on it too).
  * - `none`    → prompt to run `bkit install --tracker=github`, `--tracker=linear` or `--tracker=jira`.
  *
  * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
@@ -75,7 +77,15 @@ export function buildTrackerSetupAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasClaude && !hasCursor)
         return null;
-    const { issueTracker: tracker, issueTrackerExplicit } = readBkitConfig(cwd);
+    const { issueTracker: tracker, issueTrackerExplicit, issueTrackerUnknown } = readBkitConfig(cwd);
+    if (issueTrackerUnknown !== null) {
+        return {
+            id: "tracker-setup-unknown",
+            severity: "blocker",
+            detect: `\`bkit.tracker.default\` in package.json is "${issueTrackerUnknown}", which names no tracker bkit knows. bkit reads it as \`none\`, and the session-start tracker guard fails in every session it checks.`,
+            action: `Set \`bkit.tracker.default\` to one of: ${ISSUE_TRACKERS.join(", ")} (lowercase), or run \`bkit install --tracker=<name>\`.`,
+        };
+    }
     if (tracker === "github") {
         return {
             id: "tracker-setup-github",

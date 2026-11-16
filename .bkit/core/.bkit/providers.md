@@ -307,7 +307,7 @@ Per-action gates on all five hosts, subagents included. This section is an overv
 | `guardrails-deny.js` | Claude, Codex, Antigravity, Cursor, OpenCode `guardrails` | the deny tier: git parsing (`parseGit`), `gitDenyRule`, `denyRule` |
 | `guardrails-tiers.js` | Codex, Antigravity, Cursor `guardrails` | ask rules, `secretFileKind`, shell secret-read detection, the Codex-only `bkit tests jump` deny, `classifyShell` precedence |
 | `guardrails-read.js` | Antigravity, Cursor `guardrails` | `classifyRead` over `secretFileKind`: deny `*.pem` / `*.p12` / `id_rsa`, ask `.env` / `.env.*` (not `.env.example`) |
-| `preflight-tracker.sh` | Claude, Cursor `preflight` | Tracker guard: GitHub (REST), Linear (GraphQL) and Jira (`bkit issues fetch`) key / issue checks, `bkit:auto` + terminal-by-category guards; a session with no issue id is unguarded |
+| `preflight-tracker.sh` | Claude, Cursor `preflight` | Tracker guard: GitHub (REST), Linear (GraphQL) and Jira (`bkit issues fetch`) key / issue checks, `bkit:auto` + terminal-by-category guards; a session with no issue id is unguarded; a non-digit `GITHUB_ISSUE_ID` or an unknown `bkit.tracker.default` fails |
 | `preflight-rules.sh` | Claude, Cursor `preflight` | the rules-read advisory sentence and its `emit_context` call, merged into the one SessionStart JSON document |
 | `session-rules-advisory.js` | Codex, Antigravity, OpenCode `rules` | the rules-read advisory sentence plus the once-per-session helper (`rulesReadAdviceOnce`, per-user OS-temp state, 24h GC) |
 

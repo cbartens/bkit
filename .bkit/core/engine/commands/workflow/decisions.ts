@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 
 import { readJsonFile } from "../../shared/json.js";
+import { oneLine } from "../../shared/text.js";
 import { CommandError, EXIT, git, type CommandSpec } from "../lib.js";
 import { loopProgress } from "./counters.js";
 import { appendLedgerRows } from "./ledgers.js";
@@ -300,8 +301,7 @@ function composeItems(raw: unknown): ComposeItem[] {
   if (!Array.isArray(raw)) throw new CommandError(EXIT.USAGE, "--items must hold a JSON array");
   return raw.map((r, i) => {
     const o = (r ?? {}) as Record<string, unknown>;
-    const s = (k: string) =>
-      typeof o[k] === "string" ? (o[k] as string).replace(/[\r\n]+/g, " ").trim() : "";
+    const s = (k: string) => (typeof o[k] === "string" ? oneLine(o[k] as string) : "");
     const rawOptions: unknown[] = Array.isArray(o.options) ? o.options : [];
     if (s("title") === "" || s("question") === "" || rawOptions.length === 0)
       throw new CommandError(EXIT.USAGE, `item ${i + 1}: needs title, question and options`);
@@ -323,8 +323,8 @@ function composeItems(raw: unknown): ComposeItem[] {
       } else {
         const ob = (x ?? {}) as Record<string, unknown>;
         if (typeof ob.name !== "string" || typeof ob.effect !== "string") throw bad();
-        name = ob.name.replace(/[\r\n]+/g, " ").trim();
-        effect = ob.effect.replace(/[\r\n]+/g, " ").trim();
+        name = oneLine(ob.name);
+        effect = oneLine(ob.effect);
         if (name === "" || effect === "") throw bad();
       }
       if (name.includes("—"))

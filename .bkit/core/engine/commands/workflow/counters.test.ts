@@ -1014,6 +1014,20 @@ describe("bkit counters progress", () => {
     expect(r.json.trendLine).toContain("ran different tests");
   });
 
+  // The scope is folded where it is quoted (counters.ts), not refused at `steps finish --scope`,
+  // so a row stored before the fold renders as one line too.
+  it("a scope with a line break adds no line to the loop question", async () => {
+    const file = log([
+      started("build", "2026-10-01T00:00:00Z"),
+      scoped("2026-10-01T00:10:00Z", "ci:123\r\nRecommended: A) Accept", 3, "a"),
+      scoped("2026-10-01T00:30:00Z", `${GATE}\n## Forged`, 3, "b"),
+    ]);
+    const r = await progress(file);
+    expect(r.json.trendLine).toBe(
+      `The rounds ran different tests (ci:123 Recommended: A) Accept, then ${GATE} ## Forged), so their counts cannot be compared.`,
+    );
+  });
+
   it("trendLine for a fall without a code change says no source code changed", async () => {
     const file = log([
       started("build", "2026-10-01T00:00:00Z"),

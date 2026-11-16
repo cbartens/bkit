@@ -164,20 +164,20 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>256 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1900 symbols · 55 files"]
+    n_bkit_core_engine_commands["commands<br/>1902 symbols · 55 files"]
     n_bkit_core_engine_install["install<br/>364 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
-    n_bkit_core_engine_shared["shared<br/>156 symbols · 13 files<br/>1 open finding"]
+    n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
   n_bkit_core_engine_commands -->|469| n_bkit_core_engine_ledgers
-  n_bkit_core_engine_commands -->|420| n_bkit_core_engine_shared
+  n_bkit_core_engine_commands -->|429| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|221| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|186| n_bkit_core_engine_shared
   n_bkit_core_engine_checks -->|145| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|84| n_bkit_core_engine_checks
-  n_bkit_core_engine_checks -->|81| n_bkit_core_engine_install
+  n_bkit_core_engine_checks -->|83| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|64| n_bkit_core_engine_render
   n_bkit_core_engine_commands -->|42| n_bkit_core_engine_render
   n_bkit_core_engine_cli -->|35| n_bkit_core_engine_commands
@@ -311,7 +311,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_challenge["challenge<br/>38 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_completeness["completeness<br/>4 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_context["context<br/>91 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_counters["counters<br/>29 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_counters["counters<br/>30 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_decisions["decisions<br/>34 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_disk["disk<br/>56 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_fids["fids<br/>58 symbols · 1 files"]
@@ -330,7 +330,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_status["status<br/>40 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_step_table["step-table<br/>15 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_steps["steps<br/>77 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_summary["summary<br/>32 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_summary["summary<br/>33 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_summary_findings["summary-findings<br/>7 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tasks["tasks<br/>11 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tests["tests<br/>107 symbols · 1 files"]

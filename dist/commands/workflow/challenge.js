@@ -240,6 +240,16 @@ export function structuredFindings(input, cwd) {
             throw refuse("has tests that are not an array of strings");
         if (f["cls"] !== undefined && typeof f["cls"] !== "string")
             throw refuse("has a non-text cls");
+        // Each value renders into one line of the task block: a line break would forge plan lines.
+        const lineBreak = /[\r\n]/;
+        for (const field of ["title", "cls", "doneWhen"]) {
+            const v = f[field];
+            if (typeof v === "string" && lineBreak.test(v))
+                throw refuse(`has a ${field} that must be a single line`);
+        }
+        const brokenTest = tests.findIndex((t) => lineBreak.test(t));
+        if (brokenTest !== -1)
+            throw refuse(`has tests entry ${brokenTest + 1} that must be a single line`);
         const title = typeof f["title"] === "string" && f["title"] !== "" ? f["title"] : "";
         return {
             severity: f["severity"],

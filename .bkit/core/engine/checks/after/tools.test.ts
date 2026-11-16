@@ -53,6 +53,23 @@ let originalCwd: string;
 const shippedText = (revision: string, rel: string): string =>
   fs.readFileSync(path.join(originalCwd, "tests/fixtures/shipped-text", revision, rel), "utf8");
 
+/**
+ * A secret file planted in a folder beside `tmpDir`, and the `..` index row that reaches it
+ * from inside `tmpDir`. The caller removes `dir`.
+ */
+function plantOutside(name: string): { dir: string; row: string } {
+  const dir = `${tmpDir}-escape`;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, name), "OUTSIDE-SECRET-CONTENT\n".repeat(20));
+  const row = `../${path.basename(dir)}/${name}`;
+  expect(fs.existsSync(path.join(tmpDir, row))).toBe(true);
+  return { dir, row };
+}
+
+/** The recorded `readFileSync` paths that resolve under `dir`. */
+const readsUnder = (dir: string): string[] =>
+  fsReads.map((r) => path.resolve(tmpDir, r)).filter((r) => r.startsWith(`${dir}${path.sep}`));
+
 let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
@@ -616,18 +633,19 @@ describe("detectProjectDocs", () => {
     // An out-of-tree target is never read: its content reaches no finding, and the finding
     // names the unsafe path instead of calling the topic populated.
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    const escape = plantOutside("noise.md");
     try {
       fs.writeFileSync(path.join(outside, "design.md"), "OUTSIDE-SECRET-CONTENT\n".repeat(20));
       fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
       fs.symlinkSync(path.join(outside, "design.md"), path.join(tmpDir, "docs", "design.md"));
       writeIndex([
         { doc: "docs/design.md" },
-        { doc: "../escape/noise.md", scope: "Equivalent to docs/noise.md" },
+        { doc: escape.row, scope: "Equivalent to docs/noise.md" },
       ]);
       fsReads.length = 0;
       const again = detectProjectDocs(tmpDir);
-      const reads = [...fsReads];
-      expect(reads.some((r) => r.startsWith(outside))).toBe(false);
+      expect(readsUnder(outside)).toEqual([]);
+      expect(readsUnder(escape.dir)).toEqual([]);
       expect(allText(again)).not.toContain("OUTSIDE-SECRET-CONTENT");
       const ambiguous = again.find((f) => f.id === "project-docs-ambiguous");
       expect(ambiguous).toBeDefined();
@@ -635,6 +653,7 @@ describe("detectProjectDocs", () => {
       expect(ambiguous!.severity).toBe("advisory");
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
+      fs.rmSync(escape.dir, { recursive: true, force: true });
     }
   });
 
@@ -653,16 +672,16 @@ describe("detectProjectDocs", () => {
     expect(missing!.detect).not.toContain("docs/testing.md");
     expect(missing!.detect).toContain("docs/architecture.md");
 
-    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-outside-"));
+    // The `..` row reaches a real planted file next to the repository, so a read of it shows.
+    const outside = plantOutside("noise.md");
     try {
-      fs.writeFileSync(path.join(outside, "noise.md"), "OUTSIDE-SECRET-CONTENT\n".repeat(20));
-      writeIndex([{ doc: "../escape/noise.md", scope: "Equivalent to docs/noise.md" }]);
+      writeIndex([{ doc: outside.row, scope: "Equivalent to docs/noise.md" }]);
       fsReads.length = 0;
       const again = detectProjectDocs(tmpDir);
-      expect(fsReads.some((r) => r.startsWith(outside))).toBe(false);
+      expect(readsUnder(outside.dir)).toEqual([]);
       expect(allText(again)).not.toContain("OUTSIDE-SECRET-CONTENT");
     } finally {
-      fs.rmSync(outside, { recursive: true, force: true });
+      fs.rmSync(outside.dir, { recursive: true, force: true });
     }
   });
   /** The v6.1.1 shipped text of a topic as it was rendered into a consumer repo. */
