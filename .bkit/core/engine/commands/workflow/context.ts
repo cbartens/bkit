@@ -53,6 +53,9 @@ import {
 import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
+import { defaultRange } from "./feature-base.js";
+
+export { defaultRange, featureBase } from "./feature-base.js";
 import { buildComment } from "./issues.js";
 import {
   derivedTestMatrix,
@@ -830,7 +833,6 @@ function asCaptured(out: Buffer): Buffer {
 /** Exit code: --base does not name a commit. */
 export const EXIT_BASE = 5;
 
-export const DIFF_BASE = "origin/dev";
 export const DIFF_EXCLUDES = ["docs/plans/**"];
 export const PARTIAL_MARK = "partial diff coverage";
 
@@ -1462,7 +1464,7 @@ export const contextCommand: CommandSpec = {
         {
           name: "base",
           type: "string",
-          help: `merge base or a group's start commit (default ${DIFF_BASE})`,
+          help: "merge base or a group's start commit (default: the feature base, where the branch's own work starts)",
         },
         ...LOG_FLAGS,
         {
@@ -1492,7 +1494,9 @@ export const contextCommand: CommandSpec = {
         [EXIT_ARTIFACT]: "the artifact could not be written",
       },
       run: (ctx) => {
-        const base = str(ctx.flags.base) ?? DIFF_BASE;
+        const explicitBase = str(ctx.flags.base);
+        const fallback = explicitBase === undefined ? defaultRange(ctx.cwd, ctx.log) : null;
+        const base = explicitBase ?? fallback!.base;
         if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null) {
           throw new CommandError(
             EXIT_BASE,
@@ -1511,7 +1515,7 @@ export const contextCommand: CommandSpec = {
           ctx.cwd,
           path.resolve(ctx.cwd, artifact),
           artifact,
-          `${base}...HEAD`,
+          fallback?.range ?? `${base}...HEAD`,
           DIFF_GUARD,
           { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) },
         );

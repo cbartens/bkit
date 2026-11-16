@@ -88,7 +88,7 @@ description: "Ship Feature — Autonomous merge and archive"
 3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5.
 4. Write the run's diff to the file the agent reads (a failure leaves it out):
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=abort-handover >/dev/null
+   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --base=origin/dev --fid={FID} --step=abort-handover >/dev/null
    ```
    **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
@@ -483,7 +483,7 @@ Refresh `FEATURE_CODE_STATE` from `featureCodeState`; non-zero exit → **Failur
    ```
    Write the run's diff to the file the agent reads:
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
+   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --base=origin/dev --fid={FID} --step=ship-deferred-sweep >/dev/null || exit 2
    ```
    Get the sweep's own invocation id from the engine and keep the printed `invocation` as `INVOCATION`. The invocation, its operations and their receipts are recorded in the book-root status file (`{STATUS}` under `$BOOK_ROOT`), so a resumed ship run reuses them:
    ```bash

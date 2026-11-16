@@ -76,6 +76,7 @@ import {
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
 import { detect } from "./runtime.js";
+import { defaultRange } from "./feature-base.js";
 import { readRuns, readStatusRows, readStatusRowsAt } from "./status.js";
 import { declaredName, testSource } from "./test-blocks.js";
 import {
@@ -1662,7 +1663,7 @@ export function disabledTestsIn(diff: string, root: string): DisabledTest[] {
 }
 
 function scanDiffVerb(ctx: RunContext): number {
-  const base = String(ctx.flags.base);
+  const explicitBase = str(ctx.flags.base);
   const pattern = str(ctx.flags.paths);
   const marker = str(ctx.flags.marker);
   const code = ctx.flags.code === true;
@@ -1688,7 +1689,9 @@ function scanDiffVerb(ctx: RunContext): number {
     }
   }
   const top = topLevel(ctx.cwd);
-  const fetched = fetchRemoteRef(top, base);
+  const fallback = explicitBase === undefined ? defaultRange(top, ctx.log) : null;
+  const base = explicitBase ?? fallback!.base;
+  const fetched = explicitBase === undefined ? null : fetchRemoteRef(top, base);
   if (fetched !== null && !fetched.ok) {
     ctx.log(`git fetch for ${base} failed: ${fetched.stderr} — diffing against the local ref`);
   }
@@ -1696,7 +1699,7 @@ function scanDiffVerb(ctx: RunContext): number {
     ctx.log(`unknown base: ${base}`);
     return EXIT_DIFF_FAILED;
   }
-  const range = `${base}...HEAD`;
+  const range = fallback?.range ?? `${base}...HEAD`;
   if (disabled) {
     const diff = quietGit(top, ["diff", "--no-renames", range, "--", ".", ":(exclude)docs/plans"]);
     if (!diff.ok) {
@@ -3705,8 +3708,7 @@ export const branchesCommand: CommandSpec = {
         {
           name: "base",
           type: "string",
-          required: true,
-          help: "diff <base>...HEAD; an origin/<branch> base is fetched first",
+          help: "diff <base>...HEAD; an origin/<branch> base is fetched first (default: the feature base, where the branch's own work starts)",
         },
         {
           name: "paths",

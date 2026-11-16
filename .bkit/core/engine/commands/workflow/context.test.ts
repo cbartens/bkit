@@ -12,6 +12,7 @@ import {
   FENCE_OPEN,
   consumerSection,
   contextCommand,
+  featureBase,
   fetchBlocks,
   humanBytes,
   keepRaw,
@@ -1374,6 +1375,7 @@ describe("bkit context diff", () => {
 
   it("writes origin/dev...HEAD without docs/plans/** and prints the numstat numbers", async () => {
     const dir = repo("whole");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
     put(dir, "src.txt", "a\nb\nc\n");
     put(dir, "new.txt", "one\ntwo\nthree\n");
     put(dir, "docs/plans/202610/1-x-plan.md", "plan v2\nmore\n");
@@ -1466,6 +1468,7 @@ describe("bkit context diff", () => {
 
   it("an empty range writes a one-line note and zero numbers", async () => {
     const dir = repo("empty");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
     put(dir, "docs/plans/202610/1-x-plan.md", "plan v2\n");
     commitAll(dir, "plan only");
     const r = await run(["diff", `--artifact=${ARTIFACT}`], dir);
@@ -1483,6 +1486,7 @@ describe("bkit context diff", () => {
 
   it("over the guard: the first line says so, then --stat, then the largest files first, each cut", async () => {
     const dir = repo("guard");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
     put(dir, "big.txt", numbered(12000, "big"));
     put(dir, "mid.txt", numbered(700, "mid"));
     put(dir, "small.txt", "s1\ns2\n");
@@ -1598,6 +1602,135 @@ describe("bkit context diff", () => {
 // ---------------------------------------------------------------------------
 // brief
 // ---------------------------------------------------------------------------
+
+describe("featureBase (#960)", () => {
+  const g = (dir: string, ...args: string[]) =>
+    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+      cwd: dir,
+      encoding: "utf-8",
+    }).stdout.trim();
+  const put = (dir: string, file: string, content: string) => {
+    fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
+    fs.writeFileSync(path.join(dir, file), content);
+  };
+  const commitAll = (dir: string, msg: string) => {
+    g(dir, "add", "-A");
+    g(dir, "commit", "-q", "-m", msg);
+    return g(dir, "rev-parse", "HEAD");
+  };
+  /** A repo on `dev` whose one base commit is also `origin/dev`. */
+  function repo(name: string): { dir: string; base: string } {
+    const dir = path.join(tmpDir, "feature-base", name);
+    fs.mkdirSync(dir, { recursive: true });
+    g(dir, "init", "-q", "-b", "dev");
+    put(dir, "src.txt", "a\nb\n");
+    const base = commitAll(dir, "base");
+    g(dir, "update-ref", "refs/remotes/origin/dev", base);
+    return { dir, base };
+  }
+  /** A commit on top of `origin/dev` that only origin/dev holds; leaves HEAD where it was. */
+  function advanceOrigin(dir: string, file: string, content: string): string {
+    const head = g(dir, "rev-parse", "HEAD");
+    g(dir, "checkout", "-q", "--detach", "origin/dev");
+    put(dir, file, content);
+    const sha = commitAll(dir, `origin ${file}`);
+    g(dir, "update-ref", "refs/remotes/origin/dev", sha);
+    g(dir, "checkout", "-q", head);
+    return sha;
+  }
+
+  it("featureBase picks the local dev meeting point when the branch was cut from a local dev ahead of origin/dev", () => {
+    const { dir } = repo("local-ahead");
+    put(dir, "unpushed.txt", "u\n");
+    const l1 = commitAll(dir, "unpushed dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    expect(featureBase(dir)).toBe(l1);
+  });
+
+  it("featureBase picks the origin/dev meeting point when local dev equals origin/dev", () => {
+    const { dir, base } = repo("equal");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    expect(featureBase(dir)).toBe(base);
+  });
+
+  it("featureBase picks the origin/dev meeting point when the branch was cut from origin/dev and local dev diverged", () => {
+    const { dir, base } = repo("diverged");
+    put(dir, "unpushed.txt", "u\n");
+    commitAll(dir, "unpushed dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x", "origin/dev");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    expect(featureBase(dir)).toBe(base);
+  });
+
+  it("featureBase combines both meeting points when origin/dev was merged into a branch cut from local dev", () => {
+    const { dir } = repo("combine");
+    put(dir, "l.txt", "l\n");
+    const l1 = commitAll(dir, "unpushed dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    const o1 = advanceOrigin(dir, "o.txt", "o\n");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    g(dir, "merge", "-q", "--no-edit", "origin/dev");
+    const result = featureBase(dir);
+    expect(result).toMatch(/^[0-9a-f]{40}$/);
+    expect(result).not.toBe(l1);
+    expect(result).not.toBe(o1);
+    expect(g(dir, "rev-list", "--parents", "-n", "1", result).split(" ").slice(1).sort()).toEqual(
+      [l1, o1].sort(),
+    );
+    // Neither the unpushed dev commit nor origin's commit counts as the feature's.
+    expect(g(dir, "diff", "--name-only", result, "HEAD")).toBe("f.txt");
+  });
+
+  it("featureBase falls back to the origin/dev meeting point and logs when the combination conflicts", () => {
+    const { dir } = repo("conflict");
+    put(dir, "src.txt", "a\nlocal\n");
+    const l1 = commitAll(dir, "unpushed dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    const o1 = advanceOrigin(dir, "src.txt", "a\norigin\n");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    g(dir, "merge", "-q", "--no-edit", "origin/dev");
+    put(dir, "src.txt", "a\nresolved\n");
+    commitAll(dir, "resolve");
+    expect(g(dir, "merge-base", "HEAD", "dev")).toBe(l1);
+    const lines: string[] = [];
+    const result = featureBase(dir, (line) => lines.push(line));
+    expect(result).toBe(o1);
+    expect(lines).toHaveLength(1);
+  });
+
+  it("featureBase uses the origin/dev meeting point when there is no local dev", () => {
+    const { dir, base } = repo("no-dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    g(dir, "branch", "-q", "-D", "dev");
+    expect(featureBase(dir)).toBe(base);
+  });
+
+  it("context diff without --base leaves out an unpushed local dev commit", async () => {
+    const { dir } = repo("diff-unpushed");
+    put(dir, "unpushed.txt", "u\n");
+    commitAll(dir, "unpushed dev");
+    g(dir, "checkout", "-q", "-b", "feat/1-x");
+    put(dir, "f.txt", "f\n");
+    commitAll(dir, "feat work");
+    const artifact = "docs/plans/202610/logs/1-x/build-diff-1.md";
+    const r = await run(["diff", `--artifact=${artifact}`], dir);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ filesChanged: 1, linesAdded: 1 });
+    expect(r.json.base).not.toBe("origin/dev");
+    const body = read(path.join(dir, artifact));
+    expect(body).toContain("f.txt");
+    expect(body).not.toContain("unpushed.txt");
+  });
+});
 
 describe("bkit context brief", () => {
   const task = (n: number, title: string, done: boolean, extra: string[] = []) => [

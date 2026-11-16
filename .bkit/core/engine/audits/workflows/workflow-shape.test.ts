@@ -1188,7 +1188,11 @@ describe("diff per reader", () => {
   // Every agent that reads the run's diff gets a fresh `tmp/bkit-diff-{FID}.md`,
   // written by `context diff` in the same sub-step, just before the agent.
   // Debug runs on dev, so its diff names the base the run started from.
-  const BASE_FLAG: Record<string, string> = { build: "", debug: " --base={DIFF_BASE}", ship: "" };
+  const BASE_FLAG: Record<string, string> = {
+    build: "",
+    debug: " {BASE_FLAG}",
+    ship: " --base=origin/dev",
+  };
   const READERS: Array<[string, RegExp, string, string[]]> = [
     ["build", /Failure Path/, "abort-handover", ["bkit-debug-abort-handover"]],
     ["build", /Step 10 — /, "build-plan-verify-holistic", ["bkit-build-plan-verify"]],
@@ -2046,13 +2050,32 @@ describe("workflow routing", () => {
 describe("debug on dev", () => {
   const debug = workflow("debug");
 
-  it("debug diffs against DIFF_BASE on dev", () => {
+  it("debug passes --base only when it runs in place on dev, outside the no-leak scan", () => {
     expect(debug).not.toContain("origin/dev..HEAD");
-    for (const line of commandLines(debug, "context diff"))
-      expect(line).toContain("--base={DIFF_BASE}");
+    expect(debug).not.toContain("DIFF_BASE");
+    for (const line of commandLines(debug, "context diff")) expect(line).toContain("{BASE_FLAG}");
+    for (const line of commandLines(debug, "branches scan-diff").filter(
+      (l) => !l.includes('--marker="[DEBUG-OBSERVE]"'),
+    ))
+      expect(line).toContain("{BASE_FLAG}");
     const step2 = section(debug, /Step 2 — Worktree Setup/);
-    expect(step2).toContain("`startSha` as `DIFF_BASE`");
-    expect(step2).toContain("`origin/dev` when null");
+    expect(step2).toContain("`{BASE_FLAG}` = `--base={startSha}` when `startSha` is present");
+    expect(step2).not.toContain("`origin/dev` when null");
+  });
+
+  it("build migration scan and debug off-dev no-leak scan pass --base=origin/dev", () => {
+    const migration = commandLines(workflow("build"), "branches scan-diff").filter((l) =>
+      l.includes("--paths="),
+    );
+    expect(migration.length).toBeGreaterThan(0);
+    for (const line of migration) expect(line).toContain("--base=origin/dev");
+    const noLeak = commandLines(debug, "branches scan-diff").filter((l) =>
+      l.includes('--marker="[DEBUG-OBSERVE]"'),
+    );
+    expect(noLeak.length).toBeGreaterThan(0);
+    for (const line of noLeak) expect(line).not.toContain("{BASE_FLAG}");
+    expect(debug).toContain("--base=origin/dev");
+    expect(debug).toContain("--base={startSha}");
   });
 
   it("debug Steps 9 and 10 push nothing on dev", () => {
@@ -2091,6 +2114,18 @@ describe("debug on dev", () => {
     expect(line).toContain("**STOP**");
     expect(line).toContain("ask the human");
     expect(line).not.toMatch(/→ \*\*Failure Path\*\*/);
+  });
+});
+
+describe("ship deferred sweep base", () => {
+  it("ship sweep and Failure Path context diff lines pass --base=origin/dev", () => {
+    const ship = workflow("ship");
+    const lines = commandLines(ship, "context diff");
+    for (const step of ["ship-deferred-sweep", "abort-handover"]) {
+      const hit = lines.filter((l) => l.includes(`--step=${step}`));
+      expect(hit.length, step).toBeGreaterThan(0);
+      for (const line of hit) expect(line, step).toContain("--base=origin/dev");
+    }
   });
 });
 

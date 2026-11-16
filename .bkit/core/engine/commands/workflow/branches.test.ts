@@ -2171,6 +2171,30 @@ describe("branches scan-diff", { timeout: GIT_TIMEOUT }, () => {
     expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
   });
 
+  it("scan-diff without --base ignores a match that only an unpushed local dev commit adds", async () => {
+    const { clone } = withOrigin("scan-nobase");
+    commit(clone, { "src/dev.ts": "log('[DEBUG-OBSERVE] dev')\n" }, "unpushed dev");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { "a.txt": "a\n" }, "feat(1-x): work");
+    const clean = await run(clone, ["scan-diff", "--marker=[DEBUG-OBSERVE]"]);
+    expect(clean.code).toBe(1);
+    expect(clean.json).toEqual({ found: false, paths: [] });
+    commit(clone, { "src/x.ts": "log('[DEBUG-OBSERVE] x')\n" }, "probe");
+    const r = await run(clone, ["scan-diff", "--marker=[DEBUG-OBSERVE]"]);
+    expect(r.code).toBe(0);
+    expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
+  });
+
+  it("scan-diff without --base finds a marker the branch added when local dev already contains the branch", async () => {
+    const { clone } = withOrigin("scan-contained");
+    git(clone, "checkout", "-q", "-b", "feat/1-x");
+    commit(clone, { "src/x.ts": "log('[DEBUG-OBSERVE] x')\n" }, "probe");
+    git(clone, "branch", "-f", "dev", "HEAD");
+    const r = await run(clone, ["scan-diff", "--marker=[DEBUG-OBSERVE]", "--expect-none"]);
+    expect(r.code).toBe(1);
+    expect(r.json).toEqual({ found: true, paths: ["src/x.ts"] });
+  });
+
   it("--marker reads a diff over 1 MiB", async () => {
     const { clone } = featureBranch("scan-bigdiff");
     const big = `${"x".repeat(99)}\n`.repeat(12_000);

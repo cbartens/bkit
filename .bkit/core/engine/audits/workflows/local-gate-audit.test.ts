@@ -445,6 +445,20 @@ describe("holistic verify prompt test base", () => {
   });
 });
 
+describe("diff and test base", () => {
+  it("build workflow names origin/dev only on the migration scan and the verify prompt tests from the start commit", () => {
+    const build = fs.readFileSync(path.join(WORKFLOWS_DIR, "bkit-build.md"), "utf-8");
+    const verify = fs.readFileSync(path.join(PROMPTS_DIR, "bkit-build-plan-verify.md"), "utf-8");
+    // Only the migration scan names origin/dev: it measures everything the push publishes.
+    const named = build.split("\n").filter((l) => l.includes("--base=origin/dev"));
+    expect(named.length).toBe(1);
+    expect(named[0]).toContain("branches scan-diff --base=origin/dev --paths=");
+    const testBase = verify.split("\n").find((l) => l.includes("Your Context names `Test base`"))!;
+    expect(testBase).not.toContain("origin/dev");
+    expect(testBase).toContain("start commit");
+  });
+});
+
 describe("group gate scope", () => {
   const SINCE = "--changed-since={GROUP_BASE}";
   const DERIVE = "status route --step=build-group-start --group=";

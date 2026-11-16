@@ -90,7 +90,7 @@ $ARGUMENTS
 3. **If** `HANDOVER_NEEDED` = true → step 4. **Else** → step 5. Gate on failure shape only; never on worktree presence.
 4. **Skip if** `{WORKTREE_PATH}` is not set. Write the run's diff to the file the agent reads (a failure leaves it out):
    ```bash
-   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" --base={DIFF_BASE} --fid={FID} --step=abort-handover >/dev/null
+   cd "{WORKTREE_PATH}" && "{BKIT}" context diff --reset-log --artifact="tmp/bkit-diff-{FID}.md" {BASE_FLAG} --fid={FID} --step=abort-handover >/dev/null
    ```
    **Subagent:** Invoke `/bkit-debug-abort-handover` using `subagent` tool:
    Context: You are a subagent in the Debug phase. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows.
@@ -272,7 +272,7 @@ $ARGUMENTS
    ```bash
    "{BKIT}" worktrees setup --workflow=debug --fid={FID} --month={YYYYMM} --detect {BRANCH_FLAG}
    ```
-   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `sentinel` as `SENTINEL`, `logDir` as `LOG_DIR`, `startSha` as `DIFF_BASE` (`origin/dev` when null).
+   Hold `worktreePath` as `WORKTREE_PATH`, `{OUTBOX_ROOT}/{FID}` as `OUTBOX`, `branch` as `BRANCH`, `sentinel` as `SENTINEL`, `logDir` as `LOG_DIR`, `startSha` as `START_SHA`; `{BASE_FLAG}` = `--base={startSha}` when `startSha` is present, else empty; `{NOLEAK_BASE}` = `--base={startSha}` when `startSha` is present, else `--base=origin/dev` (the no-leak scan measures everything the push publishes, including unpushed local `dev` commits).
    Route:
    - **If** exit 0 → `cd "{WORKTREE_PATH}"` → verify with `pwd` → sub-step 2.
    - **If** exit 3 → resolve the rebase:
@@ -684,7 +684,7 @@ $ARGUMENTS
    PR_OPEN="{PR_OPEN}"
    "{BKIT}" status meta --file="{STATUS}" --workflow=debug --push-mode={PUSH_MODE} >/dev/null || exit 1
    if [ "$PR_OPEN" = 1 ]; then "{BKIT}" prs verbose-ci --number={PR_NUMBER} --state=off; fi
-   "{BKIT}" branches scan-diff --base={DIFF_BASE} --marker="[DEBUG-OBSERVE]" --expect-none >/dev/null || exit 1
+   "{BKIT}" branches scan-diff {NOLEAK_BASE} --marker="[DEBUG-OBSERVE]" --expect-none >/dev/null || exit 1
    "{BKIT}" roadmap mirror --workflow=debug --fid={FID} >/dev/null || exit 1
    "{BKIT}" workflows close --workflow=debug --fid={FID} --month={YYYYMM} --file="{STATUS}" --owner-repo={OWNER_REPO} --outbox="{OUTBOX}" --message="chore({FID}): close-workflow" --verbose-ci-local {LABEL_FLAGS} --final-return --summary-file="docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md" --session-dir="{SESSION_DIR}" || exit $?
    ```

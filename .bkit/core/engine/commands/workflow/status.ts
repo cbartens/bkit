@@ -42,6 +42,7 @@ import {
   type FlagValue,
   type RunContext,
 } from "../lib.js";
+import { featureBase } from "./feature-base.js";
 import { WORKFLOW_STEPS, isResumable, resumePoint } from "./step-table.js";
 
 // ---------------------------------------------------------------------------
@@ -204,12 +205,12 @@ export const EXIT_ROUTE_MISSING = 4;
 
 /**
  * The commit a repeat check tests from: the step's last clean round's `parentSha`, else
- * `origin/dev`, which is also the answer when that sha is not an ancestor of HEAD.
+ * the feature base, which is also the answer when that sha is not an ancestor of HEAD.
  */
 function cleanBase(cwd: string, clean: { parentSha?: unknown } | undefined): string {
   const sha = clean?.parentSha;
-  if (typeof sha !== "string" || sha === "") return "origin/dev";
-  return git(cwd, ["merge-base", "--is-ancestor", sha, "HEAD"]) === null ? "origin/dev" : sha;
+  if (typeof sha !== "string" || sha === "") return featureBase(cwd);
+  return git(cwd, ["merge-base", "--is-ancestor", sha, "HEAD"]) === null ? featureBase(cwd) : sha;
 }
 
 function route(runs: WorkflowRun[], workflow: string, step: string | undefined, group?: number) {
@@ -433,7 +434,7 @@ export const statusCommand: CommandSpec = {
     },
     route: {
       summary:
-        "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, cleanBase (the step's last clean commit, else origin/dev); with --prompt-file, debug's start decisions.",
+        "Routing state: last verdict / failures / strategy of a step, debug and push mode; with --step, cleanBase (the step's last clean commit, else the feature's start commit); with --prompt-file, debug's start decisions.",
       use: "workflow",
       flags: [
         { ...FILE_FLAG, required: false, help: `${FILE_FLAG.help}; or --fid and --month` },
@@ -489,7 +490,7 @@ export const statusCommand: CommandSpec = {
         publishSource:
           "with publish: token | local | remote | coerced (a non-LOCAL false forced to true), else null",
         cleanBase:
-          "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else origin/dev; origin/dev also when that sha is not an ancestor of HEAD",
+          "with --step: the parentSha of the step's last clean round (PASS, or CONCERNS with 0 failures) in the active run, else the feature's start commit; the feature's start commit also when that sha is not an ancestor of HEAD",
         parentSha:
           "HEAD when the step's last DONE row in the active run was written — a build-group-start row's is the group's start commit, the base for `context diff` — or null",
       },

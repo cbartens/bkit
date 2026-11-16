@@ -855,7 +855,7 @@ This step checks the whole feature against the plan after the last group, and ag
    "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-plan-verify-holistic --position=next
    ```
    Hold `value` as `HOLISTIC_ATTEMPT`.
-   Read the commit the last clean holistic check tested up to, `origin/dev` when there is none:
+   Read the commit the last clean holistic check tested up to, the feature's start commit when there is none:
    ```bash
    "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-plan-verify-holistic
    ```
@@ -1243,7 +1243,7 @@ This block appends the roadmap row in the worktree only, closes and commits the 
      - **If** one is found → **Failure Path**.
      - **Else** → sub-step 2.
    - **Else** → sub-step 2.
-2. Scan the branch for migrations:
+2. Scan everything the push publishes for migrations, measured from `origin/dev`:
    ```bash
    "{BKIT}" branches scan-diff --base=origin/dev --paths='(^|/)(migrations|migrate)/' >/dev/null
    ```

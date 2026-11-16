@@ -79,12 +79,12 @@ Not scanned; run the rollup with `--reachability`.
 
 ## Import-time side effects
 
-15 module-scope side effects in 6 of 123 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
+15 module-scope side effects in 6 of 124 source files. A call here runs on **import**, not on first use, so every file downstream pays for it, and a test that never touches the thing still has to stub it. Sorted by reach.
 
 <!-- prettier-ignore -->
 | File | Evaluates at import | Downstream files | of which tests |
 | --- | --- | --- | --- |
-| `.bkit/core/engine/shared/text.ts` | `Symbol` | 212 | 128 |
+| `.bkit/core/engine/shared/text.ts` | `Symbol` | 214 | 129 |
 | `.bkit/core/engine/checks/after/ci-yml.ts` | `CI_SCRIPT_UNITS.flat` | 194 | 118 |
 | `.bkit/core/engine/checks/tips/index.ts` | `STAR_TIP.replace` | 194 | 118 |
 | `.bkit/core/engine/commands/workflow/branches.ts` | `LEDGERS.map` | 194 | 118 |
@@ -164,7 +164,7 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>256 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1884 symbols · 54 files"]
+    n_bkit_core_engine_commands["commands<br/>1886 symbols · 55 files"]
     n_bkit_core_engine_install["install<br/>362 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
@@ -310,7 +310,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_branches["branches<br/>131 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_challenge["challenge<br/>38 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_completeness["completeness<br/>4 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_context["context<br/>92 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_context["context<br/>91 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_counters["counters<br/>29 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_decisions["decisions<br/>31 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_disk["disk<br/>56 symbols · 1 files"]

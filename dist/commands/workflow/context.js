@@ -35,6 +35,8 @@ import { CommandError, EXIT, git, outboxRel, outboxRoot, } from "../lib.js";
 import { gitEnv, resolveRepoSlug } from "../../ledgers/telemetry.js";
 import { parseJson } from "../../shared/json.js";
 import { checkedTable } from "../../shared/text.js";
+import { defaultRange } from "./feature-base.js";
+export { defaultRange, featureBase } from "./feature-base.js";
 import { buildComment } from "./issues.js";
 import { derivedTestMatrix, parsePlanBlocks, reuseInventory, } from "./plan-blocks.js";
 import { COMMENT_FILE_OUTPUT, commentFileOf } from "./tracker.js";
@@ -683,7 +685,6 @@ function asCaptured(out) {
 // ---------------------------------------------------------------------------
 /** Exit code: --base does not name a commit. */
 export const EXIT_BASE = 5;
-export const DIFF_BASE = "origin/dev";
 export const DIFF_EXCLUDES = ["docs/plans/**"];
 export const PARTIAL_MARK = "partial diff coverage";
 export const DIFF_GUARD = {
@@ -1214,7 +1215,7 @@ export const contextCommand = {
                 {
                     name: "base",
                     type: "string",
-                    help: `merge base or a group's start commit (default ${DIFF_BASE})`,
+                    help: "merge base or a group's start commit (default: the feature base, where the branch's own work starts)",
                 },
                 ...LOG_FLAGS,
                 {
@@ -1242,7 +1243,9 @@ export const contextCommand = {
                 [EXIT_ARTIFACT]: "the artifact could not be written",
             },
             run: (ctx) => {
-                const base = str(ctx.flags.base) ?? DIFF_BASE;
+                const explicitBase = str(ctx.flags.base);
+                const fallback = explicitBase === undefined ? defaultRange(ctx.cwd, ctx.log) : null;
+                const base = explicitBase ?? fallback.base;
                 if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null) {
                     throw new CommandError(EXIT_BASE, `--base ${base} does not name a commit (fetch origin, or pass the group's start sha)`);
                 }
@@ -1254,7 +1257,7 @@ export const contextCommand = {
                     fs.mkdirSync(path.dirname(log), { recursive: true });
                     fs.writeFileSync(log, "");
                 }
-                const written = tryWriteDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
+                const written = tryWriteDiffArtifact(ctx.cwd, path.resolve(ctx.cwd, artifact), artifact, fallback?.range ?? `${base}...HEAD`, DIFF_GUARD, { rawDir: rawDirFor(ctx.cwd, str(ctx.flags.fid)) });
                 if (!written.ok)
                     throw new CommandError(EXIT_ARTIFACT, `${artifact}: ${written.error}`);
                 const result = written.result;

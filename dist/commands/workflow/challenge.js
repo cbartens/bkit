@@ -24,7 +24,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { appendLine, statusTimestamp } from "../../ledgers/status.js";
 import { CommandError, DEV, EXIT, git, runGit } from "../lib.js";
-import { DIFF_BASE, EXIT_BASE, diffNumstat } from "./context.js";
+import { EXIT_BASE, diffNumstat } from "./context.js";
+import { defaultRange } from "./feature-base.js";
 import { parseDecisionItems } from "./decisions.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
 import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks.js";
@@ -451,7 +452,7 @@ export const challengeCommand = {
                 {
                     name: "base",
                     type: "string",
-                    help: `merge base (default ${DIFF_BASE}, fetched first; a failed fetch is logged, not fatal)`,
+                    help: "merge base (default: the feature base, after fetching origin dev; a failed fetch is logged, not fatal)",
                 },
             ],
             output: {
@@ -464,15 +465,17 @@ export const challengeCommand = {
             },
             exitCodes: { [EXIT_BASE]: "--base does not name a commit" },
             run: (ctx) => {
-                const base = typeof ctx.flags.base === "string" ? ctx.flags.base : DIFF_BASE;
-                if (base === DIFF_BASE) {
+                const explicitBase = typeof ctx.flags.base === "string" ? ctx.flags.base : undefined;
+                if (explicitBase === undefined) {
                     const res = runGit(ctx.cwd, ["fetch", "origin", DEV]);
                     if (!res.ok)
                         ctx.log(`git fetch origin dev failed — measuring against the last fetch: ${res.stderr}`);
                 }
+                const fallback = explicitBase === undefined ? defaultRange(ctx.cwd, ctx.log) : null;
+                const base = explicitBase ?? fallback.base;
                 if (git(ctx.cwd, ["rev-parse", "-q", "--verify", `${base}^{commit}`]) === null)
                     throw new CommandError(EXIT_BASE, `--base ${base} does not name a commit (fetch origin)`);
-                const range = `${base}...HEAD`;
+                const range = fallback?.range ?? `${base}...HEAD`;
                 const { stat } = diffNumstat(ctx.cwd, range);
                 const gate = challengeGate(stat);
                 const file = path.resolve(ctx.cwd, String(ctx.flags.file));

@@ -18,8 +18,8 @@ import * as path from "node:path";
 import { parseJson } from "../../shared/json.js";
 import { CommandError, EXIT, type CommandSpec, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
-import { DIFF_BASE } from "./context.js";
 import { parseDecisionItems } from "./decisions.js";
+const DIFF_BASE = "origin/dev";
 import {
   NO_MARKERS_REASON,
   parsePlanBlocks,

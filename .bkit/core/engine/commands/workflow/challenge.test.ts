@@ -852,6 +852,7 @@ describe("bkit challenge gate", () => {
     write(STATUS, "");
     commitAll("base");
     g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    g("checkout", "-q", "-b", "feat/1-x");
     write("src/a.ts", "a\nb\nc\n");
     write(PLAN, plan(40));
     commitAll("work");
@@ -922,12 +923,36 @@ describe("bkit challenge gate", () => {
     write(STATUS, "");
     commitAll("base");
     g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    g("checkout", "-q", "-b", "feat/1-x");
     write("src/a.ts", "a\nb\n");
     commitAll("work");
     const r = await gate(`--file=${STATUS}`);
     expect(r.code).toBe(0);
     expect(r.json).toMatchObject({ size: "small", linesChanged: 1 });
     expect(r.err).toContain("git fetch origin dev failed");
+  });
+
+  it("challenge gate without --base sizes only the branch's own lines", async () => {
+    g("init", "-q", "-b", "dev");
+    write("src/a.ts", "a\n");
+    write(STATUS, "");
+    commitAll("base");
+    g("update-ref", "refs/remotes/origin/dev", "HEAD");
+    // Local dev is ahead of origin/dev by a large commit the branch is cut from.
+    write("src/big.ts", Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n") + "\n");
+    commitAll("unpushed dev work");
+    g("checkout", "-q", "-b", "feat");
+    write("src/a.ts", "a\nb\n");
+    commitAll("work");
+
+    const r = await gate(`--file=${STATUS}`);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      size: "small",
+      skipped: true,
+      linesChanged: 1,
+      filesChanged: 1,
+    });
   });
 
   it("challenge gate exits 5 when --base names no commit", async () => {

@@ -701,6 +701,16 @@ describe("bkit status route holistic cleanBase", () => {
     expect(await cleanBase([started("build", "2026-10-01T00:00:00Z")], root)).toBe("origin/dev");
   });
 
+  it("cleanBase with no clean round returns the feature base, not origin/dev", async () => {
+    const { root, c1, c2 } = repo();
+    git(root, "update-ref", "refs/remotes/origin/dev", c1);
+    git(root, "checkout", "-q", "-b", "feat/1-x", "dev");
+    git(root, "commit", "-q", "--allow-empty", "-m", "feat work");
+    const base = await cleanBase([started("build", "2026-10-01T00:00:00Z")], root);
+    expect(base).toBe(c2);
+    expect(base).not.toBe("origin/dev");
+  });
+
   it("a clean holistic row from an earlier run does not set the base", async () => {
     const { root, c1 } = repo();
     expect(
