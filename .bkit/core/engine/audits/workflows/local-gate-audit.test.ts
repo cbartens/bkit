@@ -271,8 +271,8 @@ describe("bkit-local-gate-audit (#437)", () => {
 
   it("every branches push call site routes exit 81 to a re-run of its block", () => {
     const pushProbes = [
-      { workflow: "bkit-design.md", sites: 1 },
-      { workflow: "bkit-plan.md", sites: 1 },
+      { workflow: "bkit-design.md", sites: 0 },
+      { workflow: "bkit-plan.md", sites: 0 },
       { workflow: "bkit-build.md", sites: 2 },
       { workflow: "bkit-debug.md", sites: 5 },
       { workflow: "bkit-ship.md", sites: 6 },

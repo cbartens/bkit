@@ -526,15 +526,11 @@ description: "Design Feature — Autonomous design phase"
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
    The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
-3. Finish, then push with exactly one command:
+3. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=design --step=design-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/design-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=10 --post --title=Summary --link-ref=dev --comment-body
    ```
-   ```bash
-   "{BKIT}" branches push --mode=feature
-   ```
 4. Route — first match wins:
-   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 11.
    - **Else** → **Failure Path**.
 
@@ -544,7 +540,6 @@ description: "Design Feature — Autonomous design phase"
 - [ ] `workflows summary` printed a verdict
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Failing summary displayed
-- [ ] Summary commit pushed
 
 ---
 

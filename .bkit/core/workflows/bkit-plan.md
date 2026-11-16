@@ -472,15 +472,11 @@ Before generating, ask the engine for this step's invocation id and keep the pri
    ```
    **If** exit non-zero → **Failure Path**. Hold `verdict` as `SUMMARY_VERDICT`, `failures` as `SUMMARY_FAILURES`.
    The summary's `## Documentation Warnings` section lists this run's attributed documentation gaps once per topic and gap, with the evidence and action each agent gave. It is advisory: it changes no verdict. Show it in the final return and do not re-aggregate it.
-4. Finish, then push the summary commit:
+4. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-summary --attempt=1 --verdict={SUMMARY_VERDICT} --failures={SUMMARY_FAILURES} --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md --message="chore({FID}): summary bkit [skip ci]" --number=7 --post --title=Summary --link-ref=dev --comment-body
    ```
-   ```bash
-   "{BKIT}" branches push --mode=feature
-   ```
 5. Route — first match wins:
-   - **If** exit 81 → end turn, re-run this block.
    - **If** `SUMMARY_VERDICT` = PASS **or** CONCERNS → Step 8.
    - **Else** → **Failure Path**.
 
@@ -492,7 +488,6 @@ Before generating, ask the engine for this step's invocation id and keep the pri
 - [ ] `workflows summary` printed a verdict
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Failing summary displayed
-- [ ] Summary commit pushed
 
 ---
 

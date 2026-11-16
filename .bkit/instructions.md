@@ -5961,7 +5961,7 @@ Write the session prompt verbatim to `{SESSION_DIR}/prompt.md` → read the issu
 ### workflow-tests-lock-wait
 
 - workflow: repeatable
-- carriers: workflow all except `bkit-auto`
+- carriers: workflow `bkit-build`, `bkit-debug`, `bkit-ship`
 
 ```text
 **If** exit 81 → end turn, re-run this block.
@@ -6387,7 +6387,7 @@ Summary displayed verbatim before **Failure Path** (if `SUMMARY_VERDICT` = FAIL)
 ### workflow-gate-summary-pushed
 
 - workflow: where-used
-- carriers: workflow all except `bkit-auto`, `bkit-ship`
+- carriers: workflow `bkit-build`, `bkit-debug`
 
 ```text
 Summary commit pushed
@@ -10552,7 +10552,6 @@ Routed correctly
 Finish — refuses (exit 9) probe files outside the artifact tree:
 **If** `ORGANISE_VERDICT` = PASS **or** CONCERNS → Step 10.
 Write `design-summary.md` from this run's status rows and the organised plans:
-[workflow-pushes] Finish, then push with exactly one command:
 Final design resolved
 Parse plans:
 [tracker-issue-creation] Post the plan list on `{ISSUE_ID}` only. NEVER create a tracker issue, comment on any other issue or set blockers. Comment:
@@ -10597,7 +10596,6 @@ Reviewed plan checked (`tests plan-check`)
 Routed correctly
 **If** exit non-zero → **Failure Path**, naming each `missing` key.
 Write `plan-summary.md` from this run's status rows and the final plan:
-[workflow-pushes] Finish, then push the summary commit:
 Final plan resolved
 Ledger rows checked (`ledgers check`)
 Count this review round. The plan gets one review and, after a `FAIL` that plan edits fix, exactly one re-review:
