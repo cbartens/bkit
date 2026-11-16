@@ -658,7 +658,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   opencode-zen, opencode-go (opencode-native gateways;
                   auth via BKIT_OPENCODE_API_KEY).
                   Ships .opencode/** (agents, commands, opencode.json, bkit-gateguard.js,
-                  bkit-readguard.js).
+                  bkit-readguard.js, bkit-guardrails.js).
                   Configure your provider key; verify with \`bkit doctor\`. All installed
                   providers tracked in bkit.providers.opencode.installed.
   --codex         Codex CLI host. BARE flag — takes no value: Codex runs on one gateway

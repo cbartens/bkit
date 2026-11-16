@@ -1,108 +1,10 @@
 // --- Shell tiers: identical in the Cursor, Codex and Google Antigravity guardrails hooks
 // (bkit renders them from one source). Each host maps a tier to its own output shape and
-// wording. Needs `commandWords`, `commandLines` and `shellSegments` from `guardrails-shell.js`
-// above it.
-//
-// git commands are classified by their parsed words — subcommand, flag set (any order,
-// short clusters such as `-fdx` expanded), positionals, `+refspec` — never by a literal
-// prefix, so `git reset -q --hard` and `git push origin +dev` land in the same tier as
-// `git reset --hard` and `git push --force`.
-
-/** git global options that take the next word as their value (`git -C dir push`). */
-const GIT_GLOBAL_VALUE_OPTS = new Set([
-  "-C",
-  "-c",
-  "--git-dir",
-  "--work-tree",
-  "--namespace",
-  "--config-env",
-  "--super-prefix",
-]);
-
-/**
- * Per subcommand, the options that take a value: `short` letters consume the rest of their
- * cluster or the next word, `long` names consume the next word when written without `=`.
- * A value is never read as a flag or a positional (`git commit -m "drop -n"`).
- */
-const GIT_VALUE_OPTS = {
-  push: { short: "o", long: ["--push-option", "--repo", "--receive-pack", "--exec"] },
-  clean: { short: "e", long: ["--exclude"] },
-  checkout: { short: "bB", long: ["--orphan"] },
-  restore: { short: "s", long: ["--source"] },
-  rebase: { short: "xsXC", long: ["--onto", "--exec", "--strategy", "--strategy-option"] },
-  commit: {
-    short: "mFCct",
-    long: [
-      "--message",
-      "--file",
-      "--author",
-      "--date",
-      "--reuse-message",
-      "--reedit-message",
-      "--fixup",
-      "--squash",
-      "--template",
-      "--cleanup",
-      "--trailer",
-    ],
-  },
-};
-
-/**
- * A git invocation's parsed words, or null when `words` does not run git:
- * `{ sub, long: Set<"--name">, short: Set<letter>, args: string[] }`. Words after `--`
- * are positionals.
- */
-function parseGit(words) {
-  if ((words[0] || "").replace(/^.*\//, "") !== "git") return null;
-  let i = 1;
-  while (i < words.length && words[i].startsWith("-")) {
-    i += GIT_GLOBAL_VALUE_OPTS.has(words[i]) ? 2 : 1;
-  }
-  const sub = words[i];
-  if (!sub) return null;
-  const spec = GIT_VALUE_OPTS[sub] || { short: "", long: [] };
-  const long = new Set();
-  const short = new Set();
-  const args = [];
-  let positionalOnly = false;
-  for (let j = i + 1; j < words.length; j++) {
-    const w = words[j];
-    if (positionalOnly || w === "-" || !w.startsWith("-")) {
-      args.push(w);
-    } else if (w === "--") {
-      positionalOnly = true;
-    } else if (w.startsWith("--")) {
-      const name = w.split("=")[0];
-      long.add(name);
-      if (!w.includes("=") && spec.long.includes(name)) j++;
-    } else {
-      for (let k = 1; k < w.length; k++) {
-        short.add(w[k]);
-        if (spec.short.includes(w[k])) {
-          if (k === w.length - 1) j++;
-          break;
-        }
-      }
-    }
-  }
-  return { sub, long, short, args };
-}
+// wording. Needs `shellCommands` and `usesFetch` from `guardrails-shell.js`, and
+// `parseGit` and `denyRule` from `guardrails-deny.js`, above it.
 
 /** A pathspec naming the whole tree (or more): `.`, `./`, `..`, `:/`. */
 const WHOLE_TREE_PATH = /^(?:\.\.?\/?|:\/\.?)$/;
-
-/** `{ what, fix }` when a parsed git invocation force-pushes, else null. */
-function gitDenyRule(g) {
-  if (g.sub !== "push") return null;
-  if (g.long.has("--force") || g.short.has("f") || g.args.some((a) => a.startsWith("+"))) {
-    return {
-      what: "git force-push",
-      fix: "NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with-lease only when the user explicitly asks for it on a personal branch.",
-    };
-  }
-  return null;
-}
 
 /** What makes a parsed git invocation ask-tier, else null. */
 function gitAskRule(g) {
@@ -134,50 +36,45 @@ function gitAskRule(g) {
   }
 }
 
-/**
- * Deny tier — matches Claude's settings.json deny rows and OpenCode's bash deny map.
- * `{ what, fix }` for a blocked command, else null.
- */
-function denyRule(c) {
-  for (const line of commandLines(c)) {
-    const g = parseGit(commandWords(line));
-    const denied = g && gitDenyRule(g);
-    if (denied) return denied;
-  }
-  // rm with both -r and -f (-rf, -fr, -Rf, -r -f) on /, ~ or $HOME itself, bare, with a
-  // trailing slash, or with a trailing /*. A path below them (~/projects/x) is not matched.
-  if (
-    /\brm\s+(?:-[a-zA-Z]*(?:[rR][a-zA-Z]*f|f[a-zA-Z]*[rR])[a-zA-Z]*|-[rR]\s+-f|-f\s+-[rR])\s+(?:\/|~\/?|\$HOME\/?|\$\{HOME\}\/?)\*?(?=\s|$|[;&|)])/.test(
-      c,
-    )
-  ) {
-    return {
-      what: "recursive delete of a filesystem root",
-      fix: "NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.",
-    };
-  }
-  if (/\bchmod\s+-R\s+777\s+\//.test(c)) {
-    return {
-      what: "chmod -R 777 on the filesystem root",
-      fix: "NEVER make the filesystem root world-writable.",
-    };
-  }
-  return null;
+/** The basename of a word that names a program (`/usr/bin/sudo` -> `sudo`). */
+function programName(word) {
+  return String(word || "").replace(/^.*\//, "");
 }
 
-/** Ask tier, non-git — destructive or privileged shell. */
-/** A `bkit tests jump` command, wherever it sits in a chained command. */
-const TESTS_JUMP_RE = /\b(?:bkit|cli\.[jt]s)["']?\s+tests\s+jump\b/;
+/** The words after the program that are not options. */
+function operandsOf(words) {
+  return words.slice(1).filter((w) => !w.startsWith("-"));
+}
 
-const ASK_PATTERNS = [
-  { re: /\bsudo\b/, what: "sudo" },
-  { re: /\bbrew\s+install\b/, what: "brew install" },
-  { re: /\b(pnpm|npm|bun)\s+publish\b/, what: "package publish" },
-  { re: /\bgh\s+repo\s+delete\b/, what: "gh repo delete" },
-  { re: /\bgh\s+pr\s+close\b/, what: "gh pr close" },
-  { re: /\bgh\s+release\s+delete\b/, what: "gh release delete" },
-  { re: TESTS_JUMP_RE, what: "bkit tests jump" },
-];
+/** Whether a parsed command runs `bkit tests jump` (also `pnpm bkit ...`, `node dist/cli.js ...`). */
+function isTestsJump(words) {
+  return words.some(
+    (w, i) =>
+      (programName(w) === "bkit" || /^cli\.[jt]s$/.test(programName(w))) &&
+      words[i + 1] === "tests" &&
+      words[i + 2] === "jump",
+  );
+}
+
+/** Whether any parsed command runs `bkit tests jump`. */
+function testsJump(cmds) {
+  return cmds.some((c) => isTestsJump(c.words));
+}
+
+/** Ask tier, non-git: what makes one parsed command destructive or privileged, else null. */
+function shellAskRule(c) {
+  for (const priv of ["sudo", "doas"]) {
+    if (c.program === priv || c.prefix.some((w) => programName(w) === priv)) return priv;
+  }
+  const ops = operandsOf(c.words);
+  if (c.program === "brew" && ops[0] === "install") return "brew install";
+  if (["pnpm", "npm", "bun"].includes(c.program) && ops[0] === "publish") return "package publish";
+  if (c.program === "gh") {
+    const sub = `${ops[0] || ""} ${ops[1] || ""}`;
+    if (sub === "repo delete" || sub === "pr close" || sub === "release delete") return `gh ${sub}`;
+  }
+  return isTestsJump(c.words) ? "bkit tests jump" : null;
+}
 
 /** Whether this hook is the Codex one, which cannot prompt: its `.codex/hooks/` copy. */
 const CODEX_HOOK_RE = /[\\/]\.codex[\\/]hooks[\\/]|[\\/]codex\.cjs$/;
@@ -190,15 +87,14 @@ const HOOK_INVOKED =
     : "";
 const IS_CODEX_HOOK = CODEX_HOOK_RE.test(HOOK_FILE) || CODEX_HOOK_RE.test(HOOK_INVOKED);
 
-/** What makes a command ask-tier, else null. */
-function askRule(c) {
-  for (const line of commandLines(c)) {
-    const g = parseGit(commandWords(line));
-    const what = g && gitAskRule(g);
+/** What makes one of the parsed commands ask-tier, else null. */
+function askRule(cmds) {
+  for (const c of cmds) {
+    const g = parseGit(c.words);
+    const what = (g && gitAskRule(g)) || shellAskRule(c);
     if (what) return what;
   }
-  const hit = ASK_PATTERNS.find((p) => p.re.test(c));
-  return hit ? hit.what : null;
+  return null;
 }
 
 /**
@@ -241,16 +137,17 @@ const COPY_HEADS = new Set(["cp", "install", "rsync", "scp"]);
 const PATTERN_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "ag"]);
 
 /**
- * The first secret file a command reads through the shell (`cat .bkit/.env`,
- * `grep KEY .env.local`, `source .env`, `curl -d @.env …`), else null. Not reads: a
- * redirect target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`),
- * and anything `NON_READING_HEADS` runs.
+ * The first secret file the parsed commands read (`cat .bkit/.env`, `grep KEY .env.local`,
+ * `source .env`, `curl -d @.env ...`, `wc -l < .env`), else null. Not reads: a redirect
+ * target (`> .env`), a copy destination, a grep pattern (`grep -rn ".env" docs`), and
+ * anything `NON_READING_HEADS` runs.
  */
-function shellSecretRead(c) {
-  for (const line of commandLines(c)) {
-    const words = commandWords(line);
-    const head = (words[0] || "").replace(/^.*\//, "");
+function shellSecretRead(cmds) {
+  for (const c of cmds) {
+    const words = c.words;
+    const head = c.program;
     if (!head || NON_READING_HEADS.has(head)) continue;
+    if (c.stdinFile && secretFileKind(c.stdinFile)) return c.stdinFile;
     const positionals = words.flatMap((w, i) => (i > 0 && !w.startsWith("-") ? [i] : []));
     const skip = new Set();
     if (COPY_HEADS.has(head) && positionals.length > 1) skip.add(positionals.at(-1));
@@ -262,13 +159,7 @@ function shellSecretRead(c) {
     }
     for (let i = 1; i < words.length; i++) {
       if (skip.has(i)) continue;
-      const w = words[i];
-      if (/^(?:\d*|&)>[>|]?$/.test(w)) {
-        i++;
-        continue;
-      }
-      if (/^(?:\d*|&)>/.test(w)) continue;
-      for (const part of w.replace(/^</, "").split(/[=:@,]/)) {
+      for (const part of words[i].split(/[=:@,]/)) {
         if (secretFileKind(part)) return part;
       }
     }
@@ -291,20 +182,21 @@ function shellSecretRead(c) {
  */
 function classifyShell(c, dirs, ctx) {
   if (!c) return null;
-  const denied = denyRule(c);
+  const cmds = shellCommands(c);
+  const denied = denyRule(cmds);
   if (denied) return { tier: "deny", ...denied };
-  const what = askRule(c);
-  if (IS_CODEX_HOOK && (what === "bkit tests jump" || TESTS_JUMP_RE.test(c))) {
+  if (IS_CODEX_HOOK && testsJump(cmds)) {
     return {
       tier: "deny",
       what: "bkit tests jump",
       fix: "Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.",
     };
   }
+  const what = askRule(cmds);
   if (what) return { tier: "ask", what };
-  const secret = shellSecretRead(c);
+  const secret = shellSecretRead(cmds);
   if (secret) return { tier: "secret", path: secret };
-  const offList = usesFetch(c) && !curlWgetHostAllowed(c, dirs);
+  const offList = usesFetch(cmds) && !curlWgetHostAllowed(c, dirs);
   const edits = shellEditTargets(c, ctx);
   const found = hasEditEvidence(edits);
   if (offList) return found ? { tier: "fetch", edits } : { tier: "fetch" };

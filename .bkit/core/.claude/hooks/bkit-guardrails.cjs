@@ -1,26 +1,29 @@
 #!/usr/bin/env node
-// bkit-guardrails.cjs — bkit shell advisories (Claude Code).
+// bkit-guardrails.cjs — bkit shell deny tier and advisories (Claude Code).
 //
 // Twin of `.cursor/hooks/bkit-guardrails.cjs` and `.codex/hooks/bkit-guardrails.cjs`: bkit
-// generates the same shell detection into all three at install (bkit's
-// `core/hooks/guardrails-shell.js`). Wired from `.claude/settings.json` → PreToolUse,
-// matcher `Bash`.
+// generates the same shell parser and deny tier into all of them at install (bkit's
+// `core/hooks/guardrails-shell.js` and `guardrails-deny.js`). Wired from
+// `.claude/settings.json` → PreToolUse, matcher `Bash`.
 //
-// SCOPE — the two shell checks a command-PREFIX permission table cannot express:
+// SCOPE — the shell checks a command-PREFIX permission table cannot express:
 //
-//   1. URL HOSTS. `Bash(curl:*)` matches a prefix, never a URL host. This hook flags a
+//   1. DENY TIER. A git force push, `rm -rf` of a filesystem root and `chmod -R 777 /`
+//      are refused, read through wrappers (`env -u FOO`, `timeout 30`) that a prefix
+//      pattern cannot see past, and not refused when they only appear inside quotes.
+//   2. URL HOSTS. `Bash(curl:*)` matches a prefix, never a URL host. This hook flags a
 //      curl / wget whose URL host is off the network allowlist.
-//   2. SHELL-AS-EDIT-CHANNEL. `sed -i` and redirection into a source file bypass every
+//   3. SHELL-AS-EDIT-CHANNEL. `sed -i` and redirection into a source file bypass every
 //      pre-edit gate (GateGuard only sees Edit/Write/MultiEdit). Detection parses the
 //      target path.
 //
-// ADVISORY ONLY — this hook NEVER denies and NEVER asks; it emits `additionalContext`.
-// `deny` rows live in settings.json and are evaluated BEFORE any hook. The permission
-// table and the auto-mode classifier are what stop commands.
+// REFUSES THE DENY TIER ONLY — it prints `permissionDecision: "deny"` and exits 0 (the
+// `.claude/settings.json` registration ends in `|| true`, which swallows a non-zero exit).
+// It NEVER asks: the URL-host and edit checks are `additionalContext` advice.
 //
 // CONTRACT — do not regress:
 //   - FAIL OPEN: one top-level catch swallows every error and exits 0.
-//   - NEVER BLOCKS: no `permissionDecision` is ever emitted from the managed block.
+//   - DENY IS REAL: the deny tier returns `{ verdict: "deny" }` and the driver blocks.
 //   - PURE ENGINE: everything between the markers is a decision engine only — no stdin
 //     read, no stdout write. Add your own gates in the driver below the block.
 //
@@ -41,46 +44,42 @@ const path = require("node:path");
 
 // {{BKIT_PART guardrails-shell.js}}
 
+// {{BKIT_PART guardrails-deny.js}}
+
 const SHELL_TOOL_NAMES = new Set(["Bash", "bash"]);
 
 /**
- * Entry point — pure. Returns `{ context }` when bkit has something to say about this
- * call, or `null` when it does not. Never returns a blocking decision: see the header.
+ * Entry point — pure. Returns `{ verdict: "deny", reason }` for a command the deny tier
+ * refuses, `{ context }` when bkit has advice about this call, or `null` when it does not.
  */
 function bkitGuardrails(payload) {
   if (!payload || typeof payload !== "object") return null;
   if (!SHELL_TOOL_NAMES.has(payload.tool_name)) return null;
   const input = payload.tool_input || {};
-  const cmd = Array.isArray(input.command) ? input.command.join(" ") : input.command;
+  const cmd = shellCommandText(input.command);
   if (typeof cmd !== "string") return null;
   const c = cmd.trim();
   if (!c) return null;
 
-  const notes = [];
-  if (usesFetch(c) && !curlWgetHostAllowed(c, hookDirs(payload))) {
-    notes.push(
-      "bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist " +
-        "(.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). The command is allowed.\n" +
-        "Confirm the destination is intended before you rely on the result.\n" +
-        "If the host is a standing dependency, add it to allowed-domains.",
-    );
+  const cmds = shellCommands(c);
+  const denied = denyRule(cmds);
+  if (denied) {
+    const refusal = composeAdvice({ tier: "deny", ...denied }, "claude", ADVICE_BUDGETS.claude);
+    return { verdict: "deny", reason: refusal.text };
   }
-  const edits = shellEditTargets(c, hookContext(payload));
-  if (hasEditEvidence(edits)) {
-    notes.push(
-      shellEditContext(
-        shellEditAdvisory(edits),
-        edits,
-        hookContext(payload),
-        payload.session_id,
-        payload.agent_id,
-        ADVICE_BUDGETS.claude,
-        notes.join("\n\n"),
-      ),
-    );
-  }
-
-  return notes.length > 0 ? { context: notes.join("\n\n") } : null;
+  const ctx = hookContext(payload);
+  const fetch = usesFetch(cmds) && !curlWgetHostAllowed(c, hookDirs(payload));
+  const edits = shellEditTargets(c, ctx);
+  const found = hasEditEvidence(edits);
+  if (!fetch && !found) return null;
+  const advice = composeAdvice(
+    { tier: fetch ? "fetch" : "edit", edits: found ? edits : undefined },
+    "claude",
+    ADVICE_BUDGETS.claude,
+    { command: c, ctx, session: payload.session_id, agent: payload.agent_id },
+  );
+  acknowledgeSelected(advice.selected);
+  return { context: advice.text };
 }
 
 // bkit:end
@@ -100,7 +99,15 @@ try {
   if (raw.trim()) {
     const result = bkitGuardrails(JSON.parse(raw));
     if (result) {
-      emit({ hookEventName: "PreToolUse", additionalContext: result.context });
+      emit(
+        result.verdict === "deny"
+          ? {
+              hookEventName: "PreToolUse",
+              permissionDecision: "deny",
+              permissionDecisionReason: result.reason,
+            }
+          : { hookEventName: "PreToolUse", additionalContext: result.context },
+      );
     }
   }
 } catch {

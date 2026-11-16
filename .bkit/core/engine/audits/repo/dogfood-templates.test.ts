@@ -407,8 +407,8 @@ const ADOPTED: Record<string, Entry> = {
       {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
-        fill: '"files": [\n        ".opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
-        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
+        fill: '"files": [\n        ".opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-guardrails.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
+        with: '"files": [\n        ".bkit/core/.opencode/plugin/bkit-gateguard.js",\n        ".opencode/plugin/bkit-gateguard.js",\n        ".bkit/core/.opencode/plugin/bkit-readguard.js",\n        ".opencode/plugin/bkit-readguard.js",\n        ".bkit/core/.opencode/plugin/bkit-guardrails.js",\n        ".opencode/plugin/bkit-guardrails.js",\n        ".bkit/core/.opencode/plugin/bkit-rules.js",\n        ".opencode/plugin/bkit-rules.js"\n      ]',
       },
       {
         kind: "bkit-only",
@@ -420,7 +420,7 @@ const ADOPTED: Record<string, Entry> = {
         kind: "bkit-only",
         what: "the core hook sources share their mirrors' opt-outs",
         fill: '      "files": [\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
-        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-read.js",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
+        with: '      "files": [\n        ".bkit/core/.claude/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.cursor/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.codex/hooks/bkit-guardrails.cjs",\n        ".bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs",\n        ".bkit/core/hooks/guardrails-deny.js",\n        ".bkit/core/hooks/guardrails-read.js",\n        ".bkit/core/hooks/guardrails-shell.js",\n        ".bkit/core/hooks/guardrails-tiers.js",\n        "**/.claude/hooks/bkit-guardrails.cjs",\n',
       },
       {
         kind: "bkit-only",

@@ -303,6 +303,7 @@ export function syncRules(store: string, masters: RuleMasters): string {
 /** Hook files whose messages `## Hook Text` copies. */
 export const HOOK_SOURCES = [
   ".bkit/core/hooks/gateguard-engine.js",
+  ".bkit/core/hooks/guardrails-deny.js",
   ".bkit/core/hooks/guardrails-read.js",
   ".bkit/core/hooks/guardrails-shell.js",
   ".bkit/core/hooks/guardrails-tiers.js",

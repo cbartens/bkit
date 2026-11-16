@@ -35,6 +35,8 @@ const path = require("node:path");
 
 // {{BKIT_PART guardrails-shell.js}}
 
+// {{BKIT_PART guardrails-deny.js}}
+
 // {{BKIT_PART guardrails-tiers.js}}
 
 // {{BKIT_PART guardrails-read.js}}
@@ -68,50 +70,30 @@ function decideShell(cmd, dirs, ctx, session) {
   const c = cmd.trim();
   const v = classifyShell(c, dirs, ctx);
   if (!v) return allow();
+  const advice = composeAdvice(v, "cursor", ADVICE_BUDGETS.cursor, { command: c, ctx, session });
+  acknowledgeSelected(advice.selected);
   switch (v.tier) {
     case "deny":
-      return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, v.fix);
+      return deny(`Blocked: ${v.what} is denied by bkit Cursor guardrails.`, advice.text);
     case "ask":
       return ask(
         `bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).`,
-        `Command requires confirmation: ${c}`,
+        advice.text,
       );
     case "secret":
       return ask(
         "bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.",
-        `Reading ${v.path} through the shell may expose secrets.\nPrefer direnv or documented non-secret examples.\nCommand: ${c}`,
+        advice.text,
       );
-    case "fetch": {
-      const fetchLine = `Command requires confirmation: ${c}`;
+    case "fetch":
       return ask(
         "bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.",
-        v.edits
-          ? `${fetchLine}\n\n${shellEditContext(
-              shellEditAdvisory(v.edits),
-              v.edits,
-              ctx,
-              session,
-              undefined,
-              ADVICE_BUDGETS.cursor,
-              fetchLine,
-            )}`
-          : fetchLine,
+        advice.text,
       );
-    }
     default:
       // Shell-as-edit-channel: ADVISORY, never a block — allow plus an `agent_message`
       // naming the edited paths.
-      return {
-        permission: "allow",
-        agent_message: shellEditContext(
-          shellEditAdvisory(v.edits),
-          v.edits,
-          ctx,
-          session,
-          undefined,
-          ADVICE_BUDGETS.cursor,
-        ),
-      };
+      return { permission: "allow", agent_message: advice.text };
   }
 }
 

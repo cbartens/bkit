@@ -158,6 +158,11 @@ describe("antigravity guardrails.cjs — Antigravity contract", () => {
     });
   });
 
+  it("Antigravity does not hold node dist/cli.js --version", () => {
+    expect(run("node dist/cli.js --version")).toEqual({ decision: "allow" });
+    expect(run("python3 tools/gen.py")).toEqual({ decision: "allow" });
+  });
+
   it("allows ordinary commands and other tools", () => {
     expect(run("pnpm test")).toEqual({ decision: "allow" });
     expect(run("rm -rf /", newConversation(), "view_file")).toEqual({ decision: "allow" });

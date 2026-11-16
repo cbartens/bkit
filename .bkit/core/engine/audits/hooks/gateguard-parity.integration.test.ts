@@ -946,8 +946,10 @@ describe("codex gateguard — complete patches and shell", () => {
     expect(warnedFiles(tmp, shellSession)).toEqual([path.resolve(root, "src/from-shell.ts")]);
     expect(codexPatch(shellSession, ["src/from-shell.ts"], tmp)).toBe("");
 
-    // Uncertain script effects stay explicit.
-    const unknown = codexBash(newSession(), "python3 gen.py", tmp);
+    // A script run is not a known writer: silent. A known writer whose target is held in a
+    // variable stays explicit.
+    expect(codexBash(newSession(), "python3 gen.py", tmp).context).toBe("");
+    const unknown = codexBash(newSession(), 'sed -i s/a/b/ "$FILE"', tmp);
     expect(unknown.context).toContain("cannot be determined");
 
     // Interactive input is outside the pre-tool coverage: not registered, not advised.
@@ -1258,8 +1260,10 @@ describe("gateguard parity — rendered shell advice", () => {
       });
       expect(afterEdit.advisory, host).not.toContain("First edit to");
 
-      // Uncertain script effects stay explicit and keep the authoring pointer.
-      const unknown = runShellHost(host, "python3 gen.py", newSession(), ws, env);
+      // A script run is not a known writer: silent. A known writer whose target is held in
+      // a variable stays explicit and keeps the authoring pointer.
+      expect(runShellHost(host, "python3 gen.py", newSession(), ws, env).text, host).toBe("");
+      const unknown = runShellHost(host, 'sed -i s/a/b/ "$FILE"', newSession(), ws, env);
       expect(unknown.text, host).toContain("cannot be determined");
       expect(unknown.text, host).toContain(".bkit/authoring.md");
       expect(unknown.text, host).not.toContain("First edit to");

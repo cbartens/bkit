@@ -389,8 +389,8 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
 // ---------------------------------------------------------------------------
 /**
  * sha256 of the driver (everything outside the managed block) of hook files a bkit
- * release shipped with a host contract the host does not accept, keyed by consumer path.
- * Register: docs/migrations.md.
+ * release shipped with an output the current managed block cannot work through, keyed by
+ * consumer path. Register: docs/migrations.md.
  */
 export const RETIRED_DRIVER_HASHES = {
     // 5.1.0: Claude-shaped `hookSpecificOutput`; Antigravity reads `{ decision, reason }`.
@@ -400,6 +400,24 @@ export const RETIRED_DRIVER_HASHES = {
     ".agents/plugins/bkit/hooks/bkit-guardrails.cjs": [
         "8e5d75f7e1a4527889dafa6a250ae370e2acf1b5fc7d58929dfc759489746e14",
     ],
+    // 5.0.0-6.1.1: emits `additionalContext` only, so the block's `{ verdict: "deny" }` is dropped.
+    ".claude/hooks/bkit-guardrails.cjs": [
+        "dae41b58e61b055c816ef50f35a763949ec99d1c532dccab980c88d21f4c84f3",
+    ],
+};
+const ANTIGRAVITY_DRIVER_FIX = {
+    isStale: (driver) => driver.includes("hookSpecificOutput"),
+    fix: 'writes Claude-shaped `hookSpecificOutput`, which Antigravity ignores — the hook never takes effect. Emit the managed block\'s result as Antigravity\'s `{ "decision": "allow" | "deny" | "ask", "reason": "…" }` (only a deny\'s reason reaches the model), or delete the file and re-run `bkit install --antigravity` to get bkit\'s driver.',
+};
+/** Per retired-driver path: what marks an edited driver as stale, and the printed fix. */
+const EDITED_DRIVER_FIXES = {
+    ".agents/plugins/bkit/hooks/bkit-gateguard.cjs": ANTIGRAVITY_DRIVER_FIX,
+    ".agents/plugins/bkit/hooks/bkit-guardrails.cjs": ANTIGRAVITY_DRIVER_FIX,
+    ".claude/hooks/bkit-guardrails.cjs": {
+        // An object key, not the 5.0.0-6.1.1 header's "no `permissionDecision` is ever emitted".
+        isStale: (driver) => !/permissionDecision["']?\s*:/.test(driver),
+        fix: 'never emits a `permissionDecision`, so Claude Code runs every command the managed block refuses. When `bkitGuardrails()` returns `{ verdict: "deny", reason }`, emit `{ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: result.reason } }`, or delete the file and re-run `bkit install` to get bkit\'s driver.',
+    },
 };
 /** The text outside a file's single managed block, or null without exactly one block. */
 export function driverText(content, markerStyle) {
@@ -424,8 +442,9 @@ function hasRetiredDriver(dstPath, content, markerStyle) {
         return false;
     if (RETIRED_DRIVER_HASHES[key].includes(sha256(driver)))
         return true;
-    if (driver.includes("hookSpecificOutput")) {
-        console.warn(`[bkit] ${dstPath}: your driver below \`// bkit:end\` writes Claude-shaped \`hookSpecificOutput\`, which Antigravity ignores — the hook never takes effect. Emit the managed block's result as Antigravity's \`{ "decision": "allow" | "deny" | "ask", "reason": "…" }\` (only a deny's reason reaches the model), or delete the file and re-run \`bkit install --antigravity\` to get bkit's driver.`);
+    const edited = EDITED_DRIVER_FIXES[key];
+    if (edited?.isStale(driver)) {
+        console.warn(`[bkit] ${dstPath}: your driver below \`// bkit:end\` ${edited.fix}`);
     }
     return false;
 }

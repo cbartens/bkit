@@ -348,7 +348,7 @@ flowchart LR
     n_bkit_core_engine_checks["checks<br/>256 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1889 symbols · 55 files"]
-    n_bkit_core_engine_install["install<br/>362 symbols · 21 files"]
+    n_bkit_core_engine_install["install<br/>364 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>156 symbols · 13 files<br/>1 open finding"]

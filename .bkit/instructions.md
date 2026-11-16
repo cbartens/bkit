@@ -9059,7 +9059,7 @@ Pre-edit gates see only the edit and write tools, so a shell edit gets past ever
 - hook: Guardrails
 - fires: `git push --force` / `-f` / `+refspec` (deny tier)
 - hosts: All five
-- source: `.bkit/core/hooks/guardrails-tiers.js` `gitDenyRule`
+- source: `.bkit/core/hooks/guardrails-deny.js` `gitDenyRule`
 - rule: force-push (text line 1)
 
 ```text
@@ -9071,7 +9071,7 @@ NEVER force-push (--force, -f or a +refspec). Use a normal push, or --force-with
 - hook: Guardrails
 - fires: `rm -rf` on `/`, `~`, `$HOME` (deny tier)
 - hosts: All five
-- source: `.bkit/core/hooks/guardrails-tiers.js` `denyRule`
+- source: `.bkit/core/hooks/guardrails-deny.js` `denyRule`
 
 ```text
 NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory.
@@ -9082,51 +9082,85 @@ NEVER run rm -rf against /, ~, or $HOME. Narrow the path to the target directory
 - hook: Guardrails
 - fires: `chmod -R 777 /` (deny tier)
 - hosts: All five
-- source: `.bkit/core/hooks/guardrails-tiers.js` `denyRule`
+- source: `.bkit/core/hooks/guardrails-deny.js` `denyRule`
 
 ```text
 NEVER make the filesystem root world-writable.
 ```
 
+### guardrails-deny
+
+- hook: Guardrails
+- fires: Deny-tier shell command
+- hosts: Cursor, Codex, Antigravity
+- source: `.bkit/core/hooks/gateguard-engine.js` `composeAdvice`
+
+```text
+Blocked by bkit ${label} guardrails: ${v.what}. ${v.fix}
+```
+
+### guardrails-ask
+
+- hook: Guardrails
+- fires: Ask-tier shell command (destructive or privileged); an advisory on Codex, which has no ask
+- hosts: Cursor, Codex, Antigravity
+- source: `.bkit/core/hooks/gateguard-engine.js` `composeAdvice`
+
+```text
+bkit guardrails: this is a destructive or privileged command (${v.what}). It is on the PROHIBITED list in every bkit workflow.${noPrompt}
+If the user did not ask for this exact command, NEVER run it.
+`git clean` and `git checkout -- .` destroy untracked files and uncommitted work, which no reflog can recover.
+Command: ${shown}
+```
+
+### guardrails-secret-shell
+
+- hook: Guardrails
+- fires: Shell read of an env / secrets / private-key file (ask tier); an advisory on Codex
+- hosts: Cursor, Codex, Antigravity
+- source: `.bkit/core/hooks/gateguard-engine.js` `composeAdvice`
+
+```text
+bkit guardrails: this command reads ${v.path}, an env, secrets or private-key file, which may expose secrets.${noPrompt}
+NEVER print secret values.
+Prefer direnv or documented non-secret examples.
+Command: ${shown}
+```
+
 ### guardrails-fetch
 
 - hook: Guardrails
-- fires: `curl` / `wget` to a host off `.bkit/allowlist.json`
-- hosts: Claude
-- source: `.bkit/core/.claude/hooks/bkit-guardrails.cjs` `bkitGuardrails`
+- fires: `curl` / `wget` to a host off `.bkit/allowlist.json`; ask tier on Cursor, held once on Antigravity, advisory on Claude and Codex
+- hosts: Claude, Cursor, Codex, Antigravity
+- source: `.bkit/core/hooks/gateguard-engine.js` `composeAdvice`
 
 ```text
-bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts). The command is allowed.
+bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts).
 Confirm the destination is intended before you rely on the result.
 If the host is a standing dependency, add it to allowed-domains.
+Command: ${shown}
 ```
 
 ### guardrails-cursor-secret-shell
 
 - hook: Guardrails
-- fires: Shell read of an env / secrets / private-key file (ask tier)
+- fires: Shell read of an env / secrets / private-key file (ask tier), the line the human sees
 - hosts: Cursor
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
 bkit Cursor guardrails: confirm a shell read of an env, secrets or private-key file.
-
-Reading ${v.path} through the shell may expose secrets.
-Prefer direnv or documented non-secret examples.
-Command: ${c}
 ```
 
 ### guardrails-cursor-fetch
 
 - hook: Guardrails
-- fires: `curl` / `wget` off the network allowlist (ask tier)
+- fires: `curl` / `wget` off the network allowlist (ask tier), the line the human sees
 - hosts: Cursor
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
 bkit Cursor guardrails: confirm an outbound curl or wget to a host that is not on the network allowlist.
-
-Command requires confirmation: ${c}
 ```
 
 ### guardrails-cursor-env-read
@@ -9146,7 +9180,7 @@ Prefer direnv or documented non-secret examples.
 ### guardrails-cursor-deny
 
 - hook: Guardrails
-- fires: Deny-tier shell command; the agent reads the tier `fix`
+- fires: Deny-tier shell command, the line the human sees
 - hosts: Cursor
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
@@ -9157,14 +9191,12 @@ Blocked: ${v.what} is denied by bkit Cursor guardrails.
 ### guardrails-cursor-ask
 
 - hook: Guardrails
-- fires: Ask-tier shell command (destructive or privileged)
+- fires: Ask-tier shell command (destructive or privileged), the line the human sees
 - hosts: Cursor
 - source: `.bkit/core/.cursor/hooks/bkit-guardrails.cjs` `decideShell`
 
 ```text
 bkit Cursor guardrails: confirm this destructive or privileged shell command (${v.what}).
-
-Command requires confirmation: ${c}
 ```
 
 ### guardrails-cursor-key-read
@@ -9181,17 +9213,6 @@ NEVER read ${v.path}.
 Ask the user to supply what you need without putting the key in this conversation.
 ```
 
-### guardrails-codex-deny
-
-- hook: Guardrails
-- fires: Deny-tier shell command
-- hosts: Codex
-- source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
-
-```text
-Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}
-```
-
 ### guardrails-codex-tests-jump
 
 - hook: Guardrails
@@ -9201,48 +9222,6 @@ Blocked by bkit Codex guardrails: ${v.what}. ${v.fix}
 
 ```text
 Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.
-```
-
-### guardrails-codex-ask
-
-- hook: Guardrails
-- fires: Ask-tier shell command, as an advisory (Codex has no ask)
-- hosts: Codex
-- source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
-
-```text
-bkit Codex guardrails: this destructive or privileged command (${v.what}) ran without confirmation, because Codex cannot prompt for one. It is on the PROHIBITED list in every bkit workflow.
-Tell the user that you ran it.
-If the user did not ask for this exact command, NEVER run it again.
-`git clean` and `git checkout -- .` destroy untracked files and uncommitted work, which no reflog can recover.
-Command: ${c}
-```
-
-### guardrails-codex-secret-shell
-
-- hook: Guardrails
-- fires: Shell read of an env / secrets / private-key file, as an advisory
-- hosts: Codex
-- source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
-
-```text
-bkit Codex guardrails: this command read ${v.path}, an env, secrets or private-key file, without confirmation, because Codex cannot prompt for one.
-NEVER print secret values.
-Prefer direnv or documented non-secret examples.
-Command: ${c}
-```
-
-### guardrails-codex-fetch
-
-- hook: Guardrails
-- fires: `curl` / `wget` off the network allowlist, as an advisory
-- hosts: Codex
-- source: `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`
-
-```text
-bkit Codex guardrails: outbound fetch to a host that is not on the network allowlist.
-Confirm the destination is intended before you rely on the result.
-Command: ${c}
 ```
 
 ### guardrails-antigravity-key-read
@@ -9267,52 +9246,6 @@ Ask the user to supply what you need without putting the key in this conversatio
 
 ```text
 bkit Antigravity guardrails: reading ${v.path} may expose secrets. Prefer direnv or documented non-secret examples.
-```
-
-### guardrails-antigravity-deny
-
-- hook: Guardrails
-- fires: Deny-tier shell command
-- hosts: Antigravity
-- source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
-
-```text
-Blocked by bkit Antigravity guardrails: ${tier.what}. ${tier.fix}
-```
-
-### guardrails-antigravity-ask
-
-- hook: Guardrails
-- fires: Ask-tier shell command (destructive or privileged)
-- hosts: Antigravity
-- source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
-
-```text
-bkit Antigravity guardrails: this is a destructive or privileged command (${tier.what}). It is on the PROHIBITED list in every bkit workflow. If the user did not ask for this exact command, NEVER run it. The commands git clean and git checkout -- . destroy untracked files and uncommitted work, which no reflog can recover. Command: ${cmd}
-```
-
-### guardrails-antigravity-secret-shell
-
-- hook: Guardrails
-- fires: Shell read of an env / secrets / private-key file (ask tier)
-- hosts: Antigravity
-- source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
-
-```text
-bkit Antigravity guardrails: this command reads ${tier.path}, an env, secrets or private-key file, which may expose secrets. Prefer direnv or documented non-secret examples. Command: ${cmd}
-```
-
-### guardrails-antigravity-fetch
-
-- hook: Guardrails
-- fires: `curl` / `wget` off the network allowlist, advisory once per call
-- hosts: Antigravity
-- source: `.bkit/core/.agents/plugins/bkit/hooks/bkit-guardrails.cjs` `bkitGuardrails`
-
-```text
-bkit Antigravity guardrails: outbound fetch to a host that is not on the network allowlist.
-Confirm the destination is intended before you rely on the result.
-Command: ${cmd}
 ```
 
 ## Permissions

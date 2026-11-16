@@ -455,22 +455,68 @@ function shellTargetBlocks(targets, ctx, sessionId, agentId) {
   return blocks;
 }
 
-// The shell `notice` plus the per-file checklists for the evidence's exact targets, inside
-// `budget`. Always advisory text (never a deny); acknowledges the delivered blocks. The
-// notice and `outside` (text the caller joins around the result) count against `budget`.
-function shellEditContext(notice, edits, ctx, sessionId, agentId, budget, outside = "") {
-  const sepSize = 2;
-  const fixedCost =
-    adviceSize(notice, budget.unit) +
-    sepSize +
-    (outside ? adviceSize(outside, budget.unit) + sepSize : 0);
-  const delivered = deliverAdvice(
-    shellTargetBlocks(edits.targets, ctx, sessionId, agentId),
-    budget,
-    true,
-    fixedCost,
-  );
-  return delivered ? `${notice}\n\n${delivered.context}` : notice;
+// The name each host's guardrails advice carries in its deny line.
+const ADVICE_HOST_LABELS = {
+  claude: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  antigravity: "Antigravity",
+  opencode: "OpenCode",
+};
+// The most characters of a command the advice echoes back.
+const ADVICE_COMMAND_CHARS = 300;
+
+// `command` cut to `ADVICE_COMMAND_CHARS` whole characters, marked when cut.
+function adviceCommand(command) {
+  const chars = Array.from(String(command || ""));
+  if (chars.length <= ADVICE_COMMAND_CHARS) return chars.join("");
+  return `${chars.slice(0, ADVICE_COMMAND_CHARS).join("")} [cut]`;
+}
+
+// The guardrails advice for one shell verdict (`classifyShell`): one text for every host
+// apart from the host name in the deny line and the Codex-only line that its ask and secret
+// tiers ran without a prompt. `budget` is the host's `ADVICE_BUDGETS` entry; `call` is
+// `{ command, ctx, session, agent, reserve }`, where `reserve` is the size of any text the
+// host adds after the advice. Returns `{ text, selected }`: `selected` are the per-file
+// blocks in the text, which the caller acknowledges (`acknowledgeSelected`) once its route
+// has delivered them.
+function composeAdvice(v, host, budget, call = {}) {
+  const label = ADVICE_HOST_LABELS[host] || host;
+  const shown = adviceCommand(call.command);
+  const noPrompt =
+    host === "codex"
+      ? "\nIt runs without confirmation, because Codex cannot prompt for one. Tell the user that you ran it."
+      : "";
+  switch (v.tier) {
+    case "deny":
+      return { text: `Blocked by bkit ${label} guardrails: ${v.what}. ${v.fix}`, selected: [] };
+    case "ask":
+      return {
+        text: `bkit guardrails: this is a destructive or privileged command (${v.what}). It is on the PROHIBITED list in every bkit workflow.${noPrompt}\nIf the user did not ask for this exact command, NEVER run it.\n\`git clean\` and \`git checkout -- .\` destroy untracked files and uncommitted work, which no reflog can recover.\nCommand: ${shown}`,
+        selected: [],
+      };
+    case "secret":
+      return {
+        text: `bkit guardrails: this command reads ${v.path}, an env, secrets or private-key file, which may expose secrets.${noPrompt}\nNEVER print secret values.\nPrefer direnv or documented non-secret examples.\nCommand: ${shown}`,
+        selected: [],
+      };
+    default:
+      break;
+  }
+  const fetchNote =
+    v.tier === "fetch"
+      ? `bkit guardrails: outbound fetch to a host that is not on this repo's network allowlist (.agents/context.md § allowed-domains, plus bkit's shipped tooling hosts).\nConfirm the destination is intended before you rely on the result.\nIf the host is a standing dependency, add it to allowed-domains.\nCommand: ${shown}`
+      : "";
+  const notice = v.edits ? shellEditAdvisory(v.edits) : "";
+  const fixed = [fetchNote, notice].filter(Boolean).join("\n\n");
+  const blocks = v.edits
+    ? shellTargetBlocks(v.edits.targets, call.ctx, call.session, call.agent)
+    : [];
+  if (blocks.length === 0) return { text: fixed, selected: [] };
+  const sep = "\n\n";
+  const fixedCost = adviceSize(fixed, budget.unit) + sep.length + (call.reserve || 0);
+  const { selected, context } = selectAdvice(blocks, budget, fixedCost);
+  return { text: `${fixed}${sep}${context}`, selected };
 }
 
 // Pure: takes the already-parsed hook payload, returns the advisory to emit or

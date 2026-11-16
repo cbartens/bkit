@@ -289,7 +289,7 @@ Phase 1 and Phase 3 findings are merged and deduplicated by `id`. Phase 3 wins o
 The gate covers the installed module set ({core, claude, cursor, codex, antigravity} plus OpenCode). Each module is detected by sentinel files: for a host, its `agents/` dir, and for antigravity, any of `.agents/plugins/bkit/{plugin.json,hooks.json,agents,skills,hooks}`, so a deleted plugin manifest is reported as a missing file, not an absent host. `bkit status` uses the same detection.
 
 - **antigravity gated:** `.agents/plugins/bkit/**` (plugin manifest, hooks, agents, skills) and the root `GEMINI.md`.
-- **OpenCode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
+- **OpenCode gated:** Drift in `.opencode/opencode.json` (the provider block + the recorded tracker's `mcp` entry + the permission sandbox) and in the `bkit-gateguard.js` / `bkit-guardrails.js` / `bkit-readguard.js` / `bkit-rules.js` plugins fails `check`.
   - Another tracker's `mcp` entry that the consumer edited, kept by a tracker switch, is not drift. `mcp-extra-server-linear--opencode-opencode-json` advises removing it.
   - Render inputs fall back to the installed provider (`package.json` `bkit.providers.opencode.default`, authoritative for `opencode-zen` / `opencode-go`; all installed providers are tracked in `bkit.providers.opencode.installed: string[]`) and the recorded tracker, so a clean install across providers checks green, with no false drift.
 - The remaining opt-in module (cloud) is not drift-gated.

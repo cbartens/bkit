@@ -351,6 +351,7 @@ describe("check-owned-hooks", () => {
       ]);
       expect(paths(["opencode"]).sort()).toEqual([
         ".opencode/plugin/bkit-gateguard.js",
+        ".opencode/plugin/bkit-guardrails.js",
         ".opencode/plugin/bkit-readguard.js",
         ".opencode/plugin/bkit-rules.js",
       ]);

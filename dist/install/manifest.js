@@ -371,6 +371,12 @@ export const OPENCODE_MANIFEST = [
         format: "markered-text",
         module: "opencode",
     },
+    // bkit-guardrails.js — same split as bkit-gateguard.js. Refuses the shell deny tier.
+    {
+        path: ".opencode/plugin/bkit-guardrails.js",
+        format: "markered-text",
+        module: "opencode",
+    },
     // bkit-rules.js — same split as bkit-gateguard.js. Delivers the rules-read advisory
     // on the session's first tool call (opencode has no session-start event).
     {

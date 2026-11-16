@@ -390,12 +390,21 @@ describe("gateguard hook — shell and notebook advice (shared identity)", () =>
     expect(again.context).toContain("three.md");
     expect(again.context).not.toContain("First edit to");
 
-    // Uncertain script effects stay explicit and read-only commands stay quiet.
+    // A script run is not a known writer: silent. A known writer whose target is held in a
+    // variable stays explicit, and read-only commands stay quiet.
+    expect(
+      runGuard({
+        session_id: newSession(),
+        tool_name: "Bash",
+        cwd: ws,
+        tool_input: { command: "python3 gen.py" },
+      }).raw.trim(),
+    ).toBe("");
     const unknown = runGuard({
       session_id: newSession(),
       tool_name: "Bash",
       cwd: ws,
-      tool_input: { command: "python3 gen.py" },
+      tool_input: { command: 'sed -i s/a/b/ "$FILE"' },
     });
     expect(unknown.context).toContain("cannot be determined");
     expect(unknown.context).toContain(".bkit/authoring.md");

@@ -10,6 +10,8 @@ import type { PreflightFinding } from "../../checks/before/index";
 import { runOpencodeModule, renderOpencodeJson, reconcileOpencodeJson } from "./opencode";
 import type { ModuleContext } from "./index";
 import { getBkitDocsRoot } from "../../shared/package-roots";
+import { OPENCODE_MANIFEST } from "../manifest";
+import { runUninstall } from "../../commands/install/uninstall";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -154,6 +156,40 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     );
     expect(pluginWrite).toBeDefined();
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "bkit-gateguard.js"))).toBe(true);
+  });
+
+  it("the OpenCode install writes, lists and removes bkit-guardrails.js", async () => {
+    const ws = makeWriteSet();
+    runOpencodeModule(makeOpencodeCtx({ ws }));
+
+    const rel = path.join(".opencode", "plugin", "bkit-guardrails.js");
+    expect(ws.writes.some((w) => w.path.endsWith(rel))).toBe(true);
+    const written = fs.readFileSync(path.join(tmpDir, rel), "utf-8");
+    // The deny part and the parser it reads are spliced in; no part line is left.
+    expect(written).toContain("function denyRule(");
+    expect(written).toContain("function shellCommands(");
+    expect(written).not.toContain("{{BKIT_PART");
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(JSON.parse(fs.readFileSync(jsonPath, "utf-8")).plugin).toContain(
+      "./plugin/bkit-guardrails.js",
+    );
+
+    expect(OPENCODE_MANIFEST).toContainEqual({
+      path: ".opencode/plugin/bkit-guardrails.js",
+      format: "markered-text",
+      module: "opencode",
+    });
+
+    await runUninstall(["opencode"], {
+      cwd: tmpDir,
+      dryRun: false,
+      force: false,
+      nuke: false,
+      yes: false,
+      logPrefix: "[bkit-uninstall]",
+    });
+    expect(fs.existsSync(path.join(tmpDir, rel))).toBe(false);
+    expect(fs.existsSync(jsonPath)).toBe(false);
   });
 
   // Install is additive: a second provider install adds its block without

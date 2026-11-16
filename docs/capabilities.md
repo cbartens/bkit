@@ -165,7 +165,7 @@ flowchart LR
     n_bkit_core_engine_checks["checks<br/>256 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1889 symbols · 55 files"]
-    n_bkit_core_engine_install["install<br/>362 symbols · 21 files"]
+    n_bkit_core_engine_install["install<br/>364 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>156 symbols · 13 files<br/>1 open finding"]
@@ -263,7 +263,7 @@ flowchart LR
     n_bkit_core_engine_install_manifest[".bkit/core/engine/install/manifest<br/>34 symbols · 1 files"]
     n_bkit_core_engine_install_modules_index[".bkit/core/engine/install/modules/index<br/>10 symbols · 1 files"]
     n_bkit_core_engine_install_version_file[".bkit/core/engine/install/version-file<br/>17 symbols · 1 files"]
-    n_bkit_core_engine_install_write[".bkit/core/engine/install/write<br/>28 symbols · 1 files"]
+    n_bkit_core_engine_install_write[".bkit/core/engine/install/write<br/>30 symbols · 1 files"]
     n_bkit_core_engine_shared_package_roots[".bkit/core/engine/shared/package-roots<br/>14 symbols · 1 files"]
   end
   subgraph gncustom_telemetry["Telemetry"]
