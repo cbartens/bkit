@@ -14,7 +14,7 @@
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { detectBkitNotOnPath, detectMalformedPackageJson, detectNoPackageJson, detectNotGitRepo, detectInvalidAskSettings, detectBuildPublish, detectInvalidTaskCaps, detectTaskCapFormStale, detectUnmarkedPlans, } from "./repo.js";
-import { MARKERED_TEXT_DRIFT_PATHS, detectGitignoreBlockDuplicates, detectPlaywrightReporterHostile, detectTier2JsonDrift, detectTier2TextDrift, } from "./files.js";
+import { MARKERED_TEXT_DRIFT_PATHS, detectGitignoreBlockDuplicates, detectPlaywrightReporterHostile, detectOpencodeSubstringFetchGrants, detectCloudBootstrapFingerprintMissing, detectTier2JsonDrift, detectTier2TextDrift, } from "./files.js";
 import { detectBkitVersionMajorDowngrade, detectBkitVersionPinStale } from "./version.js";
 import { detectContextFetchContextMissing, detectContextFetchMissing, detectContextFetchProvisionMissing, detectContextFetchSourceNotEnabled, detectContextFetchUnbounded, } from "./context-fetch.js";
 import { detectExtraMcpServers, detectMissingMcpServers } from "./mcp.js";
@@ -105,6 +105,12 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
     if (playwrightReporterHostile)
         advisories.push(playwrightReporterHostile);
+    const opencodeSubstringGrants = detectOpencodeSubstringFetchGrants(cwd);
+    if (opencodeSubstringGrants)
+        advisories.push(opencodeSubstringGrants);
+    const cloudBootstrapFingerprint = detectCloudBootstrapFingerprintMissing(cwd);
+    if (cloudBootstrapFingerprint)
+        advisories.push(cloudBootstrapFingerprint);
     const contextFetch = detectContextFetchMissing(cwd);
     if (contextFetch)
         advisories.push(contextFetch);

@@ -6,7 +6,8 @@
 # records RUNTIME_GITHUBCLI loudly (always, not just on failure); emits a loud
 # NON-BLOCKING dual-lane signal when neither gh nor the GitHub MCP server
 # (both keyed off BKIT_GH_TOKEN) can authenticate — never a hook hard-stop
-# (SessionStart hooks cannot block the session).
+# (SessionStart hooks cannot block the session); compares
+# BKIT_CLOUD_ALLOWLIST_FINGERPRINT with .bkit/allowlist.json (the fingerprint block).
 #
 # Run: bats tests/shell/bkit-cloud-bootstrap-preflight.bats
 # Requires: bats >= 1.0
@@ -60,10 +61,18 @@ EOF
   for tool in bash sh cat node jq git; do
     ln -s "$(command -v "$tool")" "$NO_GH_BIN/$tool"
   done
+
+  # A tools-only PATH with gh (the fake) but NO jq, built the same way, so the
+  # jq-absent case holds even on a host with /usr/bin/jq.
+  NO_JQ_BIN="$(mktemp -d)"
+  ln -s "$FAKE_BIN/gh" "$NO_JQ_BIN/gh"
+  for tool in bash sh cat node git; do
+    ln -s "$(command -v "$tool")" "$NO_JQ_BIN/$tool"
+  done
 }
 
 teardown() {
-  rm -rf "$FAKE_BIN" "$WORKDIR" "$NO_GH_BIN"
+  rm -rf "$FAKE_BIN" "$WORKDIR" "$NO_GH_BIN" "$NO_JQ_BIN"
 }
 
 run_bootstrap() {
@@ -214,4 +223,111 @@ EOF
   grep -q "^Cloud setup could not provide these in this session" "$WORKDIR/hook.stdout"
   grep -qx "supabase-local: local Supabase unavailable: 3 GB free, needs 10 GB" "$WORKDIR/hook.stdout"
   grep -qx "supabase-local: local Supabase unavailable: 3 GB free, needs 10 GB" "$WORKDIR/.bkit/.unavailable"
+}
+
+# --- allowlist fingerprint compare ---------------------------------------------
+# The hook compares BKIT_CLOUD_ALLOWLIST_FINGERPRINT (what the operator pasted into the
+# cloud environment) with the `fingerprint` in .bkit/allowlist.json. Every outcome warns
+# or reports and continues: a SessionStart hook never blocks the session.
+
+@test "fingerprint: warns with the refresh steps and exits 0 when BKIT_CLOUD_ALLOWLIST_FINGERPRINT is unset" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"BKIT_CLOUD_ALLOWLIST_FINGERPRINT"* ]]
+  [[ "$output" == *"abcd1234"* ]]
+}
+
+@test "fingerprint: warns naming both fingerprints when they differ, and continues" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=deadbeef
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"abcd1234"* ]]
+  [[ "$output" == *"deadbeef"* ]]
+  [[ "$output" == *"gh-preflight: RUNTIME_GITHUBCLI=true"* ]]
+}
+
+@test "fingerprint: reports a match as operator-asserted with the deployed allowlist unverified" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=abcd1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"operator-asserted"* ]]
+  [[ "$output" == *"unverified"* ]]
+}
+
+@test "fingerprint: warns and continues when .bkit/allowlist.json has no fingerprint or jq is absent" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"]}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=abcd1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"expected fingerprint"* ]]
+  [[ "$output" == *"unavailable"* ]]
+
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  # jq is genuinely absent from the PATH the hook runs with.
+  [ -z "$(PATH="$NO_JQ_BIN" command -v jq)" ]
+  run bash -c 'printf "" | env -i PATH="$1" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$2" FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=abcd1234 bash "$3"' _ "$NO_JQ_BIN" "$WORKDIR" "$BOOTSTRAP_SH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"expected fingerprint"* ]]
+  [[ "$output" == *"unavailable"* ]]
+}
+
+@test "fingerprint: rejects a value that is not 8 hex characters without echoing it" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT='not-hex-SECRET-value'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not an 8-hex fingerprint"* ]]
+  [[ "$output" != *"not-hex-SECRET-value"* ]]
+}
+
+@test "fingerprint: warns and continues when .bkit/allowlist.json is not valid JSON" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{ this is not json\n' >"$WORKDIR/.bkit/allowlist.json"
+  run run_bootstrap env FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=abcd1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"expected fingerprint"* ]]
+  [[ "$output" == *"unavailable"* ]]
+}
+
+@test "fingerprint: the stale-allowlist warning reaches the session context on stdout" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  # Only stdout reaches a cloud session's context, so discard stderr here.
+  run bash -c 'printf "" | env -i PATH="$1" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$2" FAKE_GH_AUTH_OK=1 BKIT_CLOUD_ALLOWLIST_FINGERPRINT=deadbeef bash "$3" 2>/dev/null' _ "$FAKE_BIN:/usr/bin:/bin" "$WORKDIR" "$BOOTSTRAP_SH"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING"* ]]
+  [[ "$output" == *"abcd1234"* ]]
+  [[ "$output" == *"deadbeef"* ]]
+}
+
+@test "fingerprint: every other warning reaches stdout, and a non-8-hex value never does" {
+  mkdir -p "$WORKDIR/.bkit"
+  printf '{"domains":["example.com"],"fingerprint":"abcd1234"}\n' >"$WORKDIR/.bkit/allowlist.json"
+  stdout_only() {
+    bash -c 'printf "" | env -i PATH="$1" CLAUDE_CODE_REMOTE=true CLAUDE_PROJECT_DIR="$2" FAKE_GH_AUTH_OK=1 "${@:4}" bash "$3" 2>/dev/null' _ "$FAKE_BIN:/usr/bin:/bin" "$WORKDIR" "$BOOTSTRAP_SH" "$@"
+  }
+  # Unset: the warning names the variable and the expected fingerprint.
+  run stdout_only
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING: BKIT_CLOUD_ALLOWLIST_FINGERPRINT is not set"* ]]
+  [[ "$output" == *"abcd1234"* ]]
+  # Not 8 hex characters: warned on stdout, the value is never printed.
+  run stdout_only BKIT_CLOUD_ALLOWLIST_FINGERPRINT='not-hex-SECRET-value'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not an 8-hex fingerprint"* ]]
+  [[ "$output" != *"not-hex-SECRET-value"* ]]
+  # Expected fingerprint unavailable.
+  printf '{"domains":["example.com"]}\n' >"$WORKDIR/.bkit/allowlist.json"
+  run stdout_only BKIT_CLOUD_ALLOWLIST_FINGERPRINT=abcd1234
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WARNING: the expected fingerprint is unavailable"* ]]
 }

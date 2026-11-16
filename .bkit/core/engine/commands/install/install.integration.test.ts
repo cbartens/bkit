@@ -1372,6 +1372,74 @@ describe("Scenario — Codex + Antigravity install side by side without conflict
     },
     localLimit(180_000),
   );
+
+  it(
+    "a --codex install reports the private-key and .env shell-read protection status",
+    () => {
+      seedConsumer();
+      const install = run(["install", "--codex", "--tracker=github"]);
+      expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      const out = combinedOutput(install);
+      expect(out).toContain("codex-setup");
+      expect(out).toContain("Four things");
+      // Status phrase: not verified unless a real Codex session showed the deny.
+      expect(out).toMatch(
+        /configured to deny, not verified on a real Codex host|denied \(verified on codex-cli/,
+      );
+      expect(out).toMatch(/private-key/i);
+      // `.env` stays advisory, with the direnv corrective action.
+      expect(out).toMatch(/\.env[^\n]*advisory|advisory[^\n]*\.env/i);
+      expect(out).toContain("direnv");
+    },
+    localLimit(180_000),
+  );
+
+  it(
+    "a --codex install tells the reader how to act on the private-key status",
+    () => {
+      seedConsumer();
+      const install = run(["install", "--codex", "--tracker=github"]);
+      expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      const out = combinedOutput(install);
+      expect(out).toContain("keep private keys out of the repo");
+    },
+    localLimit(180_000),
+  );
+
+  it(
+    "the codex-setup private-key action is self-contained in a fresh consumer",
+    () => {
+      seedConsumer();
+      const install = run(["install", "--codex", "--tracker=github"]);
+      expect(install.status, `install failed:\n${install.stdout}\n${install.stderr}`).toBe(0);
+      const out = combinedOutput(install);
+      expect(out).toContain("codex-setup");
+      // A pointer to docs/testing.md is only valid when the consumer's own copy holds the recipe.
+      const own = path.join(tmpDir, "docs", "testing.md");
+      const body = [own]
+        .filter((f) => fs.existsSync(f))
+        .map((f) => fs.readFileSync(f, "utf-8"))
+        .join("");
+      // Only the codex-setup advisory block counts: from its header to the next advisory header.
+      const blockMatch =
+        /^--- \d+\/\d+ \[advisory\] codex-setup ---$[\s\S]*?(?=^--- \d+\/\d+ \[|(?![\s\S]))/m.exec(
+          out,
+        );
+      expect(blockMatch, `codex-setup advisory header missing:\n${out}`).not.toBeNull();
+      const advisoryBlock = String(blockMatch);
+      expect(advisoryBlock).toContain("Private-key shell reads");
+      const pointsAtOwnDoc = advisoryBlock.includes("docs/testing.md");
+      const recipeInOwnDoc = body.includes("Codex key-read deny");
+      expect({ pointsAtOwnDoc, recipeInOwnDoc }).not.toEqual({
+        pointsAtOwnDoc: true,
+        recipeInOwnDoc: false,
+      });
+      // The inline steps: trust .codex/, cat a synthetic id_rsa, confirm a control is denied.
+      expect(advisoryBlock).toContain("id_rsa");
+      expect(advisoryBlock).toContain("bkit tests jump");
+    },
+    localLimit(180_000),
+  );
 });
 
 // A tracker switch and an active-provider uninstall leave a consumer `bkit check` passes.

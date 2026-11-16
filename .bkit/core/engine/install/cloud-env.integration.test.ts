@@ -110,7 +110,7 @@ describe("T4 — the derived egress set reaches all five surfaces", () => {
         // 4 — .claude/settings.json WebFetch grants
         expect(settings.permissions.allow).toContain(`WebFetch(domain:${probe})`);
 
-        // 5 — .opencode/opencode.json permission.bash curl globs
+        // 5 — .opencode/opencode.json permission.webfetch `*{base}*` keys
         expect(opencode).toContain(probe);
       }
 
@@ -286,6 +286,9 @@ describe("cloud install script pieces, run by bash", () => {
     ) => {
       writeFile(".agents/context.md", contextMd);
       writeFile("node_modules/.bin/bkit", bkit, 0o755);
+      // A matching allowlist fingerprint keeps the fingerprint warnings, which also print on
+      // stdout, out of these provisioning cases.
+      writeFile(".bkit/allowlist.json", '{"domains":["example.com"],"fingerprint":"abcd1234"}\n');
       const {
         GH_TOKEN: _gh,
         GITHUB_TOKEN: _github,
@@ -306,6 +309,7 @@ describe("cloud install script pieces, run by bash", () => {
           CLAUDE_CODE_REMOTE: "true",
           CLAUDE_PROJECT_DIR: tmpDir,
           NODE_NO_WARNINGS: "1",
+          BKIT_CLOUD_ALLOWLIST_FINGERPRINT: "abcd1234",
         },
       });
     };

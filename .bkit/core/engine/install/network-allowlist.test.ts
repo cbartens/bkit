@@ -8,6 +8,7 @@ import {
   renderNetworkAllowlist,
   writeNetworkAllowlist,
 } from "./network-allowlist";
+import { egressFingerprint } from "./cloud-env";
 import { writeBkitVersion } from "./version-file";
 import type { WriteSet } from "./write";
 
@@ -82,6 +83,30 @@ describe("writeNetworkAllowlist — .bkit/allowlist.json", () => {
     const doc = JSON.parse(fs.readFileSync(path.join(tmpDir, NETWORK_ALLOWLIST_RELPATH), "utf-8"));
     expect(doc.domains).toContain("example.invalid");
     expect(doc.domains).toContain("*.example.invalid");
+  });
+
+  it("records the fingerprint of its own domains list", () => {
+    run(false);
+    const doc = JSON.parse(fs.readFileSync(path.join(tmpDir, NETWORK_ALLOWLIST_RELPATH), "utf-8"));
+    expect(doc.fingerprint).toMatch(/^[0-9a-f]{8}$/);
+    expect(doc.fingerprint).toBe(egressFingerprint(doc.domains));
+  });
+
+  it("moves the fingerprint when allowed-domains changes", () => {
+    const stamp = (): string =>
+      JSON.parse(fs.readFileSync(path.join(tmpDir, NETWORK_ALLOWLIST_RELPATH), "utf-8"))
+        .fingerprint;
+    run(false);
+    const before = stamp();
+    expect(before).toMatch(/^[0-9a-f]{8}$/);
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nexample.invalid\n<!-- allowed-domains:end -->\n",
+    );
+    run(false);
+    const after = stamp();
+    expect(after).toMatch(/^[0-9a-f]{8}$/);
+    expect(after).not.toBe(before);
   });
 });
 

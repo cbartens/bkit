@@ -230,7 +230,9 @@ export function runClaudeModule(ctx: ModuleContext): void {
  * never recorded, so it is never touched. An absent or empty record means bkit claims
  * authorship of nothing and prunes nothing — old consumers converge by addition only.
  *
- * Returns the set to record for next time, or `null` when nothing was determined and
+ * Returns the set to record for next time (the grants bkit added on this install and the
+ * recorded ones it still derives, never a grant the consumer already had), or `null`
+ * when nothing was determined and
  * the caller must leave the prior record alone: no settings file, unparseable JSON,
  * a non-array `allow`, or a dry run. `null` is a statement about PROVENANCE, never
  * about the write set — the `ws.writes` push below still fires under `dryRun`, because
@@ -277,7 +279,9 @@ export function enrichClaudeSettingsAllows(
       });
     }
   }
-  return dryRun ? null : needed;
+  // Record only what bkit wrote: grants it added before and still derives, plus the ones it
+  // added now. A grant the consumer already had is never recorded, so uninstall keeps it.
+  return dryRun ? null : [...new Set([...recorded.filter((r) => needed.includes(r)), ...add])];
 }
 
 // ---------------------------------------------------------------------------

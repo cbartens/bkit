@@ -2760,3 +2760,57 @@ describe("#892 — install, check and upgrade warn about a missing root lint-sta
     expect(combinedOutput(up)).not.toContain(COPY_LINE);
   });
 });
+
+describe("#803 — upgrade over legacy OpenCode substring fetch grants", () => {
+  const cliPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cli.ts");
+  function runCli(args: string[]) {
+    return spawnSync(requireTsx(), [cliPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade keeps legacy OpenCode substring fetch grants and reports each for owner review", () => {
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+    const install = runCli(["install", "--opencode=openrouter"]);
+    expect(install.status, combinedOutput(install)).toBe(0);
+
+    // Seed the legacy shape an older bkit wrote.
+    const ocPath = path.join(tmpDir, ".opencode", "opencode.json");
+    const seeded = JSON.parse(fs.readFileSync(ocPath, "utf-8")) as {
+      permission: { bash: Record<string, string> };
+    };
+    seeded.permission.bash["curl *github.com*"] = "allow";
+    seeded.permission.bash["wget *github.com*"] = "allow";
+    fs.writeFileSync(ocPath, JSON.stringify(seeded, null, 2) + "\n", "utf-8");
+
+    const up = runCli(["upgrade", "--auto-apply"]);
+    expect(up.status, combinedOutput(up)).toBe(0);
+
+    const out = combinedOutput(up);
+    expect(out).toContain("opencode-substring-fetch-grants");
+    expect(out).toContain("curl *github.com*");
+    expect(out).toContain("wget *github.com*");
+
+    const after = JSON.parse(fs.readFileSync(ocPath, "utf-8")) as {
+      permission: { bash: Record<string, string>; webfetch: Record<string, string> };
+    };
+    // Kept: bkit cannot attribute the entries, so it never removes them.
+    expect(after.permission.bash["curl *github.com*"]).toBe("allow");
+    expect(after.permission.bash["wget *github.com*"]).toBe("allow");
+    // The fetch tool keeps its accepted-risk allow, unreported.
+    expect(after.permission.webfetch["*github.com*"]).toBe("allow");
+    // No new substring key was generated.
+    const substringKeys = Object.keys(after.permission.bash).filter((k) =>
+      /^(curl|wget) \*[^*\s]+\*$/.test(k),
+    );
+    expect(substringKeys.sort()).toEqual(["curl *github.com*", "wget *github.com*"]);
+  });
+});

@@ -76,7 +76,7 @@ The adoption order of the tool templates is the `bkit tips` order; for the proje
 | Machine lock | `.bkit/templates/scripts/ci/bkit-machine-lock.sh` | `scripts/ci/` | that file |
 | Local test sleep prevention | `.bkit/templates/scripts/ci/bkit-test-awake.mjs`, `bkit-test-awake.test.mjs` | `scripts/ci/` | both files |
 | Context-fetch blocks | `.bkit/templates/context/bkit-<provider>.md` | below `<!-- bkit:end -->` in `.agents/context.md` | the blocks you use |
-| Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file |
+| Cloud SessionStart hook | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `.claude/hooks/bkit-cloud-bootstrap.sh` | that file; it compares `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` with `.bkit/allowlist.json` and warns on a mismatch, and `bkit check` raises `cloud-bootstrap-fingerprint-missing` for a copy that never reads the variable |
 
 Placeholders: the copies keep them raw, so replace each one in your copy:
 

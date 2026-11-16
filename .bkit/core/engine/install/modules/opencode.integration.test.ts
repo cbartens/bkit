@@ -481,7 +481,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(parsed.plugins).toBeUndefined();
   });
 
-  it("permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated", () => {
+  it("permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated, no shell fetch allows", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter"));
     const perm = parsed.permission;
     expect(perm.rules).toBeUndefined(); // the Claude-style array that opencode rejects
@@ -498,10 +498,10 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     // Stack hosts (vercel/supabase/…) are NOT shipped — only tooling defaults +
     // consumer `.agents/context.md` allowed-domains (after bkit:end).
     expect(perm.bash["curl *vercel.com*"]).toBeUndefined();
-    expect(perm.bash["curl *github.com*"]).toBe("allow");
-    const curlAskIdx = Object.keys(perm.bash).indexOf("curl *");
-    const curlGhIdx = Object.keys(perm.bash).indexOf("curl *github.com*");
-    expect(curlGhIdx).toBeGreaterThan(curlAskIdx);
+    expect(perm.bash["curl *github.com*"]).toBeUndefined();
+    expect(perm.bash["wget *github.com*"]).toBeUndefined();
+    expect(Object.keys(perm.bash).filter((k) => /^(curl|wget) \*[^*\s]+\*$/.test(k))).toEqual([]);
+    expect(perm.webfetch["*github.com*"]).toBe("allow");
     expect(perm.websearch).toBe("allow");
     // webfetch is a URL-keyed map (opencode matches the resource against the requested
     // URL); the template seeds `{ "*": "ask" }` and the resolved allowlist is layered on
@@ -574,7 +574,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     }
   });
 
-  it("injects consumer allowed-domains into both fetch surfaces (shell + fetch tool)", () => {
+  it("injects consumer allowed-domains into the fetch tool and never into shell allows", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-net-"));
     fs.mkdirSync(path.join(tmp, ".agents"), { recursive: true });
     fs.writeFileSync(
@@ -583,9 +583,11 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "utf-8",
     );
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "openrouter", tmp));
-    // Shell fetch.
-    expect(parsed.permission.bash["curl *vercel.com*"]).toBe("allow");
-    expect(parsed.permission.bash["wget *supabase.com*"]).toBe("allow");
+    // Shell fetch: no derived allow; `curl *` / `wget *` keep asking.
+    expect(parsed.permission.bash["curl *vercel.com*"]).toBeUndefined();
+    expect(parsed.permission.bash["wget *supabase.com*"]).toBeUndefined();
+    expect(parsed.permission.bash["curl *"]).toBe("ask");
+    expect(parsed.permission.bash["wget *"]).toBe("ask");
     // Fetch tool — the same bases must reach the webfetch URL map, or a host on the
     // allowlist still prompts when the agent uses the fetch tool instead of a shell.
     expect(parsed.permission.webfetch["*vercel.com*"]).toBe("allow");

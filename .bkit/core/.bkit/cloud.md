@@ -100,7 +100,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. It has
 ## In-repo side
 
 - `.claude/hooks/bkit-preflight.sh` — the tracker opt-in guard plus the rules-read advisory, as one JSON document (`.bkit/providers.md` § Rules-read advisory). When the tracker issue ID env var is unset, as in an IDE session, it prints the advisory alone and exits 0. On Claude a non-zero exit is informational only, because `SessionStart` cannot block. The agent reads the `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/bkit-cloud-bootstrap.sh` — when `CLAUDE_CODE_REMOTE=true`, runs `pnpm install --frozen-lockfile` and `vale sync`, then gh auth, then context-fetch CLI provisioning through the just-installed bkit (`bkit context provision`). When bkit is missing, it skips provisioning with a loud log line. A failed recipe's `.bkit/.unavailable` line goes to stdout, and so into the session's context. Locally the hook does nothing.
+- `.claude/hooks/bkit-cloud-bootstrap.sh` — when `CLAUDE_CODE_REMOTE=true`, runs `pnpm install --frozen-lockfile` and `vale sync`, then gh auth, then context-fetch CLI provisioning through the just-installed bkit (`bkit context provision`). When bkit is missing, it skips provisioning with a loud log line. A failed recipe's `.bkit/.unavailable` line goes to stdout, and so into the session's context. Locally the hook does nothing. It also compares the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` env var with the `fingerprint` in `.bkit/allowlist.json` and warns when the variable is unset, malformed or different, or when the expected fingerprint is unavailable, then continues. Each warning is also printed as one line on stdout, so it reaches the session's context; a malformed value is never printed. A match is an operator assertion, so the deployed dashboard list stays unverified. `bkit check` reports `cloud-bootstrap-fingerprint-missing` when an adopted copy never reads the variable.
 - Both are registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 These ship with the repo. Do not paste them into the app.
@@ -120,6 +120,9 @@ Always choose `Custom`, because the rendered list carries bkit's own shipped hos
 1. Select **Custom**.
 2. Tick **Also include default list of common package managers**. It extends the trusted defaults (package registries, GitHub, cloud SDKs) and never replaces them.
 3. Paste the domains bkit renders into `.claude/bkit-cloud.md` § Network access into **Allowed domains**.
+4. Set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` in the environment's variables to the "Allowlist fingerprint" printed under that list. The same value is the `fingerprint` in `.bkit/allowlist.json`. After any `allowed-domains` change, run `bkit upgrade`, re-paste the list and update the variable.
+
+The fingerprint covers the whole pasted list, consumer `allowed-domains` included. Every cloud's dashboard list (Claude, Cursor and Codex) is an unverified operator assertion: bkit cannot read it, so a matching stamp proves only that you copied the current value. The Cursor and Codex paste notes print a derived-set stamp only, which ignores consumer `allowed-domains`, so it does not describe the full list those dashboards hold, and no bootstrap compares it.
 
 Declare only what bkit cannot see: the log-backend and API hosts that the implicit CLI blocks reach (`vercel` / `gcloud`), plus the app's production and preview / dev domains. Declare apex domains only. `bkit install` expands each one to `<domain>` + `*.<domain>` and unions them with the derived set. Under `Trusted` those hosts are unreachable, so a cloud `/bkit-debug` gets no runtime logs and e2e tests can't reach the deployment.
 

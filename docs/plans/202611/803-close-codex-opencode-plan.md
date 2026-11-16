@@ -1,5 +1,5 @@
 <!-- bkit:anchor
-baseSha: 1afb96fd32aa6bb0b20b5c349d7eb77c30cd48c5
+baseSha: 2d510c666901ca890d9166face8b676187a08496
 baseRef: origin/dev
 bkitVersion: 6.1.1
 bkitLatest: 6.1.1
@@ -23,10 +23,10 @@ Issue #803 is planned from the owner-approved scope revision of 2026-11-03. The 
 | Gap | Where | Finding |
 | --- | --- | --- |
 | Install writes `curl *{base}*` / `wget *{base}*` = `allow` into OpenCode's `permission.bash`. OpenCode globs match the whole string with `*` crossing `/` `?` `@`, so `curl https://evil.example/?x=github.com` is allowed. | `injectOpencodeDerivedAllows` in `.bkit/core/engine/install/modules/opencode.ts:348-369` | `deferrals-1` |
-| The same generator writes `*{base}*` = `allow` into `permission.webfetch`, which has the same substring assumption. This is the "related generated URL permission" the revision asks to review. Claude's `WebFetch(domain:…)` grants and the Cursor, Codex and Antigravity hooks match the host, so they do not share the flaw. The `*{base}*` shape is an ACTIVE accepted-risk decision, `551-opencode-unanchored-host-allows-accepted-risk` (`docs/decisions.jsonl:199`): the maintainer kept it for apex + subdomain parity with Claude and rejected `https://{host}/*` because "every subdomain fetch prompts". The owner reviewed this shape at plan review and kept it as an accepted risk (answer to Open Question 4: "Keep *host* (551 stands)"). That review meets the success criterion's review of related generated URL permissions, so this plan leaves the `webfetch` allows as they are. | `.bkit/core/engine/install/modules/opencode.ts:363-368`; `.bkit/core/.bkit/providers.md:463`; `docs/decisions.jsonl:199` | `deferrals-1` |
+| The same generator writes `*{base}*` = `allow` into `permission.webfetch`, which has the same substring assumption. This is the "related generated URL permission" the revision asks to review. Claude's `WebFetch(domain:…)` grants and the Cursor, Codex and Antigravity hooks match the host, so they do not share the flaw. The `*{base}*` shape is an ACTIVE accepted-risk decision, `551-opencode-unanchored-host-allows-accepted-risk` (`docs/decisions.jsonl:199`): the maintainer kept it for apex + subdomain parity with Claude and rejected `https://{host}/*` because "every subdomain fetch prompts". The owner reviewed this shape at plan review and kept it as an accepted risk (answer to Open Question 4: "Keep *host* (551 stands)"). That review meets the success criterion's review of related generated URL permissions, so this plan leaves the `webfetch` allows as they are. | `.bkit/core/engine/install/modules/opencode.ts:363-368`; `.bkit/core/.bkit/providers.md:510`; `docs/decisions.jsonl:199` | `deferrals-1` |
 | A grant install wrote earlier is never withdrawn: reconcile deep-merges the consumer's existing keys. | `reconcileOpencodeJson` in `opencode.ts:384-459` | `deferrals-11` (`381-opencode-bash-grants-never-revoked`) |
-| Uninstall strips Claude `WebFetch(domain:…)` / `mcp__…` grants by recomputing today's derived set, not by the `claudeAllowDerived` record bkit already keeps. A grant whose domain left `allowed-domains` survives uninstall. | `.bkit/core/engine/commands/install/uninstall.ts:725-745`; `BkitVersion.claudeAllowDerived` in `.bkit/core/engine/install/version-file.ts` | `deferrals-11` (`381-webfetch-grants-survive-uninstall-after-seed-emptied`) |
-| Codex classifies `*.pem`, `*.p12` and `id_rsa` shell reads as the `key` kind, then answers the whole `secret` tier with advisory `additionalContext`. `cat ~/.ssh/id_rsa` runs with a note only, while the docs group it with real gates. | `decideShell` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs:60-90`; `secretFileKind` / `shellSecretRead` in `.bkit/core/hooks/guardrails-tiers.js:193-262` | `deferrals-3` |
+| Uninstall strips Claude `WebFetch(domain:…)` / `mcp__…` grants by recomputing today's derived set, not by the `claudeAllowDerived` record bkit already keeps. A grant whose domain left `allowed-domains` survives uninstall. | `.bkit/core/engine/commands/install/uninstall.ts:705-725`; `BkitVersion.claudeAllowDerived` in `.bkit/core/engine/install/version-file.ts` | `deferrals-11` (`381-webfetch-grants-survive-uninstall-after-seed-emptied`) |
+| Codex classifies `*.pem`, `*.p12` and `id_rsa` shell reads as the `key` kind, then answers the whole `secret` tier with advisory `additionalContext`. `cat ~/.ssh/id_rsa` runs with a note only, while the docs group it with real gates. | `decideShell(cmd, dirs, ctx, session)` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs:66-110`; `secretFileKind` / `shellSecretRead` in `.bkit/core/hooks/guardrails-tiers.js:208-277` | `deferrals-3` |
 | The cloud paste doc prints a "Derived set fingerprint", but the bootstrap hook never compares one, and the stamp ignores consumer `allowed-domains`, the commonest reason a pasted dashboard list goes stale. | `egressFingerprint` / `renderCloudNetworkAllowlist` in `.bkit/core/engine/install/cloud-env.ts:655-712`; `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `deferrals-11` (`381-cloud-allowlist-staleness-detector`) |
 
 **The revision's three open questions, answered by lookup:**
@@ -189,7 +189,17 @@ Bats files are Unit: per `docs/testing.md` § Tiers, a Unit test may drive real 
 | A customised bootstrap that reads the variable raises nothing, and no adopted bootstrap raises nothing | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 9 |
 | A real `bkit check` on a consumer with a stale adopted bootstrap prints `cloud-bootstrap-fingerprint-missing` | Integration | `.bkit/core/engine/commands/install/check.integration.test.ts` | 9 |
 | A real `bkit doctor` on the same consumer lists `cloud-bootstrap-fingerprint-missing` | Integration | `.bkit/core/engine/commands/install/doctor.integration.test.ts` | 9 |
+| The jq-absent half of the fingerprint test runs the bootstrap with no `jq` on PATH, even on a host with `/usr/bin/jq` | Unit | `tests/shell/bkit-cloud-bootstrap-preflight.bats` | 11 |
 | Mirrors, `dist/` and the docs match the canonical sources; `bkit check` exits 0 on bkit itself with no `opencode-substring-fetch-grants` advisory | Static | `pnpm bkit check`, `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` (T6 mirror parity) | 10 |
+| Codex denies a private-key read combined with an ask-tier command | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 12 |
+| Codex denies a private-key read after a destructive git ask | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 12 |
+| Codex denies a private-key shell read chained after an ask-tier command | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 13 |
+| redacts schemeless user-info in a reported key | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 14 |
+| redactUrlParts drops user-info with no scheme | Unit | `.bkit/core/engine/checks/before/files.test.ts` | 14 |
+| the codex-setup private-key action is self-contained in a fresh consumer | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 15 |
+| the codex-setup private-key action is self-contained in a fresh consumer | Integration | `.bkit/core/engine/commands/install/install.integration.test.ts` | 16 |
+| Codex does not deny commands that write or only name a key file | Integration | `.bkit/core/engine/install/modules/index.integration.test.ts` | 17 |
+| fingerprint: the stale-allowlist warning reaches the session context on stdout | Unit | `tests/shell/bkit-cloud-bootstrap-preflight.bats` | 18 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -244,7 +254,7 @@ The revision's three open questions are answered by lookup in `Context & Goals`.
   - **Options:** A) Docs only: `cloud.md` and the Cursor and Codex paste notes state that the dashboard list is an operator assertion and unverified, and keep their derived-set stamp. — Meets the success criterion, which names the cloud bootstrap guidance, and adds no new setup-script code. · B) Add the compare to the Cursor and Codex setup-script renders too. — Same warning everywhere, but it changes two more generated scripts that have no bats harness today.
   - **Recommended:** A) The Claude SessionStart bootstrap is the only bkit-shipped cloud hook that runs every session.
   - **Default if unanswered:** A. The deferral row `803-cursor-codex-cloud-fingerprint-compare` records B.
-- **Assumption:** OpenCode matches `permission.bash` and `permission.webfetch` keys against the full command or requested URL with `*` → `.*` and last match wins, as `.bkit/core/.bkit/providers.md:463` and `globToRe` / `opencodeVerdict` in `index.integration.test.ts:702-715` model it. → If OpenCode matched differently, the removed `curl *{domain}*` / `wget *{domain}*` allows were less dangerous than the finding says, and removing them only adds prompts. The kept `*{domain}*` `webfetch` allows stay decision 551's accepted risk either way. Knowledge row `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` says to probe the installed `opencode --version` before relying on config semantics, so Manual Verification Step 2 records the dated result on `opencode v2.1.4`; no CI test runs the real binary.
+- **Assumption:** OpenCode matches `permission.bash` and `permission.webfetch` keys against the full command or requested URL with `*` → `.*` and last match wins, as `.bkit/core/.bkit/providers.md:510` and `globToRe` / `opencodeVerdict` in `index.integration.test.ts:702-715` model it. → If OpenCode matched differently, the removed `curl *{domain}*` / `wget *{domain}*` allows were less dangerous than the finding says, and removing them only adds prompts. The kept `*{domain}*` `webfetch` allows stay decision 551's accepted risk either way. Knowledge row `kn-34-opencode-spec-churn-pin-the-probed-version-not-a-naive-ne` says to probe the installed `opencode --version` before relying on config semantics, so Manual Verification Step 2 records the dated result on `opencode v2.1.4`; no CI test runs the real binary.
 - **Assumption:** In a non-interactive `opencode run` (the `bkit-cloud.yml` `opencode` job), a shell `curl` / `wget` that now hits `curl *: ask` is refused or stalls rather than running. → If it stalls, cloud OpenCode runs that shell out to fetch slow down until the agent switches to the fetch tool. This is listed under Breaking Changes, and the fetch tool keeps its allowlisted-domain allows.
 - **Assumption:** No trustworthy per-entry ownership evidence exists for `.opencode/opencode.json` permission keys: `canonicalHashes` hashes the whole file after consumer keys merge in. → If evidence existed, legacy entries could be removed instead of reported. Reporting is still safe.
 - **Assumption:** `claudeAllowDerived` is trustworthy evidence. `enrichClaudeSettingsAllows` (`.bkit/core/engine/install/modules/claude.ts:239-280`) records the whole needed set, including a row a consumer had already written identically before bkit added it. → Such a row is removed at uninstall, which is what the recompute does today, so this is no regression.
@@ -365,12 +375,12 @@ None — no database tables. File shape change: `.bkit/allowlist.json` `{ domain
 <!-- prettier-ignore -->
 | Capability | File | Search performed | Existing candidates | Decision | Justification |
 | --- | --- | --- | --- | --- | --- |
-| Stop OpenCode shell fetch grants | `.bkit/core/engine/install/modules/opencode.ts` | `grep -n -e 'curl' -e 'WebFetch(' -e 'Shell('` over `cloud-env.ts` and `install/modules/*.ts`; read `injectOpencodeDerivedAllows`, `renderOpencodeJson`, `reconcileOpencodeJson`; OpenCode glob semantics in `providers.md:463` | `injectOpencodeDerivedAllows` — the one generator of both grant kinds | EXTEND | Drop the `bash` loop; the `webfetch` `*{base}*` loop stays as decision 551 keeps it. |
+| Stop OpenCode shell fetch grants | `.bkit/core/engine/install/modules/opencode.ts` | `grep -n -e 'curl' -e 'WebFetch(' -e 'Shell('` over `cloud-env.ts` and `install/modules/*.ts`; read `injectOpencodeDerivedAllows`, `renderOpencodeJson`, `reconcileOpencodeJson`; OpenCode glob semantics in `providers.md:510` | `injectOpencodeDerivedAllows` — the one generator of both grant kinds | EXTEND | Drop the `bash` loop; the `webfetch` `*{base}*` loop stays as decision 551 keeps it. |
 | Report legacy substring grants with their exact removal action | `.bkit/core/engine/checks/before/files.ts` | `grep -n 'export function detect' files.ts`; read `runPreflight` wiring in `checks/before/index.ts:90-175`; read `template-copies.ts`; `git grep -n derived-grants-pruned` | `detectPlaywrightReporterHostile`-style `PreflightFinding` detectors in `files.ts`; `runPreflight` already feeds install, upgrade and `bkit check` | EXTEND | Add `detectOpencodeSubstringFetchGrants` beside the other file detectors and wire it in `runPreflight`. |
 | Redact URL credentials and query strings in a reported key | `.bkit/core/engine/checks/before/files.ts` | `git grep -n -i -e 'function redact' -e 'userinfo' -e 'stripCredentials'` over engine and hooks | `redact` in `.bkit/core/engine/commands/workflow/tracker.ts:102` — replaces configured env secret values, not URL parts; `guardrails-shell.js:271` strips userinfo only to parse a host | EXTEND | A `redactUrlParts` helper in `files.ts`, exported beside the key matcher, because it has two callers: the detector and the uninstall review lines (`uninstall.ts`, Task 3). Widening `redact` would change the `TrackerError` text its callers emit (`tracker.ts:96`, `:1601`, `issues.ts:712`). |
-| Strip Claude derived grants by recorded evidence at uninstall | `.bkit/core/engine/commands/install/uninstall.ts` | read `uninstall.ts:715-760`; `readBkitVersion` / `claudeAllowDerived` in `version-file.ts`; `enrichClaudeSettingsAllows` in `claude.ts:239` | the `.claude/settings.json` branch that recomputes `resolveClaudeDerivedAllows`; the `claudeAllowDerived` record | EXTEND | Read `claudeAllowDerived` once before the decision-table loop, beside `canonicalHashes`, and fold the recorded rows instead of the recomputed ones; list unrecorded derived-looking grants and legacy OpenCode substring grants (reusing Task 2's matcher and `redactUrlParts`) for owner review. |
-| Deny Codex private-key shell reads | `.bkit/core/.codex/hooks/bkit-guardrails.cjs` | read `decideShell`; `secretFileKind`, `shellSecretRead`, `classifyShell` in `guardrails-tiers.js:193-281`; `classifyRead` in `guardrails-read.js` | the `secret` case of `decideShell`; `secretFileKind` already returns `key` | EXTEND | Branch on `secretFileKind(v.path) === "key"` → `deny`; keep the advisory for `env`. Register the new deny message and the narrowed advisory in `.bkit/instructions.md` § Hook Text, which `instructions-sources.test.ts` holds every `HOOK_SOURCES` message to. |
-| A key-kind path wins over an env-kind path in one command | `.bkit/core/hooks/guardrails-tiers.js` | read `shellSecretRead:234-262` (returns the first secret path) | `shellSecretRead` | EXTEND | Scan every word and return a `key` path ahead of an `env` path. Cursor and Antigravity still ask for both kinds, so only the named path in their reason changes. |
+| Strip Claude derived grants by recorded evidence at uninstall | `.bkit/core/engine/commands/install/uninstall.ts` | read `uninstall.ts:705-725`; `readBkitVersion` / `claudeAllowDerived` in `version-file.ts`; `enrichClaudeSettingsAllows` in `claude.ts:239` | the `.claude/settings.json` branch that recomputes `resolveClaudeDerivedAllows`; the `claudeAllowDerived` record | EXTEND | Read `claudeAllowDerived` once before the decision-table loop, beside `canonicalHashes`, and fold the recorded rows instead of the recomputed ones; list unrecorded derived-looking grants and legacy OpenCode substring grants (reusing Task 2's matcher and `redactUrlParts`) for owner review. |
+| Deny Codex private-key shell reads | `.bkit/core/.codex/hooks/bkit-guardrails.cjs` | read `decideShell(cmd, dirs, ctx, session)` (`bkit-guardrails.cjs:66-110`); `secretFileKind`, `shellSecretRead`, `classifyShell(c, dirs, ctx)` and the Codex-only `IS_CODEX_HOOK` deny for `bkit tests jump` in `guardrails-tiers.js:191-312`; `classifyRead` in `guardrails-read.js` | the `secret` case of `decideShell`; `secretFileKind` already returns `key`; the `IS_CODEX_HOOK` deny tier in `classifyShell` | EXTEND | Branch on `secretFileKind(v.path) === "key"` → `deny` in `decideShell` `case "secret"`; keep the advisory for `env`. The deny does not go beside the `IS_CODEX_HOOK` deny in `classifyShell`, because `guardrails-tiers.js` is also spliced into the Cursor and Antigravity hooks, which keep `ask` for key reads. Register the new deny message and the narrowed advisory in `.bkit/instructions.md` § Hook Text, which `instructions-sources.test.ts` holds every `HOOK_SOURCES` message to. |
+| A key-kind path wins over an env-kind path in one command | `.bkit/core/hooks/guardrails-tiers.js` | read `shellSecretRead:249-277` (returns the first secret path) | `shellSecretRead` | EXTEND | Scan every word and return a `key` path ahead of an `env` path. Cursor and Antigravity still ask for both kinds, so only the named path in their reason changes. |
 | State the Codex key-read protection status and corrective action | `.bkit/core/engine/install/modules/codex.ts` | read the `codex-setup` advisory at `codex.ts:211-221`; `git grep -l codex-setup -- '*.test.ts'` (empty) | the `codex-setup` advisory | EXTEND | Add a fourth item: private-key shell reads configured to deny, not verified on a real Codex host; `.env` shell reads advisory, use direnv. |
 | Real-host evidence for the Codex deny | `tests/experiments/hooks/results/{YYYY-MM-DD}/bkit-codex-key-deny.json` | `ls tests/experiments/hooks/` and `results/`; read `bkit-hook-probe.md` | `bkit-hook-probe.mjs` and its dated `results/` + `reports/` layout | NEW | Reason (b): the probe kit's contract is "does not launch an agent ... or modify production hooks" (`bkit-hook-probe.md`), and its caller `bkit-hook-probe.test.mjs` validates only the collector. This run installs the production hook, so it gets its own result beside the probe's, in the same dated layout. |
 | Report of the real-host Codex run | `tests/experiments/hooks/reports/bkit-codex-key-deny-{YYYY-MM-DD}.md` | same as above | `reports/bkit-hook-probe-report-2026-11-03.md` (probe-kit report) | NEW | Reason (b), the same probe-kit contract: that report covers the synthetic advisory probe, not a production-hook deny. |
@@ -379,7 +389,7 @@ None — no database tables. File shape change: `.bkit/allowlist.json` `{ domain
 | Paste guidance names the stamp and the env-var step | `.bkit/core/engine/install/cloud-env.ts` | read `renderCloudNetworkAllowlist`, `renderCloudEnvBlock` (shared by Claude, Cursor and Codex docs) | `renderCloudNetworkAllowlist` count note | EXTEND | Print "Allowlist fingerprint" of the paste list plus the step to set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`. `renderCloudEnvBlock` stays unchanged because the Cursor and Codex docs share it. |
 | Bootstrap compares and warns | `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` | `git grep -n -i fingerprint` on the template (no hit); read lines 1-40 and 140-186 | the template's baseline section and its `log` helper | EXTEND | Add a fingerprint block to the baseline section; mirror it byte-for-byte into bkit's adopted `.claude/hooks/bkit-cloud-bootstrap.sh`. |
 | Detect an adopted bootstrap without the compare | `.bkit/core/engine/checks/before/files.ts` | read `tips/catalogue.ts:290-306` (fires on a missing hook only); `template-copies.ts` | `runPreflight` detectors; the cloud tip | EXTEND | Add `detectCloudBootstrapFingerprintMissing`, matching the env-var name, never byte identity. |
-| Manual recipe for the Codex real-host run | `docs/testing.md` | read § OpenCode host test coverage and § Manual recipe — OpenCode E2E (`:844-870`) | § Manual recipe — OpenCode E2E | EXTEND | Add § Manual recipe — Codex key-read deny in the same shape. |
+| Manual recipe for the Codex real-host run | `docs/testing.md` | read § OpenCode host test coverage and § Manual recipe — OpenCode E2E (`:867-893`) | § Manual recipe — OpenCode E2E | EXTEND | Add § Manual recipe — Codex key-read deny in the same shape. |
 
 ## Architecture & Component Changes
 
@@ -421,7 +431,7 @@ None — no database.
 
 #### [MODIFY] `.bkit/core/engine/commands/install/uninstall.ts`
 
-- **Existence Check:** exists; the `.claude/settings.json` branch at `:725-745`; `stripOpencodeJsonScope` at `:150`; `canonicalHashes` read before the decision-table loop at `:430-431`; `.bkit/version` deleted inside that loop on a full or core uninstall (`:497-511`), and core's `.bkit/version` (`manifest.ts:129`) comes before `.claude/settings.json` (`manifest.ts:165`).
+- **Existence Check:** exists; the `.claude/settings.json` branch in `runUninstall` at `:705-725`, with the `resolveClaudeDerivedAllows(ctx.cwd)` recompute at `:719`; `stripOpencodeJsonScope` at `:150`; `canonicalHashes` read before the decision-table loop in `buildDecisionTable` at `:411`; `.bkit/version` deleted inside that loop on a full or core uninstall (`:476-490`), and core's `.bkit/version` (`manifest.ts:129`) comes before `.claude/settings.json` (`manifest.ts:165`).
 - Read `const claudeAllowDerived = readBkitVersion(versionFilePath)?.claudeAllowDerived ?? []` once beside `canonicalHashes`, before the loop, so a full `bkit uninstall` that deletes `.bkit/version` mid-loop still strips by the record. Pass it into the `.claude/settings.json` strip.
 - Replace `resolveClaudeDerivedAllows(ctx.cwd)` in that strip with the pre-read `claudeAllowDerived` (Supersession Inventory row 2, `DELETE`).
 - After the strip, log one review line per remaining `WebFetch(domain:…)` / `mcp__…` row that `resolveClaudeDerivedAllows(ctx.cwd)` would produce but the record lacks. Each line names the file, the row and "remove it by hand if bkit added it". Use `ctx.logPrefix`.
@@ -431,23 +441,24 @@ None — no database.
 
 #### [MODIFY] `.bkit/core/hooks/guardrails-tiers.js`
 
-- **Existence Check:** exists; `shellSecretRead` at `:234-262`.
+- **Existence Check:** exists; `secretFileKind` at `:208`, `shellSecretRead` at `:249-277`, `classifyShell(c, dirs, ctx)` at `:292`; the shared `TESTS_JUMP_RE` (`:170`) and `IS_CODEX_HOOK` (`:191`) feed a Codex-only `deny` tier for `bkit tests jump` inside `classifyShell`.
 - Keep scanning after the first secret part. Return the first `key`-kind part when one exists, else the first `env`-kind part. `classifyShell` and the return shape `{ tier: "secret", path }` are unchanged.
+- Add no `IS_CODEX_HOOK` key-read deny here: this file is spliced into the Cursor and Antigravity hooks too, which keep `ask` for key reads, so the Codex deny lives in `decideShell` `case "secret"`.
 
 #### [MODIFY] `.bkit/core/.codex/hooks/bkit-guardrails.cjs`
 
-- **Existence Check:** exists; `decideShell` at `:60-90`; the managed block splices `guardrails-shell.js` and `guardrails-tiers.js`, so `secretFileKind` is in scope.
-- `case "secret"`: `secretFileKind(v.path) === "key"` → `deny("Blocked by bkit Codex guardrails: reading ${v.path} would expose private-key material. Use ssh-agent or your secret manager instead of reading the key file.")`, with no `Command:` echo (Supersession Inventory row 4, `DELETE`). `env` → the current advisory, with its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file", since key-kind paths no longer reach it.
+- **Existence Check:** exists; `decideShell(cmd, dirs, ctx, session)` at `:66-110`, its `case "secret"` advisory `ask(...)` at `:78-81`; the managed block splices `gateguard-engine.js`, `guardrails-shell.js` and `guardrails-tiers.js` (`:42-46`), so `secretFileKind` is in scope; the `fetch` and default cases call `shellEditContext(...)` and stay unchanged.
+- `case "secret"` in `decideShell`, not the shared `classifyShell`, because `guardrails-tiers.js` is also built into the Cursor and Antigravity hooks: `secretFileKind(v.path) === "key"` → `deny("Blocked by bkit Codex guardrails: reading ${v.path} would expose private-key material. Use ssh-agent or your secret manager instead of reading the key file.")`, with no `Command:` echo (Supersession Inventory row 4, `DELETE`). `env` → the current advisory, with its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file", since key-kind paths no longer reach it.
 
 #### [MODIFY] `.bkit/instructions.md`
 
-- **Existence Check:** exists; § Hook Text Codex entries at `:8888-8937`, among them `guardrails-codex-secret-shell` (`:8916-8925`). `instructions-sources.test.ts:241-244` (`every hook message has an entry and every entry is still emitted`) checks every message a `HOOK_SOURCES` file (`instructions-sources.ts:304-314`) emits, the Codex guardrails hook included. Hook text is fixed by hand (`instructions-sources.ts:9`): no sync or upgrade writes it.
-- Add `### guardrails-codex-key-shell-deny` (hook Guardrails; fires on a shell read of a private-key file; hosts Codex; source `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`) with the exact deny text.
+- **Existence Check:** exists; § Hook Text Codex entries at `:9089-9152`, among them `guardrails-codex-tests-jump` (`:9100`), the existing Codex-only deny message, and `guardrails-codex-secret-shell` (`:9126-9139`). `instructions-sources.test.ts:241-244` (`every hook message has an entry and every entry is still emitted`) checks every message a `HOOK_SOURCES` file (`instructions-sources.ts:304-314`) emits, the Codex guardrails hook included. Hook text is fixed by hand (`instructions-sources.ts:9`): no sync or upgrade writes it.
+- Add `### guardrails-codex-key-shell-deny` (hook Guardrails; fires on a shell read of a private-key file; hosts Codex; source `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`) with the exact deny text, directly after `guardrails-codex-tests-jump`.
 - Narrow `guardrails-codex-secret-shell`: `fires` becomes a shell read of an env or secrets file, and its text block matches the narrowed advisory.
 
 #### [MODIFY] host mirrors (rendered, not hand-edited)
 
-- `.codex/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.agents/plugins/bkit/hooks/bkit-guardrails.cjs`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade` (T6 parity in `guardrails-cursor.integration.test.ts:228-236`).
+- `.codex/hooks/bkit-guardrails.cjs`, `.cursor/hooks/bkit-guardrails.cjs`, `.agents/plugins/bkit/hooks/bkit-guardrails.cjs`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade` (T6 parity in `guardrails-cursor.integration.test.ts:825`).
 - `dist/`: rebuilt by `pnpm build` and staged (`git add dist/`) in every task that edits a non-test `.bkit/core/engine/**/*.ts` file (Tasks 1, 2, 3, 6, 7, 9), because `.husky/pre-commit:18-23` runs `pnpm bkit:check:dist` on such a commit and refuses a stale `dist/` (`.agents/rules.md` § Engine builds).
 
 ### Checks — preflight detectors
@@ -515,7 +526,7 @@ Listed under `Documentation Updates`. The host mirrors of `.bkit/core/.bkit/*.md
 
 #### [MODIFY] `docs/testing.md`
 
-- **Existence Check:** exists; § Runtime detection + gh-preflight test coverage at `:652`, § OpenCode host test coverage at `:844` and § Manual recipe — OpenCode E2E at `:857` all sit below `<!-- bkit:end -->` at `:553`, so the edits stay outside the managed block.
+- **Existence Check:** exists; the whole file is project-owned, with no `bkit:start` / `bkit:end` managed block, so any section can be edited; § Runtime detection + gh-preflight test coverage at `:660`, § OpenCode host test coverage at `:867` and § Manual recipe — OpenCode E2E at `:880`.
 - Reuse: `Reuse Inventory` row "Manual recipe for the Codex real-host run", `EXTEND`.
 - Task 5 adds § Manual recipe — Codex key-read deny after § Manual recipe — OpenCode E2E, in the same shape.
 - Task 10 adds § OpenCode host test coverage rows for the removed shell fetch allows and the substring-grant detector, and § Runtime detection + gh-preflight test coverage text for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`.
@@ -532,9 +543,9 @@ There are no `[DELETE]` files. The replaced artifacts are code paths and generat
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
 | The `permission.bash` `curl *{base}*` / `wget *{base}*` generator loop in `injectOpencodeDerivedAllows` (`opencode.ts:355-361`) | Nothing: the template's `curl *` / `wget *` ask applies | DELETE | The loop is the `deferrals-1` bypass. Removed in Task 1. |
-| The `resolveClaudeDerivedAllows` recompute in uninstall's `.claude/settings.json` branch (`uninstall.ts:738-744`) | The `claudeAllowDerived` record | DELETE | Recomputation is the `deferrals-11` gap (`381-webfetch-grants-survive-uninstall-after-seed-emptied`). Removed in Task 3. |
+| The `resolveClaudeDerivedAllows` recompute in uninstall's `.claude/settings.json` branch (`uninstall.ts:719-723`) | The `claudeAllowDerived` record | DELETE | Recomputation is the `deferrals-11` gap (`381-webfetch-grants-survive-uninstall-after-seed-emptied`). Removed in Task 3. |
 | The "Derived set fingerprint" stamp in `renderCloudNetworkAllowlist` (`cloud-env.ts:706-708`) | "Allowlist fingerprint" of the paste list | DELETE | Two stamps on one list would confuse operators. The derived-set stamp stays in `renderWidenedNetworkList` for Cursor and Codex, which this plan does not supersede. Removed in Task 7. |
-| The advisory `ask(...)` for key-kind paths in Codex `decideShell` (`bkit-guardrails.cjs:76-79`) | `deny(...)` for `key`; `ask` kept for `env` | DELETE | Removed in Task 4. |
+| The advisory `ask(...)` for key-kind paths in Codex `decideShell` (`bkit-guardrails.cjs:78-81`) | `deny(...)` for `key`; `ask` kept for `env` | DELETE | Removed in Task 4. |
 | Legacy shell substring entries (`curl *{domain}*` / `wget *{domain}*`) already written to consumer `.opencode/opencode.json` files | The `opencode-substring-fetch-grants` advisory | RETAIN-WITH-REASON | (a) External contract: these lines live in consumer-owned files that bkit cannot attribute, and the revision forbids blanket removal without owner approval. Each consumer removes them on the advisory; bkit's own copy is cleaned in Task 10. |
 
 ## Documentation Updates
@@ -552,10 +563,10 @@ There are no `[DELETE]` files. The replaced artifacts are code paths and generat
 | `docs/design.md` | No change: no UI. |
 | `docs/testing.md` | Add § Manual recipe — Codex key-read deny (Task 5). Add rows to § OpenCode host test coverage for the removed shell fetch allows and the substring-grant detector, and to § Runtime detection + gh-preflight test coverage for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats` (Task 10). |
 | `docs/observability.md` | No change: no new log name. The bootstrap uses its existing `[cloud-bootstrap]` stderr prefix. |
-| `.bkit/core/.bkit/providers.md` | § Guardrails "Secret files" row (`:271`): Codex denies private-key shell reads (status per the Task 5 result, written in Task 6), `.env` advisory. § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`): no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay (decision 551). Shared parts table (`:307-308`): `shellSecretRead` key-first. § Network allowlist OpenCode row: legacy shell entries reported (Task 2). Claude row (`:476`): uninstall strips by `claudeAllowDerived` (Task 3). Tasks 1, 2, 3 and 6. |
+| `.bkit/core/.bkit/providers.md` | § Guardrails "Secret files" row (`:271`): Codex denies private-key shell reads (status per the Task 5 result, written in Task 6), `.env` advisory. § Permissions Network fetch cells (`:488`) and § Network allowlist OpenCode row (`:510`): no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay (decision 551). Shared parts table (`:307-308`): `shellSecretRead` key-first. § Network allowlist OpenCode row: legacy shell entries reported (Task 2). Claude row (`:523`): uninstall strips by `claudeAllowDerived` (Task 3). Tasks 1, 2, 3 and 6. |
 | `.bkit/core/.bkit/cloud.md` | § In-repo side (`:103`) and § Network access (`:116-126`): the fingerprint in `.bkit/allowlist.json`, the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` step, the bootstrap's warning, that every cloud's dashboard list (Claude, Cursor, Codex) is an operator assertion, unverified, and that the Cursor and Codex paste-note stamp is the derived set only, so it ignores consumer `allowed-domains`. Task 7. |
 | `.bkit/core/.bkit/templates.md` | Contract row for the cloud SessionStart hook (`:79`): the fingerprint compare and the `cloud-bootstrap-fingerprint-missing` advisory. Task 9. |
-| `.bkit/core/.bkit/workflows.md` | `:1437`: drop the stale `curl https://{host}/*` claim for OpenCode and say shell fetches ask. Task 1. |
+| `.bkit/core/.bkit/workflows.md` | `:1618`: drop the stale `curl https://{host}/*` claim for OpenCode and say shell fetches ask. Task 1. |
 | `.bkit/shared/.claude/bkit-cloud.md` | No template text change: § 2 renders through `@@CLOUD_NETWORK_ALLOWLIST@@`, which Task 7 extends. |
 | Host mirrors (`.bkit/providers.md`, `.bkit/cloud.md`, `.bkit/templates.md`, `.bkit/workflows.md`, `.bkit/prompts.md`) | Re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`. Task 10. |
 | Cron / scheduled-jobs doc | No change: no scheduled task. |
@@ -581,14 +592,14 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 1 start -->
 
-- [ ] **TASK 1:** Stop the OpenCode shell fetch grants (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
+- [x] **TASK 1:** Stop the OpenCode shell fetch grants (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
   - **UPDATE:** `injectOpencodeDerivedAllows` in `.bkit/core/engine/install/modules/opencode.ts`: drop the `permission.bash` `curl *${base}*` / `wget *${base}*` loop; keep the `permission.webfetch` `*${base}*` loop unchanged (decision `551-opencode-unanchored-host-allows-accepted-risk`); rewrite the doc comments at `:245-246` and `:340-347` to say only the fetch tool gets derived allows
   - **READ:** `networkAllowlistBases` in `.bkit/core/engine/install/cloud-env.ts`: the apex bases
   - **READ:** `resolveNetworkAllowlist` in `.bkit/core/engine/install/cloud-env.ts`: shipped ∪ declared domains
   - **UPDATE:** `.bkit/core/engine/install/modules/opencode.integration.test.ts`: the curl assertions of the tests at `:448` and `:541`; their `*{base}*` webfetch assertions stay
-  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: the parity test at `:1187` and the comments at `:961` and `:974-978`
-  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Permissions Network fetch cells (`:438-441`) and § Network allowlist OpenCode row (`:463`) — no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay
-  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `:1437`, OpenCode shell fetches ask
+  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: the parity test at `:1301` and the comments at `:1075` and `:1088-1092`
+  - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Permissions Network fetch cells (`:488`) and § Network allowlist OpenCode row (`:510`) — no shell allow; the `*{base}*` `webfetch` allows and their accepted-risk sentence stay
+  - **UPDATE:** `.bkit/core/.bkit/workflows.md`: `:1618`, OpenCode shell fetches ask
   - **UPDATE:** `.bkit/core/engine/install/cloud-env.integration.test.ts`: the comment at `:112-113` ("permission.bash curl globs") names the `*{base}*` `permission.webfetch` keys instead
   - **UPDATE:** `.opencode/opencode.json`: regenerated by `pnpm tsx .bkit/core/engine/cli.ts upgrade` (legacy keys stay until Task 10)
   - **UPDATE:** `dist/cli.js`: rebuilt with the rest of `dist/` by `pnpm build`, and staged with `git add dist/`
@@ -602,7 +613,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 2 start -->
 
-- [ ] **TASK 2:** Report legacy OpenCode substring fetch grants for owner review (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
+- [x] **TASK 2:** Report legacy OpenCode substring fetch grants for owner review (`deferrals-1`; `deferrals-11` row `381-opencode-bash-grants-never-revoked`)
   - **UPDATE:** `.bkit/core/engine/checks/before/files.ts`: add `detectOpencodeSubstringFetchGrants(cwd)` (advisory id `opencode-substring-fetch-grants`; reads `permission.bash` only, with `readJsonFile`; never writes), an exported key matcher for `uninstall.ts`, and an exported `redactUrlParts` (its callers are the detector and Task 3's uninstall review lines)
   - **UPDATE:** `runPreflight` in `.bkit/core/engine/checks/before/index.ts`: push the finding beside `detectPlaywrightReporterHostile`
   - **UPDATE:** `dist/cli.js`: rebuilt with the rest of `dist/` by `pnpm build`, and staged with `git add dist/`
@@ -630,14 +641,15 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 3 start -->
 
-- [ ] **TASK 3:** Strip Claude derived grants by the `claudeAllowDerived` record and list unattributable grants for review (`deferrals-11` rows `381-webfetch-grants-survive-uninstall-after-seed-emptied` and `381-opencode-bash-grants-never-revoked`)
-  - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.ts`: read `readBkitVersion(versionFilePath)?.claudeAllowDerived ?? []` once beside `canonicalHashes` (`:430-431`), before the decision-table loop that deletes `.bkit/version` on a full or core uninstall, and pass it into the `.claude/settings.json` strip (`:725-745`) in place of `resolveClaudeDerivedAllows(ctx.cwd)`; then log one `ctx.logPrefix` review line per remaining derived-looking row the record lacks; for `.opencode/opencode.json`, log one review line per legacy substring grant left after `stripOpencodeJsonScope`, using the Task 2 matcher and Task 2's exported `redactUrlParts` on each key
+- [x] **TASK 3:** Strip Claude derived grants by the `claudeAllowDerived` record and list unattributable grants for review (`deferrals-11` rows `381-webfetch-grants-survive-uninstall-after-seed-emptied` and `381-opencode-bash-grants-never-revoked`)
+  - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.ts`: read `readBkitVersion(versionFilePath)?.claudeAllowDerived ?? []` once beside `canonicalHashes` (`:411`, in `buildDecisionTable`), before the decision-table loop that deletes `.bkit/version` on a full or core uninstall (`:476-490`), and pass it into the `.claude/settings.json` strip in `runUninstall` (`:705-725`) in place of `resolveClaudeDerivedAllows(ctx.cwd)` (`:719`); then log one `ctx.logPrefix` review line per remaining derived-looking row the record lacks; for `.opencode/opencode.json`, log one review line per legacy substring grant left after `stripOpencodeJsonScope`, using the Task 2 matcher and Task 2's exported `redactUrlParts` on each key
   - **READ:** `readBkitVersion` in `.bkit/core/engine/install/version-file.ts`: reads `claudeAllowDerived`, the record (absent → `[]`)
   - **READ:** `resolveClaudeDerivedAllows` in `.bkit/core/engine/install/cloud-env.ts`: which rows look derived
   - **READ:** `enrichClaudeSettingsAllows` in `.bkit/core/engine/install/modules/claude.ts`: what the record holds
+  - **READ:** `.bkit/core/engine/commands/install/uninstall.integration.test.ts`: the `#864 — full uninstall keeps project documents` describe, whose real `install` → `uninstall` run through `spawnSync(requireTsx(), ...)` the full no-flag uninstall test can reuse
   - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.integration.test.ts`: five tests
-  - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.test.ts`: the existing test `strips allow/deny/ask together, including install's WebFetch enrichment` (`:1170`) writes `WebFetch(domain:github.com)` and `WebFetch(domain:npmjs.com)` with no `.bkit/version` and expects `.claude/settings.json` deleted; seed `claudeAllowDerived` with those two rows so it still asserts the full strip
-  - **UPDATE:** `.bkit/core/.bkit/providers.md`: `:476` Claude row — uninstall removes only the rows `claudeAllowDerived` records
+  - **UPDATE:** `.bkit/core/engine/commands/install/uninstall.test.ts`: the existing test `strips allow/deny/ask together, including install's WebFetch enrichment` (`:1150`) writes `WebFetch(domain:github.com)` and `WebFetch(domain:npmjs.com)` with no `.bkit/version` and expects `.claude/settings.json` deleted; seed `claudeAllowDerived` with those two rows so it still asserts the full strip
+  - **UPDATE:** `.bkit/core/.bkit/providers.md`: `:523` Claude row — uninstall removes only the rows `claudeAllowDerived` records
   - **UPDATE:** `dist/cli.js`: rebuilt with the rest of `dist/` by `pnpm build`, and staged with `git add dist/`
   - **DEPENDS ON:** 1, 2
   - **DONE WHEN:** uninstall over a temp consumer removes a recorded `WebFetch(domain:gone.example)` grant, keeps an unrecorded derived-looking grant and prints its review line, and prints a redacted review line for a legacy OpenCode substring grant it leaves; a bare `bkit uninstall` (no module flags) after a real install removes the recorded grants; the five tests below pass; `strips allow/deny/ask together, including install's WebFetch enrichment` in `uninstall.test.ts` passes; `pnpm bkit:check:dist` exits 0
@@ -658,15 +670,15 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 4 start -->
 
-- [ ] **TASK 4:** Deny Codex shell reads of private-key files, `.env` advisory (`deferrals-3`)
-  - **UPDATE:** `shellSecretRead` in `.bkit/core/hooks/guardrails-tiers.js`: return the first `key`-kind part ahead of the first `env`-kind part
-  - **UPDATE:** `decideShell` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs`: in `case "secret"`, `secretFileKind(v.path) === "key"` → `deny(...)` naming the file with no `Command:` echo; `env` keeps the advisory, its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file"
-  - **UPDATE:** `.bkit/instructions.md`: § Hook Text — add `### guardrails-codex-key-shell-deny` (hook Guardrails; fires on a shell read of a private-key file; hosts Codex; source `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`) with the exact deny text, and narrow `guardrails-codex-secret-shell` (`:8916-8925`) so its `fires` line and text block match the narrowed advisory
-  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: `SHELL_SECRET_READS` key rows carry a Codex `deny` expectation and the describe at `:809` asserts it per host; add a `cat ~/.ssh/id_rsa.pub` → `allow` row; add the three tests below
+- [x] **TASK 4:** Deny Codex shell reads of private-key files, `.env` advisory (`deferrals-3`)
+  - **UPDATE:** `shellSecretRead` in `.bkit/core/hooks/guardrails-tiers.js`: (`:249-277`) return the first `key`-kind part ahead of the first `env`-kind part; `classifyShell(c, dirs, ctx)` (`:292`) is unchanged, and no key-read deny goes beside its Codex-only `IS_CODEX_HOOK` deny for `bkit tests jump`, because this shared tier is also spliced into the Cursor and Antigravity hooks
+  - **UPDATE:** `decideShell` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs`: (`decideShell(cmd, dirs, ctx, session)`, `:66-110`) in `case "secret"` (advisory `ask(...)` at `:78-81`), `secretFileKind(v.path) === "key"` → `deny(...)` naming the file with no `Command:` echo; `env` keeps the advisory, its file description narrowed from "an env, secrets or private-key file" to "an env or secrets file"
+  - **UPDATE:** `.bkit/instructions.md`: § Hook Text — add `### guardrails-codex-key-shell-deny` (hook Guardrails; fires on a shell read of a private-key file; hosts Codex; source `.bkit/core/.codex/hooks/bkit-guardrails.cjs` `decideShell`) with the exact deny text, directly after `guardrails-codex-tests-jump` (`:9100`), the existing Codex-only deny message; narrow `guardrails-codex-secret-shell` (`:9126-9139`) so its `fires` line and text block match the narrowed advisory
+  - **UPDATE:** `.bkit/core/engine/install/modules/index.integration.test.ts`: `SHELL_SECRET_READS` (`:636`) key rows carry a Codex `deny` expectation and the describe `shell reads of secret files — script hosts gate, permission tables do not` at `:889` asserts it per host through `codexVerdict` (`:736`); add a `cat ~/.ssh/id_rsa.pub` → `allow` row; add the three tests below
   - **UPDATE:** `.codex/hooks/bkit-guardrails.cjs`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`
   - **UPDATE:** `.cursor/hooks/bkit-guardrails.cjs`: re-rendered by the same upgrade (splices `guardrails-tiers.js`)
   - **UPDATE:** `.agents/plugins/bkit/hooks/bkit-guardrails.cjs`: re-rendered by the same upgrade (splices `guardrails-tiers.js`)
-  - **DONE WHEN:** `codexVerdict` answers `deny` for the three key rows and `cat .env ~/.ssh/id_rsa`, `ask` for every `.env` row and `allow` for `cat ~/.ssh/id_rsa.pub`; the existing `SHELL_SECRET_READS` allow rows (`cat .env.example`, `cat .envrc`, `cp .env.example .env`, `git add .env.example`, `mv .env .env.bak`, `grep -rn ".env" docs`, `git commit -m "ignore .env"`) keep `allow` on every host; the row `rg -l "id_rsa" src` → "search pattern, not a file" (`guardrails-cursor.integration.test.ts:117`) still holds; Cursor and Antigravity verdicts are unchanged; `T6 — guardrails.cjs installed mirror is its rendered template` in `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` passes; `every hook message has an entry and every entry is still emitted` in `.bkit/core/engine/tools/instructions-sources.test.ts` passes
+  - **DONE WHEN:** `codexVerdict` answers `deny` for the three key rows and `cat .env ~/.ssh/id_rsa`, `ask` for every `.env` row and `allow` for `cat ~/.ssh/id_rsa.pub`; the existing `SHELL_SECRET_READS` allow rows (`cat .env.example`, `cat .envrc`, `cp .env.example .env`, `git add .env.example`, `mv .env .env.bak`, `grep -rn ".env" docs`, `git commit -m "ignore .env"`) keep `allow` on every host; the row `rg -l "id_rsa" src` → "search pattern, not a file" (`guardrails-cursor.integration.test.ts:118`) still holds; Cursor and Antigravity verdicts are unchanged; `T6 — guardrails.cjs installed mirror is its rendered template` in `.bkit/core/engine/audits/hooks/guardrails-cursor.integration.test.ts` passes; `every hook message has an entry and every entry is still emitted` in `.bkit/core/engine/tools/instructions-sources.test.ts` passes
   - **TEST FIRST:**
     - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex denies shell reads of private-key files` fails on Codex answering with an advisory note for `cat ~/.ssh/id_rsa`
     - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex denies a command that reads .env and a private key together` fails on the `.env` path winning, so `cat .env ~/.ssh/id_rsa` gets the advisory
@@ -676,7 +688,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 5 start -->
 
-- [ ] **TASK 5:** Run the Codex private-key deny in a real Codex session and record the outcome (`deferrals-3`)
+- [x] **TASK 5:** Run the Codex private-key deny in a real Codex session and record the outcome (`deferrals-3`)
   - **CREATE:** `tests/experiments/hooks/results/{YYYY-MM-DD}/bkit-codex-key-deny.json`: `{ host, cliVersion, date, command, outcome: "denied" | "not-shown" | "not-run", observed, reason }`, synthetic key only (`not-shown` = Codex ran the read despite the deny; `not-run` = no real session could be run)
   - **CREATE:** `tests/experiments/hooks/reports/bkit-codex-key-deny-{YYYY-MM-DD}.md`: the setup, the observed outcome and the doc status it sets
   - **UPDATE:** `docs/testing.md`: add § Manual recipe — Codex key-read deny after § Manual recipe — OpenCode E2E. Steps: `pnpm build`; `node dist/cli.js install --codex --tracker=none` in a new scratch consumer outside the checkout; trust the `.codex/` layer through Codex's normal flow; write a synthetic `id_rsa`; ask Codex to `cat` it; record the outcome and `codex --version`
@@ -689,7 +701,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 6 start -->
 
-- [ ] **TASK 6:** State the Codex key-read protection status in the advisory and docs from the recorded outcome (`deferrals-3`)
+- [x] **TASK 6:** State the Codex key-read protection status in the advisory and docs from the recorded outcome (`deferrals-3`)
   - **UPDATE:** `runCodexModule` in `.bkit/core/engine/install/modules/codex.ts`: the `codex-setup` advisory becomes "Four things", adding the private-key shell-read status and the `.env` advisory line, each with its corrective action. The status is "configured to deny, not verified on a real Codex host" unless Task 5 recorded `denied`, in which case it is "denied (verified on codex-cli {version}, {date})"
   - **UPDATE:** `.bkit/core/.bkit/providers.md`: § Guardrails "Secret files" row (`:271`) and shared parts table (`:307-308`): Codex denies private-key shell reads with the same status phrase; `.env` advisory; `shellSecretRead` prefers a key-kind path
   - **UPDATE:** `.bkit/core/.bkit/prompts.md`: § Hook-injected text, Guardrails row (`:435`): name Codex `.env` shell reads among the advisories, and state that Codex private-key shell reads are denied, with the same status phrase
@@ -710,7 +722,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 7 start -->
 
-- [ ] **TASK 7:** Record the allowlist fingerprint in `.bkit/allowlist.json` and print it with the env-var step in the Claude paste section (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
+- [x] **TASK 7:** Record the allowlist fingerprint in `.bkit/allowlist.json` and print it with the env-var step in the Claude paste section (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
   - **UPDATE:** `egressFingerprint` in `.bkit/core/engine/install/cloud-env.ts`: optional `entries` parameter; no argument keeps the derived set
   - **UPDATE:** `renderCloudNetworkAllowlist` in `.bkit/core/engine/install/cloud-env.ts`: "Allowlist fingerprint" of the paste list, the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` step, and the operator-assertion sentence, replacing the derived-set stamp
   - **UPDATE:** `renderNetworkAllowlist` in `.bkit/core/engine/install/network-allowlist.ts`: `{ domains, fingerprint }`; update the header and doc comments
@@ -729,7 +741,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 8 start -->
 
-- [ ] **TASK 8:** Compare the fingerprint in the cloud bootstrap template, warn and continue (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
+- [x] **TASK 8:** Compare the fingerprint in the cloud bootstrap template, warn and continue (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
   - **UPDATE:** `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh`: the fingerprint block in the baseline section (unset, missing-expected, malformed `.bkit/allowlist.json` or `jq`-absent, differ, not-8-hex → WARNING with the refresh steps; equal → operator-asserted, deployed allowlist unverified; never non-zero), plus the header customisation line. The `jq` read is guarded with `2>/dev/null || printf ''`, as the trust check at `:48-51` is, because the hook runs under `set -euo pipefail` (`:22`)
   - **UPDATE:** `.claude/hooks/bkit-cloud-bootstrap.sh`: the same block, byte-for-byte
   - **UPDATE:** `tests/shell/bkit-cloud-bootstrap-preflight.bats`: six fingerprint tests; its header comment names the fingerprint block too
@@ -747,7 +759,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 9 start -->
 
-- [ ] **TASK 9:** Detect an adopted cloud bootstrap without the fingerprint compare (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
+- [x] **TASK 9:** Detect an adopted cloud bootstrap without the fingerprint compare (`deferrals-11` row `381-cloud-allowlist-staleness-detector`)
   - **UPDATE:** `.bkit/core/engine/checks/before/files.ts`: add `detectCloudBootstrapFingerprintMissing(cwd)` (advisory id `cloud-bootstrap-fingerprint-missing`), matching the `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` name, never byte identity
   - **UPDATE:** `runPreflight` in `.bkit/core/engine/checks/before/index.ts`: push the finding
   - **UPDATE:** `.bkit/core/engine/checks/before/files.test.ts`: a `detectCloudBootstrapFingerprintMissing` describe
@@ -766,6 +778,17 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 9 end -->
 
+<!-- bkit:task 11 start -->
+
+- [x] **TASK 11:** Make the jq-absent half of the Task 8 fingerprint test run with no `jq` on PATH (owner decision `build-decision-1-4.md`)
+  - **UPDATE:** `tests/shell/bkit-cloud-bootstrap-preflight.bats`: in `fingerprint: warns and continues when .bkit/allowlist.json has no fingerprint or jq is absent`, run the jq-absent half with a tools-only PATH built the way the file's `NO_GH_BIN` is built, leaving `jq` out, instead of deleting `$FAKE_BIN/jq` while `run_bootstrap` (`:74`) keeps `/usr/bin` on PATH; leave the test's name, its no-fingerprint half and every other test unchanged
+  - **DEPENDS ON:** 8
+  - **DONE WHEN:** `command -v jq` finds nothing on the PATH that half runs the hook with, even on a host with `/usr/bin/jq`; the test below passes when `pnpm bkit:test:file tests/shell/bkit-cloud-bootstrap-preflight.bats` runs the file as its own invocation; the hook copies are unchanged and `cmp .claude/hooks/bkit-cloud-bootstrap.sh .bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh` exits 0
+  - **TEST FIRST:**
+    - `tests/shell/bkit-cloud-bootstrap-preflight.bats` `fingerprint: warns and continues when .bkit/allowlist.json has no fingerprint or jq is absent` fails on `jq` still resolving on the hook's PATH, so the stderr lacks the WARNING that the expected fingerprint is unavailable
+
+<!-- bkit:task 11 end -->
+
 <!-- bkit:group 4 end -->
 
 <!-- bkit:group 5 start -->
@@ -774,7 +797,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 
 <!-- bkit:task 10 start -->
 
-- [ ] **TASK 10:** Refresh mirrors and `dist/`, clean bkit's own OpenCode copy, and record the new tests in `docs/testing.md` (`deferrals-1`, `deferrals-3`, `deferrals-11`)
+- [x] **TASK 10:** Refresh mirrors and `dist/`, clean bkit's own OpenCode copy, and record the new tests in `docs/testing.md` (`deferrals-1`, `deferrals-3`, `deferrals-11`)
   - **UPDATE:** `.opencode/opencode.json`: delete the legacy `curl *{domain}*` / `wget *{domain}*` allows by hand, as the `opencode-substring-fetch-grants` advisory lists them (approved through `Breaking Changes`); the `*{domain}*` `webfetch` allows stay (decision 551)
   - **UPDATE:** `.bkit/providers.md`: re-rendered by `pnpm tsx .bkit/core/engine/cli.ts upgrade`
   - **UPDATE:** `.bkit/cloud.md`: re-rendered by the same upgrade
@@ -782,7 +805,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
   - **UPDATE:** `.bkit/workflows.md`: re-rendered by the same upgrade
   - **UPDATE:** `.bkit/prompts.md`: re-rendered by the same upgrade
   - **UPDATE:** `dist/cli.js`: final freshness check only — Tasks 1, 2, 3, 6, 7 and 9 each rebuild and stage `dist/`; rebuild with `pnpm build` here only if the check finds drift
-  - **UPDATE:** `docs/capabilities.md`: the graphify register, refreshed by `pnpm bkit:graph:refresh` on the staged tree, because Task 3 adds an import from `uninstall.ts` to `checks/before/files.ts` and Tasks 2 and 9 export new detectors, and the pre-push register gate (`.husky/pre-push:282-348`) blocks a stale register
+  - **UPDATE:** `docs/capabilities.md`: the graphify register, refreshed by `pnpm bkit:graph:refresh` on the staged tree, because Task 3 adds an import from `uninstall.ts` to `checks/before/files.ts` and Tasks 2 and 9 export new detectors, and the pre-push register gate (`.husky/pre-push:309-398`) blocks a stale register
   - **UPDATE:** `docs/testing.md`: § OpenCode host test coverage rows for the removed shell fetch allows and the substring-grant detector; § Runtime detection + gh-preflight test coverage rows for the fingerprint cases in `tests/shell/bkit-cloud-bootstrap-preflight.bats`
   - **DEPENDS ON:** 1, 2, 3, 4, 5, 6, 7, 8, 9
   - **DONE WHEN:** `pnpm bkit check` exits 0 on bkit and prints neither `opencode-substring-fetch-grants` nor `cloud-bootstrap-fingerprint-missing`; `jq -r '.permission.bash | keys[]' .opencode/opencode.json` shows no `curl *…*` / `wget *…*` key other than `curl *` / `wget *`; the T6 mirror parity test passes; `pnpm build` exits 0, `pnpm bkit:check:dist` exits 0 and `git grep -l detectCloudBootstrapFingerprintMissing -- dist/` lists a file; `pnpm bkit:graph:check` exits 0 after the refresh is committed
@@ -791,6 +814,82 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 <!-- bkit:task 10 end -->
 
 <!-- bkit:group 5 end -->
+
+<!-- bkit:group 6 start -->
+
+### TASK GROUP 6: Challenge round 1 findings
+
+<!-- bkit:task 12 start -->
+
+- [x] **TASK 12:** A Codex agent runs `sudo cat ~/.ssh/id_rsa` (or `cat id_rsa; gh pr close 1`) and the key is printed, because the ask tier wins over the new private-key deny
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.codex/hooks/bkit-guardrails.cjs:67` · **Round:** 1
+  - **DONE WHEN:** On the Codex hook, a command that reads a `key`-kind path is denied even when the same command also hits an ask-tier rule (`sudo`, `gh pr close`, `git stash drop`, `git reset --hard`, ...); Cursor and Antigravity keep their `ask`. Probe on the rendered `.codex/hooks/bkit-guardrails.cjs` today: `sudo cat ~/.ssh/id_rsa`, `cat ~/.ssh/id_rsa; gh pr close 1` and `git stash drop && cat certs/server.pem` all return `additionalContext` (advisory, command runs), not `deny`, because `classifyShell` (`.bkit/core/hooks/guardrails-tiers.js:308`) returns `{ tier: "ask" }` before it ever calls `shellSecretRead`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex denies a private-key read combined with an ask-tier command` fails on `codexVerdict("sudo cat ~/.ssh/id_rsa")` returning `ask` instead of `deny`
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex denies a private-key read after a destructive git ask` fails on `codexVerdict("git stash drop && cat certs/server.pem")` returning `ask` instead of `deny`
+
+<!-- bkit:task 12 end -->
+<!-- bkit:task 13 start -->
+
+- [x] **TASK 13:** A Codex agent runs `echo gh pr close; cat ~/.ssh/id_rsa` (or `sudo cat ~/.ssh/id_rsa`, `git stash drop; cat certs/server.pem`), the ask tier wins over the secret tier in `classifyShell`, and the hook returns advisory `additionalContext`, so the private-key read runs although the docs and the `codex-setup` advisory say private-key shell reads are configured to deny
+      **Severity:** HIGH · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.codex/hooks/bkit-guardrails.cjs:73` · **Round:** 1
+  - **DONE WHEN:** `decideShell` in `.bkit/core/.codex/hooks/bkit-guardrails.cjs` denies, with the existing file-naming private-key reason, every command for which `shellSecretRead(c)` returns a path whose `secretFileKind` is `key`, whatever tier `classifyShell` returns below `deny` (`ask`, `fetch`, `edit`); the `deny` tier and the Codex `bkit tests jump` deny keep their own reasons; Cursor and Antigravity verdicts are unchanged (`guardrails-tiers.js` precedence untouched, or changed for Codex only); the rendered `.codex/hooks/bkit-guardrails.cjs` mirror matches. Verified by hand on the installed `.codex/hooks/bkit-guardrails.cjs`: `cat ~/.ssh/id_rsa` → deny, but `echo gh pr close; cat ~/.ssh/id_rsa`, `sudo cat ~/.ssh/id_rsa` and `git stash drop; cat certs/server.pem` → advisory only.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex denies a private-key shell read chained after an ask-tier command` fails on `codexVerdict("echo gh pr close; cat ~/.ssh/id_rsa")`, `codexVerdict("sudo cat ~/.ssh/id_rsa")` and `codexVerdict("git stash drop; cat certs/server.pem")` returning `ask` instead of `deny`
+
+<!-- bkit:task 13 end -->
+<!-- bkit:task 14 start -->
+
+- [x] **TASK 14:** A legacy key `curl *user:tok@example.com*` (no scheme) prints `user:tok` verbatim into the `bkit check` / upgrade advisory and the uninstall review line
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/checks/before/files.ts:117` · **Round:** 1
+  - **DONE WHEN:** `redactUrlParts` strips user-info whether or not a `scheme://` precedes it (any `[^/@\s*]+@` run before the host inside the glob body), so both `detectOpencodeSubstringFetchGrants` and the `uninstall.ts` review line never print credentials. Today the first replace only matches `//...@`: probed, `redactUrlParts("curl *user:tok@example.com*")` returns the key unchanged, while `isOpencodeSubstringFetchKey` accepts it, so it is reported in the clear.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/checks/before/files.test.ts` `redacts schemeless user-info in a reported key` fails on `detectOpencodeSubstringFetchGrants` output for `curl *user:tok@example.com*` containing `user:tok`
+    - `.bkit/core/engine/checks/before/files.test.ts` `redactUrlParts drops user-info with no scheme` fails on `redactUrlParts("wget *user:tok@example.com/p*")` containing `user:tok`
+
+<!-- bkit:task 14 end -->
+<!-- bkit:task 15 start -->
+
+- [x] **TASK 15:** A consumer runs `bkit install --codex`, follows the `codex-setup` advisory to "the manual recipe in docs/testing.md", and finds no such recipe, because it lives only in bkit's own `docs/testing.md`
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/engine/install/modules/codex.ts:226` · **Round:** 1
+  - **DONE WHEN:** Item 4 of the `codex-setup` advisory carries its corrective action inline (the few steps of the real-host check: trust `.codex/`, run `cat` on a synthetic `id_rsa`, confirm a control such as `bkit tests jump` is also denied) or points only at a file bkit installs into the consumer. Today `## Manual recipe — Codex key-read deny` exists only at bkit's `docs/testing.md:907`; `.bkit/templates/docs/testing.md` has no such section, and a consumer's `docs/testing.md` is their own copy, so the action points at nothing (`.agents/rules.md` Advisories self-contained). The new test `a --codex install tells the reader how to act on the private-key status` asserts the dangling `docs/testing.md` pointer, so it keeps the bug in place.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `the codex-setup private-key action is self-contained in a fresh consumer` fails on the advisory naming `docs/testing.md` while the seeded consumer has no file holding `Codex key-read deny`
+
+<!-- bkit:task 15 end -->
+<!-- bkit:task 16 start -->
+
+- [x] **TASK 16:** Scope Task 15's planned test to the `codex-setup` advisory text (owner decision `build-decision-1-9.md`)
+  - **DONE WHEN:** `the codex-setup private-key action is self-contained in a fresh consumer` looks for `docs/testing.md` only inside the `codex-setup` advisory block of the `bkit install --codex` output, not in the whole output, so the unrelated `template added: .bkit/templates/docs/testing.md` line and the `No project document covers` advisory no longer fail it. The test passes on a fresh consumer with the inline advisory in `.bkit/core/engine/install/modules/codex.ts`, and it still fails when that advisory names `docs/testing.md`.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/commands/install/install.integration.test.ts` `the codex-setup private-key action is self-contained in a fresh consumer` fails on its `docs/testing.md` check matching lines outside the `codex-setup` advisory block
+
+<!-- bkit:task 16 end -->
+<!-- bkit:group 6 end -->
+
+<!-- bkit:group 7 start -->
+
+### TASK GROUP 7: Challenge round 2 findings
+
+<!-- bkit:task 17 start -->
+
+- [x] **TASK 17:** A Codex agent runs `git rm --cached id_rsa` to untrack a committed key (or `openssl genrsa -out key.pem 2048`, `ssh-keygen -t rsa -f ./id_rsa -N ""`), and the hook hard-denies it as "this command reads id_rsa", with no way to approve, because the ask-tuned secret detector now drives a Codex deny
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/core/.codex/hooks/bkit-guardrails.cjs:73` · **Round:** 2
+  - **DONE WHEN:** On the Codex hook, a key-kind path is denied only when the command reads the file's content (the plan's rows keep `deny`: `cat ~/.ssh/id_rsa`, `cat certs/server.pem`, `openssl x509 -in cert.p12 -noout`, `cat .env ~/.ssh/id_rsa`, `sudo cat ~/.ssh/id_rsa`, `git stash drop && cat certs/server.pem`); a key path that is a write destination (`openssl ... -out key.pem` / `-keyout key.pem`, `ssh-keygen -f ./id_rsa`) or only an index or message argument (`git rm --cached id_rsa`, `git commit -m "id_rsa"`) gets the advisory instead of a deny; Cursor and Antigravity verdicts are unchanged. Probed on the rendered `.codex/hooks/bkit-guardrails.cjs` today: all four commands return `permissionDecision: "deny"` with "this command reads ...". Codex cannot prompt, so this deny is final, unlike the Cursor and Antigravity `ask` the shared `shellSecretRead` was tuned for.
+  - **TEST FIRST:**
+    - `.bkit/core/engine/install/modules/index.integration.test.ts` `Codex does not deny commands that write or only name a key file` fails on `codexVerdict("git rm --cached id_rsa")`, `codexVerdict("openssl genrsa -out key.pem 2048")` and `codexVerdict('ssh-keygen -t rsa -f ./id_rsa -N ""')` returning `deny`
+
+<!-- bkit:task 17 end -->
+<!-- bkit:task 18 start -->
+
+- [x] **TASK 18:** An operator re-pastes a stale network allowlist, a Claude cloud session starts, and nobody learns the fingerprints differ, because the bootstrap's WARNING goes only to stderr, which no cloud session surfaces
+      **Severity:** MEDIUM · **Class:** mechanical · **Fixable:** true · **Location:** `.bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh:77` · **Round:** 2
+  - **DONE WHEN:** Every fingerprint WARNING branch (unset, not 8-hex, mismatch, expected fingerprint unavailable) also prints one line on stdout, the channel that reaches the session's context (as the `.bkit/.unavailable` notice already does at `:173-174`), so the agent can relay it; the value-hiding rule still holds (a non-8-hex value is never printed); the hook still exits 0; bkit's adopted `.claude/hooks/bkit-cloud-bootstrap.sh` stays byte-identical. Today the block uses `log` (`printf ... >&2`) for every branch, and `.bkit/core/.bkit/cloud.md:151` states that a stderr line is a notice "that no cloud session surfaces". The six bats cases pass only because bats `run` merges stdout and stderr.
+  - **TEST FIRST:**
+    - `tests/shell/bkit-cloud-bootstrap-preflight.bats` `fingerprint: the stale-allowlist warning reaches the session context on stdout` fails on the hook's stdout (stderr discarded) holding no WARNING when `BKIT_CLOUD_ALLOWLIST_FINGERPRINT=deadbeef` and `.bkit/allowlist.json` records `abcd1234`
+
+<!-- bkit:task 18 end -->
+<!-- bkit:group 7 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
 
@@ -821,7 +920,7 @@ Build order: generated permissions first (they feed the detectors), then uninsta
 ### Automated Tests
 
 - [ ] **Full Local Gate Suite:** `pnpm bkit:gate:static-unit-integration` (the deepest declared `bkit:gate:*` script with integration; `bkit:gate:install-static-unit-build` adds `pnpm build`) and `pnpm bkit check` pass.
-- [ ] **Test Synchronization:** the existing tests the plan rewrites stay green: `opencode.integration.test.ts` (`:448`, `:541`), the parity test and `SHELL_SECRET_READS` describe in `index.integration.test.ts`, the T6 mirror parity and the `rg -l "id_rsa" src` search-pattern row (`:117`) in `guardrails-cursor.integration.test.ts`, `dogfood-templates.test.ts`, the gh-preflight cases already in `tests/shell/bkit-cloud-bootstrap-preflight.bats`, `strips allow/deny/ask together, including install's WebFetch enrichment` in `uninstall.test.ts` (`:1170`, reseeded with a `claudeAllowDerived` record in Task 3), `every hook message has an entry and every entry is still emitted` in `instructions-sources.test.ts` (§ Hook Text entries added in Task 4), and `cloud-env.integration.test.ts` (comment at `:112-113` updated in Task 1).
+- [ ] **Test Synchronization:** the existing tests the plan rewrites stay green: `opencode.integration.test.ts` (`:448`, `:541`), the parity test and `SHELL_SECRET_READS` describe in `index.integration.test.ts`, the T6 mirror parity and the `rg -l "id_rsa" src` search-pattern row (`:118`) in `guardrails-cursor.integration.test.ts`, `dogfood-templates.test.ts`, the gh-preflight cases already in `tests/shell/bkit-cloud-bootstrap-preflight.bats`, `strips allow/deny/ask together, including install's WebFetch enrichment` in `uninstall.test.ts` (`:1150`, reseeded with a `claudeAllowDerived` record in Task 3), `every hook message has an entry and every entry is still emitted` in `instructions-sources.test.ts` (§ Hook Text entries added in Task 4), and `cloud-env.integration.test.ts` (comment at `:112-113` updated in Task 1).
 - [ ] **Build Configuration:** no test-only file is added to a shipped path. The new tests extend existing `*.test.ts`, `*.integration.test.ts` and `.bats` files, which the build already excludes. The Task 5 experiment files sit under `tests/experiments/`, outside the package.
 - [ ] **Integration (`opencode.integration.test.ts`, `index.integration.test.ts`):** rendered OpenCode `permission.bash` holds no substring fetch allow, and `permission.webfetch` keeps its `*{base}*` allows; rendered Codex hook denies key-kind shell reads with a sanitized reason (Tasks 1, 4).
 - [ ] **Unit (`checks/before/files.test.ts`):** both detectors, including redaction and the no-write guarantee, against temp directories (Tasks 2, 9).

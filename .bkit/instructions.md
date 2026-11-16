@@ -9237,6 +9237,17 @@ Ask the user to supply what you need without putting the key in this conversatio
 Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.
 ```
 
+### guardrails-codex-key-shell-deny
+
+- hook: Guardrails
+- fires: Shell command on Codex that exposes a private key's content, as the fix text of a deny. Exposing means printing it (a content reader such as `cat` or `grep`, a `<` input, `dd if=`, `git show` / `git cat-file` of `rev:key`, `git diff --no-index`, an `openssl` encoder or key printer without `-pubout` / `-noout` / `-nokeys`), uploading it (`@key`, `curl -T`) or copying it to a remote host (`scp` / `rsync` to `host:`); a glob that can match a key name counts as the key
+- hosts: Codex
+- source: `.bkit/core/hooks/guardrails-tiers.js` `classifyShell`
+
+```text
+NEVER read or send private keys through the shell. Ask the user to run the step that needs the key.
+```
+
 ### guardrails-antigravity-key-read
 
 - hook: Guardrails

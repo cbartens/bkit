@@ -2011,6 +2011,11 @@ const COPY_HEADS = new Set(["cp", "install", "rsync", "scp"]);
 /** Programs whose first positional is a search pattern unless `-e` / `-f` supplies one. */
 const PATTERN_HEADS = new Set(["grep", "egrep", "fgrep", "rg", "ag"]);
 
+/** Whether a grep / sed / awk invocation takes its pattern or script from an option. */
+function patternFromOption(words) {
+  return words.some((w) => /^-[a-zA-Z]*[ef]/.test(w) || /^--(?:regexp|expression|file)\b/.test(w));
+}
+
 /**
  * The first secret file the parsed commands read (`cat .bkit/.env`, `grep KEY .env.local`,
  * `source .env`, `curl -d @.env ...`, `wc -l < .env`), else null. Not reads: a redirect
@@ -2026,18 +2031,224 @@ function shellSecretRead(cmds) {
     const positionals = words.flatMap((w, i) => (i > 0 && !w.startsWith("-") ? [i] : []));
     const skip = new Set();
     if (COPY_HEADS.has(head) && positionals.length > 1) skip.add(positionals.at(-1));
-    if (
-      PATTERN_HEADS.has(head) &&
-      !words.some((w) => /^-[a-zA-Z]*[ef]/.test(w) || /^--(?:regexp|file)\b/.test(w))
-    ) {
-      skip.add(positionals[0]);
-    }
+    if (PATTERN_HEADS.has(head) && !patternFromOption(words)) skip.add(positionals[0]);
     for (let i = 1; i < words.length; i++) {
       if (skip.has(i)) continue;
       for (const part of words[i].split(/[=:@,]/)) {
         if (secretFileKind(part)) return part;
       }
     }
+  }
+  return null;
+}
+
+/** A private-key file: `id_rsa`, `id_dsa`, `id_ecdsa`, `id_ed25519` (not `*.pub`), `*.pem`, `*.p12`, `*.pfx`, `*.key`. */
+const PRIVATE_KEY_RE = /(?:^|\/)id_(?:rsa|dsa|ecdsa|ed25519)(?:_sk)?$|\.(?:pem|p12|pfx|key)$/i;
+/** Programs that print the content of the files they are given. */
+const CONTENT_READERS = new Set(
+  "cat tac nl head tail less more bat base64 base32 xxd od hexdump strings cut sort uniq fold rev paste column diff grep egrep fgrep rg ag sed awk".split(
+    " ",
+  ),
+);
+/** `openssl` subcommands that print the private key they read, unless told to print none. */
+const OPENSSL_KEY_PRINTERS = new Set(["rsa", "dsa", "ec", "pkey", "pkcs8", "pkcs12", "storeutl"]);
+/** `openssl` subcommands that print an encoding of whatever file they read with `-in`. */
+const OPENSSL_ENCODERS = new Set(["base64", "enc", "asn1parse"]);
+/** Names a key-file glob is tried against, and plain names a narrow glob must not match. */
+const KEY_NAME_SAMPLES = ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "id_ed25519_sk"].concat(
+  ["pem", "p12", "pfx", "key"].map((ext) => "k." + ext),
+);
+const PLAIN_NAME_SAMPLES = ["k", "k.txt"];
+
+/** The regex source for one shell glob: `*`, `?`, `[...]` and `{a,b}`. */
+function globSource(glob) {
+  let re = "";
+  for (let i = 0; i < glob.length; i++) {
+    const ch = glob[i];
+    const close = ch === "[" ? glob.indexOf("]", i + 2) : ch === "{" ? glob.indexOf("}", i) : -1;
+    if (ch === "*") re += ".*";
+    else if (ch === "?") re += ".";
+    else if (ch === "[" && close > 0) re += "[" + glob.slice(i + 1, close).replace(/^!/, "^") + "]";
+    else if (ch === "{" && close > 0) {
+      re +=
+        "(?:" +
+        glob
+          .slice(i + 1, close)
+          .split(",")
+          .map(globSource)
+          .join("|") +
+        ")";
+    } else re += ch.replace(/[.*+?^$()|[\]\\{}]/g, "\\$&");
+    if (close > 0 && (ch === "[" || ch === "{")) i = close;
+  }
+  return re;
+}
+
+/**
+ * Whether a file word names a private-key file, or is a glob that can match one: a glob
+ * under a `.ssh/` folder that can match a key name (`~/.ssh/*`, not `~/.ssh/*.pub`), or one
+ * that can match a key name and no plain name (`*.pem`, `id_rs?`, `id_{rsa,dsa}`, not `*`).
+ */
+function mayNameKeyFile(word) {
+  const p = String(word || "").replace(/\\/g, "/");
+  if (PRIVATE_KEY_RE.test(p)) return true;
+  if (!/[*?[{]/.test(p)) return false;
+  const base = new RegExp("^" + globSource(p.split("/").pop()) + "$", "i");
+  if (!KEY_NAME_SAMPLES.some((n) => base.test(n))) return false;
+  return /(?:^|\/)\.ssh\//.test(p) || !PLAIN_NAME_SAMPLES.some((n) => base.test(n));
+}
+
+/** Per program: the short letters and long options whose value is the next word. */
+const VALUE_OPTIONS = {
+  grep: [
+    "ABCDdefm",
+    [
+      "--regexp",
+      "--file",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--max-count",
+      "--include",
+      "--exclude",
+      "--exclude-dir",
+      "--label",
+    ],
+  ],
+  rg: [
+    "ABCMTefgjmrt",
+    [
+      "--regexp",
+      "--file",
+      "--glob",
+      "--iglob",
+      "--type",
+      "--type-not",
+      "--max-count",
+      "--after-context",
+      "--before-context",
+      "--context",
+      "--replace",
+      "--max-depth",
+      "--threads",
+    ],
+  ],
+  ag: ["ABCGgm", ["--after", "--before", "--context", "--max-count", "--file-search-regex"]],
+  sed: ["efl", ["--expression", "--file", "--line-length"]],
+  awk: ["Ffv", ["--file", "--assign", "--field-separator"]],
+  sort: ["kotST", ["--key", "--output", "--field-separator"]],
+  cut: ["bcdf", ["--bytes", "--characters", "--delimiter", "--fields"]],
+  head: ["cn", ["--bytes", "--lines"]],
+  tail: ["cn", ["--bytes", "--lines"]],
+  scp: ["cFiJloPS", []],
+  rsync: ["e", ["--rsh"]],
+};
+
+/** The operands of a parsed command: its words after the program, minus options and their values. */
+function operandsSkippingValues(words, program) {
+  const spec = VALUE_OPTIONS[program === "egrep" || program === "fgrep" ? "grep" : program];
+  const ops = [];
+  for (let i = 1; i < words.length; i++) {
+    const w = words[i];
+    if (w === "--") return ops.concat(words.slice(i + 1));
+    if (w === "-" || !w.startsWith("-")) ops.push(w);
+    else if (spec && !w.includes("=")) {
+      if (w.startsWith("--") ? spec[1].includes(w) : spec[0].includes(w.at(-1))) i++;
+    }
+  }
+  return ops;
+}
+
+/** Options that upload the file named by their value (`curl -T`, `wget --post-file`). */
+const UPLOAD_OPTIONS = new Set(["-T", "--upload-file", "--post-file", "--body-file"]);
+
+/**
+ * The key file one parsed command sends off the machine, else null: an `@file` word of any
+ * program (`curl -d @key.pem`, `-F f=@key.pem`), a curl / wget upload option's value, or a
+ * local source operand of `scp` / `rsync` whose destination is `host:...`.
+ */
+function keySentBy(c) {
+  const words = c.words;
+  for (let i = 1; i < words.length; i++) {
+    const at = /(?:^-[A-Za-z]|^|=)@([^;]+)/.exec(words[i]);
+    if (at && mayNameKeyFile(at[1])) return at[1];
+    const eq = words[i].startsWith("--") ? words[i].indexOf("=") : -1;
+    const [name, value] =
+      eq > 0 ? [words[i].slice(0, eq), words[i].slice(eq + 1)] : [words[i], words[i + 1]];
+    const uploads = (c.program === "curl" || c.program === "wget") && UPLOAD_OPTIONS.has(name);
+    if (uploads && mayNameKeyFile(value)) return value;
+  }
+  if (c.program !== "scp" && c.program !== "rsync") return null;
+  const remote = (w) => /^[^/]*:/.test(w);
+  const ops = operandsSkippingValues(words, c.program);
+  if (ops.length < 2 || !remote(ops.at(-1))) return null;
+  return ops.slice(0, -1).find((w) => !remote(w) && mayNameKeyFile(w)) || null;
+}
+
+/**
+ * The key file one parsed `git` or `openssl` command prints, else null: `git show` /
+ * `git cat-file` of `rev:path`, `git diff --no-index`, an `openssl` encoder's `-in` file, or
+ * a key printer's input unless it prints only the public key or nothing (`-pubout`,
+ * `-noout`, `pkcs12 -nokeys`, each without `-text`).
+ */
+function keyPrintedByTool(c) {
+  const words = c.words;
+  const g = parseGit(words);
+  if (g && (g.sub === "show" || g.sub === "cat-file")) {
+    const file = g.args.map((a) => a.slice(a.indexOf(":") + 1 || a.length)).find(mayNameKeyFile);
+    return file || null;
+  }
+  if (g)
+    return g.sub === "diff" && g.long.has("--no-index")
+      ? g.args.find(mayNameKeyFile) || null
+      : null;
+  if (c.program !== "openssl") return null;
+  const sub = words[1];
+  const inAt = words.findIndex((w) => w === "-in" || w.startsWith("-in="));
+  const named =
+    inAt < 0 ? null : words[inAt].startsWith("-in=") ? words[inAt].slice(4) : words[inAt + 1];
+  const input = sub === "storeutl" ? words.at(-1) : named;
+  if (!mayNameKeyFile(input)) return null;
+  if (OPENSSL_ENCODERS.has(sub)) return input;
+  if (!OPENSSL_KEY_PRINTERS.has(sub)) return null;
+  const has = (o) => words.includes(o);
+  const quiet = has("-pubout") || has("-noout") || (sub === "pkcs12" && has("-nokeys"));
+  return quiet && !has("-text") ? null : input;
+}
+
+/**
+ * The key file one parsed content reader prints, else null: an operand of `cat`, `head`,
+ * `grep` and the like (after a grep / sed / awk pattern unless an option supplies it, and
+ * skipping option values such as `grep -A 2`), or `dd if=`. An in-place `sed -i` prints
+ * nothing.
+ */
+function keyPrintedByReader(c) {
+  const words = c.words;
+  if (c.program === "dd") {
+    const input = (words.find((w) => w.startsWith("if=")) || "").slice(3);
+    return mayNameKeyFile(input) ? input : null;
+  }
+  if (!CONTENT_READERS.has(c.program)) return null;
+  if (c.program === "sed" && words.some((w) => /^-[a-zA-Z]*i|^--in-place/.test(w))) return null;
+  const ops = operandsSkippingValues(words, c.program);
+  const scripted = PATTERN_HEADS.has(c.program) || c.program === "sed" || c.program === "awk";
+  const files = scripted && !patternFromOption(words) ? ops.slice(1) : ops;
+  return files.find(mayNameKeyFile) || null;
+}
+
+/**
+ * The private-key file whose content one of the parsed commands exposes, else null:
+ * printed (a reader, a `<` input file, `git show`, `dd`, a key-printing `openssl`
+ * subcommand) or sent off the machine (`curl -d @key`, `scp key host:`). A key passed to
+ * a program that only uses it (`ssh -i`, `curl --cacert`, `openssl x509 -in`), a write
+ * destination (`-out`, `-keyout`, `ssh-keygen -f`) and a word that only names it
+ * (`git rm`, `git commit -m`, `ls`) does not expose it.
+ */
+function privateKeyContentRead(cmds) {
+  for (const c of cmds) {
+    if (mayNameKeyFile(c.stdinFile)) return c.stdinFile;
+    const key = keySentBy(c) || keyPrintedByTool(c) || keyPrintedByReader(c);
+    if (key) return key;
   }
   return null;
 }
@@ -2065,6 +2276,17 @@ function classifyShell(c, dirs, ctx) {
       tier: "deny",
       what: "bkit tests jump",
       fix: "Every bkit tests jump needs the human's approval and Codex cannot ask. Ask the human to run it in their own terminal.",
+    };
+  }
+  // Codex cannot prompt, so a command that exposes a private key's content (prints it or
+  // sends it off the machine) is denied there whatever tier would win; a command that uses,
+  // writes or only names a key file keeps the advisory.
+  const keyRead = IS_CODEX_HOOK ? privateKeyContentRead(cmds) : null;
+  if (keyRead) {
+    return {
+      tier: "deny",
+      what: `a command that exposes the content of ${keyRead}, a private-key file`,
+      fix: "NEVER read or send private keys through the shell. Ask the user to run the step that needs the key.",
     };
   }
   const what = askRule(cmds);

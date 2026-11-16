@@ -242,10 +242,8 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * and fills in provider-specific fields.
  *
  * Also injects derived **allow** rules for {@link resolveNetworkAllowlist} so
- * context-fetch / provider hosts do not prompt on either fetch surface: `curl *{domain}*` /
- * `wget *{domain}*` after the template's `curl *` / `wget *` ask (OpenCode bash is
- * last-match-wins), and `*{domain}*` into the `permission.webfetch` URL map (after its
- * `"*": "ask"`). Adds `<server>_*` allows for the consumer's `mcp-servers` block.
+ * context-fetch / provider hosts do not prompt on the fetch tool: `*{domain}*` into the
+ * `permission.webfetch` URL map (after its `"*": "ask"`); shell fetches keep asking. Adds `<server>_*` allows for the consumer's `mcp-servers` block.
  */
 export function renderOpencodeJson(
   templatePath: string,
@@ -338,12 +336,10 @@ export function renderOpencodeJson(
  * last-match-wins), and one `<server>_*` allow per declared MCP server — opencode names
  * MCP tools `<server>_<tool>` and matches permission keys as globs against the tool name.
  *
- * The allowlist is applied to BOTH fetch surfaces, so an allowlisted host does not prompt
- * whichever path the agent takes:
- *   - fetch tool — `permission.webfetch` is a URL-keyed map (`{ "*": "ask" }` from the
- *     template); opencode matches the resource against the URL, so `*{base}*` allows it;
- *   - shell fetch — `permission.bash` gains `curl *{base}*` / `wget *{base}*` after the
- *     template's `curl *` / `wget *` ask.
+ * Only the fetch tool gets derived allows: `permission.webfetch` is a URL-keyed map
+ * (`{ "*": "ask" }` from the template); opencode matches the resource against the URL, so
+ * `*{base}*` allows it (accepted risk, decision 551). Shell `curl` / `wget` keep the
+ * template's ask, because a glob over the command string also matches a host in a query.
  */
 function injectOpencodeDerivedAllows(parsed: Record<string, unknown>, cwd: string): void {
   const permission = parsed.permission as Record<string, unknown> | undefined;
@@ -352,13 +348,6 @@ function injectOpencodeDerivedAllows(parsed: Record<string, unknown>, cwd: strin
     permission[`${server}_*`] = "allow";
   }
   const bases = networkAllowlistBases(resolveNetworkAllowlist(cwd));
-  if (typeof permission.bash === "object" && permission.bash !== null) {
-    const bash = permission.bash as Record<string, string>;
-    for (const base of bases) {
-      bash[`curl *${base}*`] = "allow";
-      bash[`wget *${base}*`] = "allow";
-    }
-  }
   // Fetch tool — opencode matches the webfetch resource against the requested URL.
   if (typeof permission.webfetch === "object" && permission.webfetch !== null) {
     const webfetch = permission.webfetch as Record<string, string>;

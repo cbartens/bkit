@@ -7,7 +7,7 @@ import { deepContains, type JsonValue } from "../../install/write.js";
 import { extractManagedBlock, stripManagedBlock } from "../../install/managed-block.js";
 import { readTemplate } from "../../render/parts.js";
 import { findTemplateSource, getPkgRoot } from "../../shared/package-roots.js";
-import { parseJson } from "../../shared/json.js";
+import { parseJson, readJsonFile } from "../../shared/json.js";
 import { ciWorkflowPath } from "../../shared/settings.js";
 import type { PreflightFinding } from "./index.js";
 
@@ -104,6 +104,64 @@ export function detectPlaywrightReporterHostile(cwd: string): PreflightFinding |
     detect: `${ciRel} has a \`playwright test\` invocation that passes \`--reporter=line\`. Under \`[verbose ci]\` with \`--trace=on\`, trace artifacts are written but no reporter surfaces them — pure cost.`,
     action:
       'Drop the `--reporter=line` flag so `playwright.config.ts`\'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: have `test:e2e` read `VERBOSE_CI` and append `--trace=on` to its own `playwright test` call (e.g. `TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE`), then run it plainly as `pnpm test:e2e` — do NOT pass `--trace=on` through a turbo / pnpm `-- --trace=on` passthrough, which appends to the script string and breaks any test:e2e ending in a bash construct (fi / done / esac). Never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they\'re `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config\'s `list` reporter.',
+  };
+}
+
+const OPENCODE_JSON_REL = path.join(".opencode", "opencode.json");
+
+/** True for a `permission.bash` key of the legacy generated shape `curl *{host}*` / `wget *{host}*`. */
+export function isOpencodeSubstringFetchKey(key: string): boolean {
+  return /^(curl|wget) \*[^*\s]+\*$/.test(key);
+}
+
+/** Drop URL user-info and query / fragment text from a permission key before it is printed. */
+export function redactUrlParts(text: string): string {
+  return text.replace(/[^/@\s*]+@/g, "").replace(/[?#][^*\s]*/g, "?…");
+}
+
+/**
+ * Advisory: `.opencode/opencode.json` `permission.bash` holds substring `curl` / `wget`
+ * allows that an earlier bkit install generated. No per-entry ownership record exists, so
+ * they are reported for owner review and never removed. Reads only; never writes.
+ */
+export function detectOpencodeSubstringFetchGrants(cwd: string): PreflightFinding | null {
+  const read = readJsonFile(path.join(cwd, OPENCODE_JSON_REL));
+  if (!read.ok) return null;
+  const root = read.value as { permission?: unknown } | null;
+  const permission = root && typeof root === "object" ? root.permission : undefined;
+  if (!permission || typeof permission !== "object") return null;
+  const bash = (permission as { bash?: unknown }).bash;
+  if (!bash || typeof bash !== "object" || Array.isArray(bash)) return null;
+  const keys = Object.entries(bash as Record<string, unknown>)
+    .filter(([k, v]) => v === "allow" && isOpencodeSubstringFetchKey(k))
+    .map(([k]) => redactUrlParts(k));
+  if (keys.length === 0) return null;
+  return {
+    id: "opencode-substring-fetch-grants",
+    severity: "advisory",
+    detect: `${OPENCODE_JSON_REL} \`permission.bash\` holds substring fetch allows (${keys.map((k) => `\`${k}\``).join(", ")}). A glob over the command string also matches the host inside a query string or user-info part, so \`curl https://evil.example/?x=host\` runs without a prompt.`,
+    action: `Review each entry. If you did not add it, remove it from \`permission.bash\` in ${OPENCODE_JSON_REL}; shell \`curl\` / \`wget\` then fall back to the \`curl *\` / \`wget *\` ask. bkit no longer writes these entries and never removes them for you.`,
+  };
+}
+
+const CLOUD_BOOTSTRAP_REL = ".claude/hooks/bkit-cloud-bootstrap.sh";
+const CLOUD_BOOTSTRAP_TEMPLATE_REL = ".bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh";
+
+/**
+ * Advisory: an adopted `.claude/hooks/bkit-cloud-bootstrap.sh` never reads
+ * `BKIT_CLOUD_ALLOWLIST_FINGERPRINT`, so a stale cloud network allowlist goes unwarned.
+ * Matches the variable name, never byte identity, so a customised bootstrap that compares
+ * the variable its own way is accepted. Silent when no bootstrap is adopted. Reads only.
+ */
+export function detectCloudBootstrapFingerprintMissing(cwd: string): PreflightFinding | null {
+  const abs = path.join(cwd, CLOUD_BOOTSTRAP_REL);
+  if (!fs.existsSync(abs)) return null;
+  if (fs.readFileSync(abs, "utf-8").includes("BKIT_CLOUD_ALLOWLIST_FINGERPRINT")) return null;
+  return {
+    id: "cloud-bootstrap-fingerprint-missing",
+    severity: "advisory",
+    detect: `${CLOUD_BOOTSTRAP_REL} never reads \`BKIT_CLOUD_ALLOWLIST_FINGERPRINT\`, so a cloud session cannot warn when the network allowlist pasted into the cloud dashboard is stale.`,
+    action: `Copy the fingerprint block (the \`EXPECTED_FP\` section after the workspace-trust check) from ${CLOUD_BOOTSTRAP_TEMPLATE_REL} into ${CLOUD_BOOTSTRAP_REL}, or compare \`BKIT_CLOUD_ALLOWLIST_FINGERPRINT\` with the \`fingerprint\` in \`.bkit/allowlist.json\` your own way. Then set the variable in the cloud environment to the fingerprint printed in \`.claude/bkit-cloud.md\` § Network access.`,
   };
 }
 

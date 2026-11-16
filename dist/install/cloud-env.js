@@ -582,15 +582,15 @@ function writeGeneratedJson(cwd, rel, doc, dryRun) {
     return true;
 }
 /**
- * 8-hex fingerprint of the DERIVED egress set only — bases and hosts, sorted, never
- * the consumer union. Hosts are included (the Cursor paste is hosts-only). Editing
- * `allowed-domains` never moves it; editing a registry row does.
+ * 8-hex fingerprint of an entry list, sorted and de-duplicated. With no argument it
+ * covers the DERIVED egress set only — bases and hosts, never the consumer union (the
+ * Cursor and Codex paste notes use that); editing `allowed-domains` never moves it,
+ * editing a registry row does. Pass the resolved allowlist to cover consumer
+ * `allowed-domains` too (the Claude paste list and `.bkit/allowlist.json`).
  */
-export function egressFingerprint() {
-    const derived = [
-        ...new Set([...BKIT_SHIPPED_NETWORK_DOMAINS, ...BKIT_SHIPPED_NETWORK_HOSTS]),
-    ].sort();
-    return sha256(derived.join("\n")).slice(0, 8);
+export function egressFingerprint(entries) {
+    const set = entries ?? [...BKIT_SHIPPED_NETWORK_DOMAINS, ...BKIT_SHIPPED_NETWORK_HOSTS];
+    return sha256([...new Set(set)].sort().join("\n")).slice(0, 8);
 }
 /**
  * The "where these came from" clause of a network list's count note. A declared entry
@@ -631,10 +631,17 @@ export function renderCloudNetworkAllowlist(cwd) {
         "\n```\n\n" +
         `_${domains.length} entries (${domains.length / 2} domains, each as apex + \`*.\` wildcard): ` +
         networkSourceCounts(networkAllowlistBases(declared), BKIT_SHIPPED_NETWORK_DOMAINS) +
-        ". Derived set fingerprint `" +
-        egressFingerprint() +
+        ". Allowlist fingerprint `" +
+        egressFingerprint(domains) +
         "`._" +
         declaredNote +
+        "\n\nThe fingerprint is also recorded in `.bkit/allowlist.json`. After you paste the list, " +
+        "set `BKIT_CLOUD_ALLOWLIST_FINGERPRINT` to it in the cloud environment's variables (or " +
+        "the setup script); the SessionStart bootstrap compares it with the repo's current " +
+        "fingerprint and warns on a mismatch, then continues. The stamp is an operator " +
+        "assertion that you pasted this list: the deployed dashboard allowlist stays " +
+        "unverified. After any `allowed-domains` change, run `bkit upgrade`, re-paste the list " +
+        "and update the variable." +
         "\n\nUnder **Trusted**, your app domains and most observability / API hosts are\n" +
         "unreachable, so cloud `/bkit-debug` gets no runtime logs and e2e can't hit your\n" +
         "deployment. **Full** works too but opens all egress.");

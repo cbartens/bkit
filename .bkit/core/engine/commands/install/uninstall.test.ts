@@ -1165,6 +1165,12 @@ describe("runUninstall — .claude/settings.json leaves no grants behind", () =>
       "WebFetch(domain:npmjs.com)",
     ];
     writeFile(".claude/settings.json", JSON.stringify(onDisk, null, 2) + "\n");
+    // Uninstall strips only the rows `.bkit/version` records as bkit-written.
+    writeBkitVersionFile({
+      pinnedVersion: "1.0.0",
+      canonicalHashes: {},
+      claudeAllowDerived: ["WebFetch(domain:github.com)", "WebFetch(domain:npmjs.com)"],
+    });
 
     await runUninstall(["claude"], makeCtx());
 

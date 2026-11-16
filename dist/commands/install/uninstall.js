@@ -36,8 +36,9 @@ import { applyModelOverrides, buildOpencodeModelLookup, parseEffortMap, } from "
 import { readInstallingVersion } from "../../shared/package-json.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { SEEDED_BKIT_DEFAULTS } from "../../install/modules/core.js";
-import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, resolveClaudeDerivedAllows, } from "../../install/cloud-env.js";
+import { CLAUDE_CLOUD_RELPATH, CODEX_CLOUD_RELPATH, CURSOR_CLOUD_RELPATH, } from "../../install/cloud-env.js";
 import { LOG_PREFIX, setLogPrefix } from "../../shared/log-prefix.js";
+import { isOpencodeSubstringFetchKey, redactUrlParts } from "../../checks/before/files.js";
 import { unusedTrackerMcpServers } from "../../checks/before/mcp.js";
 // ---------------------------------------------------------------------------
 // stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
@@ -476,6 +477,9 @@ export async function runUninstall(modules, ctx) {
             return result;
         }
     }
+    // The grants bkit wrote into `.claude/settings.json`, read before the loop below deletes
+    // `.bkit/version` on a full or core uninstall.
+    const claudeAllowDerived = readBkitVersion(path.join(ctx.cwd, ".bkit", "version"))?.claudeAllowDerived ?? [];
     const table = buildDecisionTable(moduleList, ctx);
     result.decisions = table;
     if (ctx.dryRun) {
@@ -548,19 +552,18 @@ export async function runUninstall(modules, ctx) {
                             // the resolved network allowlist and `mcp__…` grants per declared MCP
                             // server (enrichClaudeSettingsAllows). Stripping
                             // against the RAW template leaves those grants behind as if the consumer
-                            // had added them. Recompute the same set — the very function that produced
-                            // them — and treat it as part of the template, exactly as the opencode.json
-                            // sentinel render above does.
+                            // had added them. `.bkit/version` records exactly the rows install wrote
+                            // (`claudeAllowDerived`); treat them as part of the template. A derived-looking
+                            // row the record lacks has unknown ownership: it stays and is listed for review.
                             if (summary.file === path.join(".claude", "settings.json")) {
                                 const perms = templateDoc.permissions;
                                 if (perms !== null && typeof perms === "object" && !Array.isArray(perms)) {
                                     const permsObj = perms;
                                     const allow = permsObj.allow;
                                     if (Array.isArray(allow)) {
-                                        const enriched = resolveClaudeDerivedAllows(ctx.cwd);
                                         permsObj.allow = [
                                             ...allow,
-                                            ...enriched.filter((e) => !allow.includes(e)),
+                                            ...claudeAllowDerived.filter((e) => !allow.includes(e)),
                                         ];
                                     }
                                 }
@@ -570,6 +573,28 @@ export async function runUninstall(modules, ctx) {
                                 : isOpencodeJson
                                     ? stripOpencodeJsonScope(consumerDoc, templatePath, ctx.cwd)
                                     : stripTier2JsonScope(consumerDoc, templateDoc);
+                            if (summary.file === path.join(".claude", "settings.json")) {
+                                const remaining = stripped.permissions?.allow;
+                                if (Array.isArray(remaining)) {
+                                    for (const row of remaining) {
+                                        if (typeof row === "string" &&
+                                            /^(WebFetch\(domain:|mcp__)/.test(row) &&
+                                            !claudeAllowDerived.includes(row)) {
+                                            console.log(`${ctx.logPrefix} review: ${summary.file} keeps ${row} — .bkit/version does not record it as bkit-written; remove it by hand if bkit added it`);
+                                        }
+                                    }
+                                }
+                            }
+                            if (isOpencodeJson) {
+                                const bash = stripped.permission?.bash;
+                                if (bash !== null && typeof bash === "object" && !Array.isArray(bash)) {
+                                    for (const [key, value] of Object.entries(bash)) {
+                                        if (value === "allow" && isOpencodeSubstringFetchKey(key)) {
+                                            console.log(`${ctx.logPrefix} review: ${summary.file} keeps legacy substring grant \`${redactUrlParts(key)}\` in permission.bash — remove it by hand if you did not add it`);
+                                        }
+                                    }
+                                }
+                            }
                             const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
                             if (Object.keys(stripped).length === 0) {
                                 // All keys were bkit-owned → delete file

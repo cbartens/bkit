@@ -39,6 +39,7 @@ import {
   renderCodexNetworkAllowlist,
   writeCodexCloudDoc,
   SESSION_HIJACK_KEYS,
+  egressFingerprint,
 } from "./cloud-env";
 import {
   OPENCODE_PROVIDER_DEFAULTS,
@@ -568,6 +569,22 @@ describe("extractAllowedDomains / expandAllowedDomains / renderCloudNetworkAllow
     // the pointer prose renders alongside the always-Custom block
     expect(out).toContain("No `allowed-domains` block is declared");
     expect(out).toContain("```text");
+  });
+
+  it("renderCloudNetworkAllowlist names the .bkit/allowlist.json fingerprint and the BKIT_CLOUD_ALLOWLIST_FINGERPRINT step", () => {
+    write(
+      ".agents/context.md",
+      "<!-- bkit:end -->\n<!-- allowed-domains:start -->\nexample.invalid\n<!-- allowed-domains:end -->\n",
+    );
+    const stamp = egressFingerprint(resolveNetworkAllowlist(tmpDir));
+    const out = renderCloudNetworkAllowlist(tmpDir);
+    expect(out).toContain("Allowlist fingerprint `" + stamp + "`");
+    expect(out).toContain("BKIT_CLOUD_ALLOWLIST_FINGERPRINT");
+    expect(out).toContain("operator");
+    expect(out).toContain("unverified");
+    expect(out).not.toContain("Derived set fingerprint");
+    // the stamp covers the consumer union: it differs from the derived-set stamp
+    expect(stamp).not.toBe(egressFingerprint());
   });
 
   it("resolveNetworkAllowlist stays stack-agnostic until consumer declares domains", () => {

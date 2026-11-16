@@ -781,3 +781,21 @@ describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () =>
     expect(r.combined).not.toContain("bkit-managed files are stale (managed-version marker drift)");
   });
 });
+
+describe("cloud bootstrap fingerprint compare — adoption signal", () => {
+  it("bkit check reports a stale adopted cloud bootstrap with the template block to copy", () => {
+    // A bootstrap adopted before the fingerprint compare existed: it never reads the variable.
+    const hook = path.join(tmpDir, ".claude", "hooks", "bkit-cloud-bootstrap.sh");
+    fs.mkdirSync(path.dirname(hook), { recursive: true });
+    fs.writeFileSync(
+      hook,
+      "#!/usr/bin/env bash\nset -euo pipefail\ncat >/dev/null\nexit 0\n",
+      "utf-8",
+    );
+    const r = runBkit(["check"]);
+    const out = combinedOutput(r);
+    expect(out, out).toContain("cloud-bootstrap-fingerprint-missing");
+    expect(out).toContain(".claude/hooks/bkit-cloud-bootstrap.sh");
+    expect(out).toContain(".bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh");
+  });
+});

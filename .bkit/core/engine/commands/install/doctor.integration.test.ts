@@ -148,6 +148,29 @@ describe("bkit doctor — integration", () => {
     expect(combinedOutput).toContain("bkit-version-pin-stale");
   });
 
+  it("bkit doctor lists a stale adopted cloud bootstrap", () => {
+    seedMinimalConsumer(tmpDir);
+    const hook = path.join(tmpDir, ".claude", "hooks", "bkit-cloud-bootstrap.sh");
+    fs.mkdirSync(path.dirname(hook), { recursive: true });
+    fs.writeFileSync(
+      hook,
+      "#!/usr/bin/env bash\nset -euo pipefail\ncat >/dev/null\nexit 0\n",
+      "utf-8",
+    );
+
+    const result = spawnSync(requireTsx(), [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const out = result.stdout + result.stderr;
+    expect(out, out).toContain("cloud-bootstrap-fingerprint-missing");
+    expect(out).toContain(".bkit/templates/.claude/hooks/bkit-cloud-bootstrap.sh");
+  });
+
   it("writes only the .bkit/advisories.md artifact (no other side effects)", () => {
     seedMinimalConsumer(tmpDir);
 
