@@ -232,11 +232,9 @@ const events = (): GateEvent[] =>
         .map((line) => JSON.parse(line) as GateEvent)
     : [];
 
-/** Replace the gate's work while retaining its sleep-prevention and lock wrappers. */
+/** Replace the gate's work while retaining its lock wrapper. */
 function gatePrefix(value: string): string {
-  const prefix = value.match(
-    /^node scripts\/ci\/bkit-test-awake\.mjs bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /,
-  )?.[0];
+  const prefix = value.match(/^bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- /)?.[0];
   if (!prefix) throw new Error(`Gate wrappers missing: ${value}`);
   return prefix;
 }

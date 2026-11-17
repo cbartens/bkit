@@ -291,6 +291,90 @@ describe("machine-lock copy migration", () => {
     }
   });
 
+  const awake = "scripts/ci/bkit-test-awake.mjs";
+  const awakeTemplate = ".bkit/templates/scripts/ci/bkit-test-awake.mjs";
+  const currentAwake = fs.readFileSync(
+    path.join(getTemplatesRoot(), "scripts/ci/bkit-test-awake.mjs"),
+  );
+
+  function migrateAwake(dryRun = false): WriteSet {
+    const ctx = makeCtx({ dryRun });
+    runBkitDocs(dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    return { writes: ctx.ws.writes.filter((w) => w.path === awake) };
+  }
+
+  it("a replaced machine-lock copy gets bkit-test-awake.mjs beside it, the same write in dry run, once", () => {
+    seed();
+    const dry = migrateAwake(true);
+    expect(fs.existsSync(awake)).toBe(false);
+    expect(dry.writes).toEqual([{ path: awake, action: "write", unhashed: true }]);
+    expect(migrateAwake()).toEqual(dry);
+    expect(fs.readFileSync(awake)).toEqual(currentAwake);
+    expect(migrateAwake().writes).toEqual([]);
+  });
+
+  it("a current machine-lock copy beside a bkit-test-awake.mjs without --hold-s keeps both, with one warning", () => {
+    seed(currentLock);
+    fs.writeFileSync(awake, "// consumer's own wrapper\n");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(fs.readFileSync(awake, "utf8")).toBe("// consumer's own wrapper\n");
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(awakeTemplate);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("--hold-s");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  const shippedAwake = fs.readFileSync(
+    path.join(getPkgRoot(), "tests/fixtures/machine-lock/bkit-test-awake-6.1.1.mjs"),
+  );
+
+  it("replaces a shipped 6.1.1 bkit-test-awake.mjs beside the machine-lock copy, the same write in dry run, once", () => {
+    seed();
+    fs.writeFileSync(awake, shippedAwake);
+    const dry = migrateAwake(true);
+    expect(fs.readFileSync(awake)).toEqual(shippedAwake);
+    expect(dry.writes).toEqual([{ path: awake, action: "update", unhashed: true }]);
+    expect(migrateAwake()).toEqual(dry);
+    expect(fs.readFileSync(awake)).toEqual(currentAwake);
+    expect(migrateAwake().writes).toEqual([]);
+  });
+
+  it("an edited bkit-test-awake.mjs without --hold-s is left alone, warning that tests-lock runs are refused with exit 73", () => {
+    seed(currentLock);
+    const custom = Buffer.concat([shippedAwake, Buffer.from("\n// consumer customization\n")]);
+    fs.writeFileSync(awake, custom);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(fs.readFileSync(awake)).toEqual(custom);
+      const lines = warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain(awakeTemplate);
+      expect(lines[0]).toContain("by hand");
+      expect(lines[0]).toContain("refused with exit 73");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("a current bkit-test-awake.mjs beside the machine-lock copy is left alone with no warning", () => {
+    seed(currentLock);
+    fs.writeFileSync(awake, currentAwake);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(migrateAwake().writes).toEqual([]);
+      expect(warn.mock.calls.map((c) => String(c[0])).filter((l) => l.includes(awake))).toEqual([]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("leaves a symlinked machine-lock copy unchanged and reports the template to merge by hand", () => {
     fs.mkdirSync("owned", { recursive: true });
     const target = path.resolve("owned/bkit-machine-lock.sh");

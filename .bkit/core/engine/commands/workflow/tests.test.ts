@@ -62,7 +62,7 @@ const scripts = (s: Record<string, string>) => JSON.stringify({ scripts: s });
  * $BKIT_TEST_REPORT_DIR (B one folder down), prints FAKE_LINES numbered lines,
  * then exits FAKE_EXIT. It appends its arguments to FAKE_ARGS_LOG when set. With FAKE_LOCK_GIVEUP it
  * writes a tests-lock give-up to $LOCAL_STACK_LOCK_STATUS_FILE and exits 75; with FAKE_LOCK_REFUSED it
- * writes a tests-lock refusal there and exits 73. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
+ * writes a tests-lock refusal there and exits 73; with FAKE_LOCK_HELD it writes a hold-limit stop there and exits 124. Asked for bkit:lint:file, it exits FAKE_LINT_EXIT (default 0) after the echoes.
  */
 let cwd: string;
 let bin: string;
@@ -80,6 +80,7 @@ beforeEach(() => {
       'if [ -n "$FAKE_ARGS_LOG" ]; then echo "$*" >> "$FAKE_ARGS_LOG"; fi\n' +
       'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] a reworded line the engine never reads"; printf "lock=tests\\noutcome=gave-up\\nholder=another agent — /tmp/holder (pid 123, since 12:00:00)\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 75; fi\n' +
       'if [ -n "$FAKE_LOCK_REFUSED" ]; then printf "lock=tests\\noutcome=refused\\nholder=\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 73; fi\n' +
+      'if [ -n "$FAKE_LOCK_HELD" ]; then echo "[machine-lock] held past the hold limit"; printf "lock=tests\\noutcome=held-too-long\\nholder=this run\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 124; fi\n' +
       'if [ "$1" = "bkit:lint:file" ]; then exit "${FAKE_LINT_EXIT:-0}"; fi\n' +
       'if [ -n "$BKIT_TEST_REPORT" ] && [ -n "$FAKE_JUNIT" ]; then printf "%s" "$FAKE_JUNIT" > "$BKIT_TEST_REPORT"; fi\n' +
       'if [ -n "$FAKE_REPORT_A" ]; then printf "%s" "$FAKE_REPORT_A" > "$BKIT_TEST_REPORT_DIR/a.xml"; fi\n' +
@@ -696,6 +697,18 @@ describe("bkit tests run --file", () => {
     expect(runs[0]!.at).toMatch(/Z$/);
     expect(pass.json.row).toEqual(runs[0]);
     expect(rowsOf().some((r) => r.type === "step-done")).toBe(false);
+  });
+
+  it("a run stopped at the tests-lock hold limit exits 4 and writes a row with no verdict, never a FAIL", async () => {
+    startRun();
+    vi.stubEnv("FAKE_LOCK_HELD", "1");
+    const r = await run(ARGS);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ verdict: null, exitCode: 124, lockHolder: null });
+    expect(r.err).toContain("stopped at the tests-lock hold limit");
+    expect(r.err).toContain("[machine-lock] held past the hold limit");
+    const runs = rowsOf().filter((row) => row.type === "test-run");
+    expect(runs).toEqual([expect.objectContaining({ verdict: null, exitCode: 124 })]);
   });
 
   it("numbers runs within the workflow's active run and per step", async () => {

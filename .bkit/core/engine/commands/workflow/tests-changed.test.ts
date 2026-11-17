@@ -37,7 +37,8 @@ const STATIC = "bkit:gate:static";
  * A committed checkout declaring `scripts`, with `src/a.ts` and `src/b.ts` tracked, and a
  * fake package runner on PATH that writes each argument it got, one per line, to
  * $FAKE_ARGS, then exits FAKE_EXIT. With FAKE_LOCK_GIVEUP it writes a tests-lock give-up to
- * $LOCAL_STACK_LOCK_STATUS_FILE and exits 75.
+ * $LOCAL_STACK_LOCK_STATUS_FILE and exits 75; with FAKE_LOCK_HELD it writes a hold-limit stop
+ * there and exits 124.
  */
 let cwd: string;
 let argsFile: string;
@@ -68,6 +69,7 @@ beforeEach(() => {
     path.join(bin, PACKAGE_RUNNER),
     '#!/bin/sh\nfor a in "$@"; do echo "$a" >> "$FAKE_ARGS"; done\necho "ran $1"\n' +
       'if [ -n "$FAKE_LOCK_GIVEUP" ]; then echo "[machine-lock] a reworded line the engine never reads"; printf "lock=tests\\noutcome=gave-up\\nholder=another agent — /tmp/holder (pid 123, since 12:00:00)\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 75; fi\n' +
+      'if [ -n "$FAKE_LOCK_HELD" ]; then printf "lock=tests\\noutcome=held-too-long\\nholder=this gate — /tmp/here (pid 9, since 12:00:00)\\n" > "$LOCAL_STACK_LOCK_STATUS_FILE"; exit 124; fi\n' +
       'exit "${FAKE_EXIT:-0}"\n',
     { mode: 0o755 },
   );
@@ -374,6 +376,15 @@ describe("tests changed", () => {
       lockHolder: "another agent — /tmp/holder (pid 123, since 12:00:00)",
     });
     expect(fs.readdirSync(temp)).toEqual([]);
+  });
+
+  it("exits 4 with no verdict when the status file says the hold limit stopped the gate", async () => {
+    checkout({ [BKIT_GATE_CHANGED_SCRIPT]: "x" });
+    write("src/a.ts", "changed\n");
+    vi.stubEnv("FAKE_LOCK_HELD", "1");
+    const r = await changed([]);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ verdict: null, exitCode: 124 });
   });
 
   it("exits 1 when the gate exits 75 and writes no status file", async () => {

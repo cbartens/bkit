@@ -1,15 +1,14 @@
 // Local full-gate receipts, shared by linked worktrees and bound to committed trees.
-import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { parseJson, readJsonFile } from "../../shared/json.js";
 import { readPackageJson } from "../../shared/package-json.js";
-import { scriptCommand, testCommand } from "../../shared/package-manager.js";
-import { classifyLockOutcome, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, outboxRoot, readLockStatus, runGit, } from "../lib.js";
+import { scriptCommand } from "../../shared/package-manager.js";
+import { EXIT, git, LOCK_STATUS_FILE_ENV, outboxRoot, runGit } from "../lib.js";
 import { pidAlive } from "../workflow/disk.js";
+import { runGateUnderLock } from "../workflow/junit.js";
 const UNIT = "bkit:gate:static-unit";
 const INTEGRATION = "bkit:gate:static-unit-integration";
 const SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -149,31 +148,12 @@ export function runPushGate(cwd, gate, log) {
         return EXIT.USAGE;
     }
     const env = gitEnv();
-    const outerStatus = env[LOCK_STATUS_FILE_ENV];
-    const lock = { status: null };
+    const lock = {};
     return runWithReceipt(cwd, gate, [], () => {
-        const argv = testCommand(scriptCommand(gate));
         log(`running ${scriptCommand(gate).join(" ")}`);
-        const statusPath = lockStatusFile();
-        const result = spawnSync(argv[0], argv.slice(1), {
-            cwd,
-            env: {
-                ...env,
-                LOCAL_STACK_LOCK_WHO: env.LOCAL_STACK_LOCK_WHO || `bkit ci push-gate ${gate}`,
-                [LOCK_STATUS_FILE_ENV]: statusPath,
-            },
-            stdio: ["ignore", 2, 2],
-        });
-        if (result.error)
-            log(result.error.message);
-        if (outerStatus && fs.statSync(statusPath, { throwIfNoEntry: false })?.isFile())
-            fs.copyFileSync(statusPath, outerStatus);
-        lock.status = readLockStatus(statusPath);
-        return result.error
-            ? 127
-            : (result.status ??
-                128 + ((result.signal ? os.constants.signals[result.signal] : undefined) ?? 1));
-    }, log, (code) => classifyLockOutcome(code, lock.status) === "lock-wait");
+        lock.run = runGateUnderLock(scriptCommand(gate), cwd, 2, { LOCAL_STACK_LOCK_WHO: env.LOCAL_STACK_LOCK_WHO || `bkit ci push-gate ${gate}` }, { base: env, forwardStatusTo: env[LOCK_STATUS_FILE_ENV] });
+        return lock.run.exitCode;
+    }, log, () => lock.run?.lock === "lock-wait");
 }
 /** Pending files survive interrupted runners; one read suffices to block earlier proof. */
 function pendingAttempt(file) {

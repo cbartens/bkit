@@ -820,7 +820,8 @@ const SHIPPED_MACHINE_LOCK_HASHES: readonly string[] = [
 
 // Migration (6.1.0-6.2.x installs, docs/migrations.md): replace an unedited adopted machine-lock
 // copy with the current template; warn about an edited copy that lacks the queue, never writes
-// the status file or has no hold limit.
+// the status file or has no hold limit. A copy that starts bkit-test-awake.mjs gets that file
+// beside it (see `migrateHoldSupervisor`).
 function migrateMachineLockCopy(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
   const file = path.join("scripts", "ci", "bkit-machine-lock.sh");
   const stat = fs.lstatSync(file, { throwIfNoEntry: false });
@@ -841,14 +842,19 @@ function migrateMachineLockCopy(dryRun: boolean, ws: WriteSet, logPrefix: string
   const template = fs.readFileSync(
     path.join(getTemplatesRoot(), "scripts", "ci", "bkit-machine-lock.sh"),
   );
-  if (current.equals(template)) return;
+  const text = current.toString("utf8");
+  if (current.equals(template)) {
+    migrateHoldSupervisor(dryRun, ws, logPrefix);
+    return;
+  }
   if (SHIPPED_MACHINE_LOCK_HASHES.includes(sha256(current))) {
     if (!dryRun) fs.writeFileSync(file, template);
     ws.writes.push({ path: file, action: "update", unhashed: true });
     console.log(`${logPrefix} ${tag}core: ${file} — machine lock updated to the current template`);
+    migrateHoldSupervisor(dryRun, ws, logPrefix);
     return;
   }
-  const text = current.toString("utf8");
+  if (text.includes("bkit-test-awake.mjs")) migrateHoldSupervisor(dryRun, ws, logPrefix);
   if (!text.includes(".queue")) manual("the copy differs from the shipped version");
   if (!text.includes("LOCAL_STACK_LOCK_STATUS_FILE"))
     manual(
@@ -860,6 +866,48 @@ function migrateMachineLockCopy(dryRun: boolean, ws: WriteSet, logPrefix: string
       "the copy has no LOCAL_STACK_LOCK_HOLD_S hold limit",
       "a hung run holds the tests lock until someone stops it by hand",
     );
+}
+
+// sha256 of every scripts/ci/bkit-test-awake.mjs template text in history older than the current one.
+const SHIPPED_AWAKE_HASHES: readonly string[] = [
+  "d218439bd4d65b57732a96aaea7bb678f9ebf95a6247f5e6b899d6ef26a59cb5",
+  "a686bf75700f2ff54de2cedd3b7afc943774da40a68c243b9911bc435742f434",
+  "0842c2e2789a1c77935655130de5b8cf253bfe0655407834f23a6abaaf1b0bb1",
+];
+
+// The machine-lock script runs a command holding its own tests lock under
+// scripts/ci/bkit-test-awake.mjs --hold-s: write the template there when the file is missing,
+// replace an unedited shipped copy, and warn about an edited copy without --hold-s, since the
+// lock script refuses every such run with exit 73.
+function migrateHoldSupervisor(dryRun: boolean, ws: WriteSet, logPrefix: string): void {
+  const file = path.join("scripts", "ci", "bkit-test-awake.mjs");
+  const tag = dryRun ? "[dry-run] " : "";
+  const template = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-test-awake.mjs");
+  if (!fs.lstatSync(file, { throwIfNoEntry: false })) {
+    if (!dryRun) fs.copyFileSync(template, file);
+    ws.writes.push({ path: file, action: "write", unhashed: true });
+    console.log(
+      `${logPrefix} ${tag}core: ${file} — added beside the machine lock, which runs its hold limit`,
+    );
+    return;
+  }
+  const stat = fs.statSync(file, { throwIfNoEntry: false });
+  if (
+    stat?.isFile() &&
+    !linkedPath(file) &&
+    SHIPPED_AWAKE_HASHES.includes(sha256(fs.readFileSync(file)))
+  ) {
+    if (!dryRun) fs.copyFileSync(template, file);
+    ws.writes.push({ path: file, action: "update", unhashed: true });
+    console.log(
+      `${logPrefix} ${tag}core: ${file} — test sleep prevention updated to the current template`,
+    );
+    return;
+  }
+  if (stat?.isFile() && fs.readFileSync(file, "utf8").includes("--hold-s")) return;
+  console.warn(
+    `${logPrefix} ${tag}core: ${file} left unchanged (it has no --hold-s hold limit); merge .bkit/templates/scripts/ci/bkit-test-awake.mjs by hand, until then every run that holds the tests lock is refused with exit 73`,
+  );
 }
 
 // Every `.github/workflows/*.yml` / `*.yaml` regular file outside `skip`.

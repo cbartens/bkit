@@ -28,18 +28,14 @@ import {
 } from "../../ledgers/status.js";
 import {
   bodySkipToken,
-  classifyLockOutcome,
   CommandError,
   DEV,
   EXIT,
   ghUnavailable,
   git,
   isSharedBranch,
-  LOCK_STATUS_FILE_ENV,
-  lockStatusFile,
   OUTPUT_LIMIT,
   parseJson,
-  readLockStatus,
   repoRoot,
   runGh,
   runGit,
@@ -66,6 +62,7 @@ import {
   type SharedCheckoutRecord,
 } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
+import { underTestsLock } from "./junit.js";
 import {
   EXIT_BASE_NOT_DEV,
   FORCE_BUILD,
@@ -894,18 +891,19 @@ export interface PushOutcome {
 function runPush(cwd: string, args: string[], branch: string) {
   const who = `bkit branches push ${branch}`;
   const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
-  const statusPath = lockStatusFile();
-  const res = runGit(cwd, args, {
-    LOCAL_STACK_LOCK_WAIT_S: String(wait),
-    LOCAL_STACK_LOCK_WHO: who,
-    [LOCK_STATUS_FILE_ENV]: statusPath,
+  let res: ReturnType<typeof runGit> | undefined;
+  const { status, lock } = underTestsLock((lockEnv) => {
+    res = runGit(cwd, args, {
+      LOCAL_STACK_LOCK_WAIT_S: String(wait),
+      LOCAL_STACK_LOCK_WHO: who,
+      ...lockEnv,
+    });
+    return res.ok ? 0 : null;
   });
-  const status = readLockStatus(statusPath);
-  const outcome = res.ok ? "gate" : classifyLockOutcome(null, status);
   return {
-    ...res,
-    lockHolder: outcome === "lock-wait" ? (status?.holder ?? null) : null,
-    lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
+    ...res!,
+    lockHolder: lock === "lock-wait" ? (status?.holder ?? null) : null,
+    lockExit: lock === "lock-wait" ? EXIT.AGENT_WAIT : lock === "could-not-run" ? 4 : null,
   };
 }
 
@@ -3602,7 +3600,7 @@ export const branchesCommand: CommandSpec = {
     },
     push: {
       summary:
-        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run.",
+        "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run or stopped it at the hold limit.",
       use: "workflow",
       flags: [
         {

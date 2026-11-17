@@ -170,11 +170,11 @@ export const wholeNumber = (v: FlagValue, flag: string, fallback: number, min = 
 /** The env var naming the file the machine-lock `run` wrapper writes its give-up or refusal to. */
 export const LOCK_STATUS_FILE_ENV = "LOCAL_STACK_LOCK_STATUS_FILE";
 
-/** What the machine-lock `run` wrapper wrote to its status file on exit 75 or 73. */
+/** What the machine-lock `run` wrapper wrote to its status file on exit 75, 73 or 124. */
 export interface LockStatus {
   /** The lock the wrapper was asked for (`tests` for the tests lock). */
   lock: string;
-  /** `gave-up` (exit 75) or `refused` (exit 73). */
+  /** `gave-up` (exit 75), `refused` (exit 73) or `held-too-long` (exit 124, stopped at the hold limit). */
   outcome: string;
   /** Each holder's `who — checkout (pid N, since HH:MM:SS)` note, joined by `; `. */
   holder: string;
@@ -213,19 +213,24 @@ export function readLockStatus(file: string): LockStatus | null {
   return { lock, outcome, holder: fields.get("holder") ?? "" };
 }
 
+/** `gate` the gate's own result, `lock-wait` the wait gave up, `could-not-run` the lock refused or stopped the run. */
+export type LockOutcome = "gate" | "lock-wait" | "could-not-run";
+
 /**
  * Classify a wrapped gate's result from its exit code and the status file only. `exitCode`
  * is null when a caller in between (git running a pre-push hook) collapsed the status, so
- * the file alone decides. Anything but a tests-lock give-up or refusal is the gate's own.
+ * the file alone decides. Anything but a tests-lock give-up, refusal or hold-limit stop is
+ * the gate's own.
  */
 export function classifyLockOutcome(
   exitCode: number | null,
   status: LockStatus | null,
-): "gate" | "lock-wait" | "could-not-run" {
+): LockOutcome {
   if (status === null || status.lock !== "tests") return "gate";
-  if (status.outcome === "gave-up" && (exitCode === null || exitCode === 75)) return "lock-wait";
-  if (status.outcome === "refused" && (exitCode === null || exitCode === 73))
-    return "could-not-run";
+  const matches = (code: number) => exitCode === null || exitCode === code;
+  if (status.outcome === "gave-up" && matches(75)) return "lock-wait";
+  if (status.outcome === "refused" && matches(73)) return "could-not-run";
+  if (status.outcome === "held-too-long" && matches(124)) return "could-not-run";
   return "gate";
 }
 

@@ -23,7 +23,7 @@ import * as path from "node:path";
 import { BKIT_GATE_CHANGED_SCRIPT, BKIT_LINT_FILE_SCRIPT, BKIT_TEST_FILE_SCRIPT, } from "../../install/manifest.js";
 import { clampLogPath } from "../../ledgers/clamp-log.js";
 import { appendLine, statusTimestamp, validateCiSelection, testRunProblem, } from "../../ledgers/status.js";
-import { classifyLockOutcome, CommandError, EXIT, git, LOCK_STATUS_FILE_ENV, lockStatusFile, readLockStatus, runGit, wholeNumber, } from "../lib.js";
+import { CommandError, EXIT, git, runGit, wholeNumber } from "../lib.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
 import { readPackageJson } from "../../shared/package-json.js";
@@ -33,7 +33,7 @@ import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, read
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
 import { activeRunStart } from "./counters.js";
-import { REPORT_ENV, reportFailures, runTestFile, runToLog } from "./junit.js";
+import { REPORT_ENV, reportFailures, runGateUnderLock, runTestFile, runToLog, } from "./junit.js";
 import { appendRecord, clampFile } from "./context.js";
 import { minPushPathspecs } from "../ci/ci.js";
 import { requiredPushGate, runWithReceipt } from "../ci/push-gate.js";
@@ -1777,28 +1777,26 @@ export const testsCommand = {
                 ctx.log(`running ${scope} — full output in ${logArg}`);
                 const fetchedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
                 const who = ["bkit tests run", gate, fid, step].filter(Boolean).join(" ");
-                // The gate's tests-lock status, read once right after the gate runs.
-                const lock = { status: null };
+                // The gate's run under the tests lock, kept for the receipt's lock-wait check.
+                const lock = {};
                 const runGate = () => {
-                    const statusPath = lockStatusFile();
-                    const code = runToLog(useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate), top, log, {
+                    lock.run = runGateUnderLock(useChanged ? [...scriptCommand(gate), ...changed] : scriptCommand(gate), top, log, {
                         [REPORT_DIR_ENV]: reports,
                         LOCAL_STACK_LOCK_WAIT_S: String(waitS),
                         LOCAL_STACK_LOCK_WHO: who,
-                        [LOCK_STATUS_FILE_ENV]: statusPath,
                     });
-                    lock.status = readLockStatus(statusPath);
-                    return code;
+                    return lock.run.exitCode;
                 };
                 // The required full gate leaves a push receipt, so the branch's first push
                 // reuses it; bookkeeping paths may be uncommitted, as every engine call writes one.
                 const exitCode = sinceRaw === undefined && gate === requiredPushGate(top)
-                    ? runWithReceipt(top, gate, minPushPathspecs(readBkitConfig(top)), runGate, ctx.log, (code) => classifyLockOutcome(code, lock.status) === "lock-wait")
+                    ? runWithReceipt(top, gate, minPushPathspecs(readBkitConfig(top)), runGate, ctx.log, () => lock.run?.lock === "lock-wait")
                     : runGate();
                 const logText = fs.readFileSync(log, "utf-8");
-                const lockExit = classifyLockOutcome(exitCode, lock.status);
+                // runWithReceipt always runs the gate, so lock.run is set here.
+                const lockExit = lock.run?.lock ?? "gate";
                 const lockWait = lockExit === "lock-wait";
-                const lockHolder = lockWait ? (lock.status?.holder ?? null) : null;
+                const lockHolder = lockWait ? (lock.run?.status?.holder ?? null) : null;
                 const lines = lockExit === "gate"
                     ? Number(tailRaw) > 0
                         ? tailLines(log, Number(tailRaw))
@@ -1877,7 +1875,9 @@ export const testsCommand = {
                 if (lockWait)
                     return EXIT.AGENT_WAIT;
                 if (couldNotRun) {
-                    ctx.log(`${scope} could not run (exit ${exitCode}: ${lockExit === "could-not-run" ? "tests lock refused" : exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`);
+                    ctx.log(lock.run?.status?.outcome === "held-too-long"
+                        ? `${scope} could not finish (exit ${exitCode}: stopped at the tests-lock hold limit) — its tests have no result; this is not a FAIL verdict`
+                        : `${scope} could not run (exit ${exitCode}: ${lockExit === "could-not-run" ? "tests lock refused" : exitCode === 126 ? "not executable" : "command not found"}) — no tests executed; this is not a FAIL verdict`);
                     return EXIT_COULD_NOT_RUN;
                 }
                 ctx.log(`verdict ${verdict} (exit ${exitCode})`);

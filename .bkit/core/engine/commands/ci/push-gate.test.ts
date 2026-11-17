@@ -303,6 +303,24 @@ describe("verified incremental push gates", () => {
     expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(true);
     expect(fs.existsSync(receipt(cwd, code))).toBe(false);
   });
+  it("a push gate the hold limit stopped exits 124, hands the held-too-long status file on and earns no proof", async () => {
+    const { cwd, code } = fixture(
+      "node -e \"const fs=require('fs'); if(!fs.existsSync('.gate-ran')){fs.writeFileSync('.gate-ran','yes');process.exit(0)} fs.writeFileSync(process.env.LOCAL_STACK_LOCK_STATUS_FILE,['lock=tests','outcome=held-too-long','holder=this gate'].join(String.fromCharCode(10))); process.exit(124)\"",
+    );
+    expect((await gate(cwd)).status).toBe(0);
+    const driver = path.join(cwd, ".git", "gate-driver.mts");
+    fs.writeFileSync(
+      driver,
+      `import {runPushGate} from ${JSON.stringify(path.join(__dirname, "push-gate.ts"))}; process.exit(runPushGate(process.cwd(), ${JSON.stringify(UNIT)}, ()=>{}));`,
+    );
+    const outer = path.join(cwd, ".git", "outer-lock-status");
+    const env = { ...process.env, LOCAL_STACK_LOCK_STATUS_FILE: outer };
+    const held = spawnSync(requireTsx(), [driver], { cwd, encoding: "utf8", env });
+    expect(held.status, held.stderr).toBe(124);
+    expect(fs.readFileSync(outer, "utf8")).toContain("outcome=held-too-long");
+    expect(fs.existsSync(receipt(cwd, code))).toBe(false);
+    expect(fs.existsSync(`${receipt(cwd, code)}.failed`)).toBe(true);
+  });
   it("executes the full gate and carries its proof across bookkeeping and empty commits", async () => {
     const { cwd, code } = fixture();
     expect((await gate(cwd)).status).toBe(0);

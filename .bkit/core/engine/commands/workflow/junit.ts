@@ -1,4 +1,5 @@
-// JUnit reading and the one-file test runner. A leaf module: it imports none of
+// JUnit reading, the one-file test runner and the one gate runner under the tests lock
+// (`runGateUnderLock`, its status-file half `underTestsLock`). A leaf module: it imports none of
 // `tests.ts`, `steps.ts` or `runs.ts`, so any of them may import it.
 
 import { spawnSync } from "node:child_process";
@@ -8,6 +9,14 @@ import * as path from "node:path";
 
 import { BKIT_TEST_FILE_SCRIPT } from "../../install/manifest.js";
 import { scriptCommand, testCommand } from "../../shared/package-manager.js";
+import {
+  classifyLockOutcome,
+  LOCK_STATUS_FILE_ENV,
+  type LockOutcome,
+  type LockStatus,
+  lockStatusFile,
+  readLockStatus,
+} from "../lib.js";
 
 /** The env var naming the JUnit report path `bkit:test:file` must write. */
 export const REPORT_ENV = "BKIT_TEST_REPORT";
@@ -25,30 +34,78 @@ export function logEnv(base: NodeJS.ProcessEnv, env?: Record<string, string>): N
 }
 
 /**
- * Run argv with stdout and stderr interleaved into `log` (like `> log 2>&1`).
- * Exit 127 when the binary is missing; 128 + n when killed by signal n.
+ * Run argv with stdout and stderr interleaved into `log` (like `> log 2>&1`): a file path, or
+ * an open file descriptor such as 2 to pass the output straight on. `base` is the environment
+ * `env` is added to. Exit 127 when the binary is missing; 128 + n when killed by signal n.
  */
 export function runToLog(
   argv: string[],
   cwd: string,
-  log: string,
+  log: string | number,
   env?: Record<string, string>,
+  base: NodeJS.ProcessEnv = process.env,
 ): number {
-  fs.mkdirSync(path.dirname(log), { recursive: true });
-  const fd = fs.openSync(log, "w");
+  if (typeof log === "string") fs.mkdirSync(path.dirname(log), { recursive: true });
+  const fd = typeof log === "string" ? fs.openSync(log, "w") : log;
   const protectedArgv = testCommand(argv);
   const res = spawnSync(protectedArgv[0]!, protectedArgv.slice(1), {
     cwd,
     stdio: ["ignore", fd, fd],
-    env: logEnv(process.env, env),
+    env: logEnv(base, env),
   });
-  fs.closeSync(fd);
+  if (typeof log === "string") fs.closeSync(fd);
   if (res.error) {
-    fs.appendFileSync(log, `${argv[0]}: not found on PATH (${res.error.message})\n`);
+    const line = `${argv[0]}: not found on PATH (${res.error.message})\n`;
+    if (typeof log === "string") fs.appendFileSync(log, line);
+    else fs.writeSync(log, line);
     return 127;
   }
   if (res.status !== null) return res.status;
   return 128 + ((res.signal ? os.constants.signals[res.signal] : undefined) ?? 1);
+}
+
+/** One run under the tests lock: its exit code, the lock's status file, and the two read together. */
+export interface LockedRun<Code extends number | null = number> {
+  /** The run's exit code; null when a caller in between (git running a pre-push hook) collapsed it. */
+  exitCode: Code;
+  /** What the lock wrapper wrote to its status file, null when it wrote none. */
+  status: LockStatus | null;
+  /** `gate` the gate's own result, `lock-wait` the wait gave up, `could-not-run` the lock refused or stopped the run. */
+  lock: LockOutcome;
+}
+
+/**
+ * Hand `run` the environment naming a fresh tests-lock status file, then read and delete that
+ * file and classify the run. With `forwardStatusTo`, the file is first copied there, for a
+ * caller further out that asked for it.
+ */
+export function underTestsLock<Code extends number | null>(
+  run: (env: Record<string, string>) => Code,
+  forwardStatusTo?: string,
+): LockedRun<Code> {
+  const statusPath = lockStatusFile();
+  const exitCode = run({ [LOCK_STATUS_FILE_ENV]: statusPath });
+  if (forwardStatusTo && fs.statSync(statusPath, { throwIfNoEntry: false })?.isFile())
+    fs.copyFileSync(statusPath, forwardStatusTo);
+  const status = readLockStatus(statusPath);
+  return { exitCode, status, lock: classifyLockOutcome(exitCode, status) };
+}
+
+/**
+ * Run a gate under the tests lock with its output in `log` (see `runToLog`): the gate's exit
+ * code, the lock's status file, and the lock outcome the two give.
+ */
+export function runGateUnderLock(
+  argv: string[],
+  cwd: string,
+  log: string | number,
+  env: Record<string, string> = {},
+  opts: { base?: NodeJS.ProcessEnv; forwardStatusTo?: string } = {},
+): LockedRun {
+  return underTestsLock(
+    (lockEnv) => runToLog(argv, cwd, log, { ...env, ...lockEnv }, opts.base),
+    opts.forwardStatusTo,
+  );
 }
 
 /**

@@ -18,13 +18,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { gitEnv } from "../../ledgers/telemetry.js";
 import { actionHash, actionKey, alreadyDone, recordAction, withTargetLock, } from "../../ledgers/status.js";
-import { bodySkipToken, classifyLockOutcome, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, LOCK_STATUS_FILE_ENV, lockStatusFile, OUTPUT_LIMIT, parseJson, readLockStatus, repoRoot, runGh, runGit, SKIP_CI_TOKEN, wholeNumber, } from "../lib.js";
+import { bodySkipToken, CommandError, DEV, EXIT, ghUnavailable, git, isSharedBranch, OUTPUT_LIMIT, parseJson, repoRoot, runGh, runGit, SKIP_CI_TOKEN, wholeNumber, } from "../lib.js";
 import { bkitVersionStatus } from "../../shared/bkit-latest.js";
 import { parseBkitVersion, serializeBkitVersion, } from "../../install/version-file.js";
 import { DEV_REFSPEC, fetchDev, landBackoffMs, landDir, pushToDev, sleep } from "../land.js";
 import { TIMEOUTS } from "../../shared/timeouts.js";
 import { activeRecord, bookPathspecs, checkOnlyBookkeeping, commitBookkeeping, markRecordPushed, recordOnBranch, } from "./ledgers.js";
 import { releaseLock, resolveMonth, workflowLockPath } from "./locks.js";
+import { underTestsLock } from "./junit.js";
 import { EXIT_BASE_NOT_DEV, FORCE_BUILD, closeTransportRow, crossCheckRows, mergePr, openPrFor, probePr, } from "./prs.js";
 import { AUTO_LABEL, AUTO_ROUTE_SUFFIX } from "./issues.js";
 import { appendFeature } from "./roadmap.js";
@@ -694,18 +695,19 @@ function rebaseOrigHead(top) {
 function runPush(cwd, args, branch) {
     const who = `bkit branches push ${branch}`;
     const wait = wholeNumber(process.env.BKIT_LOCK_WAIT_S, "BKIT_LOCK_WAIT_S", 60);
-    const statusPath = lockStatusFile();
-    const res = runGit(cwd, args, {
-        LOCAL_STACK_LOCK_WAIT_S: String(wait),
-        LOCAL_STACK_LOCK_WHO: who,
-        [LOCK_STATUS_FILE_ENV]: statusPath,
+    let res;
+    const { status, lock } = underTestsLock((lockEnv) => {
+        res = runGit(cwd, args, {
+            LOCAL_STACK_LOCK_WAIT_S: String(wait),
+            LOCAL_STACK_LOCK_WHO: who,
+            ...lockEnv,
+        });
+        return res.ok ? 0 : null;
     });
-    const status = readLockStatus(statusPath);
-    const outcome = res.ok ? "gate" : classifyLockOutcome(null, status);
     return {
         ...res,
-        lockHolder: outcome === "lock-wait" ? (status?.holder ?? null) : null,
-        lockExit: outcome === "lock-wait" ? EXIT.AGENT_WAIT : outcome === "could-not-run" ? 4 : null,
+        lockHolder: lock === "lock-wait" ? (status?.holder ?? null) : null,
+        lockExit: lock === "lock-wait" ? EXIT.AGENT_WAIT : lock === "could-not-run" ? 4 : null,
     };
 }
 /**
@@ -2972,7 +2974,7 @@ export const branchesCommand = {
             run: regenerateVerb,
         },
         push: {
-            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run.",
+            summary: "Push the current branch with exactly one git push: plain for dev/main, --force-with-lease otherwise; when the pre-push hook's lock status file says so, 81 tests lock held, 4 tests lock refused the run or stopped it at the hold limit.",
             use: "workflow",
             flags: [
                 {

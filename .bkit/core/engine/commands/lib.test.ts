@@ -1115,6 +1115,17 @@ describe("tests-lock status file", () => {
     expect(classifyLockOutcome(75, refused)).toBe("gate");
   });
 
+  it("a run stopped at the hold limit reads as could-not-run, never as a gate failure", () => {
+    const file = lockStatusFile();
+    const held = readLockStatus(
+      write(file, `lock=tests\noutcome=held-too-long\nholder=${holder}\n`),
+    );
+    expect(held).toEqual({ lock: "tests", outcome: "held-too-long", holder });
+    expect(classifyLockOutcome(124, held)).toBe("could-not-run");
+    expect(classifyLockOutcome(null, held)).toBe("could-not-run");
+    expect(classifyLockOutcome(1, held)).toBe("gate");
+  });
+
   it("a status file for another lock or an empty one reads as a gate result", () => {
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-lock-status-")));
     try {

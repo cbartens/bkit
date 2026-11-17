@@ -22,8 +22,11 @@ it("protects every declared local test and gate entry point", () => {
     /^(?:test(?::|$)|bkit:test:|bkit:gate:)/.test(name),
   );
   expect(scripts.length).toBeGreaterThan(10);
+  // A tests-lock `run` starts its command under bkit-test-awake.mjs itself.
+  const protectedStart =
+    /^(?:node scripts\/ci\/bkit-test-awake\.mjs |bash scripts\/ci\/bkit-machine-lock\.sh run --lock tests -- )/;
   for (const [name, command] of scripts) {
-    expect(command, name).toMatch(/^node scripts\/ci\/bkit-test-awake\.mjs /);
+    expect(command, name).toMatch(protectedStart);
   }
   expect(fs.readFileSync(path.join(ROOT, "scripts/ci/bkit-test-awake.mjs"), "utf-8")).toBe(
     fs.readFileSync(path.join(ROOT, ".bkit/templates/scripts/ci/bkit-test-awake.mjs"), "utf-8"),

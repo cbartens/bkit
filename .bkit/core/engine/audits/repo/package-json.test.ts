@@ -14,8 +14,7 @@ describe("package.json manifest invariants (BAR-138)", () => {
     const manifest = JSON.parse(fs.readFileSync(path.resolve("package.json"), "utf-8")) as {
       scripts: Record<string, string>;
     };
-    const prefix =
-      "node scripts/ci/bkit-test-awake.mjs bash scripts/ci/bkit-machine-lock.sh run --lock tests -- ";
+    const prefix = "bash scripts/ci/bkit-machine-lock.sh run --lock tests -- ";
     expect(manifest.scripts["bkit:gate:static-unit"]).toMatch(new RegExp(`^${prefix}sh -c '`));
     expect(manifest.scripts["bkit:gate:static-unit-integration"]).toMatch(
       new RegExp(`^${prefix}sh -c '`),

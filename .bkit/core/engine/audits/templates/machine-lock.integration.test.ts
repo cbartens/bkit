@@ -25,6 +25,9 @@ const OLD_LOCK_SCRIPT = path.resolve("tests/fixtures/machine-lock/machine-lock-6
 const BUDGET = tierTimeouts(true);
 
 const SCRIPT = path.resolve(".bkit/templates/scripts/ci/bkit-machine-lock.sh");
+/** The hold-limit supervisor a run holding its own tests lock starts from beside the script. */
+const AWAKE = path.resolve(".bkit/templates/scripts/ci/bkit-test-awake.mjs");
+const OLD_AWAKE = path.resolve("tests/fixtures/machine-lock/bkit-test-awake-6.1.1.mjs");
 const CHECKOUT = spawnSync("git", ["-C", path.dirname(SCRIPT), "rev-parse", "--show-toplevel"], {
   encoding: "utf-8",
 }).stdout.trim();
@@ -199,6 +202,7 @@ function checkout(name: string): { root: string; script: string } {
   const script = path.join(root, "scripts", "ci", "bkit-machine-lock.sh");
   fs.mkdirSync(path.dirname(script), { recursive: true });
   fs.copyFileSync(SCRIPT, script);
+  fs.copyFileSync(AWAKE, path.join(path.dirname(script), "bkit-test-awake.mjs"));
   git(tmp, ["init", "-q", "-b", "dev", root]);
   return { root, script };
 }
@@ -1108,6 +1112,46 @@ describe("bkit-machine-lock.sh", { timeout: BUDGET.testTimeout }, () => {
     expect(result.stderr).toContain(missingPerl);
     expect(result.stderr).toContain("tests");
     expect(result.stderr).toMatch(/not found|missing|not executable/);
+  });
+
+  it("run exits 73 naming bkit-test-awake.mjs when it is not beside the script, frees the lock and writes outcome refused", () => {
+    const lone = path.join(tmp, "lone");
+    fs.mkdirSync(lone);
+    const script = path.join(lone, "bkit-machine-lock.sh");
+    fs.copyFileSync(SCRIPT, script);
+    const status = path.join(tmp, "lone-status");
+    const env = envFor();
+    const result = commandRun(
+      ["lone gate", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+      script,
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(path.join(lone, "bkit-test-awake.mjs"));
+    expect(statusOf(status)).toEqual(["lock=tests", "outcome=refused", "holder=lone gate"]);
+    expectTestsLockFree(env);
+  });
+
+  it("run exits 73 when the bkit-test-awake.mjs beside the script has no --hold-s, frees the lock and writes outcome refused", () => {
+    const old = path.join(tmp, "old-awake");
+    fs.mkdirSync(old);
+    const script = path.join(old, "bkit-machine-lock.sh");
+    fs.copyFileSync(SCRIPT, script);
+    fs.copyFileSync(OLD_AWAKE, path.join(old, "bkit-test-awake.mjs"));
+    const status = path.join(tmp, "old-awake-status");
+    const env = envFor();
+    const result = commandRun(
+      ["old awake gate", "--lock", "tests", "--", "bash", "-c", "echo should-not-run"],
+      { ...env, LOCAL_STACK_LOCK_STATUS_FILE: status },
+      script,
+    );
+    expect(result.status, result.stderr).toBe(73);
+    expect(result.stdout).not.toContain("should-not-run");
+    expect(result.stderr).toContain(path.join(old, "bkit-test-awake.mjs"));
+    expect(result.stderr).toContain(".bkit/templates/scripts/ci/bkit-test-awake.mjs");
+    expect(statusOf(status)).toEqual(["lock=tests", "outcome=refused", "holder=old awake gate"]);
+    expectTestsLockFree(env);
   });
 
   it("a runner started by a tests-lock holder still waits on a held unnamed stack lock, under this script and under an older copy", async () => {
@@ -2103,21 +2147,16 @@ function pathWithFailingPs(): string {
   return [fakeBin, process.env.PATH].join(":");
 }
 
-/** The hold-limit arguments (limit, grace) of the watcher a run with `env` starts, read by its command. */
+/** The hold-limit arguments (limit, grace) of the supervisor a run with `env` starts, read by its command. */
 function watcherLimits(env: NodeJS.ProcessEnv): Result & { limits: string | undefined } {
   const r = commandRun(
-    [
-      "limit probe",
-      "--lock",
-      "tests",
-      "--",
-      "bash",
-      "-c",
-      "ps -A -o ppid= -o args= | awk -v p=\"$PPID\" '$1 == p'",
-    ],
+    ["limit probe", "--lock", "tests", "--", "bash", "-c", 'ps -o args= -p "$PPID"'],
     env,
   );
-  return { ...r, limits: / (\d+) (\d+) \d+ \d+\s*$/m.exec(r.stdout)?.slice(1, 3).join(" ") };
+  return {
+    ...r,
+    limits: / --hold-s (\d+) --grace-s (\d+) /.exec(r.stdout)?.slice(1, 3).join(" "),
+  };
 }
 
 describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
@@ -2145,6 +2184,22 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
     expect(r.stderr).not.toContain("ps with lstart is not available");
     expect(pidAlive(readPid(pidFile))).toBe(false);
     expectTestsLockFree(env);
+  });
+
+  it("a run stopped at the hold limit writes outcome held-too-long, naming itself, to the status file", () => {
+    const status = path.join(tmp, "status");
+    const r = commandRun(["held gate", "--lock", "tests", "--", "sleep", "120"], {
+      ...holdEnv("1"),
+      LOCAL_STACK_LOCK_STATUS_FILE: status,
+    });
+    expect(r.status, r.stderr).toBe(124);
+    expect(fs.existsSync(status), "no status file written").toBe(true);
+    const lines = statusOf(status);
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toBe("lock=tests");
+    expect(lines[1]).toBe("outcome=held-too-long");
+    expect(lines[2]!.startsWith(`holder=held gate — ${CHECKOUT} (pid `), lines[2]).toBe(true);
+    expect(fs.readdirSync(tmp).filter((name) => name.startsWith("status."))).toEqual([]);
   });
 
   it("only the tests lock has a hold limit: a named or unnamed lock outlives LOCAL_STACK_LOCK_HOLD_S", () => {
@@ -2247,7 +2302,7 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
   });
 
   it("a grandchild whose parent exited is stopped with the command at the hold limit", () => {
-    // The parent lives 3 s, so the watcher (polling every second) records the grandchild first,
+    // The parent lives 3 s, so the supervisor (polling every second) records the grandchild first,
     // and the 5 s limit fires after the parent has exited.
     const env = holdEnv("5");
     const grandchild = path.join(tmp, "orphan.pid");
@@ -2309,6 +2364,30 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
     );
     expect(nearLimit.status, nearLimit.stderr).toBe(3);
     expectTestsLockFree(env);
+  });
+
+  it("a command's own exit 124 before the supervisor's limit stays 124 and writes no status file, even once the wrapper's clock passed the limit", () => {
+    // The supervisor starts 3 s after the wrapper, so the command's own 124 comes 1 s into the
+    // supervisor's 3 s limit but 4 s after the wrapper took the lock.
+    const slowBin = path.join(tmp, "slow-node-bin");
+    fs.mkdirSync(slowBin, { recursive: true });
+    fs.writeFileSync(
+      path.join(slowBin, "node"),
+      `#!/bin/sh\nsleep 3\nexec "${process.execPath}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    const status = path.join(tmp, "own-124-status");
+    const r = commandRun(
+      ["own timeout", "--lock", "tests", "--", "bash", "-c", "sleep 1; exit 124"],
+      {
+        ...holdEnv("3"),
+        PATH: [slowBin, process.env.PATH].join(":"),
+        LOCAL_STACK_LOCK_STATUS_FILE: status,
+      },
+    );
+    expect(r.status, r.stderr).toBe(124);
+    expect(r.stderr).not.toContain("LOCAL_STACK_LOCK_HOLD_S limit");
+    expect(fs.existsSync(status)).toBe(false);
   });
 
   it("with CI=true a run takes no lock and has no hold limit", () => {

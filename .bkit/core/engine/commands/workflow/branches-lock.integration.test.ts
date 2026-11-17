@@ -13,6 +13,7 @@ import { requireTsx } from "../../../../../vitest.tsx-bin";
 const BUDGET = tierTimeouts(true);
 const CLI = path.resolve(".bkit/core/engine/cli.ts");
 const TEMPLATE = path.resolve(".bkit/templates/scripts/ci/bkit-machine-lock.sh");
+const AWAKE = path.resolve(".bkit/templates/scripts/ci/bkit-test-awake.mjs");
 const SHELL_DISPATCHER = path.resolve("tests/fixtures/gh/bin/gh");
 const BRANCH = "feat/tests-lock";
 let tmp: string;
@@ -62,6 +63,7 @@ beforeEach(() => {
   }
   fs.mkdirSync(path.join(cwd, "scripts", "ci"), { recursive: true });
   fs.copyFileSync(TEMPLATE, path.join(cwd, "scripts", "ci", "bkit-machine-lock.sh"));
+  fs.copyFileSync(AWAKE, path.join(cwd, "scripts", "ci", "bkit-test-awake.mjs"));
   fs.writeFileSync(
     path.join(cwd, "hook-gate.mjs"),
     [
@@ -167,6 +169,19 @@ describe("branches push through a real pre-push lock", () => {
     );
     const result = push({ BKIT_LOCK_WAIT_S: "0" });
     expect(result.status, result.stderr).toBe(8);
+    expect(result.json).toMatchObject({ pushed: false, lockHolder: null });
+    expect(
+      git("--git-dir", origin, "show-ref", "--verify", "--quiet", `refs/heads/${BRANCH}`).status,
+    ).toBe(1);
+  });
+
+  it("branches push whose hook's status file says the hold limit stopped the gate exits 4, pushing nothing", () => {
+    hookBody(
+      `printf 'lock=tests\\noutcome=held-too-long\\nholder=bkit branches push ${BRANCH}\\n' > "$LOCAL_STACK_LOCK_STATUS_FILE"\n` +
+        "exit 124\n",
+    );
+    const result = push({ BKIT_LOCK_WAIT_S: "0" });
+    expect(result.status, result.stderr).toBe(4);
     expect(result.json).toMatchObject({ pushed: false, lockHolder: null });
     expect(
       git("--git-dir", origin, "show-ref", "--verify", "--quiet", `refs/heads/${BRANCH}`).status,
