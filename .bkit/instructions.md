@@ -9725,11 +9725,11 @@ A single-file mechanical utility that compresses prose in one supplied target. I
 ### plan-task-ticking-owned-by-verify
 
 - behavior: **Plan task ticking owned by verify**
-- agents: `bkit-build-plan-tasks` (ticks only applicable Pre-Flight and gate boxes), `bkit-build-plan-verify` (ticks task boxes `[ ]`→`[x]` only on verified codebase artifact)
+- agents: `bkit-build-plan-tasks` (ticks no box), `bkit-build-plan-verify` (ticks task boxes `[ ]`→`[x]` only on verified codebase artifact)
 - source: `.bkit/core/.bkit/prompts.md` § Special Behaviors (frontmatter-adjacent contracts)
 
 ```text
-Task checkboxes are verify's derived view of the codebase. The executor's durable progress record is its flat append-only log of `DONE —` lines, which keeps resume safe and keeps per-task `Edit` ticks out of its turn budget. Execute ticks each applicable Pre-Flight and gate box as that gate passes and continues without asking; it never ticks a task box or a human-confirmation box.
+Task checkboxes are verify's derived view of the codebase. The executor's durable progress record is its flat append-only log of `DONE —` lines, which keeps resume safe and keeps per-task `Edit` ticks out of its turn budget. Execute ticks no box in the plan.
 ```
 
 ### flat-append-only-log-for-source-modifiers
