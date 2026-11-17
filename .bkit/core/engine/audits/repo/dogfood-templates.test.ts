@@ -383,6 +383,12 @@ const ADOPTED: Record<string, Entry> = {
         what: ".bkit/templates/ is this repo's source, so Vale lints it",
         region: { template: ["\n# bkit's reference copies", null], copy: ["", ""] },
       },
+      {
+        kind: "bkit-only",
+        what: "this repo's linted docs open no sentence with There is / There are, so a new one fails the gate here",
+        fill: "write-good.ThereIs = warning\n",
+        with: "write-good.ThereIs = error\n",
+      },
     ],
   },
   ".vale/styles/Bkit/Filler.yml": identical,

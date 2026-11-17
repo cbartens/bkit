@@ -16,7 +16,7 @@
 >   - Add its value to the enum in `.bkit/core/engine/install/manifest.ts`.
 >   - Document its MCP server under `mcpServers.<name>` in `.bkit/shared/.mcp.json` and `.bkit/shared/.cursor/mcp.json`.
 >   - Add a `<!-- bkit:tracker <name> -->` block after the last tracker block at every call site, and extend `GROUP_RE` in `.bkit/core/engine/render/trackers.ts`.
-> - There is no `none` marker. No-tracker content goes in a `false` block.
+> - No `none` marker exists. No-tracker content goes in a `false` block.
 
 ## Workflow comment delivery
 
@@ -200,7 +200,7 @@ Workflows read an issue's body and comments (`bkit issues text`), never its titl
 | design `Suggested Plans` (`P-N`; 2+ → design summary next step; 1 → planned on the design's own issue) | one issue per plan, never per workstream; title = plan name; body = its deliverable and covered workstream scopes, spec left to design; filed in `Requires` order | `**Parent design:**` line; `**Workstreams:**` line = its `Covers` ids; blocked-by block = plan issues filed for its `Requires` (linear → `blockedBy` relation; jira → `Blocks` link, `inwardIssue` = blocker) |
 | roadmap item with no issue (ledger row, audit candidate) | by recommended command, as audit row | ledger `key` / report path in References |
 
-**Audit parent** — one standing issue per audit template, shared by every run of that template. There is never one per run, and never one across templates.
+**Audit parent** — one standing issue per audit template, shared by every run of that template. No audit parent is opened per run, and none spans templates.
 
 <!-- prettier-ignore -->
 | Field | Value |
@@ -274,7 +274,7 @@ For an authentication failure:
 - Labels: `getJiraIssue` returns them only with `view: "evidence"` (or `"full"`). `editJiraIssue` replaces the whole set. Jira creates a label on first use. Stored labels are case-sensitive, and JQL search is not.
 - Comments are posted as markdown, stored as Atlassian Document Format, and read back as markdown with the same meaning but not the same bytes (`-` bullets → `*`, `*em*` → `_em_`, extra blank lines; checkboxes and `> [!NOTE]` alerts come back escaped). One comment that Jira cannot express in markdown (a mention, an image, a panel) turns its whole page to HTML (`appliedContentFormat: "html"`), so reads by the engine and by the MCP fallback re-read that page one comment per call. A comment holds at most 32,767 characters, so the engine splits a longer one at line breaks into consecutive comments, each opening with `###### bkit:generated` and then `_(part i/n)_`.
 - Blockers use the native `Blocks` link. `createJiraIssueLink` reads backwards: `inwardIssue` = the blocker, and `outwardIssue` = the blocked issue.
-- There are no type labels: the issue type (Bug / Task / Story) carries the type.
+- No type labels exist: the issue type (Bug / Task / Story) carries the type.
 
 <!-- prettier-ignore -->
 | Symptom | Fix |

@@ -9753,7 +9753,7 @@ Rules for writing workflows, copied whole from their catalog sections (installed
 - source: `.bkit/core/.bkit/workflows.md` § Two-Layer Separation Rules
 
 ```text
-> **Agents never call tracker MCP tools.** Only the workflow layer uses the tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `mcp__jira__*`, `*_comment`, `list_issues`, etc.). An agent that calls a tracker breaks the protocol. There are two exceptions, both utilities a human invokes:
+> **Agents never call tracker MCP tools.** Only the workflow layer uses the tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `mcp__jira__*`, `*_comment`, `list_issues`, etc.). An agent that calls a tracker breaks the protocol. Two exceptions exist, both utilities a human invokes:
 >
 > - `bkit-utility-update-roadmap` holds read-only grants (`list_issues`, `issue_read` / `get_issue`, `searchJiraIssuesUsingJql` / `getJiraIssue`) and never writes.
 > - `bkit-utility-update-tracker` reads and writes issue fields (title, labels, board status, priority, size, milestone, parent, blocked-by). It never creates, closes or comments on an issue, and never touches `bkit:*` labels.
@@ -12108,7 +12108,7 @@ Team labels → `mcp__linear__list_issue_labels({ team: "{TRACKER_TEAM}" })`.
 Team states → `mcp__linear__list_issue_statuses({ team: "{TRACKER_TEAM}" })`.
 For each project in use → `mcp__linear__list_milestones({ project })`.
 Issues: `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND statusCategory != Done ORDER BY key", maxResults: 100, fields: ["summary"] })` (drop `project = {TRACKER_PROJECT} AND` when null), passing `nextPageToken` while `isLast` is false → for each issue, `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{key}", view: "evidence" })` → summary, labels, status, priority, issue type, parent, `issuelinks`.
-There is no label list to check: Jira creates labels on first use.
+Jira has no label list to check: it creates labels on first use.
 For each issue, build target values from the sources in the order listed. The first source holding a value wins:
 [tracker-issue-settings] **Title:** **If** it is over 70 characters → shorten it to 70 or fewer, keeping the subject, the change, and every identifier, and dropping filler.
 **Labels:**

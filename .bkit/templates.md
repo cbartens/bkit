@@ -522,7 +522,7 @@ gh api -X PUT 'repos/{owner}/{repo}/vulnerability-alerts'
 gh api -X PUT 'repos/{owner}/{repo}/automated-security-fixes'
 ```
 
-Renovate (Mend): commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate in the GitHub UI. There is no `gh` equivalent.
+Renovate (Mend): commit `.github/renovate.json5` on the default branch, then install the App at https://github.com/apps/renovate in the GitHub UI. `gh` has no equivalent.
 
 Renovate (self-hosted): also copy `bkit-renovate.yml`, then set its platform token. Use a fine-grained PAT for one owner, and a classic one across owners. The permissions are in `docs/deployments.md` § Dependency updaters.
 
@@ -644,7 +644,7 @@ The PyPI name is `serena-agent`, and the CLI is `serena`. PyPI `serena` is an un
 
 ## Issue forms — `.github/ISSUE_TEMPLATE/`
 
-Issues are the first input every workflow reads. There is one form per way work starts, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. These forms serve the GitHub tracker alone, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
+Issues are the first input every workflow reads. Each way work starts has one form, and each form's intro names its next command. The section names, syntax and machine-read lines are in `.bkit/trackers.md` § Issue shapes. These forms serve the GitHub tracker alone, because Linear and Jira have their own templates. Reference: https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms.
 
 <!-- prettier-ignore -->
 | Form | Use when | Next step | Asks for |
@@ -786,7 +786,7 @@ graphify-out/
 - `.graphifyignore` merges `.gitignore`.
 - Keep `package.json` in the corpus. Excluding it drops the workspace `name` fields that graphify resolves package imports with, and the graph still looks complete.
 - Keep `tsconfig.json` out, because graphify reads `paths` regardless.
-- Always run `scripts/graphify/bkit-graphify.sh`, which passes `--code-only` and `--no-label` and unsets API keys. There is no persistent LLM-off setting.
+- Always run `scripts/graphify/bkit-graphify.sh`, which passes `--code-only` and `--no-label` and unsets API keys. No persistent LLM-off setting exists.
 
 <!-- prettier-ignore -->
 | Command | Does |

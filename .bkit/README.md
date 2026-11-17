@@ -341,7 +341,7 @@ Two capabilities are opt-in and left out of the default install: the **issue tra
 
 ## Triggering workflows
 
-There are three paths: a Linear comment (cloud), Claude (interactive, local) and Cursor (interactive, local). All three run the same workflow from `.bkit/core/workflows/`. The compute source and the orchestrator model differ.
+Three paths exist: a Linear comment (cloud), Claude (interactive, local) and Cursor (interactive, local). All three run the same workflow from `.bkit/core/workflows/`. The compute source and the orchestrator model differ.
 
 ### From a tracker comment (cloud — Cursor Cloud Agent)
 

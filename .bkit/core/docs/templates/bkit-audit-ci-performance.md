@@ -124,7 +124,7 @@ CI time gets re-argued from impressions, and two mistakes recur. First, a lane's
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | There is no green path through the pipeline. A job with no timeout can bill the host maximum on every run |
+| `CRITICAL` | The pipeline has no green path. A job with no timeout can bill the host maximum on every run |
 | `HIGH` | The dominating segment is the one a proposal would not touch. Latency is described as cost savings, or the reverse, on that segment |
 | `MEDIUM` | A cache miss on a lane that should cache. Shard imbalance that holds a lane open. Setup cost paid again on every split. Re-run minutes that rival the critical path |
 | `LOW` | A slow lane that does not hold the run open. Artifact size that is not on the critical path |

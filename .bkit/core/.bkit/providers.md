@@ -44,7 +44,7 @@
 | Cursor | `cursor` | Cursor subscription covers its whole catalog |
 | OpenCode | pick one: `openrouter`, `ollama`, `opencode-zen`, `opencode-go` | overflow host — metered BYO key, runs when subscription usage is spent |
 
-A host with a subscription has a pinned provider and a flag that takes no value (`--claude`, `--codex`). A bring-your-own-key host has a pluggable provider, and its flag names the provider (`--opencode=<provider>`). A per-model deviation goes in the consumer's `## Model Overrides` below `bkit:end`. There is no provider override.
+A host with a subscription has a pinned provider and a flag that takes no value (`--claude`, `--codex`). A bring-your-own-key host has a pluggable provider, and its flag names the provider (`--opencode=<provider>`). A per-model deviation goes in the consumer's `## Model Overrides` below `bkit:end`. No provider override exists.
 
 ### Codex CLI — three deviations
 
@@ -174,16 +174,16 @@ Cursor model assignment: § Models below. It is a per-agent lookup, not derived 
 
 The pinned selections are canonical in `prompts.md` (§ Models `Cursor` column and § Orchestrators), not here. The Cursor set churns, so use the pull recipe below.
 
-> **Default install = first-party pool only.** The shipped Cursor pins are `cursor-grok-4.5-high` and `composer-2.5`, so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are opt-in via `prompts.md` § Model Overrides, never default pins. To use Opus when you have API credits, paste the ready-to-use Opus override block in `prompts.md` § Model Overrides. It maps every Claude-opus-tier agent → `claude-opus-5-thinking-high`, and `/v0/models` has no Opus 5.5 ID. The Sonnet-tier override is `claude-sonnet-5-thinking-high` (Sonnet 5, not 5.5) or `gpt-5.6-sol-high`. Then run `bkit install --cursor`. The shipped sonnet cells stay on the first-party ceiling: `grok-4.5` lands 2.9 under the sonnet target at a quarter of Claude's cost per task. There is no `cursor-grok-4.7`.
+> **Default install = first-party pool only.** The shipped Cursor pins are `cursor-grok-4.5-high` and `composer-2.5`, so workflows keep running when API credits are exhausted. API-pool models (Claude / GPT / Fable) are opt-in via `prompts.md` § Model Overrides, never default pins. To use Opus when you have API credits, paste the ready-to-use Opus override block in `prompts.md` § Model Overrides. It maps every Claude-opus-tier agent → `claude-opus-5-thinking-high`, and `/v0/models` has no Opus 5.5 ID. The Sonnet-tier override is `claude-sonnet-5-thinking-high` (Sonnet 5, not 5.5) or `gpt-5.6-sol-high`. Then run `bkit install --cursor`. The shipped sonnet cells stay on the first-party ceiling: `grok-4.5` lands 2.9 under the sonnet target at a quarter of Claude's cost per task. `cursor-grok-4.7` does not exist.
 
 Tier guidance:
 
 - **`composer-2.5`** ($) — default. Fast and cheap: build executors, utilities, and the `/build` and `/ship` orchestrators. First-party pool.
 - **`cursor-grok-4.5-high`** ($$) — default. Depth slots, synthesizers and parallel diversity (the design / plan / debug orchestrators and the former Opus-tier agents). First-party pool (Cursor and SpaceXAI), with Coding Agent Index parity with GPT-5.5 at a lower per-task cost. A `-fast` variant exists.
 - **`claude-opus-5-thinking-high`** ($$$) — override only. Deep review, audit and synthesis while API credits remain. `/v0/models` has Opus 5, not Opus 5.5 (`claude-opus-5-5` is the Claude pin). A `-fast` variant exists. It is on the API pool and burns credits, so pin it via § Model Overrides, never as a shipped default.
-- **`claude-sonnet-5-thinking-high`/`-xhigh`** ($$$) — override only. Sonnet 5 on the API pool. Not a shipped default. There is no Sonnet 5.5 ID.
+- **`claude-sonnet-5-thinking-high`/`-xhigh`** ($$$) — override only. Sonnet 5 on the API pool. Not a shipped default. No Sonnet 5.5 ID exists.
 - **`gpt-5.*`** ($$$) — override only. An API-pool diversity hedge (`gpt-5.6-sol-high`, …). Not pinned.
-- **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — override only. Fable 5. Available, but not adopted as a default (see `prompts.md` § Effort → Claude model mapping). There is no Fable 5.1 ID on `/v0/models`.
+- **`claude-fable-5-thinking-high`/`-xhigh`** ($$$$) — override only. Fable 5. Available, but not adopted as a default (see `prompts.md` § Effort → Claude model mapping). `/v0/models` has no Fable 5.1 ID.
 
 Cloud Agents API: `curl https://api.cursor.com/v0/models -u "$BKIT_CURSOR_API_KEY:"`, with an agent-specific API key, because general keys can return HTTP 500 on `POST /v0/agents`. Verify before install, because Cursor models churn. The latest probe is in § Per-provider live model lookup. The build / ship orchestrators use `composer-2.5`.
 
@@ -506,7 +506,7 @@ It is fail-open and never blocks. The log lives in per-user OS temp (`bkit-readg
 | MCP tool approval | `permissions.allow` `mcp__<s>__*` from consumer `mcp-servers` (§ MCP servers) | none — no project-level MCP approval file | none written | Generated `.cursor/cli.json` `Mcp(<s>:*)` | `permission` `"<s>_*": "allow"` |
 | Local-only (not shipped) | `.claude/settings.local.json` (`additionalDirectories`, extra allows) | `~/.codex/config.toml` | user-level settings | Cursor project / user settings / MCP as needed | `~/.config/opencode/opencode.json` → `permission.external_directory` |
 
-**Install behaviour:** template drops, each a host-specific encoding of the same shared policy. There is no single canonical JSON. Each host's native form is kept in lockstep, and `.bkit/core/engine/install/modules/index.integration.test.ts` § permissions-parity asserts it. Machine-local paths stay out of templates.
+**Install behaviour:** template drops, each a host-specific encoding of the same shared policy. No single canonical JSON exists. Each host's native form is kept in lockstep, and `.bkit/core/engine/install/modules/index.integration.test.ts` § permissions-parity asserts it. Machine-local paths stay out of templates.
 
 ### Network allowlist — one source, five hosts
 
@@ -882,7 +882,7 @@ The cloud OpenAI-compatible cells are tool-call-smoked (a `tools:` round-trip re
 | Claude | First-class `Skill` tool. Registered via `.claude/settings.json` → `permissions.allow: ["Skill(*)"]`. Discoverable via plugin marketplace. | `~/.claude/skills/` (user) + `.agents/skills/` (project) + plugin skill dirs |
 | Cursor | Cursor 2.4+ Agent Skills (similar shape). | `.cursor/skills/` (per docs); `.agents/skills/` referenced via custom routing |
 
-`.agents/skills/` = **canonical project skill directory**. Both hosts read it. There is no per-host transform. Skills are listed in `.agents/skills.md`.
+`.agents/skills/` = **canonical project skill directory**. Both hosts read it. No per-host transform exists. Skills are listed in `.agents/skills.md`.
 
 ---
 

@@ -143,7 +143,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
 
 ## CI test scaffold (runs on every PR + push)
 
-The template `bkit-ci.yml` is copied into `.bkit/templates/`, and the consumer adopts and owns it. It is static: two lanes run in parallel, and the `bkit-tests-check` capstone joins them as the single branch-protection check. There is no planner. The capstone fails unless both lanes concluded `success`, and it fails when the unit lane reports zero executed tests.
+The template `bkit-ci.yml` is copied into `.bkit/templates/`, and the consumer adopts and owns it. It is static: two lanes run in parallel, and the `bkit-tests-check` capstone joins them as the single branch-protection check. The template has no planner. The capstone fails unless both lanes concluded `success`, and it fails when the unit lane reports zero executed tests.
 
 ```
 bkit-tests-static   (typecheck, lint, format, prose lint, slop, actionlint, bkit check)

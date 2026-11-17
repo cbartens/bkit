@@ -487,7 +487,7 @@ The rule is the same as for Claude: a per-repo environment with per-repo secrets
 
 ## Cursor — byte-identical Dockerfile
 
-Cursor resolves the environment in this order: (1) `.cursor/environment.json` in the repo, (2) a personal saved environment in the Cursor account, (3) a team saved environment. There are three sharing patterns:
+Cursor resolves the environment in this order: (1) `.cursor/environment.json` in the repo, (2) a personal saved environment in the Cursor account, (3) a team saved environment. Three sharing patterns exist:
 
 1. **In-repo copy (bkit default).** Each consumer repo carries `.cursor/Dockerfile` + `.cursor/environment.json`, copied from bkit's templates and owned by the repo. Cursor environments are functionally equivalent across consumers, and bkit ships base-toolchain updates as template changes the consumer adopts.
 2. **Personal saved environment (cross-repo).** Don't commit `.cursor/environment.json`. Configure a single environment in the Cursor account dashboard, and Cursor falls back to it for any session. Like any cross-repo environment, it holds one secret set for all repos. Prefer the per-repo default (#1) when repos have distinct secrets.

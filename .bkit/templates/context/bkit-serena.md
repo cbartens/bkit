@@ -3,7 +3,7 @@
 
 # Serena — MCP server in cloud sessions
 
-Fits: repos that wire the Serena MCP server (`.bkit/templates.md` § Serena). There is no fetch block. A provision block on its own installs the `serena` binary in Claude cloud sessions, so the MCP server starts there too, and the `mcp-servers` entry lets every host run its tools without a prompt.
+Fits: repos that wire the Serena MCP server (`.bkit/templates.md` § Serena). This template has no fetch block. A provision block on its own installs the `serena` binary in Claude cloud sessions, so the MCP server starts there too, and the `mcp-servers` entry lets every host run its tools without a prompt.
 
 - Secret: none.
 - CLI: `uv`, which is pre-installed on the Claude cloud image. The setup script runs as root, so the block pins uv's tool venv and bin dir to world-readable paths. Under root's `$HOME` (mode 0700), the session user could not run the binary.

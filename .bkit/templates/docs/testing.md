@@ -370,7 +370,7 @@ The same expression-context trap has a neighbour outside composites. The `env` c
 
 ### E2E on PRs: run the full suite, watch which DB it hits
 
-There are two PR-time E2E concerns. Both are gated on real preconditions (event, head ref), never on a kill-switch flag:
+PR-time E2E has two concerns. Both are gated on real preconditions (event, head ref), never on a kill-switch flag:
 
 - **Parity — PR and push run the full suite.** `pull_request` runs the same E2E spec set as the `dev`/`main` push. Scale a slow suite by sharding (parallel lanes, more workers). PR and push runs differ only in their DB target (below) and in push-only tiers (for example, `@live`).
 - **Correctness — migration-coupled PRs.** When preview deploys share one `dev` database, that database does not yet carry a PR's unmerged migration, because the migration applies only on the post-merge push. A PR that adds or renames a column and also uses it therefore fails with a 500 every time before the merge. A force-all-E2E marker does not help, because it hits the same migration-less DB.
@@ -465,7 +465,7 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 
 ### @live (golden)
 
-- Cross the real external or deployed boundary, and assert a ground-truth signal that only it can produce (§ Validated means executed). There are two shapes: **in-process** (the test calls the real SDK / model / API directly) and **deployed-endpoint** (the test fetches the running app). Use whichever one observes the boundary you are validating.
+- Cross the real external or deployed boundary, and assert a ground-truth signal that only it can produce (§ Validated means executed). Two shapes exist: **in-process** (the test calls the real SDK / model / API directly) and **deployed-endpoint** (the test fetches the running app). Use whichever one observes the boundary you are validating.
 - It runs on a push to `dev` or the default branch only, when `web_affected` (`run_live`). A planned failure reds the capstone. It does not run on a pull request or a dispatch. A newer run on the same ref cancels the older one (`deployments.md` § One run per branch or pull request).
 - **Honest skip vs hollow:**
   - **If** there is genuinely nothing deployed to validate → skip with a recorded reason. The capstone then asserts nothing about the count. This is different from a tier that ran 0 tests.
@@ -520,7 +520,7 @@ Each tier lists the rule to follow, then a **Not:** line naming the failure the 
 | Visual regression (screenshot baselines) | **opt-in, not baseline** (§ Optional hardening) — highest maintenance cost of the set |
 
 - **One reference, asserted independently.** The reference doc owns the token contract and its parsing rules (`design.md` § Machine-checked reference). What the lanes care about is that each implementation is its own test, so one red names its culprit.
-- **Merge-gated from day one, never an advisory window.** The assertions live inside lanes that the capstone already gates, so a design red blocks the merge on the first PR that adds one. There is no promotion step to schedule, so there is no deferral row to forget.
+- **Merge-gated from day one, never an advisory window.** The assertions live inside lanes that the capstone already gates, so a design red blocks the merge on the first PR that adds one. No promotion step needs scheduling, so no deferral row can be forgotten.
 - **A group tag carries zero routing power.**
   - Tag design tests in the test title, never by a filename convention, and add a `test:design` script for local iteration only.
   - The tag must never appear in an execution gate or an inverse-grep filter, because a test without it still runs in its normal lane.
@@ -599,7 +599,7 @@ Report coverage on each PR without a paid product or a third-party service. For 
 
 **Per-tier, not merged.** Unit and integration are measured and commented separately: two runs into `coverage/unit` and `coverage/integration`, and two comments keyed by a distinct `name:`. A single merged number is the weakest option. Coverage is a union, so a line covered only by an integration test reads as covered and hides a missing unit test. A merged gate therefore lets integration mask a hollow unit suite. The two numbers also have different denominators, so they cannot be honestly combined into one.
 
-- **Report-only by default.** There are no `thresholds`, so coverage never reds the lane, and enabling the block on an existing repo cannot break it.
+- **Report-only by default.** The block sets no `thresholds`, so coverage never reds the lane, and enabling the block on an existing repo cannot break it.
 - **Reporters are load-bearing.** The action reads `coverage-summary.json` (from the `json-summary` reporter, which is mandatory) and `coverage-final.json` (from `json`, which `file-coverage-mode: changes` requires). Enable both in `coverage.reporter`, or the step does nothing.
 - **Two runs, separate dirs.** Run `vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'` for unit, and a second run into `coverage/integration` for the integration tier. Separate dirs also avoid the last-writer-wins clobber that a second `--coverage` run into the same dir would cause.
 - **Thresholds are opt-in and per tier:**

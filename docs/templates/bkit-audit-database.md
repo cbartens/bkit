@@ -140,7 +140,7 @@ Migrations and integration tests exercise queries, but neither checks that privi
 | Severity | Use |
 | --- | --- |
 | `CRITICAL` | Tenant data is readable or writable across tenants, or by the anonymous role. An anonymous-executable privileged function has no identity check. A write fails silently on every call. A migration drops data without a backfill |
-| `HIGH` | A tenancy table has no enforcing layer (no row policy and no app-layer scope). A public bucket or an owner-rights view exposes tenant data. A constraint cannot fire. A lock-unsafe migration runs on a live table. There is no proven restore, no recovery target or no off-platform backup. The applied migrations differ from the directory |
+| `HIGH` | A tenancy table has no enforcing layer (no row policy and no app-layer scope). A public bucket or an owner-rights view exposes tenant data. A constraint cannot fire. A lock-unsafe migration runs on a live table. The database has no proven restore, no recovery target or no off-platform backup. The applied migrations differ from the directory |
 | `MEDIUM` | An index the query shape needs is missing. A housekeeping table has no purge. Vacuum lags. A sequence is above 50%. A role has no timeouts. Derived data has no agreement check. The schema doc differs from the migrations |
 | `LOW` | A deny-all table has no policies. Naming drift changes neither access nor results |
 

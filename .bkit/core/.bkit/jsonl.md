@@ -193,7 +193,7 @@ Orchestrator: omit `by.subagent` and `by.model`.
 
 - A pointer is a feature id / `{FID}`, a tracker id (`ISSUE-217`), a PR, a commit SHA, a file path, or a row's `key` in the same or another ledger.
 - Keep each item as the source wrote it. A trailing qualifier (`ISSUE-142 §A2`) is meaning, not noise.
-- There is no separate identity field: `key` is the identity, and `references` holds pointers only.
+- No separate identity field exists: `key` is the identity, and `references` holds pointers only.
 - Omit the field when there is nothing to point at.
 - Pointers between ledgers never need rewriting: a correction is a same-`key` append. When a correction affects rows in other ledgers that point at it, the ledger updater (`@bkit-utility-update-decisions`, `-knowledge`, `-deferrals`, `-failures`) reports those rows under `Cross-Ledger Impact`. Each row's own ledger writer appends any change.
 
@@ -262,7 +262,7 @@ On the kinds with both (`friction` / `deferral` / `failure` / `knowledge` / `dec
 
 1. `remediation` names specific files and a bounded edit, not a new architecture.
 2. The surface is inside files the cycle already touched.
-3. There is no external blocker: no missing decision, credential, upstream fix or confirmation.
+3. No external blocker exists: no missing decision, credential, upstream fix or confirmation.
 4. The row is `scope-declared` with no pre-existing declaration: the row is the only place the work was called out of scope.
 
 Test 4 carries the weight. A genuine deferral was declared out of scope before the work started. An unjustified one was declared at the moment of avoidance. The ledger holds both timestamps.
@@ -431,7 +431,7 @@ This is not a ledger but a row in a run's `status.jsonl` (`.bkit/workflows.md` �
 
 ## Examples
 
-The rows are indented here for readability. On disk, each row is a single physical line (§ Write Idiom). There is one example per ledger. Each shows the kind's fields, with the optional ones included where they apply to its workflow (§ Per-Kind Fields). The `build` block appears in the `run` example.
+The rows are indented here for readability. On disk, each row is a single physical line (§ Write Idiom). One example per ledger follows. Each shows the kind's fields, with the optional ones included where they apply to its workflow (§ Per-Kind Fields). The `build` block appears in the `run` example.
 
 `.bkit/stats.jsonl` (`compliance` / `outcome` / `counter`); `harvest/stats.jsonl` (`chat` / `run`):
 

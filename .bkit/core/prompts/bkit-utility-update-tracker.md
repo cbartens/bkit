@@ -121,7 +121,7 @@ autoCompactWindow: 300000
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker jira start -->
    - Issues: `mcp__jira__searchJiraIssuesUsingJql({ cloudId: "{TRACKER_SITE}", jql: "project = {TRACKER_PROJECT} AND statusCategory != Done ORDER BY key", maxResults: 100, fields: ["summary"] })` (drop `project = {TRACKER_PROJECT} AND` when null), passing `nextPageToken` while `isLast` is false → for each issue, `mcp__jira__getJiraIssue({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{key}", view: "evidence" })` → summary, labels, status, priority, issue type, parent, `issuelinks`.
-   - There is no label list to check: Jira creates labels on first use.
+   - Jira has no label list to check: it creates labels on first use.
    <!-- bkit:tracker jira end -->
 8. For each issue, build target values from the sources in the order listed. The first source holding a value wins:
    - **Title:** **If** it is over 70 characters → shorten it to 70 or fewer, keeping the subject, the change, and every identifier, and dropping filler.

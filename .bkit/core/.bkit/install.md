@@ -16,7 +16,7 @@
 
 ## Quick install / upgrade — paste into your AI
 
-There are two paste blocks below: install (first time) and upgrade (already on bkit). Both end the same way: apply advisories, reconcile templates, and verify with `bkit check`.
+Two paste blocks follow: install (first time) and upgrade (already on bkit). Both end the same way: apply advisories, reconcile templates, and verify with `bkit check`.
 
 ### Install — first time
 
@@ -132,7 +132,7 @@ Install and upgrade create two relative symlinks into the installed package, so 
 
 ### Local env setup
 
-There are two flows. Pick one. Both put `BKIT_GH_TOKEN` in the shell for the GitHub MCP server. Linear repos also need `BKIT_LINEAR_API_KEY`, and Jira repos need `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for the CLI.
+Two flows exist. Pick one. Both put `BKIT_GH_TOKEN` in the shell for the GitHub MCP server. Linear repos also need `BKIT_LINEAR_API_KEY`, and Jira repos need `BKIT_JIRA_API_KEY` (`.bkit/trackers.md` § jira — setup and notes). Use `gh auth login` for the CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
@@ -356,7 +356,7 @@ Two capabilities are opt-in, and a plain host / tooling install never wires them
 
 Use one, and record it in `bkit.dependencies.updater` (`"renovate"` / `"dependabot"`). Install and upgrade fill an empty value from the config present. `"none"` skips the install-time absence advisory. `bkit check` emits `dep-updater-absent` and `dep-updater-both`, and blocks on `dep-updater-unset` / `dep-updater-mismatch` when the value and the configs disagree. Setup: `docs/deployments.md` § Dependency updaters.
 
-**Security scan.** An updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. It also runs daily, and you accept findings in `.trivyignore.yaml`. There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
+**Security scan.** An updater only offers fixes once a fixed release exists. To fail CI on known-vulnerable packages, risky config or committed secrets, copy `.bkit/templates/.github/workflows/bkit-trivy.yml` and own it. It also runs daily, and you accept findings in `.trivyignore.yaml`. bkit has no advisory for it, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Trivy.
 
 **Test lint.** In JS / TS repos, to fail `lint` on a test that cannot fail (no assertion, a branch inside a test, an unawaited promise):
 
@@ -364,7 +364,7 @@ Use one, and record it in `bkit.dependencies.updater` (`"renovate"` / `"dependab
 2. Add `oxlint` + `oxlint-tsgolint`.
 3. Set `lint` to `oxlint -c .oxlintrc.json --type-aware --deny-warnings`.
 
-There is no advisory, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
+bkit has no advisory for it, and `bkit tips` suggests it. Setup: `.bkit/templates.md` § Oxlint.
 
 **All templates.** You copy and own them, and they are never installed. Catalog and install steps: `.bkit/templates.md`.
 

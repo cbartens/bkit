@@ -310,7 +310,7 @@ The batch verdict goes in `Summary`, not on each PR. The CI result of the landin
 <!-- prettier-ignore -->
 | Severity | Use |
 | --- | --- |
-| `CRITICAL` | There is no dependency updater config. A shipped dependency has a known-bad install script, or a publisher change the trust policy should have refused. A lockfile entry has no integrity hash, or a tarball comes from off the configured registry. A CRITICAL advisory in a shipped dependency is older than 7 days. |
+| `CRITICAL` | The repo has no dependency updater config. A shipped dependency has a known-bad install script, or a publisher change the trust policy should have refused. A lockfile entry has no integrity hash, or a tarball comes from off the configured registry. A CRITICAL advisory in a shipped dependency is older than 7 days. |
 | `HIGH` | A HIGH advisory in a shipped dependency is older than 30 days. A lockfile-maintenance update automerged or landed inside the release-age window. A shipped dependency has a copyleft or missing licence. |
 | `MEDIUM` | The updater config scans bkit-owned trees (`.bkit/templates/**`, `.agents/skills/**`). A supply-chain setting is missing or weaker than the standard. A setting multiplies PR or CI runs. A shipped dependency is unmaintained or deprecated. An end of life falls inside 90 days. A runtime package has two versions. An off-manifest CLI floats in CI or a build image, or is a major behind. |
 | `LOW` | The bot stopped rebasing a PR. A grouping miss caused no failure. The shipped licence notice was not regenerated. An off-manifest CLI is unwatched. |
