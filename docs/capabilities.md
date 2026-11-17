@@ -1,37 +1,47 @@
 # Capabilities
 
 > [!CAUTION]
-> **Purpose:** One row per app capability — owner module, the literal marker that finds
-> every use of it, whether anything bypasses the owner. The drift register.
+> **Purpose:** One row per capability, with its owner module, the literal marker that finds every use of it, and whether anything bypasses the owner.
 >
 > **Rules:**
 >
-> - Generated — do not edit. `pnpm bkit:graph:refresh` rewrites this file.
-> - Source of truth: `scripts/graphify/bkit-graph-drift-rules.json`. Every status derived from live source, never typed.
-> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.
-> - Markers literal, never regex, because `new Client(` as a regex is an unclosed group matching nothing.
-> - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.
-> - Optional `scope` narrows the tree scanned when a marker means different things per package.
-> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces partition the tree.
-> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is not a warning.
-> - A budget is not a shrug, because the row leaves `budgeted` and its Budget cell reads `over` or `stale` when the count moves either way, and a site landing outside every declared prefix reads as over budget.
-> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is diagram-only too, for whatever else a picture should not draw.
-> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.
-> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.
-> - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is pure. Unclassified = reported.
-> - That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.
-> - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.
-> - Only the Overrides block is hand-maintained. It round-trips; malformed aborts the run.
-> - Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.
-> - Arrows are grey; a thicker arrow carries more links.
-> - A flagged box counts its open and budgeted findings; the Register table names them.
-> - A part that calls nothing in the chart and that at least a quarter of the other boxes call (four at least) has its arrows left out and counts its callers.
-> - Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.
-> - `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.
-> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.
-> - A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.
-> - Table rescanned every run, never stale.
-> - Detail-level module graph → `pnpm bkit:graph`. This doc is the altitude above that: capabilities, not files.
+> - Follow `.bkit/authoring.md` § Docs when you edit this file.
+> - `pnpm bkit:graph:rollup` and `pnpm bkit:graph:refresh` rewrite everything between the `graphify:start` and `graphify:end` marker lines. Never edit between them, and keep exactly one of each.
+> - The source of truth is `scripts/graphify/bkit-graph-drift-rules.json`. Each status is derived from the tree, never typed in.
+> - To add a capability, add a rule there: capability, lane, owner module and one literal marker.
+> - Markers are literal, never regex. A regex metacharacter in a marker matches nothing, and the row then reads as a clean result.
+> - Match the mechanism, not the name, because a marker such as `createClient(` misses an owner that imports it under another name.
+> - Optional `scope`: path prefixes that narrow the tree scanned, for a marker that means different things per package.
+> - Optional `surface`: `product` (default), `tests` or `all`. `tests` is every `e2e/` folder and every `.test.` or `.spec.` file, and `product` is every other file.
+> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured = declared → `budgeted`.
+> - The generator reads the Overrides block before it writes. A malformed block aborts the run.
+>
+> **Not here:** The purpose-based view of responsibilities goes in `docs/components.md`. Implementation boundaries and deployment topology go in `docs/architecture.md`. Issue state stays in the tracker.
+>
+> **Update when:** A rule in `scripts/graphify/bkit-graph-drift-rules.json` is added, changed or removed, or a code change moves a status. Run `pnpm bkit:graph:refresh` in the same change.
+
+<!-- graphify:start -->
+
+## Reading the register
+
+- Built from `scripts/graphify/bkit-graph-drift-rules.json`. Every status derived from live source, never typed.
+- A budget is not a shrug, because the row leaves `budgeted` and its Budget cell reads `over` or `stale` when the count moves either way, and a site landing outside every declared prefix reads as over budget.
+- Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` in the Overrides block is diagram-only too, for whatever else a picture should not draw.
+- Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.
+- Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.
+- Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is pure. Unclassified = reported.
+- That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.
+- Nothing discovers an SDK itself; find gaps by listing non-workspace deps.
+- Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.
+- Arrows are grey; a thicker arrow carries more links.
+- A flagged box counts its open and budgeted findings; the Register table names them.
+- A part that calls nothing in the chart and that at least a quarter of the other boxes call (four at least) has its arrows left out and counts its callers.
+- Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.
+- `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.
+- Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.
+- A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.
+- Table rescanned every run, never stale.
+- Detail-level module graph → `pnpm bkit:graph`. This doc is the altitude above that: capabilities, not files.
 
 ## Status Vocabulary
 
@@ -92,54 +102,6 @@ Not scanned; run the rollup with `--reachability`.
 
 1 further file nothing imports, though an entrypoint is supposed to do work when it loads. In the JSON report only.
 
-## Overrides
-
-The one hand-maintained region of this file. Everything else is rewritten on each run;
-this block is read back first and re-emitted verbatim. Rename a node, hide a node or an
-edge, pin a note, or force nodes into a named group. A malformed block aborts the run
-rather than being silently dropped. Every `hide_nodes` entry needs a one-line reason in
-`hide_nodes_why`.
-
-<!-- overrides:start -->
-
-```json
-{
-  "rename": {},
-  "note": {},
-  "hide_nodes": [],
-  "hide_nodes_why": {},
-  "hide_edges": [],
-  "group": {
-    "Install engine": [
-      ".bkit/core/engine/cli",
-      ".bkit/core/engine/commands/install/install",
-      ".bkit/core/engine/install/modules/index",
-      ".bkit/core/engine/install/write",
-      ".bkit/core/engine/commands/install/upgrade",
-      ".bkit/core/engine/commands/install/uninstall",
-      ".bkit/core/engine/install/manifest",
-      ".bkit/core/engine/install/version-file",
-      ".bkit/core/engine/shared/package-roots",
-      ".bkit/core/engine/render/trackers",
-      ".bkit/core/engine/install/cloud-env"
-    ],
-    "Health checks": [
-      ".bkit/core/engine/checks/after/index",
-      ".bkit/core/engine/checks/before/index"
-    ],
-    "Telemetry": [
-      ".bkit/core/engine/ledgers/telemetry",
-      ".bkit/core/engine/commands/stats",
-      ".bkit/core/engine/commands/analysis",
-      ".bkit/core/engine/commands/comply",
-      ".bkit/core/engine/install/placeholders"
-    ]
-  }
-}
-```
-
-<!-- overrides:end -->
-
 ## User-facing routes → backend capabilities
 
 No route layer: the surface scan found nothing to draw.
@@ -162,7 +124,7 @@ config:
 flowchart LR
   %% Generated by bkit-graphify-rollup.py — do not edit
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
-    n_bkit_core_engine_checks["checks<br/>261 symbols · 18 files"]
+    n_bkit_core_engine_checks["checks<br/>262 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1955 symbols · 57 files"]
     n_bkit_core_engine_install["install<br/>366 symbols · 21 files"]
@@ -281,7 +243,7 @@ flowchart LR
         n_bkit_core_engine_checks_after_github["github<br/>12 symbols · 1 files"]
         n_bkit_core_engine_checks_after_managed["managed<br/>11 symbols · 1 files"]
         n_bkit_core_engine_checks_after_suppression["suppression<br/>5 symbols · 1 files"]
-        n_bkit_core_engine_checks_after_tools["tools<br/>15 symbols · 1 files"]
+        n_bkit_core_engine_checks_after_tools["tools<br/>16 symbols · 1 files"]
       end
       subgraph gn_bkit_core_engine_checks_before[".bkit/core/engine/checks/before"]
         n_bkit_core_engine_checks_before_context_fetch["context-fetch<br/>20 symbols · 1 files"]
@@ -942,3 +904,49 @@ flowchart LR
   linkStyle 224 stroke:#59636e80,stroke-width:2px
   linkStyle 225 stroke:#59636e80,stroke-width:2px
 ```
+
+<!-- graphify:end -->
+
+## Overrides
+
+Use this block to rename a node, hide a node or an edge, pin a note, or force nodes into a named group. Each `hide_nodes` entry needs a one-line reason in `hide_nodes_why`.
+
+<!-- overrides:start -->
+
+```json
+{
+  "rename": {},
+  "note": {},
+  "hide_nodes": [],
+  "hide_nodes_why": {},
+  "hide_edges": [],
+  "group": {
+    "Install engine": [
+      ".bkit/core/engine/cli",
+      ".bkit/core/engine/commands/install/install",
+      ".bkit/core/engine/install/modules/index",
+      ".bkit/core/engine/install/write",
+      ".bkit/core/engine/commands/install/upgrade",
+      ".bkit/core/engine/commands/install/uninstall",
+      ".bkit/core/engine/install/manifest",
+      ".bkit/core/engine/install/version-file",
+      ".bkit/core/engine/shared/package-roots",
+      ".bkit/core/engine/render/trackers",
+      ".bkit/core/engine/install/cloud-env"
+    ],
+    "Health checks": [
+      ".bkit/core/engine/checks/after/index",
+      ".bkit/core/engine/checks/before/index"
+    ],
+    "Telemetry": [
+      ".bkit/core/engine/ledgers/telemetry",
+      ".bkit/core/engine/commands/stats",
+      ".bkit/core/engine/commands/analysis",
+      ".bkit/core/engine/commands/comply",
+      ".bkit/core/engine/install/placeholders"
+    ]
+  }
+}
+```
+
+<!-- overrides:end -->

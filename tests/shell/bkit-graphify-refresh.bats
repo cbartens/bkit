@@ -79,3 +79,28 @@ teardown() {
   [ "$(cat docs/capabilities.md)" = "stale" ]
   [ -z "$(details_diagram)" ]
 }
+
+@test "refresh replaces the text between the graphify markers and keeps an unstaged edit outside them" {
+  cat > scripts/graphify/bkit-graphify.sh <<'STANDIN'
+#!/usr/bin/env bash
+case "$1" in
+  build) ;;
+  register)
+    body=$(cat src.txt) || exit 1
+    printf '# Capabilities\n\n<!-- graphify:start -->\n\n## Architecture — packages\n\n```mermaid\n%s\n```\n\n<!-- graphify:end -->\n\nStaged tail\n' "$body" > docs/capabilities.md
+    ;;
+esac
+STANDIN
+  printf '# Capabilities\n\n<!-- graphify:start -->\n\nold region\n\n<!-- graphify:end -->\n\nStaged tail\n' > docs/capabilities.md
+  echo staged > src.txt
+  git add -A
+  printf '# Capabilities\n\nUnstaged note\n\n<!-- graphify:start -->\n\nold region\n\n<!-- graphify:end -->\n\nStaged tail\n' > docs/capabilities.md
+  run bash "$GRAPHIFY" refresh
+  [ "$status" -eq 0 ]
+  grep -qx 'Unstaged note' docs/capabilities.md
+  grep -qx staged docs/capabilities.md
+  [ "$(tail -1 docs/capabilities.md)" = "Staged tail" ]
+  run grep -qx 'old region' docs/capabilities.md
+  [ "$status" -ne 0 ]
+  [ "$(details_diagram)" = "staged" ]
+}

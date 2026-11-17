@@ -1025,7 +1025,7 @@ describe("this repo adopts its own templates", () => {
     );
     expect(template).not.toMatch(UNPREFIXED_GRAPH);
     expect(copy).not.toMatch(UNPREFIXED_GRAPH);
-    expect(copy).toContain("pnpm bkit:graph:refresh");
+    expect(copy).toContain("pnpm bkit:graph:rollup");
   });
 
   it(".github/workflows/bkit-cloud.yml", () => {

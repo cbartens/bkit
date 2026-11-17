@@ -867,6 +867,65 @@ describe("detectProjectDocs", () => {
     expect(unpopulated!.detect).toContain("docs/security.md");
   });
 
+  /** A starter's introduction (every line above its title) followed by text a project wrote. */
+  function introThenFilled(topic: string, filled: string): string {
+    const lines = fs.readFileSync(path.join(STARTER_DIR, `${topic}.md`), "utf-8").split("\n");
+    const title = lines.findIndex((l) => l.startsWith("# "));
+    expect(title).toBeGreaterThan(0);
+    return `${lines.slice(0, title).join("\n")}\n${filled}`;
+  }
+
+  it("reports a filled project doc that keeps the starter introduction as unpopulated", () => {
+    writeDoc("docs/security.md", introThenFilled("security", POPULATED));
+    writeIndex([{ doc: "docs/security.md" }]);
+    const unpopulated = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/security.md");
+    expect(unpopulated!.detect).toContain("introduction");
+    expect(unpopulated!.action).toContain("delete the introduction");
+  });
+
+  it("does not report a filled project doc that quotes the starter opener below its title", () => {
+    writeDoc("docs/security.md", `${POPULATED}\n> Starter document. Quoted from the template.\n`);
+    writeIndex([{ doc: "docs/security.md" }]);
+    expect(allText(detectProjectDocs(tmpDir))).not.toContain("docs/security.md");
+  });
+
+  it("names an absent docs/components.md in project-docs-missing", () => {
+    writeIndex([]);
+    const missing = detectProjectDocs(tmpDir).find((f) => f.id === "project-docs-missing");
+    expect(missing).toBeDefined();
+    expect(missing!.detect).toContain("docs/components.md");
+  });
+
+  it.each([
+    ["empty", () => "  \n"],
+    [
+      "the untouched starter",
+      () => fs.readFileSync(path.join(STARTER_DIR, "components.md"), "utf-8"),
+    ],
+    ["headings only", () => "# Components\n\n## Responsibilities\n\n## Open questions\n"],
+    [
+      "filled below the starter introduction",
+      () => introThenFilled("components", "# Components\n\nThe api service owns sign-in.\n"),
+    ],
+  ])("reports a docs/components.md that is %s as unpopulated", (_label, text) => {
+    writeDoc("docs/components.md", text());
+    writeIndex([]);
+    const findings = detectProjectDocs(tmpDir);
+    const unpopulated = findings.find((f) => f.id === "project-docs-unpopulated");
+    expect(unpopulated).toBeDefined();
+    expect(unpopulated!.detect).toContain("docs/components.md");
+    const missing = findings.find((f) => f.id === "project-docs-missing");
+    expect(missing!.detect).not.toContain("docs/components.md");
+  });
+
+  it("names a filled docs/components.md in no finding, indexed or not", () => {
+    writeDoc("docs/components.md", "# Components\n\nThe api service owns sign-in and sessions.\n");
+    writeIndex([]);
+    expect(allText(detectProjectDocs(tmpDir))).not.toContain("docs/components.md");
+  });
+
   it("reads the Scope of a row without a trailing pipe", () => {
     writeDoc("eng/sec-notes.md", POPULATED);
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });

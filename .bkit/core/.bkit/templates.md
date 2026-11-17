@@ -534,13 +534,13 @@ gh secret set BKIT_GH_TOKEN
 - The examples extend `config:best-practices`:
   - Major bumps wait for a tick on the Dependency Dashboard (`dependencyDashboardApproval`).
   - `lockFileMaintenance` runs monthly.
-  - PRs rebase only on conflict.
+  - Renovate never rebases an open PR by itself (`rebaseWhen: "never"`). A PR that conflicts waits until you tick its rebase checkbox.
 - A `# renovate: datasource=<ds> depName=<name>` comment above a pinned CLI version (Dockerfile, `bkit-cloud.md`, workflows) lets the example `customManagers` entry bump it.
 - For checksum-paired pins (Vale, gh, jq, Node, actionlint), update the sha256 by hand in the same PR. `Check Pinned Checksums` in `bkit-ci.yml` (`bkit ci pins`) fails the PR until the Dockerfile's hashes match.
 - `bkit-renovate.yml` pins `renovate-version` to an exact release. The same kind of `# renovate:` comment keeps it current.
 - `enabled: false` on a Renovate package rule does not stop digest pinning. Use `ignorePaths` to keep Renovate off a file.
 - Land the config on the default branch before the bot runs. The examples set `baseBranchPatterns: ["dev"]`.
-- The App install, the self-hosted token, the private-package host rule and CVE handling are in `docs/deployments.md` § Dependency updaters.
+- The App install and the self-hosted token are in `docs/deployments.md` § Dependency updaters. CVE handling is in `docs/deployments.md` § Manual CVE handling (when an alert fires).
 
 ## Dependency audit — known-vulnerable dependencies fail the push
 
@@ -666,7 +666,7 @@ Issues are the first input every workflow reads. Each way work starts has one fo
 
 ## Project documents — starters and the index
 
-The ten project docs (architecture, technology, security, data-schema, testing, deployments, observability, design, noise, setup) ship as starters in `.bkit/templates/docs/`. Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not. Fill the starters in the order of § Project docs — adoption order.
+Twelve project docs ship as starters in `.bkit/templates/docs/`: architecture, technology, security, data-schema, testing, deployments, observability, design, noise and setup, plus components (§ Component map — purpose and responsibilities) and capabilities (§ graphify — map). Copy a starter to `docs/{topic}.md` and add a matching row to `.agents/docs.md` `## Project Documents` in the same change; install and upgrade refresh only the starter, never your copy. A doc you keep under another name takes a row whose Scope says `Equivalent to docs/{topic}.md`, and install then adds no second row. A prompt that reads one of these docs applies it only when the doc is present and warns when it is not. Fill the starters in the order of § Project docs — adoption order.
 
 ## Project docs — adoption order
 
@@ -725,11 +725,20 @@ The dotted arrows:
 - **data-schema → deployments:** the migrations-at-deploy-time section waits for the schema.
 - **data-schema → security:** the "Where stored" column of the PII table in `docs/security.md` is finished against `docs/data-schema.md`.
 
-`docs/idea.md` is the owner's free-form notes on the problem, the users and what the app must and must not do. It has no template, is not indexed in `.agents/docs.md`, and stays after `docs/components.md` exists.
+`docs/idea.md` is the owner's free-form notes. It has no template, is not indexed in `.agents/docs.md`, and stays after `docs/components.md` exists. The components starter reads these facts from it:
+
+- Who the users are, the problem they have and the result they get.
+- The platforms the app runs on.
+- What the app does without a network connection.
+- What must update live.
+- The scale the app must handle.
+- The hard external requirements, such as a law, a contract or a partner's interface.
+
+**If** `docs/idea.md` is absent → the components starter takes the same facts from the README, an approved specification or the owner's answers.
 
 ## Component map — purpose and responsibilities
 
-Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, worked examples, document registration and completion checks.
+Follow the removable population guide in `.bkit/templates/docs/components.md` to create `docs/components.md`. It covers evidence gathering for existing and planned repositories, component selection, example rows, document registration and completion checks.
 
 The project owns the populated document. Installation and upgrades refresh the template source without overwriting the adopted copy. Neither graphify nor Floorplan is required; the template's rules header defines the boundaries between the purpose-based overview and other documentation.
 
@@ -797,12 +806,15 @@ graphify-out/
 | `pnpm bkit:graph:rollup` | Package and module views, plus `docs/capabilities.md` and its diagram copies. |
 | `pnpm bkit:graph:check` | Rebuild and fail if `docs/capabilities.md` is not what this tree produces, or a diagram copy differs from it. Reads uncommitted edits. Shipped as a self-skipping CI step (every push and pull request; on a PR, GitHub's test merge into the base); enabled in bkit's own CI. |
 | `bash scripts/graphify/bkit-graphify.sh check-at <rev>` | `check` in a throwaway checkout of `<rev>` (default HEAD); pre-push gate runs it on the commit pushed to dev. |
-| `pnpm bkit:graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → copy over `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
+| `pnpm bkit:graph:refresh` | Rebuild register in a throwaway checkout of the staged files (the index) → replace the generated region of `docs/capabilities.md` → rewrite the diagram copies. Stage the change first, so a run before its commit builds the new state. Fixes a red gate; commit result. |
 | `pnpm bkit:graph:scoped [path]` | One subtree. Default `apps/web/src`. |
 | `pnpm bkit:graph:graphml` | Opt-in GraphML for Gephi / yEd. |
 
 - `docs/graphify-out/` holds the raw `graph.json`, and `docs/graphify-out/reports/` holds the derived views.
-- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup, because the Overrides block must exist. `pnpm bkit:graph:rollup` rewrites it after that.
+- Copy `.bkit/templates/docs/capabilities.md` → `docs/capabilities.md` before the first rollup.
+- `rollup`, `register` and `refresh` rewrite only the generated region of `docs/capabilities.md`: the text between its `<!-- graphify:start -->` line and its `<!-- graphify:end -->` line. The rest of the file is the project's.
+  - **If** the doc lacks exactly one marker pair in that order → the run stops and writes nothing.
+  - **If** the doc has no marker and its rules box says the whole file is generated → the run rebuilds it from the starter and keeps its Overrides block.
 - To add a capability, add a rule in `bkit-graph-drift-rules.json`: lane, owner module, one literal marker. The shipped rules JSON has one example row. Replace it.
 - The marker is a literal that only the owner should contain (a host, a header, a marker string). Never use the owner's exported function name, because every legitimate caller then reads as `bypassed`.
 

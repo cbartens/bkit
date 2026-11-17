@@ -15,7 +15,7 @@
 > 5. **If** neither source establishes the purpose, intended users or main journey → ask the owner for that missing context before filling the affected sections.
 > 6. Select components by distinct responsibilities or outcomes, including supporting work the main journeys depend on. Code that serves one purpose can share a component; separate a responsibility when it has its own outcome or a meaningful handoff.
 > 7. Replace the bracketed fields and example rows with the project's facts, keeping the rules box.
-> 8. Fill `## Constraints` from `docs/idea.md`, and name the source of each row.
+> 8. Fill `## Constraints` from `docs/idea.md`, the README, any approved specification and the owner's answers, and name the source of each row.
 > 9. Record unresolved facts under `## Open questions`, separate from current behavior and approved plans.
 > 10. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/components.md` | ○ | ● | ○ | ○ | ○ | A purpose-based view of what the repository does, its major responsibilities and how they work together, readable without inspecting the code. |
 > 11. Check the document against each completion check, then delete this introduction.
@@ -30,7 +30,7 @@
 > - Exactly one Mermaid chart uses names consistent with the tables and explains what its arrows mean.
 > - The chart renders in a Mermaid-capable viewer.
 > - Every claimed current responsibility is supported by the implementation or project evidence; planned responsibilities and unknowns are labelled separately.
-> - Every constraint names its source in `docs/idea.md`.
+> - Every constraint names its source: `docs/idea.md`, the README, an approved specification or the owner's answer.
 > - References link to existing documents; missing optional views are marked as unavailable rather than linked to nonexistent files.
 > - Implementation detail stays in its canonical document rather than being copied into this overview.
 > - No instructional placeholders or unrelated example content remain.
@@ -63,14 +63,10 @@
 [The platforms, offline behavior, live-update needs, scale and hard external requirements the repository must meet.]
 
 <!-- prettier-ignore -->
-| Constraint | What it requires | Source in `docs/idea.md` |
+| Constraint | What it requires | Source |
 | --- | --- | --- |
-| [Constraint] | [What it requires of the repository.] | [The `docs/idea.md` passage that states it.] |
-| [e.g., Works offline] | Reports open and save without a network connection. | The "Field use" notes. |
-
-## Open questions
-
-[Each unresolved fact, who can answer it and which section it affects.]
+| [Constraint] | [What it requires of the repository.] | [The `docs/idea.md` passage, README section, specification or owner's answer that states it.] |
+| [e.g., Works offline] | Reports open and save without a network connection. | The "Field use" notes in `docs/idea.md`. |
 
 ## Primary workflows
 
@@ -140,3 +136,7 @@ flowchart LR
 | [e.g., Product guide] | What does the product do, for whom? |
 
 [Links to the available views above and the repository's product guide or specification. Missing views identified as unavailable.]
+
+## Open questions
+
+[Each unresolved fact, who can answer it and which section it affects.]

@@ -90,7 +90,7 @@ flowchart LR
 
 ## Production rollback runbook
 
-> **Project slot:** replace the example steps with this project's own; keep the heading, because plans cite it.
+> **Project slot:** the steps are bkit's procedure. Replace each bracketed example with this project's own commands, and change a step only where the host or database differs. Keep the heading, because plans cite it.
 
 > Use this runbook when a bad release is live. Move production back to the last good deployment, then fix forward through `dev`. Production moves first, and `main` keeps its history. The steps work on any host.
 
@@ -134,7 +134,7 @@ flowchart LR
 
 ## Dev rollback runbook
 
-> **Project slot:** replace the example steps with this project's own; keep the heading, because plans cite it.
+> **Project slot:** the steps are bkit's procedure. Replace each bracketed example with this project's own commands, and change a step only where the host or database differs. Keep the heading, because plans cite it.
 
 > Use this runbook to unwind a bad commit on `dev` to the prior known-good SHA when the rolled-out range included applied migrations. A code-only rollback leaves the dev DB ahead of the code, so schema-aware tests (schema introspection, access-policy integration) fail on an otherwise clean tree. The steps work with any database. The commands use Supabase as the example.
 
@@ -210,7 +210,7 @@ cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 A newer run cancels the older one on every event except the default branch, which queues. That run promotes the deployment, so cancelling it mid-promote could strand production across two releases (§ Promote before the lanes). A pull request keys on its number, and a push or dispatch keys on the ref, so a PR and a `dev` push still overlap. A `workflow_run` observer sees the latest run on that ref only.
 
-A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run, or when that run's head is no longer an ancestor. A `workflow_dispatch` has no base commit, so short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on a dispatch, so steer it with inputs (§ Commit-message force tags). The planner parses markers once, and every lane reads `plan.markers_present`. The only re-read of the commit or PR text is the workflow-level task-runner cache bust (for example, `TURBO_FORCE`). Validate the plan JSON with `has()` / `!= null`, because jq `//` treats `false` as absent and drops a real `run_live: false`.
+A push diffs against the head of the last successful CI run on that branch, not `github.event.before`. Fall back to `github.event.before` only when there is no such run, or when that run's head is no longer an ancestor. A `workflow_dispatch` has no base commit, so short-circuit the affected step to fully affected. `HEAD~1` is only for the delta gates on a dispatch. Markers are inert on a dispatch, so steer it with inputs (`.bkit/workflows.md` § Commit-message force tags). The planner parses markers once, and every lane reads `plan.markers_present`. The only re-read of the commit or PR text is the workflow-level task-runner cache bust (for example, `TURBO_FORCE`). Validate the plan JSON with `has()` / `!= null`, because jq `//` treats `false` as absent and drops a real `run_live: false`.
 
 Migration-immutability and slop-delta run on every event against that same base. The starter's copies of those steps are still `pull_request`-only, and that `if:` is the shape from before the planner existed. Point them at the planner base once `bkit-tests-scope` exists. Pre-push on a `dev` push resolves the same base (`bkit-resolve-push-base.mjs --local`, `.bkit/templates.md` § Git hooks) and exports it as `SLOP_BASE_REF`. A repo-owned migration-immutability pre-push check reads that variable too.
 
@@ -300,7 +300,7 @@ This is optional. A same-repo promotion PR into the default branch (head `dev`, 
 - A red push run that is re-run to green does not update the PR. Re-run the PR's `bkit-tests-check` afterwards.
 - A new `dev` push moves the PR head. `pull_request` concurrency cancels the old mirror and starts one for the new SHA.
 - The release PR gives up PR-only output (coverage comments, PR-only coverage measurement). None of it blocks a merge.
-- Feature → `dev` PRs are unaffected. `pull_request => run_level=full` (§ Consumer CI contract) still holds there, and `/bkit-ship`'s gate relies on that.
+- Feature → `dev` PRs are unaffected. `pull_request => run_level=full` (`.bkit/workflows.md` § Consumer CI contract — `pull_request` resolves to `run_level=full`) still holds there, and `/bkit-ship`'s gate relies on that.
 
 ## Workflow-file limits GitHub does not enforce visibly
 

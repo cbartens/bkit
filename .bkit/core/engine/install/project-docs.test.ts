@@ -703,6 +703,24 @@ describe("starter docs", () => {
     expect(labelLine(intro, "Completion checks")).toContain("docs/components.md");
     expect(intro.join("\n")).toContain("bkit-graph-drift-rules.json");
   });
+
+  it("capabilities starter has the four rules-box labels, one graphify marker pair and Open questions last", () => {
+    const lines = starterLines("capabilities");
+    const body = lines.slice(titleIndex(lines));
+    for (const label of ["Purpose", "Rules", "Not here", "Update when"]) {
+      expect(body.filter((l) => l.startsWith(`**${label}:**`))).toHaveLength(1);
+    }
+    // The generator matches a marker as a whole line, and the starter holds one of each.
+    const start = lines.indexOf("<!-- graphify:start -->");
+    const end = lines.indexOf("<!-- graphify:end -->");
+    expect(lines.filter((l) => l.trim() === "<!-- graphify:start -->")).toHaveLength(1);
+    expect(lines.filter((l) => l.trim() === "<!-- graphify:end -->")).toHaveLength(1);
+    expect(start).toBeGreaterThan(titleIndex(lines));
+    expect(end).toBeGreaterThan(start);
+    // Text the project maintains sits outside the generated region.
+    expect(lines.indexOf("<!-- overrides:start -->")).toBeGreaterThan(end);
+    expect(body.filter((l) => l.startsWith("## ")).at(-1)).toBe("## Open questions");
+  });
 });
 
 describe("adoption chart helpers", () => {

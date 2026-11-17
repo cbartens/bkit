@@ -304,15 +304,73 @@ OV_DEFAULT = """{
 }"""
 
 
-def read_overrides(doc_path):
-    """Recover the hand-maintained overrides block from the generated doc.
+GEN_START, GEN_END = "<!-- graphify:start -->", "<!-- graphify:end -->"
+# The starter holds the text around the generated region: title, rules box, Overrides.
+STARTER_DOC = ".bkit/templates/docs/capabilities.md"
+# A doc with no marker pair that holds one of these lines is generated from top to
+# bottom, so no hand-written text is lost when the starter's frame replaces it.
+WHOLE_DOC_SIGNS = ("> - Generated — do not edit.", "> - This file is generated.")
 
-    The doc is otherwise rewritten wholesale, so this one region round-trips:
-    read before writing, re-emitted verbatim. It is the only part of
-    capabilities.md a human is meant to touch.
+
+def split_frame(text, path):
+    """Return (head, tail): the text up to and including the start marker line, and
+    the text from the end marker line on. None when the text has neither marker.
+
+    A marker counts only as a whole line, so prose that names one never matches.
+    Anything but exactly one pair in order RAISES; the file is never rewritten when
+    the generated region cannot be told from hand-written text.
+    """
+    lines = text.split("\n")
+    starts = [i for i, line in enumerate(lines) if line.strip() == GEN_START]
+    ends = [i for i, line in enumerate(lines) if line.strip() == GEN_END]
+    if not starts and not ends:
+        return None
+    if len(starts) != 1 or len(ends) != 1 or starts[0] > ends[0]:
+        raise SystemExit(f"[graph] {path}: needs exactly one {GEN_START} line followed by one "
+                         f"{GEN_END} line. Refusing to overwrite it; fix the marker lines.")
+    return "\n".join(lines[:starts[0] + 1]), "\n".join(lines[ends[0]:])
+
+
+def doc_frame(doc_path, ov_text):
+    """The hand-written text around the generated region of capabilities.md.
+
+    A doc with the marker pair keeps every byte outside it. A doc without the
+    pair is absent, or was written whole by an older copy of this script; its
+    frame is then the starter's, from the title on, with the overrides carried
+    over. Any other doc without the pair RAISES, because hand-written text in it
+    would be lost.
+    """
+    if doc_path and os.path.exists(doc_path):
+        text = open(doc_path, encoding="utf-8").read()
+        frame = split_frame(text, doc_path)
+        if frame:
+            return frame
+        if not any(sign in text for sign in WHOLE_DOC_SIGNS):
+            raise SystemExit(f"[graph] {doc_path}: no {GEN_START} and {GEN_END} lines. Refusing to "
+                             "overwrite it; put the two marker lines around the generated sections.")
+    if not os.path.exists(STARTER_DOC):
+        raise SystemExit(f"[graph] {doc_path} has no {GEN_START} and {GEN_END} lines, and "
+                         f"{STARTER_DOC} is missing. Copy the starter to {doc_path} first.")
+    starter = open(STARTER_DOC, encoding="utf-8").read()
+    title = re.search(r"^# ", starter, re.M)
+    frame = split_frame(starter[title.start():] if title else starter, STARTER_DOC)
+    if not frame:
+        raise SystemExit(f"[graph] {STARTER_DOC}: no {GEN_START} and {GEN_END} lines.")
+    head, tail = frame
+    if OV_START in tail and OV_END in tail:
+        before, rest = tail.split(OV_START, 1)
+        tail = f"{before}{OV_START}\n\n```json\n{ov_text}\n```\n\n{OV_END}{rest.split(OV_END, 1)[1]}"
+    return head, tail
+
+
+def read_overrides(doc_path):
+    """Recover the hand-maintained overrides block from capabilities.md.
+
+    The block sits outside the generated region, so a run leaves it as it is.
+    It is read first because it steers what the region draws.
 
     An overrides block with no ```json fence, or with invalid JSON, RAISES; the
-    file is never rewritten without its overrides.
+    file is never rewritten with overrides it could not read.
     """
     if not doc_path or not os.path.exists(doc_path):
         return json.loads(OV_DEFAULT), OV_DEFAULT
@@ -788,13 +846,15 @@ def reachability_block(reach):
 
 def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_text, eager,
                         reach):
-    """Write docs/capabilities.md — the tracked register, wholly generated.
+    """Write the generated region of docs/capabilities.md, the tracked register.
 
-    Source of truth is bkit-graph-drift-rules.json (which capability, which owner,
-    which literal marker); every status in the table is derived from live source
-    by bkit-graph-drift.py, never typed in. Editing this file by hand loses the edit
-    on the next `pnpm bkit:graph:rollup`.
+    Only the text between the GEN_START and GEN_END lines is rewritten; doc_frame
+    supplies the text around it. Source of truth is bkit-graph-drift-rules.json
+    (which capability, which owner, which literal marker); every status in the
+    table is derived from live source by bkit-graph-drift.py, never typed in. An
+    edit between the two lines is lost on the next `pnpm bkit:graph:rollup`.
     """
+    head, tail = doc_frame(out, ov_text)
     ROUTES_MMD, n_routes = chain_block(surface, overlay, reach)
     ROUTES_PROSE = (
         f"{n_routes} routes across web and native, each linked to the service domains it reaches. "
@@ -826,40 +886,26 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
                 f"{issue} |")
 
     D = [
-        "# Capabilities",
+        "## Reading the register",
         "",
-        "> [!CAUTION]",
-        "> **Purpose:** One row per app capability — owner module, the literal marker that finds",
-        "> every use of it, whether anything bypasses the owner. The drift register.",
-        ">",
-        "> **Rules:**",
-        ">",
-        "> - Generated — do not edit. `pnpm bkit:graph:refresh` rewrites this file.",
-        f"> - Source of truth: `{rules_path}`. Every status derived from live source, never typed.",
-        "> - Add a capability = add a rule there: capability · lane · owner module · one literal marker.",
-        "> - Markers literal, never regex, because `new Client(` as a regex is an unclosed group matching nothing.",
-        "> - Match the mechanism, not the name, because `createClient(` misses an owner that aliases its import.",
-        "> - Optional `scope` narrows the tree scanned when a marker means different things per package.",
-        "> - Optional `surface`: `product` (default) · `tests` (any `e2e/` dir + every `.test.` / `.spec.` file) · `all`. The two surfaces partition the tree.",
-        "> - Optional `budgets`: the exact non-owner site count allowed per scope prefix. Measured == declared everywhere ⇒ `budgeted`, which is not a warning.",
-        "> - A budget is not a shrug, because the row leaves `budgeted` and its Budget cell reads `over` or `stale` when the count moves either way, and a site landing outside every declared prefix reads as over budget.",
-        "> - Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` below is diagram-only too, for whatever else a picture should not draw.",
-        "> - Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.",
-        "> - Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.",
-        "> - Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is pure. Unclassified = reported.",
-        "> - That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.",
-        "> - Nothing discovers an SDK itself; find gaps by listing non-workspace deps.",
-        "> - Only the Overrides block is hand-maintained. It round-trips; malformed aborts the run.",
-        "> - Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.",
-        "> - Arrows are grey; a thicker arrow carries more links.",
-        "> - A flagged box counts its open and budgeted findings; the Register table names them.",
-        "> - A part that calls nothing in the chart and that at least a quarter of the other boxes call (four at least) has its arrows left out and counts its callers.",
-        "> - Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.",
-        "> - `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
-        "> - Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
-        "> - A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.",
-        "> - Table rescanned every run, never stale.",
-        "> - Detail-level module graph → `pnpm bkit:graph`. This doc is the altitude above that: capabilities, not files.",
+        f"- Built from `{rules_path}`. Every status derived from live source, never typed.",
+        "- A budget is not a shrug, because the row leaves `budgeted` and its Budget cell reads `over` or `stale` when the count moves either way, and a site landing outside every declared prefix reads as over budget.",
+        "- Test code is in `graph.json` on purpose (`.graphifyignore`) and out of every diagram here by rule (`is_test_code` in `bkit-graphify-rollup.py`): test folders, `.test.` / `.spec.` files, test-runner config. `hide_nodes` in the Overrides block is diagram-only too, for whatever else a picture should not draw.",
+        "- Status computed: no owner → `split`; owner absent → `gap`; owner present, others use marker → `bypassed`; else `one`. A `split|bypassed` at budget → `budgeted`.",
+        "- Externals: `scripts/graphify/bkit-graph-external-rules.json` — `sdk` · `hosts` · `env`. SDK and url = `split`.",
+        "- Import-time scan: `scripts/graphify/bkit-graph-eager-rules.json` lists only what is pure. Unclassified = reported.",
+        "- That scan reads source, not the graph, because module-level initialiser calls are the one construct graphify drops.",
+        "- Nothing discovers an SDK itself; find gaps by listing non-workspace deps.",
+        "- Box colour = the top-level group it sits in; a box in no group is grey. With one top-level group, that group is grey and each box has its own colour.",
+        "- Arrows are grey; a thicker arrow carries more links.",
+        "- A flagged box counts its open and budgeted findings; the Register table names them.",
+        "- A part that calls nothing in the chart and that at least a quarter of the other boxes call (four at least) has its arrows left out and counts its callers.",
+        "- Drift = thick dashed red border + a faint red box for all four. No ranking: each scan proves a shape, never an intent.",
+        "- `budgeted` = solid amber border + a faint amber box. Still drawn, because a declared bypass is still a bypass, but it is settled, not an open question.",
+        "- Which status is which: `split` fine dash · `bypassed` long dash · `dead` even dash · `gap` dotted · `budgeted` no dash.",
+        "- A fetched URL is a STRING, never an edge, because the reachability scan (§ Unreachable API calls) is the only check that sees it.",
+        "- Table rescanned every run, never stale.",
+        "- Detail-level module graph → `pnpm bkit:graph`. This doc is the altitude above that: capabilities, not files.",
         "",
         "## Status Vocabulary",
         "",
@@ -909,22 +955,6 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "",
     ] + eager_block(eager) + [
         "",
-        "## Overrides",
-        "",
-        "The one hand-maintained region of this file. Everything else is rewritten on each run;",
-        "this block is read back first and re-emitted verbatim. Rename a node, hide a node or an",
-        "edge, pin a note, or force nodes into a named group. A malformed block aborts the run",
-        "rather than being silently dropped. Every `hide_nodes` entry needs a one-line reason in",
-        "`hide_nodes_why`.",
-        "",
-        OV_START,
-        "",
-        "```json",
-        ov_text,
-        "```",
-        "",
-        OV_END,
-        "",
         "## User-facing routes → backend capabilities",
         "",
         ROUTES_PROSE,
@@ -952,10 +982,9 @@ def as_capabilities_doc(out, min_weight, overlay, rows, rules_path, surface, ov_
         "```mermaid",
         as_mermaid(by_module, None, "module", min_weight, overlay).rstrip(),
         "```",
-        "",
     ]
-    with open(out, "w") as fh:
-        fh.write("\n".join(D))
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join([head, ""] + D + ["", tail]))
     print(f"[graph] {out}: {len(rows)} capabilities, {tally}")
 
 

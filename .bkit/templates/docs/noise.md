@@ -21,7 +21,6 @@
 >
 > - Every downgraded signal has one row with a trigger and a reason it is safe.
 > - Every row names the signal in the way `docs/observability.md` § Signals names it.
-> - No example row remains.
 
 # Noise
 
@@ -40,7 +39,7 @@
 >
 > **Not here:** The signals themselves and the alerts go in `docs/observability.md`.
 >
-> **Update when:** A signal is downgraded, or a recheck condition in a row is met.
+> **Update when:** A signal is downgraded, or a recheck condition in a row is met. Add a row for either, and leave every earlier row as it is.
 
 ## Downgrades
 

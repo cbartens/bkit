@@ -437,10 +437,24 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
 // Project documentation adoption and population
 // ---------------------------------------------------------------------------
 
-/** Text of a topic's current starter: the package copy first, then the consumer's own copy. */
-function readStarterText(cwd: string, topic: ProjectDocTopic): string | null {
+/**
+ * `docs/components.md` is checked beside the ten topics, at its own path only: an indexed
+ * equivalent does not count for it, and `bkit upgrade` adds no index row for it.
+ */
+const COMPONENTS_DOC = "components";
+const COMPONENTS_DOC_PATH = `docs/${COMPONENTS_DOC}.md`;
+
+type StarterName = ProjectDocTopic | typeof COMPONENTS_DOC;
+
+/** How every hand-filled starter's introduction opens. A filled document no longer has it. */
+const STARTER_OPENER = "> Starter document.";
+
+/** Text of a starter: the package copy first, then the consumer's own copy. */
+function readStarterText(cwd: string, name: StarterName): string | null {
+  const rel =
+    name === COMPONENTS_DOC ? `.bkit/templates/${COMPONENTS_DOC_PATH}` : starterPath(name);
   for (const base of [getPkgRoot(), cwd]) {
-    const read = readTextFile(path.join(base, starterPath(topic)));
+    const read = readTextFile(path.join(base, rel));
     if (read.ok) return read.text;
   }
   return null;
@@ -448,14 +462,18 @@ function readStarterText(cwd: string, topic: ProjectDocTopic): string | null {
 
 type DocAssessment = "empty" | "unpopulated" | "candidate";
 
-/** Mechanical read of a project document: empty, an untouched starter, or a candidate. */
-function assessDocText(cwd: string, topic: ProjectDocTopic, text: string): DocAssessment {
+/**
+ * Mechanical read of a project document: empty, an untouched starter, a document that still
+ * opens with the starter's introduction, headings only, or a candidate.
+ */
+function assessDocText(cwd: string, name: StarterName, text: string): DocAssessment {
   if (text.trim() === "") return "empty";
   const normalized = normalizeLegacyText(text);
   const legacy = legacyStarterTopic(text);
-  if (legacy === topic) return "unpopulated";
-  const starter = readStarterText(cwd, topic);
+  if (legacy === name) return "unpopulated";
+  const starter = readStarterText(cwd, name);
   if (starter !== null && normalizeLegacyText(starter) === normalized) return "unpopulated";
+  if (normalized.startsWith(STARTER_OPENER)) return "unpopulated";
   // Headings, comments and rules only: nothing a project wrote.
   const meaningful = normalized
     .split("\n")
@@ -468,11 +486,13 @@ function assessDocText(cwd: string, topic: ProjectDocTopic, text: string): DocAs
 
 /**
  * Report the state of the ten project documents (`docs/architecture.md` ... `docs/setup.md`):
- * the index missing, a document absent, empty, an untouched starter, present but unindexed, or
- * unreadable. A document the index lists at another path (same basename, or a Scope cell
- * `Equivalent to docs/<topic>.md`) counts for its topic. Findings are advisories only and read no
- * file outside the repository. A document that differs from every starter is a candidate for
- * the agent to assess; the mechanical read makes no claim about what it covers.
+ * the index missing, a document absent, empty, an untouched starter, still opening with the
+ * starter's introduction, present but unindexed, or unreadable. A document the index lists at
+ * another path (same basename, or a Scope cell `Equivalent to docs/<topic>.md`) counts for its
+ * topic. `docs/components.md` is reported too when it is absent or unfilled. Findings are
+ * advisories only and read no file outside the repository. A document that differs from every
+ * starter is a candidate for the agent to assess; the mechanical read makes no claim about
+ * what it covers.
  */
 export function detectProjectDocs(cwd: string): PreflightFinding[] {
   const index = readProjectIndex(cwd);
@@ -486,6 +506,18 @@ export function detectProjectDocs(cwd: string): PreflightFinding[] {
   const duplicates: string[] = [];
   const ambiguous: string[] = [];
   const cleanup: string[] = [];
+
+  const componentsState = inspectRepoFile(cwd, COMPONENTS_DOC_PATH);
+  if (componentsState === "absent") missing.push(COMPONENTS_DOC_PATH);
+  else if (componentsState !== "regular") {
+    ambiguous.push(`${COMPONENTS_DOC_PATH} (${componentsState.unsafe})`);
+  } else {
+    const read = readTextFile(path.join(cwd, COMPONENTS_DOC_PATH));
+    if (!read.ok) ambiguous.push(`${COMPONENTS_DOC_PATH} (it could not be read)`);
+    else if (assessDocText(cwd, COMPONENTS_DOC, read.text) !== "candidate") {
+      unpopulated.push(COMPONENTS_DOC_PATH);
+    }
+  }
 
   for (const topic of PROJECT_DOC_TOPICS) {
     const recommended = projectDocPath(topic);
@@ -572,8 +604,8 @@ export function detectProjectDocs(cwd: string): PreflightFinding[] {
     findings.push({
       id: "project-docs-unpopulated",
       severity: "advisory",
-      detect: `These project documents are empty or still hold only the shipped starter text: ${unpopulated.join(", ")}.`,
-      action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, or index an equivalent document that already holds them (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
+      detect: `These project documents are empty, still hold only the shipped starter text, or still open with the starter's introduction: ${unpopulated.join(", ")}.`,
+      action: `Replace the placeholders in ${unpopulated.join(", ")} with project facts taken from the repository, then delete the introduction above the title. Or index an equivalent document that already holds the facts (\`Equivalent to <recommended path>\` in the Scope cell of ${PROJECT_INDEX_PATH}). Agents warn about these topics until the text changes. Fill the docs in the order of .bkit/templates.md § Project docs — adoption order.`,
     });
   }
   if (unindexed.length > 0) {

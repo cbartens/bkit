@@ -2,29 +2,29 @@
 >
 > **Fill these first:** `docs/components.md`.
 >
-> **Finish against:** `docs/technology.md`, once it names the styling tool; the token table in `## Tokens` waits for it.
+> **Finish against:** `docs/technology.md`, once it names the styling tool; the token table in `## Machine-checked reference` waits for it.
 >
 > **Where the facts come from:** the stylesheet variables and theme files, the rendered style guide or design files, the user interface components in the repository and the accessibility settings.
 >
 > **Fill in:**
 >
 > 1. Copy this starter to `docs/design.md`.
-> 2. **If** the project has no user interface → write `Not applicable: no user interface` under the title, keep the rules box, and go to step 9.
-> 3. Fill `## Tokens` with one row per colour, spacing and sizing variable, read from the implementation.
+> 2. **If** the project has no user interface → write `Not applicable: no user interface` under the title, keep the rules box, delete every section except `## Open questions`, and go to step 9.
+> 3. Fill `## Tokens` with the files that define the colour, spacing and sizing variables, and how the variables are named.
 > 4. Fill `## Typography` with the font families, sizes and weights in use.
 > 5. Fill `## Spacing and layout` with the scale, breakpoints and layout rules.
 > 6. Fill `## Components` with the shared interface components and when each is used.
 > 7. Confirm or change each default in `## Accessibility`.
-> 8. Follow the steps in `## Machine-checked reference` for the token table the gates read, and keep its two rules.
+> 8. Fill the token table in `## Machine-checked reference` with one row per colour, spacing and sizing variable, read from the implementation. Follow the steps in that section, and keep its two rules.
 > 9. Record unresolved facts under `## Open questions`.
 > 10. Add this row to the `## Project Documents` table in `.agents/docs.md`: | `docs/design.md` | ○ | ○ | ○ | — | — | The project's design system: tokens, typography, spacing and layout, components and accessibility rules. |
 > 11. Check the document against each completion check, then delete this introduction.
 >
-> **If it does not apply:** write `Not applicable: no user interface` under the title and delete the skeleton sections.
+> **If it does not apply:** write `Not applicable: no user interface` under the title and delete every section except `## Open questions`.
 >
 > **Completion checks:**
 >
-> - Every token in the implementation has a row in `## Tokens`, or an entry that says why it is undocumented.
+> - Every token in the implementation has a row in `## Machine-checked reference`, or an entry that says why it is undocumented.
 > - Every default in `## Accessibility` is confirmed or replaced.
 > - The token table in `## Machine-checked reference` has a header row and no row left as an example.
 > - No example row remains.
@@ -48,13 +48,9 @@
 
 ## Tokens
 
-[The colour, spacing and sizing variables, read from the implementation, with the light and dark value of each.]
+[The files that define the colour, spacing and sizing variables, and how the variables are named.]
 
-<!-- prettier-ignore -->
-| Token | Light | Dark | Use |
-| --- | --- | --- | --- |
-| [Token name] | [Light value.] | [Dark value.] | [Where it is used.] |
-| [e.g., Background] | The page surface colour. | The dark page surface colour. | Page surface. |
+The token table is in `## Machine-checked reference`. A token's value is written in that table and nowhere else.
 
 ## Typography
 

@@ -208,14 +208,14 @@ Post-install findings via `formatChecklist(ctx.advisories)` (`.bkit/core/engine/
 
 ## Project documentation advisories
 
-`detectProjectDocs` (`checks/after/tools.ts`) runs in Phase 3 and returns advisories only; none blocks install, upgrade, check or doctor. A document an indexed row covers at another path (same basename, or a Scope cell `Equivalent to docs/{topic}.md`) counts for its topic. The detector never reads a symbolic link or a path outside the repository.
+`detectProjectDocs` (`checks/after/tools.ts`) runs in Phase 3 and returns advisories only; none blocks install, upgrade, check or doctor. A document an indexed row covers at another path (same basename, or a Scope cell `Equivalent to docs/{topic}.md`) counts for its topic. `docs/components.md` is checked beside the ten topics, at that path only, for the `project-docs-missing` and `project-docs-unpopulated` findings. The detector never reads a symbolic link or a path outside the repository.
 
 <!-- prettier-ignore -->
 | Finding id | Raised when |
 | --- | --- |
 | `project-docs-index-missing` | `.agents/docs.md` is absent |
-| `project-docs-missing` | A recommended topic has no document and no indexed equivalent |
-| `project-docs-unpopulated` | A covering document is empty, still a current or legacy starter, or only headings |
+| `project-docs-missing` | A recommended topic has no document and no indexed equivalent, or `docs/components.md` is absent |
+| `project-docs-unpopulated` | A covering document is empty, still a current or legacy starter, still opens with the starter's introduction (`> Starter document.`), or is only headings |
 | `project-docs-unindexed` | A populated candidate exists but the index does not list it, or lists another document for the same topic |
 | `project-docs-cleanup` | A project document keeps a bkit ownership wrapper (`bkit:start` / `bkit:end` lines or the `bkit:managed` notice) that could not be removed safely |
 | `project-docs-ambiguous` | An index row or target is unsafe, unreadable or malformed |

@@ -246,7 +246,7 @@ This section applies to `.agents/**`, `.bkit/*.md`, `docs/*.md` and `.bkit/templ
   - Example: `.bkit/core/.bkit/templates.md` § Project docs — adoption order.
 
 - **Project-doc starters:** A starter in `.bkit/templates/docs/*.md` opens with a rules box holding **Purpose**, the rules, **Not here** and **Update when**.
-  - Why: The adopter fills a starter by hand, and no prompt does it for them, so the starter carries what a prompt would.
+  - Why: A person or the `bkit-utility-update-documentation` prompt fills a starter, and each works from the starter alone, so the starter carries the steps and the rules.
   - **Purpose** says what the doc holds and the question it answers, with no "Read before …" clause, because the phase columns of `.agents/docs.md` say when to read it.
   - **Not here** names what belongs elsewhere and where. **Update when** names the events that change the doc.
   - A section marked `> **bkit practice:**` keeps its heading text and stays a separate section from the project's blanks.

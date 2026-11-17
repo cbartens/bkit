@@ -555,8 +555,12 @@ describe("SETUP_TIPS — detection", () => {
       return found!;
     };
 
-    /** Write every project doc as `texts[topic]` (populated by default) and index them all. */
+    /**
+     * Write every project doc as `texts[topic]` (populated by default) and index them all, plus a
+     * populated `docs/components.md`.
+     */
     const writeProjectDocs = (texts: Partial<Record<string, string>> = {}) => {
+      write("docs/components.md", POPULATED_DOC);
       const rows: string[] = [];
       for (const topic of PROJECT_DOC_TOPICS) {
         const rel = projectDocPath(topic);
@@ -573,6 +577,13 @@ describe("SETUP_TIPS — detection", () => {
       writeProjectDocs();
       fs.rmSync(path.join(cwd, "docs", "security.md"));
       expect(detectProjectDocs(cwd).map((f) => f.id)).toContain("project-docs-missing");
+      expect(projectDocsTip().fires(cwd)).toBe(true);
+    });
+
+    it("project-docs tip fires when docs/components.md is missing", () => {
+      writeProjectDocs();
+      fs.rmSync(path.join(cwd, "docs", "components.md"));
+      expect(detectProjectDocs(cwd).map((f) => f.id)).toEqual(["project-docs-missing"]);
       expect(projectDocsTip().fires(cwd)).toBe(true);
     });
 
