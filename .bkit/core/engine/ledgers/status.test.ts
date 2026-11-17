@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -12,7 +13,10 @@ import {
   alreadyDone,
   appendLine,
   fold,
+  ledgerEffect,
   ledgerOperation,
+  ledgerOperationsFile,
+  recordLedgerIntent,
   recordAction,
   recordLedgerOperation,
   testRunProblem,
@@ -22,6 +26,7 @@ import {
   foldCiHandoff,
   validateCiHandoffEvent,
 } from "./status";
+import { appendLedgerRows } from "../commands/workflow/ledgers";
 import { readStatusEvents, readStatusRows } from "../commands/workflow/status";
 
 describe("CI evidence selection contract", () => {
@@ -428,6 +433,66 @@ describe("ledger operation receipts", () => {
 
     // The fold ignores every one of these rows.
     expect(fold(readStatusEvents(file))).toEqual([]);
+  });
+});
+
+describe("ledger operation effect", () => {
+  it("the row block is stored once per operation", () => {
+    const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ledger-once-")));
+    spawnSync("git", ["init", "-q", "-b", "main"], { cwd: root });
+    appendLedgerRows(
+      root,
+      "failures",
+      [
+        {
+          kind: "failure",
+          by: { workflow: "build", step: "build-challenge" },
+          key: "stored-once",
+          summary: "stored once",
+          severity: "HIGH",
+          status: "OPEN",
+        },
+      ],
+      undefined,
+      { operation: "op-once" },
+    );
+    const block = fs.readFileSync(path.join(root, "docs/failures.jsonl"), "utf-8");
+    const ops = ledgerOperationsFile(root);
+    expect(ops).not.toBeNull();
+    const text = fs.readFileSync(ops as string, "utf-8");
+    // The block appears in exactly one row of the operations file: the intent.
+    expect(text.split(JSON.stringify(block)).length - 1).toBe(1);
+    expect(ledgerEffect(ops as string, "op-once")).toEqual({
+      offset: 0,
+      bytes: Buffer.byteLength(block),
+      block,
+    });
+
+    // An old receipt that holds the block itself still yields it.
+    const old = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-ledger-old-")), "ops.jsonl");
+    const hash = actionHash("old");
+    recordLedgerOperation(old, {
+      operation: "op-old",
+      hash,
+      ref: "docs/failures.jsonl@0+8",
+      detail: { offset: 0, bytes: 8, block: '{"a":1}\n' },
+    });
+    expect(ledgerEffect(old, "op-old")).toEqual({ offset: 0, bytes: 8, block: '{"a":1}\n' });
+    recordLedgerIntent(old, {
+      operation: "op-new",
+      hash,
+      file: "docs/failures.jsonl",
+      offset: 8,
+      bytes: 8,
+      block: '{"b":2}\n',
+    });
+    recordLedgerOperation(old, {
+      operation: "op-new",
+      hash,
+      ref: null,
+      detail: { offset: 8, bytes: 8 },
+    });
+    expect(ledgerEffect(old, "op-new")).toEqual({ offset: 8, bytes: 8, block: '{"b":2}\n' });
   });
 });
 

@@ -128,12 +128,12 @@ flowchart LR
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1955 symbols · 57 files"]
     n_bkit_core_engine_install["install<br/>366 symbols · 21 files"]
-    n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
+    n_bkit_core_engine_ledgers["ledgers<br/>241 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|472| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|474| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|187| n_bkit_core_engine_shared
@@ -321,7 +321,7 @@ flowchart LR
     subgraph gn_bkit_core_engine_ledgers[".bkit/core/engine/ledgers"]
       n_bkit_core_engine_ledgers_compact["compact<br/>8 symbols · 1 files"]
       n_bkit_core_engine_ledgers_journal["journal<br/>18 symbols · 1 files"]
-      n_bkit_core_engine_ledgers_status["status<br/>82 symbols · 1 files"]
+      n_bkit_core_engine_ledgers_status["status<br/>83 symbols · 1 files"]
     end
     subgraph gn_bkit_core_engine_render[".bkit/core/engine/render"]
       n_bkit_core_engine_render_hosts["hosts<br/>29 symbols · 1 files"]
@@ -346,8 +346,8 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_ledgers -->|52| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_prs -->|51| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_worktrees -->|46| n_bkit_core_engine_commands_lib
+  n_bkit_core_engine_commands_workflow_ledgers -->|43| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_issues -->|41| n_bkit_core_engine_commands_workflow_tracker
-  n_bkit_core_engine_commands_workflow_ledgers -->|41| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_ci_ci -->|38| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_steps -->|37| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_issues -->|32| n_bkit_core_engine_commands_lib

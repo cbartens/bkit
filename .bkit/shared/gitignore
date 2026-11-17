@@ -42,6 +42,8 @@ tmp/**
 .worktrees/
 docs/plans/*/logs/**/raw/
 docs/plans/*/logs/**/.lock
+# Leftover ledger lock files must never be staged by bookkeeping.
+*.bkit-lock
 # Per-run sentinels sit in BOOK_PATHS-staged logs — without these lines a Failure
 # Path commit captures them and the next `rm -f` shows as a tracked deletion.
 docs/plans/*/logs/**/.deferred-blocked

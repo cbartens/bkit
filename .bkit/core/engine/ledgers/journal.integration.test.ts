@@ -1047,6 +1047,36 @@ describe("replay-safe ledger appends on real files", () => {
     expect(fs.readFileSync(file, "utf-8")).toBe(bytes);
     expect(pendingLedgerIntents(ledgerOperationsFile(root)!, "docs/failures.jsonl")).toEqual([]);
   });
+
+  it("receipts a lost-response block that a rebase moved behind upstream rows instead of appending it again", () => {
+    const root = bookRoot();
+    const file = path.join(root, "docs", "failures.jsonl");
+    const request = [failureRow({ key: "landed-then-moved" })];
+    expect(() =>
+      appendLedgerRows(root, "failures", request, undefined, {
+        operation: "op-moved",
+        checkpoint: failAt("written"),
+      }),
+    ).toThrow();
+    const landed = fs.readFileSync(file, "utf-8");
+    expect(landed).toContain("landed-then-moved");
+
+    // A merge=union rebase puts one complete upstream row line ahead of the landed bytes.
+    const other = bookRoot();
+    appendLedgerRows(other, "failures", [failureRow({ key: "upstream-row" })]);
+    const foreign = fs.readFileSync(path.join(other, "docs", "failures.jsonl"), "utf-8");
+    expect(foreign.endsWith("\n")).toBe(true);
+    fs.writeFileSync(file, `${foreign}${landed}`);
+    const before = fs.readFileSync(file, "utf-8");
+
+    const replay = appendLedgerRows(root, "failures", request, undefined, {
+      operation: "op-moved",
+    });
+    expect(replay.appended).toBe(0);
+    expect(replay.receipt).toMatchObject({ operation: "op-moved", replayed: true });
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    expect(rows(file).map((r) => r["key"])).toEqual(["upstream-row", "landed-then-moved"]);
+  });
 });
 
 describe("persistent CI handoff on a real local remote", () => {

@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-17T05:27:06Z)_
+_(refreshed 2026-11-17T21:55:47Z)_
 
 ### Design
 
@@ -63,6 +63,7 @@ _(refreshed 2026-11-17T05:27:06Z)_
 | 901-challenge-merge-breaks | 901-challenge-merge-breaks | 1794380576794 |
 | 914-build-planned-test | 914-build-planned-test | 1794815291907 |
 | 918-ad-hoc-agent | 918-ad-hoc-agent | 1794476513474 |
+| 992-ledger-commands-six | 992-ledger-commands-six | 1794952547396 |
 
 ### Debug
 

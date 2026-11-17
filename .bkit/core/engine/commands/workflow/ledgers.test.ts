@@ -230,6 +230,30 @@ describe("bkit ledgers commit (tests/book-commit.bats)", () => {
     expect(head(r)).toBe(before);
   });
 
+  it("a leftover *.bkit-lock in a run's log folder is not staged by the bookkeeping commit", async () => {
+    const r = repo();
+    put(r, "docs/plans/202608/logs/446l/status.jsonl", "{}\n");
+    commitAll(r);
+    add(r, "docs/plans/202608/logs/446l/status.jsonl", '{"more":1}\n');
+    put(r, "docs/plans/202608/logs/446l/status.jsonl.bkit-lock", "");
+    const res = await run(
+      r,
+      commitArgs(
+        r,
+        "--month=202608",
+        "--fid=446l",
+        "--scope=core",
+        "--mode=commit",
+        "--message=lock test",
+      ),
+    );
+    expect(res.code).toBe(0);
+    const files = git(r, "show", "--name-only", "--format=", "HEAD");
+    expect(files).toContain("status.jsonl");
+    expect(files).not.toContain("status.jsonl.bkit-lock");
+    expect(git(r, "ls-files", "--", "*.bkit-lock")).toBe("");
+  });
+
   it("empty pathspec list: exit 6, and an unrelated staged file is not swept into a commit", async () => {
     const r = repo();
     put(r, "README.md", "x\n");
@@ -2074,6 +2098,47 @@ describe("bkit ledgers append --invocation", () => {
     expect(fs.readFileSync(path.join(r, "docs/knowledge.jsonl"), "utf-8")).toContain('"x"');
   });
 
+  it("the correction-events file has mode 0600", async () => {
+    const r = repo();
+    const out: string[] = [];
+    await runCommand(
+      [
+        "status",
+        "invocation",
+        "--standalone=audit",
+        "--name=bkit-audit-example",
+        "--agent=bkit-build-plan-tests",
+        "--observed-model=m",
+        "--json",
+      ],
+      COMMANDS,
+      {
+        classicVerbs: new Set(["status"]),
+        cwd: r,
+        io: { stdout: (t) => out.push(t), stderr: () => {} },
+      },
+    );
+    const id = (JSON.parse(out.join("")) as { invocation: string }).invocation;
+    const invoke = [`--invocation=${id}`];
+    const rejected = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x", ts: "2026-11-09T10:00:00Z" })],
+      [...invoke, "--operation=op-1"],
+    );
+    expect(rejected.code).toBe(EXIT_ROW_REFUSED);
+    const fixed = await appendWith(
+      r,
+      "knowledge",
+      [knowledge({ key: "x" })],
+      [...invoke, "--operation=op-2", "--correction-of=op-1"],
+    );
+    expect(fixed.code).toBe(0);
+    const events = path.join(r, ".git/bkit-outbox/invocation-context", `${id}.corrections.jsonl`);
+    expect(fs.existsSync(events)).toBe(true);
+    expect(fs.statSync(events).mode & 0o777).toBe(0o600);
+  });
+
   it("issues the same operation for rows whose keys are reordered", async () => {
     const r = buildRepo();
     const id = await issue(r, ["--agent=bkit-build-plan-tests"]);
@@ -2174,6 +2239,27 @@ describe("bkit ledgers query", () => {
     expect(fs.readFileSync(path.join(r, FILE), "utf-8")).toBe(bytes);
   });
 
+  it("a negative --cursor offset is refused", async () => {
+    const r = fixture();
+    const page1 = await q(r, "--status=ACTIVE", "--limit=2");
+    expect(page1.code).toBe(0);
+    const good = JSON.parse(
+      Buffer.from(page1.json.nextCursor as string, "base64url").toString("utf-8"),
+    ) as { s: string; f: string; o: number };
+    const negative = Buffer.from(JSON.stringify({ ...good, o: -1 })).toString("base64url");
+
+    const refused = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${negative}`);
+    expect(refused.code).toBe(2);
+    expect(refused.err).toMatch(/cursor/i);
+    expect(refused.json).toBeUndefined();
+
+    // An offset beyond the end is still an empty page, not an error.
+    const beyond = Buffer.from(JSON.stringify({ ...good, o: 99 })).toString("base64url");
+    const empty = await q(r, "--status=ACTIVE", "--limit=2", `--cursor=${beyond}`);
+    expect(empty.code).toBe(0);
+    expect(empty.json.rows).toEqual([]);
+  });
+
   it("marks a page with a next cursor as not clean", async () => {
     const r = repo();
     put(r, FILE, `${dec("k1", 1001, "ACTIVE")}\n${dec("k2", 1002, "ACTIVE")}\n`);
@@ -2271,6 +2357,56 @@ describe("bkit ledgers append --operation", () => {
     expect(b).toMatchObject({ firstTs: a!["ts"], updates: 2, summary: "parser drops two lines" });
     expect(b!["ts"]).toBeGreaterThan(a!["ts"] as number);
     expect(update.json.receipt.rows[0].ts).toBe(b!["ts"]);
+  });
+
+  it("a replayed operation whose rows are gone is not reported as recorded", async () => {
+    const r = repo();
+    const ledgerFile = path.join(r, "docs/failures.jsonl");
+    const first = await appendOp(r, [failure()], "op-gone");
+    expect(first.code).toBe(0);
+
+    // The ledger loses the rows the receipt names.
+    fs.writeFileSync(ledgerFile, "");
+
+    const replay = await appendOp(r, [failure()], "op-gone");
+    expect(replay.code).not.toBe(0);
+    expect(replay.err).toContain("op-gone");
+    expect(replay.json).toBeUndefined();
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe("");
+  });
+
+  it("a replayed operation whose rows a rebase moved is still reported as recorded", async () => {
+    const r = repo();
+    const ledgerFile = path.join(r, "docs/failures.jsonl");
+    const first = await appendOp(r, [failure()], "op-1");
+    expect(first.code).toBe(0);
+    const bytes = fs.readFileSync(ledgerFile, "utf-8");
+
+    // A merge=union rebase leaves upstream lines first, then ours.
+    const foreign = `${JSON.stringify({ schema: 3, key: "upstream-row", ts: 1 })}\n`;
+    fs.writeFileSync(ledgerFile, foreign + bytes);
+
+    const replay = await appendOp(r, [failure()], "op-1");
+    expect(replay.code).toBe(0);
+    expect(replay.json.receipt).toMatchObject({ operation: "op-1", replayed: true });
+    expect(replay.json.appended).toBe(0);
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe(foreign + bytes);
+  });
+
+  it("a replayed operation whose rows are gone says it was recorded and must not be retried under a new id", async () => {
+    const r = repo();
+    const ledgerFile = path.join(r, "docs/failures.jsonl");
+    const first = await appendOp(r, [failure()], "op-gone");
+    expect(first.code).toBe(0);
+    fs.writeFileSync(ledgerFile, "");
+
+    const replay = await appendOp(r, [failure()], "op-gone");
+    expect(replay.code).not.toBe(0);
+    expect(replay.err).toContain("op-gone");
+    expect(replay.err).toContain("recorded earlier");
+    expect(replay.err).toContain("new operation id");
+    expect(replay.err).not.toContain("nothing recorded");
+    expect(fs.readFileSync(ledgerFile, "utf-8")).toBe("");
   });
 
   it("keeps ledger operation intents and receipts out of committed book paths", () => {

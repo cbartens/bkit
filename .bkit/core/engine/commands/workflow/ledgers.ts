@@ -39,6 +39,7 @@ import {
   appendHeld,
   appendLine,
   correctionScope,
+  ledgerEffect,
   ledgerIntent,
   ledgerOperation,
   ledgerOperationsFile,
@@ -1269,6 +1270,7 @@ export function commitBookkeeping(
     "--exclude-standard",
     "--",
     ...specs,
+    ":(exclude,glob)**/*.bkit-lock",
   ]);
   if (listed.status !== 0) {
     throw new CommandError(
@@ -1648,7 +1650,7 @@ function correctionBook(
   const dir = invocationDir(cwd);
   if (dir === null) return null;
   const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
-  fs.appendFileSync(file, "");
+  fs.appendFileSync(file, "", { mode: 0o600 });
   return { file, ...key };
 }
 
@@ -1828,12 +1830,19 @@ export function appendLedgerRows(
             `operation ${operation} was already used for a different request; nothing written`,
           );
         if (known.state === "replay") {
-          const d = (known.row as { detail?: { offset: number; bytes: number; block: string } })
-            .detail;
+          const d = ledgerEffect(ops, operation);
           if (d === undefined)
             throw new CommandError(
               EXIT_STAGE,
               `operation ${operation} has a receipt without its effect`,
+            );
+          const held = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
+          const wanted = Buffer.from(d.block);
+          // A rebase can put upstream rows ahead of the block, so the block counts as held anywhere.
+          if (held.indexOf(wanted) === -1)
+            throw new CommandError(
+              EXIT_STAGE,
+              `operation ${operation} was recorded earlier, but ${file} no longer holds its rows; do not retry it under a new operation id`,
             );
           return result(d, d.block, true);
         }
@@ -1848,7 +1857,7 @@ export function appendLedgerRows(
             operation,
             hash,
             ref: `${file}@${landed.offset}+${landed.bytes}`,
-            detail: { offset: landed.offset, bytes: landed.bytes, block: landed.block },
+            detail: { offset: landed.offset, bytes: landed.bytes },
           });
         if (intent !== undefined) {
           const have = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
@@ -1862,6 +1871,12 @@ export function appendLedgerRows(
             } finally {
               fs.closeSync(fd);
             }
+            receipt(intent);
+            options.checkpoint?.("receipted");
+            return result(intent, intent.block, true);
+          }
+          // A rebase can move the landed block behind upstream rows; the whole block anywhere counts as landed.
+          if (have.indexOf(want) !== -1) {
             receipt(intent);
             options.checkpoint?.("receipted");
             return result(intent, intent.block, true);
@@ -2089,7 +2104,10 @@ function decodeCursor(text: string): { s: string; f: string; o: number } | null 
   const parsed = parseJson(Buffer.from(text, "base64url").toString("utf-8"));
   if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object") return null;
   const v = parsed.value as Record<string, unknown>;
-  return typeof v["s"] === "string" && typeof v["f"] === "string" && Number.isInteger(v["o"])
+  return typeof v["s"] === "string" &&
+    typeof v["f"] === "string" &&
+    Number.isInteger(v["o"]) &&
+    (v["o"] as number) >= 0
     ? { s: v["s"], f: v["f"], o: v["o"] as number }
     : null;
 }

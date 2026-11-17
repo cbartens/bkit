@@ -729,6 +729,24 @@ function privateDir(file: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
 }
 
+/**
+ * The landed effect of a receipted operation: offset and bytes from the receipt, the block from
+ * the operation's intent (or from `detail.block` of an old receipt). Undefined when unknown.
+ */
+export function ledgerEffect(
+  file: string,
+  operation: string,
+): { offset: number; bytes: number; block: string } | undefined {
+  const receipt = engineActions(file)
+    .filter((r) => r.key === ledgerOpKey(operation))
+    .at(0) as { detail?: { offset?: unknown; bytes?: unknown; block?: unknown } } | undefined;
+  const d = receipt?.detail;
+  if (d === undefined || typeof d.offset !== "number" || typeof d.bytes !== "number")
+    return undefined;
+  const block = typeof d.block === "string" ? d.block : ledgerIntent(file, operation)?.block;
+  return block === undefined ? undefined : { offset: d.offset, bytes: d.bytes, block };
+}
+
 /** Intents on `target` of this root with no receipt; none when there is no store. */
 export function pendingLedgerIntentsFor(root: string, target: string): LedgerIntent[] {
   const ops = ledgerOperationsFile(root);
@@ -787,7 +805,8 @@ export function ledgerOperation(
 /**
  * Record the receipt of a finished ledger operation. A known operation with the same
  * hash returns its original row unchanged; one with another hash throws and writes nothing.
- * `detail` rides on the row so a replay can return the original effect.
+ * `detail` rides on the row so a replay can return the original effect: the offset and byte
+ * count of the landed block. The block itself lives once, in the operation's intent row.
  */
 export function recordLedgerOperation(
   file: string,

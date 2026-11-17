@@ -17,7 +17,7 @@ import { readBkitVersion } from "../../install/version-file.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { APPEND_LEDGERS, SCHEMA, UNJUSTIFIED_REASON, gitEnv, parse, queryLedger, mintTs, resolveRepoSlug, validate, withLineage, writerProblem, } from "../../ledgers/telemetry.js";
 import { COMPACT_LEDGERS, compactLedgers } from "../../ledgers/compact.js";
-import { CORRECTION_REJECTED_ROW, CORRECTION_SUCCEEDED_ROW, actionHash, appendHeld, appendLine, correctionScope, ledgerIntent, ledgerOperation, ledgerOperationsFile, pendingLedgerIntentsFor, recordLedgerIntent, recordLedgerOperation, statusTimestamp, withTargetLock, writePrepared, } from "../../ledgers/status.js";
+import { CORRECTION_REJECTED_ROW, CORRECTION_SUCCEEDED_ROW, actionHash, appendHeld, appendLine, correctionScope, ledgerEffect, ledgerIntent, ledgerOperation, ledgerOperationsFile, pendingLedgerIntentsFor, recordLedgerIntent, recordLedgerOperation, statusTimestamp, withTargetLock, writePrepared, } from "../../ledgers/status.js";
 import { CommandError, CorrectionExhausted, EXIT, INVOCATION_FLAG, invocationDir, isIgnoredPath, isSharedBranch, NoWriteRejection, parseJson, UncertainEffect, wholeNumber, } from "../lib.js";
 import { CORRECTION_LIMIT, spendCorrection } from "./counters.js";
 import { readStatusRows, str } from "./status.js";
@@ -1018,6 +1018,7 @@ export function commitBookkeeping(o, log) {
         "--exclude-standard",
         "--",
         ...specs,
+        ":(exclude,glob)**/*.bkit-lock",
     ]);
     if (listed.status !== 0) {
         throw new CommandError(EXIT_ROOT, `'git ls-files' failed while building the pathspec: ${listed.stderr}`);
@@ -1321,7 +1322,7 @@ function correctionBook(cwd, invocation) {
     if (dir === null)
         return null;
     const file = path.join(dir, `${invocation.id}.corrections.jsonl`);
-    fs.appendFileSync(file, "");
+    fs.appendFileSync(file, "", { mode: 0o600 });
     return { file, ...key };
 }
 /** The `{key, ts}` of each row in prepared `block` bytes. */
@@ -1475,10 +1476,14 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
                 if (known.state === "conflict")
                     throw new CommandError(EXIT_ROW_REFUSED, `operation ${operation} was already used for a different request; nothing written`);
                 if (known.state === "replay") {
-                    const d = known.row
-                        .detail;
+                    const d = ledgerEffect(ops, operation);
                     if (d === undefined)
                         throw new CommandError(EXIT_STAGE, `operation ${operation} has a receipt without its effect`);
+                    const held = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
+                    const wanted = Buffer.from(d.block);
+                    // A rebase can put upstream rows ahead of the block, so the block counts as held anywhere.
+                    if (held.indexOf(wanted) === -1)
+                        throw new CommandError(EXIT_STAGE, `operation ${operation} was recorded earlier, but ${file} no longer holds its rows; do not retry it under a new operation id`);
                     return result(d, d.block, true);
                 }
                 const intent = ledgerIntent(ops, operation);
@@ -1488,7 +1493,7 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
                     operation,
                     hash,
                     ref: `${file}@${landed.offset}+${landed.bytes}`,
-                    detail: { offset: landed.offset, bytes: landed.bytes, block: landed.block },
+                    detail: { offset: landed.offset, bytes: landed.bytes },
                 });
                 if (intent !== undefined) {
                     const have = fs.existsSync(abs) ? fs.readFileSync(abs) : Buffer.alloc(0);
@@ -1503,6 +1508,12 @@ export function appendLedgerRows(root, ledger, rows, invocation, options = {}) {
                         finally {
                             fs.closeSync(fd);
                         }
+                        receipt(intent);
+                        options.checkpoint?.("receipted");
+                        return result(intent, intent.block, true);
+                    }
+                    // A rebase can move the landed block behind upstream rows; the whole block anywhere counts as landed.
+                    if (have.indexOf(want) !== -1) {
                         receipt(intent);
                         options.checkpoint?.("receipted");
                         return result(intent, intent.block, true);
@@ -1686,7 +1697,10 @@ function decodeCursor(text) {
     if (!parsed.ok || parsed.value === null || typeof parsed.value !== "object")
         return null;
     const v = parsed.value;
-    return typeof v["s"] === "string" && typeof v["f"] === "string" && Number.isInteger(v["o"])
+    return typeof v["s"] === "string" &&
+        typeof v["f"] === "string" &&
+        Number.isInteger(v["o"]) &&
+        v["o"] >= 0
         ? { s: v["s"], f: v["f"], o: v["o"] }
         : null;
 }

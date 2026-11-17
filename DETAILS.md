@@ -349,12 +349,12 @@ flowchart LR
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
     n_bkit_core_engine_commands["commands<br/>1955 symbols · 57 files"]
     n_bkit_core_engine_install["install<br/>366 symbols · 21 files"]
-    n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
+    n_bkit_core_engine_ledgers["ledgers<br/>241 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|472| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|474| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|431| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|187| n_bkit_core_engine_shared
