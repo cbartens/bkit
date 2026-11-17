@@ -873,6 +873,7 @@ const SHIPPED_AWAKE_HASHES: readonly string[] = [
   "d218439bd4d65b57732a96aaea7bb678f9ebf95a6247f5e6b899d6ef26a59cb5",
   "a686bf75700f2ff54de2cedd3b7afc943774da40a68c243b9911bc435742f434",
   "0842c2e2789a1c77935655130de5b8cf253bfe0655407834f23a6abaaf1b0bb1",
+  "0dce1b50638cd609183a871ed8d0d9e3d20c545073f0a32f18526d6f38b5b748",
 ];
 
 // The machine-lock script runs a command holding its own tests lock under

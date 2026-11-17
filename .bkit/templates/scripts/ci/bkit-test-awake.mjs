@@ -252,17 +252,11 @@ export async function runAwake(
   );
   let handlers = [];
   try {
-    const child = spawnCommand(command, args, {
-      stdio: ["inherit", "inherit", "inherit", ...extra],
-    });
+    let child;
     const state = { stopping: false };
-    const held =
-      hold && child.pid
-        ? holdLimit(child, new Promise((resolve) => child.on("close", resolve)), hold, state)
-        : Promise.resolve(false);
     let cleanup;
     const forward = (signal) => {
-      if (!child.pid || state.stopping) return;
+      if (!child?.pid || state.stopping) return;
       // A Ctrl-C at the terminal already reached the command, so it is not sent again; a shell
       // chain is still waited for.
       const resend = !(signal === "SIGINT" && platform !== "win32" && foreground());
@@ -277,11 +271,20 @@ export async function runAwake(
         if (error.code !== "ESRCH") throw error;
       }
     };
+    // The handlers go in before the command starts: a signal without one ends this process and
+    // leaves the command running. A handler runs only once the command has started.
     handlers = ["SIGINT", "SIGTERM", "SIGHUP"].map((signal) => {
       const handler = () => forward(signal);
       process.on(signal, handler);
       return [signal, handler];
     });
+    child = spawnCommand(command, args, {
+      stdio: ["inherit", "inherit", "inherit", ...extra],
+    });
+    const held =
+      hold && child.pid
+        ? holdLimit(child, new Promise((resolve) => child.on("close", resolve)), hold, state)
+        : Promise.resolve(false);
     const [code, signal] = await once(child, "close");
     await cleanup;
     if (await held) return 124;

@@ -2147,6 +2147,16 @@ function pathWithFailingPs(): string {
   return [fakeBin, process.env.PATH].join(":");
 }
 
+/** A PATH whose first `ps` answers after 0.7 s, as a loaded machine's does. */
+function pathWithSlowPs(): string {
+  const slowBin = path.join(tmp, "slow-ps-bin");
+  fs.mkdirSync(slowBin, { recursive: true });
+  fs.writeFileSync(path.join(slowBin, "ps"), '#!/bin/sh\nsleep 0.7\nexec /bin/ps "$@"\n', {
+    mode: 0o755,
+  });
+  return [slowBin, coreProbeBin(4), process.env.PATH].join(":");
+}
+
 /** The hold-limit arguments (limit, grace) of the supervisor a run with `env` starts, read by its command. */
 function watcherLimits(env: NodeJS.ProcessEnv): Result & { limits: string | undefined } {
   const r = commandRun(
@@ -2413,6 +2423,24 @@ describe("machine lock hold limit", { timeout: BUDGET.testTimeout }, () => {
     expect(done.stderr).toContain("passed TERM on to term gate");
     expect(pidAlive(readPid(pidFile))).toBe(false);
     expectTestsLockFree(env);
+  });
+
+  it("a TERM that arrives while the supervisor lists processes for the first time still reaches the command", async () => {
+    const env = holdEnv("60", { PATH: pathWithSlowPs() });
+    const pidFile = path.join(tmp, "early.pid");
+    const wrapper = running(
+      `exec bash "${SCRIPT}" run "early gate" --lock tests -- bash -c 'echo $$ > "${pidFile}"; exec sleep 600'`,
+      env,
+    );
+    await expect
+      .poll(() => fs.existsSync(pidFile), { timeout: BUDGET.hookTimeout, interval: 20 })
+      .toBe(true);
+    wrapper.child.kill("SIGTERM");
+    // The command would otherwise outlive the wrapper and keep running with the lock freed.
+    await expect.poll(() => pidAlive(readPid(pidFile)), { timeout: 10_000 }).toBe(false);
+    const done = await wrapper.done;
+    expect(done.status, done.stderr).toBe(143);
+    expectTestsLockFree(holdEnv("60"));
   });
 
   it("a TERM during the hold-limit grace period lets the stop finish and the exit stays 124", async () => {
