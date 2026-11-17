@@ -687,6 +687,69 @@ describe("SETUP_TIPS — detection", () => {
     });
   });
 
+  describe("project-goals", () => {
+    /** The ask the person sees: the per-repo `resolve` text when the tip has one. */
+    const askFor = (t: SetupTip, dir: string): string => (t.resolve?.(dir) ?? t).ask;
+    const rules = (goals: string | null) =>
+      write(
+        ".agents/rules.md",
+        "<!-- bkit:end -->\n\n## Project Rules\n\n" +
+          (goals === null ? "" : `## Project Goals\n\n${goals}\n`) +
+          "\n## Project Settings\n\nnone\n",
+      );
+
+    it("project-goals fires when the rules file has no Project Goals heading", () => {
+      rules(null);
+      expect(tip("project-goals").fires(cwd)).toBe(true);
+    });
+
+    it("project-goals fires when the section holds only commented examples", () => {
+      rules(
+        "What this project optimises for.\n\n<!-- Examples:\n- **Correct over fast:** x\n-->\n",
+      );
+      expect(tip("project-goals").fires(cwd)).toBe(true);
+    });
+
+    it("project-goals stays quiet when the section holds one bullet, and when there is no rules file", () => {
+      expect(tip("project-goals").fires(cwd)).toBe(false); // no rules file
+      rules("- **Correct over fast:** A wrong answer costs more than a slow one.");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals stays quiet when a second Project Goals section holds a goal", () => {
+      write(
+        ".agents/rules.md",
+        "<!-- bkit:end -->\n\n## Project Rules\n\n## Project Goals\n\n<!-- Examples:\n- x\n-->\n\n" +
+          "## Project Settings\n\nnone\n\n## Project Goals\n\n- **Correct over fast:** x\n",
+      );
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals ask says to fill the section when the heading already exists", () => {
+      rules("What this project optimises for.\n\n<!-- Examples:\n- x\n-->\n");
+      const t = tip("project-goals");
+      expect(t.fires(cwd)).toBe(true);
+      const ask = askFor(t, cwd);
+      expect(ask).toMatch(/fill/i);
+      expect(ask).toMatch(/already|existing/i);
+      expect(ask).not.toMatch(/^Add a `## Project Goals` section/);
+    });
+
+    it("project-goals stays quiet when the goals are a numbered list", () => {
+      rules("1. **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+      rules("1) **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+
+    it("project-goals stays quiet when the goals use * bullets", () => {
+      rules("* **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+      rules("+ **Correct over fast:** x");
+      expect(tip("project-goals").fires(cwd)).toBe(false);
+    });
+  });
+
   describe("share-friction", () => {
     const row = (key: string, ts: number, extra: Record<string, unknown>) =>
       JSON.stringify({ schema: 3, ts, kind: "friction", key, severity: "LOW", ...extra });

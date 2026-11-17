@@ -23,7 +23,7 @@ _(above the bkit list — yours, never overwritten)_
 
 ## bkit
 
-_(refreshed 2026-11-16T07:48:11Z)_
+_(refreshed 2026-11-17T05:27:06Z)_
 
 ### Design
 
@@ -73,6 +73,7 @@ _(none)_
 <!-- prettier-ignore -->
 | FID | Title | Last-transition (ts) |
 | --- | --- | --- |
+| 1011-rules-ship-project | 1011-rules-ship-project | 1794893226286 |
 | 957-workflows-skip-re | 957-workflows-skip-re | 1794774301354 |
 | 921-tests-lock-default | 921-tests-lock-default | 1794772838726 |
 | 951-build-repeat-whole | 951-build-repeat-whole | 1794738945847 |
@@ -82,7 +83,6 @@ _(none)_
 | 917-docs-node-test | 917-docs-node-test | 1794615636061 |
 | 915-min-push-ignores | 915-min-push-ignores | 1794610198037 |
 | 929-hung-test-never | 929-hung-test-never | 1794608796745 |
-| 930-build-tick-green | 930-build-tick-green | 1794607449835 |
 <!-- bkit:roadmap-status end -->
 
 <!-- bkit:roadmap-analysis start -->

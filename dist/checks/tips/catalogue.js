@@ -33,7 +33,7 @@ import { buildTrackerSetupAdvisory } from "../after/github.js";
 import { buildDepUpdaterSetupAdvisory, detectProjectDocs } from "../after/tools.js";
 import { detectInstalledHostModules } from "../../install/hosts.js";
 import { readBkitConfig } from "../../shared/settings.js";
-import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasNewerBkit, hasTestLinter, hasUnsharedFriction, readsBkitText, unlockedMcpServers, } from "./detect.js";
+import { anyWorkflowMentions, claudeSettingsHas, codexTopLevelHas, exists, hasJsTestRunner, hasLintStagedConfig, hasMcpServer, hasNoProjectGoals, hasProjectGoalsHeading, hasNewerBkit, hasTestLinter, hasUnsharedFriction, readsBkitText, unlockedMcpServers, } from "./detect.js";
 const hosts = (cwd) => detectInstalledHostModules(cwd);
 /** Every phase workflow. A value import of `COMPLY_PHASES` would cycle through cli.ts. */
 export const ALL_WORKFLOWS = ["design", "plan", "build", "debug", "ship"];
@@ -333,6 +333,22 @@ export const SETUP_TIPS = [
         steps: "`.bkit/templates.md` § Project docs — adoption order.",
         advisories: ["project-docs-missing", "project-docs-unpopulated"],
         fires: (cwd) => detectProjectDocs(cwd).some((f) => f.id === "project-docs-missing" || f.id === "project-docs-unpopulated"),
+    },
+    {
+        id: "project-goals",
+        workflows: ["design", "plan"],
+        title: "Project goals",
+        line: "Agents have rules but no goals, so when two options both fit the rules they choose by guesswork. Write down what this project optimises for.",
+        why: "Design and plan agents choose between options on every run. The rules say what is allowed, not what matters most here, so each agent weighs speed, cost and polish its own way.",
+        ask: "Add a `## Project Goals` section to .agents/rules.md, between Project Rules and Project Settings, with a few goals in priority order. Ask me what this project optimises for first.",
+        steps: "`.bkit/prompts.md` § Special Behaviors, where the Project Goals row sits.",
+        resolve: (cwd) => ({
+            ask: hasProjectGoalsHeading(cwd)
+                ? "Fill the `## Project Goals` section that already exists in .agents/rules.md instead of adding a second one, with a few goals in priority order. Ask me what this project optimises for first."
+                : "Add a `## Project Goals` section to .agents/rules.md, between Project Rules and Project Settings, with a few goals in priority order. Ask me what this project optimises for first.",
+            steps: "`.bkit/prompts.md` § Special Behaviors, where the Project Goals row sits.",
+        }),
+        fires: hasNoProjectGoals,
     },
     {
         id: "dependabot-renovate",

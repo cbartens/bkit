@@ -12,6 +12,7 @@
 > - Follow `.bkit/authoring.md` § All Agent-Read Files and § Docs when you edit this file.
 > - `Universal Rules` apply to all agents; `Orchestrator Rules` apply only to workflows and commands.
 > - Local project rules / overrides → `Project Rules` below the bkit-managed block; universal rules stay in the block.
+> - What the project optimises for → `Project Goals`, between `Project Rules` and `Project Settings`. Goals break ties between options the rules both allow, and add no rule.
 > - Where project services live (repo, boards, service org / project ids) → `Project Settings`, the last section. It holds facts only: no rules, and nothing that changes workflows, gates or permissions.
 
 ## bkit Rules
@@ -179,6 +180,16 @@
 ### Universal Rules
 
 ### Orchestrator Rules
+
+## Project Goals
+
+What this project optimises for, most important first. Goals break ties: when two options both satisfy the rules, pick the one that serves these goals better. One bullet per goal; delete unused examples.
+
+<!-- Examples:
+- **Correct over fast:** A wrong answer costs more than a slow one. Prefer the option that checks its input.
+- **Works for everyone:** Every screen works with a keyboard and a screen reader. Prefer the option that keeps it so.
+- **Small to run:** Prefer the option with fewer moving parts to deploy and watch.
+-->
 
 ## Project Settings
 

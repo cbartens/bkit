@@ -40,7 +40,7 @@ autoCompactWindow: 300000
 
 **Protocol:** Work through this file exactly as written.
 
-- **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.
+- **Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`, and break ties by its `Project Goals`, which never lower a severity or soften a verdict; skip its `Orchestrator Rules`.
 - **Order:** Execute steps sequentially unless stated otherwise.
 - **No improv:** Skip no step, and add no step of your own; how deeply you investigate within a step is your call.
 

@@ -110,11 +110,35 @@ describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", ()
     const belowManaged = templateContent.slice(
       templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,
     );
-    const bullets = [...belowManaged.matchAll(/^-\s*\*\*([^*]+):\*\*/gm)].map((m) => m[1]);
+    const withoutComments = belowManaged.replace(/<!--[\s\S]*?-->/g, "");
+    const bullets = [...withoutComments.matchAll(/^-\s*\*\*([^*]+):\*\*/gm)].map((m) => m[1]);
 
     expect(
       bullets,
       ".bkit/core/.agents/rules.md must carry no project rules below bkit:end",
+    ).toEqual([]);
+  });
+
+  it("the template holds an empty Project Goals section between Project Rules and Project Settings", () => {
+    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+    const belowManaged = templateContent.slice(
+      templateContent.indexOf("<!-- bkit:end -->") + "<!-- bkit:end -->".length,
+    );
+    const headings = [...belowManaged.matchAll(/^## (.+)$/gm)].map((m) => m[1]);
+    expect(headings.filter((h) => h.startsWith("Project "))).toEqual([
+      "Project Rules",
+      "Project Goals",
+      "Project Settings",
+    ]);
+
+    const goalsStart = belowManaged.indexOf("## Project Goals");
+    const settingsStart = belowManaged.indexOf("## Project Settings");
+    const section = belowManaged
+      .slice(goalsStart + "## Project Goals".length, settingsStart)
+      .replace(/<!--[\s\S]*?-->/g, "");
+    expect(
+      [...section.matchAll(/^\s*[-*]\s+\S/gm)],
+      "no goal bullet may sit outside an HTML comment",
     ).toEqual([]);
   });
 });

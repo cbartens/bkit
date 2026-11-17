@@ -257,15 +257,26 @@ describe("the rule groups the Rules clauses name exist", () => {
     );
   });
 
-  it("rules-leaf reads only below bkit:end and skips Orchestrator Rules", () => {
+  it("rules-leaf reads only below bkit:end, breaks ties by Project Goals and skips Orchestrator Rules", () => {
     // The bkit rules a leaf acts on are copied into its prompt (`- carry:`); the
     // SKIP half keeps the project's git / CI / merge rules away from a leaf.
     // A leaf that can search finds the marker's line first and reads from there,
     // so the bkit block it already carries is never loaded.
-    expect(clause("rules-leaf").texts[0]).toBe(
-      "**Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`; skip its `Orchestrator Rules`.",
+    const text = clause("rules-leaf").texts[0];
+    expect(text).toContain(
+      "**Rules file:** Find the line of `<!-- bkit:end -->` in `.agents/rules.md` (`grep -n`), then read the file from that line on → follow its `Universal Rules`",
     );
+    expect(text).toContain("break ties by its `Project Goals`");
+    expect(text).toContain("skip its `Orchestrator Rules`");
     expect(clause("rules-leaf").modes.prompt).toBe("if-search");
+  });
+
+  it("rules-leaf keeps Project Goals out of severity and verdict calls", () => {
+    // Every reviewing agent opens with this line, so a goal must not be a
+    // reason to rate a finding lower or to pass something borderline.
+    expect(clause("rules-leaf").texts[0]).toContain(
+      "break ties by its `Project Goals`, which never lower a severity or soften a verdict; skip its `Orchestrator Rules`.",
+    );
   });
 
   it("the utility-* agents read all of rules.md", () => {

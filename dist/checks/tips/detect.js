@@ -210,6 +210,30 @@ export function readsBkitText(cwd) {
         return text.split("\n").some((line) => READS_BKIT_TEXT.some((re) => re.test(line)));
     });
 }
+/** `.agents/rules.md` below `<!-- bkit:end -->` with HTML comments removed; null without the file. */
+function rulesBelowEnd(cwd) {
+    const text = readText(cwd, ".agents/rules.md");
+    if (!text)
+        return null;
+    const end = text.indexOf("<!-- bkit:end -->");
+    return (end === -1 ? text : text.slice(end)).replace(/<!--[\s\S]*?-->/g, "");
+}
+/** True when the rules file already has a `## Project Goals` heading below `<!-- bkit:end -->`. */
+export function hasProjectGoalsHeading(cwd) {
+    return /^## Project Goals/m.test(rulesBelowEnd(cwd) ?? "");
+}
+/**
+ * True when `.agents/rules.md` exists and no `## Project Goals` section, read below
+ * `<!-- bkit:end -->`, holds a list item (`-`, `*`, `+` or `1.` / `1)`) once HTML comments
+ * are removed.
+ */
+export function hasNoProjectGoals(cwd) {
+    const below = rulesBelowEnd(cwd);
+    if (below === null)
+        return false;
+    const sections = [...below.matchAll(/^## Project Goals[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/gm)];
+    return !sections.some((m) => /^\s*(?:[-*+]|\d+[.)])\s/m.test(m[1] ?? ""));
+}
 /**
  * True when `.bkit/friction.jsonl` holds an entry worth sending to bkit: its fold winner
  * is `OPEN` (or has no status) and its `scope` is not `consumer`. A shared entry gets a
