@@ -37,6 +37,15 @@ function stepBody(text: string, heading: RegExp): string {
   return lines.slice(start, end === -1 ? undefined : end).join("\n");
 }
 
+/** One top-level `- **{label}:**` bullet with the indented lines under it, as one string. */
+function bulletBlock(text: string, label: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`- **${label}:**`));
+  expect(start, `no ${label} bullet`).toBeGreaterThanOrEqual(0);
+  const end = lines.findIndex((l, i) => i > start && !l.startsWith(" "));
+  return lines.slice(start, end === -1 ? undefined : end).join("\n");
+}
+
 /** Every line that runs a given `bkit` verb, continuation lines joined. */
 const commandLines = (text: string, verb: string) =>
   text
@@ -269,8 +278,7 @@ describe("resume facts", () => {
 
   it("build re-runs a red gate pause instead of asking it", () => {
     const text = workflow("build");
-    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
-    expect(resume).toBeDefined();
+    const resume = bulletBlock(text, "Resume");
     expect(resume).toContain("decisions apply --by=rerun");
     expect(resume).toContain("`gateRerun` = true");
     expect(resume).toContain("steps finish");
@@ -282,16 +290,14 @@ describe("resume facts", () => {
 
   it("Resume asks every other open pause at Decision Pause step 3", () => {
     const text = workflow("build");
-    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
-    expect(resume).toBeDefined();
+    const resume = bulletBlock(text, "Resume");
     const route = resume.slice(resume.indexOf("**If** `gateRerun` = true"));
     expect(route).toContain("Decision Pause** step 3");
   });
 
   it("build leaves the red-gate re-run conditions to status resume", () => {
     const text = workflow("build");
-    const resume = text.split("\n").filter((l) => l.startsWith("- **Resume:**"))[0];
-    expect(resume).toBeDefined();
+    const resume = bulletBlock(text, "Resume");
     // `status resume` decides the re-run; the line restates none of its conditions.
     expect(resume).not.toMatch(/only undecided question/);
     expect(resume).not.toContain("OPEN_GATE");
@@ -302,18 +308,14 @@ describe("resume facts", () => {
   });
 
   it("the Resume rule reads gateRerun and rerunFrom from status resume", () => {
-    const resume = workflow("build")
-      .split("\n")
-      .find((l) => l.startsWith("- **Resume:**"));
-    expect(resume, "no Resume line").toBeDefined();
-    const line = String(resume);
+    const line = bulletBlock(workflow("build"), "Resume");
     expect(line).toContain('"{BKIT}" status resume --workflow=build --file="{STATUS}"');
     expect(line).toContain("`gateRerun`");
     expect(line).toContain("`rerunFrom`");
     // Each place the engine can name has its own target.
     expect(line).toMatch(/`rerunFrom` = `verify` → [^;]*Step 8 sub-step 8/);
     expect(line).toMatch(/`rerunFrom` = `holistic` → [^;]*Step 10 sub-step 5/);
-    expect(line).toMatch(/`rerunFrom` = `tests` → Step 12/);
+    expect(line).toMatch(/\*\*Else\*\* → Step 12, the tests gate/);
   });
 });
 
@@ -596,11 +598,11 @@ describe("build", () => {
   });
 
   it("a resumed challenge pause rebuilds CHALLENGE_TASKS from `challenge merge`, not the decision file", () => {
-    const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
+    const resumeLine = bulletBlock(build, "Resume");
     expect(resumeLine).not.toContain("the decision file's task numbers");
     expect(resumeLine).toContain("Step 11 sub-steps 2 and 5");
     expect(resumeLine).toContain("`fixTasks` as `CHALLENGE_TASKS`");
-    expect(resumeLine).toContain("NEVER sub-step 6");
+    expect(resumeLine).toContain("NEVER go on to Step 11 sub-step 6");
   });
 
   it("the decision row records its route, which `status resume` maps", () => {
@@ -629,8 +631,8 @@ describe("build", () => {
     const first = step11.slice(step11.indexOf("\n1. "), step11.indexOf("\n2. "));
     expect(first).toContain("`CHALLENGE_DONE` = true → Step 12");
     expect(first).toContain("`challengeDone`");
-    const resumeLine = build.split("\n").find((l) => l.includes("**Resume:**"))!;
-    expect(resumeLine).toContain("`CHALLENGE_DONE` = `challengeDone`");
+    const resumeLine = bulletBlock(build, "Resume");
+    expect(resumeLine).toContain("`challengeDone` as `CHALLENGE_DONE`");
   });
 
   it("challenge merge exit 23 gets the same one retry as exit 22", () => {
@@ -2315,8 +2317,7 @@ describe("debug on dev", () => {
   });
 
   it("debug stops and asks on a foreign path", () => {
-    const line = debug.split("\n").find((l) => l.includes("**Foreign path:**"));
-    expect(line, "no Foreign path line").toBeDefined();
+    const line = bulletBlock(debug, "Foreign path");
     expect(line).toContain("**STOP**");
     expect(line).toContain("**Action needed — Foreign path:**");
     expect(line).not.toMatch(/→ \*\*Failure Path\*\*/);
@@ -2471,7 +2472,7 @@ describe("build publish ending", () => {
     expect(text.indexOf("status route --workflow=build")).toBeGreaterThan(
       text.indexOf("runtime row"),
     );
-    expect(build).toMatch(/Steps 1-2 always run again/i);
+    expect(build).toMatch(/Steps 1-2 run again on every resume/);
   });
 
   it("warns when a non-LOCAL run resolves publish false", () => {
@@ -2628,10 +2629,7 @@ describe("build Decision Pause continue route", () => {
       .filter((l) => l.includes('--header="Source changed={SOURCE_CHANGED}"'));
     expect(headerLines.join("\n")).toMatch(/verify/);
     expect(headerLines.join("\n")).toMatch(/holistic/);
-    const resume = workflow("build")
-      .split("\n")
-      .find((l) => l.startsWith("- **Resume:**"));
-    expect(resume, "no Resume line").toBeDefined();
+    const resume = bulletBlock(workflow("build"), "Resume");
     expect(resume).toMatch(/`sourceChanged` as `SOURCE_CHANGED`/);
   });
 
@@ -2843,9 +2841,8 @@ describe("build planned-test takeovers", () => {
       "- **If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group",
     );
     // A resumed gate re-run records the pending takeover's tests before the gate runs.
-    const [resume] = build.split("\n").filter((l) => l.startsWith("- **Resume:**"));
-    expect(resume).toBeDefined();
-    const rerun = resume!.slice(resume!.indexOf("`gateRerun` = true"));
+    const resume = bulletBlock(build, "Resume");
+    const rerun = resume.slice(resume.indexOf("`gateRerun` = true"));
     expect(rerun.indexOf("§ Pending takeovers")).toBeGreaterThan(-1);
     expect(rerun.indexOf("§ Pending takeovers")).toBeLessThan(rerun.indexOf("decisions apply"));
   });

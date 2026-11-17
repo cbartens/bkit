@@ -102,6 +102,7 @@
     "bash": {
       "*": "allow",
       "sudo *": "ask",
+      "doas *": "ask",
       "brew install*": "ask",
       "pnpm publish*": "ask",
       "npm publish*": "ask",

@@ -100,7 +100,7 @@ Each phase below lists its subagents in the order they run. "Parallel" means the
                          challenged again; unfixable → Decision Pause; two rounds at most)
   11. run tests          (deepest declared local gate, plus bkit check;
                          includes integration when declared, excludes @live)
-    ↳ on test failure → /bkit-debug (debug-failure-diagnose + remediate)
+    ↳ on test failure → debug-failure-diagnose + debug-failure-remediate, run inside build
   12. summary            (engine-written from status rows + plan tasks, tracker-facing;
                          no plan file or an unticked task → FAIL)
   → publish=true: PR opened; CI runs the adopted scaffold below

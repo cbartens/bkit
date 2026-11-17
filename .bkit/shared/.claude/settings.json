@@ -64,6 +64,7 @@
     ],
     "ask": [
       "Bash(sudo:*)",
+      "Bash(doas:*)",
       "Bash(brew install:*)",
       "Bash(pnpm publish:*)",
       "Bash(npm publish:*)",

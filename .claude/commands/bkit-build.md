@@ -47,7 +47,34 @@ description: "Build Feature — Autonomous implementation"
 
 - **Friction:** Watch own context and subagent returns for manual installs, agent rework, repeated tool failures, destructive backouts → append rows to `.bkit/friction.jsonl` with `bkit ledgers append` (`.bkit/jsonl.md` § Write Idiom) → continue or escalate; `status row --type=owner-pause` logs each owner pause itself, so do not log one; logging does not replace **Failure Path**.
 - **Finish:** `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt (`--attempt-of`; `<attempt>` in a path or message becomes it), checks artifacts and row, writes the row, commits, prints `comment`. Exit 5 **or** 6 → invoke `reask.agent` again with `"Your prior output '<reask.artifact>' has an invalid header. Re-emit only its header fields + '<!-- verdict:end -->' at top of that file. Do not redo work."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run this block — the step's attempt is unchanged. Hold `verdict` as the step's verdict, `fields` as its other header fields, `attempt` as its attempt.
-- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`; `group` non-null → `GROUP` = `group`; `CHALLENGE_ROUND` = `challengeRound`; `CHALLENGE_DONE` = `challengeDone`; `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 9; `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), sub-step 2, then sub-step 5. **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null (a decision file with `Status: OPEN`, or a `DECIDED` / `ASSUMED` one that no `build-decision` row names, because the run stopped after step 6 wrote the answers) → resume at **Decision Pause** step 3 with it instead: `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT`, `sourceChanged` as `SOURCE_CHANGED` (null stays unset), `PAUSE_POINT` = `build.{from}`; `from` = `challenge` → `CHALLENGE_ROUND` = `challengeRound`, then run `counters max --point=build.challenge` (hold `value` as `CHALLENGE_MAX`) and Step 11 sub-steps 2 and 5 (the merge finds its tasks already in the plan, writes nothing and prints the round's open tasks) → hold `fixTasks` as `CHALLENGE_TASKS` → back to **Decision Pause** step 3, NEVER sub-step 6. `status resume` decides whether the open pause only asks to try a red gate again; run it and go where it says. **If** `gateRerun` = true → skip step 3 and re-run the gate instead: `DECISION_ROUTE` = `rerunFrom`; run § Pending takeovers first; run **Decision Pause** step 6's `steps finish --step=build-decision` block first, then `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`, so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again; `rerunFrom` = `verify` → `VERIFY_VERDICT` = PASS, the held `{VERIFY_ATTEMPT}` unchanged, Step 8 sub-step 8; `rerunFrom` = `holistic` → `HOLISTIC_VERDICT` = PASS, Step 10 sub-step 5; `rerunFrom` = `tests` → Step 12; no `counters grant`. **Else** → resume at **Decision Pause** step 3 as for any open pause.
+- **Resume:** After Step 2, `"{BKIT}" status resume --workflow=build --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 run again on every resume, and rows of steps this workflow no longer has are ignored → continue at Step `number`.
+  - Hold `challengeRound` as `CHALLENGE_ROUND` and `challengeDone` as `CHALLENGE_DONE`.
+  - **If** `group` non-null → hold it as `GROUP`.
+  - Route — first match wins:
+    - **If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → the **Open decision** steps below.
+    - **If** `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 9.
+    - **If** `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), then sub-step 2, then sub-step 5.
+    - **Else** → Step `number`.
+  - **Open decision:** `openDecision` is a decision file with `Status: OPEN`, or a `DECIDED` / `ASSUMED` one that no `build-decision` row names, because the run stopped after **Decision Pause** step 6 wrote the answers. Resume from it:
+    1. Hold its `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT` and `sourceChanged` as `SOURCE_CHANGED` (null stays unset).
+    2. Set `PAUSE_POINT` = `build.{from}`.
+    3. **If** `from` = `challenge` → restore the round's tasks:
+       - Run Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`).
+       - Run Step 11 sub-steps 2 and 5. The merge finds its tasks already in the plan, writes nothing and prints the round's open tasks.
+       - Hold `fixTasks` as `CHALLENGE_TASKS`.
+       - NEVER go on to Step 11 sub-step 6, because the open pause decides the route.
+    4. Route on the `gateRerun` that `status resume` printed. It is true when the open pause only asks to try a red gate again:
+       - **If** `gateRerun` = true → the **Gate rerun** steps below.
+       - **Else** → **Decision Pause** step 3.
+  - **Gate rerun:** Skip **Decision Pause** step 3 and re-run the gate, with no `counters grant`:
+    1. Set `DECISION_ROUTE` = `rerunFrom`.
+    2. Run § Pending takeovers.
+    3. Run **Decision Pause** step 6's `steps finish --step=build-decision` block.
+    4. Run `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`. It runs after sub-step 3, so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again.
+    5. Route:
+       - **If** `rerunFrom` = `verify` → `VERIFY_VERDICT` = PASS, the held `{VERIFY_ATTEMPT}` unchanged → Step 8 sub-step 8.
+       - **If** `rerunFrom` = `holistic` → `HOLISTIC_VERDICT` = PASS → Step 10 sub-step 5.
+       - **Else** → Step 12, the tests gate.
 - **Owner decisions:** A subagent learns the owner's `Accept`, `Try again` and `Stop` answers by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`, and a `Fix now` direction from the task block that carries it. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 - **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 - **Status:** `status.jsonl` = append-only NDJSON event log, one event per line. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS|CONCERNS|FAIL`, or a word the step's agent adds, e.g. execute's `HANDOVER`), `failures`, `attempt`, `group`, `strategy` (`STANDARD|PIVOT|FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
@@ -59,7 +86,7 @@ description: "Build Feature — Autonomous implementation"
 
 - **Tracker:** GitHub Issues — `bkit` verbs read and write it; MCP server `github` (`.mcp.json` `mcpServers.github`) ONLY when a verb exits 80 or prints `done` = false. Tools: `mcp__github__issue_read` (method `get` / `get_comments` / `get_labels`), `mcp__github__issue_write` (method `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (method `add_project_item` / `update_project_item`); board status sync needs `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) and `package.json` `bkit.tracker.github.project`, absent either → silently skipped. Assert `{ISSUE_ID}` / `{STATE}` / `{LABELS}` non-empty before tool calls; writes best-effort, NEVER gate; **If** failure → retry once after 5s → continue.
 - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive; a phase start drops the old phase, every `next:*` and `bkit:failed`). Additive labels: `bkit:auto` (the opt-in the cloud gate job reads before it starts a run), `bkit:failed` (Failure Path). `bkit issues labels --write` computes and writes each transition. Fallback (`tracker.done` = false): `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`; `boardWrite.done` = false → `mcp__github__projects_write({BOARD}.addItem)` → `mcp__github__projects_write({BOARD}.updateItem)`.
-- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
+- **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; keep `--session-dir` on the call, because `bkit issues comment` refuses a call with no workflow-run proof.
 
 
 - **No issue:** `ISSUE_ID` empty → run issue-less; skip every issue-tied tracker read, label, comment and board call. Once Step 1 sub-step 4 holds `FID`, emit: Warning: no issue named — running issue-less as {FID}; no tracker reads, labels or comments. Name {FID} in the next prompt to continue this run.
@@ -822,27 +849,27 @@ Run § Pending takeovers first.
        "{BKIT}" status route --file="{STATUS}" --workflow=build --step=build-group-gate --group={GROUP} --require=verdict
        ```
        Hold `verdict` as `GATE_VERDICT`.
-2. **If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
-   **Subagent:** Invoke `@bkit-build-plan-tests` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Restore these tests of group `{GROUP}`, which verify logged `test-loosened`: `{VERIFY_LOOSENED}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
-   Update: the tests named, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
-   Record the restore. The command reads the group's `TEST FIRST` files from the plan and commits the diff:
-   ```bash
-   "{BKIT}" steps finish --workflow=build --step=build-plan-tests --file="{STATUS}" --attempt-of=build-plan-tests:next --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --agent=bkit-build-plan-tests --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md --number=7 --post --title="Plan Execute — tests restored" --message="chore({FID}): plan-tests group {GROUP} attempt <attempt>"
-   ```
-   Route exit 15 and exit 11 as Step 7 sub-step 5 routes them, with the same re-asks, and re-run this block.
-   Record the group's red again:
-   ```bash
-   "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-tests-red --group={GROUP} --position=next
-   ```
-   Hold `value` as `RED_ATTEMPT`.
-   ```bash
-   "{BKIT}" tests red --file="{STATUS}" --workflow=build --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md" --writer-log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md"
-   ```
-   Route — first match wins:
-   - **If** exit 0, 1 or 3 → re-run Step 8: the next verify round judges the restored diff, and a test the restore left unproven waits for Step 15 like any other.
-   - **Else** → **Failure Path**.
+2. **If** `VERIFY_LOOSENED` != `none` → restore the loosened tests with the sub-steps below; no fixer runs this round. The tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test:
+   1. **Subagent:** Invoke `@bkit-build-plan-tests` using `Agent` tool:
+      Context: You are a subagent in the Build phase. Restore these tests of group `{GROUP}`, which verify logged `test-loosened`: `{VERIFY_LOOSENED}`. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task.
+      Read: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-tests-green-{GROUP}-{VERIFY_ATTEMPT}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
+      Update: the tests named, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md`.
+   2. Record the restore. The command reads the group's `TEST FIRST` files from the plan and commits the diff:
+      ```bash
+      "{BKIT}" steps finish --workflow=build --step=build-plan-tests --file="{STATUS}" --attempt-of=build-plan-tests:next --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --agent=bkit-build-plan-tests --artifact=docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md --number=7 --post --title="Plan Execute — tests restored" --message="chore({FID}): plan-tests group {GROUP} attempt <attempt>"
+      ```
+      Route exit 15 and exit 11 as Step 7 sub-step 5 routes them, with the same re-asks, and re-run this block.
+   3. Record the group's red again:
+      ```bash
+      "{BKIT}" counters derive --file="{STATUS}" --workflow=build --step=build-tests-red --group={GROUP} --position=next
+      ```
+      Hold `value` as `RED_ATTEMPT`.
+      ```bash
+      "{BKIT}" tests red --file="{STATUS}" --workflow=build --group={GROUP} --plan="docs/plans/{YYYYMM}/{FID}-plan.md" --log="docs/plans/{YYYYMM}/logs/{FID}/build-tests-red-{GROUP}-{RED_ATTEMPT}.md" --writer-log="docs/plans/{YYYYMM}/logs/{FID}/build-plan-tests-{GROUP}-log.md"
+      ```
+   4. Route — first match wins:
+      - **If** exit 0, 1 or 3 → re-run Step 8: the next verify round judges the restored diff, and a test the restore left unproven waits for Step 15 like any other.
+      - **Else** → **Failure Path**.
 3. **If** `GROUP_BASE` is not held (a Decision Pause re-run or a resume) → re-derive it first:
    ```bash
    "{BKIT}" status route --step=build-group-start --group={GROUP} --file="{STATUS}" --workflow=build
@@ -865,7 +892,10 @@ Run § Pending takeovers first.
    ```
    Exit 1 means the attempt changed no source file. Hold `SOURCE_CHANGED` = true on exit 0, else false.
    Route — first match wins:
-   - **If** exit 1 **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS`. **If** `GATE_VERDICT` = FAIL → also `PAUSE_LOOP` = `verify`, so the pause asks the loop question about the red gate → **Decision Pause**.
+   - **If** exit 1 **or** `VERIFY_FIXED` = 0:
+     - Set `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
+     - **If** `GATE_VERDICT` = FAIL → also set `PAUSE_LOOP` = `verify`, so the pause asks the loop question about the red gate.
+     - Go to **Decision Pause**.
    - **If** exit 0 → re-run Step 8.
    - **Else** → **Failure Path**.
 
@@ -975,7 +1005,10 @@ This step checks the whole feature against the plan after the last group, and ag
     ```
     Hold `SOURCE_CHANGED` = true on exit 0, else false.
     Route — first match wins:
-    - **If** exit 1 **or** `HOLISTIC_FIXED` = 0 → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic`, `PAUSE_QUESTION` = `VERIFY_GAPS`. **If** `GATE_VERDICT` = FAIL → also `PAUSE_LOOP` = `holistic`, so the pause asks the loop question about the red gate → **Decision Pause**.
+    - **If** exit 1 **or** `HOLISTIC_FIXED` = 0:
+      - Set `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
+      - **If** `GATE_VERDICT` = FAIL → also set `PAUSE_LOOP` = `holistic`, so the pause asks the loop question about the red gate.
+      - Go to **Decision Pause**.
     - **If** exit 0 → Step 7, which runs a takeover group the fix added and goes straight to Step 10 when no group is open.
     - **Else** → **Failure Path**.
 

@@ -1155,7 +1155,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:475`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:502`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1252,7 +1252,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:475`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:502`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -3080,13 +3080,14 @@ Continue from the interrupted sub-step only after the retry is verified.
 - workflow: where-used
 - block: contract
 - anchored: yes
-- carriers: workflow all except `bkit-auto`, `bkit-debug`
+- carriers: workflow all except `bkit-auto`
 
 ```text
-**Resume:** After Step 2, {{when?}}`"{BKIT}" status resume --workflow={{workflow}} --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`.
+**Resume:** After Step 2, {{when?}}`"{BKIT}" status resume --workflow={{workflow}} --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 run again on every resume, and rows of steps this workflow no longer has are ignored → continue at Step `number`.
 ```
 
 ```retired
+**Resume:** After Step 2, {{when?}}`"{BKIT}" status resume --workflow={{workflow}} --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 ALWAYS run again and rows of steps this workflow no longer has are ignored → continue at Step `number`.
 **Resume:** After Step 2, {{when?}}`"{BKIT}" status resume --workflow={{workflow}} --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up — after its last `DONE` step; Steps 1-2 always run again and rows of steps this workflow no longer has are ignored → continue at Step `number`.
 **Resume:** On start, fold {{log}} — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 **Resume:** `workflows start` prints `lastDoneStep`: non-null → pick up after that step; never fold status.jsonl by hand.
@@ -5637,10 +5638,11 @@ Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKE
 - carriers: workflow all
 
 ```text
-**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; keep `--session-dir` on the call, because `bkit issues comment` refuses a call with no workflow-run proof.
 ```
 
 ```retired
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })`; never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
@@ -5658,10 +5660,11 @@ Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKE
 - distinct-from: `workflow-comments-github`
 
 ```text
-**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; keep `--session-dir` on the call, because `bkit issues comment` refuses a call with no workflow-run proof.
 ```
 
 ```retired
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` (no `id`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
@@ -5679,10 +5682,11 @@ Fallback (`tracker.done` = false): `mcp__jira__editJiraIssue({ cloudId: "{TRACKE
 - distinct-from: `workflow-comments-github`, `workflow-comments-linear`
 
 ```text
-**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; keep `--session-dir` on the call, because `bkit issues comment` refuses a call with no workflow-run proof.
 ```
 
 ```retired
+**Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. **If** `SESSION_DIR` is not held → re-run the workflow's Step 1 `repo info` call and hold `sessionDir` as `SESSION_DIR` before the call; NEVER drop `--session-dir`, because `bkit issues comment` refuses a call with no workflow-run proof.
 **Comments:** The engine may append routine reports to its own eligible progress comment; explicit session/run ownership keeps invocations separate. Attention and terminal reports use new comments. Comment preparation, delivery, MCP fallback and friction failures are nonfatal: attempt best-effort friction and continue substantive work. **If** `tracker.done` = false and `commentFile` is available → attempt one new comment from that file byte-for-byte via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER edit prior tracker content or rebuild the fallback body. A missing file or exhausted fallback is an attempted report, not a workflow blocker. Every comment gate requires an attempt or an applicable skip. Omit `--session-dir` when `SESSION_DIR` is not held.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); NEVER shorten, reword, or rebuild it. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
 **Comments:** A step's `bkit` block posts the `comment` it prints with `--post` before its gate and prints `tracker`; every gate includes `Issue comment attempted (Step N section)`. **If** `tracker.done` = false → post the content of the printed `commentFile` byte-for-byte as a new comment via `mcp__jira__addOrEditJiraIssueComment({ cloudId: "{TRACKER_SITE}", issueIdOrKey: "{ISSUE_ID}", commentBody: "{BODY}" })` (no `commentId`); never shorten, reword, or rebuild it. never edit, paraphrase, summarise, truncate, deduplicate, or reorder prior tracker content.
@@ -9469,10 +9473,11 @@ Bash(gh release delete:*)
 ### ask-privileged
 
 - tier: ask
-- count: 2
+- count: 3
 
 ```text
 Bash(sudo:*)
+Bash(doas:*)
 Bash(brew install:*)
 ```
 
@@ -9550,6 +9555,7 @@ WebSearch
   "bash": {
     "*": "allow",
     "sudo *": "ask",
+    "doas *": "ask",
     "brew install*": "ask",
     "pnpm publish*": "ask",
     "npm publish*": "ask",
@@ -10049,7 +10055,7 @@ Same text in 2+ files. `- carriers:` names them per surface; `pnpm instructions:
   Finish:
   ```
 
-- carriers: workflow `bkit-build`, `bkit-design`, `bkit-plan`
+- carriers: workflow all except `bkit-auto`, `bkit-ship`
 
   ```text
   Route — first match wins:
@@ -10101,6 +10107,40 @@ Orchestrator exits and the dispatched skill owns the session
 
 ```text
 **Scope:** Build the feature and open a PR to the default integration branch.
+Hold `challengeRound` as `CHALLENGE_ROUND` and `challengeDone` as `CHALLENGE_DONE`.
+**If** `group` non-null → hold it as `GROUP`.
+**If** Step 2's `workflows start --session-dir="{SESSION_DIR}"` printed `openDecision` != null → the **Open decision** steps below.
+**If** `step` = `build-plan-gaps-remediate-holistic` → Step 10 sub-step 9.
+**If** `after` = `build-challenge` → Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`), then sub-step 2, then sub-step 5.
+**Open decision:** `openDecision` is a decision file with `Status: OPEN`, or a `DECIDED` / `ASSUMED` one that no `build-decision` row names, because the run stopped after **Decision Pause** step 6 wrote the answers. Resume from it:
+Hold its `decision` as `DECISION`, `question` as `PAUSE_QUESTION`, `pauseStep` as `PAUSE_STEP`, `group` as `GROUP`, `verifyAttempt` as `VERIFY_ATTEMPT`, `testAttempt` as `TEST_ATTEMPT` and `sourceChanged` as `SOURCE_CHANGED` (null stays unset).
+Set `PAUSE_POINT` = `build.{from}`.
+**If** `from` = `challenge` → restore the round's tasks:
+Run Step 11 sub-step 1's `counters max --point=build.challenge` block (hold `value` as `CHALLENGE_MAX`).
+Run Step 11 sub-steps 2 and 5. The merge finds its tasks already in the plan, writes nothing and prints the round's open tasks.
+Hold `fixTasks` as `CHALLENGE_TASKS`.
+NEVER go on to Step 11 sub-step 6, because the open pause decides the route.
+Route on the `gateRerun` that `status resume` printed. It is true when the open pause only asks to try a red gate again:
+**If** `gateRerun` = true → the **Gate rerun** steps below.
+**Else** → **Decision Pause** step 3.
+**Gate rerun:** Skip **Decision Pause** step 3 and re-run the gate, with no `counters grant`:
+Set `DECISION_ROUTE` = `rerunFrom`.
+Run § Pending takeovers.
+Run **Decision Pause** step 6's `steps finish --step=build-decision` block.
+Run `"{BKIT}" decisions apply --by=rerun --file="docs/plans/{YYYYMM}/logs/{FID}/build-decision-{RUN}-{DECISION}.md"`. It runs after sub-step 3, so an interruption between them leaves the pause `OPEN` and the next resume re-runs the gate again.
+**If** `rerunFrom` = `verify` → `VERIFY_VERDICT` = PASS, the held `{VERIFY_ATTEMPT}` unchanged → Step 8 sub-step 8.
+**If** `rerunFrom` = `holistic` → `HOLISTIC_VERDICT` = PASS → Step 10 sub-step 5.
+**If** `VERIFY_LOOSENED` != `none` → restore the loosened tests with the sub-steps below; no fixer runs this round. The tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test:
+Record the restore. The command reads the group's `TEST FIRST` files from the plan and commits the diff:
+Record the group's red again:
+**If** exit 1 **or** `VERIFY_FIXED` = 0:
+Set `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
+**If** `GATE_VERDICT` = FAIL → also set `PAUSE_LOOP` = `verify`, so the pause asks the loop question about the red gate.
+Go to **Decision Pause**.
+**If** exit 1 **or** `HOLISTIC_FIXED` = 0:
+Set `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic` and `PAUSE_QUESTION` = `VERIFY_GAPS`.
+**If** `GATE_VERDICT` = FAIL → also set `PAUSE_LOOP` = `holistic`, so the pause asks the loop question about the red gate.
+Go to **Decision Pause**.
 **Owner decisions:** A subagent learns the owner's `Accept`, `Try again` and `Stop` answers by reading the decision file (`build-decision-{RUN}-*.md`) named in its `Read`, and a `Fix now` direction from the task block that carries it. NEVER restate, summarise or paraphrase an owner's answer in a subagent's `Context`.
 **Plan:** `docs/plans/{YYYYMM}/{FID}-plan.md`, in task-block form (`docs/templates/bkit-plan.md` § Agent Execution Runbook). Each group holds at most `MAX_TASKS_PER_GROUP` tasks and at most `MAX_TESTS_PER_GROUP` `TEST FIRST` tests (`bkit.workflows.tasks`, held at Step 1). One group runs per pass of Steps 7-9. Only the verify steps and the **Decision Pause** tick a task `[x]`. The pause ticks a challenge task it accepts, whether the owner accepts it or the run assumes the accept.
 [secrets; workflow-pushes] List stray files first: `bkit workflows handover --list-stray` (`--workflow` / `--fid` / `--month` / `--worktree` as below) → on a feature branch remove only the `modified` / `untracked` files this run created by mistake, NEVER other agents' changes; on `dev` / `main` (`shared` = true) remove nothing (only the run's own record lands, through a throwaway checkout).
@@ -10135,7 +10175,6 @@ Check a red gate against the base commit, the commit the branch started from. **
 Offer only the file's options for each question; NEVER add an `Accept` or any other option the file does not list.
 Route — first match wins:
 **If** `GATE_VERDICT` = FAIL → sub-step 8, for a round that fixes the gate.
-**If** exit 1 **or** `VERIFY_FIXED` = 0 → `PAUSE_STEP` = 9, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `VERIFY_GAPS`. **If** `GATE_VERDICT` = FAIL → also `PAUSE_LOOP` = `verify`, so the pause asks the loop question about the red gate → **Decision Pause**.
 **If** exit 1 **and** `LIMIT_ASK` = true → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause** — `build.verify.maxAttempts` is used up, so the owner decides.
 **If** exit 1 → **Failure Path** — `build.verify.maxAttempts` is used up.
 **If** exit 0 **and** `VERIFY_VERDICT` = FAIL **and** either `VERIFY_FIXABLE` = false **or** `VERIFY_ROUNDS` = `PAUSE_MAX` → `PAUSE_QUESTION` = `VERIFY_GAPS` → **Decision Pause**.
@@ -10209,7 +10248,6 @@ Route on the holistic fix rounds of this run:
 **If** `GATE_VERDICT` is not held (resumed into this sub-step) → read the holistic gate's verdict back:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/build-holistic-gate-{RUN}-{HOLISTIC_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
 **Else** → read the holistic gate's verdict:
-**If** exit 1 **or** `HOLISTIC_FIXED` = 0 → `PAUSE_STEP` = 10, `PAUSE_POINT` = `build.holistic`, `PAUSE_QUESTION` = `VERIFY_GAPS`. **If** `GATE_VERDICT` = FAIL → also `PAUSE_LOOP` = `holistic`, so the pause asks the loop question about the red gate → **Decision Pause**.
 Step 11 reached only with no red holistic gate
 Holistic gate run and recorded on every round
 Holistic gaps and gate failures routed: fixed in a holistic round, or asked at the **Decision Pause**
@@ -10335,7 +10373,6 @@ Read status.jsonl and derive the next `STRATEGY`:
 **If** `VERIFY_VERDICT` is not held (resumed into this step) → read group `{GROUP}`'s last verify round back, one block at a time:
 **If** `docs/plans/{YYYYMM}/logs/{FID}/build-group-gate-{GROUP}-{VERIFY_ATTEMPT}.md` does not exist → `GATE_VERDICT` = SKIPPED.
 **Else** → read the group gate's verdict:
-**If** `VERIFY_LOOSENED` != `none` → the tests step removed or loosened an expectation of an existing test (each `test-loosened` gap of the verify report, `Fixable: true`). The tests step restores it, because no code step may rewrite a planned test; no fixer runs this round:
 **If** exit 0, 1 or 3 → re-run Step 8: the next verify round judges the restored diff, and a test the restore left unproven waits for Step 15 like any other.
 Finish. The command records the header's `Strategy`:
 **If** exit 11 → the fix edited a planned test case the tests step recorded (`tests`; the engine logs an `agent-rework` friction row): invoke `@bkit-build-plan-gaps-remediate` again with ``"<problem> Put each test in <tests> back as the tests step left it; your other edits to those files stay. Or, when a correct code change forces the edit, keep it and append the line BLOCKED — Gap {N}: test `{file}` `{name}` — {why} to your log, then append DONE — Gap {N} again. Correct the Fixed count and verdict in your log to match."`` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
@@ -10439,7 +10476,21 @@ Go back to where this section was run from.
 - source: `.bkit/core/workflows/bkit-debug.md`
 
 ```text
-**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`. Hold `testVerdict` as `TEST_VERDICT`, `testSource` as `TEST_SOURCE` and `normalAttempt` as `NORMAL_ATTEMPT`: Steps 4-11 route on Step 3's verdict and source and name their artifacts by its round. Exit 4 → **Failure Path**: the run continues after Step 3, but Step 3's test round cannot be read back.
+Steps 1-2 resolve and persist the evidence selection before the run resumes.
+Explicit references and `[local]` override saved evidence.
+Hold `testVerdict` as `TEST_VERDICT`, `testSource` as `TEST_SOURCE` and `normalAttempt` as `NORMAL_ATTEMPT`, because Steps 4-11 route on Step 3's verdict and source and name their artifacts by its round.
+**If** exit 4 → **Failure Path**: the run continues after Step 3, but Step 3's test round cannot be read back.
+**If** `CI_GENERATION` changed → Step 3, then collect current-generation context before diagnosis.
+**STOP**: end the turn.
+**If** `REPRODUCED` = YES **and** CI is selected:
+Set `CI_REPRODUCED` = true.
+**If** `REPRODUCED` = NO **and** CI is selected → **Failure Path** with the reproduction blocker; no successful Summary.
+[reproduce-first] **If** `REPRODUCED` = YES → Step 3.
+**If** `REPRODUCED` = NO → Step 10.
+**Foreign path:** Exit 10 from `steps finish` or `workflows close` on `dev` means a file the run commits was modified before the run, and nothing was written:
+Record the wait with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-pause --field=reason=foreign-path`.
+On the reply, record it first with `"{BKIT}" status row --file="{STATUS}" --workflow=debug --type=owner-answer`.
+Re-run the block. Never take the **Failure Path**.
 Step 3 verdict, source and round restored when resuming past it
 `**Q1 — Branch:** {the missing or ambiguous branch the engine printed}. Which existing branch did you mean?`
 One option line per printed candidate (`Use branch {x} — debug adopts {x} and runs its tests there`), then `Name another branch — reply with its name` and `Stop — nothing changes; the run can be started again`, lettered in that order.
@@ -10461,8 +10512,6 @@ Record the wait with `status row --file="{STATUS}" --workflow=debug --type=owner
 **Else**, or fallback still unavailable → **Failure Path** with the unresolved evidence reference.
 With selected CI, adapt legacy blocks only in this temporary script to honor all selection pins and emit the identity receipt plus complete nonempty logs. A mapped fallback writes normalized metadata/job/log evidence through the same `context fetch` validator. Require `outcome: checked` for the selected CI block collected in this generation; unchecked, skipped, missing, partial or mismatched CI evidence → **Failure Path** before diagnosis. Older context artifacts cannot satisfy this check.
 **If** CI is selected **and** `REPRO` = true **and** `CI_REPRODUCED` != true → Step 5 once for this generation, including a CI evidence FAIL.
-**If** `REPRODUCED` = YES and CI is selected → set `CI_REPRODUCED` = true → Step 8 in SOAK, else Step 6.
-**If** `REPRODUCED` = NO and CI is selected → **Failure Path** with the reproduction blocker; no successful Summary.
 **If** exit 11 → the selected workflow is still running; poll the same exact-head gate once per turn, for at most six turns, retaining its workflow ID/path from the selection. Exhaustion → **Failure Path**.
 **Else**, including a red, skipped, cancelled, absent or unavailable verification → **Failure Path**, naming the original and verifying evidence. A green configured workflow alone does not resolve a different selected workflow.
 Final return: display `{FINAL_RETURN}` verbatim. With selected CI, append `Original failure: {CI_RUN_URL} (run {CI_RUN_ID}). Verification: {VERIFY_RUN_URL} (run {VERIFY_RUN_ID}).` after the successful pushed-head checks. Do not auto-invoke.
@@ -10535,10 +10584,8 @@ Run it through the block below. The block writes stdout fenced as the context ar
 Context-fetch blocks enumerated and coverage narrated
 Context-fetch blocks run and outcomes narrated
 [commits] Finish — commits the test:
-[reproduce-first] **If** `REPRODUCED` = YES on the local path → Step 3.
 → Step 3.
 → Step 3.
-**If** `REPRODUCED` = NO on the local path → Step 10.
 Read the strategy ladder from status.jsonl:
 **If** `DEBUG_MODE` = NORMAL **and** `DIAGNOSE_MODE` = SOAK → record the switch → `DEBUG_MODE` = SOAK → Step 8:
 Strategy computed
@@ -10691,7 +10738,7 @@ Check the draft's groups and task blocks, that every symbol it names exists, and
 **If** this is the second exit 1 → **Failure Path**.
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines. Invocation id: {INVOCATION}."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
 Draft check passed or only formatting findings carried to review (`tests plan-check`)
-`QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
+`QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces. Keep only letters, digits, `_`, `.` and `-` in each keyword, because sub-step 3 passes `QUERY` inside a quoted shell argument.
 [deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
 Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
 Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-scope-check`, no inline work)
@@ -10851,7 +10898,7 @@ Hold the current `featureCodeState` as `FEATURE_CODE_STATE`; non-zero exit → *
 Read the latest successful `ship-feature-coverage` row for `step=ship-deferred-sweep` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and its artifact still exists → reuse it and skip to Step 6. **If** the state changed, differs or is missing → invoke the sweep again below. Never reuse a completion from a different feature state.
 **If** `verdict` = PASS → record the covered feature-code state → Step 6:
 Reconciled feature-code state compared with recorded sweep coverage
-Read the latest successful `ship-feature-coverage` row for `step=ship-update-docs` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and the docs artifact exists → reuse it and skip sub-steps 1–3. **If** the state changed, differs or is missing → run the docs agent again. Always refresh the summary in sub-step 4.
+Read the latest successful `ship-feature-coverage` row for `step=ship-update-docs` from `{STATUS}`. **If** its recorded feature-code state matches `FEATURE_CODE_STATE` and the docs artifact exists → reuse it and skip sub-steps 1-3. **If** the state changed, differs or is missing → run the docs agent again. Always refresh the summary in sub-step 4.
 **If** `RECONCILE_REQUIRED` = true → clear it → Step 3 before validation. A previous `DONE` row alone never proves coverage of imported feature code.
 **If** exit 80 **or** `runtimeGithubCli` = false → use narrowly scoped MCP PR/Actions reads and compare `dev` against `VALIDATED_HEAD`. The engine must establish `base.ref` = `dev`; a mismatch takes the **Failure Path**. Write `{ ownerRepo, prNumber, headRefName, baseRefName: "dev", pr, ci: { workflowRuns, jobs }, base: { ref: "dev", sha, comparedHead, status } }` to `{OUTBOX}/ship-gate-facts.json`. `workflowRuns` and `jobs` use the Actions API payloads, and `base.sha` is the freshly read dev commit used by the compare API. Each run must carry its positive integer `id`, `repository.full_name`, `head_repository.full_name`, configured workflow `path` (or matching numeric `workflow_id`), `head_sha`, `head_branch` and repository-scoped `html_url`. Both repositories must match `ownerRepo`; the head must match `VALIDATED_HEAD` and `headRefName`. Each job must carry `run_id`, `run_url` and `head_sha` matching its selected run and repository. Retain every jobs page in the paginated array. Independently reread the PR and base before accepting the facts, and record the single transport transition under **gh MCP fallback**. Missing, unavailable or mismatched evidence → **Failure Path** before mutation. Return the facts to the same gate:
 **If** exit 19 (stale base) → the gate already recorded one failed arrival; route to integration:

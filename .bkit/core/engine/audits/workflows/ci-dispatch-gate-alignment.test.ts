@@ -96,9 +96,12 @@ describe("selected CI evidence routing", () => {
     expect(debugStep(4)).toMatch(/ciReproduced|CI_REPRODUCED/);
     expect(debugStep(4)).toMatch(/REPRO[\s\S]*Step 5/);
     expect(debugStep(5)).toMatch(/steps finish[^\n]*--field=ciGeneration=/);
-    expect(debugStep(5)).toMatch(/YES[^\n]*(?:CI|ci)[^\n]*Step (?:6|8)/);
+    const ciYes =
+      debugStep(5).match(/YES[^\n]*(?:CI|ci)[^\n]*:\n((?: {5,}- [^\n]*\n)+)/)?.[1] ?? "";
+    expect(ciYes).toMatch(/`DEBUG_MODE` = SOAK → Step 8/);
+    expect(ciYes).toMatch(/\*\*Else\*\* → Step 6/);
     expect(debugStep(5)).toMatch(/NO[^\n]*(?:CI|ci)[^\n]*(?:Failure Path|STOP|blocker)/);
-    expect(debugStep(5)).toMatch(/(?:local|LOCAL)[^\n]*Step 3/);
+    expect(debugStep(5)).toMatch(/`REPRODUCED` = YES → Step 3/);
     expect(debugStep(4)).not.toMatch(/(?:CI|ci)[^\n]*REPRO[^\n]*(?:false|FALSE)/);
   });
 

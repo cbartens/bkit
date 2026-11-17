@@ -118,7 +118,7 @@ Every row opens with the same top section, in this order:
 | `key` | `string?` | Keyed kinds only (`friction` / `deferral` / `failure` / `knowledge` / `decision` / `feature` / `chat` / `run`). See § Key & References. |
 | `repo` | `string` | Origin repo slug, e.g. `cbartens/bkit`; its fingerprint on `chat` / `run` rows (§ Per-Kind Fields). |
 | `bkit` | `{version}` | `version` = bkit version that emitted the row (`null` on `chat` / `run` when none found). `chat` adds its bkit-use fields. |
-| `by` | `{workflow?, step, subagent?, model?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `auto` / `audit`; `utility` for a direct chat outside any workflow; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
+| `by` | `{workflow?, step, subagent?, model?, modelSource?, configuredModel?, host?}` | Who wrote it — § Who Wrote It. `workflow`: `design` / `plan` / `build` / `debug` / `ship` / `auto` / `audit`; `utility` for a direct chat outside any workflow; `chat-stats` on `chat` (the harvest script's scan); the run's workflow on `run`. |
 | `references` | `string[]?` | Pointers that place the row: feature ids, tracker ids, PRs, commit SHAs, paths, a sibling `ts`. See § Key & References. |
 
 Values in every kind:
@@ -165,7 +165,7 @@ These blocks have the same name and the same shape on `outcome` and `run`:
 | Row written by | `by.workflow` | `by.step` | `by.subagent` | `by.model` |
 | --- | --- | --- | --- | --- |
 | **The orchestrator** (a workflow itself) | `ship` | `ship-close-workflow` | (absent) | (absent) |
-| **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-plan-gaps-remediate` | `bkit-build-plan-gaps-remediate` | that prompt's own `model:` |
+| **A subagent** it invoked | `build` | the step that invoked it, e.g. `build-plan-gaps-remediate` | `bkit-build-plan-gaps-remediate` | the model that ran it: the one the host reported when the append names its invocation, else that prompt's own `model:` |
 | **A direct chat** outside any workflow | `utility` | `manual` | (absent) | (absent) |
 
 Subagent: set these on every row you append, from your prompt file:
@@ -176,6 +176,8 @@ Subagent: set these on every row you append, from your prompt file:
 - **`by.workflow`** = the invoking workflow.
 
 Orchestrator: omit `by.subagent` and `by.model`.
+
+An append that names its invocation fills `by` from it. `by.model` is then the model the host reported, and it is absent when `by.modelSource` = `unavailable` (`observed` when the host reported one). `by.configuredModel` holds the prompt's pinned `model:`, and `by.host` names the host.
 
 ## Key & References
 

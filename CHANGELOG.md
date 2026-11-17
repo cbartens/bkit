@@ -62,6 +62,8 @@ Format: `## [version] — YYYY-MM-DD`
 - **The session tracker guard stops on a tracker it does not know.** `preflight-tracker.sh` rejects an unknown tracker name and a `GITHUB_ISSUE_ID` that is not digits, and `bkit check` reports `tracker-setup-unknown` as a blocker. Values rendered into Markdown stay on one line. See [#968 — Sweep the deferrals and failures parked since v6.1.1 before v6.2](https://github.com/cbartens/bkit/issues/968).
 - **Gate logs keep pnpm's own lines under `pnpm -s`.** Gate, lint and test logs hold the script pnpm ran and its exit code, so a gate that fails without printing still leaves evidence in its log. See [#931 — Gate logs lose pnpm's lines under pnpm -s, failing the pre-push gate](https://github.com/cbartens/bkit/issues/931).
 - **Build and debug report a removed `bkit:auto` label in their final message.** The label's removal stops nothing mid-run, and the workflow docs say so. See [#986 — Docs claim more bkit:auto kill-switch enforcement than exists](https://github.com/cbartens/bkit/issues/986).
+- **`doas` asks before it runs, as `sudo` does.** The shipped Claude Code and OpenCode settings put `doas` on the ask list.
+- **Build and debug spell out their resume and pause routes one instruction per line.** The build Resume and gap-pause routes and the debug Resume, Foreign path and Failure Reproduce routes read as labelled route blocks; no run goes anywhere new.
 
 ### Upgrade Notes
 

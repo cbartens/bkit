@@ -51,7 +51,7 @@ Plans are sized by `bkit.workflows.tasks` in `package.json`. Each group holds up
 | --- | --- | --- | --- | --- |
 | Design | `/bkit-design` | 12 | `docs/plans/{YYYYMM}/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 8 | `docs/plans/{YYYYMM}/{FID}-plan.md` | Yes — review before build |
-| Build | `/bkit-build` | 15 | PR to `dev` | No — CI continues |
+| Build | `/bkit-build` | 16 | PR to `dev` | No — CI continues |
 | Debug | `/bkit-debug` | 11 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 12 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 

@@ -230,7 +230,7 @@ describe("rendered workflow comment contracts", () => {
       const clause = commentsClause(body);
       expect(clause.length, label).toBeGreaterThan(0);
       expect(clause, label).not.toMatch(/Omit `--session-dir`/);
-      expect(clause, label).toMatch(/NEVER drop `--session-dir`/);
+      expect(clause, label).toMatch(/keep `--session-dir` on the call/);
     }
   });
 });

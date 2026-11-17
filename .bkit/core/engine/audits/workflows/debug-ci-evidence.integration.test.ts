@@ -585,7 +585,9 @@ describe("Debug CI evidence sequence", () => {
     expect(no.context().json.outcome).toBe("checked");
     expect(no.agent("reproduce", "NO").code).toBe(0);
     expect(no.route().json).toMatchObject({ ciReproduced: false, ciFixDone: false });
-    expect(stepText(5)).toMatch(/REPRODUCED` = NO and CI is selected → \*\*Failure Path\*\*/);
+    expect(stepText(5)).toMatch(
+      /REPRODUCED` = NO \*\*and\*\* CI is selected → \*\*Failure Path\*\*/,
+    );
     expect(no.events().filter((event) => event.agent === "remediate")).toEqual([]);
     expect(fs.readFileSync(path.join(no.cwd, "source.txt"), "utf8")).toBe("unfixed\n");
   });
