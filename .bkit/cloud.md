@@ -1,6 +1,6 @@
 # Cloud agent environments — Claude on the web + Codex Cloud + Cursor Cloud Agents + OpenCode
 
-<!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 > [!CAUTION]
 > **Purpose:** The canonical reference for Claude on the web (mobile / web), Codex Cloud, Cursor Cloud Agents and OpenCode cloud runners. Environments do not depend on the tracker: every generated `<host>/bkit-cloud.md` carries the same env block (`BKIT_GH_TOKEN` plus whatever `.envrc` resolves, tracker keys included) for any tracker. Any agent pairs with any wired tracker: Claude, OpenCode and Codex dispatch from one unified `bkit-cloud.yml` (one agent per run), and Cursor uses its native triggers. Codex Cloud tasks have no bkit dispatch, so you launch those runs by hand (§ Cloud-agent support matrix).

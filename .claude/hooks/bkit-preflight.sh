@@ -21,7 +21,7 @@
 
 # <!-- bkit:start -->
 
-# <!-- bkit:managed v6.1.1 — do not edit; run `bkit upgrade` to refresh -->
+# <!-- bkit:managed v6.2.0 — do not edit; run `bkit upgrade` to refresh -->
 
 set -euo pipefail
 
