@@ -107,11 +107,13 @@ export const WORKFLOW_STEPS: Readonly<Record<ResumableWorkflow, readonly Workflo
       title: "Plan Verify Holistic",
       resumeAt: "build-plan-verify-holistic",
     },
+    // A holistic fix can add a takeover group: Step 7 runs it, and goes straight on to
+    // Step 10 when no group is open.
     {
       step: "build-plan-gaps-remediate-holistic",
       number: 10,
       title: "Plan Verify Holistic",
-      resumeAt: "build-plan-verify-holistic",
+      resumeAt: "build-plan-tasks",
     },
     // The reports are written: Step 11 continues at `bkit challenge merge`.
     { step: "build-challenge", number: 11, title: "Build Challenge", resumeAt: "build-challenge" },

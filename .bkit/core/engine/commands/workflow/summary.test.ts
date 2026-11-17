@@ -66,6 +66,57 @@ describe("buildSummary", () => {
     expect(s.markdown).toContain("## Recommended Next Step");
   });
 
+  it("the summary lists tests that changed hands", () => {
+    const entry = (task: number, name: string, state: string) => ({
+      task,
+      from: 1,
+      test: "a.test.ts",
+      testName: name,
+      state,
+      blob: null,
+    });
+    const red = {
+      type: "step-done",
+      workflow: "build",
+      step: "build-tests-red",
+      group: 2,
+      tests: [
+        entry(2, "t1", "red"),
+        entry(3, "t2", "taken-over"),
+        entry(3, "t4", "updated"),
+        entry(3, "t5", "vacuous"),
+        { task: 3, test: "a.test.ts", testName: "t3", state: "red", blob: null },
+      ],
+    };
+    const takeover = {
+      type: "step-done",
+      workflow: "build",
+      step: "build-takeover",
+      task: 4,
+      from: 1,
+      test: "a.test.ts",
+      name: "t1",
+      reason: "the ordering rule changed",
+    };
+    const md = buildSummary(input({ rows: [red, takeover] })).markdown;
+    const section = md.split("## Tests that changed hands")[1]!.split("\n## ")[0]!;
+    expect(md.indexOf("## Tests that changed hands")).toBeGreaterThan(md.indexOf("## Tests\n"));
+    expect(md.indexOf("## Tests that changed hands")).toBeLessThan(
+      md.indexOf("## Risks and Action Items"),
+    );
+    expect(section).toContain("- TASK 1 → TASK 2: `t1` recorded failing");
+    expect(section).toContain("- TASK 1 → TASK 3: `t2` changed hands, not proven failing");
+    expect(section).toContain(
+      "- TASK 1 → TASK 3: `t4` existing test updated and passing; verify judged its diff",
+    );
+    expect(section).toContain("- TASK 1 → TASK 3: `t5` not recorded red (`vacuous`)");
+    expect(section).not.toContain("`t3`");
+    expect(section).toContain(
+      "- TASK 4 added by the build: takes over `t1` in `a.test.ts` from TASK 1 — the ordering rule changed",
+    );
+    expect(buildSummary(input({})).markdown).not.toContain("## Tests that changed hands");
+  });
+
   it("writes Publish: held when publish is false", () => {
     const s = buildSummary(input({ publish: false }));
     expect(s.markdown).toMatch(/^Publish: held$/m);

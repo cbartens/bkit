@@ -1155,7 +1155,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:478`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:479`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1252,7 +1252,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:478`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:479`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
@@ -1674,7 +1674,7 @@ Clause section lines:
   - verbatim: `bkit-build-plan-tasks`, `bkit-build-plan-verify`
   - applies: `bkit-build-plan-gaps-remediate`, `bkit-debug-failure-reproduce`
 - drift:
-  - `bkit-build-plan-gaps-remediate:107`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
+  - `bkit-build-plan-gaps-remediate:108`: "Run `bkit tests changed --fallback=bkit:gate:static-unit`. Every local test must pass." Runs only `pnpm bkit:gate:changed` on the changed files, or `pnpm bkit:gate:static-unit` when that is undeclared, not the integration tier the pre-push hook adds when `bkit:gate:static-unit-integration` is declared
     - kept: subagents never push; they run their own lighter gate (`local-pre-commit`: `/bkit-*` steps run their own gates) and the pre-push hook runs the push gate
 
 ```text
@@ -4092,10 +4092,11 @@ Write each open question, what each option does and the reason for the recommend
 - carriers: prompt `bkit-build-plan-convert`, `bkit-plan-generate`, `bkit-plan-scope-check`, `bkit-plan-update`
 
 ```text
-**TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. When the planned failure prints a phrase no other failure would, put that phrase in double quotes inside {what goes wrong}, e.g. fails on the total "expected 12" being 0: `tests red` refuses a red whose failure message and failure text hold none of the quoted phrases. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line. A regenerated baseline (a snapshot, a coverage list, a generated doc) is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.
+**TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. When the planned failure prints a phrase no other failure would, put that phrase in double quotes inside {what goes wrong}, e.g. fails on the total "expected 12" being 0: `tests red` refuses a red whose failure message and failure text hold none of the quoted phrases. More tests or files → split the task. When a later task changes what an earlier task's planned test asserts, name that test on the later task's `TEST FIRST` too: the build records it failing again before the later task's code exists. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line. A regenerated baseline (a snapshot, a coverage list, a generated doc) is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.
 ```
 
 ```retired
+**TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. When the planned failure prints a phrase no other failure would, put that phrase in double quotes inside {what goes wrong}, e.g. fails on the total "expected 12" being 0: `tests red` refuses a red whose failure message and failure text hold none of the quoted phrases. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line. A regenerated baseline (a snapshot, a coverage list, a generated doc) is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.
 **TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. When the planned failure prints a phrase no other failure would, put that phrase in double quotes inside {what goes wrong}, e.g. fails on the total "expected 12" being 0: `tests red` refuses a red whose failure message holds none of the quoted phrases. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line. A regenerated baseline (a snapshot, a coverage list, a generated doc) is never a `TEST FIRST` test: regenerating it makes it pass, so it cannot fail first.
 **TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists one or more tests, within the per-task plan caps your Context names (tests, test files), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier ONLY → `n/a — {reason naming which}` on the field line.
 **TEST FIRST:** Each task carries a `**TEST FIRST:**` field after `DONE WHEN`. A behaviour change at the unit or integration tier lists 1 to `bkit.workflows.tasks.maxTestsPerTask` tests (default 10) across <= `bkit.workflows.tasks.maxTestFilesPerTask` test files (default 3), one sub-bullet per test, each `` `{test file}` `` `` `{test name}` `` fails on {what goes wrong}: a repo-relative test file, the test name as the runner reports it or its last segments, and {what goes wrong} as the wrong behaviour a stub shows, not a literal assertion. More tests or files → split the task. No behaviour change (docs, config, pure refactor) or E2E / `@live` tier only → `n/a — {reason naming which}` on the field line.
@@ -4199,6 +4200,19 @@ Never write `TEST EXCEPTION` of your own; copy each `TEST EXCEPTION` field an in
 
 ```text
 **Local migrations:** Apply new migrations to the local database with the repo's locked migration script before running integration tests, so they do not run against a stale schema.
+```
+
+### planned-test-takeover-blocked
+
+- prompt: where-used
+- carriers: prompt `bkit-build-plan-gaps-remediate`, `bkit-build-plan-tasks`
+
+```text
+**If** a correct {{change}} must remove or rewrite lines of a planned test that a done task (`[x]` in the plan) owns → keep the `BLOCKED` line naming the test and why it no longer holds. The engine refuses the {{refused}} and adds a task that takes the test over and rewrites it. When you are asked again, put that test back as the tests step left it: the `BLOCKED` line does not keep it.
+```
+
+```retired
+**If** a correct {{change}} must remove or rewrite lines of a planned test that a done task (`[x]` in the plan) owns → keep the `BLOCKED` line naming the test and why it no longer holds. The engine refuses the {{refused}}, and the build adds a task that takes the test over and asks you to put the test back.
 ```
 
 ### input-dates
@@ -10167,6 +10181,7 @@ Shape the task by the owner's direction, when the owner gave one.
 Place the task block:
 **If** `From: verify` **and** group `{GROUP}` stays within `MAX_TASKS_PER_GROUP` tasks and `MAX_TESTS_PER_GROUP` `TEST FIRST` tests with it → put it inside group `{GROUP}`.
 **If** `From: verify` **and** it would take group `{GROUP}` over either cap → put it in a new group right after `{GROUP}`. Add 1 to every later group's number, in its markers and its `### TASK GROUP` heading.
+A fix that changes what an earlier task's planned test asserts names that test, with the same file and the same name, on the rewritten or new task's `**TEST FIRST:**` too: the build then takes the test over and records it failing again, and `tests plan-check` lists it under `takeovers`.
 Then check the plan:
 **If** exit non-zero → **Failure Path** naming each problem in the report.
 Write the decisions into the decision file:
@@ -10178,7 +10193,7 @@ Set `Status: ASSUMED` while any `Decision: Accept (assumed)` line remains, and `
 **If** `From: challenge` **and** either an item was answered `Fix now` **or** a task of `CHALLENGE_TASKS` was not an item:
 `DECISION_ROUTE` = `fix`.
 **If** `DECISION_ROUTE` = `retry` **and** `From: holistic` → Step 10 sub-step 9.
-**If** `DECISION_ROUTE` = `holistic` → re-run Step 10.
+**If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group a holistic fix added and goes straight to Step 10 when no group is open.
 Used-up verify, holistic or tests loop given its allowance on a go-on answer (`counters grant`)
 Derive the attempt the holistic report is named for:
 **If** `HOLISTIC_VERDICT` = CONCERNS **and** `HOLISTIC_FAILURES` = 0 **and** `GATE_VERDICT` != FAIL → Step 11. No gap is open: the report's concern is a group count, which the summary lists.
@@ -10408,6 +10423,13 @@ PR created
 **If** `PAUSE_QUESTION` = `CHANGED_TESTS` → write one item per entry of `CHANGED_TESTS`, titled with its task number and test name. Each item is a planned test a code step had to change, with the step's reason and the entry's `diff` (the test's own-line diff since its baseline, shown in a diff fence). Options `Accept` and `Stop`, recommended `Accept`. Its question ends `Accept the change?`
 **If** `CHANGED_TESTS` is not empty **and** no decision file holds the line `Question: CHANGED_TESTS` → `PAUSE_STEP` = 15, `PAUSE_POINT` = `build.verify`, `PAUSE_QUESTION` = `CHANGED_TESTS` → **Decision Pause**. Headless, it takes `Accept (assumed)` for each test, and ship asks the owner to confirm them.
 Changed planned tests asked once, or none left
+Read the takeover group whose tests are not recorded yet:
+**If** `pending` != null → record the group's tests now:
+Hold `GROUP` as `TAKEOVER_RETURN`, then set `GROUP` = `pending.group`.
+Run Step 7 sub-steps 3-6 for that group. Where they route to step 7, come back here instead: the Group Loop writes the group's code later.
+Set `GROUP` = `TAKEOVER_RETURN`.
+Go back to where this section was run from.
+**If** exit 11 → the diff changes an earlier task's recorded test that no open task of the group names (`tests`): invoke `@bkit-build-plan-tests` again with `"<problem> Put each test in <tests> back as it was committed; change only the tests a TEST FIRST line of group {GROUP} names."` → wait for subagent and re-run the block → **If** still non-zero → **Failure Path**.
 ```
 
 #### bkit-debug
@@ -11213,7 +11235,7 @@ Take the import path, symbol names and signatures from the task's `CREATE`, `UPD
 For each value the test checks or fakes, read the code that produces it where that code exists, and append `SOURCE — TASK {N}: {value} from {file}:{line}` with Bash `echo >>`. A fake that differs from what that code returns lets the test pass against code that fails for real.
 Write the test at the file and under the test name the entry gives, asserting the behaviour its `Derived Test Matrix` row names.
 Give it that name as one literal string, not a name built when the tests run (a parameterised table name such as `it.each`, `@pytest.mark.parametrize` or a template string), because the engine finds and locks each planned test by its name in the file. A name given as a suite path (`suite > test`) is found by its last segment, so that segment is the test's literal name.
-**If** the file already holds a test under that name (the brief's `Planned tests that already exist` section names it with the line it starts on) → update that test in place. Add expectations, and never remove or loosen one: the engine records the test as `updated` with the line diff of its own lines, and verify logs an update that removes or loosens an expectation as `test-loosened`, which sends the test back to you to restore.
+**Else if** the file already holds a test under that name (the brief's `Planned tests that already exist` section names it with the line it starts on) → update that test in place. Add expectations, and never remove or loosen one: the engine records the test as `updated` with the line diff of its own lines, and verify logs an update that removes or loosens an expectation as `test-loosened`, which sends the test back to you to restore.
 **If** `package.json` declares `bkit:lint:file` → run `pnpm bkit:lint:file {file}`, and fix the file until it exits 0.
 **If** `package.json` declares `bkit:test:file` → run `pnpm bkit:test:file {file}` once. A failure, or a load error on an import the code step will create, is the expected result.
 **If** the run passes → append ``PASSES — TASK {N}: `{file}` `{name}`: {reason}`` with Bash `echo >>`, where the reason names the code that already satisfies it.
@@ -11223,6 +11245,7 @@ Give it that name as one literal string, not a name built when the tests run (a 
 `PASS` = every planned test has a `WROTE` or `PASSES` log entry.
 `HANDOVER` = at least one planned test has neither a `WROTE`, `PASSES` nor `BLOCKED` log entry, whether or not another ended `BLOCKED`. When the turn cap is near, stop after the current task's log line and set this verdict. The caller re-runs with a fresh brief.
 `FAIL` = every planned test has a `WROTE`, `PASSES` or `BLOCKED` log entry, and at least one ends `BLOCKED` with no later `WROTE` or `PASSES`.
+**If** the brief's `Planned tests taken over from earlier tasks` section names the test → an earlier task wrote it, and this task's change makes it wrong. Rewrite that test case so it asserts this task's behaviour and fails until this task's code exists; you may remove or change its old expectations. The engine records it `taken-over`.
 ```
 
 #### bkit-build-plan-verify
@@ -11290,6 +11313,7 @@ The engine never overrides a `Verdict` that depends on evidence: `CONCERNS` and 
 **Else** → an added line disables or loosens the test (an early `return`, a skip, a comment pair around assertions, `expect.assertions(0)`, a reassignment of the value under test):
 **If** a supplied earlier verify report of the group already logged `test-loosened` for that test, **or** the test belongs to a task of an earlier group (the tests step cannot record a restore of it in this group) → append ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: false``, so the owner decides.
 **Else** → raise a `test-loosened` gap: ``TASK {N}: `{file}` `{name}` — test-loosened: {what} — Fixable: true``, and name the test on the header's `Loosened` line, which sends it back to the tests step to restore.
+`Taken over` section → each test is an earlier task's planned test that a later task rewrote, with the line diff since its owner's red. It is never a gap by itself: judge the rewritten test as you judge a new planned test of its task, against that task's `DONE WHEN` and its `Derived Test Matrix` row, and list it in `Notes`.
 ```
 
 #### bkit-debug-abort-handover
@@ -11745,6 +11769,7 @@ A plan task that re-enters a known-broken pattern, or touches a surface with an 
 `FAIL` = a `CRITICAL` finding names a regression vector that the source design itself requires and that no plan edit mitigates.
 Fake data: a planned test whose faked or fixture value differs from what the code it stands in for produces → `CRITICAL`. Read the code that produces each value the test checks or fakes, and cite it as `file:line`.
 Baseline tests: a `TEST FIRST` test that only compares output against a regenerated baseline (a snapshot, a coverage list, a generated doc) → `CRITICAL`. Regenerating the baseline makes it pass, so it cannot fail first.
+Contradicting tests: a later task whose change makes an earlier task's planned test wrong, while the later task's `TEST FIRST` does not name that test → `CRITICAL`. The later task names the earlier test on its own `TEST FIRST`, so the build records it failing again. Cite both tasks.
 ```
 
 #### bkit-plan-scope-check
@@ -15361,7 +15386,7 @@ Default if unanswered: [the plan assumes A | the plan stops at Gate 1 until you 
 **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 **No gate weakened:** no gate was weakened.
-**Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
+**Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran. A later task that names an earlier task's test takes it over: the build reports the takeover and does not refuse it.
 **Tests unchanged:** every planned test case matches the lines its red row recorded, or a code step's `BLOCKED` line names the change for the owner.
 **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 [fit `audit-gate-2-verified` 0.81; keep: plan gates verify against the plan] **Gate 2 — Verified:** every box above is checked.
@@ -15384,6 +15409,11 @@ Default if unanswered: [the plan assumes A | the plan stops at Gate 1 until you 
 **Project Documents:** `docs/architecture.md`, `docs/technology.md`, `docs/security.md` and `docs/testing.md` are assessed through the `.agents/docs.md` index (a missing or starter-only document is a warning, not a stop), and the plan's strategy matches `docs/testing.md`. Record each source in `Documentation Consultation`.
 **Deployments & Setup:** release, CI and branch behaviour follows `docs/deployments.md`, and local-setup changes follow `docs/setup.md`.
 [One JSON object per line in a fenced `jsonl` block, with the fields `topic`, `gap`, `recommendedPath`, `alternativeEvidence` and `action`, all non-empty (`"None available"` when no alternative evidence exists). Example line: `{"topic": "security", "gap": "starter-only", "recommendedPath": "docs/security.md", "alternativeEvidence": "The CI configuration defines token permissions.", "action": "Populate the security document with the project's credential and permission boundaries."}`. **If** every applicable topic is covered → write `None`. A warning never blocks the plan. Initially set to `PENDING`.]
+**TASK 3:** [e.g., Accept the `archived` status]
+**UPDATE:** `ItemStatus` in `packages/api/src/items/schema.ts`: [e.g., adds `archived`]
+**DEPENDS ON:** 2
+**DONE WHEN:** [e.g., `setStatus` stores `archived`, and still rejects an unknown status]
+`packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on [e.g., `archived` being rejected] — TASK 2's test, taken over because this task changes what it asserts
 ```
 
 ### Entry file

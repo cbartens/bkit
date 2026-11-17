@@ -18,9 +18,10 @@ import { CommandError, EXIT, git, runGit } from "../lib.js";
 import { EXIT_DIFF_FAILED, fetchRemoteRef } from "./branches.js";
 import { decisionHeader, parseDecisionItems } from "./open-decision.js";
 const DIFF_BASE = "origin/dev";
-import { NO_MARKERS_REASON, parsePlanBlocks, } from "./plan-blocks.js";
-import { positiveInt, str } from "./status.js";
-import { doneTasks } from "./tests.js";
+import { derivedTestMatrix, NO_MARKERS_REASON, parsePlanBlocks, testTier, } from "./plan-blocks.js";
+import { positiveInt, readStatusRows, str } from "./status.js";
+import { writeStepRow } from "./steps.js";
+import { doneTasks, readTestFirst, redEntries, redKey, sameTestName, TAKEOVER_STEP, } from "./tests.js";
 /** A task's heading line: the box and the number the tick addresses. */
 const TASK_BOX = /^(\s*)- \[([ xX])\] \*\*TASK (\d+):\*\*/;
 /** A `tests green` report's gap line: `- Task {N} \`{kind}\` — …`. */
@@ -179,6 +180,130 @@ export function needleOf(symbol) {
 const splitPaths = (stdout) => stdout.split("\0").filter(Boolean);
 /** A workflow run log: another feature's record, never code a plan task reads or changes. */
 const RUN_LOG = /^docs\/plans\/[^/]+\/logs\//;
+/** The status file's `build-takeover` rows, in file order; none when the file does not exist. */
+function takeoverRows(statusPath) {
+    if (!fs.existsSync(statusPath))
+        return [];
+    return readStatusRows(statusPath)
+        .filter((r) => r.type === "step-done" &&
+        r.workflow === "build" &&
+        r.step === TAKEOVER_STEP &&
+        typeof r.task === "number" &&
+        typeof r.test === "string" &&
+        typeof r.name === "string")
+        .map((r) => ({
+        task: r.task,
+        from: typeof r.from === "number" ? r.from : 0,
+        test: r.test,
+        name: r.name,
+    }));
+}
+/**
+ * The group of takeover tasks whose tests half has not run: the plan's tasks a
+ * `build-takeover` row names, grouped, the latest group holding a planned test with no
+ * `tests red` entry. Null when every takeover group's tests are recorded.
+ */
+function pendingTakeovers(text, statusPath) {
+    const named = new Set(takeoverRows(statusPath).map((r) => r.task));
+    const tasks = parsePlanBlocks(text).tasks.filter((t) => named.has(t.task));
+    const groups = [...new Set(tasks.map((t) => t.group))].sort((a, b) => b - a);
+    for (const group of groups) {
+        const reds = redEntries(statusPath, "build", group);
+        const open = readTestFirst(text, group).some((s) => named.has(s.task) &&
+            s.kind === "test" &&
+            s.tests.some((t) => !reds.has(redKey(s.task, t.test, t.name))));
+        if (open)
+            return { group, tasks: tasks.filter((t) => t.group === group).map((t) => t.task) };
+    }
+    return null;
+}
+/** A plan line's text: one line, no backticks or pipes, so it never breaks a field or a table cell. */
+const planWords = (s) => s.replace(/\s+/g, " ").replace(/[`|]/g, "'").trim();
+/** The lines of one pure takeover task block. */
+function takeoverTask(n, t, dependsOn) {
+    const until = dependsOn === undefined
+        ? "the change that contradicts it exists"
+        : `TASK ${dependsOn}'s code exists`;
+    return [
+        `<!-- bkit:task ${n} start -->`,
+        "",
+        `- [ ] **TASK ${n}:** Take over \`${t.name}\` from TASK ${t.from}`,
+        ...(dependsOn === undefined ? [] : [`  - **DEPENDS ON:** ${dependsOn}`]),
+        `  - **DONE WHEN:** \`${t.test}\` \`${t.name}\` passes`,
+        "  - **TEST FIRST:**",
+        `    - \`${t.test}\` \`${t.name}\` fails until ${until}: ${planWords(t.reason)}`,
+        "",
+        `<!-- bkit:task ${n} end -->`,
+    ];
+}
+/**
+ * The plan with takeover task `n` added: into the last group when it is a takeover group
+ * whose tests half has not run (`into`), else as a new last group after the last group's
+ * end marker; plus a Derived Test Matrix row when the plan has a matrix.
+ */
+function withTakeoverTask(text, task, n, group, into, row) {
+    const eol = text.includes("\r\n") ? "\r\n" : "\n";
+    const lines = text.split(/\r?\n/);
+    const matrix = derivedTestMatrix(text);
+    if (matrix !== null) {
+        const at = matrix.rows.at(-1)?.number ?? matrix.line + 1;
+        lines.splice(at, 0, `| Take over ${planWords(row.name)} from TASK ${row.from} | ${testTier(row.test)} | \`${row.test}\` | ${n} |`);
+    }
+    const endMarker = (g) => lines.findIndex((l) => l.trim() === `<!-- bkit:group ${g} end -->`);
+    if (into) {
+        lines.splice(endMarker(group), 0, ...task, "");
+        return lines.join(eol);
+    }
+    const last = Math.max(...parsePlanBlocks(text).groups.map((g) => g.group));
+    lines.splice(endMarker(last) + 1, 0, "", `<!-- bkit:group ${group} start -->`, "", `### TASK GROUP ${group}: Planned tests the build took over`, "", ...task, "", `<!-- bkit:group ${group} end -->`);
+    return lines.join(eol);
+}
+/**
+ * Adds one pure takeover task per entry to the plan at `planFile`, plus its Derived Test
+ * Matrix row and its `build-takeover` row in `statusPath`. Safe to repeat: an open takeover
+ * task whose `TEST FIRST` already names the entry's file and name is reused, and only a
+ * missing row is written, so a second run or a run stopped between the two writes leaves one
+ * task and one row. The task goes into the plan's last group while that group is a takeover
+ * group whose tests half has not run, else into a new last group. Returns the takeover task
+ * number per entry, in entry order.
+ */
+export function addTakeoverTasks(cwd, planFile, statusPath, entries, log) {
+    const out = [];
+    for (const e of entries) {
+        const test = path.posix.normalize(e.test);
+        const text = fs.readFileSync(planFile, "utf-8");
+        const plan = parsePlanBlocks(text);
+        const open = plan.tasks.find((t) => !t.done &&
+            t.title.startsWith("Take over ") &&
+            (t.testFirst?.tests ?? []).some((x) => path.posix.normalize(x.test) === test && sameTestName(x.name, e.name)));
+        let n;
+        if (open !== undefined) {
+            n = open.task;
+            log(`TASK ${n} already takes over "${e.name}" in ${test}`);
+        }
+        else {
+            n = Math.max(...plan.tasks.map((t) => t.task)) + 1;
+            const lastGroup = Math.max(...plan.groups.map((g) => g.group));
+            const pending = pendingTakeovers(text, statusPath);
+            const into = pending !== null && pending.group === lastGroup;
+            const group = into ? lastGroup : lastGroup + 1;
+            const dependsOn = e.task !== null && plan.tasks.some((t) => t.task === e.task) ? e.task : undefined;
+            fs.writeFileSync(planFile, withTakeoverTask(text, takeoverTask(n, { test, name: e.name, from: e.from, reason: e.reason }, dependsOn), n, group, into, { name: e.name, test, from: e.from }));
+            log(`added TASK ${n} in group ${group}: takes over "${e.name}" in ${test} from TASK ${e.from}`);
+        }
+        if (!takeoverRows(statusPath).some((r) => r.task === n))
+            writeStepRow(cwd, {
+                file: statusPath,
+                workflow: "build",
+                step: TAKEOVER_STEP,
+                artifacts: [path.relative(cwd, planFile)],
+                extras: { task: n, from: e.from, test, name: e.name, reason: e.reason },
+                commit: "none",
+            }, log);
+        out.push(n);
+    }
+    return out;
+}
 export const tasksCommand = {
     noun: "tasks",
     summary: "Tick a plan's task boxes, from the tasks a verify judged satisfied.",
@@ -360,6 +485,47 @@ export const tasksCommand = {
                 for (const n of open)
                     ctx.log(`TASK ${n} is open`);
                 ctx.emit({ plan: planArg, group, tasks: open, handover: open.length > 0 });
+                return EXIT.OK;
+            },
+        },
+        takeover: {
+            summary: "Print the takeover group whose tests half has not run: the plan's takeover tasks (added by `steps finish` on a code step that contradicts a ticked task's planned test, each named by a build-takeover row) in the latest group holding a planned test with no `tests red` entry yet, or null. Writes nothing. Exit 0 (including nothing pending), 1 a plan with no task blocks, 2 a bad flag value or plan.",
+            use: "workflow",
+            flags: [
+                {
+                    name: "plan",
+                    type: "string",
+                    required: true,
+                    help: "plan file holding the task blocks",
+                },
+                {
+                    name: "file",
+                    type: "string",
+                    required: true,
+                    help: "the run's status.jsonl: its build-takeover and tests red rows are read",
+                },
+                {
+                    name: "pending",
+                    type: "boolean",
+                    help: "print the takeover group whose tests half has not run, or null; required, since the verb only reads",
+                },
+            ],
+            output: {
+                plan: "the plan file, as given",
+                pending: "{group, tasks} the takeover group whose tests have no tests red entry yet, else null",
+            },
+            run: (ctx) => {
+                const planArg = String(ctx.flags.plan);
+                const statusArg = String(ctx.flags.file);
+                if (statusArg === "")
+                    throw new CommandError(EXIT.USAGE, "--file must be non-empty");
+                if (ctx.flags.pending !== true)
+                    throw new CommandError(EXIT.USAGE, "tasks takeover only reads, with --pending: steps finish adds the takeover tasks");
+                const plan = readPlan(ctx.cwd, planArg);
+                const pending = pendingTakeovers(plan.text, path.resolve(ctx.cwd, statusArg));
+                if (pending !== null)
+                    ctx.log(`takeover group ${pending.group} has tests to record: TASK ${pending.tasks.join(", ")}`);
+                ctx.emit({ plan: planArg, pending });
                 return EXIT.OK;
             },
         },

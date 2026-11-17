@@ -31,7 +31,8 @@ import { readHolder, resolveMonth, workflowLockPath } from "./locks.js";
 import { EXIT_NO_STATUS, FILE_FLAG, GROUP_FLAG, STEP_FLAG, WORKFLOW_FLAG, extraField, nonNegativeInt, positiveInt, readRuns, readStatusRows, readRunsAt, statusFile, str, } from "./status.js";
 import { COMMENT_FILE_OUTPUT, POST_FLAG, TRACKER_OUTPUT, commentFileOf, postForVerb, } from "./tracker.js";
 import { parsePlanBlocks } from "./plan-blocks.js";
-import { blockedTests, PLAN_TASKS_STEP, readTestFirst, runPlanPath, touchedTests, baselineDiff, } from "./tests.js";
+import { blockedTests, PLAN_TASKS_STEP, readTestFirst, runPlanPath, sameTestName, touchedTests, baselineDiff, } from "./tests.js";
+import { addTakeoverTasks } from "./tasks.js";
 import { addAllButCopied } from "./worktrees.js";
 /**
  * An `agent-rework` friction row for a refused planned-test edit: the step reruns, so
@@ -1080,6 +1081,15 @@ async function finish(ctx) {
         const tests = [];
         /** Why each refused test is refused, in step with `tests`. */
         const why = [];
+        /**
+         * Refused tests a later task contradicts: a BLOCKED line names the test, the change removes
+         * lines, and the owning task's box is ticked. One entry per test, from its latest owner
+         * (a chain of takeovers gives every owner the same baseline).
+         */
+        const latestOwner = new Map();
+        const ticked = new Set(parsePlanBlocks(plan ?? "")
+            .tasks.filter((t) => t.done)
+            .map((t) => t.task));
         for (const c of changed) {
             const last = c.name.split(">").pop().trim();
             const naming = blocked.filter((b) => b.test === c.test && (b.name === c.name || b.name === last));
@@ -1088,12 +1098,23 @@ async function finish(ctx) {
             // A test gone from the file (or renamed) against a recorded baseline removes its lines.
             const removes = diff === null ? c.text !== null : !diff.additive;
             if (line === undefined || removes) {
-                tests.push({ test: c.test, name: c.name });
-                why.push({
-                    fromChange: c.fromChange,
-                    removed: line !== undefined,
-                    reused: line === undefined ? (naming[0]?.reason ?? null) : null,
-                });
+                if (!tests.some((t) => t.test === c.test && t.name === c.name)) {
+                    tests.push({ test: c.test, name: c.name });
+                    why.push({
+                        fromChange: c.fromChange,
+                        removed: line !== undefined,
+                        reused: line === undefined ? (naming[0]?.reason ?? null) : null,
+                    });
+                }
+                const key = `${c.test}\0${c.name}`;
+                if (line !== undefined && ticked.has(c.task) && c.task > (latestOwner.get(key)?.from ?? 0))
+                    latestOwner.set(key, {
+                        test: c.test,
+                        name: c.name,
+                        from: c.task,
+                        task: line.task,
+                        reason: line.reason,
+                    });
             }
             else {
                 const after = git(top, ["hash-object", "-w", "--", c.test]);
@@ -1114,9 +1135,30 @@ async function finish(ctx) {
             const touched = [...new Set(tests.map((t) => t.test))];
             const nameOf = (t) => `\`${t.test}\` "${t.name}"`;
             const named = tests.map(nameOf).join(", ");
+            // The build hands each contradicted test to a takeover task before it re-asks.
+            const entries = [...latestOwner.values()];
+            // An entry needs a ticked owner, so the plan exists whenever there is one.
+            const takeovers = addTakeoverTasks(ctx.cwd, planFile, path.resolve(ctx.cwd, file), entries, ctx.log);
+            const contradicts = entries.map((e, i) => ({
+                test: e.test,
+                name: e.name,
+                from: e.from,
+                task: e.task,
+                takeover: takeovers[i],
+            }));
+            const isContradicted = (t) => contradicts.some((x) => x.test === t.test && x.name === t.name);
+            const contradictedPart = () => {
+                if (contradicts.length === 0)
+                    return "";
+                const many = contradicts.length > 1;
+                const them = many ? "them" : "it";
+                const owners = contradicts.map((x) => `TASK ${x.from}`).join(", ");
+                const added = [...new Set(contradicts.map((x) => x.takeover))].join(", ");
+                return `${contradicts.map(nameOf).join(", ")} ${many ? "are" : "is"} owned by an earlier, ticked task (${owners}) and this change contradicts ${them}: the build added takeover TASK ${added}, which rewrites ${them} in its own tests step — put ${them} back as the tests step left ${them} (other edits to the file stay); a BLOCKED line does not keep ${them}, so the keep-the-edit choice does not apply to ${them}`;
+            };
             const logLines = (list) => list.map((t) => `BLOCKED — TASK {N}: test \`${t.test}\` \`${t.name}\` — {why}`).join("; ");
             const part = (fromChange) => {
-                const list = tests.filter((_, i) => why[i].fromChange === fromChange);
+                const list = tests.filter((t, i) => why[i].fromChange === fromChange && !isContradicted(t));
                 if (list.length === 0)
                     return "";
                 const many = list.length > 1;
@@ -1130,12 +1172,21 @@ async function finish(ctx) {
             const notes = [];
             for (const [i, t] of tests.entries()) {
                 const w = why[i];
+                if (isContradicted(t))
+                    continue;
                 if (w.removed)
                     notes.push(`${nameOf(t)}: the engine refuses a BLOCKED-named change that removes a line of a planned test; it lets through only a change that adds lines, and verify reads every added line`);
                 if (w.reused !== null)
                     notes.push(`${nameOf(t)}: the BLOCKED line's reason "${w.reused}" is already recorded for that test — log a new reason`);
             }
-            const problem = `${[part(false), part(true)].filter(Boolean).join(" | ")}${notes.length ? ` (${notes.join("; ")})` : ""} (Gap {N} in a gaps fix) (nothing written)`;
+            const refused = [part(false), part(true)].filter(Boolean);
+            const refusedText = refused.length > 0
+                ? `${refused.join(" | ")}${notes.length ? ` (${notes.join("; ")})` : ""} (Gap {N} in a gaps fix)`
+                : "";
+            const written = contradicts.length > 0
+                ? "(no step row written; the plan and its build-takeover rows are)"
+                : "(nothing written)";
+            const problem = `${[contradictedPart(), refusedText].filter(Boolean).join(" | ")} ${written}`;
             ctx.log(problem);
             recordTestLockFriction(top, step, named);
             ctx.emit({
@@ -1144,6 +1195,7 @@ async function finish(ctx) {
                 problem,
                 touched,
                 tests,
+                contradicts,
             });
             return EXIT_TESTS_TOUCHED;
         }
@@ -1165,6 +1217,37 @@ async function finish(ctx) {
             ctx.log(`the tests step changed ${source.join(", ")}: it writes the group's TEST FIRST files only — put the rest back (nothing written)`);
             ctx.emit({ pass: false, source });
             return EXIT_SOURCE_TOUCHED;
+        }
+        // An earlier task's planned test stays as its baseline left it, unless an open task of
+        // this group names it (its own test, or one it takes over).
+        const top = git(ctx.cwd, ["rev-parse", "--show-toplevel"]) ?? ctx.cwd;
+        const planPath = path.resolve(ctx.cwd, planArg);
+        const planText = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf-8") : undefined;
+        const planTasks = parsePlanBlocks(planText ?? "").tasks;
+        const done = new Set(planTasks.filter((t) => t.done).map((t) => t.task));
+        const inGroup = new Set(planTasks.filter((t) => t.group === group).map((t) => t.task));
+        const mine = readTestFirst(planText ?? "", group).flatMap((s) => s.kind === "test" && !done.has(s.task) ? s.tests : []);
+        // Only a per-test lock binds here: an earlier group's test held by its whole file's blob
+        // (no line carries its name, or the file was missing) cannot tell this group's own new
+        // tests in that file from an edit to it.
+        const tests = touchedTests(top, file, workflow, planText)
+            .filter((c) => !c.wholeFile || inGroup.has(c.task))
+            .filter((c) => !mine.some((m) => m.test === c.test && sameTestName(m.name, c.name)))
+            .map((c) => ({ test: c.test, name: c.name }));
+        if (tests.length > 0) {
+            const touched = [...new Set(tests.map((t) => t.test))];
+            const named = tests.map((t) => `\`${t.test}\` "${t.name}"`).join(", ");
+            const problem = `${named} ${tests.length > 1 ? "are" : "is"} an earlier task's planned test that no open task of group ${group} names: the tests step never changes it — put it back as the earlier task's red left it (other edits to the file stay); to change what it asserts, the plan names it on this group's task TEST FIRST (a takeover) (nothing written)`;
+            ctx.log(problem);
+            recordTestLockFriction(top, step, named);
+            ctx.emit({
+                pass: false,
+                reask: agents.length ? { agent: agents[0], artifact: artifacts[0] } : null,
+                problem,
+                touched,
+                tests,
+            });
+            return EXIT_TESTS_TOUCHED;
         }
     }
     // The attempt finished is the latest one this run saved artifacts for.
@@ -1667,7 +1750,7 @@ export const stepsCommand = {
             },
         },
         finish: {
-            summary: "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment.",
+            summary: "End a step: read the verdict header(s), derive the attempt, check the gate, write the row, commit, print the tracker comment. Exit 11 on a build tests step that changed an earlier task's recorded test no open task of the group names, and on a code step that changed a planned test; for each BLOCKED test a ticked task owns, a code step first adds a takeover task to the plan and its build-takeover row, and prints them under contradicts.",
             use: "workflow",
             flags: [
                 { ...FILE_FLAG, help: "path to status.jsonl (created if absent)" },
@@ -1805,6 +1888,7 @@ export const stepsCommand = {
                 reask: "verdict read failed, or a planned test was touched: {agent, artifact} to re-ask (exit 4 / 5 / 6 / 11 only)",
                 problem: "why the verdict read failed, or which planned tests the code step touched (exit 4 / 5 / 6 / 11 only)",
                 touched: "planned test files of the group that differ from the blob its tests step recorded (exit 11 only)",
+                contradicts: "[{test, name, from, task, takeover}] the refused tests a ticked task `from` owns that this change contradicts, each with the takeover task the engine added (exit 11 on a code step only)",
                 source: "files the tests step's commit would change that are not the group's TEST FIRST files, or add although a CREATE line names them (exit 15 only)",
                 later: "artifacts of a later attempt this run saved (exit 12 only)",
                 changed: "bkit.workflows keys the commit would change, dotted (exit 13 only)",
@@ -1820,7 +1904,7 @@ export const stepsCommand = {
                 [EXIT_FOREIGN_PATH]: "nothing written, nothing committed: a path that was dirty before an in-place run changed during it",
                 [EXIT_NO_RECORD]: "a debug run on dev/main with no shared-checkout record: nothing written or committed",
                 [EXIT_OUTSIDE_DOCS]: "--docs-only and the step staged a file outside the artifact tree (nothing written)",
-                [EXIT_TESTS_TOUCHED]: "build plan-execute / plan-gaps-remediate: a planned test case (of any group) differs from the lines recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back, or to keep the edit and log ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` (Gap {N} in a gaps fix) in the step's log, which lets that change through and records it in the row's `changedTests`; other edits to the file stay (nothing written; an agent-rework friction row is appended)",
+                [EXIT_TESTS_TOUCHED]: "build plan-execute / plan-gaps-remediate: a planned test case (of any group) differs from the lines recorded in status.jsonl (`tests`: [{test, name}]; `touched`: their files) — re-ask `reask.agent` to put that test back, or to keep the edit and log ``BLOCKED — TASK {N}: test `{file}` `{name}` — {why}`` (Gap {N} in a gaps fix) in the step's log, which lets that change through and records it in the row's `changedTests`; other edits to the file stay (nothing written; an agent-rework friction row is appended). A BLOCKED test that removes lines of a ticked task's planned test is contradicted instead: no BLOCKED line keeps it, the engine adds a takeover task and its build-takeover row (once per test, however often the finish runs) and lists it in `contradicts`; the agent puts it back",
                 [EXIT_LATER_ATTEMPT]: "this run saved an artifact of a later attempt (`later`) than the one finished (nothing written)",
                 [EXIT_WORKFLOWS_CHANGED]: "the commit would change bkit.workflows in package.json (`changed` names the keys) (nothing written)",
                 [EXIT_SOURCE_TOUCHED]: "build plan-tests: the tests step changed a file no TEST FIRST line of the group's open tasks names, or added one a CREATE line of the plan names (`source`) (nothing written)",

@@ -236,3 +236,154 @@ describe("the planned-test lock across groups", () => {
     );
   });
 });
+
+/** PLAN with group 2's task taking over group 1's planned test. */
+const TAKEOVER_PLAN = PLAN.replace(
+  `    - \`${SECOND.file}\` \`${SECOND.name}\` fails on the stub`,
+  `    - \`${FIRST.file}\` \`${FIRST.name}\` fails on the stub`,
+);
+/** Group 1's proven red of TASK 1, as its tests step left it. */
+const groupOneRed = () => {
+  const row = {
+    type: "step-done",
+    workflow: "build",
+    step: "build-tests-red",
+    status: "DONE",
+    at: "2026-11-01T05:00:00Z",
+    parentSha: git("rev-parse", "HEAD"),
+    group: 1,
+    attempt: 1,
+    enforced: true,
+    artifacts: ["logs/build-tests-red-1-1.md"],
+    tests: [
+      {
+        task: 1,
+        test: FIRST.file,
+        testName: FIRST.name,
+        state: "red",
+        blob: git("hash-object", "-w", FIRST.file),
+      },
+    ],
+  };
+  write(STATUS, `${JSON.stringify(row)}\n`);
+  git("add", "-A");
+  git("commit", "-q", "-m", "red rows");
+};
+const takeoverBody = FIRST_BODY.replace("toBe(1)", "toBe(2)");
+
+describe("a takeover of an earlier task's planned test", () => {
+  it("a takeover across groups lets the next code step finish", () => {
+    write("plan.md", TAKEOVER_PLAN);
+    groupOneRed();
+    // Group 2's tests step rewrites the taken-over test; its red records the takeover.
+    write(FIRST.file, takeoverBody);
+    const red = bkit(
+      "tests",
+      "red",
+      `--file=${STATUS}`,
+      "--workflow=build",
+      "--group=2",
+      "--plan=plan.md",
+      "--log=logs/build-tests-red-2-1.md",
+    );
+    expect(red.status, red.stderr).toBe(0);
+    expect(red.json.tests).toEqual([
+      expect.objectContaining({ task: 2, state: "taken-over", from: 1 }),
+    ]);
+    git("add", "-A");
+    git("commit", "-q", "-m", "group 2 tests");
+    // Group 2's code step touches only its code: the moved lock lets it finish.
+    write("src/c.ts", "export const other = () => 1;\n");
+    write(
+      "logs/execute-2-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\nDONE — TASK 2: rows count two\n",
+    );
+    const code = bkit(
+      ...finishArgs("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-2-log.md", 2),
+    );
+    expect(code.status, code.stderr).toBe(0);
+  });
+
+  it("a mid-build contradiction adds a takeover task and the next code step finishes", () => {
+    groupOneRed();
+    // Group 2's code step removes a line of ticked TASK 1's planned test and logs it BLOCKED.
+    const removed = FIRST_BODY.replace("    expect(addRow()).toBe(1);\n", "");
+    write(FIRST.file, removed);
+    write("src/c.ts", "export const other = () => 1;\n");
+    const executeLog = [
+      "Verdict: PASS",
+      "",
+      "<!-- verdict:end -->",
+      "",
+      "# Build Plan",
+      "",
+      `BLOCKED — TASK 2: test \`${FIRST.file}\` \`${FIRST.name}\` — rows now start at 0`,
+      "DONE — TASK 2: added other",
+      "",
+    ].join("\n");
+    write("logs/execute-2-log.md", executeLog);
+    const refused = bkit(
+      ...finishArgs("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-2-log.md", 2),
+    );
+    expect(refused.status).toBe(11);
+    // The refused finish adds the takeover task itself; the code agent puts the test back.
+    expect(refused.json.contradicts).toEqual([
+      { test: FIRST.file, name: FIRST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    write(FIRST.file, FIRST_BODY);
+    const again = bkit(
+      ...finishArgs("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-2-log.md", 2),
+    );
+    expect(again.status, again.stderr).toBe(0);
+
+    // § Pending takeovers: group 3's tests half runs now.
+    const pending = () =>
+      bkit("tasks", "takeover", "--pending", "--plan=plan.md", `--file=${STATUS}`).json.pending;
+    expect(pending()).toEqual({ group: 3, tasks: [3] });
+    write(FIRST.file, removed);
+    write(
+      "logs/build-plan-tests-3-log.md",
+      `Verdict: PASS\n\n<!-- verdict:end -->\n\n# Tests\n\nWROTE — TASK 3: ${FIRST.file} ${FIRST.name}\n`,
+    );
+    const testsStep = bkit(
+      "steps",
+      "finish",
+      `--file=${STATUS}`,
+      "--workflow=build",
+      "--step=build-plan-tests",
+      "--group=3",
+      "--attempt=1",
+      "--plan=plan.md",
+      "--agent=bkit-build-plan-tests",
+      "--artifact=logs/build-plan-tests-3-log.md",
+      "--message=chore(1-x): plan-tests group 3",
+    );
+    expect(testsStep.status, testsStep.stderr).toBe(0);
+    const red = bkit(
+      "tests",
+      "red",
+      `--file=${STATUS}`,
+      "--workflow=build",
+      "--group=3",
+      "--plan=plan.md",
+      "--log=logs/build-tests-red-3-1.md",
+    );
+    expect(red.status, red.stderr).toBe(0);
+    expect(red.json.tests).toEqual([
+      expect.objectContaining({ task: 3, state: "taken-over", from: 1 }),
+    ]);
+    expect(pending()).toBeNull();
+    git("add", "-A");
+    git("commit", "-q", "-m", "group 3 tests");
+
+    // Group 3's code step has nothing left to write: its finish passes on the moved lock.
+    write(
+      "logs/execute-3-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Build Plan\n\nDONE — TASK 3: already landed\n",
+    );
+    const code = bkit(
+      ...finishArgs("build-plan-tasks", "bkit-build-plan-tasks", "logs/execute-3-log.md", 3),
+    );
+    expect(code.status, code.stderr).toBe(0);
+  });
+});

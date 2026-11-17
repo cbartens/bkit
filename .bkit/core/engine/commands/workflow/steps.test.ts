@@ -2203,6 +2203,62 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
   });
 
+  /**
+   * Group 1 (ticked) names `adds a row`; group 2's task names `counts rows` in the same file,
+   * plus each of `extra` names. Group 1's red row stands on both tests' first lines.
+   */
+  function testsStepInGroup2(extra: string[] = []) {
+    const { cwd, body } = twoTests();
+    fs.rmSync(path.join(cwd, "src/a.ts"));
+    write(
+      cwd,
+      "plan.md",
+      TWO_GROUP_PLAN.replace(
+        "    - `src/c.test.ts` `does other` fails on the stub",
+        [`    - \`${TEST.file}\` \`counts rows\` fails on the stub`, ...extra].join("\n"),
+      ),
+    );
+    write(
+      cwd,
+      "logs/build-plan-tests-2-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Tests\n\nWROTE — TASK 2: src/a.test.ts counts rows\n",
+    );
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "plan");
+    const args = [
+      ...TESTS.filter((a) => a !== "--verdict=PASS").map((a) =>
+        a === "--group=1" ? "--group=2" : a.replace("plan-tests-1-log", "plan-tests-2-log"),
+      ),
+      "--agent=bkit-build-plan-tests",
+    ];
+    return { cwd, body, args };
+  }
+
+  it("the tests step's finish refuses an earlier task's changed planned test with exit 11", async () => {
+    const { cwd, body, args } = testsStepInGroup2();
+    write(cwd, TEST.file, body("2", "1"));
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await run(cwd, args);
+    expect(r.code).toBe(EXIT_TESTS_TOUCHED);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.touched).toEqual([TEST.file]);
+    expect(r.json.reask).toEqual({
+      agent: "bkit-build-plan-tests",
+      artifact: "logs/build-plan-tests-2-log.md",
+    });
+    expect(r.json.problem).toContain("an earlier task's planned test");
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the tests step's finish passes its own group's and taken-over tests", async () => {
+    const { cwd, body, args } = testsStepInGroup2([
+      `    - \`${TEST.file}\` \`${TEST.name}\` fails on the stub`,
+    ]);
+    write(cwd, TEST.file, body("2", "1"));
+    const r = await run(cwd, args);
+    expect(r.code, r.err).toBe(0);
+  });
+
   const blockedLine = (kind: "TASK" | "Gap", n: number, name: string, reason: string) =>
     `BLOCKED — ${kind} ${n}: test \`${TEST.file}\` \`${name}\` — ${reason}\n`;
   const appendTo = (cwd: string, rel: string, text: string) =>
@@ -2521,6 +2577,160 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
   });
 
+  /**
+   * twoTests under the two-group plan, TASK 1's box ticked or open, and TASK 2's BLOCKED line
+   * removing a line of TASK 1's test. Returns the repo and the finish to run.
+   */
+  function contradicting(ticked: boolean) {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      "plan.md",
+      ticked ? TWO_GROUP_PLAN : TWO_GROUP_PLAN.replace("- [x] **TASK 1:**", "- [ ] **TASK 1:**"),
+    );
+    git(cwd, "commit", "-qam", "plan");
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, TEST.name, "rows now start at 0"),
+    );
+    return { cwd, finish: () => run(cwd, [...EXECUTE, "--plan=plan.md"]) };
+  }
+  const planOf = (cwd: string) => fs.readFileSync(path.join(cwd, "plan.md"), "utf-8");
+
+  it("a code step's finish adds one takeover task and one build-takeover row for a contradicted test, exit 11", async () => {
+    const { cwd, finish } = contradicting(true);
+    const head = git(cwd, "rev-parse", "HEAD");
+    const r = await finish();
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    const plan = planOf(cwd);
+    expect(plan).toContain("<!-- bkit:group 3 start -->");
+    expect(plan).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 1");
+    expect(plan).toContain("  - **DEPENDS ON:** 2");
+    expect(stepRows(cwd, "build-takeover")).toEqual([
+      expect.objectContaining({ task: 3, from: 1, test: TEST.file, name: TEST.name }),
+    ]);
+    expect(stepRows(cwd, "build-takeover")[0]!.reason).toBe("rows now start at 0");
+    expect(stepRows(cwd, "build-plan-tasks")).toEqual([]);
+    expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  it("the contradiction's problem says the takeover task rewrites the test and no BLOCKED line keeps it", async () => {
+    const r = await contradicting(true).finish();
+    expect(r.json.problem).toContain("owned by an earlier, ticked task (TASK 1)");
+    expect(r.json.problem).toContain("the build added takeover TASK 3");
+    expect(r.json.problem).toContain("put it back as the tests step left it");
+    expect(r.json.problem).toContain("a BLOCKED line does not keep it");
+    expect(r.json.problem).not.toContain("or keep the edit and log");
+  });
+
+  it("the same contradicted finish run again adds no second task or row", async () => {
+    const { cwd, finish } = contradicting(true);
+    expect((await finish()).code).toBe(11);
+    const once = planOf(cwd);
+    const again = await finish();
+    expect(again.code).toBe(11);
+    expect(again.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    expect(planOf(cwd)).toBe(once);
+    expect(stepRows(cwd, "build-takeover")).toHaveLength(1);
+  });
+
+  it("exit 11 names no contradiction and adds no task while the owning task is open", async () => {
+    const { cwd, finish } = contradicting(false);
+    const before = planOf(cwd);
+    const r = await finish();
+    expect(r.code).toBe(11);
+    expect(r.json.contradicts).toEqual([]);
+    expect(planOf(cwd)).toBe(before);
+    expect(stepRows(cwd, "build-takeover")).toEqual([]);
+  });
+
+  it("a mixed refusal names both tests and words the problem for each kind", async () => {
+    const { cwd, body } = twoTests();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd, {
+      group: 2,
+      tests: [
+        {
+          task: 2,
+          test: TEST.file,
+          testName: "counts rows",
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), "counts rows"),
+        },
+      ],
+    });
+    write(cwd, TEST.file, body("1", "5").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(
+      cwd,
+      "logs/execute-1-log.md",
+      blockedLine("TASK", 2, TEST.name, "rows now start at 0"),
+    );
+    const r = await run(cwd, [...EXECUTE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([
+      { test: TEST.file, name: TEST.name },
+      { test: TEST.file, name: "counts rows" },
+    ]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 1, task: 2, takeover: 3 },
+    ]);
+    expect(r.json.problem).toContain(
+      `\`${TEST.file}\` "${TEST.name}" is owned by an earlier, ticked task`,
+    );
+    expect(r.json.problem).toContain(
+      `\`${TEST.file}\` "counts rows" differs from what the group's tests step recorded at its red`,
+    );
+    expect(r.json.problem).toContain("or keep the edit and log one line per test");
+    expect(r.json.problem).toContain("BLOCKED — TASK {N}: test `src/a.test.ts` `counts rows`");
+    expect(r.json.problem).not.toContain("BLOCKED — TASK {N}: test `src/a.test.ts` `adds a row`");
+  });
+
+  it("a chain of takeovers gives one contradiction, from the latest owner", async () => {
+    const { cwd, body } = twoTests();
+    write(
+      cwd,
+      "plan.md",
+      TWO_GROUP_PLAN.replace("- [ ] **TASK 2:**", "- [x] **TASK 2:**").replace(
+        "`src/c.test.ts` `does other`",
+        `\`${TEST.file}\` \`${TEST.name}\``,
+      ),
+    );
+    git(cwd, "commit", "-qam", "plan");
+    redRow(cwd, {
+      group: 2,
+      tests: [
+        {
+          task: 2,
+          from: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "taken-over",
+          blob: blobOf(cwd, TEST.file),
+          block: blockHash(textOfTest(cwd), TEST.name),
+        },
+      ],
+    });
+    write(cwd, TEST.file, body("1", "0").replace("    expect(addRow()).toBe(1);\n", ""));
+    appendTo(cwd, "logs/remediate-1-log.md", blockedLine("Gap", 1, TEST.name, "rows start at 0"));
+    const r = await run(cwd, [...REMEDIATE, "--plan=plan.md"]);
+    expect(r.code).toBe(11);
+    expect(r.json.tests).toEqual([{ test: TEST.file, name: TEST.name }]);
+    expect(r.json.contradicts).toEqual([
+      { test: TEST.file, name: TEST.name, from: 2, task: null, takeover: 3 },
+    ]);
+    expect(planOf(cwd)).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 2");
+  });
+
   it("refuses a code step whose BLOCKED-named change renames a planned test away, exit 11", async () => {
     const { cwd, body } = twoTests();
     write(cwd, TEST.file, body("1", "0").replace(TEST.name, "a renamed test"));
@@ -2612,6 +2822,72 @@ describe("bkit steps finish — the tests step touches only tests, the code step
     expect(r.code).toBe(11);
     expect(r.json.touched).toEqual([TEST.file]);
     expect(git(cwd, "rev-parse", "HEAD")).toBe(head);
+  });
+
+  /** A shared-file plan repo and group 2's tests-step finish, run after group 2's tests step wrote `after`. */
+  function group2TestsStep(after: string) {
+    const cwd = planned();
+    write(cwd, "plan.md", SHARED_FILE_PLAN);
+    write(
+      cwd,
+      "logs/build-plan-tests-2-log.md",
+      "Verdict: PASS\n\n<!-- verdict:end -->\n\n# Tests\n\nWROTE — TASK 2: src/a.test.ts counts rows\n",
+    );
+    const finish = () => {
+      write(cwd, TEST.file, after);
+      return run(cwd, [
+        ...TESTS.filter((a) => a !== "--verdict=PASS").map((a) =>
+          a === "--group=1" ? "--group=2" : a.replace("plan-tests-1-log", "plan-tests-2-log"),
+        ),
+        "--agent=bkit-build-plan-tests",
+      ]);
+    };
+    return { cwd, finish };
+  }
+
+  it("passes group 2's tests step that appends its test to a file whose group 1 test has no recorded block, before group 2's red", async () => {
+    const { cwd, finish } = group2TestsStep(PARAM_V2);
+    write(cwd, TEST.file, PARAM_V1);
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "group 1 tests");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "red",
+          blob: blobOf(cwd, TEST.file),
+          block: null,
+        },
+      ],
+    });
+    const r = await finish();
+    expect(r.code, r.err).toBe(0);
+    expect(git(cwd, "show", "--name-only", "--format=", "HEAD")).toContain(TEST.file);
+  });
+
+  it("passes group 2's tests step that creates the file a group 1 test was recorded missing in", async () => {
+    const { cwd, finish } = group2TestsStep(
+      "it('counts rows', () => {\n  expect(count()).toBe(0);\n});\n",
+    );
+    fs.rmSync(path.join(cwd, TEST.file));
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "no tests yet");
+    redRow(cwd, {
+      tests: [
+        {
+          task: 1,
+          test: TEST.file,
+          testName: TEST.name,
+          state: "missing",
+          blob: null,
+          block: null,
+        },
+      ],
+    });
+    const r = await finish();
+    expect(r.code, r.err).toBe(0);
   });
 
   it("a changedTests record on a non-code-step row does not move the lock's baseline", async () => {

@@ -32,6 +32,7 @@ import { CONFIG_DEFAULTS, readBkitConfig } from "../../shared/settings.js";
 import { FILE_FLAG, GROUP_FLAG, WORKFLOW_FLAG, positiveInt, readStatusRows, readRuns, statusFile, str, } from "./status.js";
 import { NO_MARKERS_REASON, derivedTestMatrix, fenceNeverClosed, parsePlanBlocks, reuseInventory, supersessionInventory, } from "./plan-blocks.js";
 import { writeStepRow } from "./steps.js";
+import { activeRunStart } from "./counters.js";
 import { REPORT_ENV, reportFailures, runTestFile, runToLog } from "./junit.js";
 import { appendRecord, clampFile } from "./context.js";
 import { minPushPathspecs } from "../ci/ci.js";
@@ -208,16 +209,21 @@ function appendTestRun(file, r) {
 // ---------------------------------------------------------------------------
 /** The status row step a group's red writes: one row per `tests red` run, a state and blob per planned test. */
 export const RED_STEP = "build-tests-red";
+/** The status row step `steps finish` writes for a contradicted planned test: one row per takeover task it adds. */
+export const TAKEOVER_STEP = "build-takeover";
 /**
  * The states that count as a red: the test failed, its file did not load, the tests step
- * vouched for its pass, or it is an existing test updated and passing, whose diff the
- * verifier judges (it may add expectations, never remove or loosen one).
+ * vouched for its pass, it is an existing test updated and passing, whose diff the
+ * verifier judges (it may add expectations, never remove or loosen one), or it is a test
+ * taken over from an earlier task, written in this build and passing after its rewrite
+ * (reported as changed hands, not proven failing).
  */
 export const RED_PROVEN = new Set([
     "red",
     "red-not-loaded",
     "passed-accepted",
     "updated",
+    "taken-over",
 ]);
 /** The `build-tests-red` rows of `workflow` in status.jsonl, in file order; `group` narrows. */
 function redRows(file, workflow, group) {
@@ -309,6 +315,21 @@ export function lockBaselines(rows, planned) {
                         text: t.blob,
                         origin: t.blob,
                     });
+                // A takeover's entry, whatever its state, is the new baseline of every earlier key
+                // naming the same test: the earlier task's lock moves onto the taken-over lines.
+                if (t.from === undefined)
+                    continue;
+                for (const [k, b] of out)
+                    if (k !== key && b.test === t.test && sameTestName(b.testName, t.testName))
+                        out.set(k, {
+                            ...b,
+                            state: t.state,
+                            blob: t.blob,
+                            block: t.block,
+                            fromChange: false,
+                            text: t.blob,
+                            origin: t.blob,
+                        });
             }
         }
         if (CODE_STEPS.has(String(row.step)) && Array.isArray(row.changedTests)) {
@@ -389,7 +410,7 @@ export function touchedTests(top, file, workflow, plan) {
     };
     for (const t of lockBaselines(workflowRows(file, workflow), plannedKeys(plan)).values()) {
         const now = blockHash(textOf(t.test), t.testName);
-        const hit = () => touched.push({
+        const hit = (wholeFile) => touched.push({
             test: t.test,
             name: t.testName,
             task: t.task,
@@ -398,6 +419,7 @@ export function touchedTests(top, file, workflow, plan) {
             text: t.text,
             origin: t.origin,
             fromChange: t.fromChange,
+            wholeFile,
         });
         let block = t.block ?? null;
         if (block === null)
@@ -405,15 +427,15 @@ export function touchedTests(top, file, workflow, plan) {
         if (block === null) {
             if (t.blob === null && t.fromChange) {
                 if (now !== null && t.reasons.length > 0)
-                    hit();
+                    hit(true);
                 continue;
             }
             if (git(top, ["hash-object", "--", t.test]) !== t.blob)
-                hit();
+                hit(true);
             continue;
         }
         if (now !== block)
-            hit();
+            hit(false);
     }
     return touched;
 }
@@ -641,14 +663,54 @@ export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 export const planCaps = (cwd) => readBkitConfig(toplevel(cwd)).tasks;
 /** The caps as the plan-check report and help state them. */
 export const capsText = (c) => `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
-/** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
+/** The test a JUnit-style suite path (`suite > test`) names: its last segment. */
+const lastSegment = (name) => name.split(" > ").pop().trim();
+/**
+ * Two planned test names name one test: equal, or, when one of them has no ` > ` (a bare
+ * test name against a suite path), equal in their last segment. Two suite paths must match
+ * whole: `a > works` and `b > works` are two tests.
+ */
+export const sameTestName = (a, b) => a === b || ((!a.includes(" > ") || !b.includes(" > ")) && lastSegment(a) === lastSegment(b));
+/**
+ * Every planned test a later task names that an earlier task (plan order, done tasks
+ * included) also names in the same file: the later task takes the test over. `from` is
+ * the nearest earlier task naming it. Paths compare posix-normalized; names compare per
+ * `sameTestName`.
+ */
+export function planTakeovers(text) {
+    const seen = [];
+    const out = [];
+    for (const t of parsePlanBlocks(text).tasks) {
+        const mine = t.testFirst?.tests ?? [];
+        for (const x of mine) {
+            const test = path.posix.normalize(x.test);
+            const owner = [...seen]
+                .reverse()
+                .find((s) => s.test === test && sameTestName(s.name, x.name));
+            if (owner !== undefined)
+                out.push({
+                    task: t.task,
+                    from: owner.task,
+                    test,
+                    name: x.name,
+                    line: x.line,
+                    sameGroup: owner.group === t.group,
+                });
+        }
+        for (const x of mine)
+            seen.push({ task: t.task, group: t.group, test: path.posix.normalize(x.test), name: x.name });
+    }
+    return out;
+}
 /**
  * Planned tests of open tasks whose name a test in their file already carries: the tests
  * step cannot write a new test under that name, so it either updates the existing one or
- * finds it passing. Reported only — the plan names the update, or a new name.
+ * finds it passing. Reported only — the plan names the update, or a new name. A test the
+ * task takes over from an earlier task (`planTakeovers`) is left out.
  */
 function existingTestNames(text, top) {
     const out = [];
+    const takenOver = new Set(planTakeovers(text).map((k) => redKey(k.task, k.test, k.name)));
     for (const t of parsePlanBlocks(text).tasks) {
         if (t.done)
             continue;
@@ -656,6 +718,8 @@ function existingTestNames(text, top) {
         if (s.kind !== "test")
             continue;
         for (const x of s.tests) {
+            if (takenOver.has(redKey(t.task, x.test, x.name)))
+                continue;
             const abs = path.join(top, x.test);
             if (!fs.existsSync(abs))
                 continue;
@@ -665,6 +729,7 @@ function existingTestNames(text, top) {
     }
     return out;
 }
+/** A task block's TEST FIRST read as one `TestFirst`; a TEST EXCEPTION with no TEST FIRST is its `n/a`. */
 function testFirstOf(t) {
     const { task, testFirst: tf, testException: exc } = t;
     const plain = (tests) => tests.map(({ test, name }) => ({ test, name }));
@@ -1217,11 +1282,30 @@ function updatedEntry(top, task, t, base) {
     const d = lineDiff(was, now);
     return { ...entry, additive: d.removed === 0, diff: d.text };
 }
+/** The `TakenOver` entry for a red entry carrying `from`: its lines at the owner's red against now. */
+function takenOverEntry(top, reds, red) {
+    const owner = [...reds.values()].find((r) => r.task === red.from && r.test === red.test && sameTestName(r.testName, red.testName));
+    const d = owner === undefined ? null : baselineDiff(top, owner.blob, red.test, red.testName);
+    return {
+        task: red.task,
+        from: red.from,
+        test: red.test,
+        name: red.testName,
+        state: red.state,
+        additive: d?.additive ?? null,
+        diff: d?.diff ?? null,
+    };
+}
 /** Every BLOCKED line of a code step's log that names a planned test, with its reason. */
 export function blockedTests(log) {
     return [
-        ...log.matchAll(/^BLOCKED\s*[—–-]+\s*(?:TASK|Gap)\s+\d+:\s*test\s+`([^`]+)`\s+`([^`]+)`\s*[—–-]+\s*(.+)$/gm),
-    ].map((m) => ({ test: m[1].trim(), name: m[2].trim(), reason: m[3].trim() }));
+        ...log.matchAll(/^BLOCKED\s*[—–-]+\s*(TASK|Gap)\s+(\d+):\s*test\s+`([^`]+)`\s+`([^`]+)`\s*[—–-]+\s*(.+)$/gm),
+    ].map((m) => ({
+        test: m[3].trim(),
+        name: m[4].trim(),
+        reason: m[5].trim(),
+        task: m[1] === "TASK" ? Number(m[2]) : null,
+    }));
 }
 /** Every PASSES line of a tests step's log: the tests the writer saw passing and vouches for. */
 function passesLines(log) {
@@ -1331,6 +1415,18 @@ function writeAuditReport(log, o) {
         if (u.diff !== null) {
             const fence = fenceFor(u.diff);
             out.push("", `  ${fence}diff`, ...u.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
+        }
+    }
+    if (o.takenOver.length > 0)
+        out.push("", "## Taken over", "");
+    for (const t of o.takenOver) {
+        const judged = t.state === "taken-over"
+            ? "changed hands and passes after the rewrite: not proven failing, and never a gap"
+            : `recorded \`${t.state}\` after the rewrite`;
+        out.push(`- Task ${t.task} \`${t.test}\` "${t.name}" — taken over from Task ${t.from}; ${judged}`);
+        if (t.diff !== null) {
+            const fence = fenceFor(t.diff);
+            out.push("", `  ${fence}diff`, ...t.diff.split("\n").map((l) => `  ${l}`), `  ${fence}`, "");
         }
     }
     if (o.unproven.length > 0)
@@ -1767,7 +1863,7 @@ export const testsCommand = {
             },
         },
         red: {
-            summary: "Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run.",
+            summary: "Run every TEST FIRST test of one group's open tasks before any task code exists, and write one build-tests-red row holding a state and blob per planned test; a test an earlier row of the group proved red, its file unchanged since, is not run again. A test a later task takes over from an earlier one (same file and name) carries `from`, and one that passes after the rewrite is recorded taken-over. Exit 0 every test red, 1 a gap (a test passing, absent from its report, failing lint, or its file missing), 3 bkit:test:file undeclared (blobs recorded, nothing ran), 4 a script could not run.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
@@ -1800,9 +1896,9 @@ export const testsCommand = {
                 enforced: "false when bkit:test:file is not declared (the row records the blobs, every state unknown, exit 3) or the plan could not be read (no row, exit 1)",
                 reason: "why test-first is not enforced",
                 attempt: "this group's build-tests-red rows so far, this one included",
-                tests: "[{task, test, testName, state, blob, reason?}] in plan order, the tests run now: state red | red-not-loaded | passed-accepted | vacuous | missing | no-report | lint | unknown; blob the test file's git blob as it stood (null when the file is missing); reason the tests step's, on passed-accepted",
+                tests: "[{task, test, testName, state, blob, reason?, base?, from?}] in plan order, the tests run now: state red | red-not-loaded | passed-accepted | updated | taken-over | vacuous | missing | no-report | lint | unknown; blob the test file's git blob as it stood (null when the file is missing); reason the tests step's, on passed-accepted; from the earlier task a takeover took the test over from (a passing takeover written in this build is taken-over, one that existed at the run start is updated with base the run's start commit)",
                 skipped: "planned tests an earlier row of the group proved red, their file unchanged since: not run again, and not on this row",
-                gaps: "[{task, test, name, kind, detail}]: every planned test whose state is not red, red-not-loaded or passed-accepted; kind is the state",
+                gaps: "[{task, test, name, kind, detail}]: every planned test whose state is not red, red-not-loaded, passed-accepted, updated or taken-over; kind is the state",
                 row: "the build-tests-red row written",
                 log: "where the report was written (as given)",
             },
@@ -1872,18 +1968,40 @@ export const testsCommand = {
                     const shown = runGit(top, ["show", `${startSha}:${t.test}`]);
                     return shown.ok ? blockHash(shown.stdout, t.testName) : null;
                 };
+                // A takeover whose earlier task has a baseline carries `from`; a passing one is judged
+                // against the run start, not the group start.
+                const takeovers = new Map(planTakeovers(planText).map((k) => [redKey(k.task, k.test, k.name), k]));
+                const baselines = [...proven.values()];
+                const fromOf = (task, test, name) => {
+                    const k = takeovers.get(redKey(task, test, name));
+                    if (k === undefined)
+                        return undefined;
+                    const owned = baselines.some((b) => b.task === k.from && b.test === k.test && sameTestName(b.testName, k.name));
+                    return owned ? k.from : undefined;
+                };
+                const runStartRaw = activeRunStart(status, workflow)?.parentSha;
+                const runStart = typeof runStartRaw === "string" ? runStartRaw : undefined;
+                /** The test's lines at the run's start commit: it existed before this build. */
+                const blockAtRunStart = (t) => {
+                    if (runStart === undefined)
+                        return null;
+                    const shown = runGit(top, ["show", `${runStart}:${t.test}`]);
+                    return shown.ok ? blockHash(shown.stdout, t.testName) : null;
+                };
                 const tests = [];
                 let skipped = 0;
                 for (const s of readTestFirst(planText, group)) {
                     if (s.kind !== "test" || done.has(s.task))
                         continue;
                     for (const t of s.tests) {
+                        const from = fromOf(s.task, t.test, t.name);
                         const planned = {
                             task: s.task,
                             test: t.test,
                             testName: t.name,
                             state: "unknown",
                             blob: null,
+                            ...(from === undefined ? {} : { from }),
                         };
                         if (standing(planned))
                             skipped += 1;
@@ -1955,6 +2073,20 @@ export const testsCommand = {
                         }
                         for (const t of mine) {
                             const judged = judgeRed(cases, t.testName, file);
+                            if (t.from !== undefined && judged.state === "vacuous") {
+                                const pre = blockAtRunStart(t);
+                                if (pre === null) {
+                                    t.state = "taken-over";
+                                    details.set(t, `taken over from TASK ${t.from} and passing after its rewrite: changed hands, not proven failing`);
+                                    continue;
+                                }
+                                if (pre !== t.block) {
+                                    t.state = "updated";
+                                    t.base = runStart;
+                                    details.set(t, `taken over from TASK ${t.from}; it existed before the run (\`${runStart.slice(0, 9)}\`) and passes: the verifier judges its diff — it may add expectations, never remove or loosen one`);
+                                    continue;
+                                }
+                            }
                             const accepted = judged.state === "vacuous"
                                 ? passes.find((p) => p.task === t.task && p.test === t.test && p.name === t.testName)
                                 : undefined;
@@ -2030,7 +2162,7 @@ export const testsCommand = {
             },
         },
         green: {
-            summary: "Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); exit 0 no gaps, 1 gaps or a plan with no task markers.",
+            summary: "Audit a plan's test-first evidence (each TEST FIRST test red at its group's tests step, by the build-tests-red row, or accepted there as passing before any task code; the named test passing now); a taken-over test is listed under takenOver with its diff since the earlier task's red, never as a gap or unproven; exit 0 no gaps, 1 gaps or a plan with no task markers.",
             use: "workflow",
             flags: [
                 FILE_FLAG,
@@ -2059,6 +2191,7 @@ export const testsCommand = {
                 alreadyLanded: "[{task, test, name, reason}]: tests the tests step accepted as passing before any task code (passed-accepted on the red row); no red is due for them",
                 unproven: "[{task, test, name, detail}]: tests with no proven red (no build-tests-red row, or a state other than red, red-not-loaded, updated or passed-accepted) and no honoured TEST EXCEPTION; never a gap — the owner answers them once, at the end of the build",
                 changed: "[{task, test, name, reason, diff, additive}]: plan-named tests (every group) a code step changed under a BLOCKED line naming them (the step's changedTests record), with the diff of the test's own lines since its baseline and whether it only adds lines; never a gap — the owner answers them once, at the end of the build",
+                takenOver: "[{task, from, test, name, state, diff, additive}]: planned tests a later task took over (a red entry with from); diff / additive compare the test's own lines at the earlier owner's red with the file now (null when a side cannot be read); never a gap, never unproven",
                 updated: "[{task, test, name, base, additive, diff}]: existing tests the tests step changed (updated on the red row); base is the group's start commit; additive = the test's own lines since base gained lines and lost none (null when a side cannot be read), diff = their unified line diff; the verifier judges each diff — it may add expectations, never remove or loosen one",
                 log: "where the report was written (as given)",
             },
@@ -2114,6 +2247,7 @@ export const testsCommand = {
                     landed: [],
                     unproven: [],
                     updated: [],
+                    takenOver: [],
                     changed,
                     outputs: [],
                 };
@@ -2128,6 +2262,7 @@ export const testsCommand = {
                         alreadyLanded: [],
                         unproven: [],
                         updated: [],
+                        takenOver: [],
                         changed,
                         log: logArg,
                     });
@@ -2139,6 +2274,7 @@ export const testsCommand = {
                 const landed = [];
                 const unproven = [];
                 const updated = [];
+                const takenOver = [];
                 const statusRel = repoRel(top, ctx.cwd, statusFile(ctx));
                 const exceptions = [];
                 const gaps = [];
@@ -2222,6 +2358,8 @@ export const testsCommand = {
                         }
                         else if (RED_PROVEN.has(red.state)) {
                             row.red = red.state;
+                            if (red.from !== undefined)
+                                takenOver.push(takenOverEntry(top, reds, red));
                             if (red.state === "updated")
                                 updated.push(updatedEntry(top, s.task, t, red.base ?? null));
                         }
@@ -2260,6 +2398,7 @@ export const testsCommand = {
                     landed,
                     unproven,
                     updated,
+                    takenOver,
                     changed,
                     outputs,
                 });
@@ -2271,6 +2410,7 @@ export const testsCommand = {
                     alreadyLanded: landed,
                     unproven,
                     updated,
+                    takenOver,
                     changed,
                     log: logArg,
                 });
@@ -2279,7 +2419,7 @@ export const testsCommand = {
             },
         },
         "plan-check": {
-            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; exit 0 no problems, 1 refused.`,
+            summary: `Check a plan's group and task blocks: the block format, DONE WHEN and TEST FIRST on every task, DEPENDS ON order, the caps from package.json \`bkit.workflows.tasks\` (defaults: ${capsText(CONFIG_DEFAULTS.tasks)}), a Reuse Inventory NEW row per CREATE file, a Supersession Inventory row per DELETE, a \`Task\` on every Derived Test Matrix row and a row per test-bearing task, and that each READ / UPDATE / DELETE file and symbol exists; lists each later task's TEST FIRST test an earlier task also names under takeovers, reported only; exit 0 no problems, 1 refused.`,
             use: "by-hand",
             flags: [
                 {
@@ -2306,7 +2446,8 @@ export const testsCommand = {
                 tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
                 problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
                 existence: "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
-                existing: "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries; reported only, never refuses",
+                existing: "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries, takeovers left out; reported only, never refuses",
+                takeovers: "[{task, from, test, name, line, sameGroup}]: planned tests a later task names that an earlier task (`from`, the nearest) also names; reported only, never refuses",
                 log: "where the report was written (as given)",
             },
             run: (ctx) => {
@@ -2325,6 +2466,7 @@ export const testsCommand = {
                 const { groups, sizes, problems } = checkPlanText(text, caps);
                 const existence = planExistence(text, toplevel(ctx.cwd));
                 const existing = existingTestNames(text, toplevel(ctx.cwd));
+                const takeovers = planTakeovers(text);
                 const refused = problems.length > 0 || (existenceArg === "refuse" && existence.length > 0);
                 const out = [
                     `Problems: ${problems.length}`,
@@ -2365,10 +2507,23 @@ export const testsCommand = {
                     out.push("", "## Planned test names already in use (reported only)", "");
                 for (const e of existing)
                     out.push(`- \`${plan}:${e.line}\` TASK ${e.task}: \`${e.test}\` already holds a test named "${e.name}" — name the update to it in TEST FIRST, or give the new test a new name`);
+                if (takeovers.length > 0)
+                    out.push("", "## Tests that change hands (reported only)", "");
+                for (const k of takeovers)
+                    out.push(`- \`${plan}:${k.line}\` TASK ${k.task} takes over "${k.name}" in \`${k.test}\` from TASK ${k.from}${k.sameGroup ? " (same group: one test, one baseline)" : " — the build records it failing again"}`);
                 const log = path.resolve(ctx.cwd, logArg);
                 fs.mkdirSync(path.dirname(log), { recursive: true });
                 fs.writeFileSync(log, `${out.join("\n")}\n`);
-                ctx.emit({ plan, groups, tasks: sizes, problems, existence, existing, log: logArg });
+                ctx.emit({
+                    plan,
+                    groups,
+                    tasks: sizes,
+                    problems,
+                    existence,
+                    existing,
+                    takeovers,
+                    log: logArg,
+                });
                 ctx.log(`plan check: ${problems.length} problem(s), ${existence.length} existence finding(s)${refused ? " — refused" : ""}; report in ${logArg}`);
                 return refused ? EXIT.NO : EXIT.OK;
             },

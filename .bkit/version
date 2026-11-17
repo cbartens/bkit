@@ -164,7 +164,7 @@
     ".cursor/agents/bkit-utility-update-knowledge.md": "670c1c48c23fb511611510d057fdaf32fc77f3744b2e33c58be1077d32d0223b",
     ".opencode/agents/bkit-audit-generate.md": "51abbcc3a4f1435886b8c2fe825e5a7cc6f0ad265dad6ccb07e2eb9c6b4b8f2b",
     ".codex/agents/bkit-audit-generate.toml": "93a7dfb7ce085fa4dce7f211193759068abd7ba294f5bbffe56194e1be337688",
-    "docs/templates/bkit-plan.md": "dff75bafeb338244b197f7c50cedbc5d2383fb99866f2b53f5321498c30204c6",
+    "docs/templates/bkit-plan.md": "92473d633d33b33c63c7d5034a508e40229ac3802441048b92ecb48871e54b5b",
     ".claude/agents/bkit-audit-generate.md": "a17c76ddcf5afd854bf39cc36f0800f847a61c55fe6efb17c9163e98597c8422",
     ".cursor/agents/bkit-audit-generate.md": "61a7dfae9dca9d0426adef302707a53066515e88a72dca9200336a14593f9e81",
     "docs/templates/bkit-audit-accessibility.md": "82cc441b99db2dfa22124a9f5defa6abfd7f85a19704c3cad3c9a50052587133",

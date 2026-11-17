@@ -28,7 +28,7 @@ import { EXIT_BASE, diffNumstat } from "./context.js";
 import { defaultRange } from "./feature-base.js";
 import { parseDecisionItems } from "./open-decision.js";
 import { EXIT_ROW_REFUSED, EXIT_STAGE, appendLedgerRows } from "./ledgers.js";
-import { derivedTestMatrix, parsePlanBlocks } from "./plan-blocks.js";
+import { derivedTestMatrix, parsePlanBlocks, testTier } from "./plan-blocks.js";
 import { readBkitConfig } from "../../shared/settings.js";
 import { grantCount } from "./counters.js";
 import { checkPlanText, planCaps, readTestFirst } from "./tests.js";
@@ -268,12 +268,6 @@ export function renderFindingsLog(findings, round = 1) {
         .join("\n")
         .replace(/\n+$/, "");
 }
-/** The test tier `docs/testing.md` records for a test file's name. */
-const testTier = (file) => /\.integration\.test\./.test(file)
-    ? "Integration"
-    : /\.live\.test\./.test(file)
-        ? "@live (golden)"
-        : "Unit";
 /**
  * One `Derived Test Matrix` row per test a finding task appends: the test's own name and
  * file from its `TEST FIRST` entry, its tier from the file's name, and the task number.

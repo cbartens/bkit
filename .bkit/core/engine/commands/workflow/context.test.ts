@@ -2082,6 +2082,62 @@ describe("bkit context brief", () => {
     expect(section).not.toContain("`sets it`");
   });
 
+  /**
+   * The tests plan where done TASK 2 (group 1) also names `src/t5.test.ts` `logs it`, so
+   * TASK 5 takes it over; a git checkout whose run started at the commit holding `atStart`.
+   */
+  function setupTakeover(name: string, atStart: boolean) {
+    const s = setupWithTests(name);
+    fs.writeFileSync(
+      s.plan,
+      read(s.plan).replace(
+        /(- \[ \] \*\*TASK 2:\*\*[\s\S]*?) {2}- \*\*TEST FIRST:\*\* n\/a — docs only/,
+        "$1  - **TEST FIRST:**\n    - `src/t5.test.ts` `logs it` fails on the stub",
+      ),
+    );
+    const git = (...a: string[]) => spawnSync("git", a, { cwd: s.dir, encoding: "utf-8" });
+    git("init", "-q");
+    git("config", "user.email", "t@example.com");
+    git("config", "user.name", "t");
+    const testFile = path.join(s.dir, "src/t5.test.ts");
+    const body = "it('logs it', () => {\n  expect(log()).toBe(1);\n});\n";
+    fs.mkdirSync(path.dirname(testFile), { recursive: true });
+    if (atStart) fs.writeFileSync(testFile, body);
+    git("add", "-A");
+    git("commit", "-qm", "start", "--allow-empty");
+    const sha = git("rev-parse", "HEAD").stdout.trim();
+    fs.writeFileSync(testFile, body);
+    const status = path.join(s.logs, "status.jsonl");
+    fs.writeFileSync(
+      status,
+      `${JSON.stringify({ type: "workflow-started", workflow: "build", at: "2026-11-01T04:00:00Z", parentSha: sha })}\n`,
+    );
+    return { ...s, status };
+  }
+
+  it("the tests brief lists a taken-over test under its own section", async () => {
+    const { dir, plan, logs, status } = setupTakeover("taken-over", false);
+    const work = read((await testsOnly(plan, logs, dir, [`--file=${status}`])).json.artifact).split(
+      "## The work",
+    )[1]!;
+    const section = work.split("### Planned tests taken over from earlier tasks")[1]!;
+    expect(section).toContain(
+      "- TASK 5 `src/t5.test.ts` `logs it` — taken over from TASK 2; rewrite that test case so it fails until this task's code exists",
+    );
+    expect(work).not.toContain("### Planned tests that already exist");
+  });
+
+  it("a taken-over test that existed before the run keeps the add-only wording", async () => {
+    const { dir, plan, logs, status } = setupTakeover("taken-over-pre-run", true);
+    const work = read((await testsOnly(plan, logs, dir, [`--file=${status}`])).json.artifact).split(
+      "## The work",
+    )[1]!;
+    expect(work).not.toContain("### Planned tests taken over from earlier tasks");
+    expect(work.split("### Planned tests that already exist")[1]!).toContain(
+      "- TASK 5 `src/t5.test.ts` `logs it` — exists at `src/t5.test.ts:1`; update that test in place: add expectations, never remove or loosen one",
+    );
+  });
+
   it("--tests-only --file leaves out a test a build-tests-red row of the group proved red, and a task with no test left", async () => {
     const { dir, plan, logs } = setupWithTests("proven");
     const status = path.join(logs, "status.jsonl");

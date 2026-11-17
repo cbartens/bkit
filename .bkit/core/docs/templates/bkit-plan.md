@@ -75,6 +75,7 @@ _e.g.,_ **WHEN** a user submits the form with a valid file **→ THEN** it is qu
 | [e.g., the API endpoint enforces tenant isolation] | Integration | [e.g., `packages/api/[feature].integration.test.ts`] | 2 |
 | [e.g., the real third-party API returns the expected shape and a boundary-only identity, not just "did not throw"] | @live (golden) | [e.g., `packages/[pkg]/[feature].live.test.ts`] | 2 |
 | [e.g., the new migration replays from empty and the seed loads] | fresh-DB replay | [e.g., `packages/db/migrations/*`] (replayed by `bkit-tests-migration`) | 1 |
+| [e.g., `setStatus` accepts `archived` and still rejects an unknown status] | Unit | [e.g., `packages/api/src/items/setStatus.test.ts`] | 3 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -325,6 +326,17 @@ Carry each required read and each doc update into the runbook task that needs it
 
 <!-- bkit:task 2 end -->
 
+<!-- bkit:task 3 start -->
+
+- [ ] **TASK 3:** [e.g., Accept the `archived` status]
+  - **UPDATE:** `ItemStatus` in `packages/api/src/items/schema.ts`: [e.g., adds `archived`]
+  - **DEPENDS ON:** 2
+  - **DONE WHEN:** [e.g., `setStatus` stores `archived`, and still rejects an unknown status]
+  - **TEST FIRST:**
+    - `packages/api/src/items/setStatus.test.ts` `rejects an unknown status` fails on [e.g., `archived` being rejected] — TASK 2's test, taken over because this task changes what it asserts
+
+<!-- bkit:task 3 end -->
+
 <!-- bkit:group 1 end -->
 
 ### 🔒 Gate 2: Code Implementation Check
@@ -332,7 +344,7 @@ Carry each required read and each doc update into the runbook task that needs it
 - [ ] **No bolt-on:** every `[NEW]` file traces to a `Reuse Inventory` `NEW` row.
 - [ ] **Extensions landed:** every `EXTEND` landed in the artifact its row names.
 - [ ] **No gate weakened:** no gate was weakened.
-- [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran.
+- [ ] **Red before code:** the tests step recorded every planned test of the group red, or as an `updated` existing test, before its code step ran. A later task that names an earlier task's test takes it over: the build reports the takeover and does not refuse it.
 - [ ] **Tests unchanged:** every planned test case matches the lines its red row recorded, or a code step's `BLOCKED` line names the change for the owner.
 - [ ] **Unproven tests:** each planned test with no proven red is cleared only by a human-committed `TEST EXCEPTION` field.
 - [ ] **Gate 2 — Verified:** every box above is checked.

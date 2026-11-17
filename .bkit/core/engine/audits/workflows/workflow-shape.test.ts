@@ -2664,12 +2664,19 @@ describe("planned tests a code step changed", () => {
       .filter((l) => l.includes("planned test case"));
     expect(reasks).toHaveLength(3);
     const kinds = ["TASK", "Gap", "Gap"] as const;
+    /** The task a filled line names: `TASK {N}` names task 1, a `Gap {N}` line names none. */
+    const taskOf = { TASK: 1, Gap: null } as const;
     reasks.forEach((line, i) => {
       const kind = kinds[i]!;
       const form = FORM(kind).exec(line.replaceAll("``", ""));
       expect(form, `exit 11 re-ask ${i + 1} offers no ${kind} test line form`).not.toBeNull();
       expect(blockedTests(filled(form![0]))).toEqual([
-        { test: "src/a.test.ts", name: "adds a row", reason: "the new setup line" },
+        {
+          test: "src/a.test.ts",
+          name: "adds a row",
+          reason: "the new setup line",
+          task: taskOf[kind],
+        },
       ]);
       // The agent appends its DONE line again after the BLOCKED one.
       const after = line.slice(line.indexOf(form![0]) + form![0].length);
@@ -2763,5 +2770,55 @@ describe("planned tests a code step changed", () => {
     expect(rule).toMatch(/skip/);
     expect(rule).toMatch(/reassign/);
     expect(rule).toContain("test-loosened");
+  });
+});
+
+describe("build planned-test takeovers", () => {
+  const build = workflow("build");
+  /** The lines of the build that start a given route, continuation lines not joined. */
+  const routes = (start: string) => build.split("\n").filter((l) => l.includes(start));
+
+  it("the build routes a tests-step exit 11 once, and leaves the takeover write to the engine", () => {
+    // A tests step that edits an earlier task's planned test is re-asked once, then fails.
+    const testsStep = routes("**If** exit 11 →").filter((l) =>
+      l.includes("@bkit-build-plan-tests"),
+    );
+    expect(testsStep).toHaveLength(1);
+    expect(testsStep[0]).toContain("<tests>");
+    expect(testsStep[0]).toMatch(/\*\*Failure Path\*\*/);
+    // Step 9's restore routes its exits the same way, by pointing at Step 7 sub-step 5.
+    expect(stepBody(build, /Step 9 — Plan Gaps Remediate/)).toContain(
+      "Route exit 15 and exit 11 as Step 7 sub-step 5 routes them",
+    );
+    // `steps finish` adds the takeover task itself: no step routes on `contradicts` or
+    // writes a takeover, and the only `tasks takeover` call reads the pending group.
+    expect(build).not.toContain("`contradicts`");
+    expect(commandLines(build, "tasks takeover")).toEqual([
+      expect.stringContaining("tasks takeover --pending"),
+    ]);
+  });
+
+  it("Step 8 runs pending takeovers first, and a holistic fix goes back through Step 7", () => {
+    const pending = section(build, /Pending takeovers/);
+    expect(pending).toContain('"{BKIT}" tasks takeover --pending');
+    expect(pending).toMatch(/Step 7 sub-steps 3-6/);
+    const step8 = stepBody(build, /Step 8 — Plan Verify/);
+    const first = step8.split("\n").findIndex((l) => /^1\. /.test(l));
+    expect(step8.split("\n").slice(0, first).join("\n")).toContain("§ Pending takeovers");
+    // Step 7 runs a takeover group the holistic fix added: its code, verify and tick.
+    const step10 = stepBody(build, /Step 10 — Plan Verify Holistic/);
+    expect(step10).not.toContain("§ Pending takeovers");
+    const [fixed] = step10.split("\n").filter((l) => l.includes("**If** exit 0 → Step 7"));
+    expect(fixed).toContain("goes straight to Step 10 when no group is open");
+    expect(step10).not.toContain("re-run Step 10");
+    expect(build).toContain(
+      "- **If** `DECISION_ROUTE` = `holistic` → Step 7, which runs a takeover group",
+    );
+    // A resumed gate re-run records the pending takeover's tests before the gate runs.
+    const [resume] = build.split("\n").filter((l) => l.startsWith("- **Resume:**"));
+    expect(resume).toBeDefined();
+    const rerun = resume!.slice(resume!.indexOf("`gateRerun` = true"));
+    expect(rerun.indexOf("§ Pending takeovers")).toBeGreaterThan(-1);
+    expect(rerun.indexOf("§ Pending takeovers")).toBeLessThan(rerun.indexOf("decisions apply"));
   });
 });

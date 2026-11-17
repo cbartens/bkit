@@ -20,7 +20,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { DECISION_ROUTES, WORKFLOW_STEPS } from "../commands/workflow/step-table";
-import { RED_STEP } from "../commands/workflow/tests";
+import { RED_STEP, TAKEOVER_STEP } from "../commands/workflow/tests";
 import { substituteWorkflow } from "../render/trackers";
 import {
   SHIP_STEP_ORDER,
@@ -138,10 +138,10 @@ describe("source derivation", () => {
       expect(contract.drift, name).toEqual([]);
       expect(contract.orphanSteps, name).toEqual([]);
     }
-    // Build writes two row keys outside its numbered steps by design; the contract names them.
+    // Build writes three row keys outside its numbered steps by design; the contract names them.
     const build = deriveContract(flowMd("build"), "build");
     expect(build.pauseRows).toEqual([DECISION_ROUTES.build!.step]);
-    expect(build.subRows).toEqual([RED_STEP]);
+    expect(build.subRows).toEqual([RED_STEP, TAKEOVER_STEP]);
     for (const name of ["design", "plan", "debug", "ship"] as const) {
       const contract = deriveContract(flowMd(name), name);
       expect([...contract.pauseRows, ...contract.subRows], name).toEqual([]);

@@ -73,10 +73,13 @@ const MERGED_ON_ENTRY_SKIP = new Set([
 ]);
 /**
  * Step rows an engine verb writes itself, keyed by noun + verb: `tests red` writes the
- * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7.
+ * `RED_STEP` row of `commands/workflow/tests.ts` inside build Step 7, and a code step's
+ * `steps finish` the `TAKEOVER_STEP` row when its change contradicts a ticked task's test.
+ * Only keys with the workflow's own prefix count, so `steps finish` adds nothing elsewhere.
  */
 const VERB_ROWS = {
     "tests red": ["build-tests-red"],
+    "steps finish": ["build-takeover"],
 };
 // A step that reads a verb row (`counters derive --step=build-tests-red`) does not own it.
 const VERB_ROW_KEYS = new Set(Object.values(VERB_ROWS).flat());

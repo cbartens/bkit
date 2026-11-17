@@ -10,6 +10,15 @@ import { parsePlanBlocks } from "./plan-blocks.js";
 import { parseJson } from "../../shared/json.js";
 import { oneLine } from "../../shared/text.js";
 import { challengeResolution, taskVerified } from "./summary-findings.js";
+import { RED_STEP, redTestsOf, TAKEOVER_STEP } from "./tests.js";
+
+/** What a taken-over test's red state proves, in the summary's words. */
+const handedWords = (state: string) => {
+  if (state === "red" || state === "red-not-loaded") return "recorded failing";
+  if (state === "taken-over") return "changed hands, not proven failing";
+  if (state === "updated") return "existing test updated and passing; verify judged its diff";
+  return `not recorded red (\`${state}\`)`;
+};
 
 export const SUMMARY_WORKFLOWS = ["plan", "design", "build", "debug", "ship"] as const;
 export type SummaryWorkflow = (typeof SUMMARY_WORKFLOWS)[number];
@@ -710,6 +719,26 @@ export function buildSummary(input: SummaryInput): Summary {
     for (const { row } of runs)
       out.push(
         `- Attempt ${String(row.attempt ?? "?")}: ${str(row.verdict) ?? "-"}, failures ${typeof row.failures === "number" ? row.failures : "-"}, ran \`${str(row.scope) ?? "unknown"}\``,
+      );
+  }
+
+  // Planned tests a later task took over (red entries with `from`), and the takeover tasks
+  // the build added itself (`build-takeover` rows).
+  if (workflow === "build") {
+    const handed = input.rows
+      .filter((r) => r.type === "step-done" && r.step === RED_STEP)
+      .flatMap((r) => redTestsOf(r))
+      .filter((t) => typeof t.from === "number");
+    const latest = new Map(handed.map((t) => [`${t.task}\0${t.test}\0${t.testName}`, t]));
+    const added = input.rows.filter((r) => r.type === "step-done" && r.step === TAKEOVER_STEP);
+    if (latest.size > 0 || added.length > 0) out.push("", "## Tests that changed hands", "");
+    for (const t of latest.values())
+      out.push(
+        `- TASK ${t.from} → TASK ${t.task}: \`${t.testName}\` ${handedWords(String(t.state))}`,
+      );
+    for (const r of added)
+      out.push(
+        `- TASK ${String(r.task)} added by the build: takes over \`${oneLine(String(r.name))}\` in \`${oneLine(String(r.test))}\` from TASK ${String(r.from)} — ${oneLine(String(r.reason ?? ""))}`,
       );
   }
 

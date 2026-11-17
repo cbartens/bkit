@@ -336,16 +336,17 @@ describe("bkit status resume", () => {
     },
   );
 
-  it("a holistic gaps fix resumes at the holistic verify that judges it", async () => {
+  it("a holistic gaps fix resumes at Plan Execute, which runs a takeover group the fix added", async () => {
     const file = log([
       ...setUp("build"),
       done("build", "build-plan-verify-holistic", { verdict: "FAIL" }),
       done("build", "build-plan-gaps-remediate-holistic", { strategy: "STANDARD" }),
     ]);
     expect((await resume("build", file)).json).toMatchObject({
-      step: "build-plan-verify-holistic",
-      number: 10,
+      step: "build-plan-tasks",
+      number: 7,
       after: "build-plan-gaps-remediate-holistic",
+      group: null,
     });
   });
 
@@ -506,6 +507,34 @@ describe("bkit status resume", () => {
     expect((await resume("build", file)).json).toMatchObject({
       number: 8,
       after: "build-plan-tasks",
+      group: 2,
+    });
+  });
+
+  it("a run stopped right after a build-takeover row resumes where the row before it places", async () => {
+    const takeover = done("build", "build-takeover", { task: 3, from: 1 });
+    // Refused code finish: the takeover row follows the tests step, so Step 7 runs again.
+    const refused = log([
+      ...setUp("build"),
+      done("build", "build-plan-tests", { group: 2 }),
+      takeover,
+    ]);
+    expect((await resume("build", refused)).json).toMatchObject({
+      step: "build-plan-tests",
+      number: 7,
+      after: "build-plan-tests",
+      group: 2,
+    });
+    // A Step 9 fix refused after verify: Step 8 again, whose start runs § Pending takeovers.
+    const remediate = log([
+      ...setUp("build"),
+      done("build", "build-plan-verify", { group: 2, verdict: "FAIL" }),
+      takeover,
+    ]);
+    expect((await resume("build", remediate)).json).toMatchObject({
+      step: "build-plan-verify",
+      number: 8,
+      after: "build-plan-verify",
       group: 2,
     });
   });

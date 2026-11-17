@@ -25,10 +25,14 @@ import {
   blockedTests,
   checkPlanText,
   gateScope,
+  planTakeovers,
+  sameTestName,
   judgeGreen,
   judgeRed,
+  lockBaselines,
   readTestFirst,
   redEntries,
+  redKey,
   resolveGate,
   taskSizes,
   lineDiff,
@@ -1673,6 +1677,145 @@ describe("readTestFirst", () => {
   });
 });
 
+/** A task whose TEST FIRST names each `[file, name]` pair. */
+const namingTask = (n: number, tests: Array<[string, string]>, tick = " ") =>
+  taskBlock(
+    n,
+    [
+      "  - **DONE WHEN:** passes",
+      "  - **TEST FIRST:**",
+      ...tests.map(([f, name]) => `    - \`${f}\` \`${name}\` fails`),
+    ],
+    tick,
+  );
+
+describe("planTakeovers", () => {
+  it("planTakeovers names a later task's test that an earlier task owns", () => {
+    const plan = [
+      groupBlock(1, namingTask(2, [["src/a.test.ts", "adds a row"]], "x")),
+      groupBlock(2, namingTask(3, [["src/b.test.ts", "other"]])),
+      groupBlock(
+        3,
+        namingTask(5, [["src/a.test.ts", "adds a row"]]),
+        namingTask(6, [["src/c.test.ts", "adds a row"]]),
+      ),
+      groupBlock(4, namingTask(9, [["src/a.test.ts", "adds a row"]])),
+    ].join("\n");
+    /** The 1-based line of the task's first TEST FIRST entry: three lines under its heading. */
+    const lineOf = (task: number) =>
+      plan.split("\n").findIndex((l) => l.includes(`**TASK ${task}:**`)) + 4;
+    expect(planTakeovers(plan)).toEqual([
+      {
+        task: 5,
+        from: 2,
+        test: "src/a.test.ts",
+        name: "adds a row",
+        line: lineOf(5),
+        sameGroup: false,
+      },
+      {
+        task: 9,
+        from: 5,
+        test: "src/a.test.ts",
+        name: "adds a row",
+        line: lineOf(9),
+        sameGroup: false,
+      },
+    ]);
+  });
+
+  it("planTakeovers matches normalized paths and the last name segment and flags a same-group pair", () => {
+    const plan = [
+      groupBlock(1, namingTask(1, [["./src/a.test.ts", "rows > adds a row"]])),
+      groupBlock(
+        2,
+        namingTask(2, [["src/a.test.ts", "adds a row"]]),
+        namingTask(3, [["src/./a.test.ts", "adds a row"]]),
+      ),
+    ].join("\n");
+    expect(
+      planTakeovers(plan).map(({ task, from, test, name, sameGroup }) => ({
+        task,
+        from,
+        test,
+        name,
+        sameGroup,
+      })),
+    ).toEqual([
+      { task: 2, from: 1, test: "src/a.test.ts", name: "adds a row", sameGroup: false },
+      { task: 3, from: 2, test: "src/a.test.ts", name: "adds a row", sameGroup: true },
+    ]);
+  });
+});
+
+describe("sameTestName", () => {
+  it("sameTestName matches a bare name to a suite path's last segment, either way round", () => {
+    expect(sameTestName("adds a row", "rows > adds a row")).toBe(true);
+    expect(sameTestName("rows > adds a row", "adds a row")).toBe(true);
+  });
+
+  it("sameTestName keeps two suite paths with the same last segment apart, either way round", () => {
+    expect(sameTestName("a > works", "b > works")).toBe(false);
+    expect(sameTestName("b > works", "a > works")).toBe(false);
+    expect(sameTestName("a > works", "a > works")).toBe(true);
+  });
+});
+
+describe("lockBaselines and takeovers", () => {
+  const redRow = (group: number, tests: Array<Record<string, unknown>>) => ({
+    type: "step-done",
+    workflow: "build",
+    step: "build-tests-red",
+    status: "DONE",
+    group,
+    attempt: 1,
+    tests,
+  });
+  const entry = (task: number, name: string, block: string, extra = {}) => ({
+    task,
+    test: "src/a.test.ts",
+    testName: name,
+    state: "red",
+    blob: `blob-${block}`,
+    block,
+    ...extra,
+  });
+  const blocks = (rows: Array<Record<string, unknown>>) =>
+    [...lockBaselines(rows, null).values()].map((b) => `${b.task}:${b.testName}:${b.block}`);
+
+  it("lockBaselines moves every same-name key onto a takeover's red entry", () => {
+    const rows = [
+      redRow(1, [entry(2, "rows > adds a row", "old"), entry(2, "counts rows", "count")]),
+      redRow(2, [entry(5, "adds a row", "new", { state: "taken-over", from: 2 })]),
+    ];
+    expect(blocks(rows)).toEqual([
+      "2:rows > adds a row:new",
+      "2:counts rows:count",
+      "5:adds a row:new",
+    ]);
+    expect(lockBaselines(rows, null).get(redKey(2, "src/a.test.ts", "rows > adds a row"))).toEqual(
+      expect.objectContaining({ blob: "blob-new", text: "blob-new", origin: "blob-new" }),
+    );
+  });
+
+  it("lockBaselines follows a takeover chain to the newest lines", () => {
+    const rows = [
+      redRow(1, [entry(2, "adds a row", "v2")]),
+      redRow(2, [entry(5, "adds a row", "v5", { from: 2 })]),
+      redRow(3, [entry(9, "adds a row", "v9", { state: "updated", from: 5 })]),
+    ];
+    expect(blocks(rows)).toEqual(["2:adds a row:v9", "5:adds a row:v9", "9:adds a row:v9"]);
+  });
+
+  it("lockBaselines leaves a test nobody took over on its own baseline", () => {
+    const rows = [
+      redRow(1, [entry(2, "adds a row", "v2")]),
+      redRow(2, [entry(5, "adds a row", "v5")]),
+    ];
+    expect(blocks(rows)).toEqual(["2:adds a row:v2", "5:adds a row:v5"]);
+  });
+});
+
 describe("taskSizes", () => {
   it("counts tests and distinct test files per task; n/a, missing and malformed count 0", () => {
     const plan = groupBlock(
@@ -1831,7 +1974,11 @@ describe("shipped task examples", () => {
     const text = fs.readFileSync(path.join(CORE, "docs/templates/bkit-plan.md"), "utf-8");
     const check = checkPlanText(text);
     expect(check.problems).toEqual([]);
-    expect(check.groups.map((g) => g.tasks)).toEqual([2]);
+    expect(check.groups.map((g) => g.tasks)).toEqual([3]);
+    // TASK 3 takes over TASK 2's test: reported, never a problem.
+    expect(planTakeovers(text).map((t) => [t.task, t.from, t.name])).toEqual([
+      [3, 2, "rejects an unknown status"],
+    ]);
   });
 
   it("the change-shape example in trackers.md parses", () => {
@@ -1974,6 +2121,35 @@ describe("bkit tests plan-check", () => {
     expect(report()).toContain('already holds a test named "adds a row"');
     write("plan.md", groupBlock(1, tf(1, "adds a row", "x"), tf(2, "counts rows")));
     expect((await check("--existence=report")).json.existing).toEqual([]);
+  });
+
+  it("plan-check reports takeovers without refusing and leaves them out of existing", async () => {
+    write(
+      "plan.md",
+      groupBlock(1, namingTask(1, [["src/a.test.ts", "adds a row"]], "x")),
+      groupBlock(2, namingTask(2, [["src/a.test.ts", "adds a row"]])),
+      matrix(MATRIX, ["a", "Unit", "`src/a.test.ts`", "1"], ["b", "Unit", "`src/a.test.ts`", "2"]),
+    );
+    fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, "src/a.test.ts"),
+      "it('adds a row', () => {\n  expect(1).toBe(1);\n});\n",
+    );
+    const r = await check("--existence=report");
+    expect(r.code).toBe(0);
+    expect(r.json.takeovers).toEqual([
+      {
+        task: 2,
+        from: 1,
+        test: "src/a.test.ts",
+        name: "adds a row",
+        line: lineOf("plan.md", "**TASK 2:**") + 3,
+        sameGroup: false,
+      },
+    ]);
+    expect(r.json.existing).toEqual([]);
+    expect(report()).toContain("## Tests that change hands (reported only)");
+    expect(report()).toContain('TASK 2 takes over "adds a row" in `src/a.test.ts` from TASK 1');
   });
 
   it("states the caps the template and workflows doc name", () => {
@@ -2769,7 +2945,7 @@ describe("testBlock — a planned test's own lines, by name and indentation", ()
 });
 
 describe("blockedTests", () => {
-  it("reads the file, name and reason from a TASK or Gap BLOCKED test line", () => {
+  it("reads the file, name, reason and task from a TASK or Gap BLOCKED test line", () => {
     const log = [
       "# Log",
       "BLOCKED — TASK 2: test `src/a.test.ts` `adds a row` — new setup line",
@@ -2777,9 +2953,9 @@ describe("blockedTests", () => {
       "BLOCKED - TASK 4: test `src/c.test.ts` `plain hyphen` — x",
     ].join("\n");
     expect(blockedTests(log)).toEqual([
-      { test: "src/a.test.ts", name: "adds a row", reason: "new setup line" },
-      { test: "src/b.test.ts", name: "suite > counts", reason: "fixture moved" },
-      { test: "src/c.test.ts", name: "plain hyphen", reason: "x" },
+      { test: "src/a.test.ts", name: "adds a row", reason: "new setup line", task: 2 },
+      { test: "src/b.test.ts", name: "suite > counts", reason: "fixture moved", task: null },
+      { test: "src/c.test.ts", name: "plain hyphen", reason: "x", task: 4 },
     ]);
   });
 
@@ -3294,6 +3470,165 @@ describe("bkit tests red / green", () => {
       ]);
       expect(g.json.updated[0].diff).not.toContain("\n-");
       expect(report()).toContain("additive: no line of the test was removed");
+    });
+  });
+
+  describe("takeover", () => {
+    const body = (n: number) =>
+      `it('${NAME}', () => {\n  expect(clamp(5, 1, 10)).toBe(${n});\n});\n`;
+    const sha = () =>
+      spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf-8" }).stdout.trim();
+    const commitAll = (message: string) => {
+      spawnSync("git", ["-C", cwd, "add", "-A"], { env: GIT_ENV });
+      spawnSync("git", ["-C", cwd, "commit", "-q", "-m", message], { env: GIT_ENV });
+      return sha();
+    };
+    const statusRow = (row: Record<string, unknown>) => {
+      fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+      fs.appendFileSync(path.join(cwd, STATUS), `${JSON.stringify(row)}\n`);
+    };
+    const runStarted = (parentSha: string) =>
+      statusRow({
+        type: "workflow-started",
+        workflow: "build",
+        at: "2026-11-01T00:00:00Z",
+        parentSha,
+      });
+    const groupStarted = (group: number, parentSha: string) =>
+      statusRow({
+        type: "step-done",
+        workflow: "build",
+        step: "build-group-start",
+        status: "DONE",
+        group,
+        parentSha,
+      });
+    /** GROUP 1 TASK 1 and GROUP 2 TASK 2 both name `TEST` `NAME`: TASK 2 takes it over. */
+    const writeTakeoverPlan = () =>
+      fs.writeFileSync(
+        path.join(cwd, "plan.md"),
+        `# Plan\n\n${[groupBlock(1, TASK_1), groupBlock(2, testTask(2, [[TEST, NAME]]))].join("\n")}\n`,
+      );
+    const red2 = (extra: string[] = [], log = "logs/build-tests-red-2-1.md") =>
+      run(
+        [
+          `--file=${STATUS}`,
+          "--workflow=build",
+          "--group=2",
+          "--plan=plan.md",
+          `--log=${log}`,
+          ...extra,
+        ],
+        cwd,
+        "red",
+      );
+    /** Group 1's proven red of TASK 1, on `body(5)`. */
+    const groupOneRed = async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body(5));
+      vi.stubEnv("FAKE_EXIT", "1");
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      expect((await red()).code).toBe(0);
+    };
+
+    beforeEach(() => {
+      fs.rmSync(path.join(cwd, TEST));
+      writeTakeoverPlan();
+    });
+
+    it("tests red records a failing takeover as red with from", async () => {
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_JUNIT", junit(failed(NAME)));
+      const r = await red2();
+      expect(r.code).toBe(0);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ task: 2, testName: NAME, state: "red", from: 1 }),
+      ]);
+    });
+
+    it("tests red records a passing build-written takeover as taken-over over a PASSES line", async () => {
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      fs.writeFileSync(
+        path.join(cwd, "logs/build-plan-tests-2-log.md"),
+        `PASSES — TASK 2: \`${TEST}\` \`${NAME}\`: already passes\n`,
+      );
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await red2(["--writer-log=logs/build-plan-tests-2-log.md"]);
+      expect(r.code).toBe(0);
+      expect(r.json.gaps).toEqual([]);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ task: 2, state: "taken-over", from: 1 }),
+      ]);
+      expect(r.json.tests[0].reason).toBeUndefined();
+    });
+
+    it("tests red records a passing pre-run takeover as updated against the run start", async () => {
+      fs.writeFileSync(path.join(cwd, TEST), body(5));
+      const start = commitAll("tests before the run");
+      runStarted(start);
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, "group-one.txt"), "code\n");
+      groupStarted(2, commitAll("group 1"));
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      const r = await red2();
+      expect(r.code).toBe(0);
+      expect(r.json.tests).toEqual([
+        expect.objectContaining({ task: 2, state: "updated", from: 1, base: start }),
+      ]);
+    });
+
+    it("a resumed tests red skips a taken-over entry", async () => {
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      expect((await red2()).json.tests).toEqual([expect.objectContaining({ state: "taken-over" })]);
+      const again = await red2([], "logs/build-tests-red-2-2.md");
+      expect(again.code).toBe(0);
+      expect(again.json).toMatchObject({ skipped: 1, tests: [] });
+    });
+
+    it("tests green lists takenOver and never counts it as a gap or unproven", async () => {
+      runStarted(sha());
+      await groupOneRed();
+      fs.writeFileSync(path.join(cwd, TEST), body(6));
+      vi.stubEnv("FAKE_EXIT", "0");
+      vi.stubEnv("FAKE_JUNIT", junit(passed(NAME)));
+      expect((await red2()).json.tests).toEqual([expect.objectContaining({ state: "taken-over" })]);
+      const r = await run(
+        [
+          `--file=${STATUS}`,
+          "--workflow=build",
+          "--group=2",
+          "--plan=plan.md",
+          "--log=logs/green.md",
+        ],
+        cwd,
+        "green",
+      );
+      expect(r.code).toBe(0);
+      expect(r.json.gaps).toEqual([]);
+      expect(r.json.unproven).toEqual([]);
+      expect(r.json.takenOver).toEqual([
+        expect.objectContaining({
+          task: 2,
+          from: 1,
+          test: TEST,
+          name: NAME,
+          state: "taken-over",
+          additive: false,
+        }),
+      ]);
+      expect(r.json.takenOver[0].diff).toContain("toBe(6)");
+      expect(report()).toContain("## Taken over");
+      expect(report()).toContain(`Task 2 \`${TEST}\` "${NAME}" — taken over from Task 1`);
     });
   });
 

@@ -78,6 +78,7 @@ developer_instructions = """
    - `delete-still-referenced` → read each hit:
      - **If** the hit is a different thing with the same name → no gap.
      - **Else** → `Fixable: true`.
+   - `Taken over` section → each test is an earlier task's planned test that a later task rewrote, with the line diff since its owner's red. It is never a gap by itself: judge the rewritten test as you judge a new planned test of its task, against that task's `DONE WHEN` and its `Derived Test Matrix` row, and list it in `Notes`.
    - `Unproven` section → list each test in `Notes`. No gap: the engine could not prove that test red before its code existed, and the owner answers it once, at the end of the build.
    - `Changed by a code step` section → list each test and its reason in `Notes`; its entry carries the engine's line diff since its baseline, and you read the added lines of that diff the way the `Updated tests` rule reads an update.
      - **If** the added lines only add setup or expectations → No gap, because the owner answers the change once, at the end of the build.

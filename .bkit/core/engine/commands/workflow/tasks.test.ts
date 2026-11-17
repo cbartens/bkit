@@ -17,7 +17,8 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCommand } from "../lib";
-import { gappedTasks, tasksCommand } from "./tasks";
+import { addTakeoverTasks, gappedTasks, tasksCommand } from "./tasks";
+import { checkPlanText, planTakeovers } from "./tests";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -746,5 +747,157 @@ describe("bkit tasks currency", () => {
     expect(r.code).toBe(0);
     expect(r.json.tasks[0].paths).toEqual(["src/dev-moved.ts"]);
     expect(r.json.tasks[0].hunks.join("\n")).not.toContain("branch-moved");
+  });
+});
+
+describe("bkit tasks takeover", () => {
+  const TEST = "src/a.test.ts";
+  const STATUS = "logs/status.jsonl";
+  /** A task naming `name` in `src/a.test.ts` on its TEST FIRST. */
+  const testTask = (n: number, name: string, tick: string) => [
+    `<!-- bkit:task ${n} start -->`,
+    `- [${tick}] **TASK ${n}:** Task ${n} title.`,
+    "  - **DONE WHEN:** passes",
+    "  - **TEST FIRST:**",
+    `    - \`${TEST}\` \`${name}\` fails on the stub`,
+    `<!-- bkit:task ${n} end -->`,
+  ];
+  /** GROUP 1 TASK 1 (ticked) owns `adds a row`, GROUP 2 TASK 2 (open) owns `counts rows`; a matrix row each. */
+  const PLAN = [
+    "# Plan",
+    "",
+    "## Derived Test Matrix",
+    "",
+    "| Test description | Type | Target file | Task |",
+    "| --- | --- | --- | --- |",
+    `| adds a row | Unit | \`${TEST}\` | 1 |`,
+    `| counts rows | Unit | \`${TEST}\` | 2 |`,
+    "",
+    "## Implementation Tasks",
+    "",
+    ...group(1, testTask(1, "adds a row", "x")),
+    "",
+    ...group(2, testTask(2, "counts rows", " ")),
+    "",
+    "## Tail",
+    "",
+    "Kept as written.",
+    "",
+  ].join("\n");
+  const setup = () => {
+    cwd = repo({ "plan.md": PLAN, [TEST]: "it('adds a row', () => {});\n" });
+    fs.mkdirSync(path.join(cwd, "logs"), { recursive: true });
+  };
+  /** The engine's write, as a code step's `steps finish` calls it on a contradiction. */
+  const takeover = (name: string, task: number | null = 2, test = TEST) =>
+    addTakeoverTasks(
+      cwd,
+      path.join(cwd, "plan.md"),
+      path.join(cwd, STATUS),
+      [{ test, name, from: 1, task, reason: "rows now start at 0" }],
+      () => {},
+    );
+  const pending = () => run(["takeover", "--pending", "--plan=plan.md", `--file=${STATUS}`]);
+  const plan = () => read(path.join(cwd, "plan.md"));
+  const rows = () =>
+    read(path.join(cwd, STATUS))
+      .trim()
+      .split("\n")
+      .filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((r) => r.step === "build-takeover");
+
+  it("addTakeoverTasks appends a takeover task in a new last group that plan-check accepts", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    const text = plan();
+    expect(text).toContain("<!-- bkit:group 3 start -->");
+    expect(text).toContain("- [ ] **TASK 3:** Take over `adds a row` from TASK 1");
+    expect(text).toContain("  - **DEPENDS ON:** 2");
+    expect(text).toContain(`    - \`${TEST}\` \`adds a row\` fails until TASK 2's code exists`);
+    expect(text).toContain(`| Take over adds a row from TASK 1 | Unit | \`${TEST}\` | 3 |`);
+    expect(text.indexOf("<!-- bkit:group 3 end -->")).toBeLessThan(text.indexOf("## Tail"));
+    expect(text.endsWith("## Tail\n\nKept as written.\n")).toBe(true);
+    expect(checkPlanText(text).problems).toEqual([]);
+    expect(planTakeovers(text)).toEqual([
+      expect.objectContaining({ task: 3, from: 1, test: TEST, name: "adds a row" }),
+    ]);
+    expect(rows()).toEqual([
+      expect.objectContaining({
+        workflow: "build",
+        status: "DONE",
+        task: 3,
+        from: 1,
+        test: TEST,
+        name: "adds a row",
+        reason: "rows now start at 0",
+      }),
+    ]);
+  });
+
+  it("addTakeoverTasks reuses the open task on a second call", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    const once = plan();
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(plan()).toBe(once);
+    expect(rows()).toHaveLength(1);
+  });
+
+  it("addTakeoverTasks writes only the missing row when a run stopped after the plan write", () => {
+    setup();
+    takeover("adds a row");
+    const once = plan();
+    fs.writeFileSync(path.join(cwd, STATUS), "");
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(plan()).toBe(once);
+    expect(rows()).toEqual([expect.objectContaining({ task: 3, name: "adds a row" })]);
+  });
+
+  it("addTakeoverTasks puts a second contradiction into the same pending group", () => {
+    setup();
+    expect(takeover("adds a row")).toEqual([3]);
+    expect(takeover("counts rows", null)).toEqual([4]);
+    const text = plan();
+    expect(text).not.toContain("<!-- bkit:group 4 start -->");
+    expect(text).toContain("- [ ] **TASK 4:** Take over `counts rows` from TASK 1");
+    expect(checkPlanText(text).problems).toEqual([]);
+  });
+
+  it("addTakeoverTasks takes the matrix tier from the test file's name", () => {
+    setup();
+    takeover("adds a row", 2, "src/a.integration.test.ts");
+    expect(plan()).toContain(
+      "| Take over adds a row from TASK 1 | Integration | `src/a.integration.test.ts` | 3 |",
+    );
+  });
+
+  it("tasks takeover refuses a call without --pending: steps finish adds the tasks", async () => {
+    setup();
+    const r = await run(["takeover", "--plan=plan.md", `--file=${STATUS}`]);
+    expect(r.code).toBe(2);
+    expect(plan()).toBe(PLAN);
+  });
+
+  it("tasks takeover --pending prints the group until its tests are recorded", async () => {
+    setup();
+    expect((await pending()).json).toEqual({ plan: "plan.md", pending: null });
+    takeover("adds a row");
+    expect((await pending()).json).toEqual({
+      plan: "plan.md",
+      pending: { group: 3, tasks: [3] },
+    });
+    fs.appendFileSync(
+      path.join(cwd, STATUS),
+      `${JSON.stringify({
+        type: "step-done",
+        workflow: "build",
+        step: "build-tests-red",
+        status: "DONE",
+        group: 3,
+        tests: [{ task: 3, test: TEST, testName: "adds a row", state: "red", blob: null }],
+      })}\n`,
+    );
+    expect((await pending()).json).toEqual({ plan: "plan.md", pending: null });
   });
 });
