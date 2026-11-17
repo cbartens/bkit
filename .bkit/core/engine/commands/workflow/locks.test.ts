@@ -236,6 +236,8 @@ describe("bkit locks acquire --kind=workflow — month bucket", () => {
     const r = await run(cwd, acquire());
     expect(r.code).toBe(7);
     expect(r.err).toContain("202605, 202608");
+    // No route is printed, so the workflow's Route line sends the run to its Failure Path.
+    expect(r.json).toBeUndefined();
     expect(fs.existsSync(path.join(logDir(cwd, "202605"), ".lock"))).toBe(false);
     expect(fs.existsSync(path.join(logDir(cwd, "202608"), ".lock"))).toBe(false);
   });
@@ -278,6 +280,27 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
     expect(fs.readFileSync(lock, "utf-8")).toBe("2026-10-01T00:00:00Z design\n");
   });
 
+  it("a taken lock prints route go and an empty message", async () => {
+    const cwd = repo();
+    const r = await run(cwd, acquire());
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({ route: "go", message: "" });
+    expect(r.json.token).toMatch(/\S/);
+  });
+
+  it("a live holder prints route stop and a message naming the holder", async () => {
+    const cwd = repo();
+    const last = step("design", 5 * MIN);
+    writeStatus(cwd, M, [started("design", 40 * MIN), last]);
+    writeLock(cwd, M, "2026-10-01T00:00:00Z design", 40 * 60);
+    const r = await run(cwd, acquire());
+    expect(r.code).toBe(EXIT_LOCK_BUSY);
+    expect(r.json.route).toBe("stop");
+    expect(r.json.message).toBe(
+      `design has held ${FID} since 2026-10-01T00:00:00Z and last stepped at ${last.at}. Nothing changed; this run can start again once that run ends or has been idle 30 minutes.`,
+    );
+  });
+
   it("a taken lock prints heldBy null", async () => {
     const cwd = repo();
     const r = await run(cwd, acquire());
@@ -292,6 +315,7 @@ describe("bkit locks acquire --kind=workflow — a lock already there", () => {
     const r = await run(cwd, acquire());
     expect(r.code).toBe(0);
     expect(r.json.reclaimed).toEqual({ holder: "2026-10-01T00:00:00Z design", reason: "stale" });
+    expect(r.json).toMatchObject({ route: "go", message: "" });
   });
 
   it("reclaims a finished (DONE or FAILED) run's old lock", async () => {

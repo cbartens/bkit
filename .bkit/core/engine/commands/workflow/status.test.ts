@@ -930,6 +930,90 @@ describe("bkit status resume gate re-run", () => {
   });
 });
 
+describe("bkit status resume debug test round", () => {
+  const resume = (file: string, workflow = "debug") =>
+    run(["status", "resume", `--workflow=${workflow}`, `--file=${file}`]);
+  const tests = (at: string, verdict: string, source: string) =>
+    done("debug", "debug-run-tests", at, { verdict, failures: verdict === "FAIL" ? 2 : 0, source });
+
+  it("a debug run stopped after Step 3 prints what counters derive and status route print for Step 3's round", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      tests("2026-11-01T00:02:00Z", "FAIL", "local"),
+      done("debug", "debug-failure-remediate", "2026-11-01T00:03:00Z"),
+      tests("2026-11-01T00:04:00Z", "FAIL", "ci"),
+      done("debug", "context-fetch", "2026-11-01T00:05:00Z"),
+    ]);
+    const r = await resume(file);
+    const derived = await run([
+      "counters",
+      "derive",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--step=debug-run-tests",
+      "--position=current",
+    ]);
+    const routed = await run([
+      "status",
+      "route",
+      `--file=${file}`,
+      "--workflow=debug",
+      "--step=debug-run-tests",
+      "--require=verdict",
+    ]);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      number: 5,
+      testVerdict: "FAIL",
+      testSource: "ci",
+      normalAttempt: 2,
+    });
+    expect(r.json.normalAttempt).toBe(derived.json.value);
+    expect(r.json.testVerdict).toBe(routed.json.verdict);
+    expect(r.json.testSource).toBe(routed.json.source);
+  });
+
+  it("a debug run that resumes at Step 3 prints its last round, and one with no round prints null", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      tests("2026-11-01T00:02:00Z", "PASS", "local"),
+    ]);
+    const r = await resume(file);
+    expect(r.code).toBe(0);
+    expect(r.json).toMatchObject({
+      number: 3,
+      testVerdict: "PASS",
+      testSource: "local",
+      normalAttempt: 1,
+    });
+    const empty = await resume(log([started("debug", "2026-11-01T00:00:00Z")]));
+    expect(empty.json).toMatchObject({
+      number: 1,
+      testVerdict: null,
+      testSource: null,
+      normalAttempt: null,
+    });
+  });
+
+  it("a debug run past Step 3 with no readable test round exits 4", async () => {
+    const file = log([
+      started("debug", "2026-11-01T00:00:00Z"),
+      done("debug", "debug-worktree-setup", "2026-11-01T00:01:00Z"),
+      done("debug", "context-fetch", "2026-11-01T00:05:00Z"),
+    ]);
+    const r = await resume(file);
+    expect(r.code).toBe(4);
+    expect(r.json).toMatchObject({ number: 5, testVerdict: null });
+  });
+
+  it("another workflow prints null test round fields", async () => {
+    const r = await resume(log([]), "build");
+    expect(r.json).toMatchObject({ testVerdict: null, testSource: null, normalAttempt: null });
+  });
+});
+
 describe("bkit status route step fields", () => {
   it("status route no longer prints cleanBase", async () => {
     const r = await run([

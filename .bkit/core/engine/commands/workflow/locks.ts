@@ -457,6 +457,10 @@ export const locksCommand: CommandSpec = {
         reclaimed: "{holder, reason: finished|stale|orphaned}; null when none",
         heldBy:
           "{workflow, since, lastStepAt, idleSeconds, line} of the live run that keeps the lock; null when this call took it",
+        route:
+          "go when this call took the lock; stop when a live run keeps it (exit 8). An error exit prints no route",
+        message:
+          "for stop: the line for the owner naming the holder, when it took the lock and last stepped, and when this run can start again; empty for go",
       },
       exitCodes: {
         [EXIT_SPLIT_BUCKET]: "the feature has logs in more than one month bucket",
@@ -474,11 +478,13 @@ export const locksCommand: CommandSpec = {
           log: ctx.log,
         });
         if ("heldBy" in lock) {
-          ctx.emit({ kind, ...lock, token: null, reclaimed: null });
+          const by = lock.heldBy;
+          const message = `${by.workflow ?? "another run"} has held ${fid} since ${by.since ?? "an unknown time"} and last stepped at ${by.lastStepAt ?? "no step yet"}. Nothing changed; this run can start again once that run ends or has been idle ${WORKFLOW_LOCK_IDLE_S / 60} minutes.`;
+          ctx.emit({ kind, ...lock, token: null, reclaimed: null, route: "stop", message });
           ctx.log(busyMessage(fid, lock.heldBy));
           return EXIT_LOCK_BUSY;
         }
-        ctx.emit({ kind, ...lock, heldBy: null });
+        ctx.emit({ kind, ...lock, heldBy: null, route: "go", message: "" });
         return EXIT.OK;
       },
     },

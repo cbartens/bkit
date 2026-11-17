@@ -354,18 +354,39 @@ describe("Failure Path", () => {
     },
   );
 
-  it.each(["build", "debug"])(
-    "%s prints the not-pushed line for every handover exit that pushed nothing (9, 10, 11)",
-    (name) => {
-      const routes = section(workflow(name), /Failure Path/)
-        .split("\n")
-        .filter((l) => l.includes("`Record not pushed:"));
-      expect(routes, name).toHaveLength(1);
-      expect(routes[0]!.trim()).toMatch(
-        /^- \*\*If\*\* exit 9, 10 \*\*or\*\* 11 → the record did not reach the remote:/,
-      );
+  // Debug's Loop Question points at its Failure Path's route instead of repeating it.
+  it.each([
+    ["design", 1],
+    ["plan", 1],
+    ["build", 1],
+    ["debug", 1],
+    ["ship", 1],
+  ] as const)(
+    "%s follows the handover's printed `route` and `message`, never its exit code",
+    (name, count) => {
+      const text = workflow(name);
+      const ROUTE =
+        "add `message` to the final message when it is not empty → follow `route`: `stop`";
+      const sites = text.split("\n").filter((l) => l.includes(ROUTE));
+      expect(sites.length, name).toBe(count);
+      // A handover that prints nothing (exit 80 past its own route, an engine error) has a route too.
+      expect(sites[0], name).toContain("none printed → ");
+      expect(text).not.toContain("`Record not pushed:");
+      expect(text).not.toMatch(/handover exits non-zero/);
+      expect(text).not.toMatch(/exit 9, 10 \*\*or\*\* 11/);
     },
   );
+
+  it("bkit-debug.md: the Loop Question's Stop takes the Failure Path's handover route, exit 80 included", () => {
+    const loop = section(workflow("debug"), /Loop Question/);
+    expect(loop).toContain(
+      "Route: as **Failure Path** step 5 routes it, with step 6 here in place of its step 6.",
+    );
+    const failure = section(workflow("debug"), /Failure Path/);
+    expect(failure).toMatch(
+      /\*\*If\*\* exit 80 → open PR on `\{BRANCH\}` via `list_pull_requests`/,
+    );
+  });
 
   it("bkit-build.md: a held run's Failure Path and Decision Pause never push the feature branch", () => {
     const build = workflow("build");
@@ -1394,8 +1415,15 @@ describe("ship", () => {
   it("post-merge check reads the capstone job alone, at the squash commit", () => {
     const close = section(ship, /Step 12 — Close Workflow/);
     expect(close).toContain(
-      '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}"',
+      '"{BKIT}" runs gate --squash-of="{PR_NUMBER}" --repo="{OWNER_REPO}" --capstone-only --record="{STATUS}" --wait',
     );
+  });
+
+  it("the post-merge gate does its own wait: one command, no separate probe or wait", () => {
+    const close = section(ship, /Step 12 — Close Workflow/);
+    expect(close.match(/"\{BKIT\}" runs gate /g)).toHaveLength(1);
+    expect(close).not.toContain("runs wait");
+    expect(close).not.toContain("prs probe");
   });
 
   it("the close removes the worktree and deletes the branch through the command, then leaves it", () => {

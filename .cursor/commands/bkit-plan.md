@@ -84,7 +84,7 @@ Plan Feature — Autonomous plan generation
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 4.
+   - **Else** → add `message` to the final message when it is not empty → follow `route`: `stop`, or none printed → step 4.
 4. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `plan-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
@@ -131,10 +131,7 @@ Plan Feature — Autonomous plan generation
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=plan --fid={FID}
    ```
-   Route:
-   - **If** exit 0 → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
-   - **If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
-   - **Else** → **Failure Path**.
+   Route: hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`. Follow `route`: `go` → next sub-step; `stop` → tell the owner `message` → **STOP**, with no **Failure Path**, label, comment or status row, because the other run is healthy and keeps its lock; no `route` → **Failure Path**.
 6. Find the parent design, the workstreams this plan covers and the audit reports: a `**Parent design:**` link, else this feature's own design doc; the `**Workstreams:**` line; and every `docs/audits/{YYYYMM}/*.md` path the prompt or the issue description names.
    Pass `--description-file` only when `ISSUE_ID` is non-empty.
    ```bash
@@ -236,26 +233,17 @@ Before generating, ask the engine for this step's invocation id and keep the pri
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
    Project documents: `@bkit-plan-generate` fills `Documentation Consultation` and `Documentation Warnings` in the plan. The review and apply-review steps keep those sources; a gap is a warning that continues the run, never a stop.
    **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-2. Check the draft's groups and task blocks, and that every symbol it names exists:
+2. Check the draft's groups and task blocks, that every symbol it names exists, and that every `key` on its `**Ledger rows:**` line is on disk:
    ```bash
-   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --existence=refuse --ledger-rows --log=docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md
    ```
    Route — first match wins:
    - **If** exit 0 → sub-step 3.
    - **If** exit 1 **and** `problems` is nonempty **and** every `kind` is `format|stray` **and** `existence` is empty → sub-step 3; the check findings go to Step 5 for review and Step 6 for correction.
    - **If** this is the second exit 1 → **Failure Path**.
-   - **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
+   - **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines. Invocation id: {INVOCATION}."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
-3. Check that every `key` on the draft's `**Ledger rows:**` line is on disk:
-   ```bash
-   "{BKIT}" ledgers check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md > "{OUTBOX}/plan-generate-ledgers.md" 2>&1
-   ```
-   Route — first match wins:
-   - **If** exit 0 → sub-step 4.
-   - **If** this is the second exit 11 → **Failure Path**, naming each `missing` key.
-   - **If** exit 11 → invoke `@bkit-plan-generate` again with Context `"Fix only what '{OUTBOX}/plan-generate-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line. Invocation id: {INVOCATION}."` and the plan caps above, Read: `{OUTBOX}/plan-generate-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
-   - **Else** → **Failure Path**.
-4. Finish:
+3. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-generate --attempt=1 --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md --message="chore({FID}): generate-plan" --number=3 --post --title="Generate Plan" --link-ref=dev
    ```
@@ -264,7 +252,6 @@ Before generating, ask the engine for this step's invocation id and keep the pri
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
 - [ ] Draft check passed or only formatting findings carried to review (`tests plan-check`)
-- [ ] Draft ledger rows checked (`ledgers check`)
 - [ ] Mechanical checks passed (`steps finish`)
 
 ---
@@ -376,30 +363,21 @@ Before generating, ask the engine for this step's invocation id and keep the pri
      Context: You are a subagent in the Plan phase applying review and scope-check critiques. Switch into the working directory with `cd "{WORKTREE_PATH}"`, check it with `pwd`, and use it for every file operation that follows. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings. Plan caps (`bkit.workflows.tasks`): {MAX_TASKS_PER_GROUP} tasks and {MAX_TESTS_PER_GROUP} `TEST FIRST` tests per group; {MAX_TESTS_PER_TASK} tests across {MAX_TEST_FILES_PER_TASK} test files per task. The critiques re-review the plan you edit in place.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-review-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/plan-scope-check.md`.
      Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md`.
-4. Check the reviewed plan's groups and task blocks, and that every symbol it names exists:
+4. Check the reviewed plan's groups and task blocks, that every symbol it names exists, and that every `key` on its `**Ledger rows:**` line is on disk:
    ```bash
-   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --existence=refuse --log=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md
+   "{BKIT}" tests plan-check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --existence=refuse --ledger-rows --log=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md
    ```
    Route — first match wins:
    - **If** exit 0 → sub-step 5.
    - **If** this is the second exit 1 → **Failure Path**.
    - **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
    - **Else** → **Failure Path**.
-5. Check that every `key` on the reviewed plan's `**Ledger rows:**` line is on disk:
-   ```bash
-   "{BKIT}" ledgers check --plan=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md > "{OUTBOX}/plan-update-ledgers.md" 2>&1
-   ```
-   Route — first match wins:
-   - **If** exit 0 → sub-step 6.
-   - **If** this is the second exit 11 → **Failure Path**, naming each `missing` key.
-   - **If** exit 11 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-update-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line; do not seed the file again."` and the plan caps above, Read: `{OUTBOX}/plan-update-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
-   - **Else** → **Failure Path**.
-6. Finish:
+5. Finish:
    ```bash
    "{BKIT}" steps finish --file="{STATUS}" --workflow=plan --step=plan-apply-review --attempt=next --agent=bkit-plan-update --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md --artifact=docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md --message="chore({FID}): apply-review" --number=6 --post --title="Apply Review" --link-ref=dev
    ```
    Hold `verdict` as `APPLY_VERDICT`.
-7. Route:
+6. Route:
    - **If** `APPLY_VERDICT` = PASS **or** CONCERNS → Step 7, which sends a plan whose review failed back to Step 5 for its one re-review.
    - **Else** → **Failure Path**.
 
@@ -409,7 +387,6 @@ Before generating, ask the engine for this step's invocation id and keep the pri
 - [ ] Apply round counted (`counters derive`)
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Reviewed plan checked (`tests plan-check`)
-- [ ] Reviewed plan ledger rows checked (`ledgers check`)
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Routed correctly
 
@@ -426,11 +403,7 @@ Before generating, ask the engine for this step's invocation id and keep the pri
    ```bash
    "{BKIT}" workflows promote --workflow=plan --fid={FID} --month={YYYYMM} --resolve
    ```
-   Hold `final` as `PLAN_FINAL`. Check that every `key` on its `**Ledger rows:**` line is on disk:
-   ```bash
-   "{BKIT}" ledgers check --plan={PLAN_FINAL}
-   ```
-   **If** exit non-zero → **Failure Path**, naming each `missing` key.
+   Hold `final` as `PLAN_FINAL`.
 3. Write `plan-summary.md` from this run's status rows and the final plan:
    ```bash
    "{BKIT}" workflows summary --workflow=plan --file="{STATUS}" --plan={PLAN_FINAL}
@@ -449,7 +422,6 @@ Before generating, ask the engine for this step's invocation id and keep the pri
 
 - [ ] Latest review checked (`status route`)
 - [ ] Final plan resolved
-- [ ] Ledger rows checked (`ledgers check`)
 - [ ] `workflows summary` printed a verdict
 - [ ] Mechanical checks passed (`steps finish`)
 - [ ] Failing summary displayed

@@ -931,14 +931,14 @@ describe("bkit-ship.md — issue-less runs and the main guard", () => {
     expect(between).toContain("**Failure Path**");
   });
 
-  it("Step 12.5 labels skip when ISSUE_ID is empty", () => {
+  it("Step 12.3 labels skip when ISSUE_ID is empty", () => {
     const lines = section(readShip(), /^## .*Step 12 — Close Workflow/, /^### .*Gate/).split("\n");
-    const start = lines.findIndex((l) => /^5\. /.test(l));
-    const end = nextAfter(lines, start, /^6\. /);
+    const start = lines.findIndex((l) => /^3\. /.test(l));
+    const end = nextAfter(lines, start, /^4\. /);
     expect(start).toBeGreaterThanOrEqual(0);
     const item = lines.slice(start, end).join("\n");
     const all = blocks(item);
-    expect(all.length, "no tracker blocks in sub-step 5").toBe(1);
+    expect(all.length, "no tracker blocks in sub-step 3").toBe(1);
     expect(item).toContain('"{BKIT}" issues labels --write --phase=merged');
     for (const b of all) expect(b.text, b.kind).toContain(SKIP);
   });
@@ -1118,7 +1118,7 @@ describe("bkit-ship.md — red CI names /bkit-debug", () => {
 
   it("Close Workflow routes a red squash capstone to the Failure Path holding NEXT_STEP", () => {
     const step12 = section(readShip(), /^## .*Step 12 — /, /^## /);
-    const gate = section(step12, /^3\. Assert that the capstone/, /^4\. /);
+    const gate = section(step12, /^1\. Assert that the capstone/, /^2\. /);
     expect(gate, "no Route: after runs gate --capstone-only").toMatch(/Route:/);
     const route = gate.slice(gate.indexOf("Route:"));
     expect(route).toMatch(/Failure Path/);

@@ -1950,6 +1950,79 @@ describe("bkit workflows handover", () => {
     expect(fs.existsSync(path.join(wt, REL, "status.jsonl"))).toBe(true);
   });
 
+  describe("route and message: every exit the handover reaches ends the run as a stop", () => {
+    const notPushed = (tree: string) =>
+      `Record not pushed: the handover commit is only in ${tree}, and the links in this run's comments open once it is pushed`;
+
+    it("exit 0, pushed → route stop, no message", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push", "--open-pr=none"));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: true, route: "stop", message: "" });
+    });
+
+    it("ship's owner Stop on an open PR: exit 9, push skipped → route stop with the not-pushed line", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/ship-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "ship", `--month=${M}`, "--push", "--open-pr=7"));
+      expect(r.code).toBe(9);
+      expect(r.json).toMatchObject({
+        pushed: false,
+        skipped: "open-pr",
+        route: "stop",
+        message: notPushed(cwd),
+      });
+    });
+
+    it("exit 10, the push refused → route stop with the not-pushed line", async () => {
+      const { cwd, remote } = withRemote();
+      fs.writeFileSync(
+        path.join(remote, "hooks", "pre-receive"),
+        "#!/bin/sh\necho protected >&2\nexit 1\n",
+        { mode: 0o755 },
+      );
+      write(cwd, `${REL}/debug-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "debug", `--month=${M}`, "--push", "--open-pr=none"));
+      expect(r.code).toBe(10);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: notPushed(cwd) });
+    });
+
+    it("exit 11, dev cannot be fetched → route stop with the not-pushed line", async () => {
+      const { cwd, wt } = withDevRemote();
+      git(cwd, "remote", "set-url", "origin", path.join(cwd, "no-such-remote"));
+      write(wt, `${REL}/status.jsonl`, jsonl([{ type: "workflow-failed", workflow: "ship" }]));
+      const r = await run(wt, wf("handover", "ship", `--month=${M}`, "--flush"));
+      expect(r.code).toBe(11);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: notPushed(wt) });
+    });
+
+    it("--ref, no push → route stop, no message", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const r = await run(cwd, wf("handover", "build", `--month=${M}`, `--ref=feat/${FID}`));
+      expect(r.code).toBe(0);
+      expect(r.json).toMatchObject({ pushed: false, route: "stop", message: "" });
+    });
+
+    it("exit 80, gh cannot answer the open-PR lookup → prints nothing, so the workflow reads no route", async () => {
+      const { cwd } = withRemote();
+      write(cwd, `${REL}/build-handover.md`, "# Handover\n");
+      const bin = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bkit-workflows-nogh-")));
+      dirs.push(bin);
+      fs.writeFileSync(path.join(bin, "gh"), "#!/bin/sh\nexit 4\n", { mode: 0o755 });
+      const savedPath = process.env.PATH;
+      process.env.PATH = [bin, savedPath].join(path.delimiter);
+      try {
+        const r = await run(cwd, wf("handover", "build", `--month=${M}`, "--push"));
+        expect(r.code).toBe(80);
+        expect(r.json).toBeUndefined();
+      } finally {
+        restoreEnvironment("PATH", savedPath);
+      }
+    });
+  });
+
   it("--push on dev lands only the logs and ledgers through a throwaway checkout, never the checkout's code", async () => {
     const { cwd, remote } = withDevRemote();
     const head = git(cwd, "rev-parse", "HEAD");

@@ -1039,6 +1039,8 @@ describe("fully retired clauses", () => {
       "base-verdict",
       "output-cap",
       "plan-review-other-gap-critical",
+      "workflow-record-not-pushed",
+      "workflow-handover-exit",
     ];
     expect(CLAUSES.filter((c) => c.fullyRetired).map((c) => c.name)).toEqual(names);
     expect(clause("output-cap").retired[0]).toBe(

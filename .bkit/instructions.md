@@ -1155,11 +1155,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:479`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:475`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:225`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `bkit-ship-conflict-resolve:32`: "`git add`, `git checkout --theirs|--ours <conflicted>`" Permits `git add` (`commits` says subagents do not commit; staging is allowed here only for rebase or merge resolution, matching `destructive-git-prohibited`'s in-progress-rebase carve-out)
     - kept: staging and `git rebase --continue` are the in-progress rebase resolution `destructive-git-prohibited` carves out, and `git merge --abort` is on none of its prohibited forms; the caller commits and pushes
@@ -1252,11 +1252,11 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-adoption`, `bkit-audit-dependencies`, `bkit-audit-repo`, `bkit-audit-usability`
 - drift:
-  - `bkit-build:479`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-build:475`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-design:211`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-design:208`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
-  - `bkit-plan:225`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
+  - `bkit-plan:222`: "--only-if-dirty-tracked --scope=core --mode=commit" Commits every dirty tracked file in scope core, not only files this run touched; `commits` says ONLY commit files you touched, named explicitly
     - kept: commits only the bookkeeping allow-list (this run's log dir and ledgers) on the originating branch, never pushed, so the new worktree branch carries the run's log and ledger rows
   - `utility-new-release:30`: "are pre-approved by the owner's release request" Declares commit / push / PR / merge into main / tag pre-approved by 'the owner's release request'; `pushes` says one approval covers one push, but this run does up to three pushes (dev backmerge, release branch, tag); `production-merge` requires explicit human confirmation for any merge into main
     - kept: release flow as designed: the human release request approves its commit, pushes, PR into `main`, merge and tag
@@ -1386,7 +1386,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-annotations`, `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:670`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -1700,7 +1700,7 @@ Clause section lines:
 - audit:
   - specialised: `bkit-audit-ci-performance`
 - drift:
-  - `bkit-ship:670`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
+  - `bkit-ship:667`: "probes for a run at it first, dispatches only when none" Dispatches CI by hand (gh workflow run via --dispatch-if-absent per `.bkit/workflows.md` § CI-Dispatch Gate (shared, single source)) when no run is found; `ci` says pushes auto-trigger CI, NEVER manually
     - kept: Re-validate probes for an existing run first and dispatches only when the head has none, which happens when the head commit carries `[skip ci]` or GitHub started no run
 
 ```text
@@ -3128,6 +3128,10 @@ Continue from the interrupted sub-step only after the retry is verified.
 - carriers: workflow all except `bkit-auto`
 
 ```text
+Follow `route`: `go` → next sub-step; `stop` → tell the owner `message` → **STOP**, with no **Failure Path**, label, comment or status row, because the other run is healthy and keeps its lock; no `route` → **Failure Path**.
+```
+
+```retired
 **If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
 ```
 
@@ -5818,10 +5822,11 @@ Record the failure, abort any rebase, release the lock
 - carriers: workflow all except `bkit-auto`, `bkit-ship`
 
 ```text
-**Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
+**Else** → add `message` to the final message when it is not empty → follow `route`: `stop`, or none printed → step {{step}}.
 ```
 
 ```retired
+**Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
 **Else** → post `comment` (when non-null **and** `ISSUE_ID` non-empty) → step {{step}}.
 **Else** → post `comment` (when non-null; skipped when `ISSUE_ID` empty) → step {{step}}.
 **Else** → post `comment` (when non-null) → step {{step}}.
@@ -5829,14 +5834,10 @@ Record the failure, abort any rebase, release the lock
 
 ### workflow-record-not-pushed
 
-- workflow: where-used
-- carriers: workflow `bkit-build`, `bkit-debug`
-
-```text
-**If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
-```
+- retired: yes
 
 ```retired
+**If** exit 9, 10 **or** 11 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
 **If** exit 10 → the record did not reach the remote: add the line `Record not pushed: the handover commit is only in {WORKTREE_PATH}, and the links in this run's comments open once it is pushed` to the final message → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step {{step}}.
 ```
 
@@ -5993,10 +5994,9 @@ A reply that names a letter (`B`, `B)` or `B) {option}`) means the option that l
 
 ### workflow-handover-exit
 
-- workflow: where-used
-- carriers: workflow `bkit-debug`, `bkit-ship`
+- retired: yes
 
-```text
+```retired
 **If** the handover exits non-zero → **Failure Path**.
 ```
 
@@ -9791,7 +9791,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | **CI wait turn-loop** | Protocol | build, debug | CI-wait block exits 81 (or 80) → resolve the poll in the agent turn loop, then re-run the block with the result. |
 | **Friction** | Contract | all 6 | Manual installs, rework, repeated tool failures, destructive backouts → append `.bkit/friction.jsonl` rows → continue or escalate; never replaces **Failure Path**. Owner pauses are not the agent's to log: `status row --type=owner-pause` writes their `human-confirm` row. |
 | **Finish** | Contract | design, plan, build, debug, ship | `bkit steps finish` reads each `--agent`'s header from the `--artifact` in the same position, derives the attempt, checks what the gate checks, writes the row, commits, prints `comment`. Across agents: the worst verdict, `Failures` summed, a `true \| false` field true when any agent sets it true, any other field from the first agent that sets it. Exit 5 or 6 → re-ask `reask.agent` for its header only, re-run the block; still non-zero → **Failure Path**. Exit 8 → nothing written, nothing committed: fix what the hook's message names, then re-run the block; the attempt is unchanged. Exit 82 → the commit failed and the row stays in `status.jsonl` (another writer appended after it) → **Failure Path**. |
-| **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision, or a `DECIDED` / `ASSUMED` one no `build-decision` row names, as `openDecision`. |
+| **Resume** | Contract | design, plan, build, debug, ship | After Step 2, `bkit status resume` folds status.jsonl and names the step after the last `DONE` step of the active `IN_PROGRESS` run; for build, `workflows start` also prints the run's `OPEN` decision, or a `DECIDED` / `ASSUMED` one no `build-decision` row names, as `openDecision`; for debug, `status resume` also prints Step 3's test round (`testVerdict`, `testSource`, `normalAttempt`). |
 | **Plan** | Contract | build | The plan path, in task-block form, with the `bkit.workflows.tasks` group caps held at Step 1; one group per pass of the execute-verify loop; tasks tick `[x]` only in verify. |
 | **Status** | Contract | design, plan, build, debug, ship | `status.jsonl` = append-only NDJSON event log, folded to the run array; `step-done` carries `parentSha` captured at step start plus optional `verdict`, `failures`, `attempt`, `strategy`; build adds `group`, debug a `workflow-meta` `debugAttempt`. |
 | **Locks** | Contract | design, plan, build, debug, ship | Step 1 takes the per-feature `.lock` (`bkit locks acquire`); released at close and in Failure Path. Existing lock: holder `IN_PROGRESS` with a step <30min ago → `locks acquire` exits 8 and the run stops with no Failure Path (no label, comment or status row; tells the owner who holds the feature and since when); any other holder's lock reclaimed. |
@@ -9818,7 +9818,7 @@ The table lists the header bullets of the 6 workflow files, block by block, in f
 | --- | --- |
 | **Re-runs follow answers** | build, debug, ship: after an owner answer or an automatic one (`ask: false`, headless), a check or test runs again only when the answer changes code (`Fix now`), asks for another round (`Try again`), or a red gate is still unsettled. Otherwise the workflow goes on. Build routes a verify or holistic pause to `continue` only when `bkit decisions skip` exits 0 on its decision file, and resumes a pause that only asks to try a red gate again by re-running that gate (`status resume` `gateRerun` / `rerunFrom`); debug's Loop Question and ship's Merge Question and Confirm Assumed Items offer no answer that re-runs a check without a change. `workflow-shape.test.ts` guards the debug and ship options. |
 | **Diff per reader** | build, debug, ship: Every agent that reads the run's diff gets `tmp/bkit-diff-{FID}.md`, written by `bkit context diff --reset-log` in the same sub-step, just before it: build Steps 10, 11 and the Failure Path; debug Step 10 and the Failure Path; ship Step 5 and the Failure Path. Build's group verify (Step 8) reads `build-diff-{GROUP}-{VERIFY_ATTEMPT}.md` instead: `bkit context diff --base=` the group's start commit (`status route --step=build-group-start --group=N` `parentSha`), so a group's review reads only that group's commits. Past 10000 lines the file is a per-file budget: line 1 says `partial diff coverage`, line 2 lists the files not shown whole, and the whole diff stays in `{OUTBOX}` (§ Context artifact clamping). Debug passes `{BASE_FLAG}` (`--base={startSha}` when the run has a start commit, else empty). Ship Step 5 and the ship Failure Path pass `--base=origin/dev`, so the sweep reads the PR's full merge diff. |
-| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused with exit 8 (`workflow already running for {FID}`) and `heldBy` (`workflow`, `since`, `lastStepAt`, `idleSeconds`) → the run tells the owner the feature is busy and stops, with no Failure Path, label, comment or status row, because the other run is healthy and keeps its lock; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
+| **Locks** | Step 1 takes the per-feature `.lock` with `bkit locks acquire --kind=workflow` once `FID` is resolved; hold `token` as `{LOCK_TOKEN}`. The lock path is absolute (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, ship included, because the lock file is gitignored and never rides a commit), so acquire / release resolve to the same inode whatever the cwd. Lock line `{at} {workflow} {fid} {token}`. A taken lock prints `route` `go`; an error exit (a feature split across month buckets, exit 7) prints no `route` → **Failure Path**. Existing lock → its owning workflow's folded status.jsonl decides: `IN_PROGRESS` + last step <30min → refused with exit 8 (`workflow already running for {FID}`), `heldBy` (`workflow`, `since`, `lastStepAt`, `idleSeconds`), `route` `stop` and a `message` naming the holder → the run tells the owner `message` and stops, with no Failure Path, label, comment or status row, because the other run is healthy and keeps its lock; any other holder (`DONE` / `FAILED`, idle `IN_PROGRESS`, no run in the log) is reclaimed as soon as it is idle; the lock file's own age is not checked. Released in Close Workflow (`bkit locks release --token=`) and Failure Path (`bkit workflows fail --token=`, skipped when `{LOCK_TOKEN}` is empty — the run never took the lock). Release removes only the caller's own lock (another owner's stays, exit 4); a lock file that survives removal exits 5 → `Lock removal failed`. |
 | **Pre-merge CI** | Ship re-resolves CI against the PR head it is about to merge (`bkit runs gate` at Step 10), not the read taken at Step 2: on Path B the Step 4 merge of `origin/dev` moves the head before `gh pr merge`, so the earlier read describes a SHA that is no longer being merged. A failed query is not a pass — an API error (403 on PAT scope, for one) is gate code 20, never green. Anything short of a `completed` run whose capstone concluded `success` refuses the merge. |
 | **Artifact tree** | A subagent's artifact is asserted under the working directory its dispatch supplied: `{WORKTREE_PATH}` for every worktree-phase agent, ship's included. The subagent's reported path is not evidence: the `cd` and `pwd` line in the dispatch Context is prose, and agents have written to the main checkout despite it. design / plan additionally assert no `{FID}` artifact is left untracked in the main checkout before the close squash — an untracked file at the same path makes `git merge --squash` fail with `untracked working tree files would be overwritten`. |
 | **Main-checkout staging** | Every `git add` and every `git commit` that targets the main checkout carries an explicit pathspec. `add` alone is not enough: a pathspec-less `git commit` commits the whole index, sweeping in work a user staged themselves. Worktree-phase `git add -A` is unrestricted, because that tree holds only this feature's work. |
@@ -10437,9 +10437,7 @@ Go back to where this section was run from.
 - source: `.bkit/core/workflows/bkit-debug.md`
 
 ```text
-**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`. **If** `number` > 3 → run Step 2 sub-step 6 first, which reads Step 3's test round back.
-**Run only if** this is a resume that continues at Step 4 or later. Read Step 3's test round back, because Steps 4-11 route on its verdict and source and name their artifacts by its round:
-Hold `verdict` as `TEST_VERDICT` and `source` as `TEST_SOURCE`. **If** either block exits non-zero → **Failure Path**.
+**Resume:** Resolve and persist the evidence selection in Steps 1–2 before resuming. Explicit references and `[local]` override saved evidence. After Step 2, `"{BKIT}" status resume --workflow=debug --file="{STATUS}"` names where the active `IN_PROGRESS` run picks up; a changed `CI_GENERATION` always returns to Step 3, then collects current-generation context before diagnosis. Steps 1–2 ALWAYS run again; otherwise continue at Step `number`. Hold `testVerdict` as `TEST_VERDICT`, `testSource` as `TEST_SOURCE` and `normalAttempt` as `NORMAL_ATTEMPT`: Steps 4-11 route on Step 3's verdict and source and name their artifacts by its round. Exit 4 → **Failure Path**: the run continues after Step 3, but Step 3's test round cannot be read back.
 Step 3 verdict, source and round restored when resuming past it
 `**Q1 — Branch:** {the missing or ambiguous branch the engine printed}. Which existing branch did you mean?`
 One option line per printed candidate (`Use branch {x} — debug adopts {x} and runs its tests there`), then `Name another branch — reply with its name` and `Stop — nothing changes; the run can be started again`, lettered in that order.
@@ -10487,7 +10485,6 @@ Record the reply before anything else:
 **If** the answer is `Try again` → return to the calling step.
 **If** the answer is `Stop` → step 5.
 Create `docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md` with the question, the answer, and the line `Stopped by the owner; run stays IN_PROGRESS. /bkit-debug {FID} resumes at Step 3.`
-**If** exit 0, 9, 10, 11 **or** 80 → take the route **Failure Path** step 5 gives that exit, with exit 9 and exit 11 taking the exit 10 route, and continue at step 6 in place of its step 6.
 Asked only with `ask` = true, not headless, and `trend` stuck or worse (`counters progress`), or the soak limit used up
 Used-up soak given its allowance on `Try again` (`counters grant`)
 Wait and reply recorded (`owner-pause`, `owner-answer`)
@@ -10688,31 +10685,22 @@ Write the input file — session prompt, issue text, parent design, audit report
 **If** `AUDIT_PATHS` empty → drop `--audit`. **Else** → pass one `--audit` per path, in order.
 Parent design and audit reports appended
 **If** the draft still holds `PENDING` → invoke `@bkit-plan-generate` once more with Context `"Fill only the sections still marked PENDING and the empty groups; leave every finished section as it is."` and the plan caps and workstreams above, Read: the same inputs, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-Check the draft's groups and task blocks, and that every symbol it names exists:
+Check the draft's groups and task blocks, that every symbol it names exists, and that every `key` on its `**Ledger rows:**` line is on disk:
 **If** this is the second exit 1 → **Failure Path**.
-[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
+[local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-generate` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-generate-check.md' names; edit only those lines. Invocation id: {INVOCATION}."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
 Draft check passed or only formatting findings carried to review (`tests plan-check`)
-Check that every `key` on the draft's `**Ledger rows:**` line is on disk:
-**If** this is the second exit 11 → **Failure Path**, naming each `missing` key.
-[local-tests-first; existing-evidence-first] **If** exit 11 → invoke `@bkit-plan-generate` again with Context `"Fix only what '{OUTBOX}/plan-generate-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line. Invocation id: {INVOCATION}."` and the plan caps above, Read: `{OUTBOX}/plan-generate-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` → re-run this sub-step.
-Draft ledger rows checked (`ledgers check`)
 `QUERY` = 3-6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md` (touched surfaces and feature nouns, no stopwords), separated by spaces.
 [deferred-work; discovered-bugs] Scan `docs/deferrals.jsonl` and `docs/failures.jsonl` for `QUERY` overlaps → write `related-deferrals.md` and `related-failures.md`. The first writer resets the clamp log:
 Wait for all subagents to complete, then finish — `verdict` = worst of the three (`FAIL > CONCERNS > PASS`), `failures` = their sum:
 Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-scope-check`, no inline work)
 **If** any of `plan-review-1.md`, `plan-review-2.md`, `plan-scope-check.md` is missing from `docs/plans/{YYYYMM}/logs/{FID}/` → Step 5.
-Check the reviewed plan's groups and task blocks, and that every symbol it names exists:
+Check the reviewed plan's groups and task blocks, that every symbol it names exists, and that every `key` on its `**Ledger rows:**` line is on disk:
 [local-tests-first; existing-evidence-first] **If** exit 1 → invoke `@bkit-plan-update` again with Context `"Fix only what 'docs/plans/{YYYYMM}/logs/{FID}/plan-update-check.md' names; edit only those lines, do not seed the file again."` and the plan caps above, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
 Review critiques present
 Reviewed plan checked (`tests plan-check`)
-Check that every `key` on the reviewed plan's `**Ledger rows:**` line is on disk:
-[local-tests-first; existing-evidence-first] **If** exit 11 → invoke `@bkit-plan-update` again with Context `"Fix only what '{OUTBOX}/plan-update-ledgers.md' names: write each missing ledger row, or correct the plan's **Ledger rows:** line; do not seed the file again."` and the plan caps above, Read: `{OUTBOX}/plan-update-ledgers.md`, Update: `docs/plans/{YYYYMM}/logs/{FID}/plan-v2-reviewed.md` → re-run this sub-step.
-Reviewed plan ledger rows checked (`ledgers check`)
 Routed correctly
-**If** exit non-zero → **Failure Path**, naming each `missing` key.
 Write `plan-summary.md` from this run's status rows and the final plan:
 Final plan resolved
-Ledger rows checked (`ledgers check`)
 Count this review round. The plan gets one review and, after a `FAIL` that plan edits fix, exactly one re-review:
 **If** exit 1 → **Failure Path** — the one re-review already ran.
 **If** `REVIEW_ROUND` = 1:
@@ -10844,15 +10832,10 @@ Wait and reply recorded (`status row`)
 Used-up limit given one more allowance only on `Try again` (`counters grant`)
 Fast-forward local `dev` to `origin/dev`, then finish:
 Local `dev` synced (`branches sync-dev`)
-Read the squash commit:
-Hold `mergeCommitOid` as `MERGE_SHA`. **If** exit 80 → read the PR via `pull_request_read` (`get`) and hold its merge commit SHA as `MERGE_SHA`. **If** `MERGE_SHA` empty → **Failure Path**.
-Wait until the CI run at the squash commit has finished, so the gate in sub-step 3 records a final verdict:
-**If** exit 80 → sub-step 3.
-Assert that the capstone passed at the squash commit. The block records the squash-merge CI verdict (`ship-merge-ci`) before routing; it writes no row while the run is missing or still running:
+Assert that the capstone passed at the squash commit. The block reads the squash commit, waits until its CI run has finished, and records the squash-merge CI verdict (`ship-merge-ci`) before routing; it writes no row while the run is missing or still running:
 **If** exit 12 → the squash commit's CI is red. Hold `/bkit-debug {FID}` as `NEXT_STEP` → **Failure Path**.
 **If** `CLOSE_VIA` = close-pr-open → drop `--ref`, and gate with `--file="{STATUS}"`.
-Squash-merge CI waited for (`runs wait`)
-Squash-merge CI capstone green (`runs gate`)
+Squash-merge CI waited for and capstone green (`runs gate --wait`)
 Close landed (`workflows close`)
 **If** exit 24 → hold `target` as `MERGE_TARGET`, `pending` as `PENDING`, set `RECONCILE_NEXT` = Step 2 → Step 4 sub-step 2.
 **If** exit 80 **or** `runtimeGithubCli` = false → read open PRs first, then merged PRs through MCP, independently reread the selected PR, and write `{ ownerRepo, headRefName, baseRefName: "dev", pr }` to `{OUTBOX}/ship-entry-facts.json`. `pr` is the complete `PrInfo` shape (`number`, `url`, `state`, `baseRefName`, `headRefName`, `headRefOid`, `title`, `mergeCommit`, `mergeable`), or null when neither exists. Record the single transport transition under **gh MCP fallback**, then use the engine's result:

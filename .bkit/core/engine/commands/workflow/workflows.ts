@@ -914,6 +914,12 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
     ctx.flags.post === true && comment !== null
       ? await postForVerb(ctx, comment, { fid, purpose: "attention" })
       : undefined;
+  // Every exit this verb reaches keeps the record somewhere, so the run stops either way: an
+  // open PR (9), a refused push (10) or a failed dev landing (11) only add the closing line.
+  const message =
+    code === EXIT.OK
+      ? ""
+      : `Record not pushed: the handover commit is only in ${tree}, and the links in this run's comments open once it is pushed`;
   ctx.emit({
     handover: present ? artifact : null,
     pushed,
@@ -922,6 +928,8 @@ async function handoverVerb(ctx: RunContext): Promise<number> {
     comment,
     commentFile: commentFileOf(ctx.cwd, comment, ctx),
     ...(tracker === undefined ? {} : { tracker }),
+    route: "stop",
+    message,
   });
   return code;
 }
@@ -2316,6 +2324,10 @@ export const workflowsCommand: CommandSpec = {
           "the handover comment body (null when there is no handover); links only when pushed",
         commentFile: COMMENT_FILE_OUTPUT,
         tracker: `${TRACKER_OUTPUT}; absent when there is no handover`,
+        route:
+          "stop: the record is kept (pushed, or left in the run's tree on exit 9, 10 or 11) and the run ends here; workflows route on this, not on the exit code",
+        message:
+          "the line to add to the owner's final message: `Record not pushed: …` on exit 9, 10 or 11, empty otherwise",
         shared: "--list-stray: the checkout is dev / main / detached (remove nothing)",
         modified: "--list-stray: tracked paths with changes, outside the run's logs",
         untracked: "--list-stray: untracked paths, outside the run's logs",

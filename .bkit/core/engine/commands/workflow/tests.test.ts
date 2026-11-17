@@ -2822,6 +2822,68 @@ describe("bkit tests plan-check", () => {
   it("a missing plan file is a usage error", async () => {
     expect((await check()).code).toBe(2);
   });
+
+  describe("--ledger-rows", () => {
+    const row = (kind: string, key: string) =>
+      JSON.stringify({ schema: 2, ts: 1792720147039, kind, key, repo: "o/r", summary: key });
+    const rows = (file: string, ...lines: string[]) => {
+      fs.mkdirSync(path.join(cwd, "docs"), { recursive: true });
+      fs.writeFileSync(path.join(cwd, file), `${lines.join("\n")}\n`);
+    };
+
+    it("refuses a plan that parses when a key on its Ledger rows line has no row, and names the key", async () => {
+      rows("docs/decisions.jsonl", row("decision", "997-kept"));
+      write("plan.md", "**Ledger rows:** `997-kept`, `997-lost`", groupBlock(1, okTask(1)));
+      const r = await check("--ledger-rows");
+      expect(r.code).toBe(1);
+      expect(r.json.problems).toEqual([
+        expect.objectContaining({
+          kind: "ledger",
+          line: lineOf("plan.md", "**Ledger rows:**"),
+          message: expect.stringContaining("`997-lost`"),
+        }),
+      ]);
+      expect(r.json.problems[0].message).not.toContain("`997-kept`");
+      expect(report()).toContain("`ledger` — ");
+      expect(report()).toContain("`997-lost`");
+    });
+
+    it("refuses a missing or unfilled Ledger rows line", async () => {
+      write("plan.md", groupBlock(1, okTask(1)));
+      let r = await check("--ledger-rows");
+      expect(r.code).toBe(1);
+      expect(r.json.problems).toEqual([
+        expect.objectContaining({
+          kind: "ledger",
+          message: expect.stringContaining("no **Ledger rows:** line"),
+        }),
+      ]);
+      write("plan.md", "**Ledger rows:** PENDING", groupBlock(1, okTask(1)));
+      r = await check("--ledger-rows");
+      expect(r.code).toBe(1);
+      expect(r.json.problems).toEqual([
+        expect.objectContaining({ kind: "ledger", message: expect.stringContaining("unfilled") }),
+      ]);
+    });
+
+    it("passes when the plan parses and every key has a decision or deferral row", async () => {
+      rows("docs/decisions.jsonl", row("decision", "997-kept"));
+      rows("docs/deferrals.jsonl", row("deferral", "997-later"));
+      write("plan.md", "**Ledger rows:** `997-kept`, `997-later`", groupBlock(1, okTask(1)));
+      const r = await check("--ledger-rows");
+      expect(r.code).toBe(0);
+      expect(r.json.problems).toEqual([]);
+      write("plan.md", "**Ledger rows:** None", groupBlock(1, okTask(1)));
+      expect((await check("--ledger-rows")).code).toBe(0);
+    });
+
+    it("leaves the Ledger rows line unchecked without the flag", async () => {
+      write("plan.md", "**Ledger rows:** `997-lost`", groupBlock(1, okTask(1)));
+      const r = await check();
+      expect(r.code).toBe(0);
+      expect(r.json.problems).toEqual([]);
+    });
+  });
 });
 
 describe("testBlock — a planned test's own lines, by name and indentation", () => {

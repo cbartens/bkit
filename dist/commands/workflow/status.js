@@ -154,6 +154,16 @@ const ROUTE_FIELDS = [
 ];
 /** Exit code: a `--require`d field is missing or holds a value outside its set. */
 export const EXIT_ROUTE_MISSING = 4;
+/** Debug's Step 3 test round, as `counters derive --position=current` and `status route --require=verdict` read it. */
+function debugTestRound(runs, workflow) {
+    const rows = workflow === "debug" ? activeDoneSteps(runs, workflow, { step: "debug-run-tests" }) : [];
+    const last = rows.at(-1);
+    return {
+        testVerdict: VERDICTS.includes(String(last?.verdict)) ? last.verdict : null,
+        testSource: typeof last?.source === "string" ? last.source : null,
+        normalAttempt: rows.length === 0 ? null : rows.length,
+    };
+}
 function route(runs, rows, workflow, step, group) {
     const out = {
         verdict: null,
@@ -694,8 +704,14 @@ export const statusCommand = {
                 challengeDone: "build: true once the last allowed challenge round has merged, so Step 11 goes on to Step 12; null for other workflows",
                 gateRerun: "true when the active run's open decision file (as `workflows start` prints it in openDecision) has a Gate: FAIL header, Status: OPEN, From verify, holistic or tests, and the loop question as its only undecided question: re-run that gate instead of asking again; else false",
                 rerunFrom: "verify | holistic | tests: the open decision file's From header, the check whose gate re-runs; null when gateRerun is false",
+                testVerdict: "debug: the verdict of the active run's last DONE debug-run-tests row (PASS|CONCERNS|FAIL), or null; other workflows null",
+                testSource: "debug: that row's source (local|ci), or null; other workflows null",
+                normalAttempt: "debug: the active run's DONE debug-run-tests rows (the round Steps 4-11 name their artifacts by), or null when there is none; other workflows null",
             },
-            exitCodes: { [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON" },
+            exitCodes: {
+                [EXIT_NO_STATUS]: "status.jsonl unreadable or not valid NDJSON",
+                [EXIT_ROUTE_MISSING]: "debug: the run continues after Step 3 and Step 3's test round has no DONE row or no PASS|CONCERNS|FAIL verdict",
+            },
             run: (ctx) => {
                 const workflow = String(ctx.flags.workflow);
                 if (!isResumable(workflow))
@@ -711,10 +727,16 @@ export const statusCommand = {
                     : openDecision(path.dirname(file), root, workflow, runNumber(runs, workflow), current.steps
                         .filter((s) => s.step === `${workflow}-decision`)
                         .flatMap((s) => s.artifacts));
+                const round = debugTestRound(runs, workflow);
                 ctx.emit({
                     ...point,
                     ...gateRerun(open, open === null ? "" : fs.readFileSync(path.resolve(root, open.file), "utf-8")),
+                    ...round,
                 });
+                if (workflow === "debug" && point.number > 3 && round.testVerdict === null) {
+                    ctx.log("debug resumes after Step 3, but no DONE debug-run-tests row with a verdict is in the active run");
+                    return EXIT_ROUTE_MISSING;
+                }
                 return EXIT.OK;
             },
         },

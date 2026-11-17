@@ -2170,15 +2170,39 @@ export interface PlanRowsResult {
 export function checkPlanRows(root: string, plan: string): PlanRowsResult {
   const abs = path.resolve(root, plan);
   if (!fs.existsSync(abs)) throw new CommandError(EXIT.USAGE, `--plan not found: ${plan}`);
-  const text = fs.readFileSync(abs, "utf-8");
-  const line = LEDGER_ROWS_LINE.exec(text)?.[1]?.trim();
-  if (line === undefined) {
-    throw new CommandError(EXIT_ROWS_MISSING, `${plan} has no **Ledger rows:** line`);
+  const r = readPlanRows(root, fs.readFileSync(abs, "utf-8"));
+  if (r.unreadable !== undefined)
+    throw new CommandError(EXIT_ROWS_MISSING, `${plan}: ${r.unreadable}`);
+  return { keys: r.keys, missing: r.missing };
+}
+
+export interface PlanRowsRead extends PlanRowsResult {
+  /** 1-based line of the `**Ledger rows:**` line; 0 when the plan has none. */
+  line: number;
+  /** Why the line names no keys to check: absent, or still a placeholder. */
+  unreadable?: string;
+}
+
+/**
+ * Read `text`'s `**Ledger rows:**` line and the keys no `decision` / `deferral`
+ * row under `root` carries. An absent or placeholder line is `unreadable`.
+ */
+export function readPlanRows(root: string, text: string): PlanRowsRead {
+  const match = LEDGER_ROWS_LINE.exec(text);
+  const line = match?.[1]?.trim();
+  if (match === null || line === undefined) {
+    return { line: 0, keys: [], missing: [], unreadable: "no **Ledger rows:** line" };
   }
+  const at = text.slice(0, match.index).split("\n").length;
   const keys = [...line.matchAll(/`([^`]+)`/g)].map((m) => m[1] ?? "");
   if (keys.length === 0) {
-    if (line.replace(/[."\s]/g, "") === "None") return { keys: [], missing: [] };
-    throw new CommandError(EXIT_ROWS_MISSING, `${plan}: **Ledger rows:** is unfilled (${line})`);
+    if (line.replace(/[."\s]/g, "") === "None") return { line: at, keys: [], missing: [] };
+    return {
+      line: at,
+      keys: [],
+      missing: [],
+      unreadable: `**Ledger rows:** is unfilled (${line})`,
+    };
   }
   const onDisk = new Set<string>();
   for (const { file, kinds } of CHECKED_LEDGERS) {
@@ -2189,7 +2213,7 @@ export function checkPlanRows(root: string, plan: string): PlanRowsResult {
       if ((kinds as readonly string[]).includes(e.kind) && typeof key === "string") onDisk.add(key);
     }
   }
-  return { keys, missing: keys.filter((k) => !onDisk.has(k)) };
+  return { line: at, keys, missing: keys.filter((k) => !onDisk.has(k)) };
 }
 
 function check(ctx: RunContext): number {

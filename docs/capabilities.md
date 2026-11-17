@@ -164,14 +164,14 @@ flowchart LR
   subgraph gn_bkit_core_engine[".bkit/core/engine"]
     n_bkit_core_engine_checks["checks<br/>261 symbols · 18 files"]
     n_bkit_core_engine_cli["cli<br/>33 symbols · 1 files"]
-    n_bkit_core_engine_commands["commands<br/>1948 symbols · 57 files"]
+    n_bkit_core_engine_commands["commands<br/>1952 symbols · 57 files"]
     n_bkit_core_engine_install["install<br/>364 symbols · 21 files"]
     n_bkit_core_engine_ledgers["ledgers<br/>240 symbols · 6 files"]
     n_bkit_core_engine_render["render<br/>63 symbols · 4 files"]
     n_bkit_core_engine_shared["shared<br/>157 symbols · 13 files<br/>1 open finding"]
   end
   nscripts_harvest["scripts/harvest<br/>199 symbols · 2 files"]
-  n_bkit_core_engine_commands -->|471| n_bkit_core_engine_ledgers
+  n_bkit_core_engine_commands -->|472| n_bkit_core_engine_ledgers
   n_bkit_core_engine_commands -->|435| n_bkit_core_engine_shared
   n_bkit_core_engine_commands -->|219| n_bkit_core_engine_install
   n_bkit_core_engine_install -->|186| n_bkit_core_engine_shared
@@ -317,7 +317,7 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_fids["fids<br/>58 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_issues["issues<br/>61 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_junit["junit<br/>14 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>124 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_ledgers["ledgers<br/>126 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_locks["locks<br/>40 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_loops["loops<br/>7 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_open_decision["open-decision<br/>17 symbols · 1 files"]
@@ -329,13 +329,13 @@ flowchart LR
         n_bkit_core_engine_commands_workflow_run_facts["run-facts<br/>29 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runs["runs<br/>88 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_runtime["runtime<br/>20 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_status["status<br/>39 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_status["status<br/>40 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_step_table["step-table<br/>15 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_steps["steps<br/>78 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_summary["summary<br/>34 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_summary_findings["summary-findings<br/>7 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tasks["tasks<br/>23 symbols · 1 files"]
-        n_bkit_core_engine_commands_workflow_tests["tests<br/>121 symbols · 1 files"]
+        n_bkit_core_engine_commands_workflow_tests["tests<br/>122 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tests_base["tests-base<br/>14 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tests_changed["tests-changed<br/>11 symbols · 1 files"]
         n_bkit_core_engine_commands_workflow_tracker["tracker<br/>94 symbols · 1 files"]
@@ -392,8 +392,8 @@ flowchart LR
   n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_run_facts
   n_bkit_core_engine_commands_workflow_workflows -->|30| n_bkit_core_engine_commands_workflow_tracker
+  n_bkit_core_engine_commands_workflow_status -->|29| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_runs -->|28| n_bkit_core_engine_ledgers_status
-  n_bkit_core_engine_commands_workflow_status -->|28| n_bkit_core_engine_ledgers_status
   n_bkit_core_engine_commands_workflow_status -->|27| n_bkit_core_engine_commands_lib
   n_bkit_core_engine_commands_workflow_counters -->|26| n_bkit_core_engine_commands_workflow_status
   n_bkit_core_engine_commands_workflow_workflows -->|26| n_bkit_core_engine_commands_workflow_ledgers

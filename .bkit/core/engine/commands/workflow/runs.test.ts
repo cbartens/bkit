@@ -3168,6 +3168,99 @@ describe("bkit runs gate — PR heads, snapshot and audit rows", () => {
     },
   );
 
+  describe("--wait", () => {
+    /**
+     * `pr view` answers the merged PR; `gh run list` answers `listings[n]` on its nth call (the
+     * last one repeats), and records each call; every other call goes to the fixture stub.
+     */
+    function waitingGh(sha: string, listings: string[]) {
+      const dir = tmp("bkit-wait-gh-");
+      const pr = openPr({ state: "MERGED", mergeCommit: { oid: sha } });
+      fs.writeFileSync(path.join(dir, "pr.json"), JSON.stringify(pr));
+      listings.forEach((status, i) =>
+        fs.writeFileSync(
+          path.join(dir, `list.${i}.json`),
+          JSON.stringify([
+            { status, conclusion: status === "completed" ? "success" : "", headSha: sha },
+          ]),
+        ),
+      );
+      const last = listings.length - 1;
+      const script = path.join(dir, "response.sh");
+      fs.writeFileSync(
+        script,
+        [
+          "#!/bin/sh",
+          'if [ "$1 $2" = "pr view" ]; then',
+          `  cat "${dir}/pr.json"; exit 0`,
+          "fi",
+          'if [ "$1 $2" = "run list" ]; then',
+          `  echo "$*" >> "${dir}/calls"`,
+          `  n=$(wc -l < "${dir}/calls" | tr -d ' ')`,
+          "  i=$((n - 1))",
+          `  [ "$i" -le ${last} ] || i=${last}`,
+          `  cat "${dir}/list.$i.json"; exit 0`,
+          "fi",
+          `exec "${FIXTURE_GH}" "$@"`,
+        ].join("\n"),
+      );
+      fs.symlinkSync(FIXTURE_GH, path.join(dir, "gh"));
+      env({ PATH: `${dir}:${process.env.PATH}`, BKIT_FAKE_TOOL_SCRIPT: script });
+      return () => fs.readFileSync(path.join(dir, "calls"), "utf-8").trim().split("\n");
+    }
+
+    it("waits for a run still going at the squash commit, then judges and records it", async () => {
+      const calls = waitingGh("green-capstone", ["in_progress", "completed"]);
+      const file = statusFile();
+      const r = await gate(
+        tmp(),
+        "--squash-of=7",
+        "--capstone-only",
+        `--record=${file}`,
+        "--wait",
+        "--budget-s=2",
+        "--interval-s=1",
+      );
+      expect(r.code).toBe(0);
+      expect(r.json.head).toBe("green-capstone");
+      expect(calls()).toHaveLength(2);
+      expect(calls()[0]).toContain("--branch dev");
+      expect(rowsOf(file)).toEqual([
+        expect.objectContaining({ type: "ship-merge-ci", sha: "green-capstone", verdict: "PASS" }),
+      ]);
+    });
+
+    it("a wait that runs out exits 11 and writes no ship-merge-ci row", async () => {
+      const calls = waitingGh("in-progress", ["in_progress"]);
+      const file = statusFile();
+      const r = await gate(
+        tmp(),
+        "--squash-of=7",
+        "--capstone-only",
+        `--record=${file}`,
+        "--wait",
+        "--budget-s=1",
+        "--interval-s=1",
+      );
+      expect(r.code).toBe(11);
+      expect(calls()).toHaveLength(1);
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    });
+
+    it("an unreadable squash commit is an API error (20) before any wait", async () => {
+      prThenFixtureGh(openPr({ state: "MERGED", mergeCommit: null }));
+      const file = statusFile();
+      const r = await gate(tmp(), "--squash-of=7", "--capstone-only", `--record=${file}`, "--wait");
+      expect(r.code).toBe(20);
+      expect(r.json).toMatchObject({ passed: false, head: null, reason: "PR unreadable" });
+      expect(fs.readFileSync(file, "utf-8")).toBe("");
+    });
+
+    it("needs --squash-of", async () => {
+      expect((await gate(tmp(), "--head=x", "--wait")).code).toBe(2);
+    });
+  });
+
   it("an unreadable PR is an API error (20) with no head", async () => {
     prThenFixtureGh(null);
     const r = await gate(tmp(), "--pr=7");

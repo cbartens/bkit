@@ -2380,8 +2380,10 @@ function logResolvedPrRepo(
   }
 }
 
-function runGate(ctx: RunContext): number {
+async function runGate(ctx: RunContext): Promise<number> {
   const f = ctx.flags;
+  if (f.wait === true && f.squashOf === undefined)
+    throw new CommandError(EXIT.USAGE, "--wait needs --squash-of");
   const freshBase = f.freshBase === true;
   if (freshBase && (f.pr === undefined || f.capstoneOnly === true))
     throw new CommandError(EXIT.USAGE, "--fresh-base requires --pr without --capstone-only");
@@ -2547,6 +2549,23 @@ function runGate(ctx: RunContext): number {
 
   const info = pr?.kind === "ok" ? pr.pr : undefined;
   const repo = str(f.repo) ?? prRepoSlug(info?.url);
+  if (f.wait === true) {
+    // The squash commit's CI runs on the PR's base branch. A wait that runs out is not a verdict:
+    // the gate below still judges what it finds (a run still going is 11, with no row).
+    const waited = await waitFor(
+      ctx.cwd,
+      {
+        head,
+        branch: info?.baseRefName ?? DEV,
+        until: "completed",
+        budgetS: f.budgetS,
+        intervalS: f.intervalS,
+      },
+      deps(ctx, str(f.repo)),
+    );
+    if (waited.code === EXIT.AGENT_WAIT) return EXIT.AGENT_WAIT;
+    if (waited.code === EXIT.NO) ctx.log(`the CI run at ${head} did not finish within the wait`);
+  }
   const codeHead = str(f.validated) ?? head;
   let baseEvidence: { devSha: string; comparedHead: string; ancestor: boolean | null } | undefined;
   if (freshBase) {
@@ -3419,6 +3438,13 @@ export const runsCommand: CommandSpec = {
           type: "boolean",
           help: "pass or fail on the capstone job's result alone; the run's conclusion, other jobs and required lanes do not count (ship post-merge)",
         },
+        {
+          name: "wait",
+          type: "boolean",
+          help: "with --squash-of: first wait until the CI run at the squash commit on the PR's base branch has finished, then gate it (a run still going when the wait runs out is exit 11)",
+        },
+        { ...BUDGET_FLAG, help: "with --wait: the wait budget in seconds" },
+        { ...INTERVAL_FLAG, help: "with --wait: seconds between polls (>= 1)" },
       ],
       output: {
         code: "the exit code",

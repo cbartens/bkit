@@ -84,7 +84,7 @@ Design Feature — Autonomous design phase
    ```
    Route:
    - **If** exit 80 → open PR on `{BRANCH}` via `list_pull_requests` → re-run with `--open-pr={number}` or `--open-pr=none`.
-   - **Else** → **If** `tracker.done` = false → post `comment` via the tracker MCP per the header's fallback section → step 4.
+   - **Else** → add `message` to the final message when it is not empty → follow `route`: `stop`, or none printed → step 4.
 4. **STOP**, no further downstream steps. **If** `SUMMARY_VERDICT` = FAIL → the final message is `design-summary.md` content verbatim. Line 1 of the final message = the no-issue warning, when one was emitted.
 
 ---
@@ -131,10 +131,7 @@ Design Feature — Autonomous design phase
    ```bash
    "{BKIT}" locks acquire --kind=workflow --workflow=design --fid={FID}
    ```
-   Route:
-   - **If** exit 0 → hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`.
-   - **If** exit 8 → another run of this feature is still working, so tell the owner that `heldBy.workflow` has held `{FID}` since `heldBy.since` and last stepped at `heldBy.lastStepAt`, that nothing changed, and that this run can start again once that run ends or has been idle 30 minutes → **STOP**. Run no **Failure Path**, and write no label, comment or status row, because the other run is healthy and keeps its lock.
-   - **Else** → **Failure Path**.
+   Route: hold `token` as `LOCK_TOKEN`, `month` as `YYYYMM`. Follow `route`: `go` → next sub-step; `stop` → tell the owner `message` → **STOP**, with no **Failure Path**, label, comment or status row, because the other run is healthy and keeps its lock; no `route` → **Failure Path**.
 6. **Skip if** `ISSUE_ID` empty. `{LABEL_FLAGS}` = one `--label=<name>` per current `LABELS` entry:
    ```bash
    "{BKIT}" issues labels --write --phase=design --board=progress --issue={ISSUE_ID} --owner-repo={OWNER_REPO} {LABEL_FLAGS}

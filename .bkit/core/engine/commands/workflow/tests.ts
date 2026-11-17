@@ -90,6 +90,7 @@ import {
 } from "./tests-changed.js";
 import { ORIGIN_DEV, featureBase } from "./feature-base.js";
 import { testsJumpVerb } from "./tests-jump.js";
+import { readPlanRows } from "./ledgers.js";
 
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
@@ -925,6 +926,27 @@ export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 /** The plan caps `package.json` `bkit.workflows.tasks` sets for the checkout `cwd` sits in. */
 export const planCaps = (cwd: string): TaskCaps => readBkitConfig(toplevel(cwd)).tasks;
 
+/** `ledgers check` on the plan text as plan-check problems: the line absent or unfilled, or each key with no row. */
+function ledgerRowProblems(root: string, text: string): PlanProblem[] {
+  const r = readPlanRows(root, text);
+  if (r.unreadable !== undefined)
+    return [
+      {
+        line: r.line,
+        kind: "ledger",
+        message: `${r.unreadable} — list each decision / deferral row key written for this plan, or write None`,
+      },
+    ];
+  if (r.missing.length === 0) return [];
+  return [
+    {
+      line: r.line,
+      kind: "ledger",
+      message: `no docs/decisions.jsonl or docs/deferrals.jsonl row for ${r.missing.map((k) => `\`${k}\``).join(", ")} — write each missing row, or correct the **Ledger rows:** line`,
+    },
+  ];
+}
+
 /** The caps as the plan-check report and help state them. */
 export const capsText = (c: TaskCaps) =>
   `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
@@ -1079,7 +1101,8 @@ export interface PlanProblem {
     | "inventory"
     | "matrix"
     | "supersession"
-    | "markers";
+    | "markers"
+    | "ledger";
   message: string;
 }
 
@@ -3104,6 +3127,11 @@ export const testsCommand: CommandSpec = {
           required: true,
           help: "file the report is written to, `Problems:` header first (directories are created)",
         },
+        {
+          name: "ledger-rows",
+          type: "boolean",
+          help: "also refuse a plan whose `**Ledger rows:**` line is absent, unfilled or names a key with no docs/decisions.jsonl or docs/deferrals.jsonl row (the `ledgers check` test)",
+        },
       ],
       output: {
         plan: "the plan file checked (as given)",
@@ -3111,7 +3139,7 @@ export const testsCommand: CommandSpec = {
           "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
         tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
         problems:
-          "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
+          "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers | ledger (--ledger-rows only) — each refuses the plan",
         existence:
           "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
         existing:
@@ -3136,6 +3164,8 @@ export const testsCommand: CommandSpec = {
         const text = fs.readFileSync(planAbs, "utf-8");
         const caps = planCaps(ctx.cwd);
         const { groups, sizes, problems } = checkPlanText(text, caps);
+        if (ctx.flags.ledgerRows === true)
+          problems.push(...ledgerRowProblems(toplevel(ctx.cwd), text));
         const existence = planExistence(text, toplevel(ctx.cwd));
         const existing = existingTestNames(text, toplevel(ctx.cwd));
         const takeovers = planTakeovers(text);

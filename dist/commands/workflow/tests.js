@@ -41,6 +41,7 @@ import { testsBaseVerb } from "./tests-base.js";
 import { changedBetween, changedFiles, commitExists, declares, snapshotTree, deletedFiles, importersOf, testsChangedVerb, } from "./tests-changed.js";
 import { ORIGIN_DEV, featureBase } from "./feature-base.js";
 import { testsJumpVerb } from "./tests-jump.js";
+import { readPlanRows } from "./ledgers.js";
 /** Exit code: no candidate gate is declared in package.json. */
 export const EXIT_NO_GATE = 3;
 /** Exit code: the gate could not run (exit 126 / 127, or the package runner is missing). */
@@ -661,6 +662,27 @@ export const TEST_FIRST = "**TEST FIRST:**";
 export const TEST_EXCEPTION = "**TEST EXCEPTION:**";
 /** The plan caps `package.json` `bkit.workflows.tasks` sets for the checkout `cwd` sits in. */
 export const planCaps = (cwd) => readBkitConfig(toplevel(cwd)).tasks;
+/** `ledgers check` on the plan text as plan-check problems: the line absent or unfilled, or each key with no row. */
+function ledgerRowProblems(root, text) {
+    const r = readPlanRows(root, text);
+    if (r.unreadable !== undefined)
+        return [
+            {
+                line: r.line,
+                kind: "ledger",
+                message: `${r.unreadable} — list each decision / deferral row key written for this plan, or write None`,
+            },
+        ];
+    if (r.missing.length === 0)
+        return [];
+    return [
+        {
+            line: r.line,
+            kind: "ledger",
+            message: `no docs/decisions.jsonl or docs/deferrals.jsonl row for ${r.missing.map((k) => `\`${k}\``).join(", ")} — write each missing row, or correct the **Ledger rows:** line`,
+        },
+    ];
+}
 /** The caps as the plan-check report and help state them. */
 export const capsText = (c) => `${c.maxPerGroup} tasks and ${c.maxTestsPerGroup} TEST FIRST tests per group; ${c.maxTestsPerTask} tests across ${c.maxTestFilesPerTask} test files per task`;
 /** The test a JUnit-style suite path (`suite > test`) names: its last segment. */
@@ -2439,12 +2461,17 @@ export const testsCommand = {
                     required: true,
                     help: "file the report is written to, `Problems:` header first (directories are created)",
                 },
+                {
+                    name: "ledger-rows",
+                    type: "boolean",
+                    help: "also refuse a plan whose `**Ledger rows:**` line is absent, unfilled or names a key with no docs/decisions.jsonl or docs/deferrals.jsonl row (the `ledgers check` test)",
+                },
             ],
             output: {
                 plan: "the plan file checked (as given)",
                 groups: "[{group, title, tasks, tests, kb}]: each group's tasks, planned TEST FIRST tests and size",
                 tasks: "[{task, group, tests, files}]: each task's planned tests and distinct test files",
-                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers — each refuses the plan",
+                problems: "[{line, kind, message}]: format | stray | field | depends | cap | inventory | matrix | supersession | markers | ledger (--ledger-rows only) — each refuses the plan",
                 existence: "[{line, task, message}]: READ / UPDATE / DELETE files or symbols not found; refuses only with --existence=refuse",
                 existing: "[{line, task, test, name}]: planned tests of open tasks whose name a test in their file already carries, takeovers left out; reported only, never refuses",
                 takeovers: "[{task, from, test, name, line, sameGroup}]: planned tests a later task names that an earlier task (`from`, the nearest) also names; reported only, never refuses",
@@ -2464,6 +2491,8 @@ export const testsCommand = {
                 const text = fs.readFileSync(planAbs, "utf-8");
                 const caps = planCaps(ctx.cwd);
                 const { groups, sizes, problems } = checkPlanText(text, caps);
+                if (ctx.flags.ledgerRows === true)
+                    problems.push(...ledgerRowProblems(toplevel(ctx.cwd), text));
                 const existence = planExistence(text, toplevel(ctx.cwd));
                 const existing = existingTestNames(text, toplevel(ctx.cwd));
                 const takeovers = planTakeovers(text);
