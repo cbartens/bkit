@@ -372,8 +372,8 @@ export function appendLine(event) {
 // Queries — the reads routing and counters make. Two opposite scopings: attempt
 // counts and verdict/failures/mode reads look at the ACTIVE
 // run only, so a resumed run never inherits a finished run's spent budget;
-// strategy reads ALL runs, so a resumed run keeps its place on the
-// STANDARD -> PIVOT -> FINAL ladder instead of restarting it.
+// strategy reads ALL runs, so a test that also failed in an earlier run's
+// attempt still counts toward the fix round's STANDARD / PIVOT / FINAL label.
 // ---------------------------------------------------------------------------
 /** `status.jsonl` timestamp: UTC, whole seconds (`date -u +%FT%TZ`). */
 export const statusTimestamp = (now = new Date()) => now.toISOString().replace(/\.\d{3}Z$/, "Z");

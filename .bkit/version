@@ -214,7 +214,7 @@
     ".bkit/providers.md": "977748a2dba40cb3b49ebb9530c2b2b72fa4dfd462d995ff5cb5dc709a4e7cd5",
     ".bkit/prompts.md": "b7f53424292e0093795e7aad33c6c508e766871d99c9f8cf49933fa594065bf7",
     ".bkit/trackers.md": "cd3e917a169373b1f007236370eee733a5e58fffeb4a67fedca253c4fd9e6132",
-    ".bkit/workflows.md": "01118c1ce680f5b65995de89ddea4acc0befb299d766d529ebc8f218a7c04c0e",
+    ".bkit/workflows.md": "ed2e105eacde616bf567b603630bf6e6c5c004e253cd7230ad0fd26e55bbbc2e",
     ".bkit/README.md": "997f4075f115f62168bb7bf58e1e13bab97285217f4f4183bf3ab27cb764bbb6",
     ".cursor/rules/bkit-rules.mdc": "0c15e475a322bd66f4f2258b5ffc2a6700bb9c9d217a75fa18d8168c9e1106e8",
     ".claude/hooks/bkit-gateguard.cjs": "4aca3e62f922bf15e4deeaf240361bf636c57fbc4dd88ba04c8d08a8ad39cc96",
